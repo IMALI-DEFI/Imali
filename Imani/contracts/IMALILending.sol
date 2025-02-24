@@ -1,65 +1,129 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
-contract IMALILending is ReentrancyGuard, Ownable {
-    ERC20 public token;
-    uint256 public constant COLLATERAL_FACTOR = 150; // 150%
-    uint256 public constant INTEREST_RATE = 5; // 5% per year
-    uint256 public constant SECONDS_PER_YEAR = 31536000;
-
-    struct Loan {
-        uint256 collateralAmount;
-        uint256 borrowedAmount;
-        uint256 borrowTimestamp;
+contract IMALILending is Ownable {
+    struct Borrow {
+        uint256 amount;
+        uint256 borrowTime;
     }
 
-    mapping(address => Loan) public loans;
+    mapping(address => uint256) public imaliCollateral; // IMALI.e collateral
+    mapping(address => uint256) public ethCollateral;   // ETH collateral
+    mapping(address => uint256) public maticCollateral; // MATIC.e collateral
+    mapping(address => Borrow) public borrowRecords;
 
-    constructor(address _tokenAddress) {
-        token = ERC20(_tokenAddress);
+    IERC20 public immutable imaliToken; // IMALI.e on Ethereum
+    IERC20 public immutable stablecoin; // USDC/DAI
+    AggregatorV3Interface public imaliPriceFeed; // Chainlink IMALI Price
+    AggregatorV3Interface public ethPriceFeed; // Chainlink ETH Price
+    AggregatorV3Interface public maticPriceFeed; // Chainlink MATIC Price
+
+    uint256 public constant COLLATERAL_RATIO_IMALI = 130; // 130% for IMALI.e
+    uint256 public constant COLLATERAL_RATIO_ETH = 150;   // 150% for ETH
+    uint256 public constant COLLATERAL_RATIO_MATIC = 150; // 150% for MATIC.e
+    uint256 public constant LIQUIDATION_THRESHOLD = 120;  // Liquidation at 120%
+    uint256 public constant ANNUAL_INTEREST_RATE = 5;     // 5% yearly
+
+    event CollateralDeposited(address indexed user, uint256 amount, string collateralType);
+    event Borrowed(address indexed user, uint256 amount);
+    event Repaid(address indexed user, uint256 amount);
+    event Liquidated(address indexed user, uint256 collateralSeized);
+
+    constructor(
+        address _imali,
+        address _stablecoin,
+        address _imaliPriceFeed,
+        address _ethPriceFeed,
+        address _maticPriceFeed
+    ) {
+        imaliToken = IERC20(_imali);
+        stablecoin = IERC20(_stablecoin);
+        imaliPriceFeed = AggregatorV3Interface(_imaliPriceFeed);
+        ethPriceFeed = AggregatorV3Interface(_ethPriceFeed);
+        maticPriceFeed = AggregatorV3Interface(_maticPriceFeed);
     }
 
-    function depositCollateral() external payable {
-        loans[msg.sender].collateralAmount += msg.value;
+    // **Deposit IMALI.e as Collateral**
+    function depositImaliCollateral(uint256 amount) external {
+        require(amount > 0, "Deposit must be greater than zero");
+        imaliToken.transferFrom(msg.sender, address(this), amount);
+        imaliCollateral[msg.sender] += amount;
+        emit CollateralDeposited(msg.sender, amount, "IMALI.e");
     }
 
-    function borrowTokens(uint256 amount) external nonReentrant {
-        Loan storage loan = loans[msg.sender];
-        uint256 maxBorrow = (loan.collateralAmount * 100) / COLLATERAL_FACTOR;
-        require(amount <= maxBorrow, "Exceeds borrow limit");
-
-        loan.borrowedAmount += amount;
-        loan.borrowTimestamp = block.timestamp;
-
-        token.transfer(msg.sender, amount);
+    // **Deposit ETH as Collateral**
+    function depositEthCollateral() external payable {
+        require(msg.value > 0, "ETH deposit must be greater than zero");
+        ethCollateral[msg.sender] += msg.value;
+        emit CollateralDeposited(msg.sender, msg.value, "ETH");
     }
 
-    function repayLoan(uint256 amount) external nonReentrant {
-        Loan storage loan = loans[msg.sender];
-        require(loan.borrowedAmount > 0, "No active loan");
-
-        uint256 timeElapsed = block.timestamp - loan.borrowTimestamp;
-        uint256 interest = (loan.borrowedAmount * INTEREST_RATE * timeElapsed) /
-            (SECONDS_PER_YEAR * 100);
-
-        uint256 totalRepayment = loan.borrowedAmount + interest;
-        require(amount >= totalRepayment, "Insufficient repayment amount");
-
-        token.transferFrom(msg.sender, address(this), totalRepayment);
-        loan.borrowedAmount = 0;
+    // **Deposit MATIC.e as Collateral**
+    function depositMaticCollateral(uint256 amount) external {
+        require(amount > 0, "Deposit must be greater than zero");
+        imaliToken.transferFrom(msg.sender, address(this), amount);
+        maticCollateral[msg.sender] += amount;
+        emit CollateralDeposited(msg.sender, amount, "MATIC.e");
     }
 
-    function withdrawCollateral() external nonReentrant {
-        Loan storage loan = loans[msg.sender];
-        require(loan.borrowedAmount == 0, "Loan not fully repaid");
+    // **Borrow USDC/DAI based on collateral type**
+    function borrow(uint256 amount, string memory collateralType) external {
+        require(amount > 0, "Borrow amount must be greater than zero");
+        
+        uint256 collateralValue;
+        uint256 requiredCollateral;
+        
+        if (keccak256(abi.encodePacked(collateralType)) == keccak256(abi.encodePacked("IMALI.e"))) {
+            collateralValue = getCollateralValue(msg.sender, "IMALI.e");
+            requiredCollateral = (amount * COLLATERAL_RATIO_IMALI) / 100;
+            require(collateralValue >= requiredCollateral, "Insufficient IMALI.e collateral");
+        } else if (keccak256(abi.encodePacked(collateralType)) == keccak256(abi.encodePacked("ETH"))) {
+            collateralValue = getCollateralValue(msg.sender, "ETH");
+            requiredCollateral = (amount * COLLATERAL_RATIO_ETH) / 100;
+            require(collateralValue >= requiredCollateral, "Insufficient ETH collateral");
+        } else if (keccak256(abi.encodePacked(collateralType)) == keccak256(abi.encodePacked("MATIC.e"))) {
+            collateralValue = getCollateralValue(msg.sender, "MATIC.e");
+            requiredCollateral = (amount * COLLATERAL_RATIO_MATIC) / 100;
+            require(collateralValue >= requiredCollateral, "Insufficient MATIC.e collateral");
+        } else {
+            revert("Invalid collateral type");
+        }
 
-        uint256 collateral = loan.collateralAmount;
-        loan.collateralAmount = 0;
+        borrowRecords[msg.sender] = Borrow(amount, block.timestamp);
+        stablecoin.transfer(msg.sender, amount);
+        emit Borrowed(msg.sender, amount);
+    }
 
-        payable(msg.sender).transfer(collateral);
+    // **Get real-time collateral value**
+    function getCollateralValue(address borrower, string memory collateralType) public view returns (uint256) {
+        if (keccak256(abi.encodePacked(collateralType)) == keccak256(abi.encodePacked("IMALI.e"))) {
+            (, int256 price, , , ) = imaliPriceFeed.latestRoundData();
+            return (imaliCollateral[borrower] * uint256(price)) / (10**8);
+        } else if (keccak256(abi.encodePacked(collateralType)) == keccak256(abi.encodePacked("ETH"))) {
+            (, int256 price, , , ) = ethPriceFeed.latestRoundData();
+            return (ethCollateral[borrower] * uint256(price)) / (10**8);
+        } else if (keccak256(abi.encodePacked(collateralType)) == keccak256(abi.encodePacked("MATIC.e"))) {
+            (, int256 price, , , ) = maticPriceFeed.latestRoundData();
+            return (maticCollateral[borrower] * uint256(price)) / (10**8);
+        }
+        return 0;
+    }
+
+    // **Liquidate undercollateralized borrowers**
+    function liquidate(address borrower, string memory collateralType) external {
+        uint256 collateralValue = getCollateralValue(borrower, collateralType);
+        uint256 requiredCollateral = (borrowRecords[borrower].amount * LIQUIDATION_THRESHOLD) / 100;
+        require(collateralValue < requiredCollateral, "Borrower is not undercollateralized");
+
+        uint256 seizedCollateral = imaliCollateral[borrower];
+        imaliCollateral[borrower] = 0;
+        delete borrowRecords[borrower];
+
+        imaliToken.transfer(msg.sender, seizedCollateral);
+        emit Liquidated(borrower, seizedCollateral);
     }
 }
