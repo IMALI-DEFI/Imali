@@ -1,14 +1,14 @@
 {
   "files": {
     "main.css": "/static/css/main.dac6caad.css",
-    "main.js": "/static/js/main.ca23b617.js",
+    "main.js": "/static/js/main.3d37e4bb.js",
     "static/media/DefiFinanceLogo.png": "/static/media/DefiFinanceLogo.dcff41bee0ca5be66626.png",
     "index.html": "/index.html",
     "main.dac6caad.css.map": "/static/css/main.dac6caad.css.map",
-    "main.ca23b617.js.map": "/static/js/main.ca23b617.js.map"
+    "main.3d37e4bb.js.map": "/static/js/main.3d37e4bb.js.map"
   },
   "entrypoints": [
     "static/css/main.dac6caad.css",
-    "static/js/main.ca23b617.js"
+    "static/js/main.3d37e4bb.js"
   ]
 }
