@@ -178,7 +178,7 @@ const YieldFarming = () => {
           💰 Yield Farming
         </Typography>
         <Typography variant="h6" align="center" className="mb-6">
-          Earn extra rewards by staking your LP tokens.
+          Ensure your wallet is connected to Polygon. Earn extra rewards by staking your LP tokens.
         </Typography>
 
         <Grid container spacing={4}>

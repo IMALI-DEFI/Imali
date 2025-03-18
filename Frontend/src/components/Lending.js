@@ -254,6 +254,7 @@ const Lending = () => {
           Lending and Borrowing
         </h1>
         <p className="text-lg text-black font-bold">
+          Ensure your MetaMask wallet is connnected to Etherium
           Real-time APY & Fees updated via Chainlink Oracles.
         </p>
       </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import Images from '../assets/images/DefiFinanceLogo.png'className="w-26 h-26 md:w-30 md:h-30 lg:w-34 lg:h-34";
+import Images from '../assets/images/DefiFinanceLogo.png'className="w-36 h-36 md:w-40 md:h-40 lg:w-44 lg:h-44";
 
 const Header = () => {
   return (

@@ -326,7 +326,7 @@ const Staking = () => {
           <AccordionDetails>
             <ol>
               <li>
-                <strong>Connect Your Wallet:</strong> Click "Connect Wallet" to connect your wallet.
+          <strong>Connect Your Wallet:</strong> Click "Connect Wallet" to connect your wallet. Ensure it is connected to the Polygon Network
               </li>
               <li>
                 <strong>Network Check:</strong> Ensure your wallet is on Ethereum (for IMALI tokens) or Polygon (for LP tokens and yield farming).
