@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom'; // Import Link
 
 const Footer = () => {
   return (
@@ -13,40 +14,38 @@ const Footer = () => {
           </p>
         </div>
 
-        {/* Center - Links */}
+        {/* Center - Navigation Links (Matching Header) */}
         <nav className="mb-4 md:mb-0">
           <ul className="flex flex-wrap justify-center gap-4">
             <li>
-              <a
-                href="#hero"
-                className="hover:text-yellow-400 transition-colors duration-300"
-              >
-                Home
-              </a>
+              <Link to="/" className="hover:text-yellow-400 transition-colors duration-300">
+                Lending
+              </Link>
             </li>
             <li>
-              <a
-                href="#features"
-                className="hover:text-yellow-400 transition-colors duration-300"
-              >
-                Features
-              </a>
+              <Link to="/staking" className="hover:text-yellow-400 transition-colors duration-300">
+                Staking
+              </Link>
             </li>
             <li>
-              <a
-                href="#dashboard"
-                className="hover:text-yellow-400 transition-colors duration-300"
-              >
-                Dashboard
-              </a>
+              <Link to="/yield-farming" className="hover:text-yellow-400 transition-colors duration-300">
+                Yield Farming
+              </Link>
             </li>
             <li>
-              <a
-                href="#contact"
-                className="hover:text-yellow-400 transition-colors duration-300"
-              >
-                Contact
-              </a>
+              <Link to="/token" className="hover:text-yellow-400 transition-colors duration-300">
+                Token
+              </Link>
+            </li>
+            <li>
+              <Link to="/how-to" className="hover:text-yellow-400 transition-colors duration-300">
+                How To
+              </Link>
+            </li>
+            <li>
+              <Link to="/admin" className="hover:text-yellow-400 transition-colors duration-300">
+                Admin
+              </Link>
             </li>
           </ul>
         </nav>
