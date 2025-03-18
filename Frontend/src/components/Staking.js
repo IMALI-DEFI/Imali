@@ -321,7 +321,7 @@ const Staking = () => {
       <Paper elevation={3} style={{ padding: "20px", marginBottom: "20px" }}>
         <Accordion>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="h6">How to Stake & Yield Farm with IMANI</Typography>
+            <Typography variant="h6">How to Stake & Yield Farm with IMALI</Typography>
           </AccordionSummary>
           <AccordionDetails>
             <ol>

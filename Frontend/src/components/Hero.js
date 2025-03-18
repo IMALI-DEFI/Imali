@@ -5,7 +5,7 @@ const Hero = () => {
     <section className="hero bg-gradient-to-r from-green-600 to-green-800 text-white p-10 md:p-20 text-center animate-fadeIn">
       {/* Hero Title */}
       <h1 className="hero-title text-4xl md:text-5xl font-extrabold mb-4 drop-shadow-md">
-        Welcome to IMANI DeFi
+        Welcome to IMALI DeFi
       </h1>
       
       {/* Hero Subtitle */}

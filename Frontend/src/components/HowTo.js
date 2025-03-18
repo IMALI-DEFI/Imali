@@ -5,7 +5,7 @@ const HowTo = () => {
     <section className="bg-gray-100 min-h-screen py-16 px-6">
       <div className="container mx-auto max-w-6xl bg-white shadow-lg p-8 rounded-lg">
         <h2 className="text-4xl font-bold text-green-600 text-center mb-8">
-          📌 How to Use IMANI
+          📌 How to Use IMALI
         </h2>
 
         <div className="space-y-6">
@@ -90,7 +90,7 @@ const HowTo = () => {
               6️⃣ Airdrops
             </h3>
             <p className="text-gray-700">
-              Occasionally, IMANI may distribute free tokens via airdrops to active users.
+              Occasionally, IMALI may distribute free tokens via airdrops to active users.
               Stay tuned to our announcements and make sure your wallet is connected to receive any airdrops.
             </p>
           </div>
@@ -98,7 +98,7 @@ const HowTo = () => {
 
         <div className="text-center mt-8">
           <button className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition">
-            🚀 Start Using IMANI
+            🚀 Start Using IMALI
           </button>
         </div>
       </div>
