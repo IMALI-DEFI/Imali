@@ -8,7 +8,7 @@ const Footer = () => {
         
         {/* Left Side - Branding */}
         <div className="mb-4 md:mb-0">
-          <h2 className="text-2xl font-bold">IMANI DeFi</h2>
+          <h2 className="text-2xl font-bold">IMALI DeFi</h2>
           <p className="text-sm mt-2">
             Empowering your financial independence through decentralized solutions.
           </p>
@@ -84,7 +84,7 @@ const Footer = () => {
 
       {/* Copyright */}
       <div className="border-t border-green-600 mt-6 pt-4 text-center text-sm">
-        <p>&copy; {new Date().getFullYear()} IMANI DeFi. All Rights Reserved.</p>
+        <p>&copy; {new Date().getFullYear()} IMALI DeFi. All Rights Reserved.</p>
       </div>
     </footer>
   );
