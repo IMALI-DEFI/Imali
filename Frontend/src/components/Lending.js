@@ -365,14 +365,14 @@ const Lending = () => {
       {/* Step 6: How to Use Instructions */}
       <div className="container mx-auto mt-12 bg-white p-6 rounded-lg shadow-md">
         <h2 className="text-3xl font-bold text-green-600 mb-4 text-center">
-          How to Use the Lending Platform
+          How to Use the Lending and Borrowing Platform
         </h2>
         <ol className="list-decimal list-inside text-gray-800 space-y-2">
           <li>
             <strong>Connect Your Wallet:</strong> Click the "Connect Wallet" button at the top if you haven't already.
           </li>
           <li>
-            <strong>Network Check:</strong> Ensure your wallet is connected to Ethereum or Polygon.
+          <strong>Network Check:</strong> Ensure your wallet is connected to Ethereum for Lending and Borrowing.
           </li>
           <li>
             <strong>View Lending Stats:</strong> Review the current liquidity, fees, and APY details displayed.
