@@ -165,3 +165,19 @@ body {
 .btn:hover {
   background-color: #005f00;
 }
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 1.5s ease-in-out forwards;
+}
+
+.delay-1000 {
+  animation-delay: 1s;
+}
