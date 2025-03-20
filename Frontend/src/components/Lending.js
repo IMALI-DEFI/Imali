@@ -3,8 +3,6 @@ import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
 import getContractInstance from "../getContractInstance";
 import { FaEthereum, FaBitcoin, FaDollarSign } from "react-icons/fa";
-import Lottie from "lottie-react";
-import walletAnimation from "../assets/animations/wallet.json"; // Example Lottie animation
 
 const tokenAddresses = {
   ETH: "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419",
@@ -274,9 +272,6 @@ const Lending = () => {
       {modalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
           <div className="bg-white p-6 rounded-lg shadow-lg w-1/3 relative">
-            <div className="absolute -top-20 left-1/2 transform -translate-x-1/2">
-              <Lottie animationData={walletAnimation} loop={true} style={{ width: 100, height: 100 }} />
-            </div>
             <h3 className="text-xl font-bold text-gray-800 mb-4">
               {modalType === "supply"
                 ? "Deposit Collateral"
@@ -329,6 +324,61 @@ const Lending = () => {
           </div>
         </div>
       )}
+
+      {/* Animated Fireworks */}
+      <div className="fixed inset-0 pointer-events-none">
+        <svg
+          className="absolute top-0 left-0 w-full h-full"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+        >
+          {/* Firework 1 */}
+          <circle cx="10" cy="10" r="1" fill="#ff9a9e" className="animate-firework">
+            <animate
+              attributeName="r"
+              values="1;5;1"
+              dur="2s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="opacity"
+              values="1;0;1"
+              dur="2s"
+              repeatCount="indefinite"
+            />
+          </circle>
+          {/* Firework 2 */}
+          <circle cx="90" cy="20" r="1" fill="#fad0c4" className="animate-firework">
+            <animate
+              attributeName="r"
+              values="1;5;1"
+              dur="2.5s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="opacity"
+              values="1;0;1"
+              dur="2.5s"
+              repeatCount="indefinite"
+            />
+          </circle>
+          {/* Firework 3 */}
+          <circle cx="50" cy="80" r="1" fill="#a1c4fd" className="animate-firework">
+            <animate
+              attributeName="r"
+              values="1;5;1"
+              dur="3s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="opacity"
+              values="1;0;1"
+              dur="3s"
+              repeatCount="indefinite"
+            />
+          </circle>
+        </svg>
+      </div>
     </section>
   );
 };
