@@ -68,6 +68,7 @@ const Lending = () => {
       setAssetPrices(prices);
     } catch (error) {
       console.error("Error fetching asset prices:", error);
+      setAssetPrices({}); // Reset prices on error
     }
   }, []);
 
@@ -75,7 +76,10 @@ const Lending = () => {
   const fetchLendingDetails = useCallback(async () => {
     try {
       const contract = await getContractInstance("Lending");
-      if (!contract) return;
+      if (!contract) {
+        console.error("Contract instance not found.");
+        return;
+      }
 
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
@@ -99,6 +103,14 @@ const Lending = () => {
       });
     } catch (error) {
       console.error("Error fetching lending details:", error);
+      setLendingData({
+        collateral: "Error",
+        liquidity: "Error",
+        supplyApy: "Error",
+        borrowApy: "Error",
+        depositFee: "Error",
+        borrowFee: "Error",
+      });
     }
   }, []);
 
@@ -112,7 +124,7 @@ const Lending = () => {
     const interval = setInterval(() => {
       fetchAssetPrices();
       fetchLendingDetails();
-    }, 30000);
+    }, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
   }, [fetchAssetPrices, fetchLendingDetails]);
 
@@ -324,61 +336,6 @@ const Lending = () => {
           </div>
         </div>
       )}
-
-      {/* Animated Fireworks */}
-      <div className="fixed inset-0 pointer-events-none">
-        <svg
-          className="absolute top-0 left-0 w-full h-full"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-        >
-          {/* Firework 1 */}
-          <circle cx="10" cy="10" r="1" fill="#ff9a9e" className="animate-firework">
-            <animate
-              attributeName="r"
-              values="1;5;1"
-              dur="2s"
-              repeatCount="indefinite"
-            />
-            <animate
-              attributeName="opacity"
-              values="1;0;1"
-              dur="2s"
-              repeatCount="indefinite"
-            />
-          </circle>
-          {/* Firework 2 */}
-          <circle cx="90" cy="20" r="1" fill="#fad0c4" className="animate-firework">
-            <animate
-              attributeName="r"
-              values="1;5;1"
-              dur="2.5s"
-              repeatCount="indefinite"
-            />
-            <animate
-              attributeName="opacity"
-              values="1;0;1"
-              dur="2.5s"
-              repeatCount="indefinite"
-            />
-          </circle>
-          {/* Firework 3 */}
-          <circle cx="50" cy="80" r="1" fill="#a1c4fd" className="animate-firework">
-            <animate
-              attributeName="r"
-              values="1;5;1"
-              dur="3s"
-              repeatCount="indefinite"
-            />
-            <animate
-              attributeName="opacity"
-              values="1;0;1"
-              dur="3s"
-              repeatCount="indefinite"
-            />
-          </circle>
-        </svg>
-      </div>
     </section>
   );
 };
