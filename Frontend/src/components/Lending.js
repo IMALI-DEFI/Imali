@@ -4,16 +4,15 @@ import { useWallet } from "../context/WalletContext";
 import getContractInstance from "../getContractInstance";
 import { FaEthereum, FaBitcoin, FaDollarSign } from "react-icons/fa";
 
+// Price feed addresses for Ethereum (Chainlink)
 const tokenAddresses = {
-  ETH: "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419",
-  USDC: "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",
-  DAI: "0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9",
-  WBTC: "0xdeb288F737066589598e9214E782fa5A8eD689e8",
-  LUSD: "0x9dfc79Aaeb5bb0f96C6e9402671981CdFc424052",
-  MATIC: "0x327e23A4855b6F663a28c5161541d69Af8973302",
-  LINK: "0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c",
-  AAVE: "0x547a514d5e3769680Ce22B2361c10Ea13619e8a9",
-  UNI: "0x553303d460EE0afB37EdFf9bE42922D8FF63220e",
+  ETH: "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419", // ETH/USD
+  USDC: "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6", // USDC/USD
+  DAI: "0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9", // DAI/USD
+  WBTC: "0xdeb288F737066589598e9214E782fa5A8eD689e8", // WBTC/USD
+  LINK: "0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c", // LINK/USD
+  AAVE: "0x547a514d5e3769680Ce22B2361c10Ea13619e8a9", // AAVE/USD
+  UNI: "0x553303d460EE0afB37EdFf9bE42922D8FF63220e", // UNI/USD
 };
 
 // Assets to display on the lending page
@@ -22,8 +21,6 @@ const assets = [
   { name: "USDC", symbol: "USDC", icon: <FaDollarSign size={24} /> },
   { name: "DAI", symbol: "DAI", icon: <FaDollarSign size={24} /> },
   { name: "WBTC", symbol: "WBTC", icon: <FaBitcoin size={24} /> },
-  { name: "LUSD", symbol: "LUSD", icon: <FaDollarSign size={24} /> },
-  { name: "MATIC", symbol: "MATIC", icon: <FaEthereum size={24} /> },
   { name: "LINK", symbol: "LINK", icon: <FaEthereum size={24} /> },
   { name: "AAVE", symbol: "AAVE", icon: <FaEthereum size={24} /> },
   { name: "UNI", symbol: "UNI", icon: <FaEthereum size={24} /> },
@@ -50,21 +47,23 @@ const Lending = () => {
   // Fetch asset prices
   const fetchAssetPrices = useCallback(async () => {
     try {
-      const ethereumProvider = new ethers.JsonRpcProvider(process.env.REACT_APP_INFURA_ETHEREUM);
-      const polygonProvider = new ethers.JsonRpcProvider(process.env.REACT_APP_INFURA_POLYGON);
+      const provider = new ethers.JsonRpcProvider(process.env.REACT_APP_INFURA_ETHEREUM);
       let prices = {};
+
       for (let symbol in tokenAddresses) {
-        const provider = symbol === "MATIC" ? polygonProvider : ethereumProvider;
+        const priceFeedAddress = tokenAddresses[symbol];
         const priceFeedABI = [
-          "function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80)",
+          "function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
         ];
-        const priceFeed = new ethers.Contract(tokenAddresses[symbol], priceFeedABI, provider);
+        const priceFeed = new ethers.Contract(priceFeedAddress, priceFeedABI, provider);
+
         const roundData = await priceFeed.latestRoundData();
-        if (roundData && roundData.length >= 2) {
-          const price = roundData[1];
-          prices[symbol] = ethers.formatUnits(price, 8);
+        if (roundData && roundData.answer) {
+          const price = ethers.formatUnits(roundData.answer, 8); // Chainlink prices are typically 8 decimals
+          prices[symbol] = price;
         }
       }
+
       setAssetPrices(prices);
     } catch (error) {
       console.error("Error fetching asset prices:", error);
@@ -218,7 +217,7 @@ const Lending = () => {
         <h2 className="text-2xl font-bold text-green-600 mb-4">How to Use the Lending Platform</h2>
         <ol className="list-decimal list-inside text-gray-800 space-y-2">
           <li>Connect your wallet using the "Connect Wallet" button.</li>
-          <li>Ensure your wallet is connected to Ethereum or Polygon.</li>
+          <li>Ensure your wallet is connected to Ethereum.</li>
           <li>Deposit collateral to start earning interest or borrow assets.</li>
           <li>Review transaction details before confirming.</li>
         </ol>
