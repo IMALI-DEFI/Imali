@@ -12,7 +12,7 @@ const Header = () => {
         <img
           src={Images}
           alt="Defi Finance Logo"
-          className="h-12 sm:h-16" // Adjust logo size for different screens
+          className="h-25 sm:h-16" // Adjust logo size for different screens
         />
       </div>
 
