@@ -67,8 +67,7 @@ const Lending = () => {
       const supportedNetworks = { 1: "Ethereum", 137: "Polygon" };
       if (!supportedNetworks[network.chainId]) {
         if (!sessionStorage.getItem("networkWarning")) {
-          setToastMessage("⚠️ Please switch to Ethereum or Polygon to use lending features.");
-          sessionStorage.setItem("networkWarning", "true");
+         
         }
       }
     } catch (error) {
