@@ -3,8 +3,11 @@ import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
 import getContractInstance from "../getContractInstance";
 import { FaEthereum, FaBitcoin, FaDollarSign } from "react-icons/fa";
+import Lottie from "lottie-react";
+import walletAnimation from "../assets/animations/wallet.json"; // Example Lottie animation
+import loadingAnimation from "../assets/animations/loading.json"; // Example Lottie animation
 
-// Mapping of asset symbols to collateral token addresses (must match on‑chain registration)
+// Mapping of asset symbols to collateral token addresses
 const tokenAddresses = {
   ETH: "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419",
   USDC: "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",
@@ -38,6 +41,7 @@ const Lending = () => {
   const [selectedToken, setSelectedToken] = useState(null);
   const [borrowId, setBorrowId] = useState("");
   const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
   const [lendingData, setLendingData] = useState({
     collateral: "Loading...",
     liquidity: "Loading...",
@@ -47,24 +51,7 @@ const Lending = () => {
     borrowFee: "Loading...",
   });
 
-  // Memoize functions using useCallback
-  const checkNetwork = useCallback(async () => {
-    if (!window.ethereum) return;
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const network = await provider.getNetwork();
-      const supportedNetworks = { 1: "Ethereum", 137: "Polygon" };
-      if (!supportedNetworks[network.chainId]) {
-        if (!sessionStorage.getItem("networkWarning")) {
-          alert(`⚠️ Please switch to Ethereum or Polygon to use lending features.`);
-          sessionStorage.setItem("networkWarning", "true");
-        }
-      }
-    } catch (error) {
-      console.error("Network check failed:", error);
-    }
-  }, []);
-
+  // Fetch asset prices
   const fetchAssetPrices = useCallback(async () => {
     try {
       const ethereumProvider = new ethers.JsonRpcProvider(process.env.REACT_APP_INFURA_ETHEREUM);
@@ -76,20 +63,10 @@ const Lending = () => {
           "function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80)",
         ];
         const priceFeed = new ethers.Contract(tokenAddresses[symbol], priceFeedABI, provider);
-        try {
-          const roundData = await priceFeed.latestRoundData();
-          if (!roundData || roundData.length < 2) {
-            console.error(`Invalid price data for ${symbol}`);
-            continue;
-          }
+        const roundData = await priceFeed.latestRoundData();
+        if (roundData && roundData.length >= 2) {
           const price = roundData[1];
-          if (price && price.toString() !== "0") {
-            prices[symbol] = ethers.formatUnits(price, 8);
-          } else {
-            console.warn(`Price for ${symbol} unavailable.`);
-          }
-        } catch (error) {
-          console.warn(`Failed to fetch price for ${symbol}: ${error.message}`);
+          prices[symbol] = ethers.formatUnits(price, 8);
         }
       }
       setAssetPrices(prices);
@@ -98,37 +75,26 @@ const Lending = () => {
     }
   }, []);
 
+  // Fetch lending details
   const fetchLendingDetails = useCallback(async () => {
     try {
-      console.log("Fetching lending details...");
       const contract = await getContractInstance("Lending");
-      if (!contract) {
-        console.warn("Contract instance unavailable.");
-        return;
-      }
-      console.log("Contract Loaded:", contract);
+      if (!contract) return;
+
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const addr = await signer.getAddress();
-      console.log("Wallet Address:", addr);
-      if (!addr) throw new Error("Wallet address missing!");
 
-      const [
-        liquidity,
-        supplyApy,
-        borrowApy,
-        depositFee,
-        borrowFee,
-      ] = await Promise.all([
-        contract.getLiquidity ? contract.getLiquidity() : "N/A",
-        contract.getSupplyRate ? contract.getSupplyRate() : "N/A",
-        contract.getBorrowRate ? contract.getBorrowRate() : "N/A",
-        contract.depositFee ? contract.depositFee() : "N/A",
-        contract.borrowFee ? contract.borrowFee() : "N/A",
+      const [liquidity, supplyApy, borrowApy, depositFee, borrowFee] = await Promise.all([
+        contract.getLiquidity(),
+        contract.getSupplyRate(),
+        contract.getBorrowRate(),
+        contract.depositFee(),
+        contract.borrowFee(),
       ]);
 
       setLendingData({
-        collateral: "N/A", // You can add logic to compute user's total collateral.
+        collateral: "N/A", // Add logic to compute user's total collateral
         liquidity: liquidity.toString(),
         supplyApy: supplyApy.toString(),
         borrowApy: borrowApy.toString(),
@@ -136,13 +102,13 @@ const Lending = () => {
         borrowFee: borrowFee.toString(),
       });
     } catch (error) {
-      console.error("Error fetching lending details:", error.message);
+      console.error("Error fetching lending details:", error);
     }
   }, []);
 
+  // Initialize data fetching
   useEffect(() => {
     const initialize = async () => {
-      await checkNetwork();
       await fetchAssetPrices();
       await fetchLendingDetails();
     };
@@ -152,11 +118,9 @@ const Lending = () => {
       fetchLendingDetails();
     }, 30000);
     return () => clearInterval(interval);
-  }, [walletAddress, checkNetwork, fetchAssetPrices, fetchLendingDetails]); // Add d
+  }, [fetchAssetPrices, fetchLendingDetails]);
 
-  // Open the transaction modal.
-  // For actions that require collateral (supply, borrow, withdraw), set the token.
-  // For repayment, reset the borrow ID so the user can input it.
+  // Open modal
   const openModal = (type, asset) => {
     setModalType(type);
     if (type === "supply" || type === "borrow" || type === "withdraw") {
@@ -170,7 +134,7 @@ const Lending = () => {
     setModalOpen(true);
   };
 
-  // Close the modal and clear inputs.
+  // Close modal
   const closeModal = () => {
     setModalType(null);
     setSelectedToken(null);
@@ -179,7 +143,7 @@ const Lending = () => {
     setModalOpen(false);
   };
 
-  // Execute the appropriate transaction based on the selected action.
+  // Execute transaction
   const executeTransaction = async () => {
     if (!walletAddress) {
       alert("Wallet not connected!");
@@ -190,20 +154,17 @@ const Lending = () => {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       let tx;
+
+      setLoading(true);
       if (modalType === "supply") {
-        // Deposit collateral: depositCollateral(token, amount)
         tx = await contract.connect(signer).depositCollateral(selectedToken, ethers.parseUnits(amount, 18));
       } else if (modalType === "borrow") {
-        // Borrow stablecoin: borrow(amount, collateralToken)
         tx = await contract.connect(signer).borrow(ethers.parseUnits(amount, 18), selectedToken);
       } else if (modalType === "repay") {
-        // Repay borrow using the user-entered borrowId.
         tx = await contract.connect(signer).repay(borrowId, ethers.parseUnits(amount, 18));
       } else if (modalType === "withdraw") {
-        // Withdraw collateral: withdrawCollateral(token, amount)
         tx = await contract.connect(signer).withdrawCollateral(selectedToken, ethers.parseUnits(amount, 18));
       }
-      setLoading(true);
       await tx.wait();
       setLoading(false);
       alert("Transaction Successful!");
@@ -213,18 +174,20 @@ const Lending = () => {
     } catch (error) {
       console.error("Transaction failed:", error);
       alert("Transaction failed!");
+      setLoading(false);
     }
   };
 
   return (
     <section className="dashboard text-gray-900 py-12">
-      {/* Step 1: Wallet Connection */}
+      {/* Wallet Connection */}
       <div className="container mx-auto text-center mb-8">
         {walletAddress ? (
           <>
-            <p className="text-lg font-bold text-green-600">
-              ✅ Connected: {walletAddress}
-            </p>
+            <div className="bg-gray-100 p-3 rounded-lg shadow-sm text-center">
+              <p className="text-sm text-gray-700">Connected Wallet:</p>
+              <p className="text-md font-mono text-[#036302] break-words">{walletAddress}</p>
+            </div>
             <button
               className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-gray-700"
               onClick={resetWallet}
@@ -242,17 +205,18 @@ const Lending = () => {
         )}
       </div>
 
-      {/* Step 2: Lending Header */}
-      <div className="container mx-auto text-center bg-white">
-        <h1 className="text-4xl font-bold text-[#036302] mb-2">
-          Lending and Borrowing
-        </h1>
-        <p className="text-lg text-black font-bold">
-          Real-time APY & Fees updated via Chainlink Oracles.
-        </p>
+      {/* Instructions at the Top */}
+      <div className="container mx-auto mt-8 bg-white p-6 rounded-lg shadow-md">
+        <h2 className="text-2xl font-bold text-green-600 mb-4">How to Use the Lending Platform</h2>
+        <ol className="list-decimal list-inside text-gray-800 space-y-2">
+          <li>Connect your wallet using the "Connect Wallet" button.</li>
+          <li>Ensure your wallet is connected to Ethereum or Polygon.</li>
+          <li>Deposit collateral to start earning interest or borrow assets.</li>
+          <li>Review transaction details before confirming.</li>
+        </ol>
       </div>
 
-      {/* Step 3: Display Lending Data */}
+      {/* Lending Stats */}
       <div className="container mx-auto text-center my-6 bg-white">
         <div className="bg-white shadow-md rounded-lg p-4 inline-block">
           <p className="text-lg font-semibold">📊 Lending Stats:</p>
@@ -265,7 +229,7 @@ const Lending = () => {
         </div>
       </div>
 
-      {/* Step 4: Asset Cards */}
+      {/* Asset Cards */}
       <div className="container mx-auto mt-6 px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 bg-white">
         {assets.map((asset, index) => (
           <div key={index} className="bg-white shadow-md rounded-lg p-6">
@@ -279,7 +243,6 @@ const Lending = () => {
               </div>
             </div>
             <div className="mt-4">
-              {/* Choose an action */}
               <button
                 className="w-full px-4 py-2 bg-blue-500 text-white rounded-md"
                 onClick={() => openModal("supply", asset)}
@@ -309,10 +272,13 @@ const Lending = () => {
         ))}
       </div>
 
-      {/* Step 5: Transaction Modal */}
+      {/* Transaction Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-1/3">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-1/3 relative">
+            <div className="absolute -top-20 left-1/2 transform -translate-x-1/2">
+              <Lottie animationData={walletAnimation} loop={true} style={{ width: 100, height: 100 }} />
+            </div>
             <h3 className="text-xl font-bold text-gray-800 mb-4">
               {modalType === "supply"
                 ? "Deposit Collateral"
@@ -322,6 +288,15 @@ const Lending = () => {
                 ? "Repay Borrow"
                 : "Withdraw Collateral"}
             </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {modalType === "supply"
+                ? "Deposit your asset as collateral to borrow stablecoins."
+                : modalType === "borrow"
+                ? "Borrow stablecoins using your deposited collateral."
+                : modalType === "repay"
+                ? "Repay your borrow to unlock your collateral."
+                : "Withdraw your collateral after repaying your borrow."}
+            </p>
             {modalType === "repay" && (
               <input
                 type="number"
@@ -349,48 +324,16 @@ const Lending = () => {
                 className="px-4 py-2 bg-green-600 text-white rounded-md"
                 onClick={executeTransaction}
               >
-                Confirm
+                {loading ? (
+                  <Lottie animationData={loadingAnimation} loop={true} style={{ width: 24, height: 24 }} />
+                ) : (
+                  "Confirm"
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Step 6: How to Use Instructions */}
-      <div className="container mx-auto mt-12 bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-3xl font-bold text-green-600 mb-4 text-center">
-          How to Use the Lending Platform
-        </h2>
-        <ol className="list-decimal list-inside text-gray-800 space-y-2">
-          <li>
-            <strong>Connect Your Wallet:</strong> Click the "Connect Wallet" button at the top if you haven't already.
-          </li>
-          <li>
-            <strong>Network Check:</strong> Ensure your wallet is connected to Ethereum or Polygon.
-          </li>
-          <li>
-            <strong>View Lending Stats:</strong> Review the current liquidity, fees, and APY details displayed.
-          </li>
-          <li>
-            <strong>Select an Asset:</strong> Each asset card shows the current price. Choose an asset based on the collateral you want to use.
-          </li>
-          <li>
-            <strong>Deposit Collateral:</strong> Click "Deposit Collateral" on an asset card. Enter the amount in the modal and confirm the transaction. This will lock your tokens as collateral.
-          </li>
-          <li>
-            <strong>Borrow Stablecoin:</strong> Click "Borrow Stablecoin" on an asset card. Enter the amount you wish to borrow and confirm. Your selected asset will serve as collateral.
-          </li>
-          <li>
-            <strong>Repay Borrow:</strong> Click "Repay Borrow" on an asset card. In the modal, first enter the Borrow ID (if you have multiple borrow positions, otherwise it might be 0) and the amount to repay. Confirm the transaction.
-          </li>
-          <li>
-            <strong>Withdraw Collateral:</strong> Click "Withdraw Collateral" on an asset card. Enter the amount to withdraw and confirm. Ensure you maintain enough collateral to cover your borrow.
-          </li>
-        </ol>
-        <p className="mt-4 text-center text-gray-600">
-          Please note: All transactions will require confirmation via MetaMask.
-        </p>
-      </div>
     </section>
   );
 };
