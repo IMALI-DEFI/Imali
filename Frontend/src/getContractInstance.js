@@ -33,33 +33,27 @@ const getContractInstance = async (contractType) => {
     const contractAddresses = {
       Lending: {
         80002: process.env.REACT_APP_LENDING_AMOY, // Amoy Testnet
-        137: process.env.REACT_APP_LENDING_POLYGON, // Polygon Mainnet
         1: process.env.REACT_APP_LENDING_ETHEREUM,   // Ethereum Mainnet
       },
       YieldFarming: {
         80002: process.env.REACT_APP_YIELDFARMING_AMOY,
         137: process.env.REACT_APP_YIELDFARMING_POLYGON,
-        1: process.env.REACT_APP_YIELDFARMING_ETHEREUM,
       },
       Staking: {
         80002: process.env.REACT_APP_STAKING_AMOY,
         137: process.env.REACT_APP_STAKING_POLYGON,
-        1: process.env.REACT_APP_STAKING_ETHEREUM,
       },
       LPToken: {
         80002: process.env.REACT_APP_LPTOKEN_AMOY,
         137: process.env.REACT_APP_LPTOKEN_POLYGON,
-        1: process.env.REACT_APP_LPTOKEN_ETHEREUM,
       },
       Token: {
         80002: process.env.REACT_APP_TOKEN_AMOY,
         137: process.env.REACT_APP_TOKEN_POLYGON,
-        1: process.env.REACT_APP_TOKEN_ETHEREUM,
       },
       IMALIToken: {
         80002: process.env.REACT_APP_TOKEN_AMOY,
         137: process.env.REACT_APP_TOKEN_POLYGON,
-        1: process.env.REACT_APP_TOKEN_ETHEREUM,
       },
     };
 
