@@ -72,8 +72,7 @@ export const WalletProvider = ({ children }) => {
         const network = await ethProvider.getNetwork();
 
         if (network.chainId !== 89) {
-            alert("⚠️ Please switch to Polygon (Matic) network.");
-            setNetwork(null);
+        
         } else {
             setNetwork("Polygon");
         }
