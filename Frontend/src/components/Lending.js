@@ -5,9 +5,7 @@ import getContractInstance from "../getContractInstance";
 import { FaEthereum, FaBitcoin, FaDollarSign } from "react-icons/fa";
 import Lottie from "lottie-react";
 import walletAnimation from "../assets/animations/wallet.json"; // Example Lottie animation
-import loadingAnimation from "../assets/animations/loading.json"; // Example Lottie animation
 
-// Mapping of asset symbols to collateral token addresses
 const tokenAddresses = {
   ETH: "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419",
   USDC: "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",
@@ -323,12 +321,9 @@ const Lending = () => {
               <button
                 className="px-4 py-2 bg-green-600 text-white rounded-md"
                 onClick={executeTransaction}
+                disabled={loading}
               >
-                {loading ? (
-                  <Lottie animationData={loadingAnimation} loop={true} style={{ width: 24, height: 24 }} />
-                ) : (
-                  "Confirm"
-                )}
+                {loading ? "Processing..." : "Confirm"}
               </button>
             </div>
           </div>
