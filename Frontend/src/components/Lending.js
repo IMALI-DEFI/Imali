@@ -396,4 +396,3 @@ const Lending = () => {
 };
 
 export default Lending;
-
