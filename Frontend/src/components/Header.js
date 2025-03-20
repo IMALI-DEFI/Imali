@@ -9,7 +9,7 @@ const Header = () => {
         <img
           src={Images}
           alt="Defi Finance Logo"
-          className="h-30"
+          className="h-25"
         />
       </div>
       <nav className="flex space-x-6">
