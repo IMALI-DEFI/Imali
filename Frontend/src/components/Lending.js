@@ -84,22 +84,24 @@ const Lending = () => {
         const signer = await provider.getSigner();
         const addr = await signer.getAddress();
 
-        const [liquidity, supplyApy, borrowApy, depositFee, borrowFee] = await Promise.all([
-          contract.getLiquidity(), // Now this will work
-          contract.getSupplyRate(),
-          contract.getBorrowRate(),
-          contract.depositFee(),
-          contract.borrowFee(),
+        // Fetch all data in parallel
+        const [liquidity, supplyApy, borrowApy, depositFee, borrowFee, collateral] = await Promise.all([
+          contract.getLiquidity().catch(() => "Error"),
+          contract.getSupplyRate().catch(() => "Error"),
+          contract.getBorrowRate().catch(() => "Error"),
+          contract.depositFee().catch(() => "Error"),
+          contract.borrowFee().catch(() => "Error"),
+          fetchTotalCollateral(contract, addr).catch(() => "Error"),
         ]);
 
         // Format fees as money (assuming 18 decimals)
-        const formatFee = (fee) => (ethers.formatUnits(fee, 18)).toFixed(2);
+        const formatFee = (fee) => (fee === "Error" ? "Error" : (ethers.formatUnits(fee, 18)).toFixed(2));
 
         setLendingData({
-          collateral: "N/A", // Add logic to compute user's total collateral
-          liquidity: ethers.formatUnits(liquidity, 18), // Format liquidity
-          supplyApy: supplyApy.toString(),
-          borrowApy: borrowApy.toString(),
+          collateral: collateral, // Use the fetched total collateral
+          liquidity: liquidity === "Error" ? "Error" : ethers.formatUnits(liquidity, 18), // Format liquidity
+          supplyApy: supplyApy === "Error" ? "Error" : supplyApy.toString(),
+          borrowApy: borrowApy === "Error" ? "Error" : borrowApy.toString(),
           depositFee: formatFee(depositFee), // Format deposit fee
           borrowFee: formatFee(borrowFee), // Format borrow fee
         });
