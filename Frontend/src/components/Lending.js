@@ -44,6 +44,22 @@ const Lending = () => {
     borrowFee: "Loading...",
   });
 
+  // Helper function to fetch total collateral
+  const fetchTotalCollateral = async (contract, userAddress) => {
+    try {
+      if (typeof contract.getCollateral === "function") {
+        const collateral = await contract.getCollateral(userAddress);
+        return ethers.formatUnits(collateral, 18);
+      } else {
+        console.warn("getCollateral function is not available on the contract, returning fallback value.");
+        return "0";
+      }
+    } catch (error) {
+      console.error("Error fetching total collateral:", error);
+      return "Error";
+    }
+  };
+
   // Fetch asset prices
   const fetchAssetPrices = useCallback(async () => {
     try {
@@ -72,51 +88,51 @@ const Lending = () => {
   }, []);
 
   // Fetch lending details
-    const fetchLendingDetails = useCallback(async () => {
-      try {
-        const contract = await getContractInstance("Lending");
-        if (!contract) {
-          console.error("Contract instance not found.");
-          return;
-        }
-
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-        const addr = await signer.getAddress();
-
-        // Fetch all data in parallel
-        const [liquidity, supplyApy, borrowApy, depositFee, borrowFee, collateral] = await Promise.all([
-          contract.getLiquidity().catch(() => "Error"),
-          contract.getSupplyRate().catch(() => "Error"),
-          contract.getBorrowRate().catch(() => "Error"),
-          contract.depositFee().catch(() => "Error"),
-          contract.borrowFee().catch(() => "Error"),
-          fetchTotalCollateral(contract, addr).catch(() => "Error"),
-        ]);
-
-        // Format fees as money (assuming 18 decimals)
-        const formatFee = (fee) => (fee === "Error" ? "Error" : (ethers.formatUnits(fee, 18)).toFixed(2));
-
-        setLendingData({
-          collateral: collateral, // Use the fetched total collateral
-          liquidity: liquidity === "Error" ? "Error" : ethers.formatUnits(liquidity, 18), // Format liquidity
-          supplyApy: supplyApy === "Error" ? "Error" : supplyApy.toString(),
-          borrowApy: borrowApy === "Error" ? "Error" : borrowApy.toString(),
-          depositFee: formatFee(depositFee), // Format deposit fee
-          borrowFee: formatFee(borrowFee), // Format borrow fee
-        });
-      } catch (error) {
-        console.error("Error fetching lending details:", error);
-        setLendingData({
-          collateral: "Error",
-          liquidity: "Error",
-          supplyApy: "Error",
-          borrowApy: "Error",
-          depositFee: "Error",
-          borrowFee: "Error",
-        });
+  const fetchLendingDetails = useCallback(async () => {
+    try {
+      const contract = await getContractInstance("Lending");
+      if (!contract) {
+        console.error("Contract instance not found.");
+        return;
       }
-    }, []);
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const addr = await signer.getAddress();
+
+      // Fetch all data in parallel
+      const [liquidity, supplyApy, borrowApy, depositFee, borrowFee, collateral] = await Promise.all([
+        contract.getLiquidity().catch(() => "Error"),
+        contract.getSupplyRate().catch(() => "Error"),
+        contract.getBorrowRate().catch(() => "Error"),
+        contract.depositFee().catch(() => "Error"),
+        contract.borrowFee().catch(() => "Error"),
+        fetchTotalCollateral(contract, addr).catch(() => "Error"),
+      ]);
+
+      // Format fees as money (assuming 18 decimals)
+      const formatFee = (fee) => (fee === "Error" ? "Error" : Number(ethers.formatUnits(fee, 18)).toFixed(2));
+
+      setLendingData({
+        collateral: collateral, // Use the fetched total collateral
+        liquidity: liquidity === "Error" ? "Error" : ethers.formatUnits(liquidity, 18), // Format liquidity
+        supplyApy: supplyApy === "Error" ? "Error" : supplyApy.toString(),
+        borrowApy: borrowApy === "Error" ? "Error" : borrowApy.toString(),
+        depositFee: formatFee(depositFee), // Format deposit fee
+        borrowFee: formatFee(borrowFee), // Format borrow fee
+      });
+    } catch (error) {
+      console.error("Error fetching lending details:", error);
+      setLendingData({
+        collateral: "Error",
+        liquidity: "Error",
+        supplyApy: "Error",
+        borrowApy: "Error",
+        depositFee: "Error",
+        borrowFee: "Error",
+      });
+    }
+  }, []);
 
   // Initialize data fetching
   useEffect(() => {
@@ -345,3 +361,4 @@ const Lending = () => {
 };
 
 export default Lending;
+
