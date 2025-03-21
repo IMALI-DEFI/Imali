@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
@@ -9,8 +9,29 @@ import HowTo from "./components/HowTo";
 import Token from "./components/Token";
 import AdminPanel from "./components/AdminPanel";
 import { WalletProvider } from "./context/WalletContext";
+import MetaMaskMobilePrompt from "./components/MetaMaskMobilePrompt"; // Import the prompt component
 
 const App = () => {
+  const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+
+  useEffect(() => {
+    // Check if MetaMask is installed
+    setIsMetaMaskInstalled(!!window.ethereum);
+
+    // Check if the user is on a mobile device
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+    setIsMobileDevice(isMobile);
+  }, []);
+
+  // Show the prompt if on mobile and MetaMask is not installed
+  if (isMobileDevice && !isMetaMaskInstalled) {
+    return <MetaMaskMobilePrompt />;
+  }
+
+  // Render the app as usual
   return (
     <WalletProvider>
       <Header />
