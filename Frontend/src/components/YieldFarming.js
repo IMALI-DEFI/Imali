@@ -3,18 +3,7 @@ import { ethers } from "ethers";
 import { toast } from "react-toastify";
 import { useWallet } from "../context/WalletContext";
 import getContractInstance from "../getContractInstance";
-import {
-  Button,
-  CircularProgress,
-  TextField,
-  Typography,
-  Paper,
-  Grid,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-} from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { FaCoins, FaWallet, FaPercentage } from "react-icons/fa";
 
 const YieldFarming = () => {
   const { walletAddress, connectWallet, resetWallet, loading, setLoading } = useWallet();
@@ -205,123 +194,98 @@ const YieldFarming = () => {
   };
 
   return (
-    <div style={{ padding: "20px" }}>
-      {/* Wallet Connection Info */}
-      <Paper elevation={3} style={{ padding: "20px", textAlign: "center", marginBottom: "20px" }}>
-        <Typography variant="h6">Wallet Connected: {walletAddress}</Typography>
-        <Button variant="outlined" onClick={resetWallet} style={{ marginTop: "10px" }}>
-          Disconnect Wallet
-        </Button>
-      </Paper>
+    <section className="dashboard text-gray-900 py-12">
+      {/* Wallet Connection */}
+      <div className="container mx-auto text-center mb-8">
+        {walletAddress ? (
+          <>
+            <div className="bg-gray-100 p-3 rounded-lg shadow-sm text-center">
+              <p className="text-sm text-gray-700">Connected Wallet:</p>
+              <p className="text-md font-mono text-[#036302] break-words">{walletAddress}</p>
+            </div>
+            <button
+              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-gray-700"
+              onClick={resetWallet}
+            >
+              🔄 Reset Wallet
+            </button>
+          </>
+        ) : (
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            onClick={connectWallet}
+          >
+            🔗 Connect Wallet
+          </button>
+        )}
+      </div>
 
-      {/* Header */}
-      <Typography variant="h4" align="center" gutterBottom>
-        Yield Farming Dashboard
-      </Typography>
+      {/* Instructions at the Top */}
+      <div className="container mx-auto mt-8 bg-white p-6 rounded-lg shadow-md">
+        <h2 className="text-2xl font-bold text-green-600 mb-4">How to Use Yield Farming</h2>
+        <ol className="list-decimal list-inside text-gray-800 space-y-2">
+          <li>Connect your wallet using the "Connect Wallet" button.</li>
+          <li>Ensure your wallet is connected to the Polygon network.</li>
+          <li>Deposit LP tokens to start earning rewards.</li>
+          <li>Stake, unstake, or claim rewards as needed.</li>
+        </ol>
+      </div>
 
-      {/* How to Use Instructions */}
-      <Paper elevation={3} style={{ padding: "20px", marginBottom: "20px" }}>
-        <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="h6">How to Use Yield Farming</Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            <ol>
-              <li>
-                <strong>Connect Your Wallet:</strong> Click "Connect Wallet" to connect your wallet. Ensure it is connected to the Polygon Network.
-              </li>
-              <li>
-                <strong>Obtain LP Tokens:</strong> LP tokens are obtained when you provide liquidity on a DEX (e.g., Uniswap) for any token pair. These tokens represent your share in the liquidity pool.
-              </li>
-              <li>
-                <strong>Enter Amount to Stake:</strong> Input the amount of LP tokens you wish to stake.
-              </li>
-              <li>
-                <strong>Click "Stake":</strong> Confirm the staking transaction in your wallet.
-              </li>
-              <li>
-                <strong>Unstake Tokens:</strong> Enter the amount to unstake and click "Unstake". Make sure you have enough staked tokens.
-              </li>
-              <li>
-                <strong>Claim Rewards:</strong> Click "Claim Rewards" to claim your earned rewards.
-              </li>
-              <li>
-                <strong>View Your Data:</strong> Your dashboard will display staked amounts, rewards, and APY.
-              </li>
-            </ol>
-            <Typography variant="body1" style={{ marginTop: "10px" }}>
-              Note: Each transaction requires confirmation via your wallet (e.g., MetaMask).
-            </Typography>
-          </AccordionDetails>
-        </Accordion>
-      </Paper>
+      {/* Yield Farming Stats */}
+      <div className="container mx-auto text-center my-6 bg-white">
+        <div className="bg-white shadow-md rounded-lg p-4 inline-block">
+          <p className="text-lg font-semibold">📊 Yield Farming Stats:</p>
+          <p><FaCoins className="inline" /> Staked LP Tokens: {farmBalance}</p>
+          <p><FaWallet className="inline" /> Earned Rewards: {earnedRewards}</p>
+          <p><FaPercentage className="inline" /> APY: {apy}%</p>
+        </div>
+      </div>
 
-      {/* Yield Farming Form and Data */}
-      <Grid container spacing={3} style={{ marginBottom: "20px" }}>
-        {/* Yield Farming Form */}
-        <Grid item xs={12} md={6}>
-          <Paper elevation={3} style={{ padding: "20px" }}>
-            <Typography variant="h6" gutterBottom>
-              Stake or Unstake Tokens
-            </Typography>
-            <TextField
-              label="Amount"
+      {/* Yield Farming Form */}
+      <div className="container mx-auto mt-6 px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 bg-white">
+        <div className="bg-white shadow-md rounded-lg p-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-2">
+              <FaCoins size={24} />
+              <span>LP Tokens</span>
+            </div>
+          </div>
+          <div className="mt-4">
+            <input
               type="number"
+              className="w-full px-4 py-2 mb-4 border border-gray-300 rounded-lg"
+              placeholder="Enter amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              fullWidth
-              style={{ marginBottom: "20px" }}
             />
-            <Button
-              variant="contained"
-              color="primary"
+            <button
+              className="w-full px-4 py-2 bg-blue-500 text-white rounded-md"
               onClick={stakeTokensInFarm}
               disabled={loading}
-              fullWidth
             >
-              {loading ? <CircularProgress size={24} /> : "Stake"}
-            </Button>
-            <Button
-              variant="contained"
-              color="secondary"
+              {loading ? "Processing..." : "Stake"}
+            </button>
+            <button
+              className="w-full px-4 py-2 mt-2 bg-red-500 text-white rounded-md"
               onClick={unstakeTokensInFarm}
               disabled={loading}
-              fullWidth
-              style={{ marginTop: "10px" }}
             >
-              {loading ? <CircularProgress size={24} /> : "Unstake"}
-            </Button>
-            <Button
-              variant="contained"
-              color="success"
+              {loading ? "Processing..." : "Unstake"}
+            </button>
+            <button
+              className="w-full px-4 py-2 mt-2 bg-green-500 text-white rounded-md"
               onClick={claimRewards}
               disabled={loading}
-              fullWidth
-              style={{ marginTop: "10px" }}
             >
-              {loading ? <CircularProgress size={24} /> : "Claim Rewards"}
-            </Button>
+              {loading ? "Processing..." : "Claim Rewards"}
+            </button>
             {error && (
-              <Typography color="error" style={{ marginTop: "10px" }}>
-                {error}
-              </Typography>
+              <p className="text-red-500 text-sm mt-2">{error}</p>
             )}
-          </Paper>
-        </Grid>
-
-        {/* Yield Farming Data Display */}
-        <Grid item xs={12} md={6}>
-          <Paper elevation={3} style={{ padding: "20px" }}>
-            <Typography variant="h6" gutterBottom>
-              Your Yield Farming Data
-            </Typography>
-            <Typography>Staked LP Tokens: {farmBalance}</Typography>
-            <Typography>Earned Rewards: {earnedRewards}</Typography>
-            <Typography>APY: {apy}%</Typography>
-          </Paper>
-        </Grid>
-      </Grid>
-    </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 };
 
