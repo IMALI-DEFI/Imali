@@ -72,46 +72,49 @@ const Lending = () => {
   }, []);
 
   // Fetch lending details
-  const fetchLendingDetails = useCallback(async () => {
-    try {
-      const contract = await getContractInstance("Lending");
-      if (!contract) {
-        console.error("Contract instance not found.");
-        return;
+    const fetchLendingDetails = useCallback(async () => {
+      try {
+        const contract = await getContractInstance("Lending");
+        if (!contract) {
+          console.error("Contract instance not found.");
+          return;
+        }
+
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const addr = await signer.getAddress();
+
+        const [liquidity, supplyApy, borrowApy, depositFee, borrowFee] = await Promise.all([
+          contract.getLiquidity(), // Ensure this function exists in your contract
+          contract.getSupplyRate(),
+          contract.getBorrowRate(),
+          contract.depositFee(),
+          contract.borrowFee(),
+        ]);
+
+        // Format fees as money (assuming 18 decimals)
+        const formatFee = (fee) => (ethers.formatUnits(fee, 18)).toFixed(2);
+
+        setLendingData({
+          collateral: "N/A", // Add logic to compute user's total collateral
+          liquidity: ethers.formatUnits(liquidity, 18), // Format liquidity
+          supplyApy: supplyApy.toString(),
+          borrowApy: borrowApy.toString(),
+          depositFee: formatFee(depositFee), // Format deposit fee
+          borrowFee: formatFee(borrowFee), // Format borrow fee
+        });
+      } catch (error) {
+        console.error("Error fetching lending details:", error);
+        setLendingData({
+          collateral: "Error",
+          liquidity: "Error",
+          supplyApy: "Error",
+          borrowApy: "Error",
+          depositFee: "Error",
+          borrowFee: "Error",
+        });
       }
-
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const addr = await signer.getAddress();
-
-      const [liquidity, supplyApy, borrowApy, depositFee, borrowFee] = await Promise.all([
-        contract.getLiquidity(),
-        contract.getSupplyRate(),
-        contract.getBorrowRate(),
-        contract.depositFee(),
-        contract.borrowFee(),
-      ]);
-
-      setLendingData({
-        collateral: "N/A", // Add logic to compute user's total collateral
-        liquidity: liquidity.toString(),
-        supplyApy: supplyApy.toString(),
-        borrowApy: borrowApy.toString(),
-        depositFee: depositFee.toString(),
-        borrowFee: borrowFee.toString(),
-      });
-    } catch (error) {
-      console.error("Error fetching lending details:", error);
-      setLendingData({
-        collateral: "Error",
-        liquidity: "Error",
-        supplyApy: "Error",
-        borrowApy: "Error",
-        depositFee: "Error",
-        borrowFee: "Error",
-      });
-    }
-  }, []);
+    }, []);
 
   // Initialize data fetching
   useEffect(() => {
