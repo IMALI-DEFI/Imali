@@ -1,4 +1,4 @@
-;import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ethers } from "ethers";
 import { toast } from "react-toastify";
 import { useWallet } from "../context/WalletContext";
