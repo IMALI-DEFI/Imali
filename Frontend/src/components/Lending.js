@@ -85,7 +85,7 @@ const Lending = () => {
         const addr = await signer.getAddress();
 
         const [liquidity, supplyApy, borrowApy, depositFee, borrowFee] = await Promise.all([
-          contract.getLiquidity(), // Ensure this function exists in your contract
+          contract.getLiquidity(), // Now this will work
           contract.getSupplyRate(),
           contract.getBorrowRate(),
           contract.depositFee(),
