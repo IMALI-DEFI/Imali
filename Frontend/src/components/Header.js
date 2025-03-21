@@ -16,7 +16,7 @@ const Header = () => {
         <img
           src={Images}
           alt="Defi Finance Logo"
-          className="h-16 sm:h-20"
+          className="h-20 sm:h-30"
         />
       </div>
 
