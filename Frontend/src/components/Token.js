@@ -17,7 +17,19 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 const IMALIToken = () => {
-  const { walletAddress, connectWallet, resetWallet, loading, setLoading } = useWallet();
+  // Use the useWallet hook and handle undefined values
+  const walletContext = useWallet();
+  if (!walletContext) {
+    console.error("❌ Wallet context is not available. Ensure WalletProvider is wrapping your app.");
+    return (
+      <Typography variant="body1" color="error">
+        Wallet context is not available. Please check your setup.
+      </Typography>
+    );
+  }
+
+  const { walletAddress, connectWallet, resetWallet, loading, setLoading } = walletContext;
+
   const [amount, setAmount] = useState("");
   const [balance, setBalance] = useState("0");
   const [error, setError] = useState("");
