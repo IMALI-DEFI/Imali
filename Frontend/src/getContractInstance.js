@@ -4,6 +4,9 @@ import StakingABI from "./utils/StakingABI.json";
 import TokenABI from "./utils/TokenABI.json";
 import LPTokenABI from "./utils/LPTokenABI.json";
 import IMALendingABI from "./utils/LendingABI.json";
+import IMALIDAOABI from "./utils/IMALIDAOABI.json"; // Import IMALIDAO ABI
+import PresaleABI from "./utils/PresaleABI.json"; // Import Presale ABI
+import IMALINFTABI from "./utils/IMALINFTABI.json"; // Import IMALINFT ABI
 
 // Warn if required environment variables are missing.
 if (
@@ -55,6 +58,18 @@ const getContractInstance = async (contractType) => {
         80002: process.env.REACT_APP_TOKEN_AMOY,
         137: process.env.REACT_APP_TOKEN_POLYGON,
       },
+      IMALIDAO: {
+        80002: process.env.REACT_APP_IMALIDAO_AMOY, // IMALIDAO on Amoy Testnet
+        137: process.env.REACT_APP_IMALIDAO_POLYGON, // IMALIDAO on Polygon Mainnet
+      },
+      Presale: {
+        80002: process.env.REACT_APP_PRESALE_AMOY, // Presale on Amoy Testnet
+        137: process.env.REACT_APP_PRESALE_POLYGON, // Presale on Polygon Mainnet
+      },
+      IMALINFT: {
+        80002: process.env.REACT_APP_IMALINFT_AMOY, // IMALINFT on Amoy Testnet
+        137: process.env.REACT_APP_IMALINFT_POLYGON, // IMALINFT on Polygon Mainnet
+      },
     };
 
     // Map contract types to their corresponding ABIs.
@@ -65,6 +80,9 @@ const getContractInstance = async (contractType) => {
       LPToken: LPTokenABI,
       Token: TokenABI,
       IMALIToken: TokenABI,
+      IMALIDAO: IMALIDAOABI, // IMALIDAO ABI
+      Presale: PresaleABI, // Presale ABI
+      IMALINFT: IMALINFTABI, // IMALINFT ABI
     };
 
     if (!contractAddresses[contractType]) {

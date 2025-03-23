@@ -1,54 +1,46 @@
-import React, { useEffect, useState } from "react";
-import { Routes, Route } from "react-router-dom";
-import Header from "./components/Header";
-import Footer from "./components/Footer";
+import React from "react";
+import IMALIToken from "./components/IMALIToken";
 import Lending from "./components/Lending";
 import Staking from "./components/Staking";
 import YieldFarming from "./components/YieldFarming";
-import HowTo from "./components/HowTo";
-import Token from "./components/Token";
-import AdminPanel from "./components/AdminPanel";
-import { WalletProvider } from "./context/WalletContext";
-import MetaMaskMobilePrompt from "./components/MetaMaskMobilePrompt"; // Import the prompt component
+import PresaleSection from "./components/PresaleSection";
+import NFTMinting from "./components/NFTMinting";
+import DAODashboard from "./components/DAODashboard";
+import { Grid, Paper, Typography } from "@mui/material";
+import MetaMaskMobilePrompt from "./components/MetaMaskMobilePrompt";
 
 const App = () => {
-  const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(false);
-  const [isMobileDevice, setIsMobileDevice] = useState(false);
-
-  useEffect(() => {
-    // Check if MetaMask is installed
-    setIsMetaMaskInstalled(!!window.ethereum);
-
-    // Check if the user is on a mobile device
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    );
-    setIsMobileDevice(isMobile);
-  }, []);
-
-  // Show the prompt if on mobile and MetaMask is not installed
-  if (isMobileDevice && !isMetaMaskInstalled) {
-    return <MetaMaskMobilePrompt />;
-  }
-
-  // Render the app as usual
   return (
-    <WalletProvider>
-      <Header />
-      <div className="container mx-auto py-8 px-6">
-        <Routes>
-          <Route path="/" element={<Lending />} />
-          <Route path="/staking" element={<Staking />} />
-          <Route path="/yield-farming" element={<YieldFarming />} />
-          <Route path="/token" element={<Token />} />
-          <Route path="/how-to" element={<HowTo />} />
-          <Route path="/admin" element={<AdminPanel />} />
-          {/* Fallback route */}
-          <Route path="*" element={<Lending />} />
-        </Routes>
-      </div>
-      <Footer />
-    </WalletProvider>
+    <section className="bg-gray-100 min-h-screen py-16 px-6">
+      <Paper className="container mx-auto max-w-6xl bg-white shadow-lg p-12 rounded-lg">
+        <Typography variant="h4" align="center" className="mb-8" style={{ color: "#036302", fontWeight: "bold" }}>
+          🚀 IMALI Ecosystem
+        </Typography>
+        <Grid container spacing={4}>
+          <Grid item xs={12} md={6}>
+            <IMALIToken />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Lending />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Staking />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <YieldFarming />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <PresaleSection />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <NFTMinting />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <DAODashboard />
+          </Grid>
+        </Grid>
+      </Paper>
+    </section>
   );
 };
 
