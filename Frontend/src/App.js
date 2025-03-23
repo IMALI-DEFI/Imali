@@ -1,5 +1,5 @@
 import React from "react";
-import IMALIToken from "./components/IMALIToken";
+import IMALIToken from "./components/Token";
 import Lending from "./components/Lending";
 import Staking from "./components/Staking";
 import YieldFarming from "./components/YieldFarming";
