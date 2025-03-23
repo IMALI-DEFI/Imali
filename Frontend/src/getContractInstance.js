@@ -5,7 +5,8 @@ import TokenABI from "./utils/TokenABI.json";
 import LPTokenABI from "./utils/LPTokenABI.json";
 import IMALendingABI from "./utils/LendingABI.json";
 import IMALIDAOABI from "./utils/IMALIDAOABI.json"; // Import IMALIDAO ABI
-import PresaleABI from "./utils/PresaleABI.json"; // Import Presale ABI
+import PresaleABI from "./utils/PresaleABI.json";
+
 import IMALINFTABI from "./utils/IMALINFTABI.json"; // Import IMALINFT ABI
 
 // Warn if required environment variables are missing.
