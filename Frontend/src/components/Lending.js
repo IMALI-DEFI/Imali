@@ -4,7 +4,7 @@ import { useWallet } from "../context/WalletContext";
 import getContractInstance from "../getContractInstance";
 import { FaEthereum, FaBitcoin, FaDollarSign } from "react-icons/fa";
 
-// Price feed addresses for Ethereum (Chainlink)
+
 const tokenAddresses = {
   ETH: "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419", // ETH/USD
   USDC: "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6", // USDC/USD
