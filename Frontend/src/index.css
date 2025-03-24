@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 * {
   margin: 0;
   padding: 0;
@@ -39,6 +40,7 @@ body {
   color: #ffd700; 
 }
 
+
 .hero {
   background: linear-gradient(to right, #007f00, #005f00);
   color: white;
@@ -73,8 +75,10 @@ body {
   transform: scale(1.05);
 }
 
+
 .dashboard {
-  background-color: white;
+  background-color: rgba(255, 255, 255, 1) /* or simply 'white' */
+;
   padding: 2rem;
   border-radius: 8px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -103,6 +107,7 @@ body {
   color: #333;
 }
 
+
 .features {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -130,6 +135,7 @@ body {
   margin-bottom: 1rem;
 }
 
+
 .footer {
   background-color: #007f00;
   color: white;
@@ -140,6 +146,7 @@ body {
 .footer p {
   font-size: 0.9rem;
 }
+
 
 .text-center {
   text-align: center;
@@ -158,7 +165,6 @@ body {
 .btn:hover {
   background-color: #005f00;
 }
-
 @keyframes fadeIn {
   0% {
     opacity: 0;
