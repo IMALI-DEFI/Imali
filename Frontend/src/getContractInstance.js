@@ -155,3 +155,4 @@ if (window.ethereum) {
 }
 
 export default getContractInstance;
+
