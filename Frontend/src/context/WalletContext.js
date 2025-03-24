@@ -9,68 +9,107 @@ export const WalletProvider = ({ children }) => {
   const [isMobile, setIsMobile] = useState(false);
   const [showMobilePrompt, setShowMobilePrompt] = useState(false);
 
+  // Enhanced mobile detection
   useEffect(() => {
-    // Check if user is on mobile
-    setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
-
-    if (window.ethereum) {
-      window.ethereum.on("accountsChanged", (accounts) => {
-        setAccount(accounts.length > 0 ? accounts[0] : null);
-      });
-
-      window.ethereum.on("chainChanged", (newChainId) => {
-        setChainId(parseInt(newChainId));
-        window.location.reload(); // Recommended to reload on chain change
-      });
-
-      const getInitialData = async () => {
-        try {
-          const accounts = await window.ethereum.request({ method: "eth_accounts" });
-          if (accounts.length > 0) setAccount(accounts[0]);
-          const chainId = await window.ethereum.request({ method: "eth_chainId" });
-          setChainId(parseInt(chainId));
-        } catch (error) {
-          console.error("Error getting initial wallet data:", error);
-        }
-      };
-      getInitialData();
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    const isMetaMaskInjected = typeof window.ethereum !== 'undefined' && window.ethereum.isMetaMask;
+    
+    setIsMobile(isMobileDevice);
+    
+    // If on mobile but no injected provider, show prompt
+    if (isMobileDevice && !isMetaMaskInjected) {
+      setShowMobilePrompt(true);
     }
   }, []);
 
-  const openInMetaMaskMobile = () => {
-    const dAppUrl = window.location.href.replace(/^https?:\/\//, '');
-    const metamaskAppUrl = `https://metamask.app.link/dapp/${dAppUrl}`;
+  // Initialize wallet listeners
+  useEffect(() => {
+    if (window.ethereum) {
+      const handleAccountsChanged = (accounts) => {
+        setAccount(accounts.length > 0 ? accounts[0] : null);
+      };
 
-    // Attempt to open MetaMask
-    window.location.href = metamaskAppUrl;
+      const handleChainChanged = (newChainId) => {
+        setChainId(parseInt(newChainId, 16));
+        window.location.reload();
+      };
 
-    // Immediately redirect to app store.  MetaMask will handle opening if installed.
-    if (navigator.userAgent.match(/Android/i)) {
-      window.location.href = "https://play.google.com/store/apps/details?id=io.metamask";
-    } else if (navigator.userAgent.match(/iPhone|iPad|iPod/i)) {
-      window.location.href = "https://apps.apple.com/us/app/metamask-blockchain-wallet/id1438144202";
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
+
+      const initializeWallet = async () => {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts.length > 0) {
+            setAccount(accounts[0]);
+          }
+          const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+          setChainId(parseInt(currentChainId, 16));
+        } catch (err) {
+          console.error("Failed to initialize wallet:", err);
+        }
+      };
+
+      initializeWallet();
+
+      return () => {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
+      };
     }
+  }, []);
+
+  // Enhanced mobile connection handler
+  const openInMetaMaskMobile = () => {
+    const currentUrl = encodeURIComponent(window.location.href.replace(/^https?:\/\//, ''));
+    const metamaskDeepLink = `https://metamask.app.link/dapp/${currentUrl}`;
+    
+    // Try to open in MetaMask first
+    window.location.href = metamaskDeepLink;
+    
+    // Fallback to app store after a short delay
+    setTimeout(() => {
+      if (/android/i.test(navigator.userAgent)) {
+        window.location.href = "https://play.google.com/store/apps/details?id=io.metamask";
+      } else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+        window.location.href = "https://apps.apple.com/us/app/metamask-blockchain-wallet/id1438144202";
+      }
+    }, 500);
   };
 
+  // Enhanced connection function
   const connectWallet = async () => {
-    if (!window.ethereum) {
-      if (isMobile) {
-        setShowMobilePrompt(true);
+    // Mobile-specific handling
+    if (isMobile) {
+      if (typeof window.ethereum !== 'undefined') {
+        // Regular connection if MetaMask is injected
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          setAccount(accounts[0]);
+          setError(null);
+        } catch (err) {
+          setError(err.message);
+        }
       } else {
-        setError("MetaMask not installed. Please install the extension.");
+        // Show mobile prompt if no injected provider
+        setShowMobilePrompt(true);
       }
       return;
     }
 
+    // Desktop handling
+    if (typeof window.ethereum === 'undefined') {
+      setError("MetaMask extension not detected. Please install MetaMask.");
+      return;
+    }
+
     try {
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      if (accounts.length > 0) {
-        setAccount(accounts[0]);
-        setError(null);
-      }
-    } catch (error) {
-      console.error("Wallet connection error:", error);
-      setError(error.message);
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      setAccount(accounts[0]);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
