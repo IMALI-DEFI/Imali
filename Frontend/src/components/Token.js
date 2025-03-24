@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { toast } from "react-toastify";
 import { useWallet } from "../context/WalletContext";
@@ -17,25 +17,13 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 const IMALIToken = () => {
-  // Use the useWallet hook and handle undefined values
-  const walletContext = useWallet();
-  if (!walletContext) {
-    console.error("❌ Wallet context is not available. Ensure WalletProvider is wrapping your app.");
-    return (
-      <Typography variant="body1" color="error">
-        Wallet context is not available. Please check your setup.
-      </Typography>
-    );
-  }
-
-  const { walletAddress, connectWallet, resetWallet, loading, setLoading } = walletContext;
-
+  const { walletAddress, connectWallet, resetWallet, loading, setLoading } = useWallet();
   const [amount, setAmount] = useState("");
   const [balance, setBalance] = useState("0");
   const [error, setError] = useState("");
 
   // Check that the user is on Polygon Mainnet (chainId 137)
-  const checkNetwork = async () => {
+  const checkNetwork = useCallback(async () => {
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const network = await provider.getNetwork();
@@ -50,10 +38,10 @@ const IMALIToken = () => {
       setError("❌ Failed to check network.");
       return false;
     }
-  };
+  }, []);
 
   // Fetch IMALI token balance from the token contract.
-  const fetchBalance = async () => {
+  const fetchBalance = useCallback(async () => {
     if (!walletAddress) {
       setError("❌ Wallet not connected.");
       return;
@@ -71,10 +59,10 @@ const IMALIToken = () => {
       console.error("❌ Error fetching token balance:", err);
       setError("❌ Failed to fetch token balance. Ensure you're on the correct network.");
     }
-  };
+  }, [walletAddress]);
 
   // Handle token purchase transaction.
-  const purchaseTokens = async () => {
+  const purchaseTokens = useCallback(async () => {
     if (!amount || parseFloat(amount) <= 0) {
       setError("❌ Please enter a valid amount.");
       return;
@@ -104,14 +92,14 @@ const IMALIToken = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [amount, checkNetwork, fetchBalance, setLoading]);
 
   // Fetch balance when walletAddress changes.
   useEffect(() => {
     if (walletAddress) {
       fetchBalance();
     }
-  }, [walletAddress]);
+  }, [walletAddress, fetchBalance]);
 
   return (
     <section className="bg-gray-100 min-h-screen py-16 px-6">
