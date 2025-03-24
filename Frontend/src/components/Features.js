@@ -50,8 +50,9 @@ const Features = () => {
           ))}
         </div>
         <div className="text-center mt-12">
+          {/* Changed from "/features" to "/how-to-use" */}
           <Link
-            to="/how-to-use"  {/* Changed from "/features" to "/how-to-use" */}
+            to="/how-to-use"
             className="bg-green-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors duration-300"
             aria-label="Learn how to use all IMALI DeFi features"
           >
