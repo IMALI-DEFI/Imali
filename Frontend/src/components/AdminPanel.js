@@ -4,211 +4,260 @@ import getContractInstance from "../getContractInstance";
 import { useWallet } from "../context/WalletContext";
 
 const AdminPanel = () => {
-  const { walletAddress } = useWallet(); // Get the connected wallet address
-  const [isOwner, setIsOwner] = useState(false); // Check if the wallet is the contract owner
-  const [txStatus, setTxStatus] = useState(""); // Track transaction status
+  const { account } = useWallet();
+  const [isOwner, setIsOwner] = useState(false);
+  const [status, setStatus] = useState("");
+  const [token, setToken] = useState("");
+  const [priceFeed, setPriceFeed] = useState("");
+  const [ratio, setRatio] = useState("");
+  const [parameter, setParameter] = useState("");
+  const [value, setValue] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [contract, setContract] = useState(null);
 
-  // States for setting collateral parameters
-  const [token, setToken] = useState(""); // Collateral token address
-  const [priceFeed, setPriceFeed] = useState(""); // Chainlink price feed address
-  const [collateralRatio, setCollateralRatio] = useState(""); // Collateral ratio (e.g., 130%)
-
-  // States for updating platform parameters
-  const [parameter, setParameter] = useState(""); // Parameter to update (e.g., supply rate)
-  const [newValue, setNewValue] = useState(""); // New value for the parameter
-
-  // Step 1: Check if the connected wallet is the contract owner
+  // Initialize contract and check ownership
   useEffect(() => {
-    const checkOwner = async () => {
-      if (!walletAddress) return; // If wallet is not connected, exit
-      const contract = await getContractInstance("Lending"); // Get the contract instance
-      if (!contract) return; // If contract is not found, exit
+    const initAdminPanel = async () => {
+      if (!account) {
+        console.log("Wallet not connected. Admin check skipped.");
+        return;
+      }
+
+      setLoading(true);
       try {
-        const ownerAddress = await contract.owner(); // Get the contract owner's address
-        // Check if the connected wallet is the owner
-        if (ownerAddress.toLowerCase() === walletAddress.toLowerCase()) {
-          setIsOwner(true); // Set isOwner to true if the wallet is the owner
-        } else {
-          setIsOwner(false); // Set isOwner to false if the wallet is not the owner
+        const lendingContract = await getContractInstance("Lending");
+        if (!lendingContract) {
+          throw new Error("Failed to get contract instance.");
         }
+        setContract(lendingContract);
+        const owner = await lendingContract.owner();
+        const isOwnerCheck = owner.toLowerCase() === account.toLowerCase();
+        setIsOwner(isOwnerCheck);
+        console.log(`Owner address from contract: ${owner}`);
+        console.log(`Connected account: ${account}`);
+        console.log(`Is Owner: ${isOwnerCheck}`);
       } catch (error) {
-        console.error("Error checking owner:", error); // Log any errors
+        console.error("Failed to initialize Admin Panel:", error);
+        setStatus("Failed to initialize Admin Panel.");
+        setIsOwner(false);
+      } finally {
+        setLoading(false);
       }
     };
-    checkOwner(); // Call the function to check ownership
-  }, [walletAddress]); // Run this effect whenever the wallet address changes
 
-  // Step 2: Set collateral parameters
+    // Check for account first.  Crucially, this is done *inside* the useEffect.
+    if (account) {
+      initAdminPanel();
+    }
+  }, [account]);
+
+  // Set collateral parameters
   const handleSetCollateral = async () => {
+    if (!token || !priceFeed || !ratio || !contract) { //check for contract
+      setStatus("Please fill all fields and ensure contract is initialized.");
+      return;
+    }
+    setLoading(true);
     try {
-      const contract = await getContractInstance("Lending"); // Get the contract instance
-      const provider = new ethers.BrowserProvider(window.ethereum); // Connect to the Ethereum provider
-      const signer = await provider.getSigner(); // Get the signer (connected wallet)
-      // Send a transaction to set collateral parameters
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
       const tx = await contract
         .connect(signer)
-        .setCollateralParameters(token, priceFeed, Number(collateralRatio));
-      setTxStatus("Transaction sent, waiting..."); // Update transaction status
-      await tx.wait(); // Wait for the transaction to be confirmed
-      setTxStatus("Collateral parameters updated successfully!"); // Update status on success
+        .setCollateralParameters(token, priceFeed, Number(ratio));
+      setStatus("Setting collateral...");
+      await tx.wait();
+      setStatus("Collateral parameters set!");
+      setToken("");
+      setPriceFeed("");
+      setRatio("");
     } catch (error) {
-      console.error(error); // Log any errors
-      setTxStatus("Transaction failed!"); // Update status on failure
+      console.error("Failed to set collateral:", error);
+      setStatus(`Failed: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Step 3: Update a platform parameter
+  // Update a platform parameter
   const handleUpdateParameter = async () => {
+    if (!parameter || !value || !contract) {  //check for contract
+      setStatus("Select parameter and enter value and ensure contract is initialized.");
+      return;
+    }
+    setLoading(true);
     try {
-      const contract = await getContractInstance("Lending"); // Get the contract instance
-      const provider = new ethers.BrowserProvider(window.ethereum); // Connect to the Ethereum provider
-      const signer = await provider.getSigner(); // Get the signer (connected wallet)
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
       let tx;
-      // Determine which parameter to update and send the transaction
-      if (parameter === "supplyRate") {
-        tx = await contract.connect(signer).updateSupplyRate(Number(newValue));
-      } else if (parameter === "borrowRate") {
-        tx = await contract.connect(signer).updateBorrowRate(Number(newValue));
-      } else if (parameter === "depositFee") {
-        tx = await contract.connect(signer).updateDepositFee(Number(newValue));
-      } else if (parameter === "borrowFee") {
-        tx = await contract.connect(signer).updateBorrowFee(Number(newValue));
-      } else if (parameter === "liquidationThreshold") {
-        tx = await contract.connect(signer).updateLiquidationThreshold(Number(newValue));
-      } else if (parameter === "annualInterestRate") {
-        tx = await contract.connect(signer).updateAnnualInterestRate(Number(newValue));
+      switch (parameter) {
+        case "supplyRate":
+          tx = await contract.connect(signer).updateSupplyRate(Number(value));
+          break;
+        case "borrowRate":
+          tx = await contract.connect(signer).updateBorrowRate(Number(value));
+          break;
+        case "depositFee":
+          tx = await contract.connect(signer).updateDepositFee(Number(value));
+          break;
+        case "borrowFee":
+          tx = await contract.connect(signer).updateBorrowFee(Number(value));
+          break;
+        case "liquidationThreshold":
+          tx = await contract.connect(signer).updateLiquidationThreshold(Number(value));
+          break;
+        case "annualInterestRate":
+          tx = await contract.connect(signer).updateAnnualInterestRate(Number(value));
+          break;
+        default:
+          setStatus("Invalid parameter.");
+          return;
       }
-      setTxStatus("Transaction sent, waiting..."); // Update transaction status
-      await tx.wait(); // Wait for the transaction to be confirmed
-      setTxStatus(`${parameter} updated successfully!`); // Update status on success
+      setStatus("Updating parameter...");
+      await tx.wait();
+      setStatus(`${parameter} updated!`);
+      setParameter("");
+      setValue("");
     } catch (error) {
-      console.error(error); // Log any errors
-      setTxStatus("Transaction failed!"); // Update status on failure
+      console.error("Failed to update parameter:", error);
+      setStatus(`Failed: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Step 4: Pause or unpause the contract
-  const handlePause = async (shouldPause) => {
+  // Pause or unpause the contract
+  const handlePauseContract = async (pause) => {
+    if (!contract) { //check for contract
+      setStatus("Contract not initialized.");
+      return;
+    }
+    setLoading(true);
     try {
-      const contract = await getContractInstance("Lending"); // Get the contract instance
-      const provider = new ethers.BrowserProvider(window.ethereum); // Connect to the Ethereum provider
-      const signer = await provider.getSigner(); // Get the signer (connected wallet)
-      // Send a transaction to pause or unpause the contract
-      const tx = shouldPause
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const tx = pause
         ? await contract.connect(signer).pause()
         : await contract.connect(signer).unpause();
-      setTxStatus("Transaction sent, waiting..."); // Update transaction status
-      await tx.wait(); // Wait for the transaction to be confirmed
-      setTxStatus(shouldPause ? "Contract paused!" : "Contract unpaused!"); // Update status on success
+      setStatus(pause ? "Pausing..." : "Unpausing...");
+      await tx.wait();
+      setStatus(pause ? "Contract paused." : "Contract unpaused.");
     } catch (error) {
-      console.error(error); // Log any errors
-      setTxStatus("Transaction failed!"); // Update status on failure
+      console.error("Failed to pause/unpause:", error);
+      setStatus(`Failed: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Step 5: Render the admin panel
+  // Render different content based on connection and ownership
+  if (!account) {
+    return (
+      <div className="p-6 bg-gray-100 rounded-md shadow-md">
+        <h1 className="text-3xl font-bold mb-4">Admin Panel</h1>
+        <p>Connect wallet to access.</p>
+      </div>
+    );
+  }
+
+  if (!isOwner) {
+    return (
+      <div className="p-6 bg-gray-100 rounded-md shadow-md">
+        <h1 className="text-3xl font-bold mb-4">Admin Panel</h1>
+        <p className="text-red-600">Access denied.</p>
+      </div>
+    );
+  }
+
   return (
-    <section className="admin-panel p-6 bg-gray-100">
+    <div className="p-6 bg-gray-100 rounded-md shadow-md">
       <h1 className="text-3xl font-bold mb-4">Admin Panel</h1>
+      <p className="mb-4 text-green-600">Welcome, Admin!</p>
 
-      {/* If wallet is not connected, prompt the user to connect */}
-      {!walletAddress && <p>Please connect your wallet.</p>}
+      {/* Set Collateral Parameters Section */}
+      <div className="mb-6 rounded-md bg-white p-4">
+        <h2 className="text-xl font-semibold mb-2">Set Collateral</h2>
+        <input
+          placeholder="Token Address"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          className="w-full p-2 border rounded-md mb-2"
+        />
+        <input
+          placeholder="Price Feed Address"
+          value={priceFeed}
+          onChange={(e) => setPriceFeed(e.target.value)}
+          className="w-full p-2 border rounded-md mb-2"
+        />
+        <input
+          placeholder="Ratio (e.g., 130)"
+          value={ratio}
+          onChange={(e) => setRatio(e.target.value)}
+          className="w-full p-2 border rounded-md mb-2"
+        />
+        <button
+          onClick={handleSetCollateral}
+          disabled={loading}
+          className="w-full p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition duration-300"
+        >
+          {loading ? "Loading..." : "Set Collateral"}
+        </button>
+      </div>
 
-      {/* If the connected wallet is not the owner, show access denied */}
-      {walletAddress && !isOwner && (
-        <p className="text-red-600">Access Denied: Your wallet is not the contract owner.</p>
-      )}
+      {/* Update Parameter Section */}
+      <div className="mb-6 rounded-md bg-white p-4">
+        <h2 className="text-xl font-semibold mb-2">Update Parameter</h2>
+        <select
+          value={parameter}
+          onChange={(e) => setParameter(e.target.value)}
+          className="w-full p-2 border rounded-md mb-2"
+        >
+          <option value="">Select Parameter</option>
+          <option value="supplyRate">Supply Rate</option>
+          <option value="borrowRate">Borrow Rate</option>
+          <option value="depositFee">Deposit Fee</option>
+          <option value="borrowFee">Borrow Fee</option>
+          <option value="liquidationThreshold">Liquidation Threshold</option>
+          <option value="annualInterestRate">Annual Interest Rate</option>
+        </select>
+        <input
+          placeholder="New Value"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="w-full p-2 border rounded-md mb-2"
+        />
+        <button
+          onClick={handleUpdateParameter}
+          disabled={loading}
+          className="w-full p-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition duration-300"
+        >
+          {loading ? "Loading..." : "Update Parameter"}
+        </button>
+      </div>
 
-      {/* If the connected wallet is the owner, show the admin panel */}
-      {walletAddress && isOwner && (
-        <>
-          <p className="mb-4 text-green-600">Welcome, contract owner!</p>
+      {/* Pause/Unpause Section */}
+      <div className="mb-6 rounded-md bg-white p-4">
+        <h2 className="text-xl font-semibold mb-2">Pause/Unpause Contract</h2>
+        <button
+          onClick={() => handlePauseContract(true)}
+          disabled={loading}
+          className="w-full p-2 bg-red-500 text-white rounded-md mb-2 hover:bg-red-600 transition duration-300"
+        >
+          {loading ? "Loading..." : "Pause Contract"}
+        </button>
+        <button
+          onClick={() => handlePauseContract(false)}
+          disabled={loading}
+          className="w-full p-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition duration-300"
+        >
+          {loading ? "Loading..." : "Unpause Contract"}
+        </button>
+      </div>
 
-          {/* Set Collateral Parameters Section */}
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Set Collateral Parameters</h2>
-            <input
-              type="text"
-              placeholder="Collateral Token Address"
-              className="border p-2 mr-2 mb-2 w-full"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-            />
-            <input
-              type="text"
-              placeholder="Price Feed Address"
-              className="border p-2 mr-2 mb-2 w-full"
-              value={priceFeed}
-              onChange={(e) => setPriceFeed(e.target.value)}
-            />
-            <input
-              type="number"
-              placeholder="Collateral Ratio (e.g., 130)"
-              className="border p-2 mr-2 mb-2 w-full"
-              value={collateralRatio}
-              onChange={(e) => setCollateralRatio(e.target.value)}
-            />
-            <button
-              onClick={handleSetCollateral}
-              className="bg-blue-500 text-white p-2 rounded w-full"
-            >
-              Set Collateral Parameters
-            </button>
-          </div>
-
-          {/* Update Platform Parameter Section */}
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Update Platform Parameter</h2>
-            <select
-              onChange={(e) => setParameter(e.target.value)}
-              className="border p-2 mr-2 mb-2 w-full"
-            >
-              <option value="">Select Parameter</option>
-              <option value="supplyRate">Supply Rate</option>
-              <option value="borrowRate">Borrow Rate</option>
-              <option value="depositFee">Deposit Fee</option>
-              <option value="borrowFee">Borrow Fee</option>
-              <option value="liquidationThreshold">Liquidation Threshold</option>
-              <option value="annualInterestRate">Annual Interest Rate</option>
-            </select>
-            <input
-              type="number"
-              placeholder="New Value"
-              className="border p-2 mr-2 mb-2 w-full"
-              value={newValue}
-              onChange={(e) => setNewValue(e.target.value)}
-            />
-            <button
-              onClick={handleUpdateParameter}
-              className="bg-green-500 text-white p-2 rounded w-full"
-            >
-              Update Parameter
-            </button>
-          </div>
-
-          {/* Pause / Unpause Section */}
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Pause / Unpause Contract</h2>
-            <button
-              onClick={() => handlePause(true)}
-              className="bg-red-500 text-white p-2 rounded w-full mb-2"
-            >
-              Pause Contract
-            </button>
-            <button
-              onClick={() => handlePause(false)}
-              className="bg-green-500 text-white p-2 rounded w-full"
-            >
-              Unpause Contract
-            </button>
-          </div>
-
-          {/* Transaction Status */}
-          {txStatus && <p className="mt-4 font-bold">{txStatus}</p>}
-        </>
-      )}
-    </section>
+      {status && <p className="mt-4 font-bold text-blue-600">{status}</p>}
+    </div>
   );
 };
 
 export default AdminPanel;
+
+

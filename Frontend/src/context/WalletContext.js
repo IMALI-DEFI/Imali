@@ -1,119 +1,58 @@
-// src/context/WalletContext.js
-import { createContext, useContext, useEffect, useState } from "react";
-import WalletConnectProvider from "@walletconnect/web3-provider";
-import { ethers } from "ethers";
+import React, { createContext, useState, useContext, useEffect } from "react";
 
 const WalletContext = createContext();
 
-export const useWallet = () => {
-    return useContext(WalletContext);
-};
-
 export const WalletProvider = ({ children }) => {
-    const [walletAddress, setWalletAddress] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [network, setNetwork] = useState(null);
-    const [selectedWallet, setSelectedWallet] = useState("MetaMask"); // Default to MetaMask
-    const [provider, setProvider] = useState(null);
+  const [account, setAccount] = useState(null);
+  const [chainId, setChainId] = useState(null);
+  const [error, setError] = useState(null);
 
-    const connectWallet = async () => {
-        setLoading(true);
+  useEffect(() => {
+    if (window.ethereum) {
+      window.ethereum.on("accountsChanged", (accounts) => {
+        setAccount(accounts.length > 0 ? accounts[0] : null);
+      });
+
+      window.ethereum.on("chainChanged", (newChainId) => {
+        setChainId(parseInt(newChainId));
+      });
+
+      const getInitialData = async () => {
         try {
-            let selectedProvider;
-
-            if (selectedWallet === "MetaMask") {
-                if (!window.ethereum) {
-                    alert("❌ MetaMask not detected. Install MetaMask.");
-                    return;
-                }
-                selectedProvider = window.ethereum;
-            } else if (selectedWallet === "WalletConnect") {
-                const walletConnectProvider = new WalletConnectProvider({
-                    rpc: {
-                        89: "https://polygon-rpc.com", // Polygon Mainnet RPC URL
-                    },
-                });
-                await walletConnectProvider.enable();
-                selectedProvider = walletConnectProvider;
-            }
-
-            const ethProvider = new ethers.BrowserProvider(selectedProvider);
-            const signer = await ethProvider.getSigner();
-            const address = await signer.getAddress();
-
-            setWalletAddress(address);
-            setProvider(selectedProvider);
-            checkNetwork(selectedProvider);
-
-            selectedProvider.on("accountsChanged", (accounts) => {
-                if (accounts.length === 0) {
-                    setWalletAddress(null);
-                    alert("🔌 Wallet disconnected.");
-                } else {
-                    setWalletAddress(accounts[0]);
-                }
-            });
-
-            selectedProvider.on("chainChanged", (chainId) => {
-                console.log("🔄 Network changed:", chainId);
-                checkNetwork(selectedProvider);
-            });
-
+          const accounts = await window.ethereum.request({ method: "eth_accounts" });
+          if (accounts.length > 0) setAccount(accounts[0]);
+          const chainId = await window.ethereum.request({ method: "eth_chainId" });
+          setChainId(parseInt(chainId));
         } catch (error) {
-            console.error("❌ Failed to connect wallet:", error);
-            alert(error.message);
-        } finally {
-            setLoading(false);
+          console.error("Error getting initial wallet data:", error);
         }
-    };
+      };
+      getInitialData();
+    }
+  }, []);
 
-    const checkNetwork = async (prov) => {
-        const ethProvider = new ethers.BrowserProvider(prov);
-        const network = await ethProvider.getNetwork();
+  const connectWallet = async () => {
+    if (!window.ethereum) {
+      setError("MetaMask not installed");
+      return;
+    }
+    try {
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (accounts.length > 0) setAccount(accounts[0]);
+    } catch (error) {
+      console.error("Wallet connection error:", error);
+      setError(error.message);
+    }
+  };
 
-        if (network.chainId !== 89) {
-        
-        } else {
-            setNetwork("Polygon");
-        }
-    };
+  const disconnectWallet = () => setAccount(null);
 
-    const resetWallet = () => {
-        setWalletAddress(null);
-        setLoading(false);
-        setNetwork(null);
-        if(provider && selectedWallet === "WalletConnect"){
-            provider.disconnect();
-        }
-        setProvider(null);
-    };
-
-    useEffect(() => {
-        if (window.ethereum) {
-            window.ethereum.request({ method: "eth_accounts" }).then((accounts) => {
-                if (accounts.length > 0) {
-                    setWalletAddress(accounts[0]);
-                    checkNetwork(window.ethereum);
-                }
-            });
-        }
-    }, []);
-
-    return (
-        <WalletContext.Provider
-            value={{
-                walletAddress,
-                setWalletAddress,
-                connectWallet,
-                resetWallet,
-                loading,
-                setLoading,
-                network,
-                selectedWallet,
-                setSelectedWallet,
-            }}
-        >
-            {children}
-        </WalletContext.Provider>
-    );
+  return (
+    <WalletContext.Provider value={{ account, chainId, error, connectWallet, disconnectWallet }}>
+      {children}
+    </WalletContext.Provider>
+  );
 };
+
+// Add this export
+export const useWallet = () => useContext(WalletContext);

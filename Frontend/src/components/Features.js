@@ -1,28 +1,65 @@
-import React from 'react';
-import './Animations.css';
+import React from "react";
+import { Link } from "react-router-dom";
 
 const Features = () => {
-  const featureList = [
-    { title: 'Fast Lending', description: 'Get quick access to funds anytime.' },
-    { title: 'Low Interest Rates', description: 'Borrow with the lowest rates in DeFi.' },
-    { title: 'Secure Platform', description: 'Safe and secure blockchain-based platform.' }
+  const features = [
+    {
+      icon: "🔒", // Emoji for Security
+      title: "AI-Secured Transactions",
+      description:
+        "Our platform uses advanced AI to ensure the highest level of security for your transactions.",
+    },
+    {
+      icon: "🌾", // Emoji for Yield Farming
+      title: "Yield Farming",
+      description:
+        "Earn rewards by providing liquidity to our decentralized finance ecosystem.",
+    },
+    {
+      icon: "💰", // Emoji for Staking
+      title: "Staking",
+      description:
+        "Stake your tokens and earn passive income with competitive APY rates.",
+    },
+    {
+      icon: "📜", // Emoji for Governance
+      title: "Decentralized Governance",
+      description:
+        "Participate in platform decisions through our decentralized governance model.",
+    },
   ];
 
   return (
-    <section style={styles.features}>
-      {featureList.map((feature, index) => (
-        <div key={index} style={styles.card} className="card">
-          <h3>{feature.title}</h3>
-          <p>{feature.description}</p>
+    <section className="bg-gray-50 py-16">
+      <div className="container mx-auto px-4">
+        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-center mb-12">
+          Why Choose IMALI DeFi?
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          {features.map((feature, index) => (
+            <div
+              key={index}
+              className="bg-white p-6 rounded-lg shadow-md text-center hover:shadow-lg transition-shadow duration-300"
+            >
+              <span role="img" aria-label={feature.title} className="text-4xl">
+                {feature.icon}
+              </span>
+              <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
+              <p className="text-gray-600">{feature.description}</p>
+            </div>
+          ))}
         </div>
-      ))}
+        <div className="text-center mt-12">
+          <Link
+            to="/features"
+            className="bg-green-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors duration-300"
+          >
+            Explore All Features
+          </Link>
+        </div>
+      </div>
     </section>
   );
-};
-
-const styles = {
-  features: { display: 'flex', justifyContent: 'center', gap: '2rem', margin: '2rem 0' },
-  card: { background: '#fff', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', width: '250px', textAlign: 'center' }
 };
 
 export default Features;
