@@ -40,16 +40,16 @@ export const WalletProvider = ({ children }) => {
   const openInMetaMaskMobile = () => {
     const dAppUrl = window.location.href.replace(/^https?:\/\//, '');
     const metamaskAppUrl = `https://metamask.app.link/dapp/${dAppUrl}`;
+
+    // Attempt to open MetaMask
     window.location.href = metamaskAppUrl;
-    
-    // Fallback to app stores if MetaMask not installed
-    setTimeout(() => {
-      if (navigator.userAgent.match(/Android/i)) {
-        window.location.href = "https://play.google.com/store/apps/details?id=io.metamask";
-      } else if (navigator.userAgent.match(/iPhone|iPad|iPod/i)) {
-        window.location.href = "https://apps.apple.com/us/app/metamask-blockchain-wallet/id1438144202";
-      }
-    }, 500);
+
+    // Immediately redirect to app store.  MetaMask will handle opening if installed.
+    if (navigator.userAgent.match(/Android/i)) {
+      window.location.href = "https://play.google.com/store/apps/details?id=io.metamask";
+    } else if (navigator.userAgent.match(/iPhone|iPad|iPod/i)) {
+      window.location.href = "https://apps.apple.com/us/app/metamask-blockchain-wallet/id1438144202";
+    }
   };
 
   const connectWallet = async () => {
@@ -61,7 +61,7 @@ export const WalletProvider = ({ children }) => {
       }
       return;
     }
-    
+
     try {
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       if (accounts.length > 0) {
@@ -80,13 +80,13 @@ export const WalletProvider = ({ children }) => {
   };
 
   return (
-    <WalletContext.Provider value={{ 
-      account, 
-      chainId, 
-      error, 
+    <WalletContext.Provider value={{
+      account,
+      chainId,
+      error,
       isMobile,
       showMobilePrompt,
-      connectWallet, 
+      connectWallet,
       disconnectWallet,
       openInMetaMaskMobile,
       setShowMobilePrompt
