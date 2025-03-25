@@ -2,12 +2,15 @@ import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
 import getContractInstance from "../getContractInstance";
-import { Pie, Bar } from "react-chartjs-2";
-import { Chart, registerables } from 'chart.js';
-import FlowerAnimation from "../assets/animations/flower-opening.svg";
-
-// Register Chart.js components
-Chart.register(...registerables);
+import { Pie } from "react-chartjs-2";
+import { 
+  Chart, 
+  ArcElement, 
+  Tooltip, 
+  Legend, 
+  Title,
+  DoughnutController // Required for Pie charts in v4+
+} from 'chart.js';
 
 const Presale = () => {
   const { walletAddress, connectWallet } = useWallet();
