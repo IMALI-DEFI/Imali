@@ -20,11 +20,11 @@ const Presale = () => {
 
   // Tokenomics data for SVG chart
   const tokenomicsData = [
-    { label: 'Presale', value: 50, color: '#4BC0C0' },
-    { label: 'Liquidity', value: 20, color: '#36A2EB' },
-    { label: 'Team', value: 15, color: '#FFCE56' },
-    { label: 'Marketing', value: 10, color: '#FF6384' },
-    { label: 'Advisors', value: 5, color: '#9966FF' }
+    { label: 'Presale', value: 50, color: '#4BC0C0', description: '6-month linear vesting period' },
+    { label: 'Liquidity', value: 20, color: '#36A2EB', description: 'Locked in Uniswap for 1 year' },
+    { label: 'Team', value: 15, color: '#FFCE56', description: '12-month cliff, then quarterly vesting' },
+    { label: 'Marketing', value: 10, color: '#FF6384', description: 'Community growth and partnerships' },
+    { label: 'Advisors', value: 5, color: '#9966FF', description: '6-month linear vesting' }
   ];
 
   // Calculate SVG pie chart segments
@@ -164,13 +164,7 @@ const Presale = () => {
                     ></span>
                     <div>
                       <strong>{item.label} ({item.value}%)</strong>
-                      <p className="text-sm text-gray-600">
-                        {item.label === 'Presale' && '6-month linear vesting period'}
-                        {item.label === 'Liquidity' && 'Locked in Uniswap for 1 year'}
-                        {item.label === 'Team' && '12-month cliff, then quarterly vesting'}
-                        {item.label === 'Marketing' && 'Community growth and partnerships'}
-                        {item.label === 'Advisors' && '6-month linear vesting'}
-                      </p>
+                      <p className="text-sm text-gray-600">{item.description}</p>
                     </div>
                   </li>
                 ))}
@@ -180,7 +174,6 @@ const Presale = () => {
         </div>
       )}
 
-      {/* Rest of your component remains the same */}
       <div className="flex flex-col md:flex-row items-center">
         <div className="md:w-1/2">
           <img
@@ -191,7 +184,101 @@ const Presale = () => {
         </div>
         
         <div className="md:w-1/2">
-          {/* ... rest of your existing UI code ... */}
+          <h2 className="text-2xl font-bold mb-4">Participate in Presale</h2>
+          
+          <div className="bg-white p-6 rounded-lg shadow-lg mb-6">
+            <h3 className="text-xl font-semibold mb-3">Why Participate?</h3>
+            <ul className="space-y-2 mb-4">
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>Early access to IMALI tokens at discounted rates</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>Higher staking rewards for presale participants</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>Exclusive access to future platform features</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>Priority voting rights in governance decisions</span>
+              </li>
+            </ul>
+            
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+              <h4 className="font-bold text-yellow-800">How to Participate:</h4>
+              <ol className="list-decimal pl-5 space-y-1 text-sm">
+                <li>Connect your wallet</li>
+                <li>Enter the ETH amount you want to contribute</li>
+                <li>Review your token allocation</li>
+                <li>Confirm the transaction in your wallet</li>
+                <li>Tokens will be distributed after presale ends</li>
+              </ol>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded shadow mb-4">
+            <h3 className="font-bold mb-2">💰 ROI Calculator</h3>
+            <input
+              type="number"
+              value={contribution}
+              onChange={(e) => setContribution(e.target.value)}
+              placeholder="ETH amount"
+              className="w-full p-2 border rounded mb-2"
+            />
+            {contribution && (
+              <div className="bg-gray-100 p-3 rounded">
+                <p className="font-semibold">
+                  {calculateTokens().toLocaleString()} IMALI
+                </p>
+                <p className="text-sm">
+                  Potential value: {(calculateTokens() * 0.0003).toFixed(4)} ETH (3x ROI estimate)
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-gray-700 text-sm font-bold mb-2">
+              Enter ETH Contribution:
+            </label>
+            <input
+              type="number"
+              value={contribution}
+              onChange={(e) => setContribution(e.target.value)}
+              className="w-full p-2 border rounded"
+            />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <p className="text-sm text-gray-600">Token Price</p>
+              <p className="font-medium">{tokenPrice} ETH</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Presale Ends</p>
+              <p className="font-medium">{formatTimestamp(presaleEndTime)}</p>
+            </div>
+          </div>
+          
+          <button
+            onClick={handleParticipate}
+            disabled={transactionLoading}
+            className={`w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded ${
+              transactionLoading ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+          >
+            {transactionLoading ? "Processing..." : "Participate Now"}
+          </button>
+          
+          {transactionSuccess && (
+            <p className="text-green-500 mt-2 text-center">Transaction successful!</p>
+          )}
+          {transactionError && (
+            <p className="text-red-500 mt-2 text-center">{transactionError}</p>
+          )}
         </div>
       </div>
     </div>
