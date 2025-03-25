@@ -22,85 +22,68 @@ const Footer = () => {
 
           {/* Center - Navigation Links */}
           <nav className="text-center">
-            <ul className="space-y-2">
-              <li>
-                <Link
-                  to="/"
-                  className="hover:text-yellow-400 transition-colors duration-300"
-                >
-                  Home
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/lending"
-                  className="hover:text-yellow-400 transition-colors duration-300"
-                >
-                  Lending
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/staking"
-                  className="hover:text-yellow-400 transition-colors duration-300"
-                >
-                  Staking
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/yield-farming"
-                  className="hover:text-yellow-400 transition-colors duration-300"
-                >
-                  Yield Farming
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/presale"
-                  className="hover:text-yellow-400 transition-colors duration-300"
-                >
-                  Presale
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/nft"
-                  className="hover:text-yellow-400 transition-colors duration-300"
-                >
-                  NFT
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/dao"
-                  className="hover:text-yellow-400 transition-colors duration-300"
-                >
-                  DAO
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/how-to"
-                  className="hover:text-yellow-400 transition-colors duration-300"
-                >
-                  How To
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/admin"
-                  className="hover:text-yellow-400 transition-colors duration-300"
-                >
-                  Admin
-                </Link>
-              </li>
-            </ul>
+            <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
+            <div className="flex flex-wrap justify-center gap-4">
+              <Link
+                to="/"
+                className="hover:text-yellow-400 transition-colors duration-300 whitespace-nowrap"
+              >
+                Home
+              </Link>
+              <Link
+                to="/lending"
+                className="hover:text-yellow-400 transition-colors duration-300 whitespace-nowrap"
+              >
+                Lending
+              </Link>
+              <Link
+                to="/staking"
+                className="hover:text-yellow-400 transition-colors duration-300 whitespace-nowrap"
+              >
+                Staking
+              </Link>
+              <Link
+                to="/yield-farming"
+                className="hover:text-yellow-400 transition-colors duration-300 whitespace-nowrap"
+              >
+                Yield Farming
+              </Link>
+              <Link
+                to="/presale"
+                className="hover:text-yellow-400 transition-colors duration-300 whitespace-nowrap"
+              >
+                Presale
+              </Link>
+              <Link
+                to="/nft"
+                className="hover:text-yellow-400 transition-colors duration-300 whitespace-nowrap"
+              >
+                NFT
+              </Link>
+              <Link
+                to="/dao"
+                className="hover:text-yellow-400 transition-colors duration-300 whitespace-nowrap"
+              >
+                DAO
+              </Link>
+              <Link
+                to="/how-to"
+                className="hover:text-yellow-400 transition-colors duration-300 whitespace-nowrap"
+              >
+                How To
+              </Link>
+              <Link
+                to="/admin"
+                className="hover:text-yellow-400 transition-colors duration-300 whitespace-nowrap"
+              >
+                Admin
+              </Link>
+            </div>
           </nav>
 
           {/* Right Side - Social Links */}
           <div className="text-center md:text-right">
-            <p className="text-sm mb-2">Follow us:</p>
+            <h3 className="text-lg font-semibold mb-4">Follow Us</h3>
             <div className="flex justify-center md:justify-end space-x-4">
               <a
                 href="https://twitter.com"
