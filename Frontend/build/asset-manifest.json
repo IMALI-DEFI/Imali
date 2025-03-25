@@ -1,18 +1,18 @@
 {
   "files": {
-    "main.css": "/static/css/main.417a0bf0.css",
-    "main.js": "/static/js/main.6f333ede.js",
+    "main.css": "/static/css/main.1e90561f.css",
+    "main.js": "/static/js/main.414207c7.js",
     "static/media/DefiFinanceLogo.png": "/static/media/DefiFinanceLogo.dcff41bee0ca5be66626.png",
     "static/media/fireworks.svg": "/static/media/fireworks.a8cbc48dc29c2b05043aa1527983964e.svg",
     "static/media/nft-animation.svg": "/static/media/nft-animation.72ee172529b0fa302c27672513ee747d.svg",
     "index.html": "/index.html",
     "static/media/flower-opening.svg": "/static/media/flower-opening.a865e080bf5d4a6a796b36466bb47e64.svg",
     "static/media/vote-animation.svg": "/static/media/vote-animation.6b6635494b876efab189936000f33218.svg",
-    "main.417a0bf0.css.map": "/static/css/main.417a0bf0.css.map",
-    "main.6f333ede.js.map": "/static/js/main.6f333ede.js.map"
+    "main.1e90561f.css.map": "/static/css/main.1e90561f.css.map",
+    "main.414207c7.js.map": "/static/js/main.414207c7.js.map"
   },
   "entrypoints": [
-    "static/css/main.417a0bf0.css",
-    "static/js/main.6f333ede.js"
+    "static/css/main.1e90561f.css",
+    "static/js/main.414207c7.js"
   ]
 }
