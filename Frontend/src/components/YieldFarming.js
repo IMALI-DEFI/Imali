@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
-import getContractInstance from "../getContractInstance";
-import { FaInfoCircle, FaQuestionCircle, FaCoins, FaWallet, FaPercentage } from "react-icons/fa";
+import { getContractInstance } from "../getContractInstance";
+import { FaInfoCircle, FaCoins, FaWallet, FaPercentage, FaExclamationTriangle, FaCheckCircle, FaQuestionCircle } from "react-icons/fa";
 
 const YieldFarming = () => {
-  const { account, chainId } = useWallet();
+  const { account, chainId, connectWallet, disconnectWallet, isConnecting, error } = useWallet();
+
   const [stakingContract, setStakingContract] = useState(null);
   const [farmBalance, setFarmBalance] = useState(0);
   const [earnedRewards, setEarnedRewards] = useState(0);
   const [apy, setApy] = useState(0);
   const [amount, setAmount] = useState("");
-  const [status, setStatus] = useState(""); // Use status for user feedback
+  const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [lpBalance, setLpBalance] = useState(0);
 
@@ -32,32 +33,25 @@ const YieldFarming = () => {
 
   const fetchFarmData = async () => {
     if (!stakingContract || !account) return;
-
     setLoading(true);
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      // Fetch LP staker info
       const stakedLPData = await stakingContract.lpStakers(account);
       setEarnedRewards(ethers.formatUnits(stakedLPData.rewards, 18));
 
-      // Fetch LP token balance of staking contract.  This is the total amount of LP tokens that have been staked with the contract.
       const lpTokenAddress = await stakingContract.lpToken();
       const lpTokenContract = new ethers.Contract(lpTokenAddress, ["function balanceOf(address) view returns (uint256)"], signer);
       const stakedLPToken = await lpTokenContract.balanceOf(await stakingContract.getAddress());
       setFarmBalance(ethers.formatUnits(stakedLPToken, 18));
 
-      //get user LP balance
       const userLpBalance = await lpTokenContract.balanceOf(account);
       setLpBalance(ethers.formatUnits(userLpBalance, 18));
 
-      // Fetch LP reward rate
       const rewardRate = await stakingContract.lpRewardRate();
-
-      // Calculate APY (Annual Percentage Yield)
       const stakedTotal = parseFloat(ethers.formatUnits(stakedLPToken, 18));
       const rateNum = parseFloat(ethers.formatUnits(rewardRate, 18));
-      const secondsInYear = 31536000; // Number of seconds in a year
+      const secondsInYear = 31536000;
       const apyValue = stakedTotal > 0 ? ((rateNum * secondsInYear) / stakedTotal) * 100 : 0;
       setApy(apyValue.toFixed(2));
     } catch (error) {
@@ -77,13 +71,11 @@ const YieldFarming = () => {
       setStatus("Please enter amount to stake.");
       return;
     }
-
     const amountInWei = ethers.parseUnits(amount, 18);
-     if (Number(amount) > Number(lpBalance)) {
+    if (Number(amount) > Number(lpBalance)) {
       setStatus("Insufficient LP balance.");
       return;
     }
-
     setLoading(true);
     try {
       const signer = await (new ethers.BrowserProvider(window.ethereum)).getSigner();
@@ -91,10 +83,8 @@ const YieldFarming = () => {
       const lpTokenContract = new ethers.Contract(lpTokenAddress, ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) external returns (bool)", "function balanceOf(address) view returns (uint256)"], signer);
       const stakingContractAddress = await stakingContract.getAddress();
 
-      // Check the allowance
       const allowance = await lpTokenContract.allowance(account, stakingContractAddress);
       if (ethers.toBigInt(allowance) < ethers.toBigInt(amountInWei)) {
-        // Approve the staking contract to spend the user's LP tokens
         setStatus("Approving LP tokens...");
         const approveTx = await lpTokenContract.approve(stakingContractAddress, amountInWei);
         await approveTx.wait();
@@ -105,8 +95,8 @@ const YieldFarming = () => {
       const tx = await stakingContract.stakeLP(amountInWei);
       await tx.wait();
       setStatus("LP Tokens Staked!");
-      setAmount(""); // Clear input
-      fetchFarmData(); // Refresh data
+      setAmount("");
+      fetchFarmData();
     } catch (error) {
       console.error("Failed to stake LP tokens:", error);
       setStatus(`Failed to stake: ${error.message || "Unknown error"}`);
@@ -155,15 +145,37 @@ const YieldFarming = () => {
   };
 
   if (!account) {
-    return <div className="p-4">Please connect your wallet.</div>;
+    return (
+      <div className="p-8 text-center">
+        <h2 className="text-2xl font-bold mb-4">🔗 Connect Your Wallet</h2>
+        <p className="text-gray-600 mb-4">To access yield farming, connect your wallet.</p>
+        <button
+          onClick={connectWallet}
+          className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
+          disabled={isConnecting}
+        >
+          {isConnecting ? "Connecting..." : "Connect Wallet"}
+        </button>
+        {error && <p className="text-red-500 mt-2 text-sm">{error}</p>}
+      </div>
+    );
   }
 
   return (
     <div className="p-4 max-w-6xl mx-auto">
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <h1 className="text-3xl font-bold text-center mb-6 text-blue-600">
-          Yield Farming
-        </h1>
+      {account && (
+        <div className="bg-gray-100 p-4 rounded-lg text-sm mb-6 flex flex-col sm:flex-row justify-between items-center">
+          <div>
+            ✅ Connected: <span className="font-mono text-green-700">{account.slice(0, 6)}...{account.slice(-4)}</span>
+          </div>
+          <button
+            onClick={disconnectWallet}
+            className="mt-2 sm:mt-0 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            Disconnect Wallet
+          </button>
+        </div>
+      )}
 
         {/* Educational Section */}
         <div className="bg-blue-50 p-6 rounded-lg mb-8">
@@ -327,7 +339,7 @@ const YieldFarming = () => {
           </div>
         </div>
       </div>
-    </div>
+
   );
 };
 

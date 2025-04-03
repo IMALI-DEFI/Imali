@@ -1,186 +1,175 @@
-import React, { useState, useEffect } from "react";
+// NFTMinting.js
+import React, { useState } from "react";
 import { useWallet } from "../context/WalletContext";
+import { getContractInstance, POLYGON_MAINNET } from "../getContractInstance";
+import { ethers } from "ethers";
 import NFTAnimation from "../assets/animations/nft-animation.svg";
-import getContractInstance from "../getContractInstance";
-import { FaInfoCircle, FaQuestionCircle, FaRocket } from "react-icons/fa"; // Removed FaTicket
+import NFTPreview from "./NFTPreview";
+import FAQAccordion from "./FAQAccordion";
+import NetworkGuard from "./NetworkGuard";
+
+const TIER_IMAGES = {
+  Bronze: "/assets/images/nfts/nft-tier-bronze.png",
+  Silver: "/assets/images/nfts/nft-tier-silver.png",
+  Gold: "/assets/images/nfts/nft-tier-gold.png",
+};
+
+const TIERS = [
+  {
+    name: "Bronze",
+    benefits: [
+      "Basic staking access",
+      "Earn passive royalties",
+      "Entry to IMALI community"
+    ],
+    description: "Ideal for beginners. Start earning with minimal risk."
+  },
+  {
+    name: "Silver",
+    benefits: [
+      "Boosted APY on staking",
+      "Eligible for yield farming",
+      "Earn enhanced royalties"
+    ],
+    description: "For active users ready to level up rewards."
+  },
+  {
+    name: "Gold",
+    benefits: [
+      "Highest APY boost",
+      "DAO voting rights",
+      "Priority access to new pools",
+      "All Silver & Bronze perks"
+    ],
+    description: "Premium tier with governance and maximum benefits."
+  }
+];
 
 const NFTMinting = () => {
   const { account, chainId, connectWallet } = useWallet();
-  const [isMinting, setIsMinting] = useState(false);
-  const [txHash, setTxHash] = useState(null);
   const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
-  const POLYGON_CHAIN_ID = 137;
-  const POLYGON_CHAIN_NAME = "Polygon Mainnet";
+  const [isMinting, setIsMinting] = useState(false);
+  const [mintedTier, setMintedTier] = useState(null);
+  const [txHash, setTxHash] = useState(null);
+  const [selectedTier, setSelectedTier] = useState("Bronze");
 
-  useEffect(() => {
-    if (chainId && chainId !== POLYGON_CHAIN_ID) {
-      setStatus(`Please connect to ${POLYGON_CHAIN_NAME} to mint NFTs.`);
-    } else {
-      setStatus("");
-    }
-  }, [chainId]);
-
-  const handleConnectWallet = async () => {
-    setLoading(true);
+  const switchToPolygon = async () => {
     try {
-      await connectWallet();
-    } catch (error) {
-      setStatus(`Connection Failed: ${error.message || "Unknown error"}`);
-    } finally {
-      setLoading(false);
+      await window.ethereum.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: "0x89",
+          chainName: "Polygon Mainnet",
+          nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
+          rpcUrls: ["https://polygon-rpc.com"],
+          blockExplorerUrls: ["https://polygonscan.com"]
+        }]
+      });
+      return true;
+    } catch (err) {
+      setStatus("Failed to switch network: " + err.message);
+      return false;
     }
   };
 
-  const handleMintNFT = async () => {
-    if (!account) {
-      setStatus("Please connect your wallet first.");
-      return;
+  const detectTierFromTokenURI = async (contract, tokenId) => {
+    try {
+      const uri = await contract.tokenURI(tokenId);
+      if (uri.toLowerCase().includes("gold")) return "Gold";
+      if (uri.toLowerCase().includes("silver")) return "Silver";
+      return "Bronze";
+    } catch (e) {
+      console.warn("Error detecting tier from tokenURI", e);
+      return "Bronze";
+    }
+  };
+
+  const handleMint = async () => {
+    if (!account) return setStatus("Connect your wallet first.");
+    if (chainId !== POLYGON_MAINNET) {
+      setStatus("Switching to Polygon...");
+      const switched = await switchToPolygon();
+      if (!switched) return;
     }
 
-    if (chainId !== POLYGON_CHAIN_ID) {
-      setStatus(`Please connect to ${POLYGON_CHAIN_NAME} to mint NFTs.`);
-      return;
-    }
-
-    setLoading(true);
     try {
       setIsMinting(true);
       setStatus("Minting NFT...");
-      const nftContract = await getContractInstance("IMALINFT", POLYGON_CHAIN_ID);
+      const contract = await getContractInstance("NFT", { chainId: POLYGON_MAINNET });
+      const tx = await contract.mint(account);
+      setTxHash(tx.hash);
+      const receipt = await tx.wait();
+      const transferEvent = receipt.logs.find(log => log.topics[0] === ethers.id("Transfer(address,address,uint256)"));
 
-      if (!nftContract) {
-        throw new Error("Failed to get contract instance.");
+      if (transferEvent) {
+        const tokenId = ethers.getBigInt(transferEvent.topics[3]).toString();
+        const tier = await detectTierFromTokenURI(contract, tokenId);
+        setMintedTier(tier);
       }
 
-      const tx = await nftContract.mint(account);
-      setTxHash(tx.hash);
-      setStatus(`Minting successful! Transaction Hash: ${tx.hash}`);
-      await tx.wait();
-      setIsMinting(false);
+      setStatus("Minted successfully!");
     } catch (err) {
-      console.error("Minting failed:", err);
-      setStatus(`Minting failed: ${err.message || "Unknown error"}`);
+      setStatus("Mint failed: " + (err.reason || err.message));
     } finally {
-      setLoading(false);
+      setIsMinting(false);
     }
   };
 
   return (
-    <div className="p-4 max-w-6xl mx-auto">
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <h1 className="text-3xl font-bold text-center mb-6 text-blue-600">
-          IMALI NFTs
-        </h1>
+    <NetworkGuard chainId={POLYGON_MAINNET}>
+      <div className="max-w-6xl mx-auto p-6">
+        <h1 className="text-3xl font-bold text-blue-700 mb-4 text-center">Mint Your IMALI NFT</h1>
 
-        {/* Educational Section */}
-        <div className="bg-blue-50 p-6 rounded-lg mb-8">
-          <h2 className="text-2xl font-semibold mb-4 flex items-center">
-            <FaInfoCircle className="mr-2 text-blue-500" />
-            What are IMALI NFTs?
-          </h2>
-          <p className="mb-4">
-            IMALI NFTs are your key to the IMALI ecosystem, providing access to
-            rewards, unlocking exclusive tiers, and offering opportunities to earn
-            through staking, royalties, and yield pools.
-          </p>
-          <div className="grid md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="font-bold mb-2"> Access
-              </h3>
-              <p>
-                NFTs grant access to various features and benefits within the IMALI
-                ecosystem.
-              </p>
-            </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-              <h3 className="font-bold mb-2">💰 Earning Potential</h3>
-              <p>
-                Participate in staking, earn royalties, and access exclusive yield
-                pools.
-              </p>
-            </div>
+        <div className="grid md:grid-cols-2 gap-6 mb-10">
+          <div className="space-y-4">
+            <select
+              value={selectedTier}
+              onChange={(e) => setSelectedTier(e.target.value)}
+              className="w-full p-3 border rounded"
+            >
+              {TIERS.map(tier => (
+                <option key={tier.name} value={tier.name}>{tier.name} Tier</option>
+              ))}
+            </select>
+            <img src={TIER_IMAGES[selectedTier]} alt="Tier NFT" className="rounded-lg shadow" />
+            <p className="text-gray-600 text-sm mt-2">{TIERS.find(t => t.name === selectedTier)?.description}</p>
+            <ul className="mt-2 list-disc pl-5 text-sm">
+              {TIERS.find(t => t.name === selectedTier)?.benefits.map((b, i) => (
+                <li key={i}>{b}</li>
+              ))}
+            </ul>
           </div>
 
-          <h3 className="text-xl font-semibold mb-3 flex items-center">
-            <FaQuestionCircle className="mr-2 text-blue-500" />
-            How to Mint Your NFT
-          </h3>
-          <ol className="list-decimal list-inside space-y-2 pl-4">
-            <li className="font-medium">
-              Connect your wallet.
-            </li>
-            <li className="font-medium">
-              Ensure you are connected to the Polygon Network.
-            </li>
-            <li className="font-medium">
-              Click the "Mint NFT" button.
-            </li>
-            <li className="font-medium">
-              Confirm the transaction in your wallet.
-            </li>
-            <li className="font-medium">
-              Receive your IMALI NFT!
-            </li>
-          </ol>
+          <div className="flex flex-col justify-center space-y-4">
+            {!account ? (
+              <button onClick={connectWallet} className="bg-green-600 text-white py-3 rounded">
+                🔗 Connect Wallet
+              </button>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600">Connected: {account.slice(0, 6)}...{account.slice(-4)}</p>
+                <button
+                  onClick={handleMint}
+                  disabled={isMinting}
+                  className="bg-blue-600 text-white py-3 rounded"
+                >
+                  {isMinting ? "Minting..." : "🚀 Mint Now"}
+                </button>
+              </>
+            )}
+            {status && <p className="text-sm text-gray-700">{status}</p>}
+            <img src={NFTAnimation} alt="Minting Animation" className="w-64 mx-auto" />
+          </div>
         </div>
 
-        {/* Minting Section */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <div className="flex flex-col md:flex-row items-center gap-8">
-            <div className="md:w-1/2">
-              <img
-                src={NFTAnimation}
-                alt="NFT Animation"
-                className="w-full h-auto max-w-md mx-auto rounded-lg"
-              />
-            </div>
-            <div className="md:w-1/2 space-y-4">
-              <h2 className="text-2xl font-semibold">Mint Your IMALI NFT</h2>
-              <p className="text-gray-700">
-                Mint your IMALI NFT to unlock exclusive benefits and rewards within
-                the IMALI ecosystem.
-              </p>
-              {!account ? (
-                <button
-                  onClick={handleConnectWallet}
-                  disabled={loading}
-                  className="bg-green-600 text-white py-3 px-6 rounded font-semibold hover:bg-green-700 transition w-full"
-                >
-                  {loading ? "Connecting..." : "🔗 Connect Wallet"}
-                </button>
-              ) : (
-                <>
-                  <p className="text-sm text-gray-600">
-                    Connected: {account.slice(0, 6)}...{account.slice(-4)}
-                  </p>
-                  <button
-                    onClick={handleMintNFT}
-                    disabled={isMinting || loading || chainId !== POLYGON_CHAIN_ID}
-                    className="bg-green-600 text-white py-3 px-6 rounded font-semibold hover:bg-green-700 transition w-full flex items-center justify-center"
-                  >
-                    {loading ? (
-                      <>
-                        Minting...
-                      </>
-                    ) : (
-                      <>
-                        <FaRocket className="mr-2" /> Mint NFT
-                      </>
-                    )}
-                  </button>
-                </>
-              )}
+        {mintedTier && <NFTPreview tier={mintedTier} hash={txHash} />}
 
-              {status && <p className="mt-4 text-sm text-gray-600">{status}</p>}
-            </div>
-          </div>
+        <div className="mt-10">
+          <FAQAccordion />
         </div>
       </div>
-    </div>
+    </NetworkGuard>
   );
 };
 
 export default NFTMinting;
-
-

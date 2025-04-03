@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import getContractInstance from "../getContractInstance";
+import { getContractInstance } from '../getContractInstance';
 import { useWallet } from "../context/WalletContext";
 
 const AdminPanel = () => {

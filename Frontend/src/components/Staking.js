@@ -1,251 +1,242 @@
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
-import getContractInstance from "../getContractInstance";
-import { FaInfoCircle, FaQuestionCircle, FaCheckCircle, FaExclamationTriangle } from "react-icons/fa";
+import { getContractInstance } from "../getContractInstance";
+import { FaInfoCircle, FaCheckCircle, FaExclamationTriangle } from "react-icons/fa";
 
 const Staking = () => {
-  const { account, chainId } = useWallet();
+  const {
+    account,
+    chainId,
+    connectWallet,
+    disconnectWallet,
+    isConnecting,
+    error,
+  } = useWallet();
+
   const [contracts, setContracts] = useState({
     staking: null,
     imaliToken: null,
     lpToken: null
   });
+  const [contractsInitialized, setContractsInitialized] = useState(false);
   const [balances, setBalances] = useState({
     imaliStaked: "0",
     imaliRewards: "0",
     lpStaked: "0",
     lpRewards: "0",
     walletImali: "0",
-    walletLp: "0"
+    walletLp: "0",
   });
   const [inputs, setInputs] = useState({
     imaliStake: "",
     lpStake: "",
     imaliUnstake: "",
-    lpUnstake: ""
+    lpUnstake: "",
   });
-  const [status, setStatus] = useState({
-    message: "",
-    type: "" // 'success', 'error', 'info'
-  });
+  const [status, setStatus] = useState({ message: "", type: "" });
   const [loading, setLoading] = useState({
     stakeIMALI: false,
     stakeLP: false,
     unstakeIMALI: false,
     unstakeLP: false,
-    claim: false
+    claim: false,
   });
   const [estimates, setEstimates] = useState({
     imaliAPY: "12",
     lpAPY: "18",
     dailyRewards: "0",
-    weeklyRewards: "0"
+    weeklyRewards: "0",
   });
 
-  // Initialize contracts
+    useEffect(() => {
+        const initContracts = async () => {
+            if (!account || !chainId) return;
+
+            try {
+                setStatus({ message: "Initializing contracts...", type: "info" });
+
+                const staking = await getContractInstance("Staking", { chainId });
+                const imaliToken = await getContractInstance("Token", { chainId }); // Corrected
+                const lpToken = await getContractInstance("LPToken", { chainId }); // Corrected
+
+                if (!staking || !imaliToken || !lpToken) {
+                    throw new Error("Failed to initialize one or more contracts");
+                }
+
+                setContracts({ staking, imaliToken, lpToken });
+                setContractsInitialized(true);
+                setStatus({ message: "Contracts initialized successfully", type: "success" });
+            } catch (err) {
+                console.error("Contract initialization failed:", err);
+                setStatus({
+                    message: err.message.includes("Missing configuration")
+                        ? "Staking not available on this network"
+                        : "Failed to initialize contracts",
+                    type: "error"
+                });
+                setContractsInitialized(false);
+            }
+        };
+
+        initContracts();
+    }, [account, chainId]);
+
   useEffect(() => {
-    const initContracts = async () => {
-      if (!account || !chainId) return;
+    const fetchStakingData = async () => {
+      if (!contractsInitialized || !contracts.staking || !account) return;
       
       try {
-        const staking = await getContractInstance("Staking", chainId);
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-        
-        const imaliTokenAddress = await staking.imaliToken();
-        const lpTokenAddress = await staking.lpToken();
-        
-        const imaliToken = new ethers.Contract(
-          imaliTokenAddress,
-          [
-            "function balanceOf(address) view returns (uint256)",
-            "function approve(address,uint256) returns (bool)",
-            "function allowance(address,address) view returns (uint256)"
-          ],
-          signer
-        );
-        
-        const lpToken = new ethers.Contract(
-          lpTokenAddress,
-          [
-            "function balanceOf(address) view returns (uint256)",
-            "function approve(address,uint256) returns (bool)",
-            "function allowance(address,address) view returns (uint256)"
-          ],
-          signer
-        );
+        const [imaliData, lpData, imaliBalance, lpBalance] = await Promise.all([
+          contracts.staking.imaliStakers(account),
+          contracts.staking.lpStakers(account),
+          contracts.imaliToken.balanceOf(account),
+          contracts.lpToken.balanceOf(account),
+        ]);
 
-        setContracts({ staking, imaliToken, lpToken });
-        setStatus({ message: "Contracts initialized", type: "success" });
-      } catch (error) {
-        console.error("Contract initialization failed:", error);
-        setStatus({
-          message: "Failed to initialize contracts",
-          type: "error"
+        const newBalances = {
+          imaliStaked: ethers.formatUnits(imaliData.amount, 18),
+          imaliRewards: ethers.formatUnits(imaliData.rewards, 18),
+          lpStaked: ethers.formatUnits(lpData.amount, 18),
+          lpRewards: ethers.formatUnits(lpData.rewards, 18),
+          walletImali: ethers.formatUnits(imaliBalance, 18),
+          walletLp: ethers.formatUnits(lpBalance, 18),
+        };
+
+        const dailyImali = parseFloat(newBalances.imaliStaked) * 0.12 / 365;
+        const dailyLp = parseFloat(newBalances.lpStaked) * 0.18 / 365;
+
+        setBalances(newBalances);
+        setEstimates({
+          ...estimates,
+          dailyRewards: (dailyImali + dailyLp).toFixed(6),
+          weeklyRewards: ((dailyImali + dailyLp) * 7).toFixed(6),
         });
+      } catch (err) {
+        console.error("Failed to fetch staking data:", err);
+        setStatus({ message: "Failed to fetch staking data", type: "error" });
       }
     };
 
-    initContracts();
-  }, [account, chainId]);
-
-  // Fetch all staking data
-  const fetchStakingData = async () => {
-    if (!contracts.staking || !account) return;
-
-    try {
-      const [
-        imaliData,
-        lpData,
-        imaliBalance,
-        lpBalance
-      ] = await Promise.all([
-        contracts.staking.imaliStakers(account),
-        contracts.staking.lpStakers(account),
-        contracts.imaliToken.balanceOf(account),
-        contracts.lpToken.balanceOf(account)
-      ]);
-
-      setBalances({
-        imaliStaked: ethers.formatUnits(imaliData.amount, 18),
-        imaliRewards: ethers.formatUnits(imaliData.rewards, 18),
-        lpStaked: ethers.formatUnits(lpData.amount, 18),
-        lpRewards: ethers.formatUnits(lpData.rewards, 18),
-        walletImali: ethers.formatUnits(imaliBalance, 18),
-        walletLp: ethers.formatUnits(lpBalance, 18)
-      });
-
-      // Calculate estimated rewards
-      const dailyImali = parseFloat(balances.imaliStaked) * 0.12 / 365;
-      const dailyLp = parseFloat(balances.lpStaked) * 0.18 / 365;
-      
-      setEstimates({
-        ...estimates,
-        dailyRewards: (dailyImali + dailyLp).toFixed(6),
-        weeklyRewards: ((dailyImali + dailyLp) * 7).toFixed(6)
-      });
-
-    } catch (error) {
-      console.error("Failed to fetch staking data:", error);
-      setStatus({
-        message: "Failed to fetch staking data",
-        type: "error"
-      });
-    }
-  };
-
-  // Refresh data periodically
-  useEffect(() => {
     fetchStakingData();
     const interval = setInterval(fetchStakingData, 30000);
     return () => clearInterval(interval);
-  }, [contracts.staking, account]);
+  }, [contracts, account, contractsInitialized]);
 
-  // Handle token approvals
   const checkAndApprove = async (token, spender, amount) => {
-    const allowance = await token.allowance(account, spender);
-    if (allowance < amount) {
-      setStatus({ message: "Approving tokens...", type: "info" });
-      const approveTx = await token.approve(spender, amount);
-      await approveTx.wait();
-    }
-  };
-
-  // Enhanced transaction handler
-  const handleTransaction = async (txFunction, args, loadingKey) => {
-    if (!contracts.staking) return;
-
     try {
-      setLoading({ ...loading, [loadingKey]: true });
-      
-      // Simulate first
-      await contracts.staking.callStatic[txFunction](...args);
-      
-      // Estimate gas
-      const gasEstimate = await contracts.staking[txFunction].estimateGas(...args);
-      
-      // Execute with buffer
-      const tx = await contracts.staking[txFunction](...args, {
-        gasLimit: gasEstimate.mul(120).div(100)
-      });
-      
-      setStatus({
-        message: "Transaction submitted...",
-        type: "info"
-      });
-      
-      const receipt = await tx.wait();
-      setStatus({
-        message: "Transaction confirmed!",
-        type: "success"
-      });
-      
-      fetchStakingData();
-      return receipt;
-    } catch (error) {
-      let errorMessage = "Transaction failed";
-      if (error.reason) {
-        errorMessage = error.reason;
-      } else if (error.data?.message) {
-        errorMessage = error.data.message;
+      const allowance = await token.allowance(account, spender);
+      if (allowance < amount) {
+        setStatus({ message: "Approving tokens...", type: "info" });
+        const tx = await token.approve(spender, amount);
+        await tx.wait();
       }
-      
-      setStatus({
-        message: errorMessage,
-        type: "error"
-      });
-      throw error;
-    } finally {
-      setLoading({ ...loading, [loadingKey]: false });
+    } catch (err) {
+      console.error("Approval failed:", err);
+      throw err;
     }
   };
 
-  // Staking handlers
+  const handleTransaction = async (txFunction, args, loadingKey) => {
+    try {
+      setLoading(prev => ({ ...prev, [loadingKey]: true }));
+      await contracts.staking.callStatic[txFunction](...args);
+      const gasEstimate = await contracts.staking[txFunction].estimateGas(...args);
+      const tx = await contracts.staking[txFunction](...args, { gasLimit: gasEstimate.mul(120).div(100) });
+      await tx.wait();
+      setStatus({ message: "Transaction confirmed!", type: "success" });
+      return true;
+    } catch (err) {
+      const msg = err.reason || err.data?.message || err.message || "Transaction failed";
+      setStatus({ message: msg, type: "error" });
+      return false;
+    } finally {
+      setLoading(prev => ({ ...prev, [loadingKey]: false }));
+    }
+  };
+
   const handleStake = async (tokenType, amount) => {
+    if (!amount || isNaN(amount)) {
+      setStatus({ message: "Please enter a valid amount", type: "error" });
+      return;
+    }
+
     const amountWei = ethers.parseUnits(amount, 18);
     const token = tokenType === "IMALI" ? contracts.imaliToken : contracts.lpToken;
     
     try {
       await checkAndApprove(token, contracts.staking.address, amountWei);
-      const txFunction = tokenType === "IMALI" ? "stakeIMALI" : "stakeLP";
-      await handleTransaction(txFunction, [amountWei], `stake${tokenType}`);
-      
-      setInputs({ ...inputs, [`${tokenType.toLowerCase()}Stake`]: "" });
-    } catch (error) {
-      console.error(`Staking ${tokenType} failed:`, error);
+      const txFunc = tokenType === "IMALI" ? "stakeIMALI" : "stakeLP";
+      const success = await handleTransaction(txFunc, [amountWei], `stake${tokenType}`);
+      if (success) {
+        setInputs(prev => ({ ...prev, [`${tokenType.toLowerCase()}Stake`]: "" }));
+      }
+    } catch (err) {
+      console.error(`Staking ${tokenType} failed:`, err);
     }
   };
 
-  // Unstaking handlers
   const handleUnstake = async (tokenType, amount) => {
+    if (!amount || isNaN(amount)) {
+      setStatus({ message: "Please enter a valid amount", type: "error" });
+      return;
+    }
+
     const amountWei = ethers.parseUnits(amount, 18);
-    const txFunction = tokenType === "IMALI" ? "unstakeIMALI" : "unstakeLP";
+    const txFunc = tokenType === "IMALI" ? "unstakeIMALI" : "unstakeLP";
     
     try {
-      await handleTransaction(txFunction, [amountWei], `unstake${tokenType}`);
-      setInputs({ ...inputs, [`${tokenType.toLowerCase()}Unstake`]: "" });
-    } catch (error) {
-      console.error(`Unstaking ${tokenType} failed:`, error);
+      const success = await handleTransaction(txFunc, [amountWei], `unstake${tokenType}`);
+      if (success) {
+        setInputs(prev => ({ ...prev, [`${tokenType.toLowerCase()}Unstake`]: "" }));
+      }
+    } catch (err) {
+      console.error(`Unstaking ${tokenType} failed:`, err);
     }
   };
 
-  // Claim rewards
   const handleClaimRewards = async () => {
     try {
       await handleTransaction("claimRewards", [], "claim");
-    } catch (error) {
-      console.error("Claiming rewards failed:", error);
+    } catch (err) {
+      console.error("Claiming rewards failed:", err);
     }
   };
 
   if (!account) {
     return (
       <div className="p-8 text-center">
-        <h2 className="text-2xl font-bold mb-4">Wallet Not Connected</h2>
-        <p className="text-gray-600">
-          Please connect your wallet to access the staking platform
+        <h2 className="text-2xl font-bold mb-4">🔗 Connect Your Wallet</h2>
+        <p className="text-gray-600 mb-4">
+          To get started, please connect your wallet.
         </p>
+        <button
+          onClick={connectWallet}
+          disabled={isConnecting}
+          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold disabled:opacity-50"
+        >
+          {isConnecting ? "🔄 Connecting..." : "🔗 Connect Wallet"}
+        </button>
+        {error && <div className="mt-4 text-red-500 text-sm">⚠️ {error}</div>}
+      </div>
+    );
+  }
+
+  if (!contractsInitialized) {
+    return (
+      <div className="p-8 text-center">
+        <h2 className="text-2xl font-bold mb-4">Loading Staking Dashboard</h2>
+        <p className="text-gray-600 mb-4">
+          {status.message || "Initializing staking contracts..."}
+        </p>
+        {status.type === "error" && (
+          <button
+            onClick={disconnectWallet}
+            className="mt-4 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold"
+          >
+            Disconnect Wallet
+          </button>
+        )}
       </div>
     );
   }
@@ -267,6 +258,21 @@ const Staking = () => {
           {status.message}
         </div>
       )}
+
+      {/* Wallet Connection Status */}
+      <div className="bg-gray-100 p-4 rounded-lg text-sm mb-6 flex flex-col sm:flex-row justify-between items-center">
+        <div>
+          ✅ Connected: <span className="font-mono text-green-700">
+            {account.slice(0, 6)}...{account.slice(-4)}
+          </span>
+        </div>
+        <button
+          onClick={disconnectWallet}
+          className="mt-2 sm:mt-0 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+        >
+          Disconnect Wallet
+        </button>
+      </div>
 
       {/* Dashboard Header */}
       <div className="bg-white rounded-xl shadow-md p-6 mb-8">
@@ -490,36 +496,36 @@ const Staking = () => {
             Total rewards: {Number(balances.imaliRewards) + Number(balances.lpRewards)} Tokens
           </p>
         </div>
+      </div>
 
-        {/* Educational Section */}
-        <div className="mt-12 bg-gray-50 p-6 rounded-lg border border-gray-200">
-          <h2 className="text-2xl font-semibold mb-4 flex items-center">
-            <FaInfoCircle className="mr-2 text-blue-500" />
-            Staking Guide
-          </h2>
-          
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-semibold mb-2">How Staking Works</h3>
-              <ul className="list-disc pl-5 space-y-2 text-gray-700">
-                <li>Stake tokens to earn passive rewards</li>
-                <li>Rewards compound automatically</li>
-                <li>No lock-in period - unstake anytime</li>
-                <li>Higher APY for longer staking periods</li>
-              </ul>
-            </div>
-            
-            <div>
-              <h3 className="font-semibold mb-2">Getting LP Tokens</h3>
-              <p className="text-gray-700 mb-3">
-                LP tokens represent your share in our liquidity pool. You get them when you:
-              </p>
-              <ol className="list-decimal pl-5 space-y-1 text-gray-700">
-                <li>Provide equal value of two tokens</li>
-                <li>Add liquidity to our DEX</li>
-                <li>Receive LP tokens in return</li>
-              </ol>
-            </div>
+      {/* Educational Section */}
+      <div className="mt-12 bg-gray-50 p-6 rounded-lg border border-gray-200">
+        <h2 className="text-2xl font-semibold mb-4 flex items-center">
+          <FaInfoCircle className="mr-2 text-blue-500" />
+          Staking Guide
+        </h2>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <div>
+            <h3 className="font-semibold mb-2">How Staking Works</h3>
+            <ul className="list-disc pl-5 space-y-2 text-gray-700">
+              <li>Stake tokens to earn passive rewards</li>
+              <li>Rewards compound automatically</li>
+              <li>No lock-in period - unstake anytime</li>
+              <li>Higher APY for longer staking periods</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-semibold mb-2">Getting LP Tokens</h3>
+            <p className="text-gray-700 mb-3">
+              LP tokens represent your share in our liquidity pool. You get them when you:
+            </p>
+            <ol className="list-decimal pl-5 space-y-1 text-gray-700">
+              <li>Provide equal value of two tokens</li>
+              <li>Add liquidity to our DEX</li>
+              <li>Receive LP tokens in return</li>
+            </ol>
           </div>
         </div>
       </div>

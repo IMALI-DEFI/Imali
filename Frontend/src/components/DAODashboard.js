@@ -1,9 +1,45 @@
 import React from "react";
-import VoteAnimation from "../assets/animations/vote-animation.svg"; // Updated SVG
+import { useWallet } from "../context/WalletContext";
+import VoteAnimation from "../assets/animations/vote-animation.svg";
 
 const DAO = () => {
+  const { account, connectWallet, disconnectWallet, isConnecting, error } = useWallet();
+
+  if (!account) {
+    return (
+      <div className="p-8 text-center">
+        <h2 className="text-2xl font-bold mb-4">🔗 Connect Your Wallet</h2>
+        <p className="text-gray-600 mb-4">
+          To participate in governance, please connect your wallet.
+        </p>
+        <button
+          onClick={connectWallet}
+          className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
+          disabled={isConnecting}
+        >
+          {isConnecting ? "Connecting..." : "Connect Wallet"}
+        </button>
+        {error && <p className="text-red-500 mt-2 text-sm">{error}</p>}
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-12">
+      {account && (
+        <div className="bg-gray-100 p-4 rounded-lg text-sm mb-6 flex flex-col sm:flex-row justify-between items-center">
+          <div>
+            ✅ Connected: <span className="font-mono text-green-700">{account.slice(0, 6)}...{account.slice(-4)}</span>
+          </div>
+          <button
+            onClick={disconnectWallet}
+            className="mt-2 sm:mt-0 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            Disconnect Wallet
+          </button>
+        </div>
+      )}
+
       <h1 className="text-4xl font-bold text-center mb-10">IMALI DAO</h1>
 
       <div className="flex flex-col md:flex-row items-center">
@@ -48,4 +84,3 @@ const DAO = () => {
 };
 
 export default DAO;
-

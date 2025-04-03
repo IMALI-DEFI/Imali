@@ -1,23 +1,21 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom'; // Import BrowserRouter for routing
+import { BrowserRouter } from 'react-router-dom';  // Import BrowserRouter
 
 // Global styles
-import './index.css'; // Ensure this file exists in the src/ directory
-import './Animations.css'; // Ensure this file exists in the src/ directory
+import './index.css';
+import './Animations.css';
 
 // Main app component
-import App from './App'; // Ensure App.js exists in the src/ directory
+import App from './App';
 
 // Find the root element
 const rootElement = document.getElementById('root');
 
-// Ensure the root element exists before rendering the app
+// Ensure BrowserRouter wraps the entire application
 if (rootElement) {
-  // Create a root for ReactDOM
   const root = ReactDOM.createRoot(rootElement);
 
-  // Render the app inside React.StrictMode and BrowserRouter
   root.render(
     <React.StrictMode>
       <BrowserRouter>
@@ -26,7 +24,6 @@ if (rootElement) {
     </React.StrictMode>
   );
 } else {
-  // Log an error if the root element is not found
   console.error(
     '❌ Failed to find the root element. Ensure there is a <div id="root"></div> in your public/index.html file.'
   );
