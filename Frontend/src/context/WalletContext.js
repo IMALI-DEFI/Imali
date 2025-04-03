@@ -1,4 +1,10 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from "react";
+import React, {
+  createContext,
+  useState,
+  useContext,
+  useEffect,
+  useCallback,
+} from "react";
 import WalletConnectProvider from "@walletconnect/web3-provider";
 import { ethers } from "ethers";
 
@@ -14,22 +20,20 @@ export const WalletProvider = ({ children }) => {
   const [rawProvider, setRawProvider] = useState(null);
   const [wcConnector, setWcConnector] = useState(null);
 
-  // Check if user is on mobile and initialize provider
   useEffect(() => {
     const mobileCheck = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
       navigator.userAgent.toLowerCase()
     );
     setIsMobile(mobileCheck);
 
-    // Initialize with window.ethereum if available
     if (typeof window.ethereum !== "undefined") {
-      const provider = window.ethereum.providers?.find(p => p.isMetaMask) || window.ethereum;
+      const provider =
+        window.ethereum.providers?.find((p) => p.isMetaMask) || window.ethereum;
       setRawProvider(provider);
       checkExistingConnection(provider);
     }
   }, []);
 
-  // Handle provider events
   useEffect(() => {
     if (!rawProvider?.on) return;
 
@@ -63,14 +67,13 @@ export const WalletProvider = ({ children }) => {
     };
   }, [rawProvider]);
 
-  // Check for existing connection
   const checkExistingConnection = useCallback(async (provider) => {
     try {
       const accounts = await provider.request({ method: "eth_accounts" });
       if (accounts.length > 0) {
         const ethersProvider = new ethers.BrowserProvider(provider);
         const network = await ethersProvider.getNetwork();
-        
+
         setAccount(accounts[0]);
         setChainId(Number(network.chainId));
         setEthersProvider(ethersProvider);
@@ -80,7 +83,6 @@ export const WalletProvider = ({ children }) => {
     }
   }, []);
 
-  // Connect via WalletConnect
   const connectViaWalletConnect = useCallback(async () => {
     try {
       setIsConnecting(true);
@@ -90,12 +92,31 @@ export const WalletProvider = ({ children }) => {
         rpc: {
           1: process.env.REACT_APP_ETHEREUM_RPC_URL,
         },
+        qrcode: !isMobile,
         qrcodeModalOptions: {
-          mobileLinks: ["metamask", "trust", "rainbow", "argent", "imtoken", "pillar"]
-        }
+          mobileLinks: [
+            "metamask",
+            "trust",
+            "rainbow",
+            "argent",
+            "imtoken",
+            "pillar",
+          ],
+        },
       });
 
       await connector.enable();
+
+      // ✅ Deep link to MetaMask on mobile
+      if (isMobile && connector.connector?.uri) {
+        const uri = connector.connector.uri;
+        const deepLink = `https://metamask.app.link/wc?uri=${encodeURIComponent(
+          uri
+        )}`;
+        window.location.href = deepLink;
+        return;
+      }
+
       const ethersProvider = new ethers.BrowserProvider(connector);
       const signer = await ethersProvider.getSigner();
       const network = await ethersProvider.getNetwork();
@@ -111,9 +132,8 @@ export const WalletProvider = ({ children }) => {
     } finally {
       setIsConnecting(false);
     }
-  }, []);
+  }, [isMobile]);
 
-  // Main connect wallet function
   const connectWallet = useCallback(async () => {
     if (isMobile && !window.ethereum?.isMetaMask) {
       return connectViaWalletConnect();
@@ -128,13 +148,9 @@ export const WalletProvider = ({ children }) => {
     setError(null);
 
     try {
-      // Initialize ethers provider
       const ethersProvider = new ethers.BrowserProvider(window.ethereum);
-      
-      // Request accounts
       const accounts = await ethersProvider.send("eth_requestAccounts", []);
       const network = await ethersProvider.getNetwork();
-      const signer = await ethersProvider.getSigner();
 
       setAccount(accounts[0]);
       setChainId(Number(network.chainId));
@@ -147,11 +163,10 @@ export const WalletProvider = ({ children }) => {
     }
   }, [isMobile, connectViaWalletConnect]);
 
-  // Handle connection errors
   const handleConnectionError = useCallback((error) => {
     console.error("Connection error:", error);
     let message = "Connection failed";
-    
+
     if (error.code === 4001) {
       message = "Connection rejected";
     } else if (error.code === -32002) {
@@ -165,12 +180,11 @@ export const WalletProvider = ({ children }) => {
     setError(message);
   }, []);
 
-  // Disconnect wallet
   const disconnectWallet = useCallback(() => {
     if (wcConnector?.disconnect) {
       wcConnector.disconnect();
     }
-    
+
     setAccount(null);
     setChainId(null);
     setEthersProvider(null);
@@ -178,7 +192,6 @@ export const WalletProvider = ({ children }) => {
     setError(null);
   }, [wcConnector]);
 
-  // Get signer
   const getSigner = useCallback(async () => {
     if (!ethersProvider) {
       throw new Error("Provider not initialized");
@@ -194,7 +207,7 @@ export const WalletProvider = ({ children }) => {
         error,
         isMobile,
         isConnecting,
-        provider: ethersProvider, // Only expose the ethers provider
+        provider: ethersProvider,
         rawProvider,
         connectWallet,
         disconnectWallet,
