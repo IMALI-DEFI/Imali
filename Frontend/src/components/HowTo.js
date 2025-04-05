@@ -1,109 +1,128 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import Logo from "../assets/images/DefiFinanceLogo.png";
+import ConnectWalletButton from "./ConnectWalletButton";
 
-const HowTo = () => {
+const Header = () => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [logoSize, setLogoSize] = useState(30);
+
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 640) {
+        setLogoSize(23);
+      } else if (window.innerWidth < 1024) {
+        setLogoSize(23);
+      } else {
+        setLogoSize(20);
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   return (
-    <section className="bg-gray-100 min-h-screen py-16 px-6">
-      <div className="container mx-auto max-w-6xl bg-white shadow-lg p-8 rounded-lg">
-        <h2 className="text-4xl font-bold text-green-600 text-center mb-8">
-          📌 How to Use IMALI
-        </h2>
+    <header className="bg-white shadow-md w-full z-50">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between h-auto sm:h-20 py-2 sm:py-0">
+          {/* Logo */}
+          <div className="flex items-center mb-2 sm:mb-0">
+            <Link to="/">
+              <img
+                src={Logo}
+                alt="IMALI DeFi Logo"
+                className={`h-${logoSize} w-auto`}
+              />
+            </Link>
+          </div>
 
-        <div className="space-y-6">
-          {/* 1. Connect Your Wallet */}
-          <div className="p-6 border rounded-lg bg-white">
-            <h3 className="font-bold text-xl text-green-700 mb-2">
-              1️⃣ Connect Your Wallet
-            </h3>
-            <p className="text-gray-700">
-              Download and install MetaMask from{" "}
-              <a
-                href="https://metamask.io/download.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 underline"
+          {/* Informational Wallet Banner */}
+          <div className="text-xs text-gray-800 bg-yellow-100 border border-yellow-300 rounded p-2 mb-2 sm:mb-0 max-w-full sm:max-w-[600px] leading-snug">
+            <strong>New to Web3?</strong> A <strong>digital wallet</strong> (like MetaMask or Trust Wallet) stores your crypto and lets you interact with DeFi apps like IMALI.
+            <br />
+            <strong>Mobile Users:</strong> To connect your wallet, open your wallet app and use its built-in browser.
+            <br />
+            <span className="underline">Steps:</span>
+            <ol className="list-decimal ml-4">
+              <li>Open your wallet app (e.g. MetaMask or Trust Wallet)</li>
+              <li>Tap the "Browser" or "Discover" tab</li>
+              <li>Type in: <strong>imali-defi.com</strong> and go</li>
+              <li>Connect your wallet once the site loads</li>
+            </ol>
+            <br />
+            <span className="block">
+              <strong>Network Info:</strong> Lending is on <strong>Ethereum</strong>.  
+              All other features use <strong>Polygon</strong>.  
+              The <strong>IMALI Token</strong> runs on both <strong>Polygon</strong> and <strong>Base</strong>.
+            </span>
+          </div>
+
+          {/* Desktop Connect Wallet Button */}
+          <div className="hidden sm:block">
+            <ConnectWalletButton />
+          </div>
+
+          {/* Mobile Wallet + Menu */}
+          <div className="sm:hidden flex items-center gap-2">
+            <ConnectWalletButton />
+            <button
+              onClick={toggleMenu}
+              className="text-[#036302] focus:outline-none"
+            >
+              <svg
+                className="w-8 h-8"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
               >
-                metamask.io
-              </a>
-              . Open MetaMask, create or import your wallet, and click the “Connect Wallet” button on the dashboard.
-              Ensure you’re on the correct network (Ethereum for lending and IMALI tokens; Polygon for staking and yield farming).
-            </p>
-          </div>
-
-          {/* 2. Purchase IMALI Tokens */}
-          <div className="p-6 border rounded-lg bg-white">
-            <h3 className="font-bold text-xl text-blue-700 mb-2">
-              2️⃣ Purchase IMALI Tokens
-            </h3>
-            <p className="text-gray-700">
-              Navigate to the Tokens page where you can purchase IMALI tokens. You can buy these directly using ETH or MATIC,
-              or purchase them through an exchange. Make sure the tokens are sent to your connected wallet.
-            </p>
-          </div>
-
-          {/* 3. Stake Your Tokens */}
-          <div className="p-6 border rounded-lg bg-white">
-            <h3 className="font-bold text-xl text-red-700 mb-2">
-              3️⃣ Stake Your Tokens
-            </h3>
-            <p className="text-gray-700">
-              To earn additional rewards, visit the Staking dashboard. Enter the amount of tokens you wish to stake and confirm the
-              transaction in MetaMask. A small staking fee may be deducted as defined in the contract.
-            </p>
-          </div>
-
-          {/* 4. Yield Farming */}
-          <div className="p-6 border rounded-lg bg-white">
-            <h3 className="font-bold text-xl text-purple-700 mb-2">
-              4️⃣ Yield Farming
-            </h3>
-            <p className="text-gray-700">
-              Yield farming allows you to provide liquidity and earn extra rewards. Deposit your tokens into the yield farming pool,
-              and you’ll start earning rewards. Check the Yield Farming dashboard for details on APYs and your accrued rewards.
-            </p>
-          </div>
-
-          {/* 5. Lending & Borrowing */}
-          <div className="p-6 border rounded-lg bg-white">
-            <h3 className="font-bold text-xl text-teal-700 mb-2">
-              5️⃣ Lending & Borrowing
-            </h3>
-            <p className="text-gray-700">
-              Our lending platform lets you use your tokens as collateral to borrow stablecoins or deposit tokens to earn interest.
-              <br /><br />
-              <strong>Deposit Collateral:</strong> Choose an asset from the lending dashboard and click “Deposit Collateral.”
-              Enter the amount to lock as collateral and confirm the transaction.
-              <br /><br />
-              <strong>Borrow Stablecoin:</strong> Once you’ve deposited collateral, click “Borrow Stablecoin” on the asset card.
-              Enter the amount you wish to borrow. (Make sure your collateral meets the required ratio.)
-              <br /><br />
-              <strong>Repay Borrow:</strong> To repay your loan, click “Repay Borrow.” In the modal, enter your Borrow ID (if you have multiple positions)
-              and the amount you wish to repay, then confirm the transaction.
-              <br /><br />
-              <strong>Withdraw Collateral:</strong> After repaying or if you have extra collateral, click “Withdraw Collateral.”
-              Enter the amount to withdraw and confirm the transaction. Ensure you leave enough collateral to cover any outstanding loans.
-            </p>
-          </div>
-
-          {/* 6. Airdrops (Optional) */}
-          <div className="p-6 border rounded-lg bg-white">
-            <h3 className="font-bold text-xl text-orange-700 mb-2">
-              6️⃣ Airdrops
-            </h3>
-            <p className="text-gray-700">
-              Occasionally, IMALI may distribute free tokens via airdrops to active users.
-              Stay tuned to our announcements and make sure your wallet is connected to receive any airdrops.
-            </p>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 6h16M4 12h16m-7 6h7"
+                />
+              </svg>
+            </button>
           </div>
         </div>
 
-        <div className="text-center mt-8">
-          <button className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition">
-            🚀 Start Using IMALI
-          </button>
-        </div>
+        {/* Navigation Links */}
+        <nav
+          className={`${
+            isMenuOpen ? "block" : "hidden"
+          } sm:flex sm:items-center sm:space-x-6 absolute sm:static top-16 right-0 bg-white w-full sm:w-auto shadow-md sm:shadow-none p-4 sm:p-0`}
+        >
+          {[
+            { label: "Home", path: "/" },
+            { label: "Lending", path: "/lending" },
+            { label: "Staking", path: "/staking" },
+            { label: "Yield Farming", path: "/yield-farming" },
+            { label: "Presale", path: "/presale" },
+            { label: "NFT", path: "/nft" },
+            { label: "DAO", path: "/dao" },
+            { label: "How To", path: "/how-to-use" },
+            { label: "Admin", path: "/admin" },
+          ].map(({ label, path }) => (
+            <Link
+              key={path}
+              to={path}
+              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
-    </section>
+    </header>
   );
 };
 
-export default HowTo;
+export default Header;
