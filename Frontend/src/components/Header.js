@@ -14,9 +14,9 @@ const Header = () => {
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 640) {
-        setLogoSize(23);
+        setLogoSize(16);
       } else if (window.innerWidth < 1024) {
-        setLogoSize(23);
+        setLogoSize(16);
       } else {
         setLogoSize(20);
       }
