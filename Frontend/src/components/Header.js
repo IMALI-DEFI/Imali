@@ -30,9 +30,9 @@ const Header = () => {
   return (
     <header className="bg-white shadow-md w-full z-50">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between h-auto sm:h-20 py-2 sm:py-0">
           {/* Logo */}
-          <div className="flex items-center">
+          <div className="flex items-center mb-2 sm:mb-0">
             <Link to="/">
               <img
                 src={Logo}
@@ -42,12 +42,21 @@ const Header = () => {
             </Link>
           </div>
 
-          {/* Desktop Connect Wallet Button */}
+          {/* Wallet Info Banner */}
+          <div className="text-xs text-gray-700 bg-yellow-100 border border-yellow-300 rounded p-2 mb-2 sm:mb-0 max-w-full sm:max-w-[480px] text-center">
+            On mobile? Use your wallet browser (e.g. MetaMask, Trust Wallet) for best results.  
+            <br />
+            <strong>Lending runs on Ethereum.</strong>  
+            All other features are on <strong>Polygon</strong>.  
+            IMALI Token is live on <strong>Polygon & Base</strong>.
+          </div>
+
+          {/* Desktop Wallet Button */}
           <div className="hidden sm:block">
             <ConnectWalletButton />
           </div>
 
-          {/* Mobile hamburger + wallet button */}
+          {/* Mobile Wallet + Menu */}
           <div className="sm:hidden flex items-center gap-2">
             <ConnectWalletButton />
             <button
