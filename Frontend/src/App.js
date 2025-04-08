@@ -19,7 +19,9 @@ import NFTMinting from "./components/NFTMinting";
 import DAODashboard from "./components/DAODashboard";
 import Admin from "./components/AdminPanel";
 import HowToUse from "./components/HowToUse";
-import IMALIToken from "./components/Token"; // ✅ Import Buy Token component
+import IMALIToken from "./components/Token";
+import FeeDistributor from "./components/FeeDistributor"; // NEW
+import LPLottery from "./components/LPLottery"; // NEW
 
 const App = () => {
   return (
@@ -37,11 +39,15 @@ const App = () => {
             <Route path="/staking" element={<Staking />} />
             <Route path="/yield-farming" element={<YieldFarming />} />
             <Route path="/presale" element={<PresaleSection />} />
-            <Route path="/token" element={<IMALIToken />} /> {/* ✅ Buy Token Page */}
+            <Route path="/token" element={<IMALIToken />} />
             <Route path="/nft" element={<NFTMinting />} />
             <Route path="/dao" element={<DAODashboard />} />
             <Route path="/how-to-use" element={<HowToUse />} />
             <Route path="/admin" element={<Admin />} />
+            
+            {/* NEW ROUTES */}
+            <Route path="/fee-distributor" element={<FeeDistributor />} />
+            <Route path="/lottery" element={<LPLottery />} />
 
             {/* Fallback */}
             <Route path="*" element={<div className="text-center p-8 text-xl">🚫 404 - Page Not Found</div>} />
