@@ -4,13 +4,13 @@ import Logo from "../assets/images/DefiFinanceLogo.png";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [logoSize, setLogoSize] = useState("h-8");
+  const [logoSize, setLogoSize] = useState("h-10");
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth < 640) setLogoSize("h-6");
-      else if (window.innerWidth < 1024) setLogoSize("h-7");
-      else setLogoSize("h-4");
+      if (window.innerWidth < 640) setLogoSize("h-10");
+      else if (window.innerWidth < 1024) setLogoSize("h-8");
+      else setLogoSize("h-6");
     };
     handleResize();
     window.addEventListener("resize", handleResize);
@@ -22,22 +22,24 @@ const Header = () => {
     ["Lending", "/lending"],
     ["Staking", "/staking"],
     ["Yield Farming", "/yield-farming"],
-    ["Presale", "/presale"],  
+    ["Presale", "/presale"],
     ["Lottery", "/lottery"],
     ["Admin", "/admin"],
-    ["How To", "/how-to-use"]
+    ["How To", "/how-to-use"],
   ];
 
   return (
     <header className="bg-white shadow-md w-full z-50">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center">
-            <Link to="/" className="flex items-center">
-              <img src={Logo} alt="IMALI DeFi Logo" className={`${logoSize} w-auto transition-all duration-300`} />
-              <span className="ml-2 text-lg font-bold text-green-700 hidden sm:block">IMALI DeFi</span>
-            </Link>
-          </div>
+          <Link to="/" className="flex items-center">
+            <img
+              src={Logo}
+              alt="IMALI DeFi Logo"
+              className={`${logoSize} w-auto transition-all duration-300`}
+            />
+            <span className="ml-2 text-lg font-bold text-green-700 hidden sm:block">IMALI DeFi</span>
+          </Link>
 
           <div className="sm:hidden">
             <button
@@ -55,11 +57,15 @@ const Header = () => {
             </button>
           </div>
 
-          <nav className={`$
-            isMenuOpen ? "block" : "hidden"
-          } sm:flex sm:items-center flex-col sm:flex-row absolute sm:static top-16 left-0 right-0 bg-white sm:bg-transparent shadow-md sm:shadow-none p-4 sm:p-0 space-y-2 sm:space-y-0 sm:space-x-4`}>
+          <nav
+            className={`${
+              isMenuOpen ? "block" : "hidden"
+            } sm:flex sm:items-center flex-col sm:flex-row absolute sm:static top-16 left-0 right-0 bg-white sm:bg-transparent shadow-md sm:shadow-none p-4 sm:p-0 space-y-2 sm:space-y-0 sm:space-x-4`}
+          >
             {links.map(([label, to]) => (
-              <NavLink key={to} to={to}>{label}</NavLink>
+              <NavLink key={to} to={to}>
+                {label}
+              </NavLink>
             ))}
           </nav>
         </div>
@@ -69,7 +75,10 @@ const Header = () => {
 };
 
 const NavLink = ({ to, children }) => (
-  <Link to={to} className="block sm:inline-block px-3 py-2 rounded-md text-sm font-medium text-green-700 hover:bg-green-50 hover:text-green-800 transition-colors">
+  <Link
+    to={to}
+    className="block sm:inline-block px-3 py-2 rounded-md text-sm font-medium text-green-700 hover:bg-green-50 hover:text-green-800 transition-colors"
+  >
     {children}
   </Link>
 );
