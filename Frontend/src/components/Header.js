@@ -22,9 +22,7 @@ const Header = () => {
     ["Lending", "/lending"],
     ["Staking", "/staking"],
     ["Yield Farming", "/yield-farming"],
-    ["Presale", "/presale"],
-    ["Token", "/token"],
-    ["NFT", "/nft"],
+    ["Presale", "/presale"],  
     ["Lottery", "/lottery"],
     ["Admin", "/admin"],
     ["How To", "/how-to-use"]
