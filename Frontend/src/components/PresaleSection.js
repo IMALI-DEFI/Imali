@@ -107,7 +107,127 @@ const PresaleSection = () => {
 
   return (
     <section className="p-6 max-w-4xl mx-auto">
-      {/* existing content remains unchanged */}
+      <h2 className="text-3xl font-bold text-center mb-6">🚀 IMALI Token Presale</h2>
+      <div className="flex justify-center mb-6">
+        <img src={FlowerAnimation} alt="Presale Animation" className="w-40 h-40" />
+      </div>
+
+      <div className="bg-white shadow rounded p-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
+          <Stat label="Token Price" value={`${tokenPrice} ETH`} />
+          <Stat label="Soft Cap" value={`${softCap} ETH`} />
+          <Stat label="Hard Cap" value={`${hardCap} ETH`} />
+          <Stat label="Total Raised" value={`${totalRaised} ETH`} />
+          <Stat label="Live on Uniswap" value="✅ Yes" />
+          <div className="col-span-3">
+            <p className="text-sm text-gray-600">Ends In</p>
+            <p className="text-lg font-semibold text-blue-600">
+              <Countdown date={presaleEnd} />
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <div className="text-sm text-gray-600 mb-1 flex justify-between">
+            <span>Progress</span>
+            <span>{calculateProgress().toFixed(2)}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-4">
+            <div
+              className="bg-green-500 h-4 rounded-full transition-all duration-700"
+              style={{ width: `${calculateProgress()}%` }}
+            ></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white shadow p-4 rounded mb-6">
+        <label className="block text-sm font-semibold mb-1">Your Contribution (ETH)</label>
+        <input
+          type="number"
+          value={contribution}
+          onChange={(e) => setContribution(e.target.value)}
+          className="w-full p-2 border rounded mb-4"
+          placeholder="e.g. 0.5"
+        />
+        {new Date() < presaleEnd ? (
+          <button
+            onClick={handleContribute}
+            className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded"
+          >
+            💸 Contribute Now
+          </button>
+        ) : (
+          <a
+            href="https://app.uniswap.org/explore/tokens/polygon/0x15d3f466d34df102383760ccc70f9f970fcead09"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-center bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded"
+          >
+            🦄 Buy on Uniswap
+          </a>
+        )}
+      </div>
+
+      <div className="bg-white shadow p-4 rounded mb-6">
+        <label className="block text-sm font-semibold mb-2">Your Referral Link</label>
+        <div className="flex gap-2 items-center">
+          <input
+            type="text"
+            value={referralLink}
+            readOnly
+            className="flex-1 p-2 border rounded"
+          />
+          <button
+            onClick={handleCopy}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded"
+          >
+            <FaRegCopy />
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white p-4 rounded shadow mb-6">
+        <h3 className="text-xl font-bold mb-4">🎁 NFT Tier Benefits</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {tierData.map(tier => (
+            <NFTPreview
+              key={tier.name}
+              tier={tier.name}
+              image={tier.image}
+              bonus={tier.bonus}
+              description={tier.description}
+              gasEstimate={gasEstimates[tier.name]}
+              onMint={() => handleMint(tier.name)}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white p-4 rounded shadow">
+        <h3 className="text-xl font-bold mb-4">📘 Tokenomics Overview</h3>
+        <ul className="list-disc pl-6 text-gray-700 space-y-2">
+          <li>50% Presale Distribution</li>
+          <li>20% Liquidity Pool (locked)</li>
+          <li>15% Team (12-month vesting)</li>
+          <li>10% Marketing & Growth</li>
+          <li>5% Advisors</li>
+        </ul>
+      </div>
+
+      <div className="bg-white p-4 rounded shadow mt-6">
+        <h3 className="text-xl font-bold mb-4">❓ Presale FAQ</h3>
+        <ul className="list-disc pl-6 text-gray-700 space-y-2">
+          <li><strong>What is IMALI?</strong> IMALI is a DeFi token offering staking, DAO voting, and NFT-based perks.</li>
+          <li><strong>What is the presale price?</strong> 1 IMALI = 0.005 ETH for early investors.</li>
+          <li><strong>How do I buy?</strong> Connect your wallet, enter the amount in ETH, and click contribute.</li>
+          <li><strong>What do I get for contributing?</strong> IMALI tokens and eligibility for NFT rewards + referral bonuses.</li>
+          <li><strong>How is the token distributed?</strong> Through smart contracts with vesting logic. See tokenomics section.</li>
+          <li><strong>What if I refer a friend?</strong> You get a 5% bonus in tokens when your link is used.</li>
+          <li><strong>When can I claim?</strong> After the presale ends (July 4, 2025), tokens become claimable.</li>
+          <li><strong>Can I buy IMALI outside of the presale?</strong> Yes! IMALI is already live on <a href="https://app.uniswap.org/explore/tokens/polygon/0x15d3f466d34df102383760ccc70f9f970fcead09" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Uniswap</a>.</li>
+        </ul>
+      </div>
 
       <div className="bg-white p-4 rounded shadow mt-6 text-center">
         <h3 className="text-xl font-bold mb-4">📢 Share the Presale</h3>
