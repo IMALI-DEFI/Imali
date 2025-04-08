@@ -1,4 +1,3 @@
-// 📦 PresaleSection.js (Enhanced with updated pricing, tokenomics, and detailed FAQ)
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
@@ -34,7 +33,7 @@ const NFTPreview = ({ tier, image, bonus, description, onMint, gasEstimate }) =>
 
 const PresaleSection = () => {
   const { account } = useWallet();
-  const [tokenPrice, setTokenPrice] = useState("0.005"); // More lucrative pricing
+  const [tokenPrice, setTokenPrice] = useState("0.005");
   const [softCap, setSoftCap] = useState("300");
   const [hardCap, setHardCap] = useState("750");
   const [totalRaised, setTotalRaised] = useState("0");
@@ -119,7 +118,8 @@ const PresaleSection = () => {
           <Stat label="Soft Cap" value={`${softCap} ETH`} />
           <Stat label="Hard Cap" value={`${hardCap} ETH`} />
           <Stat label="Total Raised" value={`${totalRaised} ETH`} />
-          <div className="col-span-2">
+          <Stat label="Live on Uniswap" value="✅ Yes" />
+          <div className="col-span-3">
             <p className="text-sm text-gray-600">Ends In</p>
             <p className="text-lg font-semibold text-blue-600">
               <Countdown date={presaleEnd} />
@@ -150,12 +150,23 @@ const PresaleSection = () => {
           className="w-full p-2 border rounded mb-4"
           placeholder="e.g. 0.5"
         />
-        <button
-          onClick={handleContribute}
-          className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded"
-        >
-          💸 Contribute Now
-        </button>
+        {new Date() < presaleEnd ? (
+          <button
+            onClick={handleContribute}
+            className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded"
+          >
+            💸 Contribute Now
+          </button>
+        ) : (
+          <a
+            href="https://app.uniswap.org/explore/tokens/polygon/0x15d3f466d34df102383760ccc70f9f970fcead09"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-center bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded"
+          >
+            🦄 Buy on Uniswap
+          </a>
+        )}
       </div>
 
       <div className="bg-white shadow p-4 rounded mb-6">
@@ -214,6 +225,7 @@ const PresaleSection = () => {
           <li><strong>How is the token distributed?</strong> Through smart contracts with vesting logic. See tokenomics section.</li>
           <li><strong>What if I refer a friend?</strong> You get a 5% bonus in tokens when your link is used.</li>
           <li><strong>When can I claim?</strong> After the presale ends (July 4, 2025), tokens become claimable.</li>
+          <li><strong>Can I buy IMALI outside of the presale?</strong> Yes! IMALI is already live on <a href="https://app.uniswap.org/explore/tokens/polygon/0x15d3f466d34df102383760ccc70f9f970fcead09" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Uniswap</a>.</li>
         </ul>
       </div>
     </section>
