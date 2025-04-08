@@ -10,8 +10,9 @@ import LPTokenABI from "./utils/LPTokenABI.json";
 import DAOABI from "./utils/IMALIDAOABI.json";
 import PresaleABI from "./utils/PresaleABI.json";
 import NFTABI from "./utils/IMALINFTABI.json";
+import FeeDistributorABI from "./utils/FeeDistributorABI.json";
+import LPLotteryABI from "./utils/LPLotteryABI.json";
 
-// Network IDs
 const ETHEREUM_MAINNET = 1;
 const POLYGON_MAINNET = 137;
 const BASE_MAINNET = 8453;
@@ -29,6 +30,8 @@ const CONTRACT_ADDRESSES = {
   DAO: { [POLYGON_MAINNET]: process.env.REACT_APP_DAO_POLYGON },
   Presale: { [POLYGON_MAINNET]: process.env.REACT_APP_PRESALE_POLYGON },
   NFT: { [POLYGON_MAINNET]: process.env.REACT_APP_NFT_POLYGON },
+  FeeDistributor: { [POLYGON_MAINNET]: process.env.REACT_APP_FEEDISTRIBUTOR_POLYGON },
+  LPLottery: { [POLYGON_MAINNET]: process.env.REACT_APP_LPLOTTERY_POLYGON },
 };
 
 // Contract ABIs
@@ -44,6 +47,8 @@ const CONTRACT_ABIS = {
   DAO: DAOABI,
   Presale: PresaleABI,
   NFT: NFTABI,
+  FeeDistributor: FeeDistributorABI,
+  LPLottery: LPLotteryABI,
 };
 
 // Network Configurations
@@ -187,3 +192,5 @@ export {
   POLYGON_MAINNET,
   BASE_MAINNET,
 };
+
+export default getContractInstance;
