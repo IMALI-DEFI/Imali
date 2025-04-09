@@ -1,31 +1,31 @@
-// 📦 Enhanced PresaleSection.js with NFT minting, token claim, chart, and referral
+// 📦 Enhanced PresaleSection.js with Animation, FAQ, Novice Instructions, Referral Support, Uniswap Info
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
 import { getContractInstance } from "../getContractInstance";
 import Countdown from "react-countdown";
 import { FaRegCopy } from "react-icons/fa";
-import { Line } from "react-chartjs-2";
-import Chart from "chart.js/auto";
+import FlowerAnimation from "../assets/animations/flower-opening.svg";
 import BronzeImg from "../assets/images/nfts/nft-tier-bronze.png";
 import SilverImg from "../assets/images/nfts/nft-tier-silver.png";
 import GoldImg from "../assets/images/nfts/nft-tier-gold.png";
 
 const tierData = [
-  { name: "Bronze", bonus: "5%", image: BronzeImg },
-  { name: "Silver", bonus: "10%", image: SilverImg },
-  { name: "Gold", bonus: "20%", image: GoldImg },
+  { name: "Bronze", bonus: "5%", image: BronzeImg, description: "Basic staking access" },
+  { name: "Silver", bonus: "10%", image: SilverImg, description: "Boosted APY + Yield access" },
+  { name: "Gold", bonus: "20%", image: GoldImg, description: "Highest APY + DAO Voting" },
 ];
 
 const PresaleSection = () => {
   const { account } = useWallet();
-  const [referrer, setReferrer] = useState(null);
-  const [referralLink, setReferralLink] = useState("");
-  const [contribution, setContribution] = useState("");
+  const [tokenPrice, setTokenPrice] = useState("0.005");
+  const [softCap, setSoftCap] = useState("300");
+  const [hardCap, setHardCap] = useState("750");
   const [totalRaised, setTotalRaised] = useState("0");
-  const [tokenClaimable, setTokenClaimable] = useState("0");
-  const [presaleEnd] = useState(new Date("2025-07-04T00:00:00Z"));
-  const [chartData, setChartData] = useState({ labels: [], datasets: [] });
+  const [contribution, setContribution] = useState("");
+  const [referralLink, setReferralLink] = useState("");
+  const [referrer, setReferrer] = useState(null);
+  const [presaleEnd, setPresaleEnd] = useState(new Date("2025-07-04T00:00:00Z"));
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
@@ -47,27 +47,8 @@ const PresaleSection = () => {
       const contract = await getContractInstance("Presale");
       const raised = await contract.totalRaised();
       setTotalRaised(ethers.formatEther(raised));
-
-      const tokens = await contract.getClaimableTokens(account);
-      setTokenClaimable(ethers.formatEther(tokens));
-
-      // Fake chart data for now
-      const labels = Array.from({ length: 7 }, (_, i) => `Day ${i + 1}`);
-      const values = Array.from({ length: 7 }, () => Math.random() * 100);
-      setChartData({
-        labels,
-        datasets: [
-          {
-            label: "Total Raised (ETH)",
-            data: values,
-            fill: true,
-            backgroundColor: "rgba(34,197,94,0.2)",
-            borderColor: "#22c55e",
-          },
-        ],
-      });
     } catch (err) {
-      console.error("Fetch error:", err);
+      console.error("Failed to fetch presale stats:", err);
     }
   };
 
@@ -81,36 +62,9 @@ const PresaleSection = () => {
       });
       await tx.wait();
       alert("✅ Contribution successful!");
-      fetchStats();
     } catch (err) {
+      console.error("Contribution failed:", err);
       alert("❌ Contribution failed");
-    }
-  };
-
-  const handleClaimTokens = async () => {
-    try {
-      const contract = await getContractInstance("Presale");
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const tx = await contract.connect(signer).claimTokens();
-      await tx.wait();
-      alert("✅ Tokens claimed!");
-      fetchStats();
-    } catch (err) {
-      alert("❌ Claim failed");
-    }
-  };
-
-  const handleMint = async (tier) => {
-    try {
-      const contract = await getContractInstance("NFT");
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const tx = await contract.connect(signer).mint(account);
-      await tx.wait();
-      alert(`✅ Minted ${tier} NFT`);
-    } catch (err) {
-      alert("❌ NFT Minting failed");
     }
   };
 
@@ -120,7 +74,7 @@ const PresaleSection = () => {
   };
 
   const calculateProgress = () => {
-    const hard = 750;
+    const hard = parseFloat(hardCap);
     const raised = parseFloat(totalRaised);
     return Math.min((raised / hard) * 100, 100);
   };
@@ -128,44 +82,69 @@ const PresaleSection = () => {
   return (
     <section className="p-6 max-w-4xl mx-auto">
       <h2 className="text-3xl font-bold text-center mb-6">🚀 IMALI Token Presale</h2>
-
-      <div className="bg-white shadow p-4 rounded mb-6">
-        <div className="text-center">
-          <Line data={chartData} />
-        </div>
-      </div>
-
-      <div className="bg-white shadow p-4 rounded mb-6">
-        <p className="mb-2 font-semibold">Total Raised: {totalRaised} ETH</p>
-        <div className="w-full bg-gray-200 rounded-full h-4">
-          <div className="bg-green-500 h-4 rounded-full transition-all duration-700" style={{ width: `${calculateProgress()}%` }}></div>
-        </div>
+      <div className="flex justify-center mb-6">
+        <img src={FlowerAnimation} alt="Presale Animation" className="w-40 h-40" />
       </div>
 
       <div className="bg-white p-4 rounded shadow mb-6">
+        <p className="text-gray-800 text-base mb-2 font-semibold">How It Works:</p>
+        <ul className="list-disc text-gray-600 pl-6">
+          <li>Connect your wallet using MetaMask, Trust Wallet, or Coinbase Wallet.</li>
+          <li>Enter the amount of ETH or MATIC to contribute (0.005 ETH = 1 IMALI).</li>
+          <li>Optional: Share your referral link to earn bonus tokens!</li>
+          <li>After July 4, 2025, return here to claim your tokens and rewards.</li>
+        </ul>
+      </div>
+
+      <div className="bg-white shadow rounded p-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
+          <Stat label="Token Price" value={`${tokenPrice} ETH`} />
+          <Stat label="Soft Cap" value={`${softCap} ETH`} />
+          <Stat label="Hard Cap" value={`${hardCap} ETH`} />
+          <Stat label="Total Raised" value={`${totalRaised} ETH`} />
+          <div className="col-span-2">
+            <p className="text-sm text-gray-600">Ends In</p>
+            <p className="text-lg font-semibold text-blue-600">
+              <Countdown date={presaleEnd} />
+            </p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <div className="text-sm text-gray-600 mb-1 flex justify-between">
+            <span>Progress</span>
+            <span>{calculateProgress().toFixed(2)}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-4">
+            <div className="bg-green-500 h-4 rounded-full transition-all duration-700" style={{ width: `${calculateProgress()}%` }}></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white shadow p-4 rounded mb-6">
+        <label className="block text-sm font-semibold mb-1">Your Contribution (ETH)</label>
         <input
           type="number"
           value={contribution}
           onChange={(e) => setContribution(e.target.value)}
-          placeholder="e.g. 0.5 ETH"
-          className="w-full p-2 border rounded mb-2"
+          className="w-full p-2 border rounded mb-4"
+          placeholder="e.g. 0.5"
         />
         <button
           onClick={handleContribute}
-          className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
+          className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded"
         >
           💸 Contribute Now
         </button>
       </div>
 
-      <div className="bg-white p-4 rounded shadow mb-6">
-        <label className="block text-sm font-semibold mb-1">Your Referral Link</label>
+      <div className="bg-white shadow p-4 rounded mb-6">
+        <label className="block text-sm font-semibold mb-2">Your Referral Link</label>
         <div className="flex gap-2 items-center">
           <input
             type="text"
             value={referralLink}
             readOnly
-            className="flex-1 p-2 border rounded"
+            className="flex-1 p-2 border rounded text-sm"
           />
           <button
             onClick={handleCopy}
@@ -176,48 +155,36 @@ const PresaleSection = () => {
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded shadow mb-6">
-        <h3 className="text-xl font-bold mb-4">🎁 Mint Your NFT Tier</h3>
-        <div className="grid md:grid-cols-3 gap-4">
-          {tierData.map(({ name, image, bonus }) => (
-            <div key={name} className="text-center p-4 border rounded-lg hover:shadow-md">
-              <img src={image} alt={`${name} Tier`} className="mx-auto h-32 mb-2" />
-              <h4 className="font-bold">{name} Tier</h4>
-              <p className="text-blue-600 text-sm mb-2">Bonus: {bonus}</p>
-              <button
-                onClick={() => handleMint(name)}
-                className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700"
-              >
-                Mint
-              </button>
-            </div>
-          ))}
-        </div>
+      <div className="bg-white p-4 rounded shadow mt-6">
+        <h3 className="text-xl font-bold mb-4">📘 Tokenomics Overview</h3>
+        <ul className="list-disc pl-6 text-gray-700 space-y-2">
+          <li>50% Presale Distribution</li>
+          <li>20% Liquidity Pool (locked)</li>
+          <li>15% Team (12-month vesting)</li>
+          <li>10% Marketing & Growth</li>
+          <li>5% Advisors</li>
+        </ul>
       </div>
 
-      <div className="bg-white p-4 rounded shadow mb-6">
-        <h3 className="text-xl font-bold mb-2">🎯 Claim Your Tokens</h3>
-        <p className="mb-2">Claimable: {tokenClaimable} IMALI</p>
-        <button
-          onClick={handleClaimTokens}
-          className="w-full bg-yellow-600 text-white py-2 rounded hover:bg-yellow-700"
-        >
-          Claim Tokens
-        </button>
-      </div>
-
-      <div className="text-center mt-6">
-        <a
-          href="https://app.uniswap.org/explore/tokens/polygon/0x15d3f466d34df102383760ccc70f9f970fcead09"
-          className="text-blue-500 underline hover:text-blue-700"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          View IMALI Token on Uniswap
-        </a>
+      <div className="bg-white p-4 rounded shadow mt-6">
+        <h3 className="text-xl font-bold mb-4">❓ FAQ</h3>
+        <ul className="list-disc pl-6 text-gray-700 space-y-2">
+          <li><strong>How do I contribute?</strong> Connect your wallet, input your contribution, and click "Contribute Now."</li>
+          <li><strong>Is there a referral bonus?</strong> Yes. You earn 5% bonus in IMALI tokens when someone contributes with your link.</li>
+          <li><strong>How are tokens distributed?</strong> You can claim your tokens after the presale ends through the claim page.</li>
+          <li><strong>Can I add liquidity?</strong> Yes, IMALI is live on Uniswap: <a href="https://app.uniswap.org/explore/tokens/polygon/0x15d3f466d34df102383760ccc70f9f970fcead09" target="_blank" className="text-blue-500 underline">View IMALI on Uniswap</a>.</li>
+          <li><strong>Do I need MATIC or ETH?</strong> IMALI supports MATIC for Polygon; ETH for Ethereum presale versions.</li>
+        </ul>
       </div>
     </section>
   );
 };
+
+const Stat = ({ label, value }) => (
+  <div>
+    <p className="text-sm text-gray-600">{label}</p>
+    <p className="text-lg font-semibold">{value}</p>
+  </div>
+);
 
 export default PresaleSection;
