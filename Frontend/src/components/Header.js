@@ -4,13 +4,13 @@ import Logo from "../assets/images/DefiFinanceLogo.png";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [logoSize, setLogoSize] = useState("h-10");
+  const [logoSize, setLogoSize] = useState("h-8");
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth < 640) setLogoSize("h-10");
-      else if (window.innerWidth < 1024) setLogoSize("h-8");
-      else setLogoSize("h-6");
+      if (window.innerWidth < 640) setLogoSize("h-6");
+      else if (window.innerWidth < 1024) setLogoSize("h-10"); // 25% larger for desktop
+      else setLogoSize("h-12"); // 50% larger on very large screens
     };
     handleResize();
     window.addEventListener("resize", handleResize);
@@ -30,17 +30,15 @@ const Header = () => {
 
   return (
     <header className="bg-white shadow-md w-full z-50">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center">
-            <img
-              src={Logo}
-              alt="IMALI DeFi Logo"
-              className={`${logoSize} w-auto transition-all duration-300`}
-            />
+      <div className="w-full px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 w-full">
+          {/* Logo - Always aligned far left */}
+          <Link to="/" className="flex items-center mr-auto">
+            <img src={Logo} alt="IMALI DeFi Logo" className={`${logoSize} w-auto transition-all duration-300`} />
             <span className="ml-2 text-lg font-bold text-green-700 hidden sm:block">IMALI DeFi</span>
           </Link>
 
+          {/* Mobile Menu Toggle */}
           <div className="sm:hidden">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -57,15 +55,14 @@ const Header = () => {
             </button>
           </div>
 
-          <nav
-            className={`${
-              isMenuOpen ? "block" : "hidden"
-            } sm:flex sm:items-center flex-col sm:flex-row absolute sm:static top-16 left-0 right-0 bg-white sm:bg-transparent shadow-md sm:shadow-none p-4 sm:p-0 space-y-2 sm:space-y-0 sm:space-x-4`}
-          >
+          {/* Navigation Links */}
+          <nav className={`
+            ${isMenuOpen ? "block" : "hidden"} 
+            sm:flex sm:items-center flex-col sm:flex-row absolute sm:static top-16 left-0 right-0 bg-white sm:bg-transparent 
+            shadow-md sm:shadow-none p-4 sm:p-0 space-y-2 sm:space-y-0 sm:space-x-4
+          `}>
             {links.map(([label, to]) => (
-              <NavLink key={to} to={to}>
-                {label}
-              </NavLink>
+              <NavLink key={to} to={to}>{label}</NavLink>
             ))}
           </nav>
         </div>

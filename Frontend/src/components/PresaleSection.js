@@ -1,3 +1,4 @@
+// 📦 PresaleSection.js (Updated for new referral-enabled ABI)
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
@@ -15,22 +16,6 @@ const tierData = [
   { name: "Gold", bonus: "20%", image: GoldImg, description: "Highest APY + DAO Voting" },
 ];
 
-const NFTPreview = ({ tier, image, bonus, description, onMint, gasEstimate }) => (
-  <div className="text-center p-4 border rounded-lg hover:shadow-md transition-shadow relative">
-    <img src={image} alt={`${tier} Tier NFT`} className="mx-auto h-40 object-contain mb-2" />
-    <h4 className="font-bold text-lg">{tier} Tier</h4>
-    <p className="text-sm text-gray-600 mb-2">{description}</p>
-    <p className="text-sm text-blue-600">🎁 Bonus: {bonus}</p>
-    {gasEstimate && <p className="text-xs text-gray-400 mt-1">Est. Gas: {gasEstimate} MATIC</p>}
-    <button
-      onClick={onMint}
-      className="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded text-sm"
-    >
-      Mint {tier}
-    </button>
-  </div>
-);
-
 const PresaleSection = () => {
   const { account } = useWallet();
   const [tokenPrice, setTokenPrice] = useState("0.005");
@@ -39,14 +24,21 @@ const PresaleSection = () => {
   const [totalRaised, setTotalRaised] = useState("0");
   const [contribution, setContribution] = useState("");
   const [referralLink, setReferralLink] = useState("");
+  const [referrer, setReferrer] = useState(null);
   const [presaleEnd, setPresaleEnd] = useState(new Date("2025-07-04T00:00:00Z"));
-  const [gasEstimates, setGasEstimates] = useState({});
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const ref = query.get("ref");
+    if (ethers.isAddress(ref) && ref.toLowerCase() !== account?.toLowerCase()) {
+      setReferrer(ref);
+    }
+  }, [account]);
 
   useEffect(() => {
     if (account) {
       setReferralLink(`${window.location.origin}/presale?ref=${account}`);
       fetchStats();
-      estimateGasForTiers();
     }
   }, [account]);
 
@@ -60,35 +52,12 @@ const PresaleSection = () => {
     }
   };
 
-  const estimateGasForTiers = async () => {
-    try {
-      const contract = await getContractInstance("NFT");
-      const estimates = {};
-      for (const tier of tierData) {
-        const estimatedGas = await contract.estimateGas.mint(account);
-        estimates[tier.name] = ethers.formatUnits(estimatedGas, "gwei").slice(0, 5);
-      }
-      setGasEstimates(estimates);
-    } catch (e) {
-      console.warn("Gas estimation failed", e);
-    }
-  };
-
-  const handleMint = (tier) => {
-    alert(`Minting ${tier} Tier NFT...`);
-  };
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(referralLink);
-    alert("Copied referral link!");
-  };
-
   const handleContribute = async () => {
     try {
       const contract = await getContractInstance("Presale");
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const tx = await contract.connect(signer).participate({
+      const tx = await contract.connect(signer).participate(referrer || ethers.ZeroAddress, {
         value: ethers.parseEther(contribution),
       });
       await tx.wait();
@@ -97,6 +66,11 @@ const PresaleSection = () => {
       console.error("Contribution failed:", err);
       alert("❌ Contribution failed");
     }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(referralLink);
+    alert("Copied referral link!");
   };
 
   const calculateProgress = () => {
@@ -118,8 +92,7 @@ const PresaleSection = () => {
           <Stat label="Soft Cap" value={`${softCap} ETH`} />
           <Stat label="Hard Cap" value={`${hardCap} ETH`} />
           <Stat label="Total Raised" value={`${totalRaised} ETH`} />
-          <Stat label="Live on Uniswap" value="✅ Yes" />
-          <div className="col-span-3">
+          <div className="col-span-2">
             <p className="text-sm text-gray-600">Ends In</p>
             <p className="text-lg font-semibold text-blue-600">
               <Countdown date={presaleEnd} />
@@ -133,10 +106,7 @@ const PresaleSection = () => {
             <span>{calculateProgress().toFixed(2)}%</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-4">
-            <div
-              className="bg-green-500 h-4 rounded-full transition-all duration-700"
-              style={{ width: `${calculateProgress()}%` }}
-            ></div>
+            <div className="bg-green-500 h-4 rounded-full transition-all duration-700" style={{ width: `${calculateProgress()}%` }}></div>
           </div>
         </div>
       </div>
@@ -150,23 +120,12 @@ const PresaleSection = () => {
           className="w-full p-2 border rounded mb-4"
           placeholder="e.g. 0.5"
         />
-        {new Date() < presaleEnd ? (
-          <button
-            onClick={handleContribute}
-            className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded"
-          >
-            💸 Contribute Now
-          </button>
-        ) : (
-          <a
-            href="https://app.uniswap.org/explore/tokens/polygon/0x15d3f466d34df102383760ccc70f9f970fcead09"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-center bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded"
-          >
-            🦄 Buy on Uniswap
-          </a>
-        )}
+        <button
+          onClick={handleContribute}
+          className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded"
+        >
+          💸 Contribute Now
+        </button>
       </div>
 
       <div className="bg-white shadow p-4 rounded mb-6">
@@ -187,24 +146,7 @@ const PresaleSection = () => {
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded shadow mb-6">
-        <h3 className="text-xl font-bold mb-4">🎁 NFT Tier Benefits</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {tierData.map(tier => (
-            <NFTPreview
-              key={tier.name}
-              tier={tier.name}
-              image={tier.image}
-              bonus={tier.bonus}
-              description={tier.description}
-              gasEstimate={gasEstimates[tier.name]}
-              onMint={() => handleMint(tier.name)}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white p-4 rounded shadow">
+      <div className="bg-white p-4 rounded shadow mt-6">
         <h3 className="text-xl font-bold mb-4">📘 Tokenomics Overview</h3>
         <ul className="list-disc pl-6 text-gray-700 space-y-2">
           <li>50% Presale Distribution</li>
@@ -225,47 +167,7 @@ const PresaleSection = () => {
           <li><strong>How is the token distributed?</strong> Through smart contracts with vesting logic. See tokenomics section.</li>
           <li><strong>What if I refer a friend?</strong> You get a 5% bonus in tokens when your link is used.</li>
           <li><strong>When can I claim?</strong> After the presale ends (July 4, 2025), tokens become claimable.</li>
-          <li><strong>Can I buy IMALI outside of the presale?</strong> Yes! IMALI is already live on <a href="https://app.uniswap.org/explore/tokens/polygon/0x15d3f466d34df102383760ccc70f9f970fcead09" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Uniswap</a>.</li>
         </ul>
-      </div>
-
-      <div className="bg-white p-4 rounded shadow mt-6 text-center">
-        <h3 className="text-xl font-bold mb-4">📢 Share the Presale</h3>
-        <p className="text-gray-700 mb-4">Spread the word and earn referral bonuses!</p>
-        <div className="flex justify-center gap-4 flex-wrap">
-          <a
-            href={`https://twitter.com/intent/tweet?text=🔥 Join the IMALI presale and earn crypto + NFT perks! ${encodeURIComponent(referralLink)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            Share on Twitter
-          </a>
-          <a
-            href={`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=Join the IMALI presale and earn bonuses!`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded"
-          >
-            Share on Telegram
-          </a>
-          <a
-            href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralLink)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded"
-          >
-            Share on Facebook
-          </a>
-          <a
-            href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(referralLink)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded"
-          >
-            Share on LinkedIn
-          </a>
-        </div>
       </div>
     </section>
   );

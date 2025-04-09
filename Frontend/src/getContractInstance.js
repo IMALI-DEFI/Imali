@@ -12,12 +12,16 @@ import PresaleABI from "./utils/PresaleABI.json";
 import NFTABI from "./utils/IMALINFTABI.json";
 import FeeDistributorABI from "./utils/FeeDistributorABI.json";
 import LPLotteryABI from "./utils/LPLotteryABI.json";
+import BuybackABI from "./utils/BuybackABI.json";
+import VestingVaultABI from "./utils/VestingVaultABI.json";
+import AirdropABI from "./utils/AirdropABI.json";
+import LiquidityManagerABI from "./utils/LiquidityManagerABI.json";
 
 const ETHEREUM_MAINNET = 1;
 const POLYGON_MAINNET = 137;
 const BASE_MAINNET = 8453;
 
-// Contract Addresses
+// Contract Addresses (Lending on Ethereum, all others on Polygon)
 const CONTRACT_ADDRESSES = {
   Lending: { [ETHEREUM_MAINNET]: process.env.REACT_APP_LENDING_ETHEREUM },
   YieldFarming: { [POLYGON_MAINNET]: process.env.REACT_APP_YIELDFARMING_POLYGON },
@@ -32,6 +36,10 @@ const CONTRACT_ADDRESSES = {
   NFT: { [POLYGON_MAINNET]: process.env.REACT_APP_NFT_POLYGON },
   FeeDistributor: { [POLYGON_MAINNET]: process.env.REACT_APP_FEEDISTRIBUTOR_POLYGON },
   LPLottery: { [POLYGON_MAINNET]: process.env.REACT_APP_LPLOTTERY_POLYGON },
+  Buyback: { [POLYGON_MAINNET]: process.env.REACT_APP_BUYBACK_ADDRESS },
+  VestingVault: { [POLYGON_MAINNET]: process.env.REACT_APP_VESTINGVAULT_ADDRESS },
+  AirdropDistributor: { [POLYGON_MAINNET]: process.env.REACT_APP_AIRDROPDISTRIBUTOR_ADDRESS },
+  LiquidityManager: { [POLYGON_MAINNET]: process.env.REACT_APP_LIQUIDITYMANAGER_ADDRESS },
 };
 
 // Contract ABIs
@@ -49,6 +57,10 @@ const CONTRACT_ABIS = {
   NFT: NFTABI,
   FeeDistributor: FeeDistributorABI,
   LPLottery: LPLotteryABI,
+  Buyback: BuybackABI,
+  VestingVault: VestingVaultABI,
+  AirdropDistributor: AirdropABI,
+  LiquidityManager: LiquidityManagerABI,
 };
 
 // Network Configurations
@@ -84,10 +96,8 @@ const NETWORK_CONFIGS = {
   },
 };
 
-// Contract Cache
 const contractCache = new Map();
 
-// Custom Error
 class ContractError extends Error {
   constructor(message, code, originalError) {
     super(message);
@@ -97,18 +107,17 @@ class ContractError extends Error {
   }
 }
 
-// Get contract instance
 export const getContractInstance = async (contractType, options = {}) => {
   try {
     const externalProvider = options.externalProvider;
-    const targetChainId = options.chainId || (contractType === "Lending" ? ETHEREUM_MAINNET : POLYGON_MAINNET);
+    const targetChainId = contractType === "Lending" ? ETHEREUM_MAINNET : POLYGON_MAINNET;
     const cacheKey = `${contractType}-${targetChainId}`;
 
     if (contractCache.has(cacheKey)) {
       return contractCache.get(cacheKey);
     }
 
-    const provider = externalProvider
+    let provider = externalProvider
       ? new BrowserProvider(externalProvider)
       : new BrowserProvider(window.ethereum);
     const network = await provider.getNetwork();
@@ -117,6 +126,10 @@ export const getContractInstance = async (contractType, options = {}) => {
 
     if (!isWalletConnect && network.chainId !== targetChainId) {
       await switchNetwork(targetChainId);
+      // ✅ Refresh provider after switching
+      provider = externalProvider
+        ? new BrowserProvider(externalProvider)
+        : new BrowserProvider(window.ethereum);
     }
 
     const contractAddress = CONTRACT_ADDRESSES[contractType]?.[targetChainId];
@@ -141,7 +154,6 @@ export const getContractInstance = async (contractType, options = {}) => {
     contractCache.set(cacheKey, contract);
     console.log(`✅ Loaded ${contractType} contract`, contract._debug);
     return contract;
-
   } catch (error) {
     console.error(`❌ Error creating ${contractType} contract:`, {
       message: error.message,
@@ -152,7 +164,6 @@ export const getContractInstance = async (contractType, options = {}) => {
   }
 };
 
-// Switch networks in MetaMask
 const switchNetwork = async (chainId) => {
   if (!window.ethereum?.request) throw new Error("No wallet available");
 
@@ -180,13 +191,11 @@ const switchNetwork = async (chainId) => {
   }
 };
 
-// Clear cache on account/network change
 if (typeof window !== "undefined" && window.ethereum) {
   window.ethereum.on("chainChanged", () => contractCache.clear());
   window.ethereum.on("accountsChanged", () => contractCache.clear());
 }
 
-// Exports
 export {
   ETHEREUM_MAINNET,
   POLYGON_MAINNET,
