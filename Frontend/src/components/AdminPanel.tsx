@@ -1,7 +1,9 @@
-// AdminPanel.js (Finalized with Predictive Analytics, Role Access, Social Tools + Scheduling + Buyback/Airdrop/Liquidity Integration)
+// components/AdminPanel.tsx
+"use client";
+
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import { getContractInstance } from '../getContractInstance';
+import { getContractInstance } from "../getContractInstance";
 import { useWallet } from "../context/WalletContext";
 import { Line } from "react-chartjs-2";
 import { FaRobot, FaCog, FaUserShield, FaUsers, FaShareAlt, FaClock } from "react-icons/fa";
@@ -26,27 +28,32 @@ ChartJS.register(
   Title
 );
 
-const AdminPanel = () => {
+interface ScheduledPost {
+  content: string;
+  time: Date;
+}
+
+const AdminPanel: React.FC = () => {
   const { account } = useWallet();
-  const [isOwner, setIsOwner] = useState(false);
-  const [role, setRole] = useState("");
-  const [status, setStatus] = useState("");
-  const [analyticsData, setAnalyticsData] = useState([]);
-  const [chartData, setChartData] = useState(null);
-  const [prediction, setPrediction] = useState(null);
-  const [shareContent, setShareContent] = useState("🚀 $IMALI just hit 10K in presale! Join the DeFi movement & stake with confidence. 🌐");
-  const [scheduledPosts, setScheduledPosts] = useState([]);
-  const [scheduleTime, setScheduleTime] = useState("");
+  const [isOwner, setIsOwner] = useState<boolean>(false);
+  const [role, setRole] = useState<string>("");
+  const [status, setStatus] = useState<string>("");
+  const [analyticsData, setAnalyticsData] = useState<{ day: string; value: number }[]>([]);
+  const [chartData, setChartData] = useState<any>(null);
+  const [prediction, setPrediction] = useState<string | null>(null);
+  const [shareContent, setShareContent] = useState<string>("\ud83d\ude80 $IMALI just hit 10K in presale! Join the DeFi movement & stake with confidence. \ud83c\udf10");
+  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
+  const [scheduleTime, setScheduleTime] = useState<string>("");
 
   useEffect(() => {
     const initAdmin = async () => {
       try {
         const contract = await getContractInstance("Lending");
         const owner = await contract.owner();
-        setIsOwner(account.toLowerCase() === owner.toLowerCase());
+        setIsOwner(account?.toLowerCase() === owner.toLowerCase());
 
-        if (account.toLowerCase() === owner.toLowerCase()) setRole("owner");
-        else if (account.toLowerCase().endsWith("73")) setRole("moderator");
+        if (account?.toLowerCase() === owner.toLowerCase()) setRole("owner");
+        else if (account?.toLowerCase().endsWith("73")) setRole("moderator");
         else setRole("analyst");
       } catch (e) {
         console.error("Admin check failed:", e);
@@ -80,7 +87,7 @@ const AdminPanel = () => {
       const tx = await contract.distribute();
       await tx.wait();
       alert("✅ Buyback distributed.");
-    } catch (err) {
+    } catch (err: any) {
       alert("❌ Buyback failed: " + err.message);
     }
   };
@@ -91,7 +98,7 @@ const AdminPanel = () => {
       const tx = await contract.executeAirdrop();
       await tx.wait();
       alert("✅ Airdrop sent.");
-    } catch (err) {
+    } catch (err: any) {
       alert("❌ Airdrop failed: " + err.message);
     }
   };
@@ -102,15 +109,15 @@ const AdminPanel = () => {
       const tx = await contract.addLiquidity();
       await tx.wait();
       alert("✅ Liquidity added.");
-    } catch (err) {
+    } catch (err: any) {
       alert("❌ Liquidity add failed: " + err.message);
     }
   };
 
-  const shareToSocial = (platform, content) => {
-    const message = encodeURIComponent(content || shareContent);
+  const shareToSocial = (platform: string, content: string = shareContent) => {
+    const message = encodeURIComponent(content);
     const base = "https://imali-defi.com";
-    const urls = {
+    const urls: Record<string, string> = {
       facebook: `https://www.facebook.com/sharer/sharer.php?u=${base}&quote=${message}`,
       linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${base}&summary=${message}`,
       twitter: `https://twitter.com/intent/tweet?text=${message}`,
@@ -125,7 +132,7 @@ const AdminPanel = () => {
 
   const handleSchedulePost = () => {
     if (!shareContent || !scheduleTime) return alert("Please add content and time");
-    const newTask = { content: shareContent, time: new Date(scheduleTime) };
+    const newTask: ScheduledPost = { content: shareContent, time: new Date(scheduleTime) };
     setScheduledPosts([...scheduledPosts, newTask]);
     setScheduleTime("");
   };
@@ -191,7 +198,7 @@ const AdminPanel = () => {
             <h4 className="font-semibold">🕓 Scheduled Posts:</h4>
             <ul className="list-disc list-inside text-sm text-gray-700">
               {scheduledPosts.map((post, i) => (
-                <li key={i}><strong>{post.time.toLocaleString()}:</strong> {post.content}</li>
+                <li key={i}><strong>{new Date(post.time).toLocaleString()}:</strong> {post.content}</li>
               ))}
             </ul>
           </div>
