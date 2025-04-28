@@ -1,6 +1,5 @@
-// src/utils/getContractInstance.ts
-
-import { BrowserProvider, Contract, ethers } from "ethers";
+// getContractInstance.ts
+import { BrowserProvider, Contract } from "ethers";
 
 // Import ABIs
 import LendingABI from "../utils/LendingABI.json";
@@ -19,26 +18,9 @@ import VestingVaultABI from "../utils/VestingVaultABI.json";
 import AirdropABI from "../utils/AirdropABI.json";
 import LiquidityManagerABI from "../utils/LiquidityManagerABI.json";
 
-const ETHEREUM_MAINNET = 1;
-const POLYGON_MAINNET = 137;
-const BASE_MAINNET = 8453;
-
-// Define contract type options
-export type ContractType =
-  | "Lending"
-  | "YieldFarming"
-  | "Staking"
-  | "Token"
-  | "LPToken"
-  | "DAO"
-  | "Presale"
-  | "NFT"
-  | "FeeDistributor"
-  | "LPLottery"
-  | "Buyback"
-  | "VestingVault"
-  | "AirdropDistributor"
-  | "LiquidityManager";
+export const ETHEREUM_MAINNET = 1;
+export const POLYGON_MAINNET = 137;
+export const BASE_MAINNET = 8453;
 
 const CONTRACT_ADDRESSES: Record<string, Record<number, string | undefined>> = {
   Lending: { [ETHEREUM_MAINNET]: process.env.REACT_APP_LENDING_ETHEREUM },
@@ -83,52 +65,49 @@ const CONTRACT_ABIS: Record<string, any> = {
 const contractCache = new Map<string, Contract>();
 
 export const getContractInstance = async (
-  contractType: ContractType,
+  contractType: string,
   options: { externalProvider?: any } = {}
 ): Promise<Contract> => {
-  try {
-    const externalProvider = options.externalProvider;
-    const targetChainId = contractType === "Lending" ? ETHEREUM_MAINNET : POLYGON_MAINNET;
-    const cacheKey = `${contractType}-${targetChainId}`;
+  const externalProvider = options.externalProvider;
+  const targetChainId = contractType === "Lending" ? ETHEREUM_MAINNET : POLYGON_MAINNET;
+  const cacheKey = `${contractType}-${targetChainId}`;
 
-    if (contractCache.has(cacheKey)) {
-      return contractCache.get(cacheKey)!;
-    }
+  if (contractCache.has(cacheKey)) {
+    return contractCache.get(cacheKey)!;
+  }
 
-    let provider = externalProvider
+  let provider = externalProvider
+    ? new BrowserProvider(externalProvider)
+    : new BrowserProvider(window.ethereum);
+
+  const network = await provider.getNetwork();
+  const isWalletConnect = externalProvider?.wc || externalProvider?.isWalletConnect;
+
+  if (!isWalletConnect && network.chainId !== targetChainId) {
+    await switchNetwork(targetChainId);
+    provider = externalProvider
       ? new BrowserProvider(externalProvider)
       : new BrowserProvider(window.ethereum);
-    const network = await provider.getNetwork();
-
-    if (!externalProvider && network.chainId !== targetChainId) {
-      await switchNetwork(targetChainId);
-      provider = new BrowserProvider(window.ethereum);
-    }
-
-    const contractAddress = CONTRACT_ADDRESSES[contractType]?.[targetChainId];
-    const contractABI = contractType === "Token"
-      ? CONTRACT_ABIS[contractType][targetChainId]
-      : CONTRACT_ABIS[contractType];
-
-    if (!contractAddress || !contractABI) {
-      throw new Error(`Missing config for ${contractType} on chain ${targetChainId}`);
-    }
-
-    const signer = await provider.getSigner();
-    const contract = new Contract(contractAddress, contractABI, signer);
-
-    contractCache.set(cacheKey, contract);
-    console.log(`✅ Loaded ${contractType} contract on chain ${targetChainId}`);
-
-    return contract;
-  } catch (error: any) {
-    console.error(`❌ Error loading contract [${contractType}]:`, error.message);
-    throw error;
   }
+
+  const contractAddress = CONTRACT_ADDRESSES[contractType]?.[targetChainId];
+  const contractABI = contractType === "Token"
+    ? CONTRACT_ABIS[contractType][targetChainId]
+    : CONTRACT_ABIS[contractType];
+
+  if (!contractAddress || !contractABI) {
+    throw new Error(`Missing configuration for ${contractType} on chain ${targetChainId}`);
+  }
+
+  const signer = await provider.getSigner();
+  const contract = new Contract(contractAddress, contractABI, signer);
+
+  contractCache.set(cacheKey, contract);
+  return contract;
 };
 
 const switchNetwork = async (chainId: number) => {
-  if (!window.ethereum?.request) throw new Error("Wallet not available");
+  if (!window.ethereum?.request) throw new Error("No wallet available");
 
   try {
     await window.ethereum.request({
@@ -136,8 +115,17 @@ const switchNetwork = async (chainId: number) => {
       params: [{ chainId: `0x${chainId.toString(16)}` }],
     });
   } catch (switchError: any) {
-    throw new Error("Network switch rejected or failed");
+    if (switchError.code === 4902) {
+      throw new Error("Unsupported network");
+    } else {
+      throw new Error("Network switch rejected");
+    }
   }
 };
 
-export { ETHEREUM_MAINNET, POLYGON_MAINNET, BASE_MAINNET };
+if (typeof window !== "undefined" && window.ethereum) {
+  window.ethereum.on("chainChanged", () => contractCache.clear());
+  window.ethereum.on("accountsChanged", () => contractCache.clear());
+}
+
+export default getContractInstance;
