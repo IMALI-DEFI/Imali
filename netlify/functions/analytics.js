@@ -1,63 +1,47 @@
 const { BetaAnalyticsDataClient } = require("@google-analytics/data");
 
 exports.handler = async () => {
-  // Debug environment variables
-  console.log("ENV VARIABLES:", {
-    client_email: !!process.env.GOOGLE_CLIENT_EMAIL,
-    private_key: !!process.env.GOOGLE_PRIVATE_KEY,
-    property_id: !!process.env.GA_PROPERTY_ID
-  });
-
   try {
-    // Validate environment variables
-    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
-      throw new Error("Missing Google Analytics credentials");
+    const privateKey = (process.env.GOOGLE_PRIVATE_KEY || '')
+      .replace(/\\n/g, '\n')
+      .trim();
+
+    if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+      throw new Error(`Invalid key format. Starts with: ${privateKey.substring(0, 20)}`);
     }
 
-    // Format private key (handle Netlify's environment variables)
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
-    
-    console.log("Private key snippet:", privateKey.substring(0, 25) + "...");
-    console.log("Is private key multi-line?", privateKey.includes('\n'));
-    console.log("Private key first few lines:", privateKey.split('\n').slice(0, 5));
+    const credentials = {
+      client_email: process.env.GOOGLE_CLIENT_EMAIL.trim(),
+      private_key: privateKey
+    };
 
-    const analyticsDataClient = new BetaAnalyticsDataClient({
-      credentials: {
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        private_key: privateKey
-      },
-    });
-
-    console.log("GA Client initialized successfully");
+    const analyticsDataClient = new BetaAnalyticsDataClient({ credentials });
 
     const [response] = await analyticsDataClient.runReport({
       property: `properties/${process.env.GA_PROPERTY_ID}`,
       dateRanges: [{ startDate: "7daysAgo", endDate: "today" }],
       dimensions: [{ name: "date" }],
-      metrics: [{ name: "activeUsers" }],
+      metrics: [{ name: "activeUsers" }]
     });
+
+    const rows = response.rows || [];
+
+    const formatted = rows.map(row => ({
+      date: row.dimensionValues[0].value,
+      users: row.metricValues[0].value
+    }));
 
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         success: true,
-        data: response.rows.map(row => ({
-          date: row.dimensionValues[0].value,
-          users: parseInt(row.metricValues[0].value)
-        }))
+        data: formatted
       })
     };
-
   } catch (error) {
-    console.error("FULL ERROR:", {
-      message: error.message,
-      stack: error.stack
-    });
-    
+    console.error("FULL ERROR:", error);
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         success: false,
         error: "Failed to fetch analytics",
