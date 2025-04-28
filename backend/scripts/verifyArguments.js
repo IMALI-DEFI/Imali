@@ -1,6 +1,0 @@
-module.exports = [
-    '0x15d3f466D34DF102383760CCc70f9F970fceAd09', // IMALI Token
-    '0xdd80C2DAB30FcEA038819E874BEeBF43c1DaC052', // LP Token
-    '0xaEC2ce7978994b508bA54982dd717723673D047a'  // Fee Recipient
-  ];
-  
