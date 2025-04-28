@@ -1,7 +1,7 @@
 // src/components/AdminPanel.js
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import { getContractInstance } from "../utils/getContractInstance";
+import { getContractInstance } from "../getContractInstance";
 import { useWallet } from "../context/WalletContext";
 import { Line } from "react-chartjs-2";
 import { TatumSDK } from "@tatumio/tatum";
