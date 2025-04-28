@@ -1,175 +1,147 @@
+// 📦 YieldFarming.js (New Refactored)
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
 import { getContractInstance } from "../getContractInstance";
-import { FaInfoCircle, FaCoins, FaWallet, FaPercentage, FaExclamationTriangle, FaCheckCircle, FaQuestionCircle } from "react-icons/fa";
-import YieldFarmingVisual from "../assets/images/farming.png";
+import farmingGuideImage from "../assets/images/farming-guide-visual.png";
+
 const YieldFarming = () => {
-  const { account, chainId, connectWallet, disconnectWallet, isConnecting, error } = useWallet();
-  const [stakingContract, setStakingContract] = useState(null);
-  const [farmBalance, setFarmBalance] = useState(0);
-  const [earnedRewards, setEarnedRewards] = useState(0);
-  const [apy, setApy] = useState(0);
+  const { account, connectWallet, disconnectWallet, provider } = useWallet();
+  const [farmingData, setFarmingData] = useState({ tvl: "Loading...", apy: "Loading...", rewards: "Loading..." });
   const [amount, setAmount] = useState("");
-  const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
-  const [lpBalance, setLpBalance] = useState(0);
-  useEffect(() => {
-    const initContract = async () => {
-      if (account && chainId) {
-        try {
-          const contract = await getContractInstance("Staking", chainId);
-          setStakingContract(contract);
-        } catch (error) {
-          console.error("Failed to initialize contract:", error);
-          setStatus("Failed to initialize contract.");
-        }
-      }
-    };
-    initContract();
-  }, [account, chainId]);
-  useEffect(() => {
-    fetchFarmData();
-  }, [stakingContract, account]);
-  const fetchFarmData = async () => {
-    if (!stakingContract || !account) return;
-    setLoading(true);
+  const [status, setStatus] = useState("");
+
+  const fetchFarmingStats = async () => {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const contract = await getContractInstance("YieldFarming");
       const signer = await provider.getSigner();
-      const stakedLPData = await stakingContract.lpStakers(account);
-      setEarnedRewards(ethers.formatUnits(stakedLPData.rewards, 18));
-      const lpTokenAddress = await stakingContract.lpToken();
-      const lpTokenContract = new ethers.Contract(lpTokenAddress, ["function balanceOf(address) view returns (uint256)"], signer);
-      const stakedLPToken = await lpTokenContract.balanceOf(await stakingContract.getAddress());
-      setFarmBalance(ethers.formatUnits(stakedLPToken, 18));
-      const userLpBalance = await lpTokenContract.balanceOf(account);
-      setLpBalance(ethers.formatUnits(userLpBalance, 18));
-      const rewardRate = await stakingContract.lpRewardRate();
-      const stakedTotal = parseFloat(ethers.formatUnits(stakedLPToken, 18));
-      const rateNum = parseFloat(ethers.formatUnits(rewardRate, 18));
-      const secondsInYear = 31536000;
-      const apyValue = stakedTotal > 0 ? ((rateNum * secondsInYear) / stakedTotal) * 100 : 0;
-      setApy(apyValue.toFixed(2));
+      const user = await signer.getAddress();
+
+      const [tvl, apy, rewards] = await Promise.all([
+        contract.totalStaked(),
+        contract.currentAPY(),
+        contract.pendingRewards(user)
+      ]);
+
+      setFarmingData({
+        tvl: Number(ethers.formatEther(tvl)).toFixed(2) + " IMALI",
+        apy: (Number(apy) / 100).toFixed(2) + "%",
+        rewards: Number(ethers.formatEther(rewards)).toFixed(4) + " IMALI"
+      });
     } catch (error) {
-      console.error("Failed to fetch farm data:", error);
-      setStatus("Failed to fetch farm data.");
-    } finally {
-      setLoading(false);
+      console.error("Error fetching farming stats:", error);
+      setFarmingData({ tvl: "Error", apy: "Error", rewards: "Error" });
     }
   };
 
-  const handleStakeLP = async () => {
-    if (!stakingContract || !amount) return;
+  const handleAction = async (action) => {
+    if (!account) return alert("Please connect your wallet.");
+
     setLoading(true);
+    setStatus("");
+
     try {
-      const tx = await stakingContract.stakeLP(ethers.parseUnits(amount, 18));
+      const contract = await getContractInstance("YieldFarming");
+      const signer = await provider.getSigner();
+
+      let tx;
+      if (action === "stake") {
+        tx = await contract.connect(signer).stake(ethers.parseEther(amount));
+      } else if (action === "unstake") {
+        tx = await contract.connect(signer).unstake(ethers.parseEther(amount));
+      } else if (action === "claim") {
+        tx = await contract.connect(signer).claimRewards();
+      }
+
       await tx.wait();
-      setStatus("Staking successful!");
-      fetchFarmData();
+      setAmount("");
+      setStatus("✅ Transaction successful!");
+      fetchFarmingStats();
     } catch (error) {
-      console.error("Staking failed:", error);
-      setStatus("Staking failed. Please try again.");
+      console.error("Transaction failed:", error);
+      setStatus("❌ Transaction failed: " + (error.message || "Unknown error"));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUnstakeLP = async () => {
-    if (!stakingContract || !amount) return;
-    setLoading(true);
-    try {
-      const tx = await stakingContract.unstakeLP(ethers.parseUnits(amount, 18));
-      await tx.wait();
-      setStatus("Unstaking successful!");
-      fetchFarmData();
-    } catch (error) {
-      console.error("Unstaking failed:", error);
-      setStatus("Unstaking failed. Please try again.");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (account && provider) {
+      fetchFarmingStats();
     }
-  };
+  }, [account, provider]);
 
-  const handleClaimRewards = async () => {
-    if (!stakingContract) return;
-    setLoading(true);
-    try {
-      const tx = await stakingContract.claimLPRewards();
-      await tx.wait();
-      setStatus("Rewards claimed successfully!");
-      fetchFarmData();
-    } catch (error) {
-      console.error("Claiming rewards failed:", error);
-      setStatus("Failed to claim rewards. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  return (
+    <section className="py-10 px-4">
+      <div className="container mx-auto">
 
-  if (!account) {
-    return (
-      <div className="p-8 text-center">
-	@@ -182,22 +230,22 @@ const YieldFarming = () => {
-              />
-              <div className="flex space-x-4 mt-4">
-                <button
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
-                  onClick={handleStakeLP}
-                  disabled={loading}
-                >
-                  {loading ? "Processing..." : "Stake"}
-                </button>
-                <button
-                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
-                  onClick={handleUnstakeLP}
-                  disabled={loading}
-                >
-                  {loading ? "Processing..." : "Unstake"}
-                </button>
-              </div>
-              <button
-                className="w-full px-4 py-2 mt-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
-                onClick={handleClaimRewards}
-                disabled={loading}
-              >
-                {loading ? "Processing..." : "Claim Rewards"}
-              </button>
+        {/* Wallet Connect Section */}
+        <div className="text-center mb-8">
+          {!account ? (
+            <button className="px-6 py-3 bg-green-500 text-white rounded-md" onClick={() => connectWallet('metamask')}>
+              Connect Wallet
+            </button>
+          ) : (
+            <div>
+              <p className="text-sm mb-2">Connected: {account.slice(0, 6)}...{account.slice(-4)}</p>
+              <button className="text-red-500 underline" onClick={disconnectWallet}>Disconnect</button>
             </div>
-          </div>
-          {status && <p className="mt-4 text-sm text-gray-600">{status}</p>}
+          )}
         </div>
-      </div>
-      <div className="mt-12 bg-gray-50 p-6 rounded-lg">
-        <h2 className="text-2xl font-semibold mb-4">Frequently Asked Questions</h2>
-        <div className="space-y-4">
-          <div>
-            <h3 className="font-medium">What are LP tokens?</h3>
-            <p className="text-gray-700">
-              LP tokens represent your share in a liquidity pool. You receive them when you provide liquidity to a decentralized exchange.
-            </p>
-          </div>
-          <div>
-            <h3 className="font-medium">How do I get LP tokens?</h3>
-            <p className="text-gray-700">
-              You can obtain LP tokens by providing an equal value of two tokens (e.g., IMALI and another token) to a liquidity pool on a decentralized exchange.
-            </p>
-          </div>
-          <div>
-            <h3 className="font-medium">What is APY?</h3>
-            <p className="text-gray-700">
-              APY (Annual Percentage Yield) is the rate of return earned on an investment over a year, taking into account the effect of compounding interest.
-            </p>
-          </div>
-          <div>
-            <h3 className="font-medium">Is there a lock-up period?</h3>
-            <p className="text-gray-700">
-              No, there is no lock-up period. You can unstake your LP tokens at any time.
-            </p>
-          </div>
+
+        {/* Farming Visual */}
+        <div className="flex justify-center">
+          <img src={farmingGuideImage} alt="Yield Farming Guide" className="rounded-lg shadow-md max-w-md" />
         </div>
+
+        {/* Stats Display */}
+        <div className="bg-white shadow-md rounded-lg p-6 my-8 text-center">
+          <h2 className="text-2xl font-bold mb-4">📈 Farming Stats</h2>
+          <p>💰 Total Value Locked (TVL): {farmingData.tvl}</p>
+          <p>🚀 Current APY: {farmingData.apy}</p>
+          <p>🎁 Your Pending Rewards: {farmingData.rewards}</p>
+        </div>
+
+        {/* Action Inputs */}
+        <div className="bg-white shadow-md rounded-lg p-6">
+          <h2 className="text-xl font-semibold mb-4">Stake / Unstake / Claim</h2>
+          <input
+            type="number"
+            placeholder="Enter amount (IMALI)"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="w-full p-2 border rounded-md mb-4"
+          />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button
+              onClick={() => handleAction("stake")}
+              disabled={loading}
+              className="bg-green-500 text-white py-2 rounded-md hover:bg-green-600"
+            >
+              Stake
+            </button>
+            <button
+              onClick={() => handleAction("unstake")}
+              disabled={loading}
+              className="bg-yellow-500 text-white py-2 rounded-md hover:bg-yellow-600"
+            >
+              Unstake
+            </button>
+            <button
+              onClick={() => handleAction("claim")}
+              disabled={loading}
+              className="bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600"
+            >
+              Claim Rewards
+            </button>
+          </div>
+          {status && <p className="mt-4 text-center font-semibold text-gray-700">{status}</p>}
+        </div>
+
       </div>
-    </div>
+    </section>
   );
 };
+
 export default YieldFarming;
