@@ -4,28 +4,24 @@ import { Link } from "react-router-dom";
 const Features = () => {
   const features = [
     {
-      icon: "🔒", // Emoji for Security
+      icon: "🔒",
       title: "AI-Secured Transactions",
-      description:
-        "Our platform uses advanced AI to ensure the highest level of security for your transactions.",
+      description: "Our platform uses advanced AI to ensure the highest level of security for your transactions.",
     },
     {
-      icon: "🌾", // Emoji for Yield Farming
+      icon: "🌾",
       title: "Yield Farming",
-      description:
-        "Earn rewards by providing liquidity to our decentralized finance ecosystem.",
+      description: "Earn rewards by providing liquidity to our decentralized finance ecosystem.",
     },
     {
-      icon: "💰", // Emoji for Staking
+      icon: "💰",
       title: "Staking",
-      description:
-        "Stake your tokens and earn passive income with competitive APY rates.",
+      description: "Stake your tokens and earn passive income with competitive APY rates.",
     },
     {
-      icon: "📜", // Emoji for Governance
+      icon: "📜",
       title: "Decentralized Governance",
-      description:
-        "Participate in platform decisions through our decentralized governance model.",
+      description: "Participate in platform decisions through our decentralized governance model.",
     },
   ];
 
@@ -35,6 +31,7 @@ const Features = () => {
         <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-center mb-12">
           Why Choose IMALI DeFi?
         </h2>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
           {features.map((feature, index) => (
             <div
@@ -49,9 +46,11 @@ const Features = () => {
             </div>
           ))}
         </div>
+
         <div className="text-center mt-12">
+          {/* Changed from "/features" to "/how-to-use" */}
           <Link
-            to="/how-to-use"  {/* Changed from "/features" to "/how-to-use" */}
+            to="/how-to-use"
             className="bg-green-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors duration-300"
             aria-label="Learn how to use all IMALI DeFi features"
           >
