@@ -1,14 +1,21 @@
 {
   "files": {
-    "main.css": "/static/css/main.dac6caad.css",
-    "main.js": "/static/js/main.3d37e4bb.js",
+    "main.css": "/static/css/main.a853e2a4.css",
+    "main.js": "/static/js/main.5e8ac569.js",
     "static/media/DefiFinanceLogo.png": "/static/media/DefiFinanceLogo.dcff41bee0ca5be66626.png",
+    "static/media/nft-tier-bronze.png": "/static/media/nft-tier-bronze.ccff4fa6b7fef835eaff.png",
+    "static/media/nft-tier-silver.png": "/static/media/nft-tier-silver.ffda00cff67d599f25e6.png",
+    "static/media/nft-tier-gold.png": "/static/media/nft-tier-gold.6991fa1a3521b0658ec1.png",
+    "static/media/fireworks.svg": "/static/media/fireworks.a8cbc48dc29c2b05043aa1527983964e.svg",
+    "static/media/nft-animation.svg": "/static/media/nft-animation.72ee172529b0fa302c27672513ee747d.svg",
     "index.html": "/index.html",
-    "main.dac6caad.css.map": "/static/css/main.dac6caad.css.map",
-    "main.3d37e4bb.js.map": "/static/js/main.3d37e4bb.js.map"
+    "static/media/flower-opening.svg": "/static/media/flower-opening.a865e080bf5d4a6a796b36466bb47e64.svg",
+    "static/media/vote-animation.svg": "/static/media/vote-animation.6b6635494b876efab189936000f33218.svg",
+    "main.a853e2a4.css.map": "/static/css/main.a853e2a4.css.map",
+    "main.5e8ac569.js.map": "/static/js/main.5e8ac569.js.map"
   },
   "entrypoints": [
-    "static/css/main.dac6caad.css",
-    "static/js/main.3d37e4bb.js"
+    "static/css/main.a853e2a4.css",
+    "static/js/main.5e8ac569.js"
   ]
 }
