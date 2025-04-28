@@ -43,14 +43,14 @@ const Hero = () => {
           <p className="text-lg sm:text-xl lg:text-2xl mb-8">{heroDescription}</p>
           <div className="flex justify-center lg:justify-start space-x-4">
             <Link
-              to="/presale"  {/* Updated to point to presale */}
+              to="/presale"  
               className="bg-white text-green-700 font-semibold py-3 px-6 rounded-lg hover:bg-green-100 transition-colors duration-300"
               aria-label="Get Started with IMALI DeFi"
             >
               Get Started
             </Link>
             <Link
-              to="/how-to-use"  {/* Updated to point to how-to-use */}
+              to="/how-to-use"  
               className="bg-transparent border-2 border-white text-white font-semibold py-3 px-6 rounded-lg hover:bg-white hover:text-green-700 transition-colors duration-300"
               aria-label="Learn More about IMALI DeFi"
             >
