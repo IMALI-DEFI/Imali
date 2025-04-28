@@ -194,3 +194,12 @@ const switchNetwork = async (chainId) => {
 if (typeof window !== "undefined" && window.ethereum) {
   window.ethereum.on("chainChanged", () => contractCache.clear());
   window.ethereum.on("accountsChanged", () => contractCache.clear());
+}
+
+export {
+  ETHEREUM_MAINNET,
+  POLYGON_MAINNET,
+  BASE_MAINNET,
+};
+
+export default getContractInstance;
