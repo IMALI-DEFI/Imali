@@ -1,9 +1,8 @@
-// src/components/Lending.js
-
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
 import { getContractInstance } from "../getContractInstance";
+import lendingGuideImage from "../assets/images/lending-guide-visual.png";
 import { FaEthereum, FaCoins, FaPercentage } from "react-icons/fa";
 
 const Lending = () => {
@@ -69,8 +68,16 @@ const Lending = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-4">
+      <div className="flex flex-col items-center mb-8">
+        <img src={lendingGuideImage} alt="Lending Guide" className="w-full max-w-md rounded-lg mb-4" />
+        <h1 className="text-3xl font-bold text-green-700">Lending Made Simple with IMALI</h1>
+        <p className="text-gray-700 mt-2 text-center max-w-2xl">
+          IMALI lets you use your crypto without selling it. Deposit assets like ETH, IMALI, or MATIC as collateral and borrow stablecoins while keeping ownership of your digital wealth!
+        </p>
+      </div>
+
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">💸 Lending Dashboard</h1>
+        <h1 className="text-2xl font-bold">💸 Lending Dashboard</h1>
         <button
           onClick={disconnectWallet}
           className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded"
