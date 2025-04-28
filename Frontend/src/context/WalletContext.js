@@ -1,4 +1,7 @@
-import React, { createContext, useState, useContext, useEffect } from "react";
+// WalletContext.js
+import { createContext, useState, useEffect, useCallback } from 'react';
+import WalletConnectProvider from '@walletconnect/web3-provider';
+import { ethers } from 'ethers';
 
 const WalletContext = createContext();
 
@@ -6,91 +9,104 @@ export const WalletProvider = ({ children }) => {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
   const [error, setError] = useState(null);
-  const [isMobile, setIsMobile] = useState(false);
-  const [showMobilePrompt, setShowMobilePrompt] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [provider, setProvider] = useState(null);
 
-  useEffect(() => {
-    // Check if user is on mobile
-    setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+  // Mobile detection
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
 
-    if (window.ethereum) {
-      window.ethereum.on("accountsChanged", (accounts) => {
-        setAccount(accounts.length > 0 ? accounts[0] : null);
-      });
+  const connectWallet = useCallback(async (walletType) => {
+    setIsConnecting(true);
+    setError(null);
 
-      window.ethereum.on("chainChanged", (newChainId) => {
-        setChainId(parseInt(newChainId));
-        window.location.reload(); // Recommended to reload on chain change
-      });
-
-      const getInitialData = async () => {
-        try {
-          const accounts = await window.ethereum.request({ method: "eth_accounts" });
-          if (accounts.length > 0) setAccount(accounts[0]);
-          const chainId = await window.ethereum.request({ method: "eth_chainId" });
-          setChainId(parseInt(chainId));
-        } catch (error) {
-          console.error("Error getting initial wallet data:", error);
+    try {
+      let web3Provider;
+      
+      if (walletType === 'metamask') {
+        if (!window.ethereum) {
+          if (isMobile()) {
+            // Deep link to MetaMask mobile app
+            window.location.href = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`;
+            return;
+          }
+          throw new Error('Please install MetaMask');
         }
-      };
-      getInitialData();
+        web3Provider = new ethers.BrowserProvider(window.ethereum);
+        const accounts = await web3Provider.send("eth_requestAccounts", []);
+        setAccount(accounts[0]);
+      } 
+      else if (walletType === 'walletconnect') {
+        const walletConnectProvider = new WalletConnectProvider({
+          rpc: {
+            1: "https://mainnet.infura.io/v3/YOUR_INFURA_ID",
+            56: "https://bsc-dataseed.binance.org/",
+            137: "https://polygon-rpc.com/"
+          },
+          qrcodeModalOptions: {
+            mobileLinks: isMobile() ? ['metamask', 'trust'] : []
+          }
+        });
+        
+        await walletConnectProvider.enable();
+        web3Provider = new ethers.BrowserProvider(walletConnectProvider);
+        const signer = await web3Provider.getSigner();
+        setAccount(await signer.getAddress());
+      }
+
+      const network = await web3Provider.getNetwork();
+      setChainId(Number(network.chainId));
+      setProvider(web3Provider);
+      
+    } catch (err) {
+      console.error("Connection error:", err);
+      setError(err.message || "Connection failed");
+    } finally {
+      setIsConnecting(false);
     }
   }, []);
 
-  const openInMetaMaskMobile = () => {
-    const dAppUrl = window.location.href.replace(/^https?:\/\//, '');
-    const metamaskAppUrl = `https://metamask.app.link/dapp/${dAppUrl}`;
-
-    // Attempt to open MetaMask
-    window.location.href = metamaskAppUrl;
-
-    // Immediately redirect to app store.  MetaMask will handle opening if installed.
-    if (navigator.userAgent.match(/Android/i)) {
-      window.location.href = "https://play.google.com/store/apps/details?id=io.metamask";
-    } else if (navigator.userAgent.match(/iPhone|iPad|iPod/i)) {
-      window.location.href = "https://apps.apple.com/us/app/metamask-blockchain-wallet/id1438144202";
-    }
-  };
-
-  const connectWallet = async () => {
-    if (!window.ethereum) {
-      if (isMobile) {
-        setShowMobilePrompt(true);
-      } else {
-        setError("MetaMask not installed. Please install the extension.");
-      }
-      return;
-    }
-
-    try {
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      if (accounts.length > 0) {
-        setAccount(accounts[0]);
-        setError(null);
-      }
-    } catch (error) {
-      console.error("Wallet connection error:", error);
-      setError(error.message);
-    }
-  };
-
-  const disconnectWallet = () => {
+  const disconnectWallet = useCallback(() => {
     setAccount(null);
+    setChainId(null);
+    setProvider(null);
     setError(null);
-  };
+  }, []);
+
+  // Check if wallet is already connected
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (window.ethereum?.selectedAddress) {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const accounts = await provider.send("eth_accounts", []);
+        if (accounts.length > 0) {
+          const network = await provider.getNetwork();
+          setAccount(accounts[0]);
+          setChainId(Number(network.chainId));
+          setProvider(provider);
+        }
+      }
+    };
+    checkConnection();
+  }, []);
 
   return (
-    <WalletContext.Provider value={{
-      account,
-      chainId,
-      error,
-      isMobile,
-      showMobilePrompt,
-      connectWallet,
-      disconnectWallet,
-      openInMetaMaskMobile,
-      setShowMobilePrompt
-    }}>
+    <WalletContext.Provider
+      value={{
+        account,
+        chainId,
+        error,
+        isConnecting,
+        provider,
+        connectWallet,
+        disconnectWallet,
+        getSigner: async () => {
+          if (!provider) throw new Error("Not connected");
+          return await provider.getSigner();
+        }
+      }}
+    >
       {children}
     </WalletContext.Provider>
   );
