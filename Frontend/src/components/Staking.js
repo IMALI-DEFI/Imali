@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
 import { getContractInstance } from "../getContractInstance";
-import stakingVisual from "../assets/images/staking-visual.png"; // Your new staking image
+import stakingVisual from "../assets/images/staking-banner.png"; // Your new staking image
 import { FaCoins, FaChartLine, FaSeedling } from "react-icons/fa";
 
 const Staking = () => {
