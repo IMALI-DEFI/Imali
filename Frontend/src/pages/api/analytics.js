@@ -1,37 +1,31 @@
-// src/api/analytics.js
+// src/pages/api/analytics.js
 
-/**
- * Fetches user engagement data from your backend API.
- * The backend must call the Google Analytics Data API.
- */
-export async function fetchUserEngagement() {
-    try {
-      const response = await fetch("/api/user-engagement");
-      if (!response.ok) {
-        throw new Error("Failed to fetch GA analytics");
-      }
-  
-      const data = await response.json();
-  
-      // Optional: Format date if needed
-      return data.map(item => ({
-        ...item,
-        day: formatDate(item.day)
-      }));
-    } catch (error) {
-      console.error("Analytics fetch failed:", error.message);
-      throw error;
-    }
-  }
-  
-  function formatDate(dateStr) {
-    // Convert '20240420' → 'Apr 20'
-    const year = dateStr.slice(0, 4);
-    const month = parseInt(dateStr.slice(4, 6)) - 1;
-    const day = dateStr.slice(6, 8);
-    return new Date(year, month, day).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric"
+import { BetaAnalyticsDataClient } from "@google-analytics/data";
+
+export default async function handler(req, res) {
+  const analyticsDataClient = new BetaAnalyticsDataClient({
+    credentials: {
+      client_email: process.env.GOOGLE_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    },
+  });
+
+  try {
+    const [response] = await analyticsDataClient.runReport({
+      property: `properties/${process.env.GA_PROPERTY_ID}`,
+      dateRanges: [{ startDate: "7daysAgo", endDate: "today" }],
+      dimensions: [{ name: "date" }],
+      metrics: [{ name: "activeUsers" }],
     });
+
+    const formattedData = response.rows.map(row => ({
+      day: row.dimensionValues[0].value,
+      value: Number(row.metricValues[0].value),
+    }));
+
+    res.status(200).json(formattedData);
+  } catch (error) {
+    console.error("GA4 fetch error:", error);
+    res.status(500).send("Error fetching analytics data");
   }
-  
+}
