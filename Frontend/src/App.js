@@ -12,7 +12,7 @@ import PresaleSection from "./components/PresaleSection";
 import NFTMinting from "./components/NFTMinting";
 import DAODashboard from "./components/DAODashboard";
 import HowToUse from "./components/HowToUse";
-import Admin from "./components/AdminPanel";
+import Admin from "./components/AdminPanel.tsx";
 
 const App = () => {
   return (
