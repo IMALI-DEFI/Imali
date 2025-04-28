@@ -1,157 +1,196 @@
-import { BrowserProvider, Contract } from "ethers";
+import { BrowserProvider, Contract, ethers } from "ethers";
 
-// Import all ABIs
+// Import ABIs
 import LendingABI from "./utils/LendingABI.json";
 import YieldFarmingABI from "./utils/YieldFarmingABI.json";
 import StakingABI from "./utils/StakingABI.json";
-import TokenABI from "./utils/TokenABI.json";
+import TokenPolygonABI from "./utils/TokenABI.json";
+import TokenBaseABI from "./utils/IMALITOKENBASEABI.json";
 import LPTokenABI from "./utils/LPTokenABI.json";
 import DAOABI from "./utils/IMALIDAOABI.json";
 import PresaleABI from "./utils/PresaleABI.json";
 import NFTABI from "./utils/IMALINFTABI.json";
+import FeeDistributorABI from "./utils/FeeDistributorABI.json";
+import LPLotteryABI from "./utils/LPLotteryABI.json";
+import BuybackABI from "./utils/BuybackABI.json";
+import VestingVaultABI from "./utils/VestingVaultABI.json";
+import AirdropABI from "./utils/AirdropABI.json";
+import LiquidityManagerABI from "./utils/LiquidityManagerABI.json";
 
-// Network IDs
 const ETHEREUM_MAINNET = 1;
 const POLYGON_MAINNET = 137;
+const BASE_MAINNET = 8453;
 
-// Contract addresses configuration
+// Contract Addresses (Lending on Ethereum, all others on Polygon)
 const CONTRACT_ADDRESSES = {
-  Lending: {
-    [ETHEREUM_MAINNET]: process.env.REACT_APP_LENDING_ETHEREUM,
-  },
-  YieldFarming: {
-    [POLYGON_MAINNET]: process.env.REACT_APP_YIELDFARMING_POLYGON,
-  },
-  Staking: {
-    [POLYGON_MAINNET]: process.env.REACT_APP_STAKING_POLYGON,
-  },
+  Lending: { [ETHEREUM_MAINNET]: process.env.REACT_APP_LENDING_ETHEREUM },
+  YieldFarming: { [POLYGON_MAINNET]: process.env.REACT_APP_YIELDFARMING_POLYGON },
+  Staking: { [POLYGON_MAINNET]: process.env.REACT_APP_STAKING_POLYGON },
   Token: {
     [POLYGON_MAINNET]: process.env.REACT_APP_TOKEN_POLYGON,
+    [BASE_MAINNET]: process.env.REACT_APP_TOKEN_BASE,
   },
-  LPToken: {
-    [POLYGON_MAINNET]: process.env.REACT_APP_LPTOKEN_POLYGON,
-  },
-  DAO: {
-    [POLYGON_MAINNET]: process.env.REACT_APP_DAO_POLYGON,
-  },
-  Presale: {
-    [POLYGON_MAINNET]: process.env.REACT_APP_PRESALE_POLYGON,
-  },
-  NFT: {
-    [POLYGON_MAINNET]: process.env.REACT_APP_NFT_POLYGON,
-  }
+  LPToken: { [POLYGON_MAINNET]: process.env.REACT_APP_LPTOKEN_POLYGON },
+  DAO: { [POLYGON_MAINNET]: process.env.REACT_APP_DAO_POLYGON },
+  Presale: { [POLYGON_MAINNET]: process.env.REACT_APP_PRESALE_POLYGON },
+  NFT: { [POLYGON_MAINNET]: process.env.REACT_APP_NFT_POLYGON },
+  FeeDistributor: { [POLYGON_MAINNET]: process.env.REACT_APP_FEEDISTRIBUTOR_POLYGON },
+  LPLottery: { [POLYGON_MAINNET]: process.env.REACT_APP_LPLOTTERY_POLYGON },
+  Buyback: { [POLYGON_MAINNET]: process.env.REACT_APP_BUYBACK_ADDRESS },
+  VestingVault: { [POLYGON_MAINNET]: process.env.REACT_APP_VESTINGVAULT_ADDRESS },
+  AirdropDistributor: { [POLYGON_MAINNET]: process.env.REACT_APP_AIRDROPDISTRIBUTOR_ADDRESS },
+  LiquidityManager: { [POLYGON_MAINNET]: process.env.REACT_APP_LIQUIDITYMANAGER_ADDRESS },
 };
 
+// Contract ABIs
 const CONTRACT_ABIS = {
   Lending: LendingABI,
   YieldFarming: YieldFarmingABI,
   Staking: StakingABI,
-  Token: TokenABI,
+  Token: {
+    [POLYGON_MAINNET]: TokenPolygonABI,
+    [BASE_MAINNET]: TokenBaseABI,
+  },
   LPToken: LPTokenABI,
   DAO: DAOABI,
   Presale: PresaleABI,
-  NFT: NFTABI
+  NFT: NFTABI,
+  FeeDistributor: FeeDistributorABI,
+  LPLottery: LPLotteryABI,
+  Buyback: BuybackABI,
+  VestingVault: VestingVaultABI,
+  AirdropDistributor: AirdropABI,
+  LiquidityManager: LiquidityManagerABI,
 };
 
-// Network configuration for switching
+// Network Configurations
 const NETWORK_CONFIGS = {
   [ETHEREUM_MAINNET]: {
     chainName: "Ethereum Mainnet",
-    nativeCurrency: { name: "ETH", decimals: 18, symbol: "ETH" },
-    rpcUrls: ["https://mainnet.infura.io/v3/YOUR_INFURA_KEY"],
-    blockExplorerUrls: ["https://etherscan.io"]
+    nativeCurrency: { name: "Ethereum", decimals: 18, symbol: "ETH" },
+    rpcUrls: [
+      `https://mainnet.infura.io/v3/${process.env.REACT_APP_INFURA_KEY}`,
+      "https://eth.llamarpc.com",
+      "https://rpc.ankr.com/eth",
+    ],
+    blockExplorerUrls: ["https://etherscan.io"],
   },
   [POLYGON_MAINNET]: {
     chainName: "Polygon Mainnet",
-    nativeCurrency: { name: "MATIC", decimals: 18, symbol: "MATIC" },
-    rpcUrls: ["https://polygon-rpc.com"],
-    blockExplorerUrls: ["https://polygonscan.com"]
-  }
+    nativeCurrency: { name: "Matic", decimals: 18, symbol: "MATIC" },
+    rpcUrls: [
+      "https://polygon-rpc.com",
+      "https://rpc-mainnet.matic.quiknode.pro",
+      "https://polygon-rpc.gateway.pokt.network",
+    ],
+    blockExplorerUrls: ["https://polygonscan.com"],
+  },
+  [BASE_MAINNET]: {
+    chainName: "Base Mainnet",
+    nativeCurrency: { name: "Ethereum", decimals: 18, symbol: "ETH" },
+    rpcUrls: [
+      "https://mainnet.base.org",
+      "https://base.llamarpc.com",
+    ],
+    blockExplorerUrls: ["https://basescan.org"],
+  },
 };
 
-let provider;
+const contractCache = new Map();
 
-const getContractInstance = async (contractType, options = {}) => {
+class ContractError extends Error {
+  constructor(message, code, originalError) {
+    super(message);
+    this.name = "ContractError";
+    this.code = code;
+    this.originalError = originalError;
+  }
+}
+
+export const getContractInstance = async (contractType, options = {}) => {
   try {
-    // 1. Validate environment
-    if (!window.ethereum) {
-      throw new Error("MetaMask not detected");
+    const externalProvider = options.externalProvider;
+    const targetChainId = contractType === "Lending" ? ETHEREUM_MAINNET : POLYGON_MAINNET;
+    const cacheKey = `${contractType}-${targetChainId}`;
+
+    if (contractCache.has(cacheKey)) {
+      return contractCache.get(cacheKey);
     }
 
-    // 2. Determine target network
-    const targetChainId = options.chainId || 
-      (contractType === "Lending" ? ETHEREUM_MAINNET : POLYGON_MAINNET);
-
-    // 3. Initialize or refresh provider
-    provider = new BrowserProvider(window.ethereum);
-
-    // 4. Check current network
+    let provider = externalProvider
+      ? new BrowserProvider(externalProvider)
+      : new BrowserProvider(window.ethereum);
     const network = await provider.getNetwork();
-    
-    // 5. Handle network switching if needed
-    if (network.chainId !== targetChainId) {
-      try {
-        await window.ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: `0x${targetChainId.toString(16)}` }],
-        });
-        
-        // Wait for network switch to complete
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        provider = new BrowserProvider(window.ethereum); // Refresh provider
-      } catch (switchError) {
-        if (switchError.code === 4902) {
-          // Network not added, try to add it
-          try {
-            await window.ethereum.request({
-              method: "wallet_addEthereumChain",
-              params: [{
-                chainId: `0x${targetChainId.toString(16)}`,
-                ...NETWORK_CONFIGS[targetChainId]
-              }]
-            });
-            provider = new BrowserProvider(window.ethereum); // Refresh provider
-          } catch (addError) {
-            throw new Error(`Failed to add network ${targetChainId}: ${addError.message}`);
-          }
-        } else {
-          throw new Error(`Failed to switch to network ${targetChainId}: ${switchError.message}`);
-        }
-      }
+
+    const isWalletConnect = externalProvider?.wc || externalProvider?.isWalletConnect;
+
+    if (!isWalletConnect && network.chainId !== targetChainId) {
+      await switchNetwork(targetChainId);
+      // ✅ Refresh provider after switching
+      provider = externalProvider
+        ? new BrowserProvider(externalProvider)
+        : new BrowserProvider(window.ethereum);
     }
 
-    // 6. Validate contract configuration
     const contractAddress = CONTRACT_ADDRESSES[contractType]?.[targetChainId];
-    if (!contractAddress) {
-      throw new Error(`No address configured for ${contractType} on chain ${targetChainId}`);
+    const contractABI = contractType === "Token"
+      ? CONTRACT_ABIS[contractType][targetChainId]
+      : CONTRACT_ABIS[contractType];
+
+    if (!contractAddress || !contractABI) {
+      throw new ContractError(`Missing config for ${contractType} on chain ${targetChainId}`, "CONFIG_MISSING");
     }
 
-    const contractABI = CONTRACT_ABIS[contractType];
-    if (!contractABI) {
-      throw new Error(`No ABI configured for ${contractType}`);
-    }
-
-    // 7. Create contract instance
     const signer = await provider.getSigner();
     const contract = new Contract(contractAddress, contractABI, signer);
 
-    console.log(`Created ${contractType} contract instance`, {
+    contract._debug = {
+      type: contractType,
       address: contractAddress,
-      network: targetChainId
-    });
+      chainId: targetChainId,
+      network: NETWORK_CONFIGS[targetChainId]?.chainName,
+    };
 
+    contractCache.set(cacheKey, contract);
+    console.log(`✅ Loaded ${contractType} contract`, contract._debug);
     return contract;
   } catch (error) {
-    console.error(`Failed to initialize ${contractType} contract:`, error);
+    console.error(`❌ Error creating ${contractType} contract:`, {
+      message: error.message,
+      code: error.code,
+      originalError: error.originalError,
+    });
     throw error;
   }
 };
 
-// Handle chain changes
-if (window.ethereum) {
-  window.ethereum.on('chainChanged', () => {
-    provider = new BrowserProvider(window.ethereum); // Refresh provider
-  });
-}
+const switchNetwork = async (chainId) => {
+  if (!window.ethereum?.request) throw new Error("No wallet available");
 
-export default getContractInstance;
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: `0x${chainId.toString(16)}` }],
+    });
+  } catch (switchError) {
+    if (switchError.code === 4902) {
+      const config = NETWORK_CONFIGS[chainId];
+      if (!config) throw new ContractError("Unsupported network", "UNSUPPORTED_NETWORK");
+
+      try {
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{ chainId: `0x${chainId.toString(16)}`, ...config }],
+        });
+      } catch (addError) {
+        throw new ContractError("Failed to add network", "NETWORK_ADD_FAILED", addError);
+      }
+    } else {
+      throw new ContractError("Network switch failed", "NETWORK_SWITCH_REJECTED", switchError);
+    }
+  }
+};
+
+if (typeof window !== "undefined" && window.ethereum) {
+  window.ethereum.on("chainChanged", () => contractCache.clear());
+  window.ethereum.on("accountsChanged", () => contractCache.clear());
