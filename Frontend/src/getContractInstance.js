@@ -1,5 +1,7 @@
-// getContractInstance.ts
+// src/getContractInstance.ts
+
 import { BrowserProvider, Contract } from "ethers";
+import type { Contract as EthersContract } from "ethers"; // Import Contract type separately for TypeScript
 
 // Import ABIs
 import LendingABI from "../utils/LendingABI.json";
@@ -62,12 +64,12 @@ const CONTRACT_ABIS: Record<string, any> = {
   LiquidityManager: LiquidityManagerABI,
 };
 
-const contractCache = new Map<string, Contract>();
+const contractCache = new Map<string, EthersContract>();
 
 export const getContractInstance = async (
   contractType: string,
   options: { externalProvider?: any } = {}
-): Promise<Contract> => {
+): Promise<EthersContract> => {
   const externalProvider = options.externalProvider;
   const targetChainId = contractType === "Lending" ? ETHEREUM_MAINNET : POLYGON_MAINNET;
   const cacheKey = `${contractType}-${targetChainId}`;
