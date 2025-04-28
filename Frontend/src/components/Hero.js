@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import HeroImage from "../assets/images/defi-small-guy.png"; // New image for "DeFi for the Small Guy"
+import HeroImage from "../assets/images/smallguy.png"; // New image for "DeFi for the Small Guy"
 
 const Hero = () => {
   const [logoSize, setLogoSize] = useState(80);
