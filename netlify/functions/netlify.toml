@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "build"  # or your framework's build directory
+  functions = "netlify/functions"
+
+[dev]
+  framework = "#static"  # Explicitly declare static server
+  targetPort = 3000      # Your app's port
+  functions = "netlify/functions"
+  autoLaunch = false
