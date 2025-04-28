@@ -4,7 +4,9 @@ import { ethers } from "ethers";
 import { getContractInstance } from "../getContractInstance";
 import { useWallet } from "../context/WalletContext";
 import { Line } from "react-chartjs-2";
-import { TatumSDK } from "@tatumio/tatum";
+import {
+  FaUsers, FaShareAlt, FaRobot, FaCog, FaClock, FaWallet
+} from "react-icons/fa";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,39 +17,45 @@ import {
   Legend,
   Title,
 } from "chart.js";
-import { FaUsers, FaShareAlt, FaClock } from "react-icons/fa";
 
 // Chart.js setup
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Title);
 
 const AdminPanel = () => {
-  const { account } = useWallet();
+  const { account, connectWallet } = useWallet();
   const [isOwner, setIsOwner] = useState(false);
   const [analyticsData, setAnalyticsData] = useState([]);
   const [chartData, setChartData] = useState(null);
-  const [prediction, setPrediction] = useState(null);
+  const [prediction, setPrediction] = useState("");
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState("");
 
   // Owner Check
   useEffect(() => {
     const initAdmin = async () => {
+      if (!account) return;
       try {
-        const contract = await getContractInstance("Lending");
-        const owner = await contract.owner();
-        setIsOwner(account?.toLowerCase() === owner.toLowerCase());
+        const lendingContract = await getContractInstance("Lending");
+        const ownerAddress = await lendingContract.owner();
+        console.log("Contract owner:", ownerAddress);
+        console.log("Connected account:", account);
+        setIsOwner(account.toLowerCase() === ownerAddress.toLowerCase());
       } catch (error) {
-        console.error("Admin initialization failed:", error);
+        console.error("Owner check failed:", error);
+        setIsOwner(false);
       }
     };
-    if (account) initAdmin();
+    initAdmin();
   }, [account]);
 
-  // Fetch Analytics from your API
+  // Fetch Analytics
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
-        const res = await fetch("/api/analytics");
-        const data = await res.json();
+        const response = await fetch("/api/analytics");
+        if (!response.ok) throw new Error("Failed to fetch GA analytics");
 
+        const data = await response.json();
         const formatted = data.rows.map((row) => ({
           day: row.dimensionValues[0].value,
           value: Number(row.metricValues[0].value),
@@ -56,73 +64,145 @@ const AdminPanel = () => {
         setAnalyticsData(formatted);
         setChartData({
           labels: formatted.map((d) => d.day),
-          datasets: [
-            {
-              label: "Active Users",
-              data: formatted.map((d) => d.value),
-              backgroundColor: "rgba(54, 162, 235, 0.2)",
-              borderColor: "rgba(54, 162, 235, 1)",
-              borderWidth: 2,
-              tension: 0.4,
-            },
-          ],
+          datasets: [{
+            label: "User Engagement",
+            data: formatted.map((d) => d.value),
+            backgroundColor: "rgba(54, 162, 235, 0.2)",
+            borderColor: "rgba(54, 162, 235, 1)",
+            borderWidth: 2,
+            tension: 0.4,
+          }],
         });
-        setPrediction("📈 Traffic looks good!");
+        setPrediction("📈 Traffic is trending upward!");
       } catch (error) {
-        console.error("Failed to fetch analytics:", error);
-        setPrediction("❌ Failed to load analytics");
+        console.error("Analytics fetch failed:", error);
+        setAnalyticsError("Unable to load Google Analytics data.");
+      } finally {
+        setLoadingAnalytics(false);
       }
     };
     fetchAnalytics();
   }, []);
 
-  // Monitor Tatum NFT Tx (if available)
-  useEffect(() => {
-    const initTatum = async () => {
-      if (!process.env.NEXT_PUBLIC_TATUM_API_KEY || !process.env.NEXT_PUBLIC_IMALI_NFT_CONTRACT) {
-        console.warn("Tatum API key or NFT contract address missing, skipping Tatum connection.");
-        return;
-      }
+  // Smart Contract Admin Functions
+  const handleBuyback = async () => {
+    try {
+      const contract = await getContractInstance("Buyback");
+      const tx = await contract.distribute();
+      await tx.wait();
+      alert("✅ Buyback distributed successfully.");
+    } catch (err) {
+      alert("❌ Buyback failed: " + err.message);
+    }
+  };
 
-      try {
-        const tatum = await TatumSDK.init({ apiKey: process.env.NEXT_PUBLIC_TATUM_API_KEY });
-        await tatum.notification.subscribe.incomingNftTx(
-          process.env.NEXT_PUBLIC_IMALI_NFT_CONTRACT,
-          (tx) => {
-            console.log("Incoming NFT transaction:", tx);
-          }
-        );
-      } catch (error) {
-        console.error("Tatum subscription failed:", error);
-      }
-    };
-    initTatum();
-  }, []);
+  const handleAirdrop = async () => {
+    try {
+      const contract = await getContractInstance("AirdropDistributor");
+      const tx = await contract.executeAirdrop();
+      await tx.wait();
+      alert("✅ Airdrop executed successfully.");
+    } catch (err) {
+      alert("❌ Airdrop failed: " + err.message);
+    }
+  };
+
+  const handleLiquidity = async () => {
+    try {
+      const contract = await getContractInstance("LiquidityManager");
+      const tx = await contract.addLiquidity();
+      await tx.wait();
+      alert("✅ Liquidity added to pool.");
+    } catch (err) {
+      alert("❌ Liquidity addition failed: " + err.message);
+    }
+  };
+
+  // Shorten Address Helper
+  const shortenAddress = (address) =>
+    address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
 
   return (
-    <div className="p-6 bg-gray-50 rounded-md shadow-md max-w-6xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
+    <div className="p-6 max-w-7xl mx-auto bg-gray-50 rounded-md shadow-md">
+      <h1 className="text-3xl font-bold mb-8 text-green-800">Admin Dashboard</h1>
 
-      {chartData ? (
-        <div className="mb-8 bg-white p-4 rounded shadow">
-          <h2 className="text-lg font-semibold mb-4 flex items-center">
-            <FaUsers className="mr-2" /> Weekly User Analytics
-          </h2>
-          <Line data={chartData} />
-          <p className="mt-2 text-green-700 font-semibold">{prediction}</p>
+      {/* Connected Wallet Info */}
+      <div className="bg-white p-4 rounded-md shadow flex items-center justify-between mb-8">
+        {account ? (
+          <>
+            <div className="flex items-center space-x-4">
+              <FaWallet className="text-green-600" size={24} />
+              <div>
+                <p className="text-sm text-gray-600">Connected Wallet</p>
+                <p className="font-bold text-green-700">{shortenAddress(account)}</p>
+              </div>
+            </div>
+            <div className={`px-3 py-1 rounded-full text-sm font-bold ${isOwner ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+              {isOwner ? "Owner Access ✅" : "Unauthorized ⚠️"}
+            </div>
+          </>
+        ) : (
+          <button
+            onClick={connectWallet}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+          >
+            Connect Wallet
+          </button>
+        )}
+      </div>
+
+      {/* Unauthorized Alert */}
+      {account && !isOwner && (
+        <div className="bg-red-100 text-red-800 p-4 rounded mb-6">
+          ⚠️ You are connected but not authorized to use admin functions.
         </div>
-      ) : (
-        <p>Loading analytics...</p>
       )}
 
-      {isOwner && (
-        <div className="p-4 bg-white rounded shadow mt-10">
-          <h2 className="text-lg font-semibold mb-4 flex items-center">
-            <FaShareAlt className="mr-2" /> Admin Actions
+      {/* Smart Contract Admin Tools */}
+      {account && isOwner && (
+        <section className="mb-10 bg-white p-6 rounded shadow">
+          <h2 className="text-2xl font-semibold mb-4 flex items-center">
+            <FaRobot className="mr-2" /> Smart Contract Controls
           </h2>
-          <p>Owner-only functions will be here (buyback, airdrop, liquidity ops, etc.)</p>
-        </div>
+          <div className="grid md:grid-cols-3 gap-4">
+            <button
+              onClick={handleBuyback}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded"
+            >
+              🔥 Trigger Buyback
+            </button>
+            <button
+              onClick={handleAirdrop}
+              className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded"
+            >
+              🎁 Execute Airdrop
+            </button>
+            <button
+              onClick={handleLiquidity}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded"
+            >
+              💧 Add Liquidity
+            </button>
+          </div>
+        </section>
       )}
+
+      {/* Analytics */}
+      <section className="bg-white p-6 rounded shadow">
+        <h2 className="text-2xl font-semibold mb-4 flex items-center">
+          <FaUsers className="mr-2" /> Weekly User Analytics
+        </h2>
+        {loadingAnalytics ? (
+          <p>Loading analytics...</p>
+        ) : analyticsError ? (
+          <p className="text-red-600">{analyticsError}</p>
+        ) : (
+          <>
+            {chartData && <Line data={chartData} />}
+            <p className="mt-4 text-green-700 font-semibold">{prediction}</p>
+          </>
+        )}
+      </section>
     </div>
   );
 };
