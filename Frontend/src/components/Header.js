@@ -1,147 +1,83 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import Logo from "../assets/images/DefiFinanceLogo.png"; // Adjust the path to your logo
+import Logo from "../assets/images/DefiFinanceLogo.png";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [logoSize, setLogoSize] = useState (30); // Initial logo size
-
-  const toggleMenu = () => {
-    setIsMenuOpen(!isMenuOpen);
-  };
+  const [logoSize, setLogoSize] = useState("h-8");
 
   useEffect(() => {
     const handleResize = () => {
-      // Adjust logo size based on screen width
-      if (window.innerWidth < 640) {
-        setLogoSize(23); // Smaller logo on mobile
-      } else if (window.innerWidth < 1024) {
-        setLogoSize(23); // Medium logo on tablets
-      } else {
-        setLogoSize(20); // Larger logo on desktops
-      }
+      if (window.innerWidth < 640) setLogoSize("h-6");
+      else if (window.innerWidth < 1024) setLogoSize("h-10"); // 25% larger for desktop
+      else setLogoSize("h-12"); // 50% larger on very large screens
     };
-
-    // Initial size and event listener for resize
     handleResize();
     window.addEventListener("resize", handleResize);
-
-    // Cleanup the event listener on component unmount
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  const links = [
+    ["Home", "/"],
+    ["Lending", "/lending"],
+    ["Staking", "/staking"],
+    ["Yield Farming", "/yield-farming"],
+    ["Presale", "/presale"],
+    ["Lottery", "/lottery"],
+    ["Admin", "/admin"],
+    ["How To", "/how-to-use"],
+  ];
+
   return (
     <header className="bg-white shadow-md w-full z-50">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
-          {/* Logo */}
-          <div className="flex items-center">
-            <Link to="/">
-              <img
-                src={Logo}
-                alt="IMALI DeFi Logo"
-                className={`h-${logoSize} w-auto`} // Dynamically set logo size
-              />
-            </Link>
-          </div>
+      <div className="w-full px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 w-full">
+          {/* Logo - Always aligned far left */}
+          <Link to="/" className="flex items-center mr-auto">
+            <img src={Logo} alt="IMALI DeFi Logo" className={`${logoSize} w-auto transition-all duration-300`} />
+            <span className="ml-2 text-lg font-bold text-green-700 hidden sm:block">IMALI DeFi</span>
+          </Link>
 
-          {/* Hamburger Menu for Mobile */}
+          {/* Mobile Menu Toggle */}
           <div className="sm:hidden">
             <button
-              onClick={toggleMenu}
-              className="text-[#036302] focus:outline-none"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="text-green-700 focus:outline-none"
+              aria-label="Toggle menu"
             >
-              <svg
-                className="w-8 h-8"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M4 6h16M4 12h16m-7 6h7"
-                />
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {isMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
               </svg>
             </button>
           </div>
 
           {/* Navigation Links */}
-          <nav
-            className={`${
-              isMenuOpen ? "block" : "hidden"
-            } sm:flex sm:items-center sm:space-x-6 absolute sm:static top-16 right-0 bg-white w-full sm:w-auto shadow-md sm:shadow-none p-4 sm:p-0`}
-          >
-            <Link
-              to="/"
-              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Home
-            </Link>
-            <Link
-              to="/lending"
-              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Lending
-            </Link>
-            <Link
-              to="/staking"
-              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Staking
-            </Link>
-            <Link
-              to="/yield-farming"
-              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Yield Farming
-            </Link>
-            <Link
-              to="/presale"
-              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Presale
-            </Link>
-            <Link
-              to="/nft"
-              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              NFT
-            </Link>
-            <Link
-              to="/dao"
-              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              DAO
-            </Link>
-            <Link
-              to="/how-to-use"
-              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              How To
-            </Link>
-            <Link
-              to="/admin"
-              className="block text-[#036302] font-bold hover:text-[#036302]/80 transition-colors py-2 sm:py-0"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Admin
-            </Link>
+          <nav className={`
+            ${isMenuOpen ? "block" : "hidden"} 
+            sm:flex sm:items-center flex-col sm:flex-row absolute sm:static top-16 left-0 right-0 bg-white sm:bg-transparent 
+            shadow-md sm:shadow-none p-4 sm:p-0 space-y-2 sm:space-y-0 sm:space-x-4
+          `}>
+            {links.map(([label, to]) => (
+              <NavLink key={to} to={to}>{label}</NavLink>
+            ))}
           </nav>
         </div>
       </div>
     </header>
   );
 };
+
+const NavLink = ({ to, children }) => (
+  <Link
+    to={to}
+    className="block sm:inline-block px-3 py-2 rounded-md text-sm font-medium text-green-700 hover:bg-green-50 hover:text-green-800 transition-colors"
+  >
+    {children}
+  </Link>
+);
 
 export default Header;

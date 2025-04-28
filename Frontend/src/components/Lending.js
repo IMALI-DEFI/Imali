@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
-import getContractInstance from "../getContractInstance";
+import { getContractInstance } from "../getContractInstance";
+
 import { FaEthereum, FaBitcoin, FaDollarSign } from "react-icons/fa";
 
 // Price feed addresses for Ethereum (Chainlink)
@@ -12,77 +13,23 @@ const tokenAddresses = {
   WBTC: "0xdeb288F737066589598e9214E782fa5A8eD689e8", // WBTC/USD
   LINK: "0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c", // LINK/USD
   AAVE: "0x547a514d5e3769680Ce22B2361c10Ea13619e8a9", // AAVE/USD
-  UNI: "0x553303d460EE0afB37EdFf9bE42922D8FF63220e", // UNI/USD
+  UNI: "0x553303d460EE0afB37EdFf9bE42922D8FF63220e" // UNI/USD
 };
 
 const assets = [
-  {
-    name: "ETH",
-    symbol: "ETH",
-    icon: <FaEthereum size={24} />,
-    address: tokenAddresses.ETH,
-    type: "ETH"
-  },
-  {
-    name: "IMALI",
-    symbol: "IMALI",
-    icon: <FaEthereum size={24} />, // Consider a custom icon
-    address: tokenAddresses.IMALI,
-    type: "IMALI"
-  },
-  {
-    name: "MATIC",
-    symbol: "MATIC",
-    icon: <FaEthereum size={24} />, // Consider using a Polygon icon
-    address: tokenAddresses.MATIC,
-    type: "MATIC"
-  },
-  {
-    name: "USDC",
-    symbol: "USDC",
-    icon: <FaDollarSign size={24} />,
-    address: tokenAddresses.USDC,
-    type: "USDC"
-  },
-  {
-    name: "DAI",
-    symbol: "DAI",
-    icon: <FaDollarSign size={24} />,
-    address: tokenAddresses.DAI,
-    type: "DAI"
-  },
-  {
-    name: "WBTC",
-    symbol: "WBTC",
-    icon: <FaBitcoin size={24} />,
-    address: tokenAddresses.WBTC,
-    type: "WBTC"
-  },
-  {
-    name: "LINK",
-    symbol: "LINK",
-    icon: <FaEthereum size={24} />, // Consider Chainlink's icon
-    address: tokenAddresses.LINK,
-    type: "LINK"
-  },
-  {
-    name: "AAVE",
-    symbol: "AAVE",
-    icon: <FaEthereum size={24} />, // Consider Aave's icon
-    address: tokenAddresses.AAVE,
-    type: "AAVE"
-  },
-  {
-    name: "UNI",
-    symbol: "UNI",
-    icon: <FaEthereum size={24} />, // Consider Uniswap's icon
-    address: tokenAddresses.UNI,
-    type: "UNI"
-  }
+  { name: "ETH", symbol: "ETH", icon: <FaEthereum size={24} />, address: tokenAddresses.ETH, type: "ETH" },
+  { name: "IMALI", symbol: "IMALI", icon: <FaEthereum size={24} />, type: "IMALI" },
+  { name: "MATIC", symbol: "MATIC", icon: <FaEthereum size={24} />, type: "MATIC" },
+  { name: "USDC", symbol: "USDC", icon: <FaDollarSign size={24} />, address: tokenAddresses.USDC, type: "USDC" },
+  { name: "DAI", symbol: "DAI", icon: <FaDollarSign size={24} />, address: tokenAddresses.DAI, type: "DAI" },
+  { name: "WBTC", symbol: "WBTC", icon: <FaBitcoin size={24} />, address: tokenAddresses.WBTC, type: "WBTC" },
+  { name: "LINK", symbol: "LINK", icon: <FaEthereum size={24} />, address: tokenAddresses.LINK, type: "LINK" },
+  { name: "AAVE", symbol: "AAVE", icon: <FaEthereum size={24} />, address: tokenAddresses.AAVE, type: "AAVE" },
+  { name: "UNI", symbol: "UNI", icon: <FaEthereum size={24} />, address: tokenAddresses.UNI, type: "UNI" }
 ];
 
 const Lending = () => {
-  const { account, connectWallet, disconnectWallet } = useWallet();
+  const { account, chainId, connectWallet, disconnectWallet, provider } = useWallet();
   const [assetPrices, setAssetPrices] = useState({});
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState(null);
@@ -90,150 +37,115 @@ const Lending = () => {
   const [borrowId, setBorrowId] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
+  const [transactionError, setTransactionError] = useState(null);
   const [lendingData, setLendingData] = useState({
-      collateral: {
-        eth: "Loading...",
-        imali: "Loading...",
-        matic: "Loading...",
-        total: "Loading..."
-      },
-      liquidity: "Loading...",
-      supplyApy: "Loading...",
-      borrowApy: "Loading...",
-      depositFee: "Loading...",
-      borrowFee: "Loading..."
-    });
+    collateral: { eth: "Loading...", imali: "Loading...", matic: "Loading...", total: "Loading..." },
+    liquidity: "Loading...", supplyApy: "Loading...", borrowApy: "Loading...", depositFee: "Loading...", borrowFee: "Loading..."
+  });
 
-
-    const fetchUserCollateral = async (contract, userAddress) => {
-      try {
-        const [ethCollateral, imaliCollateral, maticCollateral] = await Promise.all([
-          contract.ethCollateral(userAddress),
-          contract.imaliCollateral(userAddress),
-          contract.maticCollateral(userAddress)
-        ]);
-        
-          const total = ethers.getBigInt(ethCollateral || "0") +
-                        ethers.getBigInt(imaliCollateral || "0") +
-                        ethers.getBigInt(maticCollateral || "0");
-        return {
-          eth: ethers.formatUnits(ethCollateral, 18),
-          imali: ethers.formatUnits(imaliCollateral, 18),
-          matic: ethers.formatUnits(maticCollateral, 18),
-          total: ethers.formatUnits(total, 18)
-        };
-      } catch (error) {
-        console.error("Error fetching collateral:", error);
-        return {
-          eth: "0",
-          imali: "0",
-          matic: "0",
-          total: "0"
-        };
-      }
-    };
-
-  // Fetch asset prices
-  const fetchAssetPrices = useCallback(async () => {
+  const fetchUserCollateral = async (contract, userAddress) => {
     try {
-      const provider = new ethers.JsonRpcProvider(process.env.REACT_APP_INFURA_ETHEREUM);
-      let prices = {};
+      const [ethCollateralRaw, imaliCollateralRaw, maticCollateralRaw] = await Promise.all([
+        contract.ethCollateral(userAddress).catch(() => 0n),
+        contract.imaliCollateral(userAddress).catch(() => 0n),
+        contract.maticCollateral(userAddress).catch(() => 0n)
+      ]);
 
+      const ethCollateral = ethCollateralRaw || 0n;
+      const imaliCollateral = imaliCollateralRaw || 0n;
+      const maticCollateral = maticCollateralRaw || 0n;
+      const total = ethCollateral + imaliCollateral + maticCollateral;
+
+      return {
+        eth: ethers.formatUnits(ethCollateral, 18),
+        imali: ethers.formatUnits(imaliCollateral, 18),
+        matic: ethers.formatUnits(maticCollateral, 18),
+        total: ethers.formatUnits(total, 18)
+      };
+    } catch (error) {
+      console.error("Error fetching collateral:", error);
+      return { eth: "0", imali: "0", matic: "0", total: "0" };
+    }
+  };
+
+  const fetchAssetPrices = useCallback(async () => {
+    const prices = {};
+    try {
+      const rpcUrl = process.env.REACT_APP_ALCHEMY_ETHERIUM;
+      if (!rpcUrl) {
+        console.error("Missing Alchemy Ethereum RPC URL in .env");
+        return;
+      }
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      await provider.getNetwork();
       for (let symbol in tokenAddresses) {
         const priceFeedAddress = tokenAddresses[symbol];
-        const priceFeedABI = [
-          "function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
-        ];
+        const priceFeedABI = ["function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"];
         const priceFeed = new ethers.Contract(priceFeedAddress, priceFeedABI, provider);
-
         const roundData = await priceFeed.latestRoundData();
         if (roundData && roundData.answer) {
-          const price = ethers.formatUnits(roundData.answer, 8); // Chainlink prices are typically 8 decimals
+          const price = ethers.formatUnits(roundData.answer, 8);
           prices[symbol] = price;
         }
       }
-
       setAssetPrices(prices);
     } catch (error) {
       console.error("Error fetching asset prices:", error);
-      setAssetPrices({}); // Reset prices on error
+      setAssetPrices({});
     }
   }, []);
 
-  // Fetch lending details
-    const fetchLendingDetails = useCallback(async () => {
-      try {
-        const contract = await getContractInstance("Lending");
-        if (!contract) {
-          console.error("Contract instance not found.");
-          return;
-        }
-
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-        const addr = await signer.getAddress();
-
-        // Fetch all data in parallel
-        const [liquidity, supplyApy, borrowApy, depositFee, borrowFee, collateralData] = await Promise.all([
-          contract.getLiquidity().catch(() => "Error"),
-          contract.getSupplyRate().catch(() => "Error"),
-          contract.getBorrowRate().catch(() => "Error"),
-          contract.depositFee().catch(() => "Error"),
-          contract.borrowFee().catch(() => "Error"),
-          fetchUserCollateral(contract, addr)
-        ]);
-
-        // Format functions remain the same
-        const formatFee = (fee) => (fee === "Error" ? "Could not retrieve fee." : Number(ethers.formatUnits(fee, 18)).toFixed(2) + " ETH");
-        const formatApy = (apy) => (apy === "Error" ? "Could not retrieve APY." : (Number(apy) / 10000).toFixed(2) + "%");
-        const formatLiquidity = (liquidity) => (liquidity === "Error" ? "Could not retrieve liquidity." : Number(ethers.formatUnits(liquidity, 18)).toFixed(2) + " ETH");
-
-        setLendingData({
-          collateral: {
-            eth: collateralData.eth + " ETH",
-            imali: collateralData.imali + " IMALI",
-            matic: collateralData.matic + " MATIC",
-            total: collateralData.total + " TOTAL"
-          },
-          liquidity: formatLiquidity(liquidity),
-          supplyApy: formatApy(supplyApy),
-          borrowApy: formatApy(borrowApy),
-          depositFee: formatFee(depositFee),
-          borrowFee: formatFee(borrowFee),
-        });
-      } catch (error) {
-        console.error("Error fetching lending details:", error);
-        setLendingData({
-          collateral: {
-            eth: "Error",
-            imali: "Error",
-            matic: "Error",
-            total: "Error"
-          },
-          liquidity: "Error",
-          supplyApy: "Error",
-          borrowApy: "Error",
-          depositFee: "Error",
-          borrowFee: "Error"
-        });
+  const fetchLendingDetails = useCallback(async () => {
+    try {
+      if (chainId !== 1) {
+        setTransactionError("Please switch to Ethereum Mainnet.");
+        return;
       }
-    }, []);
+      const contract = await getContractInstance("Lending");
+      if (!contract) {
+        console.error("Contract instance not found.");
+        return;
+      }
+      const signer = await provider.getSigner();
+      const addr = await signer.getAddress();
+      const [liquidity, supplyApy, borrowApy, depositFee, borrowFee, collateralData] = await Promise.all([
+        contract.getLiquidity().catch(() => "Error"),
+        contract.getSupplyRate().catch(() => "Error"),
+        contract.getBorrowRate().catch(() => "Error"),
+        contract.depositFee().catch(() => "Error"),
+        contract.borrowFee().catch(() => "Error"),
+        fetchUserCollateral(contract, addr)
+      ]);
+      const formatFee = (fee) => (fee === "Error" ? "Could not retrieve fee." : Number(ethers.formatUnits(fee, 18)).toFixed(2) + " ETH");
+      const formatApy = (apy) => (apy === "Error" ? "Could not retrieve APY." : (Number(apy) / 10000).toFixed(2) + "%");
+      const formatLiquidity = (liquidity) => (liquidity === "Error" ? "Could not retrieve liquidity." : Number(ethers.formatUnits(liquidity, 18)).toFixed(2) + " ETH");
+      setLendingData({
+        collateral: { eth: collateralData.eth + " ETH", imali: collateralData.imali + " IMALI", matic: collateralData.matic + " MATIC", total: collateralData.total + " TOTAL" },
+        liquidity: formatLiquidity(liquidity), supplyApy: formatApy(supplyApy), borrowApy: formatApy(borrowApy), depositFee: formatFee(depositFee), borrowFee: formatFee(borrowFee)
+      });
+    } catch (error) {
+      console.error("Error fetching lending details:", error);
+      setLendingData({ collateral: { eth: "Error", imali: "Error", matic: "Error", total: "Error" }, liquidity: "Error", supplyApy: "Error", borrowApy: "Error", depositFee: "Error", borrowFee: "Error" });
+    }
+  }, [chainId, provider]);
 
-  // Initialize data fetching
-  useEffect(() => {
-    const initialize = async () => {
-      await fetchAssetPrices();
-      await fetchLendingDetails();
-    };
-    initialize();
-    const interval = setInterval(() => {
-      fetchAssetPrices();
-      fetchLendingDetails();
-    }, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, [fetchAssetPrices, fetchLendingDetails]);
+    useEffect(() => {
+        const initialize = async () => {
+          await fetchAssetPrices();
+          if (provider) { // Check if provider is available
+            await fetchLendingDetails();
+          }
+        };
+        initialize();
+            const interval = setInterval(() => {
+              fetchAssetPrices();
+              if (provider) { // Check if provider is available
+                fetchLendingDetails();
+              }
+            }, 30000);
+            return () => clearInterval(interval);
+          }, [fetchAssetPrices, fetchLendingDetails, provider]);
 
-  // Open modal
   const openModal = (type, asset) => {
     setModalType(type);
     if (type === "supply" || type === "borrow" || type === "withdraw") {
@@ -247,7 +159,6 @@ const Lending = () => {
     setModalOpen(true);
   };
 
-  // Close modal
   const closeModal = () => {
     setModalType(null);
     setSelectedToken(null);
@@ -256,92 +167,87 @@ const Lending = () => {
     setModalOpen(false);
   };
 
-  // Execute transaction
-    const executeTransaction = async () => {
-      if (!account) {
-        alert("Wallet not connected!");
+  const executeTransaction = async () => {
+    if (!account) {
+      alert("Wallet not connected!");
+      return;
+    }
+      if (!provider || typeof provider.getSigner !== 'function') {
+        setTransactionError("Wallet provider not properly initialized");
         return;
       }
-      try {
-        const contract = await getContractInstance("Lending");
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-        let tx;
-
-        setLoading(true);
-        if (modalType === "supply") {
-          // Determine which deposit function to call based on selected token
-          if (selectedToken === tokenAddresses.ETH) {
-            tx = await contract.connect(signer).depositEthCollateral({
-              value: ethers.parseUnits(amount, 18)
-            });
-          } else if (selectedToken === tokenAddresses.IMALI) {
-            tx = await contract.connect(signer).depositImaliCollateral(
-              ethers.parseUnits(amount, 18)
-            );
-          } else if (selectedToken === tokenAddresses.MATIC) {
-            tx = await contract.connect(signer).depositMaticCollateral(
-              ethers.parseUnits(amount, 18)
-            );
-          }
-        } else if (modalType === "borrow") {
-          tx = await contract.connect(signer).borrow(
-            ethers.parseUnits(amount, 18),
-            selectedToken === tokenAddresses.ETH ? "ETH" :
-            selectedToken === tokenAddresses.IMALI ? "IMALI" : "MATIC"
-          );
-        } else if (modalType === "repay") {
-          tx = await contract.connect(signer).repay(
-            ethers.parseUnits(amount, 18)
-          );
-        } else if (modalType === "withdraw") {
-          // Similar to supply, would need to implement withdraw functions
-          tx = await contract.connect(signer).withdrawCollateral(
-            ethers.parseUnits(amount, 18),
-            selectedToken === tokenAddresses.ETH ? "ETH" :
-            selectedToken === tokenAddresses.IMALI ? "IMALI" : "MATIC"
-          );
-        }
-        
-        await tx.wait();
-        setLoading(false);
-        alert("Transaction Successful!");
-        closeModal();
-        fetchAssetPrices();
-        fetchLendingDetails();
-      } catch (error) {
-        console.error("Transaction failed:", error);
-        alert(`Transaction failed! ${error.message}`);
-        setLoading(false);
+    setLoading(true);
+    setTransactionError(null);
+    try {
+      if (chainId !== 1) {
+        setTransactionError("Please switch to Ethereum Mainnet.");
+        return;
       }
-    };
+      const contract = await getContractInstance("Lending");
+      let tx;
+      if (modalType === "supply") {
+        if (selectedToken === tokenAddresses.ETH) {
+          tx = await contract.connect(provider.getSigner()).depositEthCollateral({ value: ethers.parseUnits(amount, 18) });
+        } else if (selectedToken === tokenAddresses.IMALI) {
+          tx = await contract.connect(provider.getSigner()).depositImaliCollateral(ethers.parseUnits(amount, 18));
+        } else if (selectedToken === tokenAddresses.MATIC) {
+          tx = await contract.connect(provider.getSigner()).depositMaticCollateral(ethers.parseUnits(amount, 18));
+        }
+      } else if (modalType === "borrow") {
+        tx = await contract.connect(provider.getSigner()).borrow(ethers.parseUnits(amount, 18), selectedToken === tokenAddresses.ETH ? "ETH" : selectedToken === tokenAddresses.IMALI ? "IMALI" : "MATIC");
+      } else if (modalType === "repay") {
+        tx = await contract.connect(provider.getSigner()).repay(ethers.parseUnits(amount, 18));
+      } else if (modalType === "withdraw") {
+        tx = await contract.connect(provider.getSigner()).withdrawCollateral(ethers.parseUnits(amount, 18), selectedToken === tokenAddresses.ETH ? "ETH" : selectedToken === tokenAddresses.IMALI ? "IMALI" : "MATIC");
+      }
+      await tx.wait();
+      setLoading(false);
+      alert("Transaction Successful!");
+      closeModal();
+      fetchAssetPrices();
+      fetchLendingDetails();
+    } catch (error) {
+      console.error("Transaction failed:", error);
+      setTransactionError(`Transaction failed! ${error.message}`);
 
+      setLoading(false);
+    }
+  };
   return (
     <section className="dashboard text-gray-900 py-12">
-      {/* Wallet Connection */}
-      <div className="container mx-auto text-center mb-8">
-        {account ? (
-          <>
-            <div className="bg-gray-100 p-3 rounded-lg shadow-sm text-center">
-              <p className="text-sm text-gray-700">Connected Wallet:</p>
-              <p className="text-md font-mono text-[#036302] break-words">{account}</p>
-            </div>
-            <button
-              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-gray-700"
-              onClick={disconnectWallet}
-            >
-              🔄 Disconnect Wallet
-            </button>
-          </>
-        ) : (
-          <button
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            onClick={connectWallet}
-          >
-            🔗 Connect Wallet
-          </button>
-        )}
+{/* Wallet Connection */}
+<div className="container mx-auto text-center mb-8">
+  {account ? (
+    <>
+      <div className="bg-gray-100 p-3 rounded-lg shadow-sm text-center">
+        <p className="text-sm text-gray-700">Connected Wallet:</p>
+        <p className="text-md font-mono text-[#036302] break-words">{account}</p>
       </div>
+      <button
+        className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-gray-700"
+        onClick={disconnectWallet}
+      >
+        🔄 Disconnect Wallet
+      </button>
+    </>
+  ) : (
+    <div className="flex flex-col sm:flex-row justify-center gap-4">
+      <button
+        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+        onClick={() => connectWallet('metamask')}
+      >
+        🦊 Connect MetaMask
+      </button>
+      <button
+        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+        onClick={() => connectWallet('walletconnect')}
+      >
+        📱 WalletConnect
+      </button>
+    </div>
+  )}
+</div>
+
 
       {/* Instructions at the Top */}
       <div className="container mx-auto mt-8 bg-white p-6 rounded-lg shadow-md">

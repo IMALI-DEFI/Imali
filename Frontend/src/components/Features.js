@@ -4,24 +4,28 @@ import { Link } from "react-router-dom";
 const Features = () => {
   const features = [
     {
-      icon: "🔒",
+      icon: "🔒", // Emoji for Security
       title: "AI-Secured Transactions",
-      description: "Our platform uses advanced AI to ensure the highest level of security for your transactions.",
+      description:
+        "Our platform uses advanced AI to ensure the highest level of security for your transactions.",
     },
     {
-      icon: "🌾",
+      icon: "🌾", // Emoji for Yield Farming
       title: "Yield Farming",
-      description: "Earn rewards by providing liquidity to our decentralized finance ecosystem.",
+      description:
+        "Earn rewards by providing liquidity to our decentralized finance ecosystem.",
     },
     {
-      icon: "💰",
+      icon: "💰", // Emoji for Staking
       title: "Staking",
-      description: "Stake your tokens and earn passive income with competitive APY rates.",
+      description:
+        "Stake your tokens and earn passive income with competitive APY rates.",
     },
     {
-      icon: "📜",
+      icon: "📜", // Emoji for Governance
       title: "Decentralized Governance",
-      description: "Participate in platform decisions through our decentralized governance model.",
+      description:
+        "Participate in platform decisions through our decentralized governance model.",
     },
   ];
 
@@ -31,7 +35,6 @@ const Features = () => {
         <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-center mb-12">
           Why Choose IMALI DeFi?
         </h2>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
           {features.map((feature, index) => (
             <div
@@ -46,7 +49,6 @@ const Features = () => {
             </div>
           ))}
         </div>
-
         <div className="text-center mt-12">
           {/* Changed from "/features" to "/how-to-use" */}
           <Link
