@@ -3,21 +3,21 @@
 import { BrowserProvider, Contract } from "ethers";
 
 // Import ABIs
-import LendingABI from "../utils/LendingABI.json";
-import YieldFarmingABI from "../utils/YieldFarmingABI.json";
-import StakingABI from "../utils/StakingABI.json";
-import TokenPolygonABI from "../utils/TokenABI.json";
-import TokenBaseABI from "../utils/IMALITOKENBASEABI.json";
-import LPTokenABI from "../utils/LPTokenABI.json";
-import DAOABI from "../utils/IMALIDAOABI.json";
-import PresaleABI from "../utils/PresaleABI.json";
-import NFTABI from "../utils/IMALINFTABI.json";
-import FeeDistributorABI from "../utils/FeeDistributorABI.json";
-import LPLotteryABI from "../utils/LPLotteryABI.json";
-import BuybackABI from "../utils/BuybackABI.json";
-import VestingVaultABI from "../utils/VestingVaultABI.json";
-import AirdropABI from "../utils/AirdropABI.json";
-import LiquidityManagerABI from "../utils/LiquidityManagerABI.json";
+import LendingABI from "./utils/LendingABI.json";
+import YieldFarmingABI from "./utils/YieldFarmingABI.json";
+import StakingABI from "./utils/StakingABI.json";
+import TokenPolygonABI from "./utils/TokenABI.json";
+import TokenBaseABI from "./utils/IMALITOKENBASEABI.json";
+import LPTokenABI from "./utils/LPTokenABI.json";
+import DAOABI from "./utils/IMALIDAOABI.json";
+import PresaleABI from "./utils/PresaleABI.json";
+import NFTABI from "./utils/IMALINFTABI.json";
+import FeeDistributorABI from "./utils/FeeDistributorABI.json";
+import LPLotteryABI from "./utils/LPLotteryABI.json";
+import BuybackABI from "./utils/BuybackABI.json";
+import VestingVaultABI from "./utils/VestingVaultABI.json";
+import AirdropABI from "./utils/AirdropABI.json";
+import LiquidityManagerABI from "./utils/LiquidityManagerABI.json";
 
 // Network Chain IDs
 export const ETHEREUM_MAINNET = 1;
