@@ -1,4 +1,4 @@
-// 📦 Lending.js (Fully Repaired and Optimized)
+// 📦 src/components/Lending.js (Fully Repaired and Optimized)
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
@@ -17,32 +17,28 @@ const tokenAddresses = {
 };
 
 const assets = [
-  { name: "ETH", symbol: "ETH", icon: <FaEthereum size={24} />, type: "ETH" },
-  { name: "IMALI", symbol: "IMALI", icon: <FaEthereum size={24} />, type: "IMALI" },
-  { name: "MATIC", symbol: "MATIC", icon: <FaEthereum size={24} />, type: "MATIC" },
-  { name: "USDC", symbol: "USDC", icon: <FaDollarSign size={24} />, type: "USDC" },
-  { name: "DAI", symbol: "DAI", icon: <FaDollarSign size={24} />, type: "DAI" },
-  { name: "WBTC", symbol: "WBTC", icon: <FaBitcoin size={24} />, type: "WBTC" },
-  { name: "LINK", symbol: "LINK", icon: <FaEthereum size={24} />, type: "LINK" },
-  { name: "AAVE", symbol: "AAVE", icon: <FaEthereum size={24} />, type: "AAVE" },
-  { name: "UNI", symbol: "UNI", icon: <FaEthereum size={24} />, type: "UNI" },
+  { name: "ETH", symbol: "ETH", icon: <FaEthereum size={24} /> },
+  { name: "IMALI", symbol: "IMALI", icon: <FaEthereum size={24} /> },
+  { name: "MATIC", symbol: "MATIC", icon: <FaEthereum size={24} /> },
+  { name: "USDC", symbol: "USDC", icon: <FaDollarSign size={24} /> },
+  { name: "DAI", symbol: "DAI", icon: <FaDollarSign size={24} /> },
+  { name: "WBTC", symbol: "WBTC", icon: <FaBitcoin size={24} /> },
+  { name: "LINK", symbol: "LINK", icon: <FaEthereum size={24} /> },
+  { name: "AAVE", symbol: "AAVE", icon: <FaEthereum size={24} /> },
+  { name: "UNI", symbol: "UNI", icon: <FaEthereum size={24} /> },
 ];
 
 const Lending = () => {
-  const { account, provider, chainId, connectWallet, disconnectWallet } = useWallet();
+  const { account, provider, chainId, connectWallet } = useWallet();
   const [assetPrices, setAssetPrices] = useState({});
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState(null);
-  const [selectedAsset, setSelectedAsset] = useState(null);
-  const [amount, setAmount] = useState("");
   const [lendingData, setLendingData] = useState({
-    collateral: { eth: "-", imali: "-", matic: "-", total: "-" },
     liquidity: "-",
     supplyApy: "-",
     borrowApy: "-",
     depositFee: "-",
     borrowFee: "-",
   });
+  const [selectedAsset, setSelectedAsset] = useState(null);
 
   const fetchAssetPrices = useCallback(async () => {
     try {
@@ -52,11 +48,14 @@ const Lending = () => {
 
       for (const [symbol, address] of Object.entries(tokenAddresses)) {
         if (!address) continue;
-        const priceFeed = new ethers.Contract(address, ["function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)"], ethProvider);
+        const priceFeed = new ethers.Contract(address, [
+          "function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)",
+        ], ethProvider);
         const roundData = await priceFeed.latestRoundData();
-        if (roundData.answer) prices[symbol] = Number(ethers.formatUnits(roundData.answer, 8)).toFixed(2);
+        if (roundData && roundData[1]) {
+          prices[symbol] = Number(ethers.formatUnits(roundData[1], 8)).toFixed(2);
+        }
       }
-
       setAssetPrices(prices);
     } catch (error) {
       console.error("Price fetch error:", error);
@@ -65,42 +64,94 @@ const Lending = () => {
 
   const fetchLendingDetails = useCallback(async () => {
     try {
-      if (chainId !== 1) return;
+      if (!provider) return;
       const contract = await getContractInstance("Lending");
-      const liquidity = await contract.getLiquidity().catch(() => 0n);
-      const supplyRate = await contract.getSupplyRate().catch(() => 0n);
-      const borrowRate = await contract.getBorrowRate().catch(() => 0n);
-      const depositFee = await contract.depositFee().catch(() => 0n);
-      const borrowFee = await contract.borrowFee().catch(() => 0n);
+      const liquidity = await contract.getLiquidity();
+      const supplyRate = await contract.getSupplyRate();
+      const borrowRate = await contract.getBorrowRate();
+      const depositFee = await contract.depositFee();
+      const borrowFee = await contract.borrowFee();
 
-      setLendingData((prev) => ({
-        ...prev,
+      setLendingData({
         liquidity: ethers.formatUnits(liquidity, 18),
         supplyApy: (Number(supplyRate) / 10000).toFixed(2) + "%",
         borrowApy: (Number(borrowRate) / 10000).toFixed(2) + "%",
         depositFee: ethers.formatUnits(depositFee, 18) + " ETH",
         borrowFee: ethers.formatUnits(borrowFee, 18) + " ETH",
-      }));
+      });
     } catch (error) {
       console.error("Error fetching lending details:", error);
     }
-  }, [chainId]);
+  }, [provider]);
 
   useEffect(() => {
     fetchAssetPrices();
-    if (provider) fetchLendingDetails();
+    fetchLendingDetails();
     const interval = setInterval(() => {
       fetchAssetPrices();
-      if (provider) fetchLendingDetails();
+      fetchLendingDetails();
     }, 30000);
     return () => clearInterval(interval);
-  }, [fetchAssetPrices, fetchLendingDetails, provider]);
+  }, [fetchAssetPrices, fetchLendingDetails]);
 
   return (
-    <section className="dashboard text-gray-900 py-12">
-      {/* Wallet Connect Buttons, Guide Visual, Lending Stats Here */}
-      {/* Assets grid and deposit/borrow modal trigger here */}
-      {/* Shall I continue generating the full front-end JSX too? */}
+    <section className="dashboard text-gray-900 py-12 px-4">
+      <div className="max-w-6xl mx-auto">
+        {!account ? (
+          <div className="text-center">
+            <button
+              onClick={connectWallet}
+              className="bg-blue-600 text-white px-8 py-4 rounded-lg font-bold hover:bg-blue-700"
+            >
+              Connect Wallet
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col items-center mb-10">
+              <img src={lendingGuideImage} alt="Lending Guide" className="w-full max-w-md mb-6 rounded-xl" />
+
+              <div className="bg-white p-6 rounded-lg shadow-md w-full">
+                <h2 className="text-2xl font-bold mb-4">Lending Overview</h2>
+                <p>Liquidity Available: <strong>{lendingData.liquidity}</strong> ETH</p>
+                <p>Supply APY: <strong>{lendingData.supplyApy}</strong></p>
+                <p>Borrow APY: <strong>{lendingData.borrowApy}</strong></p>
+                <p>Deposit Fee: <strong>{lendingData.depositFee}</strong></p>
+                <p>Borrow Fee: <strong>{lendingData.borrowFee}</strong></p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {assets.map((asset) => (
+                <div
+                  key={asset.symbol}
+                  onClick={() => setSelectedAsset(asset)}
+                  className="bg-gray-100 p-4 rounded-lg text-center hover:bg-gray-200 cursor-pointer"
+                >
+                  <div className="flex justify-center mb-2">{asset.icon}</div>
+                  <div className="font-bold text-lg">{asset.name}</div>
+                  <div className="text-sm text-gray-600">Price: ${assetPrices[asset.symbol] ?? "-"}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {selectedAsset && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
+          <div className="bg-white p-8 rounded-lg max-w-md w-full text-center">
+            <h3 className="text-xl font-bold mb-4">Deposit {selectedAsset.name}</h3>
+            <p className="mb-6">Coming Soon: Detailed deposit and borrow functionality for {selectedAsset.symbol}!</p>
+            <button
+              onClick={() => setSelectedAsset(null)}
+              className="mt-4 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
