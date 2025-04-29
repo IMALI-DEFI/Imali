@@ -1,173 +1,255 @@
-import React, { useState, useEffect } from "react";
-import { ethers } from "ethers";
-import { useWallet } from "../context/WalletContext";
-import { getContractInstance } from "../getContractInstance";
-import stakingVisual from "../assets/images/staking-banner.png"; // Your new staking image
-import { FaCoins, FaChartLine, FaSeedling } from "react-icons/fa";
+import React, { useState, useEffect, useCallback } from 'react';
+import { ethers } from 'ethers';
+import { useWallet } from '../context/WalletContext';
+import { getContractInstance } from '../getContractInstance';
+import { FaInfoCircle, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
+import stakingBanner from '../assets/images/staking-banner.png';
 
 const Staking = () => {
-  const { account, chainId, connectWallet, disconnectWallet, isConnecting, error } = useWallet();
+  const {
+    account,
+    chainId,
+    connectWallet,
+    disconnectWallet,
+    isConnecting,
+    error,
+  } = useWallet();
 
-  const [stakingContract, setStakingContract] = useState(null);
-  const [stakedBalance, setStakedBalance] = useState(0);
-  const [rewards, setRewards] = useState(0);
-  const [apy, setApy] = useState(0);
-  const [amount, setAmount] = useState("");
-  const [status, setStatus] = useState("");
+  const [contracts, setContracts] = useState({ staking: null, imaliToken: null, lpToken: null });
+  const [initialized, setInitialized] = useState(false);
+  const [status, setStatus] = useState({ message: '', type: '' });
+  const [balances, setBalances] = useState({
+    imaliStaked: '0', imaliRewards: '0', walletImali: '0',
+    lpStaked: '0', lpRewards: '0', walletLp: '0'
+  });
+  const [inputs, setInputs] = useState({ imali: '', lp: '', unstakeImali: '', unstakeLp: '' });
   const [loading, setLoading] = useState(false);
+  const [estimates, setEstimates] = useState({ daily: '0', weekly: '0' });
 
-  useEffect(() => {
-    const initContract = async () => {
-      if (account && chainId) {
-        try {
-          const contract = await getContractInstance("Staking", chainId);
-          setStakingContract(contract);
-        } catch (error) {
-          console.error("Failed to load staking contract:", error);
-        }
-      }
-    };
-    initContract();
+  const initContracts = useCallback(async () => {
+    if (!account || !chainId) return;
+    try {
+      const staking = await getContractInstance('Staking', { chainId });
+      const imaliToken = await getContractInstance('Token', { chainId });
+      const lpToken = await getContractInstance('LPToken', { chainId });
+      setContracts({ staking, imaliToken, lpToken });
+      setInitialized(true);
+    } catch (err) {
+      console.error('Error initializing contracts:', err);
+      setStatus({ message: 'Error initializing contracts', type: 'error' });
+    }
   }, [account, chainId]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!stakingContract || !account) return;
-      try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
+  const fetchData = useCallback(async () => {
+    if (!contracts.staking || !account) return;
+    try {
+      const [imali, lp, walletImali, walletLp] = await Promise.all([
+        contracts.staking.imaliStakers(account),
+        contracts.staking.lpStakers(account),
+        contracts.imaliToken.balanceOf(account),
+        contracts.lpToken.balanceOf(account),
+      ]);
 
-        const userInfo = await stakingContract.stakers(account);
-        setStakedBalance(ethers.formatUnits(userInfo.amount, 18));
-        setRewards(ethers.formatUnits(userInfo.rewards, 18));
+      const newBalances = {
+        imaliStaked: ethers.formatUnits(imali.amount, 18),
+        imaliRewards: ethers.formatUnits(imali.rewards, 18),
+        lpStaked: ethers.formatUnits(lp.amount, 18),
+        lpRewards: ethers.formatUnits(lp.rewards, 18),
+        walletImali: ethers.formatUnits(walletImali, 18),
+        walletLp: ethers.formatUnits(walletLp, 18),
+      };
 
-        const rewardRate = await stakingContract.rewardRate();
-        const totalStaked = await stakingContract.totalStaked();
+      const daily = ((parseFloat(newBalances.imaliStaked) * 0.12) + (parseFloat(newBalances.lpStaked) * 0.18)) / 365;
+      setBalances(newBalances);
+      setEstimates({ daily: daily.toFixed(4), weekly: (daily * 7).toFixed(4) });
+    } catch (err) {
+      console.error('Error fetching balances:', err);
+      setStatus({ message: 'Error fetching balances', type: 'error' });
+    }
+  }, [contracts, account]);
 
-        const yearlyReward = rewardRate * 31536000; // Seconds in a year
-        const apyCalc = totalStaked > 0n ? (Number(yearlyReward) / Number(totalStaked)) * 100 : 0;
-        setApy(apyCalc.toFixed(2));
-      } catch (error) {
-        console.error("Failed to fetch staking data:", error);
-      }
-    };
-    fetchData();
-  }, [stakingContract, account]);
+  useEffect(() => { initContracts(); }, [initContracts]);
+  useEffect(() => { if (initialized) fetchData(); }, [initialized, fetchData]);
 
-  const handleStake = async () => {
-    if (!stakingContract || !amount) return;
+  const handleStake = async (type) => {
+    if (!account || loading) return;
     setLoading(true);
     try {
-      const signer = await (new ethers.BrowserProvider(window.ethereum)).getSigner();
-      const tx = await stakingContract.connect(signer).stake(ethers.parseUnits(amount, 18));
+      const amount = ethers.parseUnits(inputs[type], 18);
+      const token = type === 'imali' ? contracts.imaliToken : contracts.lpToken;
+      const stakeFn = type === 'imali' ? contracts.staking.stakeIMALI : contracts.staking.stakeLP;
+
+      const allowance = await token.allowance(account, contracts.staking.address);
+      if (allowance < amount) await token.approve(contracts.staking.address, amount);
+      const tx = await stakeFn(amount, []);
       await tx.wait();
-      setStatus("✅ Stake successful!");
-      setAmount("");
+      await fetchData();
+      setInputs({ ...inputs, [type]: '' });
     } catch (err) {
-      console.error("Stake failed:", err);
-      setStatus("❌ Stake failed");
+      console.error('Stake error:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUnstake = async () => {
-    if (!stakingContract || !amount) return;
+  const handleUnstake = async (type) => {
+    if (!account || loading) return;
     setLoading(true);
     try {
-      const signer = await (new ethers.BrowserProvider(window.ethereum)).getSigner();
-      const tx = await stakingContract.connect(signer).unstake(ethers.parseUnits(amount, 18));
+      const amount = ethers.parseUnits(inputs[`unstake${type.charAt(0).toUpperCase() + type.slice(1)}`], 18);
+      const unstakeFn = type === 'imali' ? contracts.staking.unstakeIMALI : contracts.staking.unstakeLP;
+      const tx = await unstakeFn(amount);
       await tx.wait();
-      setStatus("✅ Unstake successful!");
-      setAmount("");
+      await fetchData();
+      setInputs({ ...inputs, [`unstake${type.charAt(0).toUpperCase() + type.slice(1)}`]: '' });
     } catch (err) {
-      console.error("Unstake failed:", err);
-      setStatus("❌ Unstake failed");
+      console.error('Unstake error:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleClaim = async () => {
-    if (!stakingContract) return;
+  const handleClaimRewards = async () => {
+    if (!account || loading) return;
     setLoading(true);
     try {
-      const signer = await (new ethers.BrowserProvider(window.ethereum)).getSigner();
-      const tx = await stakingContract.connect(signer).claimRewards();
+      const tx = await contracts.staking.claimRewards();
       await tx.wait();
-      setStatus("✅ Rewards claimed!");
+      await fetchData();
     } catch (err) {
-      console.error("Claim failed:", err);
-      setStatus("❌ Claim failed");
+      console.error('Claim error:', err);
     } finally {
       setLoading(false);
     }
   };
-
-  if (!account) {
-    return (
-      <div className="text-center py-10">
-        <h2 className="text-2xl font-bold mb-4">🔗 Connect Wallet to Stake</h2>
-        <button onClick={connectWallet} className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-          Connect Wallet
-        </button>
-        {error && <p className="text-red-500 mt-4">{error}</p>}
-      </div>
-    );
-  }
 
   return (
-    <section className="p-6 max-w-6xl mx-auto">
-      <div className="text-center mb-8">
-        <img
-          src={stakingVisual}
-          alt="Staking Explained"
-          className="mx-auto rounded-lg shadow-lg max-w-md"
-        />
-        <h2 className="text-3xl font-bold text-green-700 my-4">Grow Your Crypto Garden with IMALI</h2>
-        <p className="text-gray-700 max-w-2xl mx-auto">
-          Stake your IMALI tokens, earn rewards daily, and watch your digital assets grow! No complex steps — just stake, relax, and harvest your gains.
+    <div className="max-w-6xl mx-auto p-4">
+      <img src={stakingBanner} alt="Staking Guide" className="w-full max-w-lg mx-auto mb-6 rounded" />
+
+      <div className="bg-white rounded-xl shadow-md p-6 mb-8">
+        <h2 className="text-2xl font-bold mb-4">📈 Stake & Grow with IMALI</h2>
+        <p className="text-gray-700 mb-6">
+          Whether you're new to DeFi or a seasoned yield farmer, IMALI staking gives you full control to earn, compound, and multiply rewards using NFTs and lock-in options.
         </p>
+        <ul className="list-disc pl-6 mb-6 text-gray-600 space-y-2">
+          <li><strong>Beginner Friendly:</strong> Intuitive interface and instant feedback for smooth onboarding.</li>
+          <li><strong>Advanced Tools:</strong> APY boosts, NFT multipliers, lock duration, and dynamic rewards tailored for pros.</li>
+          <li><strong>Real-Time Insights:</strong> Monitor daily/weekly earnings and view all your balances clearly.</li>
+          <li><strong>100% On-Chain:</strong> Secure smart contracts running on Polygon & Ethereum.</li>
+        </ul>
+        <p className="text-sm text-gray-500">Ready to earn? Start by connecting your wallet and staking your tokens!</p>
+      </div>
+
+      {status.message && (
+        <div className={`p-4 mb-6 rounded-lg flex items-center ${
+          status.type === 'success' ? 'bg-green-100 text-green-800' :
+          status.type === 'error' ? 'bg-red-100 text-red-800' :
+          'bg-blue-100 text-blue-800'
+        }`}>
+          {status.type === 'success' ? <FaCheckCircle className="mr-2" /> : <FaExclamationTriangle className="mr-2" />}
+          {status.message}
+        </div>
+      )}
+
+      <div className="grid md:grid-cols-2 gap-6 mb-8">
+        <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+          <h3 className="font-bold mb-2">IMALI</h3>
+          <p>Staked: {balances.imaliStaked}</p>
+          <p>Rewards: {balances.imaliRewards}</p>
+          <p>Wallet: {balances.walletImali}</p>
+        </div>
+        <div className="bg-purple-50 border border-purple-200 p-4 rounded-xl">
+          <h3 className="font-bold mb-2">LP Tokens</h3>
+          <p>Staked: {balances.lpStaked}</p>
+          <p>Rewards: {balances.lpRewards}</p>
+          <p>Wallet: {balances.walletLp}</p>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h3 className="text-lg font-bold mb-4 flex items-center"><FaCoins className="mr-2" /> Your Staking Stats</h3>
-          <p>🔹 Staked Balance: {stakedBalance} IMALI</p>
-          <p>🔹 Earned Rewards: {rewards} IMALI</p>
-          <p>🔹 Current APY: {apy}%</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h3 className="text-lg font-bold mb-4 flex items-center"><FaChartLine className="mr-2" /> Stake or Claim</h3>
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="Enter amount"
-            className="w-full p-2 mb-4 border rounded"
-          />
-          <div className="flex flex-col space-y-2">
-            <button onClick={handleStake} disabled={loading} className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded">
-              {loading ? "Processing..." : "Stake"}
-            </button>
-            <button onClick={handleUnstake} disabled={loading} className="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded">
-              {loading ? "Processing..." : "Unstake"}
-            </button>
-            <button onClick={handleClaim} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded">
-              {loading ? "Processing..." : "Claim Rewards"}
-            </button>
+        <div>
+          <label className="block mb-2 font-medium">Stake IMALI</label>
+          <div className="flex">
+            <input
+              type="number"
+              className="flex-1 border p-2 rounded-l"
+              value={inputs.imali}
+              onChange={(e) => setInputs({ ...inputs, imali: e.target.value })}
+            />
+            <button
+              onClick={() => handleStake('imali')}
+              disabled={loading}
+              className="bg-blue-600 text-white px-4 rounded-r"
+            >Stake</button>
           </div>
-          {status && <p className="mt-4 text-sm text-gray-600">{status}</p>}
+        </div>
+        <div>
+          <label className="block mb-2 font-medium">Stake LP Tokens</label>
+          <div className="flex">
+            <input
+              type="number"
+              className="flex-1 border p-2 rounded-l"
+              value={inputs.lp}
+              onChange={(e) => setInputs({ ...inputs, lp: e.target.value })}
+            />
+            <button
+              onClick={() => handleStake('lp')}
+              disabled={loading}
+              className="bg-purple-600 text-white px-4 rounded-r"
+            >Stake</button>
+          </div>
         </div>
       </div>
 
-      <div className="bg-gray-100 p-6 rounded-lg shadow-md text-center">
-        <h3 className="text-lg font-bold mb-2"><FaSeedling className="mr-2 inline-block" /> How Staking Works</h3>
-        <p className="text-gray-700">
-          When you stake IMALI tokens, they are locked into the protocol. In exchange, you earn rewards over time, based on the APY. You can claim your rewards or unstake anytime.
-        </p>
+      <div className="grid md:grid-cols-2 gap-6 mb-8">
+        <div>
+          <label className="block mb-2 font-medium">Unstake IMALI</label>
+          <div className="flex">
+            <input
+              type="number"
+              className="flex-1 border p-2 rounded-l"
+              value={inputs.unstakeImali}
+              onChange={(e) => setInputs({ ...inputs, unstakeImali: e.target.value })}
+            />
+            <button
+              onClick={() => handleUnstake('imali')}
+              disabled={loading}
+              className="bg-red-600 text-white px-4 rounded-r"
+            >Unstake</button>
+          </div>
+        </div>
+        <div>
+          <label className="block mb-2 font-medium">Unstake LP Tokens</label>
+          <div className="flex">
+            <input
+              type="number"
+              className="flex-1 border p-2 rounded-l"
+              value={inputs.unstakeLp}
+              onChange={(e) => setInputs({ ...inputs, unstakeLp: e.target.value })}
+            />
+            <button
+              onClick={() => handleUnstake('lp')}
+              disabled={loading}
+              className="bg-red-600 text-white px-4 rounded-r"
+            >Unstake</button>
+          </div>
+        </div>
       </div>
-    </section>
+
+      <div className="text-center">
+        <button
+          onClick={handleClaimRewards}
+          disabled={loading}
+          className="bg-green-600 text-white py-2 px-6 rounded-lg"
+        >💰 Claim All Rewards</button>
+      </div>
+
+      <div className="mt-10 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <p><strong>Estimated Daily Rewards:</strong> {estimates.daily} tokens</p>
+        <p><strong>Estimated Weekly Rewards:</strong> {estimates.weekly} tokens</p>
+      </div>
+    </div>
   );
 };
 
