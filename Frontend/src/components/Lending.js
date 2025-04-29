@@ -1,7 +1,5 @@
 // 📦 src/components/Lending.js (Full Lending + Borrowing Platform Connected to Contract)
 
-// Added novice-friendly explanations and step-by-step guide
-
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
@@ -21,10 +19,119 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
-// [Previous imports and logic remain the same]
-
 const Lending = () => {
-  // [States and handlers remain the same]
+  const { account, connectWallet } = useWallet();
+  const [selectedAction, setSelectedAction] = useState(null);
+  const [inputAmount, setInputAmount] = useState("");
+  const [inputCollateral, setInputCollateral] = useState("");
+  const [inputBorrowId, setInputBorrowId] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleAction = async () => {
+    try {
+      if (!selectedAction) return;
+      setLoading(true);
+      const contract = await getContractInstance("Lending");
+      const signer = await contract.runner;
+
+      if (selectedAction === "deposit") {
+        const token = new ethers.Contract(inputCollateral, ["function approve(address,uint256) public returns (bool)"], signer);
+        const parsedAmount = ethers.parseUnits(inputAmount, 18);
+        await token.approve(contract.target, parsedAmount);
+        const tx = await contract.depositCollateral(inputCollateral, parsedAmount);
+        await tx.wait();
+        alert("Deposit successful!");
+      }
+      if (selectedAction === "withdraw") {
+        const tx = await contract.withdrawCollateral(inputCollateral, ethers.parseUnits(inputAmount, 18));
+        await tx.wait();
+        alert("Withdraw successful!");
+      }
+      if (selectedAction === "borrow") {
+        const tx = await contract.borrow(ethers.parseUnits(inputAmount, 18), inputCollateral);
+        await tx.wait();
+        alert("Borrow successful!");
+      }
+      if (selectedAction === "repay") {
+        const stablecoinAddress = await contract.stablecoin();
+        const stablecoin = new ethers.Contract(stablecoinAddress, ["function approve(address,uint256) public returns (bool)"], signer);
+        const parsedAmount = ethers.parseUnits(inputAmount, 18);
+        await stablecoin.approve(contract.target, parsedAmount);
+        const tx = await contract.repay(inputBorrowId, parsedAmount);
+        await tx.wait();
+        alert("Repay successful!");
+      }
+      if (selectedAction === "supply") {
+        const stablecoinAddress = await contract.stablecoin();
+        const stablecoin = new ethers.Contract(stablecoinAddress, ["function approve(address,uint256) public returns (bool)"], signer);
+        const parsedAmount = ethers.parseUnits(inputAmount, 18);
+        await stablecoin.approve(contract.target, parsedAmount);
+        const tx = await contract.supply(parsedAmount);
+        await tx.wait();
+        alert("Supply successful!");
+      }
+      if (selectedAction === "withdrawSupply") {
+        const tx = await contract.withdrawSupply(ethers.parseUnits(inputAmount, 18));
+        await tx.wait();
+        alert("Withdraw supply successful!");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Transaction failed");
+    } finally {
+      setLoading(false);
+      setSelectedAction(null);
+      setInputAmount("");
+      setInputCollateral("");
+      setInputBorrowId("");
+    }
+  };
+
+  const ActionModal = () => (
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
+      <div className="bg-white p-8 rounded-lg max-w-md w-full text-center">
+        <h3 className="text-xl font-bold mb-4 capitalize">{selectedAction} Interface</h3>
+        {selectedAction !== "withdrawSupply" && (
+          <input
+            type="text"
+            placeholder="Collateral Token Address"
+            value={inputCollateral}
+            onChange={(e) => setInputCollateral(e.target.value)}
+            className="w-full border rounded-lg px-4 py-2 mb-4"
+          />
+        )}
+        {selectedAction === "repay" && (
+          <input
+            type="text"
+            placeholder="Borrow ID"
+            value={inputBorrowId}
+            onChange={(e) => setInputBorrowId(e.target.value)}
+            className="w-full border rounded-lg px-4 py-2 mb-4"
+          />
+        )}
+        <input
+          type="number"
+          placeholder="Amount"
+          value={inputAmount}
+          onChange={(e) => setInputAmount(e.target.value)}
+          className="w-full border rounded-lg px-4 py-2 mb-4"
+        />
+        <button
+          onClick={handleAction}
+          disabled={loading}
+          className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 w-full"
+        >
+          {loading ? "Processing..." : `Confirm ${selectedAction}`}
+        </button>
+        <button
+          onClick={() => setSelectedAction(null)}
+          className="mt-4 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 w-full"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <section className="dashboard text-gray-900 py-12 px-4">
