@@ -8,7 +8,7 @@ import Features from "./components/Features";
 import Lending from "./components/Lending";
 import Staking from "./components/Staking";
 import YieldFarming from "./components/YieldFarming";
-import PresaleSection from "./components/PresaleSection";
+import PresaleSection from "./components/Token";
 import NFTMinting from "./components/NFTMinting";
 import DAODashboard from "./components/DAODashboard";
 import HowToUse from "./components/HowToUse";
