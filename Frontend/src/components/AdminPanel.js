@@ -55,17 +55,30 @@ const AdminPanel = () => {
     success: null
   });
 
-  // Fetch analytics data from Vercel API route
+  // Improved fetch analytics with better error handling
   const fetchAnalytics = async () => {
     try {
       setAnalyticsData(prev => ({ ...prev, loading: true, error: null }));
       
       const response = await fetch('/api/analytics');
+      
+      // First check if response is HTML (error page)
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.indexOf('text/html') !== -1) {
+        const text = await response.text();
+        throw new Error('Server returned HTML instead of JSON. The API endpoint may be misconfigured.');
+      }
+      
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
       }
       
       const data = await response.json();
+      
+      // Validate the response structure
+      if (!Array.isArray(data)) {
+        throw new Error('Invalid data format from API');
+      }
       
       // Generate simple trend prediction
       const prediction = generateTrendPrediction(data);
@@ -78,13 +91,33 @@ const AdminPanel = () => {
       });
     } catch (error) {
       console.error("Analytics fetch error:", error);
+      
+      // Fallback to sample data if API fails
+      const fallbackData = generateSampleData();
+      const prediction = generateTrendPrediction(fallbackData);
+      
       setAnalyticsData({
         loading: false,
         error: error.message,
-        data: [],
-        prediction: ""
+        data: fallbackData,
+        prediction
       });
     }
+  };
+
+  // Generate sample data for fallback
+  const generateSampleData = () => {
+    const data = [];
+    const now = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      data.push({
+        date: date.toISOString().split('T')[0],
+        activeUsers: Math.floor(Math.random() * 1000) + 500
+      });
+    }
+    return data;
   };
 
   // Generate trend prediction
@@ -210,17 +243,20 @@ const AdminPanel = () => {
         <CardContent>
           <Typography variant="h5" sx={{ mb: 2 }}>
             <FaChartLine style={{ marginRight: 8 }} />
-            Google Analytics Dashboard
+            Analytics Dashboard
           </Typography>
           
           {analyticsData.loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />
             </Box>
-          ) : analyticsData.error ? (
-            <Alert severity="error">{analyticsData.error}</Alert>
           ) : (
             <>
+              {analyticsData.error && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  {analyticsData.error} - Showing sample data
+                </Alert>
+              )}
               <Box sx={{ height: 400 }}>
                 <Line data={chartData} options={chartOptions} />
               </Box>
