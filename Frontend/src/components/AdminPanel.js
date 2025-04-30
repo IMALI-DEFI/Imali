@@ -1,205 +1,206 @@
-// src/components/AdminPanel.js
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import { getContractInstance } from "../getContractInstance";
 import { useWallet } from "../context/WalletContext";
-import { Line } from "react-chartjs-2";
+import { getContractInstance } from "../utils/contracts";
+import { 
+  LineChart, 
+  AdminControls, 
+  WalletStatus, 
+  LoadingSpinner,
+  ErrorAlert
+} from "../components/AdminComponents";
 import {
-  FaUsers, FaShareAlt, FaRobot, FaCog, FaClock, FaWallet
+  FaUsers, 
+  FaRobot, 
+  FaWallet,
+  FaChartLine
 } from "react-icons/fa";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Tooltip,
-  Legend,
-  Title,
-} from "chart.js";
-
-// Chart.js setup
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Title);
 
 const AdminPanel = () => {
-  const { account, connectWallet } = useWallet();
+  const { account, connectWallet, isConnecting } = useWallet();
   const [isOwner, setIsOwner] = useState(false);
-  const [analyticsData, setAnalyticsData] = useState([]);
-  const [chartData, setChartData] = useState(null);
-  const [prediction, setPrediction] = useState("");
-  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
-  const [analyticsError, setAnalyticsError] = useState("");
+  const [analytics, setAnalytics] = useState({
+    data: [],
+    loading: true,
+    error: null,
+    prediction: ""
+  });
+  const [contractState, setContractState] = useState({
+    loading: false,
+    error: null,
+    success: null
+  });
 
-  // Owner Check
+  // Check if connected wallet is the contract owner
   useEffect(() => {
-    const initAdmin = async () => {
-      if (!account) return;
+    const checkOwnership = async () => {
+      if (!account) {
+        setIsOwner(false);
+        return;
+      }
+
       try {
         const lendingContract = await getContractInstance("Lending");
-        const ownerAddress = await lendingContract.owner();
-        console.log("Contract owner:", ownerAddress);
-        console.log("Connected account:", account);
-        setIsOwner(account.toLowerCase() === ownerAddress.toLowerCase());
+        const owner = await lendingContract.owner();
+        setIsOwner(account.toLowerCase() === owner.toLowerCase());
       } catch (error) {
-        console.error("Owner check failed:", error);
+        console.error("Ownership check failed:", error);
         setIsOwner(false);
       }
     };
-    initAdmin();
+
+    checkOwnership();
   }, [account]);
 
-  // Fetch Analytics
+  // Fetch analytics data
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
+        setAnalytics(prev => ({ ...prev, loading: true, error: null }));
+        
         const response = await fetch("/api/analytics");
-        if (!response.ok) throw new Error("Failed to fetch GA analytics");
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
         const data = await response.json();
-        const formatted = data.rows.map((row) => ({
-          day: row.dimensionValues[0].value,
-          value: Number(row.metricValues[0].value),
-        }));
+        
+        if (data.error) {
+          throw new Error(data.message || "Analytics fetch failed");
+        }
 
-        setAnalyticsData(formatted);
-        setChartData({
-          labels: formatted.map((d) => d.day),
-          datasets: [{
-            label: "User Engagement",
-            data: formatted.map((d) => d.value),
-            backgroundColor: "rgba(54, 162, 235, 0.2)",
-            borderColor: "rgba(54, 162, 235, 1)",
-            borderWidth: 2,
-            tension: 0.4,
-          }],
+        // Generate simple trend prediction
+        const prediction = generateTrendPrediction(data);
+        
+        setAnalytics({
+          data,
+          loading: false,
+          error: null,
+          prediction
         });
-        setPrediction("📈 Traffic is trending upward!");
+
       } catch (error) {
-        console.error("Analytics fetch failed:", error);
-        setAnalyticsError("Unable to load Google Analytics data.");
-      } finally {
-        setLoadingAnalytics(false);
+        console.error("Analytics fetch error:", error);
+        setAnalytics({
+          data: [],
+          loading: false,
+          error: error.message,
+          prediction: ""
+        });
       }
     };
+
     fetchAnalytics();
   }, []);
 
-  // Smart Contract Admin Functions
-  const handleBuyback = async () => {
-    try {
-      const contract = await getContractInstance("Buyback");
-      const tx = await contract.distribute();
-      await tx.wait();
-      alert("✅ Buyback distributed successfully.");
-    } catch (err) {
-      alert("❌ Buyback failed: " + err.message);
+  // Generate simple trend prediction
+  const generateTrendPrediction = (data) => {
+    if (data.length < 2) return "Not enough data for prediction";
+    
+    const lastWeek = data.slice(-7);
+    const total = lastWeek.reduce((sum, day) => sum + day.activeUsers, 0);
+    const avg = total / lastWeek.length;
+    
+    if (data[data.length - 1].activeUsers > avg * 1.2) {
+      return "📈 Strong upward trend detected!";
+    } else if (data[data.length - 1].activeUsers < avg * 0.8) {
+      return "📉 Downward trend detected";
     }
+    return "➡️ Traffic is stable";
   };
 
-  const handleAirdrop = async () => {
+  // Execute contract function
+  const executeContractFunction = async (contractName, functionName, args = []) => {
     try {
-      const contract = await getContractInstance("AirdropDistributor");
-      const tx = await contract.executeAirdrop();
+      setContractState({ loading: true, error: null, success: null });
+      
+      const contract = await getContractInstance(contractName);
+      const tx = await contract[functionName](...args);
       await tx.wait();
-      alert("✅ Airdrop executed successfully.");
-    } catch (err) {
-      alert("❌ Airdrop failed: " + err.message);
+      
+      setContractState({ 
+        loading: false, 
+        error: null, 
+        success: `${functionName} executed successfully` 
+      });
+      
+    } catch (error) {
+      console.error(`${functionName} error:`, error);
+      setContractState({
+        loading: false,
+        error: error.message || `Failed to execute ${functionName}`,
+        success: null
+      });
     }
   };
-
-  const handleLiquidity = async () => {
-    try {
-      const contract = await getContractInstance("LiquidityManager");
-      const tx = await contract.addLiquidity();
-      await tx.wait();
-      alert("✅ Liquidity added to pool.");
-    } catch (err) {
-      alert("❌ Liquidity addition failed: " + err.message);
-    }
-  };
-
-  // Shorten Address Helper
-  const shortenAddress = (address) =>
-    address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
 
   return (
-    <div className="p-6 max-w-7xl mx-auto bg-gray-50 rounded-md shadow-md">
-      <h1 className="text-3xl font-bold mb-8 text-green-800">Admin Dashboard</h1>
+    <div className="admin-container">
+      {/* Header Section */}
+      <header className="admin-header">
+        <h1>
+          <FaChartLine className="icon" />
+          Admin Dashboard
+        </h1>
+      </header>
 
-      {/* Connected Wallet Info */}
-      <div className="bg-white p-4 rounded-md shadow flex items-center justify-between mb-8">
-        {account ? (
-          <>
-            <div className="flex items-center space-x-4">
-              <FaWallet className="text-green-600" size={24} />
-              <div>
-                <p className="text-sm text-gray-600">Connected Wallet</p>
-                <p className="font-bold text-green-700">{shortenAddress(account)}</p>
-              </div>
-            </div>
-            <div className={`px-3 py-1 rounded-full text-sm font-bold ${isOwner ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-              {isOwner ? "Owner Access ✅" : "Unauthorized ⚠️"}
-            </div>
-          </>
-        ) : (
-          <button
-            onClick={connectWallet}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
-          >
-            Connect Wallet
-          </button>
-        )}
-      </div>
+      {/* Wallet Connection Status */}
+      <WalletStatus 
+        account={account}
+        isOwner={isOwner}
+        isConnecting={isConnecting}
+        onConnect={connectWallet}
+      />
 
-      {/* Unauthorized Alert */}
-      {account && !isOwner && (
-        <div className="bg-red-100 text-red-800 p-4 rounded mb-6">
-          ⚠️ You are connected but not authorized to use admin functions.
-        </div>
-      )}
-
-      {/* Smart Contract Admin Tools */}
-      {account && isOwner && (
-        <section className="mb-10 bg-white p-6 rounded shadow">
-          <h2 className="text-2xl font-semibold mb-4 flex items-center">
-            <FaRobot className="mr-2" /> Smart Contract Controls
+      {/* Contract Execution Controls */}
+      {isOwner && (
+        <section className="admin-section">
+          <h2>
+            <FaRobot className="icon" />
+            Contract Controls
           </h2>
-          <div className="grid md:grid-cols-3 gap-4">
-            <button
-              onClick={handleBuyback}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded"
-            >
-              🔥 Trigger Buyback
-            </button>
-            <button
-              onClick={handleAirdrop}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded"
-            >
-              🎁 Execute Airdrop
-            </button>
-            <button
-              onClick={handleLiquidity}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded"
-            >
-              💧 Add Liquidity
-            </button>
-          </div>
+          
+          <AdminControls
+            onBuyback={() => executeContractFunction("Buyback", "distribute")}
+            onAirdrop={() => executeContractFunction("Airdrop", "executeAirdrop")}
+            onLiquidity={() => executeContractFunction("Liquidity", "addLiquidity")}
+            loading={contractState.loading}
+          />
+          
+          {contractState.error && (
+            <ErrorAlert message={contractState.error} />
+          )}
+          {contractState.success && (
+            <div className="success-message">
+              {contractState.success}
+            </div>
+          )}
         </section>
       )}
 
-      {/* Analytics */}
-      <section className="bg-white p-6 rounded shadow">
-        <h2 className="text-2xl font-semibold mb-4 flex items-center">
-          <FaUsers className="mr-2" /> Weekly User Analytics
+      {/* Analytics Section */}
+      <section className="admin-section">
+        <h2>
+          <FaUsers className="icon" />
+          User Analytics (30 Days)
         </h2>
-        {loadingAnalytics ? (
-          <p>Loading analytics...</p>
-        ) : analyticsError ? (
-          <p className="text-red-600">{analyticsError}</p>
+        
+        {analytics.loading ? (
+          <LoadingSpinner />
+        ) : analytics.error ? (
+          <ErrorAlert message={analytics.error} />
         ) : (
           <>
-            {chartData && <Line data={chartData} />}
-            <p className="mt-4 text-green-700 font-semibold">{prediction}</p>
+            <LineChart 
+              data={analytics.data}
+              labels={analytics.data.map(d => d.date)}
+              values={analytics.data.map(d => d.activeUsers)}
+            />
+            {analytics.prediction && (
+              <div className="trend-prediction">
+                {analytics.prediction}
+              </div>
+            )}
           </>
         )}
       </section>
