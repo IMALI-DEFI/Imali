@@ -2,26 +2,10 @@ import { createContext, useState, useEffect, useCallback, useContext, useMemo } 
 import WalletConnectProvider from '@walletconnect/web3-provider';
 import { ethers } from 'ethers';
 
-// Types (if using TypeScript)
-/*
-interface WalletState {
-  account: string | null;
-  chainId: number | null;
-  error: string | null;
-  isConnecting: boolean;
-  provider: ethers.BrowserProvider | null;
-}
+// Context creation
+const WalletContext = createContext(null);
 
-interface WalletContextType extends WalletState {
-  connectWallet: (walletType: 'metamask' | 'walletconnect') => Promise<void>;
-  disconnectWallet: () => void;
-  getSigner: () => Promise<ethers.Signer>;
-}
-*/
-
-const WalletContext = createContext(/*<WalletContextType | null>*/ null);
-
-export const WalletProvider = ({ children }) => {
+export const WalletProvider = ({ children = null }) => {
   const [state, setState] = useState({
     account: null,
     chainId: null,
@@ -49,12 +33,12 @@ export const WalletProvider = ({ children }) => {
   }, []);
 
   const setupListeners = useCallback((provider) => {
-    if (provider && provider.on) {
+    if (provider?.on) {
       provider.on('accountsChanged', handleAccountsChanged);
       provider.on('chainChanged', handleChainChanged);
     }
     return () => {
-      if (provider && provider.removeListener) {
+      if (provider?.removeListener) {
         provider.removeListener('accountsChanged', handleAccountsChanged);
         provider.removeListener('chainChanged', handleChainChanged);
       }
@@ -75,18 +59,17 @@ export const WalletProvider = ({ children }) => {
           }
           throw new Error('Please install MetaMask');
         }
-        
+
         web3Provider = new ethers.BrowserProvider(window.ethereum);
         const accounts = await web3Provider.send("eth_requestAccounts", []);
         setupListeners(window.ethereum);
-        
+
         setState(prev => ({
           ...prev,
           account: accounts[0],
           provider: web3Provider
         }));
-      } 
-      else if (walletType === 'walletconnect') {
+      } else if (walletType === 'walletconnect') {
         const walletConnectProvider = new WalletConnectProvider({
           rpc: {
             1: process.env.REACT_APP_INFURA_MAINNET_URL,
@@ -98,7 +81,7 @@ export const WalletProvider = ({ children }) => {
         await walletConnectProvider.enable();
         web3Provider = new ethers.BrowserProvider(walletConnectProvider);
         const signer = await web3Provider.getSigner();
-        
+
         setState(prev => ({
           ...prev,
           account: await signer.getAddress(),
@@ -111,7 +94,6 @@ export const WalletProvider = ({ children }) => {
         ...prev,
         chainId: Number(network.chainId)
       }));
-
     } catch (err) {
       console.error("Connection error:", err);
       setState(prev => ({
