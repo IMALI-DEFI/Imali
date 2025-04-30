@@ -1,239 +1,400 @@
-// IMALIToken.js
-import React, { useState, useEffect, useCallback } from "react";
-import { ethers, Contract } from "ethers";
-import { toast } from "react-toastify";
+import React, { useState, useEffect } from "react";
+import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
-import { getContractInstance } from "../getContractInstance";
+import getContractInstance from "../getContractInstance";
+import { toast } from "react-toastify";
 import {
+  Box,
   Button,
+  Card,
+  CardContent,
   CircularProgress,
+  Container,
+  Grid,
+  Paper,
+  Step,
+  StepLabel,
+  Stepper,
   TextField,
   Typography,
-  Paper,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
+  Chip,
+  Divider
 } from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import {
+  FaWallet,
+  FaExchangeAlt,
+  FaCoins,
+  FaChartLine,
+  FaImage,
+  FaCheckCircle
+} from "react-icons/fa";
 
-const POLYGON_MAINNET = 137;
-const BASE_MAINNET = 8453;
-
-const chainIcons = {
-  [POLYGON_MAINNET]: "🟣 Polygon",
-  [BASE_MAINNET]: "🔵 Base",
-};
-
-const IMALIToken = () => {
-  const {
-    account,
-    connectWallet,
-    disconnectWallet,
-    isConnecting,
-    error,
-    loading,
-    setLoading,
-  } = useWallet();
+const TokenPage = () => {
+  const { account, connectWallet, isConnecting } = useWallet();
   const [amount, setAmount] = useState("");
   const [balance, setBalance] = useState("0");
-  const [status, setStatus] = useState("");
-  const [tokenPriceUSD, setTokenPriceUSD] = useState(null);
-  const [activeChainId, setActiveChainId] = useState(null);
+  const [nftBalance, setNftBalance] = useState(0);
+  const [loading, setLoading] = useState({
+    purchase: false,
+    nft: false,
+    balance: false
+  });
+  const [selectedTier, setSelectedTier] = useState(null);
+  const [networkCorrect, setNetworkCorrect] = useState(false);
 
-  const RATE = 100; // 100 tokens per MATIC
-
-  const switchNetwork = async (chainId) => {
-    if (!window.ethereum?.request) return;
-    try {
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: `0x${chainId.toString(16)}` }],
-      });
-    } catch (e) {
-      console.error("Network switch error:", e);
+  // NFT Tiers - Adjust based on your token economics
+  const nftTiers = [
+    {
+      id: 1,
+      name: "Bronze",
+      minAmount: "1000",
+      image: "/nfts/bronze.png",
+      benefits: ["Early access", "Basic rewards"]
+    },
+    {
+      id: 2,
+      name: "Silver",
+      minAmount: "5000",
+      image: "/nfts/silver.png",
+      benefits: ["Higher APY", "VIP support"]
+    },
+    {
+      id: 3,
+      name: "Gold",
+      minAmount: "10000",
+      image: "/nfts/gold.png",
+      benefits: ["Governance rights", "Exclusive events"]
     }
-  };
+  ];
 
-  const checkNetwork = useCallback(async () => {
+  // Check network (Polygon Mainnet)
+  const checkNetwork = async () => {
+    if (!window.ethereum) return false;
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const network = await provider.getNetwork();
-      setActiveChainId(network.chainId);
-      if (network.chainId !== POLYGON_MAINNET) {
-        setStatus("❌ Not on Polygon Network. Please switch in MetaMask.");
-        return false;
-      }
-      return true;
+      const isCorrect = network.chainId === 137; // Polygon Mainnet
+      setNetworkCorrect(isCorrect);
+      return isCorrect;
     } catch (err) {
-      console.error("Error checking network:", err);
-      setStatus("❌ Failed to check network.");
+      console.error("Network check failed:", err);
       return false;
     }
-  }, []);
+  };
 
-  const fetchBalance = useCallback(async () => {
+  // Fetch token and NFT balances
+  const fetchBalances = async () => {
     if (!account) return;
     try {
-      const contract = await getContractInstance("Token");
-      const tokenBalance = await contract.balanceOf(account);
-      setBalance(ethers.formatEther(tokenBalance));
+      setLoading(prev => ({ ...prev, balance: true }));
+      
+      // Token balance
+      const tokenContract = await getContractInstance("Token");
+      const tokenBal = await tokenContract.balanceOf(account);
+      setBalance(ethers.formatEther(tokenBal));
+      
+      // NFT balance
+      const nftContract = await getContractInstance("NFT");
+      const nftBal = await nftContract.balanceOf(account);
+      setNftBalance(Number(nftBal));
+      
     } catch (err) {
-      console.error("Error fetching token balance:", err);
-      setStatus("❌ Failed to fetch token balance.");
+      console.error("Balance fetch error:", err);
+      toast.error("Failed to load balances");
+    } finally {
+      setLoading(prev => ({ ...prev, balance: false }));
+    }
+  };
+
+  // Handle token purchase
+  const handlePurchase = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+    
+    const isCorrectNetwork = await checkNetwork();
+    if (!isCorrectNetwork) {
+      toast.error("Please switch to Polygon Network");
+      return;
+    }
+
+    try {
+      setLoading(prev => ({ ...prev, purchase: true }));
+      const contract = await getContractInstance("Token");
+      const tx = await contract.buyTokens({
+        value: ethers.parseEther(amount)
+      });
+      await tx.wait();
+      toast.success("Tokens purchased successfully!");
+      fetchBalances();
+      setAmount("");
+    } catch (err) {
+      console.error("Purchase failed:", err);
+      toast.error(err.reason || "Purchase failed");
+    } finally {
+      setLoading(prev => ({ ...prev, purchase: false }));
+    }
+  };
+
+  // Handle NFT minting
+  const mintNFT = async () => {
+    if (!selectedTier) {
+      toast.error("Please select an NFT tier");
+      return;
+    }
+    
+    try {
+      setLoading(prev => ({ ...prev, nft: true }));
+      const contract = await getContractInstance("NFT");
+      const tx = await contract.mint(account, selectedTier.id);
+      await tx.wait();
+      toast.success(`${nftTiers.find(t => t.id === selectedTier).name} NFT minted!`);
+      fetchBalances();
+      setSelectedTier(null);
+    } catch (err) {
+      console.error("NFT mint failed:", err);
+      toast.error(err.reason || "NFT mint failed");
+    } finally {
+      setLoading(prev => ({ ...prev, nft: false }));
+    }
+  };
+
+  // Check balances when account changes
+  useEffect(() => {
+    checkNetwork();
+    if (account) {
+      fetchBalances();
     }
   }, [account]);
 
-  const fetchTokenPrice = useCallback(async () => {
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const chainlink = new Contract(
-        "0xab594600376ec9fd91f8e885dadf0ce036862de0", // MATIC/USD
-        ["function latestAnswer() view returns (int256)"],
-        provider
-      );
-      const price = await chainlink.latestAnswer();
-      const usd = (1 / RATE) * (Number(price) / 1e8);
-      setTokenPriceUSD(usd);
-    } catch (err) {
-      console.error("Failed to fetch price:", err);
-    }
-  }, []);
-
-  const purchaseTokens = useCallback(async () => {
-    if (!amount || parseFloat(amount) <= 0) {
-      setStatus("❌ Please enter a valid amount.");
-      return;
-    }
-    const isOnPolygon = await checkNetwork();
-    if (!isOnPolygon) return;
-    try {
-      setLoading(true);
-      const contract = await getContractInstance("Token");
-      const valueToSend = ethers.parseEther(amount);
-      const tx = await contract.buyTokens({ value: valueToSend });
-      await tx.wait(1);
-      toast.success("✅ Tokens purchased successfully!");
-      fetchBalance();
-      setAmount("");
-    } catch (err) {
-      console.error("Failed to purchase tokens:", err);
-      setStatus(`❌ Transaction failed: ${err.reason || err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [amount, checkNetwork, fetchBalance, setLoading]);
-
-  useEffect(() => {
-    if (account) {
-      fetchBalance();
-      fetchTokenPrice();
-      checkNetwork();
-    }
-  }, [account, fetchBalance, fetchTokenPrice, checkNetwork]);
-
-  if (!account) {
-    return (
-      <div className="p-8 text-center">
-        <h2 className="text-2xl font-bold mb-4">🔗 Connect Your Wallet</h2>
-        <p className="text-gray-600 mb-4">
-          To purchase IMALI tokens, please connect your wallet.
-        </p>
-        <Button
-          onClick={connectWallet}
-          variant="contained"
-          color="primary"
-          disabled={isConnecting}
-        >
-          {isConnecting ? "Connecting..." : "Connect Wallet"}
-        </Button>
-        {error && <Typography color="error" className="mt-2">{error}</Typography>}
-      </div>
-    );
-  }
-
   return (
-    <section className="bg-gray-100 min-h-screen py-16 px-6">
-      <Paper className="container mx-auto max-w-6xl bg-white shadow-lg p-12 rounded-lg">
-        <div className="bg-gray-100 p-4 rounded-lg text-sm mb-6 flex flex-col sm:flex-row justify-between items-center">
-          <div>
-            ✅ Connected: <span className="font-mono text-green-700">{account.slice(0, 6)}...{account.slice(-4)}</span>
-          </div>
-          <div>
-            🔗 Network: {chainIcons[activeChainId] || "🌐 Unknown"}
-          </div>
-          <Button onClick={disconnectWallet} variant="outlined" color="error">
-            Disconnect Wallet
-          </Button>
-        </div>
-
-        <div className="flex gap-2 mb-6">
-          <Button variant="outlined" onClick={() => switchNetwork(POLYGON_MAINNET)}>Switch to Polygon</Button>
-          <Button variant="outlined" onClick={() => switchNetwork(BASE_MAINNET)}>Switch to Base</Button>
-        </div>
-
-        <Typography variant="h4" align="center" className="mb-8" style={{ color: "#036302", fontWeight: "bold" }}>
-          💰 Purchase IMALI Tokens
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Hero Section */}
+      <Box textAlign="center" mb={6}>
+        <Typography variant="h3" component="h1" gutterBottom>
+          <Box component="span" color="primary.main">IMALI</Box> TOKEN
         </Typography>
+        <Typography variant="h5" color="text.secondary">
+          Join the future of DeFi on Polygon
+        </Typography>
+      </Box>
 
-        {tokenPriceUSD && (
-          <Typography align="center" className="mb-4">
-            💱 1 IMALI ≈ ${tokenPriceUSD.toFixed(4)} USD
-          </Typography>
-        )}
+      {/* Wallet Connection */}
+      <Card sx={{ mb: 4 }}>
+        <CardContent>
+          <Grid container alignItems="center" spacing={2}>
+            <Grid item xs={12} md={8}>
+              {!account ? (
+                <Button
+                  variant="contained"
+                  size="large"
+                  startIcon={<FaWallet />}
+                  onClick={connectWallet}
+                  disabled={isConnecting}
+                  fullWidth
+                >
+                  {isConnecting ? "Connecting..." : "Connect Wallet"}
+                </Button>
+              ) : (
+                <Box>
+                  <Typography variant="body1">
+                    Connected: {`${account.slice(0, 6)}...${account.slice(-4)}`}
+                  </Typography>
+                  <Chip 
+                    label={networkCorrect ? "Polygon Network" : "Wrong Network"} 
+                    color={networkCorrect ? "success" : "error"} 
+                    size="small" 
+                    sx={{ mt: 1 }}
+                  />
+                </Box>
+              )}
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Your IMALI Balance
+                </Typography>
+                <Typography variant="h6">
+                  {loading.balance ? <CircularProgress size={24} /> : `${balance} IMALI`}
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
-        {status && <Typography align="center" color="error" className="mb-4">{status}</Typography>}
-        {loading && <Typography align="center" className="mb-4">Processing transaction...</Typography>}
-
-        <Paper elevation={2} className="p-4 mb-6">
-          <Typography variant="h6" style={{ color: "#036302" }}>Your IMALI Balance</Typography>
-          <Typography variant="h5">{balance} IMALI</Typography>
-        </Paper>
-
-        <Paper elevation={2} className="p-4 mb-6">
-          <Typography variant="h6" style={{ color: "#9c27b0" }}>Buy IMALI Tokens</Typography>
-          <TextField
-            label="Enter amount in MATIC"
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            fullWidth
-            margin="normal"
-            inputProps={{ step: "0.01", min: "0" }}
-          />
-          <Button
-            variant="contained"
-            color="secondary"
-            onClick={purchaseTokens}
-            disabled={loading}
-            fullWidth
-            style={{ marginTop: "10px" }}
-          >
-            {loading ? <CircularProgress size={24} /> : "Buy Tokens"}
-          </Button>
-        </Paper>
-
-        <Paper elevation={3} style={{ padding: "20px", backgroundColor: "#f9f9f9" }}>
-          <Accordion>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="h6">📝 How to Purchase IMALI Tokens</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <ol style={{ marginLeft: "20px", lineHeight: "1.6" }}>
-                <li><strong>Connect Your Wallet:</strong> Click the "Connect Wallet" button above.</li>
-                <li><strong>Switch to Polygon:</strong> Ensure your wallet is set to the Polygon network.</li>
-                <li><strong>Get MATIC:</strong> Make sure your wallet has enough MATIC to spend.</li>
-                <li><strong>Enter Amount:</strong> Input how much MATIC you'd like to use.</li>
-                <li><strong>Confirm Transaction:</strong> Click "Buy Tokens" and confirm in your wallet.</li>
-              </ol>
-              <Typography variant="body1" style={{ marginTop: "10px" }}>
-                Note: Every transaction requires wallet confirmation and sufficient gas fees.
+      {/* Purchase Section */}
+      <Grid container spacing={4}>
+        {/* Token Purchase */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h5" gutterBottom>
+                <FaCoins style={{ marginRight: 8 }} />
+                Buy IMALI Tokens
               </Typography>
-            </AccordionDetails>
-          </Accordion>
+              
+              <Stepper activeStep={account ? 1 : 0} alternativeLabel sx={{ mb: 3 }}>
+                <Step>
+                  <StepLabel>Connect Wallet</StepLabel>
+                </Step>
+                <Step>
+                  <StepLabel>Buy Tokens</StepLabel>
+                </Step>
+              </Stepper>
+
+              <TextField
+                label="Amount in MATIC"
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                fullWidth
+                margin="normal"
+                inputProps={{ min: "0.01", step: "0.01" }}
+              />
+              
+              <Button
+                variant="contained"
+                size="large"
+                fullWidth
+                onClick={handlePurchase}
+                disabled={!account || loading.purchase}
+                startIcon={loading.purchase ? <CircularProgress size={20} /> : <FaExchangeAlt />}
+                sx={{ mt: 2 }}
+              >
+                {loading.purchase ? "Processing..." : "Buy Tokens"}
+              </Button>
+
+              <Divider sx={{ my: 3 }} />
+
+              <Typography variant="body2" color="text.secondary">
+                <strong>How to buy:</strong>
+              </Typography>
+              <ol style={{ paddingLeft: 20, marginTop: 8 }}>
+                <li>Connect your wallet (MetaMask recommended)</li>
+                <li>Ensure you're on Polygon Network</li>
+                <li>Enter MATIC amount (1 MATIC = 100 IMALI)</li>
+                <li>Confirm transaction in your wallet</li>
+              </ol>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* NFT Minting */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h5" gutterBottom>
+                <FaImage style={{ marginRight: 8 }} />
+                Exclusive NFT Collection
+              </Typography>
+              <Typography variant="body1" color="text.secondary" gutterBottom>
+                Mint limited edition NFTs with special benefits
+              </Typography>
+
+              <Grid container spacing={2} sx={{ mt: 2 }}>
+                {nftTiers.map(tier => (
+                  <Grid item xs={12} sm={4} key={tier.id}>
+                    <Paper 
+                      variant="outlined" 
+                      sx={{ 
+                        p: 2, 
+                        cursor: "pointer",
+                        borderColor: selectedTier?.id === tier.id ? "primary.main" : "",
+                        backgroundColor: selectedTier?.id === tier.id ? "primary.light" : ""
+                      }}
+                      onClick={() => setSelectedTier(tier)}
+                    >
+                      <Box textAlign="center">
+                        <img 
+                          src={tier.image} 
+                          alt={tier.name} 
+                          style={{ width: 60, height: 60, margin: "0 auto 8px" }} 
+                        />
+                        <Typography variant="subtitle1">{tier.name}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Min: {tier.minAmount} IMALI
+                        </Typography>
+                      </Box>
+                    </Paper>
+                  </Grid>
+                ))}
+              </Grid>
+
+              {selectedTier && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    <strong>Benefits:</strong>
+                  </Typography>
+                  <ul style={{ paddingLeft: 20, marginTop: 4 }}>
+                    {selectedTier.benefits.map((benefit, i) => (
+                      <li key={i}>{benefit}</li>
+                    ))}
+                  </ul>
+                </Box>
+              )}
+
+              <Button
+                variant="contained"
+                color="secondary"
+                size="large"
+                fullWidth
+                onClick={mintNFT}
+                disabled={!selectedTier || loading.nft || nftBalance > 0}
+                startIcon={loading.nft ? <CircularProgress size={20} /> : <FaCheckCircle />}
+                sx={{ mt: 3 }}
+              >
+                {nftBalance > 0 ? "Already Minted" : 
+                 loading.nft ? "Minting..." : "Mint NFT"}
+              </Button>
+
+              <Typography variant="caption" display="block" sx={{ mt: 2 }}>
+                Note: You can only mint one NFT per wallet
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* FAQ Section */}
+      <Box sx={{ mt: 6 }}>
+        <Typography variant="h5" gutterBottom>
+          Frequently Asked Questions
+        </Typography>
+        
+        <Paper variant="outlined" sx={{ p: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            How do I get MATIC for transactions?
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            You can buy MATIC on exchanges like Binance or Coinbase and withdraw to your Polygon wallet.
+            Alternatively, use a fiat on-ramp like Transak or MoonPay directly in MetaMask.
+          </Typography>
         </Paper>
-      </Paper>
-    </section>
+
+        <Paper variant="outlined" sx={{ p: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            When will I receive my NFT?
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            NFTs are minted immediately after transaction confirmation. You can view it in your wallet's
+            NFT section or on marketplaces like OpenSea.
+          </Typography>
+        </Paper>
+
+        <Paper variant="outlined" sx={{ p: 3 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            What are the benefits of holding IMALI tokens?
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            IMALI tokens give you access to platform governance, staking rewards, fee discounts,
+            and exclusive features in the IMALI DeFi ecosystem.
+          </Typography>
+        </Paper>
+      </Box>
+    </Container>
   );
 };
 
-export default IMALIToken;
+export default TokenPage;
