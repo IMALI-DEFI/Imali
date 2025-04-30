@@ -1,8 +1,8 @@
 import { createContext, useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import WalletConnectProvider from '@walletconnect/web3-provider';
 import { ethers } from 'ethers';
+import PropTypes from 'prop-types';
 
-// Context creation
 const WalletContext = createContext(null);
 
 export const WalletProvider = ({ children = null }) => {
@@ -157,6 +157,10 @@ export const WalletProvider = ({ children = null }) => {
       {children}
     </WalletContext.Provider>
   );
+};
+
+WalletProvider.propTypes = {
+  children: PropTypes.node
 };
 
 export const useWallet = () => {
