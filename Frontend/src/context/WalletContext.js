@@ -14,155 +14,98 @@ export const WalletProvider = ({ children }) => {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
   const [error, setError] = useState(null);
-  const [isMobile, setIsMobile] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [ethersProvider, setEthersProvider] = useState(null);
-  const [wcConnector, setWcConnector] = useState(null);
+  const [provider, setProvider] = useState(null);
 
-  // Detect mobile device
-  useEffect(() => {
-    const mobileCheck = () => {
-      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        navigator.userAgent
-      );
-    };
-    setIsMobile(mobileCheck());
-  }, []);
+  const isMobile = () =>
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
 
-  // Handle automatic mobile connection
-  const connectMobile = useCallback(async () => {
+  const connectWallet = useCallback(async (walletType = "metamask") => {
+    setIsConnecting(true);
+    setError(null);
+
     try {
-      setIsConnecting(true);
-      setError(null);
+      let web3Provider;
 
-      const connector = new WalletConnectProvider({
-        rpc: {
-          1: "https://cloudflare-eth.com",
-          5: "https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
-          137: "https://polygon-rpc.com",
-        },
-        bridge: "https://bridge.walletconnect.org",
-        qrcode: false, // Disable QR code on mobile
-      });
+      // MetaMask flow
+      if (walletType === "metamask") {
+        const metamaskInstalled = typeof window.ethereum !== "undefined";
 
-      await connector.enable();
+        // Deep link if on mobile and MetaMask not injected
+        if (!metamaskInstalled && isMobile()) {
+          const dappLink = `https://metamask.app.link/dapp/${window.location.hostname}${window.location.pathname}`;
+          window.location.href = dappLink;
+          return;
+        }
 
-      // Directly open MetaMask or other wallet apps
-      if (connector.connector?.uri) {
-        const uri = connector.connector.uri;
-        const deeplink = `https://metamask.app.link/wc?uri=${encodeURIComponent(uri)}`;
-        window.location.href = deeplink;
-        return;
+        if (!metamaskInstalled) {
+          throw new Error("Please install MetaMask to continue.");
+        }
+
+        web3Provider = new ethers.BrowserProvider(window.ethereum);
+        const accounts = await web3Provider.send("eth_requestAccounts", []);
+        setAccount(accounts[0]);
       }
 
-      const ethersProvider = new ethers.BrowserProvider(connector);
-      const signer = await ethersProvider.getSigner();
-      const network = await ethersProvider.getNetwork();
+      // WalletConnect flow
+      else if (walletType === "walletconnect") {
+        const wcProvider = new WalletConnectProvider({
+          rpc: {
+            1: "https://mainnet.infura.io/v3/YOUR_INFURA_ID",
+            56: "https://bsc-dataseed.binance.org/",
+            137: "https://polygon-rpc.com/",
+          },
+          qrcodeModalOptions: {
+            mobileLinks: isMobile() ? ["metamask", "trust", "rainbow"] : [],
+          },
+        });
 
-      setAccount(await signer.getAddress());
+        await wcProvider.enable();
+        web3Provider = new ethers.BrowserProvider(wcProvider);
+        const signer = await web3Provider.getSigner();
+        setAccount(await signer.getAddress());
+      }
+
+      const network = await web3Provider.getNetwork();
       setChainId(Number(network.chainId));
-      setEthersProvider(ethersProvider);
-      setWcConnector(connector);
+      setProvider(web3Provider);
     } catch (err) {
-      console.error("Mobile connection failed:", err);
-      setError("Failed to connect. Please try again.");
-    } finally {
-      setIsConnecting(false);
-    }
-  }, []);
-
-  // Handle desktop connection
-  const connectDesktop = useCallback(async () => {
-    if (!window.ethereum) {
-      setError("Please install MetaMask or another Ethereum wallet");
-      return;
-    }
-
-    try {
-      setIsConnecting(true);
-      setError(null);
-
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await provider.send("eth_requestAccounts", []);
-      const network = await provider.getNetwork();
-
-      setAccount(accounts[0]);
-      setChainId(Number(network.chainId));
-      setEthersProvider(provider);
-    } catch (err) {
-      console.error("Desktop connection failed:", err);
+      console.error("Connection error:", err);
       setError(err.message || "Connection failed");
     } finally {
       setIsConnecting(false);
     }
   }, []);
 
-  // Smart connect function that chooses the right method
-  const connectWallet = useCallback(async () => {
-    if (isMobile) {
-      return connectMobile();
-    }
-    return connectDesktop();
-  }, [isMobile, connectMobile, connectDesktop]);
-
-  // Disconnect handler
   const disconnectWallet = useCallback(() => {
-    if (wcConnector) {
-      wcConnector.disconnect();
-    }
     setAccount(null);
     setChainId(null);
-    setEthersProvider(null);
-    setWcConnector(null);
+    setProvider(null);
     setError(null);
-  }, [wcConnector]);
+  }, []);
 
-  // Check existing connection on load
+  // Check if already connected
   useEffect(() => {
-    const checkExistingConnection = async () => {
-      if (window.ethereum) {
+    const checkConnection = async () => {
+      if (window.ethereum?.selectedAddress) {
         try {
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          const accounts = await provider.send("eth_accounts", []);
+          const web3Provider = new ethers.BrowserProvider(window.ethereum);
+          const accounts = await web3Provider.send("eth_accounts", []);
           if (accounts.length > 0) {
-            const network = await provider.getNetwork();
+            const network = await web3Provider.getNetwork();
             setAccount(accounts[0]);
             setChainId(Number(network.chainId));
-            setEthersProvider(provider);
+            setProvider(web3Provider);
           }
         } catch (err) {
-          console.error("Auto-connect check failed:", err);
+          console.error("Auto-connect failed:", err);
         }
       }
     };
-
-    checkExistingConnection();
+    checkConnection();
   }, []);
-
-  // Event listeners for changes
-  useEffect(() => {
-    if (!window.ethereum) return;
-
-    const handleAccountsChanged = (accounts) => {
-      if (accounts.length === 0) {
-        disconnectWallet();
-      } else {
-        setAccount(accounts[0]);
-      }
-    };
-
-    const handleChainChanged = (hexChainId) => {
-      setChainId(parseInt(hexChainId, 16));
-    };
-
-    window.ethereum.on("accountsChanged", handleAccountsChanged);
-    window.ethereum.on("chainChanged", handleChainChanged);
-
-    return () => {
-      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
-      window.ethereum.removeListener("chainChanged", handleChainChanged);
-    };
-  }, [disconnectWallet]);
 
   return (
     <WalletContext.Provider
@@ -170,15 +113,14 @@ export const WalletProvider = ({ children }) => {
         account,
         chainId,
         error,
-        isMobile,
         isConnecting,
-        provider: ethersProvider,
+        provider,
         connectWallet,
         disconnectWallet,
-        getSigner: useCallback(async () => {
-          if (!ethersProvider) throw new Error("Not connected");
-          return await ethersProvider.getSigner();
-        }, [ethersProvider]),
+        getSigner: async () => {
+          if (!provider) throw new Error("Wallet not connected");
+          return await provider.getSigner();
+        },
       }}
     >
       {children}
