@@ -19,7 +19,7 @@ const Header = () => {
 
   const links = [
     ["Home", "/"],
-    ["Token", "/token"],           // ✅ Added token.js route
+    ["Token", "/Token"],           // ✅ Added token.js route
     ["Lending", "/lending"],
     ["Staking", "/staking"],
     ["Yield Farming", "/yield-farming"],
