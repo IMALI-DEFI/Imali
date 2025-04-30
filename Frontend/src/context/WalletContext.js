@@ -1,46 +1,182 @@
-import { createContext, useState, useEffect, useCallback, useContext } from 'react';
+import { createContext, useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import WalletConnectProvider from '@walletconnect/web3-provider';
 import { ethers } from 'ethers';
 
-const WalletContext = createContext();
+// Types (if using TypeScript)
+/*
+interface WalletState {
+  account: string | null;
+  chainId: number | null;
+  error: string | null;
+  isConnecting: boolean;
+  provider: ethers.BrowserProvider | null;
+}
+
+interface WalletContextType extends WalletState {
+  connectWallet: (walletType: 'metamask' | 'walletconnect') => Promise<void>;
+  disconnectWallet: () => void;
+  getSigner: () => Promise<ethers.Signer>;
+}
+*/
+
+const WalletContext = createContext(/*<WalletContextType | null>*/ null);
 
 export const WalletProvider = ({ children }) => {
-  // Add validation for children
-  if (!children) {
-    console.error('WalletProvider requires children');
-    return null;
-  }
+  const [state, setState] = useState({
+    account: null,
+    chainId: null,
+    error: null,
+    isConnecting: false,
+    provider: null
+  });
 
-  const [account, setAccount] = useState(null);
-  const [chainId, setChainId] = useState(null);
-  const [error, setError] = useState(null);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [provider, setProvider] = useState(null);
+  const isMobile = useCallback(() => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  }, []);
 
-  // ... rest of your existing code ...
+  const handleAccountsChanged = useCallback((accounts) => {
+    setState(prev => ({
+      ...prev,
+      account: accounts[0] || null
+    }));
+  }, []);
+
+  const handleChainChanged = useCallback((chainId) => {
+    setState(prev => ({
+      ...prev,
+      chainId: parseInt(chainId, 16)
+    }));
+  }, []);
+
+  const setupListeners = useCallback((provider) => {
+    if (provider && provider.on) {
+      provider.on('accountsChanged', handleAccountsChanged);
+      provider.on('chainChanged', handleChainChanged);
+    }
+    return () => {
+      if (provider && provider.removeListener) {
+        provider.removeListener('accountsChanged', handleAccountsChanged);
+        provider.removeListener('chainChanged', handleChainChanged);
+      }
+    };
+  }, [handleAccountsChanged, handleChainChanged]);
+
+  const connectWallet = useCallback(async (walletType) => {
+    setState(prev => ({ ...prev, isConnecting: true, error: null }));
+
+    try {
+      let web3Provider;
+
+      if (walletType === 'metamask') {
+        if (!window.ethereum) {
+          if (isMobile()) {
+            window.location.href = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`;
+            return;
+          }
+          throw new Error('Please install MetaMask');
+        }
+        
+        web3Provider = new ethers.BrowserProvider(window.ethereum);
+        const accounts = await web3Provider.send("eth_requestAccounts", []);
+        setupListeners(window.ethereum);
+        
+        setState(prev => ({
+          ...prev,
+          account: accounts[0],
+          provider: web3Provider
+        }));
+      } 
+      else if (walletType === 'walletconnect') {
+        const walletConnectProvider = new WalletConnectProvider({
+          rpc: {
+            1: process.env.REACT_APP_INFURA_MAINNET_URL,
+            56: "https://bsc-dataseed.binance.org/",
+            137: "https://polygon-rpc.com/"
+          }
+        });
+
+        await walletConnectProvider.enable();
+        web3Provider = new ethers.BrowserProvider(walletConnectProvider);
+        const signer = await web3Provider.getSigner();
+        
+        setState(prev => ({
+          ...prev,
+          account: await signer.getAddress(),
+          provider: web3Provider
+        }));
+      }
+
+      const network = await web3Provider.getNetwork();
+      setState(prev => ({
+        ...prev,
+        chainId: Number(network.chainId)
+      }));
+
+    } catch (err) {
+      console.error("Connection error:", err);
+      setState(prev => ({
+        ...prev,
+        error: err.message || "Connection failed"
+      }));
+    } finally {
+      setState(prev => ({ ...prev, isConnecting: false }));
+    }
+  }, [isMobile, setupListeners]);
+
+  const disconnectWallet = useCallback(() => {
+    setState({
+      account: null,
+      chainId: null,
+      error: null,
+      isConnecting: false,
+      provider: null
+    });
+  }, []);
+
+  const getSigner = useCallback(async () => {
+    if (!state.provider) throw new Error("Not connected");
+    return await state.provider.getSigner();
+  }, [state.provider]);
+
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (window.ethereum?.selectedAddress) {
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const accounts = await provider.send("eth_accounts", []);
+          if (accounts.length > 0) {
+            const network = await provider.getNetwork();
+            setupListeners(window.ethereum);
+            setState({
+              account: accounts[0],
+              chainId: Number(network.chainId),
+              provider,
+              error: null,
+              isConnecting: false
+            });
+          }
+        } catch (err) {
+          console.error("Connection check failed:", err);
+        }
+      }
+    };
+    checkConnection();
+  }, [setupListeners]);
+
+  const value = useMemo(() => ({
+    ...state,
+    connectWallet,
+    disconnectWallet,
+    getSigner
+  }), [state, connectWallet, disconnectWallet, getSigner]);
 
   return (
-    <WalletContext.Provider
-      value={{
-        account,
-        chainId,
-        error,
-        isConnecting,
-        provider,
-        connectWallet,
-        disconnectWallet,
-        getSigner: async () => {
-          if (!provider) throw new Error("Not connected");
-          return await provider.getSigner();
-        }
-      }}
-    >
-      {children || null}  {/* Additional safeguard */}
+    <WalletContext.Provider value={value}>
+      {children}
     </WalletContext.Provider>
   );
 };
 
-// Add error handling to the hook
 export const useWallet = () => {
   const context = useContext(WalletContext);
   if (!context) {
