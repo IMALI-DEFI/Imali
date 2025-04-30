@@ -1,7 +1,12 @@
-// WalletContext.js
-import { createContext, useState, useEffect, useCallback } from 'react';
-import WalletConnectProvider from '@walletconnect/web3-provider';
-import { ethers } from 'ethers';
+import React, {
+  createContext,
+  useState,
+  useContext,
+  useEffect,
+  useCallback,
+} from "react";
+import WalletConnectProvider from "@walletconnect/web3-provider";
+import { ethers } from "ethers";
 
 const WalletContext = createContext();
 
@@ -12,45 +17,53 @@ export const WalletProvider = ({ children }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [provider, setProvider] = useState(null);
 
-  // Mobile detection
-  const isMobile = () => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  };
+  const isMobile = () =>
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
 
-  const connectWallet = useCallback(async (walletType) => {
+  const connectWallet = useCallback(async (walletType = "metamask") => {
     setIsConnecting(true);
     setError(null);
 
     try {
       let web3Provider;
-      
-      if (walletType === 'metamask') {
-        if (!window.ethereum) {
-          if (isMobile()) {
-            // Deep link to MetaMask mobile app
-            window.location.href = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`;
-            return;
-          }
-          throw new Error('Please install MetaMask');
+
+      // MetaMask flow
+      if (walletType === "metamask") {
+        const metamaskInstalled = typeof window.ethereum !== "undefined";
+
+        // Deep link if on mobile and MetaMask not injected
+        if (!metamaskInstalled && isMobile()) {
+          const dappLink = `https://metamask.app.link/dapp/${window.location.hostname}${window.location.pathname}`;
+          window.location.href = dappLink;
+          return;
         }
+
+        if (!metamaskInstalled) {
+          throw new Error("Please install MetaMask to continue.");
+        }
+
         web3Provider = new ethers.BrowserProvider(window.ethereum);
         const accounts = await web3Provider.send("eth_requestAccounts", []);
         setAccount(accounts[0]);
-      } 
-      else if (walletType === 'walletconnect') {
-        const walletConnectProvider = new WalletConnectProvider({
+      }
+
+      // WalletConnect flow
+      else if (walletType === "walletconnect") {
+        const wcProvider = new WalletConnectProvider({
           rpc: {
             1: "https://mainnet.infura.io/v3/YOUR_INFURA_ID",
             56: "https://bsc-dataseed.binance.org/",
-            137: "https://polygon-rpc.com/"
+            137: "https://polygon-rpc.com/",
           },
           qrcodeModalOptions: {
-            mobileLinks: isMobile() ? ['metamask', 'trust'] : []
-          }
+            mobileLinks: isMobile() ? ["metamask", "trust", "rainbow"] : [],
+          },
         });
-        
-        await walletConnectProvider.enable();
-        web3Provider = new ethers.BrowserProvider(walletConnectProvider);
+
+        await wcProvider.enable();
+        web3Provider = new ethers.BrowserProvider(wcProvider);
         const signer = await web3Provider.getSigner();
         setAccount(await signer.getAddress());
       }
@@ -58,7 +71,6 @@ export const WalletProvider = ({ children }) => {
       const network = await web3Provider.getNetwork();
       setChainId(Number(network.chainId));
       setProvider(web3Provider);
-      
     } catch (err) {
       console.error("Connection error:", err);
       setError(err.message || "Connection failed");
@@ -74,17 +86,21 @@ export const WalletProvider = ({ children }) => {
     setError(null);
   }, []);
 
-  // Check if wallet is already connected
+  // Check if already connected
   useEffect(() => {
     const checkConnection = async () => {
       if (window.ethereum?.selectedAddress) {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const accounts = await provider.send("eth_accounts", []);
-        if (accounts.length > 0) {
-          const network = await provider.getNetwork();
-          setAccount(accounts[0]);
-          setChainId(Number(network.chainId));
-          setProvider(provider);
+        try {
+          const web3Provider = new ethers.BrowserProvider(window.ethereum);
+          const accounts = await web3Provider.send("eth_accounts", []);
+          if (accounts.length > 0) {
+            const network = await web3Provider.getNetwork();
+            setAccount(accounts[0]);
+            setChainId(Number(network.chainId));
+            setProvider(web3Provider);
+          }
+        } catch (err) {
+          console.error("Auto-connect failed:", err);
         }
       }
     };
@@ -102,9 +118,9 @@ export const WalletProvider = ({ children }) => {
         connectWallet,
         disconnectWallet,
         getSigner: async () => {
-          if (!provider) throw new Error("Not connected");
+          if (!provider) throw new Error("Wallet not connected");
           return await provider.getSigner();
-        }
+        },
       }}
     >
       {children}
@@ -112,4 +128,10 @@ export const WalletProvider = ({ children }) => {
   );
 };
 
-export const useWallet = () => useContext(WalletContext);
+export const useWallet = () => {
+  const context = useContext(WalletContext);
+  if (!context) {
+    throw new Error("useWallet must be used within a WalletProvider");
+  }
+  return context;
+};
