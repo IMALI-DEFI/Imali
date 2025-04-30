@@ -1,5 +1,5 @@
 // WalletContext.js
-import { createContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useState, useEffect, useCallback, useContext } from 'react'; // Added useContext here
 import WalletConnectProvider from '@walletconnect/web3-provider';
 import { ethers } from 'ethers';
 
