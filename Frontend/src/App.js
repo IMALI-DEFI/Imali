@@ -8,7 +8,7 @@ import Features from "./components/Features";
 import Lending from "./components/Lending";
 import Staking from "./components/Staking";
 import YieldFarming from "./components/YieldFarming";
-import TokenPage from "./components/TokenPage";         // ✅ Renamed from PresaleSection
+import TokenPage from "./components/token-page";         // ✅ Renamed from PresaleSection
 import LPLottery from "./components/LPLottery";         // ✅ Renamed from DAODashboard
 import NFTMinting from "./components/NFTMinting";
 import HowToUse from "./components/HowToUse";
