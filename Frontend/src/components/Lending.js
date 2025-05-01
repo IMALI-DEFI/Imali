@@ -1,174 +1,180 @@
-// 📦 src/components/Lending.js (Full Lending + Borrowing Platform Connected to Contract)
-
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
 import { getContractInstance } from "../getContractInstance";
 import lendingGuideImage from "../assets/images/lending-guide-visual.png";
-import { FaEthereum, FaBitcoin, FaDollarSign, FaChartLine } from "react-icons/fa";
-import { Line } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Tooltip,
-  Legend,
-} from "chart.js";
+import { FaEthereum, FaBitcoin, FaDollarSign } from "react-icons/fa";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+const tokenAddresses = {
+  ETH: "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419",
+  USDC: "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",
+  DAI: "0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9",
+  WBTC: "0xdeb288F737066589598e9214E782fa5A8eD689e8",
+  LINK: "0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c",
+  AAVE: "0x547a514d5e3769680Ce22B2361c10Ea13619e8a9",
+  UNI: "0x553303d460EE0afB37EdFf9bE42922D8FF63220e"
+};
+
+const assets = [
+  { name: "ETH", symbol: "ETH", icon: <FaEthereum size={24} />, address: tokenAddresses.ETH, type: "ETH" },
+  { name: "IMALI", symbol: "IMALI", icon: <FaEthereum size={24} />, type: "IMALI" },
+  { name: "MATIC", symbol: "MATIC", icon: <FaEthereum size={24} />, type: "MATIC" },
+  { name: "USDC", symbol: "USDC", icon: <FaDollarSign size={24} />, address: tokenAddresses.USDC, type: "USDC" },
+  { name: "DAI", symbol: "DAI", icon: <FaDollarSign size={24} />, address: tokenAddresses.DAI, type: "DAI" },
+  { name: "WBTC", symbol: "WBTC", icon: <FaBitcoin size={24} />, address: tokenAddresses.WBTC, type: "WBTC" },
+  { name: "LINK", symbol: "LINK", icon: <FaEthereum size={24} />, address: tokenAddresses.LINK, type: "LINK" },
+  { name: "AAVE", symbol: "AAVE", icon: <FaEthereum size={24} />, address: tokenAddresses.AAVE, type: "AAVE" },
+  { name: "UNI", symbol: "UNI", icon: <FaEthereum size={24} />, address: tokenAddresses.UNI, type: "UNI" }
+];
 
 const Lending = () => {
-  const { account, connectWallet } = useWallet();
-  const [selectedAction, setSelectedAction] = useState(null);
-  const [inputAmount, setInputAmount] = useState("");
-  const [inputCollateral, setInputCollateral] = useState("");
-  const [inputBorrowId, setInputBorrowId] = useState("");
+  const { account, connectWallet, disconnectWallet, provider } = useWallet();
+  const [collateral, setCollateral] = useState({ eth: "0", imali: "0", matic: "0", total: "0" });
   const [loading, setLoading] = useState(false);
 
-  const handleAction = async () => {
+  const fetchUserCollateral = useCallback(async () => {
+    if (!provider || !account) return;
+    setLoading(true);
     try {
-      if (!selectedAction) return;
-      setLoading(true);
       const contract = await getContractInstance("Lending");
-      const signer = await contract.runner;
-
-      if (selectedAction === "deposit") {
-        const token = new ethers.Contract(inputCollateral, ["function approve(address,uint256) public returns (bool)"], signer);
-        const parsedAmount = ethers.parseUnits(inputAmount, 18);
-        await token.approve(contract.target, parsedAmount);
-        const tx = await contract.depositCollateral(inputCollateral, parsedAmount);
-        await tx.wait();
-        alert("Deposit successful!");
-      }
-      if (selectedAction === "withdraw") {
-        const tx = await contract.withdrawCollateral(inputCollateral, ethers.parseUnits(inputAmount, 18));
-        await tx.wait();
-        alert("Withdraw successful!");
-      }
-      if (selectedAction === "borrow") {
-        const tx = await contract.borrow(ethers.parseUnits(inputAmount, 18), inputCollateral);
-        await tx.wait();
-        alert("Borrow successful!");
-      }
-      if (selectedAction === "repay") {
-        const stablecoinAddress = await contract.stablecoin();
-        const stablecoin = new ethers.Contract(stablecoinAddress, ["function approve(address,uint256) public returns (bool)"], signer);
-        const parsedAmount = ethers.parseUnits(inputAmount, 18);
-        await stablecoin.approve(contract.target, parsedAmount);
-        const tx = await contract.repay(inputBorrowId, parsedAmount);
-        await tx.wait();
-        alert("Repay successful!");
-      }
-      if (selectedAction === "supply") {
-        const stablecoinAddress = await contract.stablecoin();
-        const stablecoin = new ethers.Contract(stablecoinAddress, ["function approve(address,uint256) public returns (bool)"], signer);
-        const parsedAmount = ethers.parseUnits(inputAmount, 18);
-        await stablecoin.approve(contract.target, parsedAmount);
-        const tx = await contract.supply(parsedAmount);
-        await tx.wait();
-        alert("Supply successful!");
-      }
-      if (selectedAction === "withdrawSupply") {
-        const tx = await contract.withdrawSupply(ethers.parseUnits(inputAmount, 18));
-        await tx.wait();
-        alert("Withdraw supply successful!");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Transaction failed");
+      const [ethRaw, imaliRaw, maticRaw] = await Promise.all([
+        contract.ethCollateral(account).catch(() => 0n),
+        contract.imaliCollateral(account).catch(() => 0n),
+        contract.maticCollateral(account).catch(() => 0n),
+      ]);
+      const eth = ethers.formatUnits(ethRaw || 0n, 18);
+      const imali = ethers.formatUnits(imaliRaw || 0n, 18);
+      const matic = ethers.formatUnits(maticRaw || 0n, 18);
+      const total = (parseFloat(eth) + parseFloat(imali) + parseFloat(matic)).toFixed(4);
+      setCollateral({ eth, imali, matic, total });
+    } catch (err) {
+      console.error("Failed to fetch collateral:", err);
     } finally {
       setLoading(false);
-      setSelectedAction(null);
-      setInputAmount("");
-      setInputCollateral("");
-      setInputBorrowId("");
     }
-  };
+  }, [account, provider]);
 
-  const ActionModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
-      <div className="bg-white p-8 rounded-lg max-w-md w-full text-center">
-        <h3 className="text-xl font-bold mb-4 capitalize">{selectedAction} Interface</h3>
-        {selectedAction !== "withdrawSupply" && (
-          <input
-            type="text"
-            placeholder="Collateral Token Address"
-            value={inputCollateral}
-            onChange={(e) => setInputCollateral(e.target.value)}
-            className="w-full border rounded-lg px-4 py-2 mb-4"
-          />
-        )}
-        {selectedAction === "repay" && (
-          <input
-            type="text"
-            placeholder="Borrow ID"
-            value={inputBorrowId}
-            onChange={(e) => setInputBorrowId(e.target.value)}
-            className="w-full border rounded-lg px-4 py-2 mb-4"
-          />
-        )}
-        <input
-          type="number"
-          placeholder="Amount"
-          value={inputAmount}
-          onChange={(e) => setInputAmount(e.target.value)}
-          className="w-full border rounded-lg px-4 py-2 mb-4"
-        />
-        <button
-          onClick={handleAction}
-          disabled={loading}
-          className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 w-full"
-        >
-          {loading ? "Processing..." : `Confirm ${selectedAction}`}
-        </button>
-        <button
-          onClick={() => setSelectedAction(null)}
-          className="mt-4 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 w-full"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
+  useEffect(() => {
+    fetchUserCollateral();
+  }, [fetchUserCollateral]);
 
   return (
-    <section className="dashboard text-gray-900 py-12 px-4">
-      <div className="max-w-6xl mx-auto text-center space-y-8">
-        <div className="bg-yellow-100 p-6 rounded-lg">
-          <h2 className="text-2xl font-bold mb-4">🛠 Quick Start Guide</h2>
-          <ol className="text-left list-decimal list-inside space-y-2">
-            <li><strong>Connect Your Wallet:</strong> Click the blue button below to link your crypto wallet (e.g., MetaMask).</li>
-            <li><strong>Deposit Collateral:</strong> Choose a crypto asset (like ETH) to lock into the platform as a security.</li>
-            <li><strong>Borrow:</strong> Once you deposit collateral, you can borrow stablecoins against it.</li>
-            <li><strong>Repay Loan:</strong> Pay back your borrowed stablecoins anytime to unlock your collateral.</li>
-            <li><strong>Supply Stablecoin:</strong> Lend stablecoins to the platform and earn interest over time!</li>
-            <li><strong>Withdraw Funds:</strong> Take out your deposited assets or supplied coins whenever you like.</li>
-          </ol>
-          <p className="mt-4 text-sm text-gray-600">Note: Always double-check amounts before confirming transactions. Gas fees apply for every action.</p>
-        </div>
+    <div className="p-8 max-w-6xl mx-auto">
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <img
+          src={lendingGuideImage}
+          alt="Lending Guide Visual"
+          className="w-full max-w-sm mx-auto mb-6"
+        />
+
+        <h2 className="text-3xl font-bold text-center text-green-700 mb-4">Lending for Beginners</h2>
+        <p className="text-center text-gray-700 mb-6">
+          IMALI’s lending system lets you earn and borrow at your own pace. Deposit crypto like ETH, IMALI, or MATIC as collateral — and access stablecoins without giving up your assets. You stay in control.
+        </p>
 
         {!account ? (
-          <button
-            onClick={connectWallet}
-            className="bg-blue-600 text-white px-8 py-4 rounded-lg font-bold hover:bg-blue-700"
-          >
-            Connect Wallet
-          </button>
+          <div className="text-center mt-4">
+            <button
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              onClick={() => connectWallet("metamask")}
+            >
+              🦊 Connect Wallet
+            </button>
+          </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-            <button onClick={() => setSelectedAction("deposit")} className="bg-gray-100 hover:bg-gray-200 p-6 rounded-lg">Deposit Collateral</button>
-            <button onClick={() => setSelectedAction("withdraw")} className="bg-gray-100 hover:bg-gray-200 p-6 rounded-lg">Withdraw Collateral</button>
-            <button onClick={() => setSelectedAction("borrow")} className="bg-gray-100 hover:bg-gray-200 p-6 rounded-lg">Borrow</button>
-            <button onClick={() => setSelectedAction("repay")} className="bg-gray-100 hover:bg-gray-200 p-6 rounded-lg">Repay Loan</button>
-            <button onClick={() => setSelectedAction("supply")} className="bg-gray-100 hover:bg-gray-200 p-6 rounded-lg">Supply Stablecoin</button>
-            <button onClick={() => setSelectedAction("withdrawSupply")} className="bg-gray-100 hover:bg-gray-200 p-6 rounded-lg">Withdraw Supply</button>
+          <div className="max-w-lg mx-auto text-gray-800">
+            <ul className="list-disc space-y-2">
+              <li>📥 Deposit crypto as collateral (ETH, IMALI, MATIC)</li>
+              <li>💸 Borrow instantly using your deposited assets</li>
+              <li>🔁 Repay anytime — get your crypto back</li>
+              <li>🚫 No credit checks — DeFi is open to all</li>
+            </ul>
+            <div className="mt-6 bg-gray-100 p-4 rounded-lg shadow">
+              <p><strong>ETH Collateral:</strong> {collateral.eth}</p>
+              <p><strong>IMALI Collateral:</strong> {collateral.imali}</p>
+              <p><strong>MATIC Collateral:</strong> {collateral.matic}</p>
+              <p><strong>Total Collateral:</strong> {collateral.total}</p>
+            </div>
+            <div className="text-center mt-4">
+              <button
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                onClick={disconnectWallet}
+              >
+                Disconnect Wallet
+              </button>
+            </div>
           </div>
         )}
+
+        {/* Step-by-step walkthrough */}
+        <div className="mt-10">
+          <h3 className="text-2xl font-semibold text-center text-gray-800 mb-4">
+            How IMALI Lending Works (Step-by-Step)
+          </h3>
+          <div className="bg-green-50 p-4 rounded-lg shadow-md text-gray-700 space-y-3 max-w-2xl mx-auto">
+            {[
+              {
+                step: "1. Connect Your Wallet",
+                detail: "Click the 🦊 Connect Wallet button above to get started using MetaMask or WalletConnect."
+              },
+              {
+                step: "2. Deposit Crypto as Collateral",
+                detail: "Choose an asset like ETH, IMALI, or MATIC. Your deposit earns interest and secures your borrowing."
+              },
+              {
+                step: "3. Borrow Instantly",
+                detail: "Once you’ve deposited, borrow stablecoins (like USDC or DAI) directly into your wallet."
+              },
+              {
+                step: "4. Use Your Funds Freely",
+                detail: "Use borrowed funds for trading, payments, or other DeFi opportunities — all while keeping your crypto collateral."
+              },
+              {
+                step: "5. Repay & Reclaim Collateral",
+                detail: "Repay what you borrowed and unlock your original assets anytime, with no penalties."
+              }
+            ].map((item, index) => (
+              <div key={index}>
+                <strong>{item.step}</strong>
+                <p className="ml-4">{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* FAQ Accordion */}
+        <div className="mt-10 max-w-2xl mx-auto">
+          <h3 className="text-2xl font-semibold text-center text-gray-800 mb-4">
+            Frequently Asked Questions
+          </h3>
+          <div className="divide-y divide-gray-300 rounded-lg border border-gray-200 shadow-sm">
+            {[
+              {
+                q: "What happens if I don’t repay my loan?",
+                a: "Your collateral may be liquidated to cover the borrowed amount if it falls below a safe ratio."
+              },
+              {
+                q: "Can I add more collateral after borrowing?",
+                a: "Yes! You can top up your collateral anytime to lower your risk of liquidation."
+              },
+              {
+                q: "Is there a minimum or maximum I can borrow?",
+                a: "Minimums vary by asset. Your maximum is based on your deposited collateral value."
+              },
+              {
+                q: "Can I withdraw my collateral at any time?",
+                a: "Yes, as long as your remaining collateral keeps your loan within a safe ratio."
+              }
+            ].map((faq, idx) => (
+              <details key={idx} className="p-4 hover:bg-gray-50 cursor-pointer">
+                <summary className="font-semibold">{faq.q}</summary>
+                <p className="mt-2 text-gray-600">{faq.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
       </div>
-      {selectedAction && <ActionModal />}
-    </section>
+    </div>
   );
 };
 
