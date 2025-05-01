@@ -25,7 +25,7 @@ const App = () => {
             <Route path="/lending" element={<Lending />} />
             <Route path="/staking" element={<Staking />} />
             <Route path="/yield-farming" element={<YieldFarming />} />
-            <Route path="/token-page" element={<TokenPage />} />         {/* ✅ Token route */}
+            <Route path="/TokenPage" element={<TokenPage />} />         {/* ✅ Token route */}
             <Route path="/lp-lottery" element={<LPLottery />} />    {/* ✅ LP Lottery route */}
             <Route path="/nft" element={<NFTMinting />} />
             <Route path="/how-to-use" element={<HowToUse />} />
