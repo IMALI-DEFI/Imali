@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { getContractInstance } from '../getContractInstance';
 import { useWallet } from "../context/WalletContext";
 import { Line } from "react-chartjs-2";
-import { saveCSVFile } from '../utils/file-save';
+import { saveCSVFile } from '../utils/file-saver';
 import {
   FaRobot, FaUsers, FaShareAlt, FaClock,
   FaTwitter, FaFacebook, FaLinkedin, FaCoins,
