@@ -1,3 +1,4 @@
+// Lending.js (Combined Beginner + Functional Lending Component)
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
@@ -28,9 +29,15 @@ const assets = [
 ];
 
 const Lending = () => {
-  const { account, connectWallet, disconnectWallet, provider } = useWallet();
+  const { account, connectWallet, disconnectWallet, provider, chainId } = useWallet();
   const [collateral, setCollateral] = useState({ eth: "0", imali: "0", matic: "0", total: "0" });
   const [loading, setLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalType, setModalType] = useState(null);
+  const [selectedToken, setSelectedToken] = useState(null);
+  const [amount, setAmount] = useState("");
+  const [borrowId, setBorrowId] = useState("");
+  const [transactionError, setTransactionError] = useState(null);
 
   const fetchUserCollateral = useCallback(async () => {
     if (!provider || !account) return;
@@ -58,6 +65,45 @@ const Lending = () => {
     fetchUserCollateral();
   }, [fetchUserCollateral]);
 
+  const openModal = (type, asset) => {
+    setModalType(type);
+    setSelectedToken(asset);
+    setBorrowId("");
+    setAmount("");
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalType(null);
+    setSelectedToken(null);
+    setAmount("");
+    setModalOpen(false);
+  };
+
+  const executeTransaction = async () => {
+    if (!account || !provider || typeof provider.getSigner !== 'function') return;
+    try {
+      const contract = await getContractInstance("Lending");
+      const signer = await provider.getSigner();
+      let tx;
+      if (modalType === "supply") {
+        tx = await contract.connect(signer).depositEthCollateral({ value: ethers.parseUnits(amount, 18) });
+      } else if (modalType === "borrow") {
+        tx = await contract.connect(signer).borrow(ethers.parseUnits(amount, 18), selectedToken.symbol);
+      } else if (modalType === "repay") {
+        tx = await contract.connect(signer).repay(ethers.parseUnits(amount, 18));
+      } else if (modalType === "withdraw") {
+        tx = await contract.connect(signer).withdrawCollateral(ethers.parseUnits(amount, 18), selectedToken.symbol);
+      }
+      await tx.wait();
+      fetchUserCollateral();
+      closeModal();
+    } catch (error) {
+      console.error("Transaction failed:", error);
+      setTransactionError(error.message);
+    }
+  };
+
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <div className="bg-white p-6 rounded-lg shadow-md">
@@ -66,7 +112,6 @@ const Lending = () => {
           alt="Lending Guide Visual"
           className="w-full max-w-sm mx-auto mb-6"
         />
-
         <h2 className="text-3xl font-bold text-center text-green-700 mb-4">Lending for Beginners</h2>
         <p className="text-center text-gray-700 mb-6">
           IMALI’s lending system lets you earn and borrow at your own pace. Deposit crypto like ETH, IMALI, or MATIC as collateral — and access stablecoins without giving up your assets. You stay in control.
@@ -82,97 +127,53 @@ const Lending = () => {
             </button>
           </div>
         ) : (
-          <div className="max-w-lg mx-auto text-gray-800">
-            <ul className="list-disc space-y-2">
-              <li>📥 Deposit crypto as collateral (ETH, IMALI, MATIC)</li>
-              <li>💸 Borrow instantly using your deposited assets</li>
-              <li>🔁 Repay anytime — get your crypto back</li>
-              <li>🚫 No credit checks — DeFi is open to all</li>
-            </ul>
-            <div className="mt-6 bg-gray-100 p-4 rounded-lg shadow">
+          <>
+            <div className="bg-gray-100 p-4 rounded-lg mb-4">
               <p><strong>ETH Collateral:</strong> {collateral.eth}</p>
               <p><strong>IMALI Collateral:</strong> {collateral.imali}</p>
               <p><strong>MATIC Collateral:</strong> {collateral.matic}</p>
               <p><strong>Total Collateral:</strong> {collateral.total}</p>
             </div>
-            <div className="text-center mt-4">
-              <button
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                onClick={disconnectWallet}
-              >
-                Disconnect Wallet
-              </button>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {assets.map((asset, idx) => (
+                <div key={idx} className="bg-white shadow p-4 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    {asset.icon}<span>{asset.name}</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <button onClick={() => openModal("supply", asset)} className="w-full bg-green-600 text-white py-2 rounded">Deposit</button>
+                    <button onClick={() => openModal("borrow", asset)} className="w-full bg-blue-600 text-white py-2 rounded">Borrow</button>
+                    <button onClick={() => openModal("repay", asset)} className="w-full bg-yellow-600 text-white py-2 rounded">Repay</button>
+                    <button onClick={() => openModal("withdraw", asset)} className="w-full bg-red-600 text-white py-2 rounded">Withdraw</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Modal */}
+        {modalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+            <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+              <h3 className="text-xl font-bold mb-4">{modalType.charAt(0).toUpperCase() + modalType.slice(1)} {selectedToken?.symbol}</h3>
+              <input
+                type="number"
+                placeholder="Amount"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="w-full mb-4 p-2 border rounded"
+              />
+              <div className="flex justify-between">
+                <button className="bg-gray-300 px-4 py-2 rounded" onClick={closeModal}>Cancel</button>
+                <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={executeTransaction}>
+                  Confirm
+                </button>
+              </div>
+              {transactionError && <p className="text-red-600 mt-2">{transactionError}</p>}
             </div>
           </div>
         )}
-
-        {/* Step-by-step walkthrough */}
-        <div className="mt-10">
-          <h3 className="text-2xl font-semibold text-center text-gray-800 mb-4">
-            How IMALI Lending Works (Step-by-Step)
-          </h3>
-          <div className="bg-green-50 p-4 rounded-lg shadow-md text-gray-700 space-y-3 max-w-2xl mx-auto">
-            {[
-              {
-                step: "1. Connect Your Wallet",
-                detail: "Click the 🦊 Connect Wallet button above to get started using MetaMask or WalletConnect."
-              },
-              {
-                step: "2. Deposit Crypto as Collateral",
-                detail: "Choose an asset like ETH, IMALI, or MATIC. Your deposit earns interest and secures your borrowing."
-              },
-              {
-                step: "3. Borrow Instantly",
-                detail: "Once you’ve deposited, borrow stablecoins (like USDC or DAI) directly into your wallet."
-              },
-              {
-                step: "4. Use Your Funds Freely",
-                detail: "Use borrowed funds for trading, payments, or other DeFi opportunities — all while keeping your crypto collateral."
-              },
-              {
-                step: "5. Repay & Reclaim Collateral",
-                detail: "Repay what you borrowed and unlock your original assets anytime, with no penalties."
-              }
-            ].map((item, index) => (
-              <div key={index}>
-                <strong>{item.step}</strong>
-                <p className="ml-4">{item.detail}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* FAQ Accordion */}
-        <div className="mt-10 max-w-2xl mx-auto">
-          <h3 className="text-2xl font-semibold text-center text-gray-800 mb-4">
-            Frequently Asked Questions
-          </h3>
-          <div className="divide-y divide-gray-300 rounded-lg border border-gray-200 shadow-sm">
-            {[
-              {
-                q: "What happens if I don’t repay my loan?",
-                a: "Your collateral may be liquidated to cover the borrowed amount if it falls below a safe ratio."
-              },
-              {
-                q: "Can I add more collateral after borrowing?",
-                a: "Yes! You can top up your collateral anytime to lower your risk of liquidation."
-              },
-              {
-                q: "Is there a minimum or maximum I can borrow?",
-                a: "Minimums vary by asset. Your maximum is based on your deposited collateral value."
-              },
-              {
-                q: "Can I withdraw my collateral at any time?",
-                a: "Yes, as long as your remaining collateral keeps your loan within a safe ratio."
-              }
-            ].map((faq, idx) => (
-              <details key={idx} className="p-4 hover:bg-gray-50 cursor-pointer">
-                <summary className="font-semibold">{faq.q}</summary>
-                <p className="mt-2 text-gray-600">{faq.a}</p>
-              </details>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
