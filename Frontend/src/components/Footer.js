@@ -21,14 +21,14 @@ const Footer = () => {
           <div className="text-center">
             <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
             <div className="grid grid-cols-2 gap-2">
-              <FooterLink to="/">Home</FooterLink>
-              <FooterLink to="/lending">Lending</FooterLink>
-              <FooterLink to="/staking">Staking</FooterLink>
-              <FooterLink to="/yield-farming">Yield Farming</FooterLink>
-              <FooterLink to="/fee-distributor">Fee Distributor</FooterLink>
-              <FooterLink to="/lottery">Lottery</FooterLink>
-              <FooterLink to="/nft">NFT</FooterLink>
-              <FooterLink to="/how-to-use">How To</FooterLink>
+             <FooterLink to="/">Home</FooterLink>
+  <FooterLink to="/lending">Lending</FooterLink>
+  <FooterLink to="/staking">Staking</FooterLink>
+  <FooterLink to="/yield-farming">Yield Farming</FooterLink>
+  <FooterLink to="/lottery">Lottery</FooterLink>
+  <FooterLink to="/how-to-use">How To</FooterLink>
+  <FooterLink to="/lp-lottery">LP Lottery</FooterLink>         {/* ✅ New */}
+  <FooterLink to="/token-page">Token Page</FooterLink>         {/* ✅ New */}
             </div>
           </div>
 
