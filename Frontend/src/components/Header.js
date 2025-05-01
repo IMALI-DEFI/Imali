@@ -25,7 +25,7 @@ const Header = () => {
   ["LP Lottery", "/lp-lottery"],        // ✅ New
   ["Admin", "/admin"],
   ["How To", "/how-to-use"],
-  ["Token Page", "/token-page"]
+  ["Token Page", "/TokenPage"]
     // 🗑️ "Presale" removed
   ];
 
