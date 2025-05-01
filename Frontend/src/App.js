@@ -8,9 +8,9 @@ import Features from "./components/Features";
 import Lending from "./components/Lending";
 import Staking from "./components/Staking";
 import YieldFarming from "./components/YieldFarming";
-import PresaleSection from "./components/Token";
+import TokenPage from "./components/TokenPage";         // ✅ Renamed from PresaleSection
+import LPLottery from "./components/LPLottery";         // ✅ Renamed from DAODashboard
 import NFTMinting from "./components/NFTMinting";
-import DAODashboard from "./components/DAODashboard";
 import HowToUse from "./components/HowToUse";
 import Admin from "./components/AdminPanel.js";
 
@@ -25,9 +25,9 @@ const App = () => {
             <Route path="/lending" element={<Lending />} />
             <Route path="/staking" element={<Staking />} />
             <Route path="/yield-farming" element={<YieldFarming />} />
-            <Route path="/presale" element={<PresaleSection />} />
+            <Route path="/token" element={<TokenPage />} />         {/* ✅ Token route */}
+            <Route path="/lp-lottery" element={<LPLottery />} />    {/* ✅ LP Lottery route */}
             <Route path="/nft" element={<NFTMinting />} />
-            <Route path="/dao" element={<DAODashboard />} />
             <Route path="/how-to-use" element={<HowToUse />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<>404 Not Found</>} />
@@ -40,3 +40,4 @@ const App = () => {
 };
 
 export default App;
+
