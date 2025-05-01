@@ -18,14 +18,14 @@ const Header = () => {
   }, []);
 
   const links = [
-    ["Home", "/"],
-    ["Token", "/Token"],           // ✅ Added token.js route
-    ["Lending", "/lending"],
-    ["Staking", "/staking"],
-    ["Yield Farming", "/yield-farming"],
-    ["Lottery", "/lottery"],
-    ["Admin", "/admin"],
-    ["How To", "/how-to-use"],
+  ["Home", "/"],
+  ["Lending", "/lending"],
+  ["Staking", "/staking"],
+  ["Yield Farming", "/yield-farming"],
+  ["LP Lottery", "/lp-lottery"],        // ✅ New
+  ["Admin", "/admin"],
+  ["How To", "/how-to-use"],
+  ["Token Page", "/token-page"]
     // 🗑️ "Presale" removed
   ];
 
