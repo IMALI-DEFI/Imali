@@ -3,7 +3,6 @@ import { ethers } from "ethers";
 import { getContractInstance } from '../getContractInstance';
 import { useWallet } from "../context/WalletContext";
 import { Line } from "react-chartjs-2";
-import { saveCSVFile } from '../utils/file-saver';
 import {
   FaRobot, FaUsers, FaShareAlt, FaClock,
   FaTwitter, FaFacebook, FaLinkedin, FaCoins,
@@ -132,8 +131,13 @@ const AdminPanel = () => {
         ...analyticsData.map(d => `${d.date},${d.activeUsers},${d.bounceRate.toFixed(2)},${d.avgSession.toFixed(2)}`)
       ].join("\n");
 
-      const filename = `imali-analytics-${new Date().toISOString().split('T')[0]}.csv`;
-      saveCSVFile(csv, filename);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `imali-analytics-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
 
       logDebug("INFO", "CSV exported successfully");
       setStatus("✅ Analytics data exported");
