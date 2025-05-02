@@ -212,6 +212,8 @@ const AdminPanel = () => {
 
   return (
     <div className="p-6 bg-gray-50 rounded-md shadow-md max-w-6xl mx-auto">
+      
+      
       <h1 className="text-3xl font-bold mb-6 flex items-center">
         <FaRobot className="mr-2" /> Admin Dashboard
       </h1>
@@ -300,8 +302,20 @@ const AdminPanel = () => {
                   {debugLogs.join('\n')}
                 </pre>
               </div>
+          <div className="mt-8">
+            <h2 className="text-xl font-semibold mb-2">📊 Live Looker Analytics</h2>
+            <div className="relative pb-[56.25%] h-0 overflow-hidden rounded shadow">
+              <iframe
+                title="Imali Looker Dashboard"
+                src="https://lookerstudio.google.com/s/n0R2h4hqHkw"
+                frameBorder="0"
+                className="absolute top-0 left-0 w-full h-full"
+                allowFullScreen
+              ></iframe>
             </div>
           </div>
+        </div>
+      </div>
         </>
       )}
     </div>
