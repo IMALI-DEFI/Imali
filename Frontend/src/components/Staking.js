@@ -2,18 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { useWallet } from '../context/WalletContext';
 import { getContractInstance } from '../getContractInstance';
-import { FaInfoCircle, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
+import { FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
 import stakingBanner from '../assets/images/staking-banner.png';
 
 const Staking = () => {
-  const {
-    account,
-    chainId,
-    connectWallet,
-    disconnectWallet,
-    isConnecting,
-    error,
-  } = useWallet();
+  const { account, chainId, connectWallet, disconnectWallet, isConnecting, error } = useWallet();
 
   const [contracts, setContracts] = useState({ staking: null, imaliToken: null, lpToken: null });
   const [initialized, setInitialized] = useState(false);
@@ -51,10 +44,10 @@ const Staking = () => {
       ]);
 
       const newBalances = {
-        imaliStaked: ethers.formatUnits(imali.amount, 18),
-        imaliRewards: ethers.formatUnits(imali.rewards, 18),
-        lpStaked: ethers.formatUnits(lp.amount, 18),
-        lpRewards: ethers.formatUnits(lp.rewards, 18),
+        imaliStaked: ethers.formatUnits(imali[0], 18),
+        imaliRewards: ethers.formatUnits(imali[2], 18),
+        lpStaked: ethers.formatUnits(lp[0], 18),
+        lpRewards: ethers.formatUnits(lp[2], 18),
         walletImali: ethers.formatUnits(walletImali, 18),
         walletLp: ethers.formatUnits(walletLp, 18),
       };
@@ -71,39 +64,31 @@ const Staking = () => {
   useEffect(() => { initContracts(); }, [initContracts]);
   useEffect(() => { if (initialized) fetchData(); }, [initialized, fetchData]);
 
-  const handleStake = async (type) => {
+  const handleAction = async (type, action) => {
     if (!account || loading) return;
     setLoading(true);
     try {
-      const amount = ethers.parseUnits(inputs[type], 18);
+      const key = action === 'stake' ? type : `unstake${type.charAt(0).toUpperCase() + type.slice(1)}`;
+      const amount = ethers.parseUnits(inputs[key], 18);
       const token = type === 'imali' ? contracts.imaliToken : contracts.lpToken;
-      const stakeFn = type === 'imali' ? contracts.staking.stakeIMALI : contracts.staking.stakeLP;
+      const contractFn = type === 'imali'
+        ? action === 'stake' ? contracts.staking.stakeIMALI : contracts.staking.unstakeIMALI
+        : action === 'stake' ? contracts.staking.stakeLP : contracts.staking.unstakeLP;
 
-      const allowance = await token.allowance(account, contracts.staking.address);
-      if (allowance < amount) await token.approve(contracts.staking.address, amount);
-      const tx = await stakeFn(amount, []);
+      if (action === 'stake') {
+        const allowance = await token.allowance(account, contracts.staking.address);
+        if (allowance < amount) {
+          const approveTx = await token.approve(contracts.staking.address, amount);
+          await approveTx.wait();
+        }
+      }
+
+      const tx = await contractFn(amount);
       await tx.wait();
       await fetchData();
-      setInputs({ ...inputs, [type]: '' });
+      setInputs({ ...inputs, [key]: '' });
     } catch (err) {
-      console.error('Stake error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUnstake = async (type) => {
-    if (!account || loading) return;
-    setLoading(true);
-    try {
-      const amount = ethers.parseUnits(inputs[`unstake${type.charAt(0).toUpperCase() + type.slice(1)}`], 18);
-      const unstakeFn = type === 'imali' ? contracts.staking.unstakeIMALI : contracts.staking.unstakeLP;
-      const tx = await unstakeFn(amount);
-      await tx.wait();
-      await fetchData();
-      setInputs({ ...inputs, [`unstake${type.charAt(0).toUpperCase() + type.slice(1)}`]: '' });
-    } catch (err) {
-      console.error('Unstake error:', err);
+      console.error(`${action} error:`, err);
     } finally {
       setLoading(false);
     }
@@ -127,125 +112,54 @@ const Staking = () => {
     <div className="max-w-6xl mx-auto p-4">
       <img src={stakingBanner} alt="Staking Guide" className="w-full max-w-lg mx-auto mb-6 rounded" />
 
-      <div className="bg-white rounded-xl shadow-md p-6 mb-8">
-        <h2 className="text-2xl font-bold mb-4">📈 Stake & Grow with IMALI</h2>
-        <p className="text-gray-700 mb-6">
-          Whether you're new to DeFi or a seasoned yield farmer, IMALI staking gives you full control to earn, compound, and multiply rewards using NFTs and lock-in options.
-        </p>
-        <ul className="list-disc pl-6 mb-6 text-gray-600 space-y-2">
-          <li><strong>Beginner Friendly:</strong> Intuitive interface and instant feedback for smooth onboarding.</li>
-          <li><strong>Advanced Tools:</strong> APY boosts, NFT multipliers, lock duration, and dynamic rewards tailored for pros.</li>
-          <li><strong>Real-Time Insights:</strong> Monitor daily/weekly earnings and view all your balances clearly.</li>
-          <li><strong>100% On-Chain:</strong> Secure smart contracts running on Polygon & Ethereum.</li>
-        </ul>
-        <p className="text-sm text-gray-500">Ready to earn? Start by connecting your wallet and staking your tokens!</p>
-      </div>
-
-      {status.message && (
-        <div className={`p-4 mb-6 rounded-lg flex items-center ${
-          status.type === 'success' ? 'bg-green-100 text-green-800' :
-          status.type === 'error' ? 'bg-red-100 text-red-800' :
-          'bg-blue-100 text-blue-800'
-        }`}>
-          {status.type === 'success' ? <FaCheckCircle className="mr-2" /> : <FaExclamationTriangle className="mr-2" />}
-          {status.message}
-        </div>
-      )}
-
       <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
-          <h3 className="font-bold mb-2">IMALI</h3>
-          <p>Staked: {balances.imaliStaked}</p>
-          <p>Rewards: {balances.imaliRewards}</p>
-          <p>Wallet: {balances.walletImali}</p>
-        </div>
-        <div className="bg-purple-50 border border-purple-200 p-4 rounded-xl">
-          <h3 className="font-bold mb-2">LP Tokens</h3>
-          <p>Staked: {balances.lpStaked}</p>
-          <p>Rewards: {balances.lpRewards}</p>
-          <p>Wallet: {balances.walletLp}</p>
-        </div>
+        {['imali', 'lp'].map((type) => (
+          <div key={type} className="bg-white border p-4 rounded shadow">
+            <h3 className="font-semibold mb-2 uppercase">{type} Token</h3>
+            <p>Staked: {type === 'imali' ? balances.imaliStaked : balances.lpStaked}</p>
+            <p>Rewards: {type === 'imali' ? balances.imaliRewards : balances.lpRewards}</p>
+            <p>Wallet: {type === 'imali' ? balances.walletImali : balances.walletLp}</p>
+            <div className="flex mt-4 space-x-2">
+              <input
+                type="number"
+                value={inputs[type]}
+                onChange={(e) => setInputs({ ...inputs, [type]: e.target.value })}
+                placeholder="Amount"
+                className="flex-1 border p-2 rounded"
+              />
+              <button
+                onClick={() => handleAction(type, 'stake')}
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+                disabled={loading}
+              >Stake</button>
+            </div>
+            <div className="flex mt-2 space-x-2">
+              <input
+                type="number"
+                value={inputs[`unstake${type.charAt(0).toUpperCase() + type.slice(1)}`]}
+                onChange={(e) => setInputs({ ...inputs, [`unstake${type.charAt(0).toUpperCase() + type.slice(1)}`]: e.target.value })}
+                placeholder="Amount"
+                className="flex-1 border p-2 rounded"
+              />
+              <button
+                onClick={() => handleAction(type, 'unstake')}
+                className="bg-red-600 text-white px-4 py-2 rounded"
+                disabled={loading}
+              >Unstake</button>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <div>
-          <label className="block mb-2 font-medium">Stake IMALI</label>
-          <div className="flex">
-            <input
-              type="number"
-              className="flex-1 border p-2 rounded-l"
-              value={inputs.imali}
-              onChange={(e) => setInputs({ ...inputs, imali: e.target.value })}
-            />
-            <button
-              onClick={() => handleStake('imali')}
-              disabled={loading}
-              className="bg-blue-600 text-white px-4 rounded-r"
-            >Stake</button>
-          </div>
-        </div>
-        <div>
-          <label className="block mb-2 font-medium">Stake LP Tokens</label>
-          <div className="flex">
-            <input
-              type="number"
-              className="flex-1 border p-2 rounded-l"
-              value={inputs.lp}
-              onChange={(e) => setInputs({ ...inputs, lp: e.target.value })}
-            />
-            <button
-              onClick={() => handleStake('lp')}
-              disabled={loading}
-              className="bg-purple-600 text-white px-4 rounded-r"
-            >Stake</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <div>
-          <label className="block mb-2 font-medium">Unstake IMALI</label>
-          <div className="flex">
-            <input
-              type="number"
-              className="flex-1 border p-2 rounded-l"
-              value={inputs.unstakeImali}
-              onChange={(e) => setInputs({ ...inputs, unstakeImali: e.target.value })}
-            />
-            <button
-              onClick={() => handleUnstake('imali')}
-              disabled={loading}
-              className="bg-red-600 text-white px-4 rounded-r"
-            >Unstake</button>
-          </div>
-        </div>
-        <div>
-          <label className="block mb-2 font-medium">Unstake LP Tokens</label>
-          <div className="flex">
-            <input
-              type="number"
-              className="flex-1 border p-2 rounded-l"
-              value={inputs.unstakeLp}
-              onChange={(e) => setInputs({ ...inputs, unstakeLp: e.target.value })}
-            />
-            <button
-              onClick={() => handleUnstake('lp')}
-              disabled={loading}
-              className="bg-red-600 text-white px-4 rounded-r"
-            >Unstake</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-center">
+      <div className="text-center mb-6">
         <button
           onClick={handleClaimRewards}
+          className="bg-green-600 text-white py-2 px-6 rounded"
           disabled={loading}
-          className="bg-green-600 text-white py-2 px-6 rounded-lg"
         >💰 Claim All Rewards</button>
       </div>
 
-      <div className="mt-10 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+      <div className="bg-yellow-50 p-4 border rounded text-center">
         <p><strong>Estimated Daily Rewards:</strong> {estimates.daily} tokens</p>
         <p><strong>Estimated Weekly Rewards:</strong> {estimates.weekly} tokens</p>
       </div>
