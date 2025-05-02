@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { WalletProvider } from "./context/WalletContext";
+import ReactGA from "react-ga4"; // ✅ Add this
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import Hero from "./components/Hero";
@@ -8,13 +9,18 @@ import Features from "./components/Features";
 import Lending from "./components/Lending";
 import Staking from "./components/Staking";
 import YieldFarming from "./components/YieldFarming";
-import TokenPage from "./components/TokenPage";         // ✅ Renamed from PresaleSection
-import LPLottery from "./components/LPLottery";         // ✅ Renamed from DAODashboard
+import TokenPage from "./components/TokenPage";
+import LPLottery from "./components/LPLottery";
 import NFTMinting from "./components/NFTMinting";
 import HowToUse from "./components/HowToUse";
-import Admin from "./components/AdminPanel.js";
+import Admin from "./components/AdminPanel";
 
 const App = () => {
+  useEffect(() => {
+    ReactGA.initialize("G-KDRSH4G2Y9"); // ✅ Initialize GA4 once
+    ReactGA.send("pageview");           // ✅ Track initial pageview
+  }, []);
+
   return (
     <WalletProvider>
       <div className="App">
@@ -25,8 +31,8 @@ const App = () => {
             <Route path="/lending" element={<Lending />} />
             <Route path="/staking" element={<Staking />} />
             <Route path="/yield-farming" element={<YieldFarming />} />
-            <Route path="/TokenPage" element={<TokenPage />} />         {/* ✅ Token route */}
-            <Route path="/lp-lottery" element={<LPLottery />} />    {/* ✅ LP Lottery route */}
+            <Route path="/TokenPage" element={<TokenPage />} />
+            <Route path="/lp-lottery" element={<LPLottery />} />
             <Route path="/nft" element={<NFTMinting />} />
             <Route path="/how-to-use" element={<HowToUse />} />
             <Route path="/admin" element={<Admin />} />
@@ -40,4 +46,3 @@ const App = () => {
 };
 
 export default App;
-
