@@ -8,7 +8,98 @@ import {
   FaTwitter, FaFacebook, FaLinkedin, FaCoins,
   FaDownload, FaChartLine, FaPercentage, FaHourglassHalf
 } from "react-icons/fa";
+import {import React, { useState, useEffect, useMemo } from "react";
+import { ethers } from "ethers";
+import { getContractInstance } from '../getContractInstance';
+import { useWallet } from "../context/WalletContext";
+import { Line } from "react-chartjs-2";
+import ReactGA from "react-ga4";
 import {
+  FaRobot, FaUsers, FaShareAlt, FaClock,
+  FaTwitter, FaFacebook, FaLinkedin, FaCoins,
+  FaDownload, FaChartLine, FaPercentage, FaHourglassHalf
+} from "react-icons/fa";
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale, PointElement, LineElement,
+  Tooltip, Legend, Title, Filler
+} from "chart.js";
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Title, Filler);
+
+const AdminPanel = () => {
+  const { account, provider } = useWallet();
+  const [isOwner, setIsOwner] = useState(false);
+  const [status, setStatus] = useState("");
+  const [mintAmount, setMintAmount] = useState("");
+  const [analyticsData, setAnalyticsData] = useState([]);
+  const [debugLogs, setDebugLogs] = useState([]);
+
+  // Initialize Google Analytics
+  useEffect(() => {
+    ReactGA.initialize("G-KDRSH4G2Y9");
+    ReactGA.send("pageview");
+  }, []);
+
+  const generateMockAnalytics = () => {
+    return Array.from({ length: 7 }, (_, i) => ({
+      date: new Date(Date.now() - (6 - i) * 86400000).toISOString().split("T")[0],
+      activeUsers: Math.floor(Math.random() * 100) + 50,
+      bounceRate: Math.random() * 100,
+      avgSession: Math.random() * 300
+    }));
+  };
+
+  const logDebug = (type, message, data = null) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const formatted = `[${timestamp}] [${type}] ${message}`;
+    setDebugLogs(prev => [...prev.slice(-19), formatted]);
+    if (type === "ERROR") console.error(formatted, data);
+    else if (type === "WARN") console.warn(formatted, data);
+    else console.log(formatted, data);
+  };
+
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!account || !provider) return;
+
+      try {
+        const contract = await getContractInstance("Lending", provider.getSigner());
+        const owner = await contract.owner();
+        setIsOwner(account.toLowerCase() === owner.toLowerCase());
+        logDebug("INFO", "Admin status verified");
+      } catch (err) {
+        logDebug("ERROR", "Admin check failed", err);
+      }
+    };
+
+    checkAdminStatus();
+  }, [account, provider]);
+
+  useEffect(() => {
+    if (!account) return;
+
+    const loadAnalytics = () => {
+      try {
+        logDebug("INFO", "Loading analytics data");
+        const mockData = generateMockAnalytics();
+        setAnalyticsData(mockData);
+        logDebug("INFO", "Analytics data loaded");
+      } catch (err) {
+        logDebug("WARN", "Failed to load analytics", err);
+      }
+    };
+
+    loadAnalytics();
+  }, [account]);
+
+  // Rest of the component remains unchanged...
+
+  return <div>/* Rendered content here */</div>;
+};
+
+export default AdminPanel;
+
   Chart as ChartJS,
   CategoryScale, LinearScale, PointElement, LineElement,
   Tooltip, Legend, Title, Filler
