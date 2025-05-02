@@ -1,4 +1,4 @@
-// Lending.js (Combined Beginner + Functional Lending Component with Live APY + Fee Info)
+// Lending.js (Final: APY, Fees, Token Prices, Beginner Layout)
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
@@ -39,6 +39,7 @@ const Lending = () => {
   const [borrowId, setBorrowId] = useState("");
   const [transactionError, setTransactionError] = useState(null);
   const [stats, setStats] = useState({ supplyApy: "Loading...", borrowApy: "Loading...", depositFee: "-", borrowFee: "-" });
+  const [tokenPrices, setTokenPrices] = useState({});
 
   const fetchUserCollateral = useCallback(async () => {
     if (!provider || !account) return;
@@ -82,10 +83,29 @@ const Lending = () => {
     }
   }, []);
 
+  const fetchAssetPrices = useCallback(async () => {
+    const prices = {};
+    try {
+      const rpcUrl = process.env.REACT_APP_ALCHEMY_ETHERIUM;
+      if (!rpcUrl) return;
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const abi = ["function latestRoundData() external view returns (uint80, int256 answer, uint256, uint256, uint80)"];
+      for (let key in tokenAddresses) {
+        const feed = new ethers.Contract(tokenAddresses[key], abi, provider);
+        const data = await feed.latestRoundData();
+        prices[key] = ethers.formatUnits(data.answer, 8);
+      }
+      setTokenPrices(prices);
+    } catch (err) {
+      console.error("Failed to fetch token prices:", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchUserCollateral();
     fetchLendingStats();
-  }, [fetchUserCollateral, fetchLendingStats]);
+    fetchAssetPrices();
+  }, [fetchUserCollateral, fetchLendingStats, fetchAssetPrices]);
 
   const openModal = (type, asset) => {
     setModalType(type);
@@ -166,6 +186,7 @@ const Lending = () => {
                   <div className="flex justify-between items-center">
                     {asset.icon}<span>{asset.name}</span>
                   </div>
+                  <p className="text-sm text-gray-500 mt-1">Price: ${tokenPrices[asset.symbol] || 'Loading...'}</p>
                   <div className="mt-3 space-y-2">
                     <button onClick={() => openModal("supply", asset)} className="w-full bg-green-600 text-white py-2 rounded">Deposit</button>
                     <button onClick={() => openModal("borrow", asset)} className="w-full bg-blue-600 text-white py-2 rounded">Borrow</button>
