@@ -1,4 +1,4 @@
-// Lending.js (Combined Beginner + Functional Lending Component)
+// Lending.js (Combined Beginner + Functional Lending Component with Live APY + Fee Info)
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
@@ -38,6 +38,7 @@ const Lending = () => {
   const [amount, setAmount] = useState("");
   const [borrowId, setBorrowId] = useState("");
   const [transactionError, setTransactionError] = useState(null);
+  const [stats, setStats] = useState({ supplyApy: "Loading...", borrowApy: "Loading...", depositFee: "-", borrowFee: "-" });
 
   const fetchUserCollateral = useCallback(async () => {
     if (!provider || !account) return;
@@ -61,9 +62,30 @@ const Lending = () => {
     }
   }, [account, provider]);
 
+  const fetchLendingStats = useCallback(async () => {
+    try {
+      const contract = await getContractInstance("Lending");
+      const [supplyRate, borrowRate, depositFee, borrowFee] = await Promise.all([
+        contract.getSupplyRate(),
+        contract.getBorrowRate(),
+        contract.depositFee(),
+        contract.borrowFee(),
+      ]);
+      setStats({
+        supplyApy: (Number(supplyRate) / 10000).toFixed(2) + "%",
+        borrowApy: (Number(borrowRate) / 10000).toFixed(2) + "%",
+        depositFee: ethers.formatEther(depositFee) + " ETH",
+        borrowFee: ethers.formatEther(borrowFee) + " ETH",
+      });
+    } catch (err) {
+      console.error("Failed to fetch lending stats:", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchUserCollateral();
-  }, [fetchUserCollateral]);
+    fetchLendingStats();
+  }, [fetchUserCollateral, fetchLendingStats]);
 
   const openModal = (type, asset) => {
     setModalType(type);
@@ -133,6 +155,10 @@ const Lending = () => {
               <p><strong>IMALI Collateral:</strong> {collateral.imali}</p>
               <p><strong>MATIC Collateral:</strong> {collateral.matic}</p>
               <p><strong>Total Collateral:</strong> {collateral.total}</p>
+              <p><strong>Supply APY:</strong> {stats.supplyApy}</p>
+              <p><strong>Borrow APY:</strong> {stats.borrowApy}</p>
+              <p><strong>Deposit Fee:</strong> {stats.depositFee}</p>
+              <p><strong>Borrow Fee:</strong> {stats.borrowFee}</p>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {assets.map((asset, idx) => (
@@ -152,7 +178,6 @@ const Lending = () => {
           </>
         )}
 
-        {/* Modal */}
         {modalOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
             <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
