@@ -18,7 +18,7 @@ import {
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Title, Filler);
 
 const AdminPanel = () => {
-  const { account, provider } = useWallet();
+  const { account, provider, connectWallet } = useWallet();
   const [isOwner, setIsOwner] = useState(false);
   const [status, setStatus] = useState("");
   const [mintAmount, setMintAmount] = useState("");
@@ -29,6 +29,13 @@ const AdminPanel = () => {
     ReactGA.initialize("G-KDRSH4G2Y9");
     ReactGA.send("pageview");
   }, []);
+
+  useEffect(() => {
+    const savedType = localStorage.getItem("walletType");
+    if (savedType && !account) {
+      connectWallet(savedType);
+    }
+  }, [account, connectWallet]);
 
   const generateMockAnalytics = () => {
     return Array.from({ length: 7 }, (_, i) => ({
@@ -51,7 +58,6 @@ const AdminPanel = () => {
   useEffect(() => {
     const checkAdminStatus = async () => {
       if (!account || !provider) return;
-
       try {
         const signer = provider.getSigner();
         const contract = await getContractInstance("Lending", signer);
@@ -62,13 +68,11 @@ const AdminPanel = () => {
         logDebug("ERROR", "Admin check failed", err);
       }
     };
-
     checkAdminStatus();
   }, [account, provider]);
 
   useEffect(() => {
     if (!account) return;
-
     const loadAnalytics = () => {
       try {
         logDebug("INFO", "Loading analytics data");
@@ -79,13 +83,11 @@ const AdminPanel = () => {
         logDebug("WARN", "Failed to load analytics", err);
       }
     };
-
     loadAnalytics();
   }, [account]);
 
   const { chartData, chartOptions, trafficPrediction } = useMemo(() => {
     if (analyticsData.length === 0) return {};
-
     const data = {
       labels: analyticsData.map(d => d.date),
       datasets: [
@@ -120,80 +122,52 @@ const AdminPanel = () => {
         }
       ]
     };
-
     const options = {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
       scales: {
         y: {
-          type: 'linear',
-          display: true,
-          position: 'left',
+          type: 'linear', display: true, position: 'left',
           title: { display: true, text: 'Active Users' }
         },
         y1: {
-          type: 'linear',
-          display: true,
-          position: 'right',
+          type: 'linear', display: true, position: 'right',
           grid: { drawOnChartArea: false },
-          title: { display: true, text: 'Bounce Rate %' },
-          max: 100
+          title: { display: true, text: 'Bounce Rate %' }, max: 100
         },
-        y2: {
-          type: 'linear',
-          display: false
-        }
+        y2: { type: 'linear', display: false }
       },
       plugins: {
-        title: {
-          display: true,
-          text: 'Website Analytics (Last 7 Days)'
-        },
+        title: { display: true, text: 'Website Analytics (Last 7 Days)' },
         tooltip: {
           callbacks: {
-            label: function(context) {
-              let label = context.dataset.label || '';
+            label: (ctx) => {
+              let label = ctx.dataset.label || '';
               if (label) label += ': ';
-              if (context.dataset.label.includes('%')) {
-                label += context.raw.toFixed(2) + '%';
-              } else if (context.dataset.label.includes('sec')) {
-                label += context.raw.toFixed(0) + 's';
-              } else {
-                label += context.raw;
-              }
-              return label;
+              return label +
+                (ctx.dataset.label.includes('%') ? `${ctx.raw.toFixed(2)}%`
+                : ctx.dataset.label.includes('sec') ? `${ctx.raw.toFixed(0)}s`
+                : ctx.raw);
             }
           }
         }
       }
     };
-
     const getTrafficPrediction = () => {
       if (analyticsData.length < 3) return "Not enough data for prediction";
-
       const last = analyticsData[analyticsData.length - 1].activeUsers;
       const avg = analyticsData.reduce((sum, d) => sum + d.activeUsers, 0) / analyticsData.length;
-
-      if (last > avg * 1.3) return "📈 Strong upward trend detected";
-      if (last < avg * 0.7) return "📉 Downward trend detected";
-      return "➡️ Stable traffic pattern";
+      return last > avg * 1.3 ? "📈 Strong upward trend detected"
+        : last < avg * 0.7 ? "📉 Downward trend detected"
+        : "➡️ Stable traffic pattern";
     };
-
-    return {
-      chartData: data,
-      chartOptions: options,
-      trafficPrediction: getTrafficPrediction()
-    };
+    return { chartData: data, chartOptions: options, trafficPrediction: getTrafficPrediction() };
   }, [analyticsData]);
 
   const handleExportCSV = () => {
     try {
       const headers = "Date,Active Users,Bounce Rate (%),Avg Session Duration (s)";
-      const csv = [
-        headers,
-        ...analyticsData.map(d => `${d.date},${d.activeUsers},${d.bounceRate.toFixed(2)},${d.avgSession.toFixed(2)}`)
-      ].join("\n");
-
+      const csv = [headers, ...analyticsData.map(d => `${d.date},${d.activeUsers},${d.bounceRate.toFixed(2)},${d.avgSession.toFixed(2)}`)].join("\n");
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -201,7 +175,6 @@ const AdminPanel = () => {
       a.download = `imali-analytics-${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-
       logDebug("INFO", "CSV exported successfully");
       setStatus("✅ Analytics data exported");
     } catch (err) {
@@ -218,17 +191,13 @@ const AdminPanel = () => {
       setTimeout(() => setStatus(""), 3000);
       return;
     }
-
     try {
       setStatus("⏳ Minting in progress...");
       logDebug("INFO", `Initiating mint of ${mintAmount} IMALI`);
-
       const contract = await getContractInstance("IMALIToken", provider.getSigner());
       const tx = await contract.mint(account, ethers.parseEther(mintAmount));
-
       logDebug("INFO", "Transaction sent", { txHash: tx.hash });
       setStatus("⏳ Waiting for confirmation...");
-
       await tx.wait();
       ReactGA.event({ category: "Admin", action: "MintSuccess", label: mintAmount });
       logDebug("INFO", "Mint completed successfully");
@@ -247,12 +216,25 @@ const AdminPanel = () => {
         <FaRobot className="mr-2" /> Admin Dashboard
       </h1>
       <p className="text-sm text-gray-600">Wallet connected: {account || 'Not connected'}</p>
-      {!isOwner && (
+
+      {!account && (
+        <div className="mb-6">
+          <button
+            onClick={() => connectWallet('metamask')}
+            className="px-4 py-2 bg-indigo-600 text-white rounded"
+          >
+            Connect MetaMask
+          </button>
+        </div>
+      )}
+
+      {!isOwner && account && (
         <div className="mt-4 bg-red-100 text-red-700 p-3 rounded">
           You are not authorized to access this panel.
         </div>
       )}
-      {isOwner && (
+
+      {isOwner && account && (
         <>
           <div className="mt-6 bg-green-100 text-green-800 p-3 rounded">
             Welcome, Admin. You now have access to owner features.
