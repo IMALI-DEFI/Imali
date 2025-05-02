@@ -117,13 +117,16 @@ const AdminPanel = () => {
             <h2 className="text-xl font-semibold flex items-center">
               <FaChartLine className="mr-2" /> Analytics
             </h2>
-            <div className="relative pb-[56.25%] h-0 overflow-hidden rounded shadow mt-4">
+            <div className="relative w-full overflow-hidden rounded shadow mt-4">
               <iframe
                 title="Imali Looker Dashboard"
-                src="https://lookerstudio.google.com/s/kagTIaB9NVs"
+                width="100%"
+                height="1000"
+                src="https://lookerstudio.google.com/embed/reporting/004a3462-42f3-4e04-bdab-464bf56b9f0a/page/kIV1C"
                 frameBorder="0"
-                className="absolute top-0 left-0 w-full h-full"
+                style={{ border: 0 }}
                 allowFullScreen
+                sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
               ></iframe>
             </div>
           </div>
