@@ -19,13 +19,14 @@ const Header = () => {
 
   const links = [
   ["Home", "/"],
+  ["Token Page", "/TokenPage"]
   ["Lending", "/lending"],
   ["Staking", "/staking"],
   ["Yield Farming", "/yield-farming"],
   ["LP Lottery", "/lp-lottery"],        // ✅ New
   ["Admin", "/admin"],
   ["How To", "/how-to-use"],
-  ["Token Page", "/TokenPage"]
+ 
     // 🗑️ "Presale" removed
   ];
 
