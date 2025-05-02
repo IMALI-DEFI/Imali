@@ -120,7 +120,7 @@ const AdminPanel = () => {
             <div className="relative pb-[56.25%] h-0 overflow-hidden rounded shadow mt-4">
               <iframe
                 title="Imali Looker Dashboard"
-                src="https://lookerstudio.google.com/s/n0R2h4hqHkw"
+                src="https://lookerstudio.google.com/s/kagTIaB9NVs"
                 frameBorder="0"
                 className="absolute top-0 left-0 w-full h-full"
                 allowFullScreen
