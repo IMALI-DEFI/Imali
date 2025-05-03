@@ -184,15 +184,16 @@ const AdminPanel = () => {
                 </button>
               </div>
               <div className="w-full overflow-hidden rounded-md">
-                <iframe
-                  width="600"
-                  height="2125"
-                  src="https://lookerstudio.google.com/embed/reporting/004a3462-42f3-4e04-bdab-464bf56b9f0a/page/kIV1C"
-                  frameBorder="0"
-                  style={{ border: 0 }}
-                  allowFullScreen
-                  sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-                ></iframe>
+           <iframe
+                title="Imali Looker Dashboard"
+                width="100%"
+                height="1000"
+                src="https://lookerstudio.google.com/embed/reporting/004a3462-42f3-4e04-bdab-464bf56b9f0a/page/kIV1C"
+                frameBorder="0"
+                style={{ border: 0 }}
+                allowFullScreen
+                sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+              ></iframe>
               </div>
             </div>
           )}
