@@ -4,7 +4,8 @@ import { getContractInstance } from '../getContractInstance';
 import { useWallet } from "../context/WalletContext";
 import ReactGA from "react-ga4";
 import {
-  FaRobot, FaSlidersH, FaCoins, FaChartLine, FaShareAlt, FaClock
+  FaRobot, FaSlidersH, FaCoins, FaChartLine, FaShareAlt, FaClock,
+  FaTwitter, FaFacebook, FaLinkedin, FaDiscord, FaGithub, FaInstagram
 } from "react-icons/fa";
 
 const AdminPanel = () => {
@@ -19,7 +20,9 @@ const AdminPanel = () => {
   const [newBorrowFee, setNewBorrowFee] = useState("");
   const [newDepositFee, setNewDepositFee] = useState("");
   const [newInterestRate, setNewInterestRate] = useState("");
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
+  // Initialize Google Analytics
   useEffect(() => {
     ReactGA.initialize("G-KDRSH4G2Y9");
     ReactGA.send("pageview");
@@ -55,6 +58,15 @@ const AdminPanel = () => {
     console[type === "ERROR" ? "error" : type === "WARN" ? "warn" : "log"](formatted, data);
   };
 
+  const toggleAnalytics = () => {
+    setShowAnalytics(!showAnalytics);
+    ReactGA.event({
+      category: 'Admin',
+      action: 'Toggle Analytics',
+      label: showAnalytics ? 'Hide' : 'Show'
+    });
+  };
+
   const handleMint = async () => {
     if (!mintAmount || isNaN(mintAmount)) {
       setStatus("❌ Please enter a valid amount");
@@ -88,6 +100,11 @@ const AdminPanel = () => {
       if (newInterestRate) await contract.updateAnnualInterestRate(parseInt(newInterestRate));
       logDebug("INFO", "Lending parameters updated");
       setStatus("✅ Lending parameters updated");
+      ReactGA.event({
+        category: 'Admin',
+        action: 'Update Parameters',
+        label: `Borrow: ${newBorrowFee}, Deposit: ${newDepositFee}, Interest: ${newInterestRate}`
+      });
     } catch (err) {
       logDebug("ERROR", "Failed to update lending parameters", err);
       setStatus("❌ Update failed: " + err.message);
@@ -99,6 +116,30 @@ const AdminPanel = () => {
     const newTask = { content: shareContent, time: new Date(scheduleTime) };
     setScheduledPosts([...scheduledPosts, newTask]);
     setScheduleTime("");
+    ReactGA.event({
+      category: 'Admin',
+      action: 'Schedule Post',
+      label: `Scheduled for ${new Date(scheduleTime).toLocaleString()}`
+    });
+  };
+
+  const shareToSocial = (platform) => {
+    const message = encodeURIComponent(shareContent || "🚀 $IMALI just hit 10K in presale! Join the DeFi movement & stake with confidence. 🌐");
+    const base = "https://imali-defi.com";
+    const urls = {
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${base}&quote=${message}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${base}&summary=${message}`,
+      twitter: `https://twitter.com/intent/tweet?text=${message}`,
+      instagram: `https://www.instagram.com/imali_defi`,
+      discord: `https://discord.gg/wSNq32q5`,
+      github: `https://github.com/IMALI-DEFI/imali`
+    };
+    if (urls[platform]) window.open(urls[platform], "_blank");
+    ReactGA.event({
+      category: 'Social',
+      action: 'Share',
+      label: platform
+    });
   };
 
   return (
@@ -126,18 +167,179 @@ const AdminPanel = () => {
             Welcome, Admin. You now have access to owner features.
           </div>
 
+          {/* Analytics Toggle */}
+          <div className="my-4">
+            <button
+              onClick={toggleAnalytics}
+              className="px-4 py-2 bg-blue-600 text-white rounded flex items-center"
+            >
+              <FaChartLine className="mr-2" />
+              {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+            </button>
+          </div>
+
+          {/* Google Analytics Dashboard */}
+          {showAnalytics && (
+            <div className="my-6 bg-white p-4 rounded shadow">
+              <h2 className="text-xl font-semibold mb-4 flex items-center">
+                <FaChartLine className="mr-2" /> Google Analytics Dashboard
+              </h2>
+              <div className="w-full h-96">
+                <iframe
+                  title="Google Analytics Dashboard"
+                  src={`https://analytics.google.com/analytics/web/#/p${process.env.REACT_APP_GA_PROPERTY_ID}/reports/dashboard`}
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  className="rounded-md"
+                ></iframe>
+              </div>
+              <div className="mt-2 text-sm text-gray-500">
+                <p>Note: You must be logged in to Google Analytics to view this dashboard.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Minting Section */}
+          <div className="my-6 bg-white p-4 rounded shadow">
+            <h2 className="text-xl font-semibold mb-4 flex items-center">
+              <FaCoins className="mr-2" /> Token Minting
+            </h2>
+            <div className="flex flex-col md:flex-row gap-4">
+              <input
+                type="number"
+                className="p-2 border rounded flex-grow"
+                placeholder="Amount to mint"
+                value={mintAmount}
+                onChange={(e) => setMintAmount(e.target.value)}
+              />
+              <button
+                onClick={handleMint}
+                className="px-4 py-2 bg-indigo-600 text-white rounded"
+              >
+                Mint IMALI
+              </button>
+            </div>
+            {status && <p className="mt-2">{status}</p>}
+          </div>
+
+          {/* Lending Controls */}
           <div className="my-6 bg-white p-4 rounded shadow">
             <h2 className="text-xl font-semibold mb-4 flex items-center">
               <FaSlidersH className="mr-2" /> Lending Controls
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <input type="number" className="p-2 border rounded" placeholder="Borrow Fee (bps)" value={newBorrowFee} onChange={(e) => setNewBorrowFee(e.target.value)} />
-              <input type="number" className="p-2 border rounded" placeholder="Deposit Fee (bps)" value={newDepositFee} onChange={(e) => setNewDepositFee(e.target.value)} />
-              <input type="number" className="p-2 border rounded" placeholder="Interest Rate (%)" value={newInterestRate} onChange={(e) => setNewInterestRate(e.target.value)} />
+              <input
+                type="number"
+                className="p-2 border rounded"
+                placeholder="Borrow Fee (bps)"
+                value={newBorrowFee}
+                onChange={(e) => setNewBorrowFee(e.target.value)}
+              />
+              <input
+                type="number"
+                className="p-2 border rounded"
+                placeholder="Deposit Fee (bps)"
+                value={newDepositFee}
+                onChange={(e) => setNewDepositFee(e.target.value)}
+              />
+              <input
+                type="number"
+                className="p-2 border rounded"
+                placeholder="Interest Rate (%)"
+                value={newInterestRate}
+                onChange={(e) => setNewInterestRate(e.target.value)}
+              />
             </div>
-            <button onClick={updateLendingParameters} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded">
+            <button
+              onClick={updateLendingParameters}
+              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded"
+            >
               Update Parameters
             </button>
+          </div>
+
+          {/* Social Media Sharing */}
+          <div className="my-6 bg-white p-4 rounded shadow">
+            <h2 className="text-xl font-semibold mb-4 flex items-center">
+              <FaShareAlt className="mr-2" /> Social Media
+            </h2>
+            <textarea
+              className="w-full p-2 border rounded mb-4"
+              rows="3"
+              value={shareContent}
+              onChange={(e) => setShareContent(e.target.value)}
+              placeholder="Share something exciting about IMALI..."
+            />
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button onClick={() => shareToSocial('twitter')} className="px-3 py-2 bg-blue-400 text-white rounded flex items-center">
+                <FaTwitter className="mr-2" /> Twitter
+              </button>
+              <button onClick={() => shareToSocial('facebook')} className="px-3 py-2 bg-blue-600 text-white rounded flex items-center">
+                <FaFacebook className="mr-2" /> Facebook
+              </button>
+              <button onClick={() => shareToSocial('linkedin')} className="px-3 py-2 bg-blue-700 text-white rounded flex items-center">
+                <FaLinkedin className="mr-2" /> LinkedIn
+              </button>
+              <button onClick={() => shareToSocial('discord')} className="px-3 py-2 bg-purple-600 text-white rounded flex items-center">
+                <FaDiscord className="mr-2" /> Discord
+              </button>
+              <button onClick={() => shareToSocial('instagram')} className="px-3 py-2 bg-pink-600 text-white rounded flex items-center">
+                <FaInstagram className="mr-2" /> Instagram
+              </button>
+              <button onClick={() => shareToSocial('github')} className="px-3 py-2 bg-gray-800 text-white rounded flex items-center">
+                <FaGithub className="mr-2" /> GitHub
+              </button>
+            </div>
+
+            {/* Scheduled Posts */}
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-2 flex items-center">
+                <FaClock className="mr-2" /> Scheduled Posts
+              </h3>
+              <div className="flex flex-col md:flex-row gap-4 mb-4">
+                <input
+                  type="datetime-local"
+                  className="p-2 border rounded"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                />
+                <button
+                  onClick={handleSchedulePost}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded"
+                >
+                  Schedule Post
+                </button>
+              </div>
+              {scheduledPosts.length > 0 && (
+                <div className="border rounded p-2">
+                  {scheduledPosts.map((post, index) => (
+                    <div key={index} className="mb-2 pb-2 border-b last:border-b-0">
+                      <p className="text-sm text-gray-500">
+                        {post.time.toLocaleString()}
+                      </p>
+                      <p>{post.content}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Debug Logs */}
+          <div className="my-6 bg-white p-4 rounded shadow">
+            <h2 className="text-xl font-semibold mb-4">Debug Logs</h2>
+            <div className="bg-gray-100 p-3 rounded font-mono text-sm h-40 overflow-y-auto">
+              {debugLogs.length > 0 ? (
+                debugLogs.map((log, index) => (
+                  <div key={index} className="mb-1">
+                    {log}
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500">No logs available</p>
+              )}
+            </div>
           </div>
         </>
       )}
