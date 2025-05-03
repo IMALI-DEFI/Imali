@@ -5,7 +5,8 @@ import { useWallet } from "../context/WalletContext";
 import ReactGA from "react-ga4";
 import {
   FaRobot, FaSlidersH, FaCoins, FaChartLine, FaShareAlt, FaClock,
-  FaTwitter, FaFacebook, FaLinkedin, FaDiscord, FaGithub, FaInstagram
+  FaTwitter, FaFacebook, FaLinkedin, FaDiscord, FaGithub, FaInstagram,
+  FaTimes
 } from "react-icons/fa";
 
 const AdminPanel = () => {
@@ -20,7 +21,7 @@ const AdminPanel = () => {
   const [newBorrowFee, setNewBorrowFee] = useState("");
   const [newDepositFee, setNewDepositFee] = useState("");
   const [newInterestRate, setNewInterestRate] = useState("");
-  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(true);
 
   // Initialize Google Analytics
   useEffect(() => {
@@ -167,36 +168,45 @@ const AdminPanel = () => {
             Welcome, Admin. You now have access to owner features.
           </div>
 
-          {/* Analytics Toggle */}
-          <div className="my-4">
-            <button
-              onClick={toggleAnalytics}
-              className="px-4 py-2 bg-blue-600 text-white rounded flex items-center"
-            >
-              <FaChartLine className="mr-2" />
-              {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
-            </button>
-          </div>
-
-          {/* Google Analytics Dashboard */}
+          {/* Analytics Dashboard - Now visible by default with close button */}
           {showAnalytics && (
-            <div className="my-6 bg-white p-4 rounded shadow">
-              <h2 className="text-xl font-semibold mb-4 flex items-center">
-                <FaChartLine className="mr-2" /> Google Analytics Dashboard
-              </h2>
-              <div className="w-full h-96">
+            <div className="my-6 bg-white p-4 rounded shadow relative">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold flex items-center">
+                  <FaChartLine className="mr-2" /> Analytics Dashboard
+                </h2>
+                <button
+                  onClick={toggleAnalytics}
+                  className="text-gray-500 hover:text-gray-700"
+                  title="Close dashboard"
+                >
+                  <FaTimes size={20} />
+                </button>
+              </div>
+              <div className="w-full overflow-hidden rounded-md">
                 <iframe
-                  title="Google Analytics Dashboard"
-                  src={`https://analytics.google.com/analytics/web/#/p${process.env.REACT_APP_GA_PROPERTY_ID}/reports/dashboard`}
-                  width="100%"
-                  height="100%"
+                  width="600"
+                  height="2125"
+                  src="https://lookerstudio.google.com/embed/reporting/004a3462-42f3-4e04-bdab-464bf56b9f0a/page/kIV1C"
                   frameBorder="0"
-                  className="rounded-md"
+                  style={{ border: 0 }}
+                  allowFullScreen
+                  sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                 ></iframe>
               </div>
-              <div className="mt-2 text-sm text-gray-500">
-                <p>Note: You must be logged in to Google Analytics to view this dashboard.</p>
-              </div>
+            </div>
+          )}
+
+          {/* Show Analytics button when dashboard is hidden */}
+          {!showAnalytics && (
+            <div className="my-4">
+              <button
+                onClick={toggleAnalytics}
+                className="px-4 py-2 bg-blue-600 text-white rounded flex items-center"
+              >
+                <FaChartLine className="mr-2" />
+                Show Analytics Dashboard
+              </button>
             </div>
           )}
 
