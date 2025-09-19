@@ -1,0 +1,15 @@
+[[redirects]]
+  from = "/old-path"
+  to = "/new-path"
+  status = 301
+
+[[redirects]]
+  from = "/blog/*"
+  to = "/news/:splat"
+  status = 200
+
+# SPA fallback (for React, Vue, etc.)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
