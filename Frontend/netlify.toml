@@ -1,14 +1,13 @@
-[[redirects]]
-  from = "/old-path"
-  to = "/new-path"
-  status = 301
+[build]
+  command = "npm run build"
+  publish = "build"
 
-[[redirects]]
-  from = "/blog/*"
-  to = "/news/:splat"
-  status = 200
+[build.environment]
+  NODE_VERSION = "20"
+  REACT_APP_API_URL = "https://api.imali-defi.com"
+  REACT_APP_TG_NOTIFY_URL = "https://api.imali-defi.com/notify"
 
-# SPA fallback (for React, Vue, etc.)
+# SPA fallback (required for React)
 [[redirects]]
   from = "/*"
   to = "/index.html"
