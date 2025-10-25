@@ -1,0 +1,83 @@
+[
+  {
+    "type": "function",
+    "name": "distribute",
+    "stateMutability": "nonpayable",
+    "inputs": [],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "setPercents",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "name": "burn",
+        "type": "uint16"
+      },
+      {
+        "name": "treasury",
+        "type": "uint16"
+      },
+      {
+        "name": "staking",
+        "type": "uint16"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "getPercents",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "burn",
+        "type": "uint16"
+      },
+      {
+        "name": "treasury",
+        "type": "uint16"
+      },
+      {
+        "name": "staking",
+        "type": "uint16"
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "lastDistributionTime",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Distributed",
+    "inputs": [
+      {
+        "name": "burned",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "toTreasury",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "toStaking",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]

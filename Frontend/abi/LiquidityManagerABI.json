@@ -1,0 +1,60 @@
+[
+  {
+    "type": "function",
+    "name": "addLiquidity",
+    "stateMutability": "payable",
+    "inputs": [
+      {
+        "name": "tokenAmount",
+        "type": "uint256"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "removeLiquidity",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "name": "lpAmount",
+        "type": "uint256"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "router",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LiquidityAdded",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "eth",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "lp",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  }
+]
