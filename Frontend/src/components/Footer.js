@@ -4,84 +4,44 @@ import Logo from "../assets/images/DefiFinanceLogo.png";
 
 const Footer = () => {
   return (
-    <footer className="bg-green-800 text-white py-8">
-      <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
-          {/* Branding */}
-          <div className="text-center md:text-left">
-            <div className="flex flex-col items-center md:items-start">
-              <img src={Logo} alt="IMALI DeFi Logo" className="h-8 w-auto mb-2" />
-              <p className="text-sm text-green-200 max-w-xs">
-                Decentralized finance solutions for the next generation
-              </p>
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <div className="text-center">
-            <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
-            <div className="grid grid-cols-2 gap-2">
-             <FooterLink to="/">Home</FooterLink>
-  <FooterLink to="/lending">Lending</FooterLink>
-  <FooterLink to="/staking">Staking</FooterLink>
-  <FooterLink to="/yield-farming">Yield Farming</FooterLink>
-  <FooterLink to="/lottery">Lottery</FooterLink>
-  <FooterLink to="/how-to-use">How To</FooterLink>
-  <FooterLink to="/lp-lottery">LP Lottery</FooterLink>         {/* ✅ New */}
-  <FooterLink to="/token-page">Token Page</FooterLink>         {/* ✅ New */}
-            </div>
-          </div>
-
-          {/* Social Links */}
-          <div className="text-center md:text-right">
-            <h3 className="text-lg font-semibold mb-4">Connect With Us</h3>
-            <div className="flex justify-center md:justify-end flex-wrap gap-2">
-              <SocialIcon href="https://www.facebook.com/share/1Krjwmf8yR/?mibextid=wwXIfr" icon="facebook" label="Facebook Page" />
-              <SocialIcon href="https://www.facebook.com/share/g/193YA7oPzP/?mibextid=wwXIfr" icon="facebook-f" label="Facebook Group" />
-              <SocialIcon href="https://www.linkedin.com/company/imali-defi/" icon="linkedin" label="LinkedIn" />
-              <SocialIcon href="https://www.instagram.com/imali_defi?igsh=MXZieHV1MTJnem5weA%3D%3D&utm_source=qr" icon="instagram" label="Instagram" />
-              <SocialIcon href="https://bsky.app/profile/imali-defi.bsky.socia" icon="square" label="Bluesky" />
-              <SocialIcon href="https://discord.gg/wSNq32q5" icon="discord" label="Discord" />
-              <SocialIcon href="https://www.threads.net/@imali_defi" icon="threads" label="Threads" />
-              <SocialIcon href="https://x.com/imalidefi?s=21&t=zPxjF8QLzW9SL7pH-m60Hw" icon="x-twitter" label="X (Twitter)" />
-              <SocialIcon href="https://github.com/IMALI-DEFI/imali" icon="github" label="GitHub" />
-            </div>
-          </div>
+    <footer className="bg-gray-900 text-white py-8">
+      <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
+        
+        {/* Brand */}
+        <div>
+          <img src={Logo} alt="IMALI Logo" className="h-10 mb-3" />
+          <p className="text-sm text-gray-400">
+            IMALI DeFi — Unlocking financial freedom for everyone.
+          </p>
         </div>
 
-        {/* Copyright */}
-        <div className="border-t border-green-700 mt-8 pt-6 text-center text-sm text-green-300">
-          <p>&copy; {new Date().getFullYear()} IMALI DeFi Protocol. All rights reserved.</p>
+        {/* Links */}
+        <div>
+          <h3 className="text-lg font-semibold mb-3">Quick Links</h3>
+          <ul className="space-y-2 text-sm">
+            <li><Link to="/" className="hover:text-indigo-400">Home</Link></li>
+            <li><Link to="/dashboard" className="hover:text-indigo-400">Dashboard</Link></li>
+            <li><Link to="/how-it-works" className="hover:text-indigo-400">How It Works</Link></li>
+            <li><Link to="/support" className="hover:text-indigo-400">Support</Link></li>
+          </ul>
+        </div>
+
+        {/* Social */}
+        <div>
+          <h3 className="text-lg font-semibold mb-3">Connect</h3>
+          <div className="flex flex-wrap gap-3 text-gray-400">
+            <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="hover:text-white">Facebook</a>
+            <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-white">Instagram</a>
+            <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="hover:text-white">Twitter</a>
+            <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="hover:text-white">LinkedIn</a>
+          </div>
         </div>
       </div>
+
+      <div className="mt-8 border-t border-gray-700 pt-4 text-center text-xs text-gray-500">
+        &copy; {new Date().getFullYear()} IMALI DeFi. All rights reserved.
+      </div>
     </footer>
-  );
-};
-
-// Safe FooterLink
-const FooterLink = ({ to, children }) => {
-  if (!children) return null;
-  return (
-    <Link to={to} className="text-green-200 hover:text-white text-sm transition-colors">
-      {children}
-    </Link>
-  );
-};
-
-// Safe SocialIcon
-const SocialIcon = ({ href, icon, label }) => {
-  if (!href || !icon) return null;
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-green-300 hover:text-white transition-colors"
-      aria-label={label}
-      title={label}
-    >
-      <i className={`fab fa-${icon} text-xl`} />
-    </a>
   );
 };
 
