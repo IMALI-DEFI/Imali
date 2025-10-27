@@ -9,7 +9,7 @@ import Footer from "./components/Footer";
 // Features
 import StrategySelector from "./components/Dashboard/StrategySelector";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
-import AdminPanel from "./components/AdminPanel.jsx";
+import AdminPanel from "./components/AdminPanel.js";
 import ReferralSystem from "./components/ReferralSystem";
 
 // Pages
