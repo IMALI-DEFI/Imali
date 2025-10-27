@@ -7,7 +7,7 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 
 // Features
-import StrategySelector from "./components/StrategySelector";
+import StrategySelector from "./components/Dashboard/StrategySelector";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel.jsx";
 import ReferralSystem from "./components/ReferralSystem";
