@@ -34,7 +34,7 @@
     "schema-utils": "4.3.2",
     "tailwind-merge": "^2.5.2",
     "tailwind-variants": "^0.1.20",
-    "react-scripts": "5.0.1"     // ⬅️ moved here (no caret)
+    "react-scripts": "5.0.1"     
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",
