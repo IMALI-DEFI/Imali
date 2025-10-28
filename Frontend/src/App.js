@@ -9,8 +9,7 @@ import Footer from "./components/Footer";
 // Features
 import StrategySelector from "./components/Dashboard/StrategySelector";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
-import AdminPanel from "./components/AdminPanel.js";
-import ReferralPartner from "./components/ReferralSystem.js";
+import AdminPanel from "./components/AdminPanel.jsx"; // <-- keep this consistent with the actual filename
 
 // Pages
 import AboutUs from "./pages/AboutUs.jsx";
@@ -24,11 +23,12 @@ import TermsOfService from "./pages/TermsOfService.jsx";
 import TradeDemo from "./pages/TradeDemo.jsx";
 import FundingGuide from "./pages/FundingGuide.jsx";
 import SupportedChains from "./pages/SupportedChains.jsx";
-import MetaMaskGuide from "./pages/MetaMaskGuide.jsx"; 
+import MetaMaskGuide from "./pages/MetaMaskGuide.jsx";
+import ReferralPartner from "./pages/ReferralPartner.jsx"; // <-- correct location & name
+
 // Auth guard
 import ProtectedRoute from "./components/routing/ProtectedRoute";
 
-// Simple 404
 function NotFound() {
   return (
     <div className="min-h-[40vh] flex items-center justify-center text-center p-8">
@@ -58,32 +58,29 @@ export default function App() {
           <Route path="/support" element={<Support />} />
           <Route path="/signup" element={<SignupForm />} />
 
-          {/* ✅ PUBLIC demo (not protected) */}
+          {/* Public demo */}
           <Route path="/trade-demo" element={<TradeDemo />} />
 
-          {/* Other public features */}
+          {/* Other public pages */}
           <Route path="/funding-guide" element={<FundingGuide />} />
-          <Route path="/referral" element={<ReferralSystem />} />
+          <Route path="/referral" element={<ReferralPartner />} /> {/* <-- fixed */}
           <Route path="/strategy-selector" element={<StrategySelector />} />
           <Route path="/supported-chains" element={<SupportedChains />} />
-          <Route path="/wallet-metamask" element={<MetaMaskGuide />} /> 
-          {/* ✅ PROTECTED: live dashboard + admin */}
+          <Route path="/wallet-metamask" element={<MetaMaskGuide />} />
+
+          {/* Protected: live dashboard + admin */}
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<MemberDashboard />} />
-            <Route path="/admin" element={<AdminPanel forceOwner/>} />
+            <Route path="/admin" element={<AdminPanel forceOwner />} />
           </Route>
 
-          {/* ✅ UNPROTECTED TEST ROUTES
-              These render the REAL components directly (no wrappers, no guards)
-              so you can work on them without auth/wallet friction. */}
+          {/* Unprotected test routes */}
           <Route path="/test/dashboard" element={<MemberDashboard />} />
           <Route path="/test/admin" element={<AdminPanel />} />
 
-          {/* Aliases → public demo (legacy “/demo”) */}
+          {/* Legacy aliases */}
           <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
           <Route path="/demo/*" element={<Navigate to="/trade-demo" replace />} />
-
-          {/* Aliases → protected dashboard (legacy “MemberDashboard”) */}
           <Route path="/MemberDashboard" element={<Navigate to="/dashboard" replace />} />
           <Route path="/memberdashboard" element={<Navigate to="/dashboard" replace />} />
           <Route path="/member" element={<Navigate to="/dashboard" replace />} />
