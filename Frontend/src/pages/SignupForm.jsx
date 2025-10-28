@@ -517,9 +517,9 @@ export default function SignupForm() {
                   <div className="rounded-lg bg-white/5 border border-white/10 p-3">
                     <div className="font-semibold mb-1">📚 Guides</div>
                     <div className="text-gray-300">
-                      <Link to="/how-to/fund-okx" className="underline text-emerald-300">OKX Funding</Link> ·{" "}
+                      <Link to="/FundingGuide" className="underline text-emerald-300">OKX Funding</Link> ·{" "}
                       <Link to="/supported-chains" className="underline text-indigo-300">Chains</Link> ·{" "}
-                      <Link to="/how-to/wallet-metamask" className="underline text-indigo-300">MetaMask</Link>
+                      <Link to="/FundingGuide" className="underline text-indigo-300">MetaMask</Link>
                     </div>
                   </div>
                 </div>
