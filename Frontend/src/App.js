@@ -10,7 +10,7 @@ import Footer from "./components/Footer";
 import StrategySelector from "./components/Dashboard/StrategySelector";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel.js";
-import ReferralPartner from "./components/ReferralSystem";
+import ReferralPartner from "./components/ReferralSystem.js";
 
 // Pages
 import AboutUs from "./pages/AboutUs.jsx";
