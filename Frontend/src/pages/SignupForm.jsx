@@ -404,8 +404,8 @@ export default function SignupForm() {
                 </li>
               </ul>
               <div className="mt-3 space-y-1">
-                <Link to="/funding-guide" className="block text-emerald-300 underline text-sm">Open 5-min OKX Funding Guide →</Link>
-                <Link to="/funding-guide" className="block text-emerald-300 underline text-sm">MetaMask: install + fund →</Link>
+                <Link to="/FundingGuide" className="block text-emerald-300 underline text-sm">Open 5-min OKX Funding Guide →</Link>
+                <Link to="/FundingGuide" className="block text-emerald-300 underline text-sm">MetaMask: install + fund →</Link>
               </div>
             </div>
           </aside>
