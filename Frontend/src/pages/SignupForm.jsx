@@ -404,8 +404,8 @@ export default function SignupForm() {
                 </li>
               </ul>
               <div className="mt-3 space-y-1">
-                <Link to="/FundingGuide" className="block text-emerald-300 underline text-sm">Open 5-min OKX Funding Guide →</Link>
-                <Link to="/FundingGuide" className="block text-emerald-300 underline text-sm">MetaMask: install + fund →</Link>
+                <Link to="/funding-guide" className="block text-emerald-300 underline text-sm">Open 5-min OKX Funding Guide →</Link>
+                <Link to="/funding-guide" className="block text-emerald-300 underline text-sm">MetaMask: install + fund →</Link>
               </div>
             </div>
           </aside>
@@ -517,9 +517,9 @@ export default function SignupForm() {
                   <div className="rounded-lg bg-white/5 border border-white/10 p-3">
                     <div className="font-semibold mb-1">📚 Guides</div>
                     <div className="text-gray-300">
-                      <Link to="/FundingGuide" className="underline text-emerald-300">OKX Funding</Link> ·{" "}
+                      <Link to="/funding-guide" className="underline text-emerald-300">OKX Funding</Link> ·{" "}
                       <Link to="/supported-chains" className="underline text-indigo-300">Chains</Link> ·{" "}
-                      <Link to="/FundingGuide" className="underline text-indigo-300">MetaMask</Link>
+                      <Link to="/funding-guide" className="underline text-indigo-300">MetaMask</Link>
                     </div>
                   </div>
                 </div>
