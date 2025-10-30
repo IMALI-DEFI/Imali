@@ -292,7 +292,7 @@ export default function SignupForm() {
           </p>
           <div className="mt-3 text-sm text-indigo-200">
             New to wallets or funding?{" "}
-            <Link to="/how-to/fund-okx" className="text-emerald-300 underline">
+            <Link to="/funding-guide" className="text-emerald-300 underline">
               See the 5-minute OKX guide
             </Link>
           </div>
