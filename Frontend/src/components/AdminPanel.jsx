@@ -1,5 +1,5 @@
 // src/components/AdminPanel.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { parseUnits, isAddress } from "ethers"; // ethers v6
 import { getContractInstance } from "../getContractInstance";
@@ -19,8 +19,10 @@ import AccessControl from "../admin/AccessControl.jsx";
 
 /* -------------------- Env + Chain helpers -------------------- */
 const E = (k, fb = "") => {
-  if (typeof import.meta !== "undefined" && import.meta.env && k in import.meta.env) return import.meta.env[k] ?? fb;
-  if (typeof process !== "undefined" && process.env && k in process.env) return process.env[k] ?? fb;
+  if (typeof import.meta !== "undefined" && import.meta.env && k in import.meta.env)
+    return import.meta.env[k] ?? fb;
+  if (typeof process !== "undefined" && process.env && k in process.env)
+    return process.env[k] ?? fb;
   return fb;
 };
 
@@ -40,10 +42,11 @@ async function getChainKeyFromProvider(provider) {
   }
 }
 
-/* -------------------- Tabs -------------------- */
-const TAB_DEFS = [
+/* -------------------- Tabs (base shape) -------------------- */
+const BASE_TAB_DEFS = [
   { key: "overview", label: "Overview", emoji: "✨", render: (p) => <DashboardOverview {...p} /> },
   { key: "token", label: "Token Mgmt", emoji: "🪙", render: (p) => <TokenManagement {...p} /> },
+  // buyback tab will be overridden with callbacks inside component
   { key: "buyback", label: "Buyback", emoji: "♻️", render: (p) => <BuyBackDashboard {...p} /> },
   { key: "fees", label: "Fee Distributor", emoji: "💸", render: (p) => <FeeDistributor {...p} /> },
   { key: "treasury", label: "Treasury", emoji: "🏦", render: (p) => <TreasurySection {...p} /> },
@@ -65,8 +68,12 @@ export default function AdminPanel({ forceOwner = false }) {
   const [isOwner, setIsOwner] = useState(false);
   const [error, setError] = useState("");
   const [active, setActive] = useState("overview");
+  const [busyAction, setBusyAction] = useState("");
 
-  const tabs = useMemo(() => TAB_DEFS, []);
+  const API_BASE = useMemo(
+    () => E("VITE_BACKEND_URL", E("REACT_APP_BACKEND_URL", "/api")),
+    []
+  );
 
   // Dev-mode env bypass
   const BYPASS =
@@ -79,6 +86,117 @@ export default function AdminPanel({ forceOwner = false }) {
   // If any bypass applies, render immediately
   const allowNow = forceOwner || BYPASS || TEST_BYPASS || isOwner;
 
+  /* -------------------- Backend action handlers -------------------- */
+
+  const handleTriggerBuyback = useCallback(
+    async (options = {}) => {
+      if (!API_BASE) {
+        alert("Backend URL not configured.");
+        return;
+      }
+      try {
+        setBusyAction("buyback");
+        const res = await fetch(`${API_BASE}/admin/buyback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(options),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || "Buyback failed");
+        }
+        alert(`Buyback triggered: ${data.txHash || "submitted"}`);
+      } catch (err) {
+        console.error("[AdminPanel] Buyback error:", err);
+        alert(err?.message || "Buyback failed");
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [API_BASE]
+  );
+
+  const handleTriggerLiquidity = useCallback(
+    async (options = {}) => {
+      if (!API_BASE) {
+        alert("Backend URL not configured.");
+        return;
+      }
+      try {
+        setBusyAction("liquidity");
+        const res = await fetch(`${API_BASE}/admin/liquidity`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(options),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || "Liquidity action failed");
+        }
+        alert(`Liquidity add triggered: ${data.txHash || "submitted"}`);
+      } catch (err) {
+        console.error("[AdminPanel] Liquidity error:", err);
+        alert(err?.message || "Liquidity action failed");
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [API_BASE]
+  );
+
+  // Optional: hook into staker.py backend endpoint (e.g. /admin/auto-stake)
+  const handleAutoStake = useCallback(
+    async (percent = 0.25) => {
+      if (!API_BASE) {
+        alert("Backend URL not configured.");
+        return;
+      }
+      try {
+        setBusyAction("stake");
+        const res = await fetch(`${API_BASE}/admin/auto-stake`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ percent }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || "Auto-stake failed");
+        }
+        alert(`Auto-stake kicked off: ${data.message || "submitted"}`);
+      } catch (err) {
+        console.error("[AdminPanel] Auto-stake error:", err);
+        alert(err?.message || "Auto-stake failed");
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [API_BASE]
+  );
+
+  /* -------------------- Tabs with injected callbacks -------------------- */
+
+  const tabs = useMemo(
+    () =>
+      BASE_TAB_DEFS.map((t) =>
+        t.key === "buyback"
+          ? {
+              ...t,
+              render: (p) => (
+                <BuyBackDashboard
+                  {...p}
+                  onTriggerBuyback={handleTriggerBuyback}
+                  onTriggerLiquidity={handleTriggerLiquidity}
+                  onAutoStake={handleAutoStake}
+                  busyAction={busyAction}
+                />
+              ),
+            }
+          : t
+      ),
+    [handleTriggerBuyback, handleTriggerLiquidity, handleAutoStake, busyAction]
+  );
+
+  /* -------------------- Owner check -------------------- */
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -104,7 +222,10 @@ export default function AdminPanel({ forceOwner = false }) {
         let onChainOwner = null;
         try {
           const chainKey = provider ? await getChainKeyFromProvider(provider) : "polygon";
-          const imali = await getContractInstance("IMALI", chainKey, { withSigner: false, autoSwitch: false });
+          const imali = await getContractInstance("IMALI", chainKey, {
+            withSigner: false,
+            autoSwitch: false,
+          });
           if (typeof imali.owner === "function") {
             onChainOwner = (await imali.owner())?.toLowerCase();
           }
@@ -150,12 +271,20 @@ export default function AdminPanel({ forceOwner = false }) {
       <div className="min-h-screen grid place-items-center bg-gray-950 text-white px-6">
         <div className="max-w-md text-center">
           <h2 className="text-2xl font-extrabold mb-2">403 — Owner Only</h2>
-          <p className="text-white/70 mb-6">{error || "This area is restricted to the project owner."}</p>
+          <p className="text-white/70 mb-6">
+            {error || "This area is restricted to the project owner."}
+          </p>
           <div className="flex gap-3 justify-center">
-            <button onClick={() => navigate("/")} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold">
+            <button
+              onClick={() => navigate("/")}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold"
+            >
               Go Home
             </button>
-            <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold"
+            >
               Retry
             </button>
           </div>
@@ -171,12 +300,27 @@ export default function AdminPanel({ forceOwner = false }) {
       <div className="absolute inset-0 bg-gradient-to-b from-gray-900 via-gray-950 to-black" />
 
       {/* Ambient orbs */}
-      <div className="pointer-events-none absolute -top-24 -left-24 h-80 w-80 rounded-full blur-3xl opacity-25"
-           style={{ background: "radial-gradient(60% 60% at 50% 50%, #22d3ee55 0%, transparent 60%)" }} />
-      <div className="pointer-events-none absolute top-20 -right-16 h-96 w-96 rounded-full blur-3xl opacity-20"
-           style={{ background: "radial-gradient(60% 60% at 50% 50%, #a78bfa55 0%, transparent 60%)" }} />
-      <div className="pointer-events-none absolute bottom-0 left-1/3 h-72 w-72 rounded-full blur-3xl opacity-15"
-           style={{ background: "radial-gradient(60% 60% at 50% 50%, #f472b655 0%, transparent 60%)" }} />
+      <div
+        className="pointer-events-none absolute -top-24 -left-24 h-80 w-80 rounded-full blur-3xl opacity-25"
+        style={{
+          background:
+            "radial-gradient(60% 60% at 50% 50%, #22d3ee55 0%, transparent 60%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute top-20 -right-16 h-96 w-96 rounded-full blur-3xl opacity-20"
+        style={{
+          background:
+            "radial-gradient(60% 60% at 50% 50%, #a78bfa55 0%, transparent 60%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute bottom-0 left-1/3 h-72 w-72 rounded-full blur-3xl opacity-15"
+        style={{
+          background:
+            "radial-gradient(60% 60% at 50% 50%, #f472b655 0%, transparent 60%)",
+        }}
+      />
 
       {/* Header */}
       <header className="relative z-10 border-b border-white/10 backdrop-blur bg-black/10">
@@ -199,7 +343,11 @@ export default function AdminPanel({ forceOwner = false }) {
               key={t.key}
               onClick={() => setActive(t.key)}
               className={`px-3 py-2 rounded-2xl border text-sm transition
-                ${active === t.key ? "bg-white/15 border-white/30 shadow-[0_0_24px_-6px_rgba(255,255,255,0.35)]" : "bg-white/5 border-white/10 hover:bg-white/10"}`}
+                ${
+                  active === t.key
+                    ? "bg-white/15 border-white/30 shadow-[0_0_24px_-6px_rgba(255,255,255,0.35)]"
+                    : "bg-white/5 border-white/10 hover:bg-white/10"
+                }`}
               title={t.label}
             >
               <span className="mr-1">{t.emoji}</span>
@@ -217,7 +365,8 @@ export default function AdminPanel({ forceOwner = false }) {
         <div className="mt-6 text-xs text-white/60">
           Pro-tip: Keep owner address synced — either{" "}
           <code className="text-white/80">IMALI.owner()</code> on-chain or{" "}
-          <code className="text-white/80">VITE_OWNER_ADDRESS</code>/<code className="text-white/80">REACT_APP_OWNER_ADDRESS</code> in env.
+          <code className="text-white/80">VITE_OWNER_ADDRESS</code>/
+          <code className="text-white/80">REACT_APP_OWNER_ADDRESS</code> in env.
         </div>
       </main>
     </div>
