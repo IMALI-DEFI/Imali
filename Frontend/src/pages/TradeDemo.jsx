@@ -3,20 +3,21 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import TradingOverview from "../components/Dashboard/TradingOverview.jsx"; // listens to `trade-demo:update`
 
 /* -------------------------- Env helpers (CRA & Vite) -------------------------- */
+/*  ✅ FIX: Fallbacks now use your Oracle server IP instead of localhost        */
 const DEMO_API_DEFAULT =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_DEMO_API) ||
   process.env.REACT_APP_DEMO_API ||
-  "http://localhost:5055";
+  "http://129.213.90.84:5055";
 
 const LIVE_API_DEFAULT =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_LIVE_API) ||
   process.env.REACT_APP_LIVE_API ||
-  "http://localhost:6066";
+  "http://129.213.90.84:6066";
 
 const TG_NOTIFY_URL_DEFAULT =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_TG_NOTIFY_URL) ||
   process.env.REACT_APP_TG_NOTIFY_URL ||
-  "http://10.0.0.9:8081/notify";
+  "http://129.213.90.84:8081/notify";
 
 const STOCK_DEMO_API_DEFAULT =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_STOCK_DEMO_API) ||
@@ -1543,7 +1544,7 @@ function FieldCard({ title, help, children, className = "" }) {
   return (
     <div className={`rounded-xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4 ${className}`}>
       <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-semibold text-white">{title}</div>
+        <div className="text-sm font-semibold text.white">{title}</div>
         <HoverInfo label="?" description={help} />
       </div>
       <div className="mt-2">{children}</div>
