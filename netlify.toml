@@ -6,6 +6,14 @@ publish = "build"
 [build.environment]
 NODE_VERSION = "18.20.3"
 
+# 🔥 1. PROXY API REQUESTS TO YOUR SERVER
+[[redirects]]
+from = "/bot-api/*"
+to = "http://129.213.90.84:8001/:splat"
+status = 200
+force = true
+
+# 🔥 2. REACT SPA FALLBACK (must be LAST)
 [[redirects]]
 from = "/*"
 to = "/index.html"
