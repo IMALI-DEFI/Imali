@@ -44,7 +44,7 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
     - Fallbacks use your Oracle IP + /api when no env is set.
 */
 const DEMO_API_DEFAULT = resolveCryptoBase(
-  getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
+  getEnvVar("VITE_API_URL", "REACT_APP_API_URL"),
   "http://129.213.90.84:8001/api"
 );
 
