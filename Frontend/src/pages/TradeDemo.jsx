@@ -38,19 +38,19 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
   return (fallbackFullUrl || "").replace(/\/$/, "");
 }
 
-/*  ✅ CRYPTO DEMO/LIVE now work with Netlify proxy
-    - In Netlify: REACT_APP_DEMO_API = /bot-api/api
-    - This becomes e.g. "https://imali-defi.com/bot-api/api" at runtime.
-    - Fallbacks use your Oracle IP + /api when no env is set.
+/*  ✅ CRYPTO DEMO/LIVE now use domain-based default
+    - Netlify: REACT_APP_DEMO_API = http://api.imali-defi.com:8001/api
+    - Netlify: REACT_APP_LIVE_API = http://api.imali-defi.com:6066/api   (if/when live is ready)
+    - If env is missing, we now fall back to the domain, NOT the raw IP.
 */
 const DEMO_API_DEFAULT = resolveCryptoBase(
-  getEnvVar("VITE_API_URL", "REACT_APP_API_URL"),
-  "http://129.213.90.84:8001/api"
+  getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
+  "http://api.imali-defi.com:8001/api"
 );
 
 const LIVE_API_DEFAULT = resolveCryptoBase(
   getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
-  "http://129.213.90.84:6066/api"
+  "http://api.imali-defi.com:6066/api"
 );
 
 /*  Telegram notify URL + STOCK endpoints stay as-is. */
@@ -1182,12 +1182,19 @@ export default function TradeDemo({
   const lastDex = lastByVenue("DEX");
   const lastStocks = lastByVenue("STOCKS");
 
-  /* --------------------------- Self-Check panel --------------------------- */
+   /* --------------------------- Self-Check panel --------------------------- */
   const runSelfCheck = async () => {
     try {
-      const r = await fetch(`${apiBase}/healthz`, { cache: "no-store" });
+      // apiBase should already be something like:
+      //   http://api.imali-defi.com:8001/api
+      // so we just append /health
+      const healthUrl = `${apiBase}/health`;
+      const r = await fetch(healthUrl, { cache: "no-store" });
       const j = await r.json();
-      setCheck({ ok: !!j.ok, message: j.ok ? "Healthy" : "Unhealthy" });
+      setCheck({
+        ok: !!j.ok,
+        message: j.ok ? "Healthy" : "Unhealthy",
+      });
     } catch (e) {
       setCheck({
         ok: false,
