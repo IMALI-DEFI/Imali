@@ -43,20 +43,22 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
     - Netlify: REACT_APP_LIVE_API = http://api.imali-defi.com:6066/api   (if/when live is ready)
     - If env is missing, we now fall back to the domain, NOT the raw IP.
 */
+// ✅ Use HTTPS domain defaults (no ports)
 const DEMO_API_DEFAULT = resolveCryptoBase(
   getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
-  "http://api.imali-defi.com:8001/api"
+  "https://api.imali-defi.com/api"
 );
 
 const LIVE_API_DEFAULT = resolveCryptoBase(
   getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
-  "http://api.imali-defi.com:6066/api"
+  "https://api.imali-defi.com/api"
 );
 
-/*  Telegram notify URL + STOCK endpoints stay as-is. */
+// ✅ Telegram notify should also be behind HTTPS on a domain
+// Prefer routing /notify through the same api domain:
 const TG_NOTIFY_URL_DEFAULT =
   getEnvVar("VITE_TG_NOTIFY_URL", "REACT_APP_TG_NOTIFY_URL") ||
-  "http://129.213.90.84:8081/notify";
+  "https://api.imali-defi.com/notify";
 
 const STOCK_DEMO_API_DEFAULT =
   getEnvVar("VITE_STOCK_DEMO_API", "REACT_APP_STOCK_DEMO_API") || "";
