@@ -49,12 +49,7 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
   return normalize(upgradeIfNeeded(fallbackFullUrl || ""));
 }
 
-/*  ✅ CRYPTO DEMO/LIVE now use domain-based default
-    - Netlify: REACT_APP_DEMO_API = http://api.imali-defi.com:8001/api
-    - Netlify: REACT_APP_LIVE_API = http://api.imali-defi.com:6066/api   (if/when live is ready)
-    - If env is missing, we now fall back to the domain, NOT the raw IP.
-*/
-// ✅ Use HTTPS domain defaults (no ports)
+/* ✅ Default endpoints (domain-based) */
 const DEMO_API_DEFAULT = resolveCryptoBase(
   getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
   "https://api.imali-defi.com/api"
@@ -65,8 +60,7 @@ const LIVE_API_DEFAULT = resolveCryptoBase(
   "https://api.imali-defi.com/api"
 );
 
-// ✅ Telegram notify should also be behind HTTPS on a domain
-// Prefer routing /notify through the same api domain:
+// Telegram notify (optional). If your backend doesn't expose /api/notify, leave env blank.
 const TG_NOTIFY_URL_DEFAULT =
   getEnvVar("VITE_TG_NOTIFY_URL", "REACT_APP_TG_NOTIFY_URL") ||
   "https://api.imali-defi.com/api/notify";
@@ -204,11 +198,7 @@ function useStocksSimMulti(
     }
   }
 
-  function tickOne({
-    driftBps = 1,
-    shockProb = 0.01,
-    trendProb = 0.6,
-  } = {}) {
+  function tickOne({ driftBps = 1, shockProb = 0.01, trendProb = 0.6 } = {}) {
     setOhlcMap((prev) => {
       const nextMap = { ...prev };
       Object.keys(nextMap).forEach((sym) => {
@@ -218,8 +208,7 @@ function useStocksSimMulti(
 
         const trend = Math.random() < trendProb;
         const drift = lastClose * (driftBps / 10000);
-        const noise =
-          lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
+        const noise = lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
         let newClose = lastClose + drift + noise;
 
         if (Math.random() < shockProb) {
@@ -227,14 +216,9 @@ function useStocksSimMulti(
           newClose *= 1 + shockSign * (0.03 + Math.random() * 0.04);
         }
 
-        const open =
-          lastClose * (1 + (Math.random() - 0.5) * 0.004);
-        const high =
-          Math.max(open, newClose) *
-          (1 + Math.random() * 0.004);
-        const low =
-          Math.min(open, newClose) *
-          (1 - Math.random() * 0.004);
+        const open = lastClose * (1 + (Math.random() - 0.5) * 0.004);
+        const high = Math.max(open, newClose) * (1 + Math.random() * 0.004);
+        const low = Math.min(open, newClose) * (1 - Math.random() * 0.004);
         const vol = 5000 + Math.random() * 9000;
 
         const next = {
@@ -263,9 +247,7 @@ function useStocksSimMulti(
   function reset(newSymbols = symList.current) {
     symList.current = newSymbols;
     t0.current = Date.now() - 50 * stepMs;
-    const seeded = Object.fromEntries(
-      newSymbols.map((s) => [s, makeSeedSeries(s)])
-    );
+    const seeded = Object.fromEntries(newSymbols.map((s) => [s, makeSeedSeries(s)]));
     setOhlcMap(seeded);
     setCash(10000);
     setHold(Object.fromEntries(newSymbols.map((s) => [s, 0])));
@@ -315,9 +297,7 @@ export default function TradeDemo({
   const [venue, setVenue] = useState(defaultVenue);
   const [chain, setChain] = useState("ethereum");
   const [symbols, setSymbols] = useState(defaultSymbols || "BTC,ETH");
-  const [stockSymbols, setStockSymbols] = useState(
-    "AAPL,MSFT,NVDA,AMZN,TSLA"
-  );
+  const [stockSymbols, setStockSymbols] = useState("AAPL,MSFT,NVDA,AMZN,TSLA");
 
   const strategyCatalog = {
     ai_weighted: {
@@ -330,38 +310,10 @@ export default function TradeDemo({
         minScore: 0.65,
       },
       fields: [
-        {
-          key: "momentumWeight",
-          label: "Trend Bias",
-          step: 0.05,
-          min: 0,
-          max: 1,
-          desc: "How much to follow strength. Higher = chase trends more.",
-        },
-        {
-          key: "meanRevWeight",
-          label: "Dip-Buy Bias",
-          step: 0.05,
-          min: 0,
-          max: 1,
-          desc: "How much to fade moves. Higher = buy dips/sell rips.",
-        },
-        {
-          key: "volumeWeight",
-          label: "Volume Reactivity",
-          step: 0.05,
-          min: 0,
-          max: 1,
-          desc: "Sensitivity to unusual volume.",
-        },
-        {
-          key: "minScore",
-          label: "Min Confidence",
-          step: 0.01,
-          min: 0,
-          max: 1,
-          desc: "Won’t trade unless confidence is at least this.",
-        },
+        { key: "momentumWeight", label: "Trend Bias", step: 0.05, min: 0, max: 1, desc: "How much to follow strength. Higher = chase trends more." },
+        { key: "meanRevWeight", label: "Dip-Buy Bias", step: 0.05, min: 0, max: 1, desc: "How much to fade moves. Higher = buy dips/sell rips." },
+        { key: "volumeWeight", label: "Volume Reactivity", step: 0.05, min: 0, max: 1, desc: "Sensitivity to unusual volume." },
+        { key: "minScore", label: "Min Confidence", step: 0.01, min: 0, max: 1, desc: "Won’t trade unless confidence is at least this." },
       ],
     },
     momentum: {
@@ -369,26 +321,9 @@ export default function TradeDemo({
       help: "Buys strength, sells weakness.",
       defaults: { lookback: 30, threshold: 1.5, cooldown: 10 },
       fields: [
-        {
-          key: "lookback",
-          label: "Lookback Bars",
-          step: 1,
-          min: 5,
-          desc: "How many bars to judge trend.",
-        },
-        {
-          key: "threshold",
-          label: "Signal Threshold",
-          step: 0.1,
-          desc: "How strong the trend must be to act.",
-        },
-        {
-          key: "cooldown",
-          label: "Cooldown Bars",
-          step: 1,
-          min: 0,
-          desc: "Wait this long between trades.",
-        },
+        { key: "lookback", label: "Lookback Bars", step: 1, min: 5, desc: "How many bars to judge trend." },
+        { key: "threshold", label: "Signal Threshold", step: 0.1, desc: "How strong the trend must be to act." },
+        { key: "cooldown", label: "Cooldown Bars", step: 1, min: 0, desc: "Wait this long between trades." },
       ],
     },
     meanrev: {
@@ -396,26 +331,9 @@ export default function TradeDemo({
       help: "Fades extremes back to average.",
       defaults: { band: 2.0, maxHoldBars: 60, size: 1 },
       fields: [
-        {
-          key: "band",
-          label: "Band (σ)",
-          step: 0.1,
-          desc: "How far price must wander before acting.",
-        },
-        {
-          key: "maxHoldBars",
-          label: "Max Hold Bars",
-          step: 1,
-          min: 5,
-          desc: "Force exit after this many bars.",
-        },
-        {
-          key: "size",
-          label: "Position Size",
-          step: 1,
-          min: 1,
-          desc: "Relative size multiplier.",
-        },
+        { key: "band", label: "Band (σ)", step: 0.1, desc: "How far price must wander before acting." },
+        { key: "maxHoldBars", label: "Max Hold Bars", step: 1, min: 5, desc: "Force exit after this many bars." },
+        { key: "size", label: "Position Size", step: 1, min: 1, desc: "Relative size multiplier." },
       ],
     },
     volume_spike: {
@@ -423,27 +341,9 @@ export default function TradeDemo({
       help: "Jumps on unusual volume surges.",
       defaults: { window: 50, spikeMultiplier: 2.5, cooldown: 15 },
       fields: [
-        {
-          key: "window",
-          label: "Average Window",
-          step: 1,
-          min: 5,
-          desc: "Bars used to compute normal volume.",
-        },
-        {
-          key: "spikeMultiplier",
-          label: "Spike × Normal",
-          step: 0.1,
-          min: 1,
-          desc: "How big volume must be vs. normal.",
-        },
-        {
-          key: "cooldown",
-          label: "Cooldown Bars",
-          step: 1,
-          min: 0,
-          desc: "Wait time between signals.",
-        },
+        { key: "window", label: "Average Window", step: 1, min: 5, desc: "Bars used to compute normal volume." },
+        { key: "spikeMultiplier", label: "Spike × Normal", step: 0.1, min: 1, desc: "How big volume must be vs. normal." },
+        { key: "cooldown", label: "Cooldown Bars", step: 1, min: 0, desc: "Wait time between signals." },
       ],
     },
     trade_signal: {
@@ -451,28 +351,9 @@ export default function TradeDemo({
       help: "Trades only if confidence passes a bar.",
       defaults: { minConfidence: 0.7, maxPositions: 2, cooldown: 10 },
       fields: [
-        {
-          key: "minConfidence",
-          label: "Min Confidence",
-          step: 0.01,
-          min: 0,
-          max: 1,
-          desc: "Only trade when high conviction.",
-        },
-        {
-          key: "maxPositions",
-          label: "Max Positions",
-          step: 1,
-          min: 1,
-          desc: "Limit open positions.",
-        },
-        {
-          key: "cooldown",
-          label: "Cooldown Bars",
-          step: 1,
-          min: 0,
-          desc: "Wait time between signals.",
-        },
+        { key: "minConfidence", label: "Min Confidence", step: 0.01, min: 0, max: 1, desc: "Only trade when high conviction." },
+        { key: "maxPositions", label: "Max Positions", step: 1, min: 1, desc: "Limit open positions." },
+        { key: "cooldown", label: "Cooldown Bars", step: 1, min: 0, desc: "Wait time between signals." },
       ],
     },
   };
@@ -502,6 +383,20 @@ export default function TradeDemo({
   const [dexSess, setDexSess] = useState(null);
   const [cexSess, setCexSess] = useState(null);
   const [stocksSess, setStocksSess] = useState(null);
+
+  // ✅ Refs to avoid stale closures inside setInterval / Auto Run
+  const dexRef = useRef(null);
+  const cexRef = useRef(null);
+  const stocksRef = useRef(null);
+  useEffect(() => {
+    dexRef.current = dexSess;
+  }, [dexSess]);
+  useEffect(() => {
+    cexRef.current = cexSess;
+  }, [cexSess]);
+  useEffect(() => {
+    stocksRef.current = stocksSess;
+  }, [stocksSess]);
 
   // Local Multi-Stocks sim
   const stockList = useMemo(
@@ -549,11 +444,12 @@ export default function TradeDemo({
   const timer = useRef(null);
   const haveAny = !!(dexSess || cexSess || stocksSess);
   const isRunning = haveAny;
+
   const parseSymbols = () =>
     symbols.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
 
-  /* ---------------------- Telegram alerts ------------------------- */
-  const tgNotifyUrl = TG_NOTIFY_URL_DEFAULT;
+  /* ---------------------- Telegram alerts (safe) ------------------------- */
+  const tgNotifyUrl = TG_NOTIFY_URL_DEFAULT || "";
   const lastSentRef = useRef({});
   function shouldSend(kind, gapMs) {
     const now = Date.now();
@@ -563,6 +459,8 @@ export default function TradeDemo({
     return true;
   }
   async function notifyTelegram(kind, payload = {}, { minGapMs = 0 } = {}) {
+    // ✅ Don’t spam or break if notify endpoint isn't configured/doesn't exist
+    if (!tgNotifyUrl) return;
     if (minGapMs && !shouldSend(kind, minGapMs)) return;
     try {
       await fetch(tgNotifyUrl, {
@@ -613,6 +511,7 @@ export default function TradeDemo({
     if (sFast < sSlow && r > rsiBottom) return "SELL";
     return "HOLD";
   }
+
   function localStocksTick() {
     sim.tickOne({ driftBps, shockProb, trendProb });
     const actives = [...sim.symbols].slice(0, Math.min(3, sim.symbols.length));
@@ -624,20 +523,23 @@ export default function TradeDemo({
       const signal = stocksSignalForSeries(series);
       const px = series.at(-1)?.close || 0;
       let did = false;
-      if (signal === "BUY")
+
+      if (signal === "BUY") {
         did = sim.exec(sym, "BUY", Math.max(1, stockTradeUnits), {
           feeBps,
           spreadBps,
           slipBps,
           latencyMs,
         });
-      if (signal === "SELL")
+      }
+      if (signal === "SELL") {
         did = sim.exec(sym, "SELL", Math.max(1, stockTradeUnits), {
           feeBps,
           spreadBps,
           slipBps,
           latencyMs,
         });
+      }
 
       const delta = did ? Math.max(1, Math.round(px * 0.1)) : 0;
       totalDelta += delta;
@@ -706,6 +608,7 @@ export default function TradeDemo({
           ]);
           const c = await r2.json().catch(() => ({}));
           if (!c?.ok) throw new Error("Stocks config failed");
+
           return {
             ...d,
             __venue: "stocks",
@@ -739,17 +642,16 @@ export default function TradeDemo({
     }
 
     // Crypto paths
-    const usingDemoPaths = usingDemo;
-    const startPath = usingDemoPaths ? "/demo/start" : "/live/start";
-    const configPath = usingDemoPaths ? "/demo/config" : "/live/config";
-    const idKey = usingDemoPaths ? "demoId" : "liveId";
+    const startPath = usingDemo ? "/demo/start" : "/live/start";
+    const configPath = usingDemo ? "/demo/config" : "/live/config";
+    const idKey = usingDemo ? "demoId" : "liveId";
 
     const r = await fetch(`${apiBase}${startPath}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: kind.toUpperCase(), startBalance }),
     });
-    const d = await r.json();
+    const d = await r.json().catch(() => ({}));
     if (!d?.[idKey]) throw new Error(`No ${idKey} for ${kind}`);
 
     const r2 = await fetch(`${apiBase}${configPath}`, {
@@ -764,10 +666,31 @@ export default function TradeDemo({
         params,
       }),
     });
-    const c = await r2.json();
+    const c = await r2.json().catch(() => ({}));
     if (!c?.ok) throw new Error(`Config failed for ${kind}`);
-    return { ...d, __venue: kind };
+
+    // ✅ Ensure the session object always keeps its idKey
+    return {
+      ...d,
+      __venue: kind,
+      balance: d.balance ?? startBalance,
+      equity: d.equity ?? startBalance,
+      realizedPnL: d.realizedPnL ?? 0,
+      wins: d.wins ?? 0,
+      losses: d.losses ?? 0,
+      history: d.history ?? [],
+    };
   }
+
+  const stopAuto = () => {
+    if (timer.current) {
+      clearInterval(timer.current);
+      timer.current = null;
+      notifyTelegram("stopped", { reason: "manual" }, { minGapMs: 2000 });
+    }
+    stopProgressCycle();
+  };
+  useEffect(() => () => stopAuto(), []); // stop on unmount
 
   const handleStart = async () => {
     setBusy(true);
@@ -777,7 +700,8 @@ export default function TradeDemo({
     setStreak(0);
     setCoins(0);
 
-    if (isRunning) {
+    // stop/clear any existing run
+    if (dexRef.current || cexRef.current || stocksRef.current) {
       stopAuto();
       setDexSess(null);
       setCexSess(null);
@@ -795,20 +719,13 @@ export default function TradeDemo({
       let started = [];
 
       if (venue === "bundle") {
-        const [d1, d2, s1] = await Promise.all([
-          startOne("dex"),
-          startOne("cex"),
-          startOne("stocks"),
-        ]);
+        const [d1, d2, s1] = await Promise.all([startOne("dex"), startOne("cex"), startOne("stocks")]);
         setDexSess(d1);
         setCexSess(d2);
         setStocksSess(s1);
         started = ["dex", "cex", "stocks"];
       } else if (venue === "both") {
-        const [d1, d2] = await Promise.all([
-          startOne("dex"),
-          startOne("cex"),
-        ]);
+        const [d1, d2] = await Promise.all([startOne("dex"), startOne("cex")]);
         setDexSess(d1);
         setCexSess(d2);
         setStocksSess(null);
@@ -833,7 +750,6 @@ export default function TradeDemo({
         started = ["stocks"];
       }
 
-      // Nudge: Auto run
       setShowAutoHint(true);
 
       notifyTelegram("started", {
@@ -847,25 +763,20 @@ export default function TradeDemo({
       });
     } catch (e) {
       setError(
-        `Could not start (${usingDemo ? "DEMO" : "LIVE"}). Check server & env. Error: ${
-          e.message
-        }`
+        `Could not start (${usingDemo ? "DEMO" : "LIVE"}). Error: ${e?.message || String(e)}`
       );
-      notifyTelegram(
-        "error",
-        { where: "handleStart", message: String(e?.message || e) },
-        { minGapMs: 5000 }
-      );
+      notifyTelegram("error", { where: "handleStart", message: String(e?.message || e) }, { minGapMs: 5000 });
     } finally {
       setBusy(false);
     }
   };
 
   async function reconfigure(kind, sess) {
+    if (!sess) return;
+
     if (kind === "stocks") {
       if (!sess?.remote || !sess?.base) return;
-      const configPath =
-        runMode === "live" ? "/stocks/live/config" : "/stocks/demo/config";
+      const configPath = runMode === "live" ? "/stocks/live/config" : "/stocks/demo/config";
       try {
         await fetch(`${sess.base}${configPath}`, {
           method: "POST",
@@ -877,23 +788,17 @@ export default function TradeDemo({
             params,
           }),
         });
-        notifyTelegram(
-          "reconfigured",
-          { mode: "stocks", strategy, params, symbols: stockList },
-          { minGapMs: 8000 }
-        );
+        notifyTelegram("reconfigured", { mode: "stocks", strategy, params, symbols: stockList }, { minGapMs: 8000 });
       } catch (e) {
-        notifyTelegram(
-          "error",
-          { where: "reconfigure:stocks", message: String(e?.message || e) },
-          { minGapMs: 5000 }
-        );
+        notifyTelegram("error", { where: "reconfigure:stocks", message: String(e?.message || e) }, { minGapMs: 5000 });
       }
       return;
     }
 
     const configPath = usingDemo ? "/demo/config" : "/live/config";
     const idKey = usingDemo ? "demoId" : "liveId";
+    if (!sess?.[idKey]) return; // ✅ don't config without id
+
     try {
       await fetch(`${apiBase}${configPath}`, {
         method: "POST",
@@ -907,17 +812,9 @@ export default function TradeDemo({
           params,
         }),
       });
-      notifyTelegram(
-        "reconfigured",
-        { mode: kind, strategy, params, chain, symbols: parseSymbols() },
-        { minGapMs: 8000 }
-      );
+      notifyTelegram("reconfigured", { mode: kind, strategy, params, chain, symbols: parseSymbols() }, { minGapMs: 8000 });
     } catch (e) {
-      notifyTelegram(
-        "error",
-        { where: "reconfigure", message: String(e?.message || e) },
-        { minGapMs: 5000 }
-      );
+      notifyTelegram("error", { where: "reconfigure", message: String(e?.message || e) }, { minGapMs: 5000 });
     }
   }
 
@@ -929,65 +826,84 @@ export default function TradeDemo({
   }, [strategy, params, chain, symbols, stockSymbols, runMode]);
 
   /* ------------------------------ Ticking ----------------------------- */
-  async function tickOne(sess, setSess) {
+  async function tickOneCrypto(sess, setSess) {
     const tickPath = usingDemo ? "/demo/tick" : "/live/tick";
     const idKey = usingDemo ? "demoId" : "liveId";
+
+    // ✅ HARD GUARD: never tick without a real id (prevents unknown_demo_id)
+    const idVal = sess?.[idKey];
+    if (!idVal) throw new Error(`Missing ${idKey}. Click Start first.`);
 
     const r = await fetch(`${apiBase}${tickPath}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [idKey]: sess[idKey] }),
+      body: JSON.stringify({ [idKey]: idVal }),
     });
-    const data = await r.json();
-    if (data?.error) throw new Error(data.error);
-    setSess((prev) => ({ ...prev, ...data, __venue: prev?.__venue }));
+
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data?.error) {
+      throw new Error(data?.error || `Tick failed (${r.status})`);
+    }
+
+    // ✅ Preserve id + venue no matter what backend returns
+    setSess((prev) => ({
+      ...(prev || {}),
+      ...data,
+      __venue: prev?.__venue || sess.__venue,
+      [idKey]: prev?.[idKey] || idVal,
+      history: data?.history ?? prev?.history ?? [],
+    }));
+
     return data;
+  }
+
+  async function tickOneStocks(sess) {
+    if (sess.remote && sess.base) {
+      const tickPath = runMode === "live" ? "/stocks/live/tick" : "/stocks/demo/tick";
+      const r = await Promise.race([
+        fetch(`${sess.base}${tickPath}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stocksId: sess.stocksId }),
+        }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("stocks tick timeout")), 5000)),
+      ]);
+      const data = await r.json().catch(() => ({}));
+      if (data?.error) throw new Error(data.error);
+
+      setStocksSess((prev) => ({
+        ...(prev || {}),
+        ...data,
+        __venue: "stocks",
+        remote: true,
+        history: data?.history ?? prev?.history ?? [],
+      }));
+      return Number(data?.realizedPnLDelta || 0);
+    }
+
+    const { delta: localDelta } = localStocksTick();
+    return Number(localDelta || 0);
   }
 
   async function handleTick() {
     try {
+      // ✅ Always read sessions from refs (Auto Run safe)
+      const dSess = dexRef.current;
+      const cSess = cexRef.current;
+      const sSess = stocksRef.current;
+
       let delta = 0;
 
-      if (dexSess) {
-        const d = await tickOne(dexSess, setDexSess);
+      if (dSess) {
+        const d = await tickOneCrypto(dSess, setDexSess);
         delta += Number(d?.realizedPnLDelta || 0);
       }
-      if (cexSess) {
-        const d = await tickOne(cexSess, setCexSess);
+      if (cSess) {
+        const d = await tickOneCrypto(cSess, setCexSess);
         delta += Number(d?.realizedPnLDelta || 0);
       }
-      if (stocksSess) {
-        if (stocksSess.remote && stocksSess.base) {
-          const tickPath =
-            runMode === "live"
-              ? "/stocks/live/tick"
-              : "/stocks/demo/tick";
-          const r = await Promise.race([
-            fetch(`${stocksSess.base}${tickPath}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ stocksId: stocksSess.stocksId }),
-            }),
-            new Promise((_, rej) =>
-              setTimeout(
-                () => rej(new Error("stocks tick timeout")),
-                5000
-              )
-            ),
-          ]);
-          const data = await r.json();
-          if (data?.error) throw new Error(data.error);
-          setStocksSess((prev) => ({
-            ...prev,
-            ...data,
-            __venue: "stocks",
-            remote: true,
-          }));
-          delta += Number(data?.realizedPnLDelta || 0);
-        } else {
-          const { delta: localDelta } = localStocksTick();
-          delta += localDelta;
-        }
+      if (sSess) {
+        delta += await tickOneStocks(sSess);
       }
 
       if (delta > 0) {
@@ -999,73 +915,35 @@ export default function TradeDemo({
       }
 
       startProgressCycle(4000);
-      notifyTelegram(
-        "tick",
-        { pnlDelta: delta },
-        { minGapMs: 10_000 }
-      );
+      notifyTelegram("tick", { pnlDelta: delta }, { minGapMs: 10_000 });
     } catch (e) {
-      setError(e.message || "Tick failed");
-      notifyTelegram(
-        "error",
-        { where: "handleTick", message: String(e?.message || e) },
-        { minGapMs: 5000 }
-      );
+      setError(e?.message || "Tick failed");
+      // If the id is missing/invalid, stop auto to prevent spam
+      stopAuto();
+      notifyTelegram("error", { where: "handleTick", message: String(e?.message || e) }, { minGapMs: 5000 });
     }
   }
-
-  const stopAuto = () => {
-    if (timer.current) {
-      clearInterval(timer.current);
-      timer.current = null;
-      notifyTelegram(
-        "stopped",
-        { reason: "manual" },
-        { minGapMs: 2000 }
-      );
-    }
-    stopProgressCycle();
-  };
-  useEffect(() => () => stopAuto(), []); // stop on unmount
 
   /* ---------------------------- Aggregation --------------------------- */
   const combined = useMemo(() => {
     const sims = [dexSess, cexSess, stocksSess].filter(Boolean);
     if (!sims.length) return null;
-    const baseBal =
-      sims.reduce((s, d) => s + Number(d?.balance || 0), 0) || 1;
+    const baseBal = sims.reduce((s, d) => s + Number(d?.balance || 0), 0) || 1;
     const scale = startBalance / baseBal;
-    const equity =
-      sims.reduce(
-        (s, d) => s + Number(d?.equity ?? d?.balance ?? 0),
-        0
-      ) * scale;
-    const balance =
-      sims.reduce((s, d) => s + Number(d?.balance || 0), 0) * scale;
-    const realizedPnL =
-      sims.reduce((s, d) => s + Number(d?.realizedPnL || 0), 0) *
-      scale;
-    const wins = sims.reduce((s, d) => s + Number(d?.wins || 0), 0);
-    const losses = sims.reduce(
-      (s, d) => s + Number(d?.losses || 0),
-      0
-    );
 
-    const dexHist = (dexSess?.history || []).map((h) => ({
-      ...h,
-      venue: "DEX",
-    }));
-    const cexHist = (cexSess?.history || []).map((h) => ({
-      ...h,
-      venue: "CEX",
-    }));
-    const stxHist = (stocksSess?.history || []).map((h) => ({
-      ...h,
-      venue: "STOCKS",
-    }));
+    const equity = sims.reduce((s, d) => s + Number(d?.equity ?? d?.balance ?? 0), 0) * scale;
+    const balance = sims.reduce((s, d) => s + Number(d?.balance || 0), 0) * scale;
+    const realizedPnL = sims.reduce((s, d) => s + Number(d?.realizedPnL || 0), 0) * scale;
+    const wins = sims.reduce((s, d) => s + Number(d?.wins || 0), 0);
+    const losses = sims.reduce((s, d) => s + Number(d?.losses || 0), 0);
+
+    const dexHist = (dexSess?.history || []).map((h) => ({ ...h, venue: "DEX" }));
+    const cexHist = (cexSess?.history || []).map((h) => ({ ...h, venue: "CEX" }));
+    const stxHist = (stocksSess?.history || []).map((h) => ({ ...h, venue: "STOCKS" }));
     const history = [...dexHist, ...cexHist, ...stxHist]
       .sort((a, b) => (a.t || 0) - (b.t || 0))
       .slice(-220);
+
     return { equity, balance, realizedPnL, wins, losses, history };
   }, [dexSess, cexSess, stocksSess, startBalance]);
 
@@ -1098,11 +976,7 @@ export default function TradeDemo({
       const h = hist[i],
         prev = hist[i - 1];
       if (h.honeypot || h.flagged) hp.push(h);
-      else if (
-        (Number(h.pnl || 0) - Number(prev.pnl || 0)) <
-        -Math.max(5, startBalance * 0.01)
-      )
-        hp.push(h);
+      else if ((Number(h.pnl || 0) - Number(prev.pnl || 0)) < -Math.max(5, startBalance * 0.01)) hp.push(h);
     }
     const payload = hp.slice(-24).map((e) => ({
       time: Math.floor((e.t || Date.now()) / 1000),
@@ -1110,11 +984,7 @@ export default function TradeDemo({
       kind: "honeypot",
       text: "Honeypot risk",
     }));
-    window.dispatchEvent(
-      new CustomEvent("trade-demo:markers", {
-        detail: { hp: payload },
-      })
-    );
+    window.dispatchEvent(new CustomEvent("trade-demo:markers", { detail: { hp: payload } }));
   }, [combined, startBalance]);
 
   /* ------------------ Automatic simulated profit taking --------------- */
@@ -1129,10 +999,7 @@ export default function TradeDemo({
 
     const MIN_GAP_MS = 12_000;
     const RISE_THRESHOLD = Math.max(6, startBalance * 0.002);
-    if (
-      rise > RISE_THRESHOLD &&
-      now - lastTpRef.current > MIN_GAP_MS
-    ) {
+    if (rise > RISE_THRESHOLD && now - lastTpRef.current > MIN_GAP_MS) {
       const dCount = dexSess?.history?.length || 0;
       const cCount = cexSess?.history?.length || 0;
       const sCount = stocksSess?.history?.length || 0;
@@ -1170,9 +1037,7 @@ export default function TradeDemo({
 
   /* --------------------------- Derived UI ---------------------------- */
   const gross = (combined ? Number(combined.realizedPnL) : 0) + simPnL;
-  const takeRate =
-    (applyNetToDisplay ? simulatedTier.takeRate : activeTier.takeRate) ||
-    0;
+  const takeRate = (applyNetToDisplay ? simulatedTier.takeRate : activeTier.takeRate) || 0;
   const net = gross * (1 - takeRate);
 
   const tapeMarks = useMemo(() => {
@@ -1187,32 +1052,20 @@ export default function TradeDemo({
     }));
   }, [combined]);
 
-  const lastByVenue = (tag) =>
-    (combined?.history || [])
-      .filter((h) => h.venue === tag)
-      .at(-1) || null;
+  const lastByVenue = (tag) => (combined?.history || []).filter((h) => h.venue === tag).at(-1) || null;
   const lastCex = lastByVenue("CEX");
   const lastDex = lastByVenue("DEX");
   const lastStocks = lastByVenue("STOCKS");
 
-   /* --------------------------- Self-Check panel --------------------------- */
+  /* --------------------------- Self-Check panel --------------------------- */
   const runSelfCheck = async () => {
     try {
-      // apiBase should already be something like:
-      //   http://api.imali-defi.com:8001/api
-      // so we just append /health
       const healthUrl = `${apiBase}/health`;
       const r = await fetch(healthUrl, { cache: "no-store" });
-      const j = await r.json();
-      setCheck({
-        ok: !!j.ok,
-        message: j.ok ? "Healthy" : "Unhealthy",
-      });
+      const j = await r.json().catch(() => ({}));
+      setCheck({ ok: !!j.ok, message: j.ok ? "Healthy" : "Unhealthy" });
     } catch (e) {
-      setCheck({
-        ok: false,
-        message: `Health check failed: ${String(e?.message || e)}`,
-      });
+      setCheck({ ok: false, message: `Health check failed: ${String(e?.message || e)}` });
     }
   };
 
@@ -1233,11 +1086,7 @@ export default function TradeDemo({
     setStockSymbols("AAPL,MSFT,NVDA,AMZN,TSLA");
     setError("");
     sim.reset(stockList);
-    notifyTelegram(
-      "restart",
-      { reason: "user" },
-      { minGapMs: 2000 }
-    );
+    notifyTelegram("restart", { reason: "user" }, { minGapMs: 2000 });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1263,8 +1112,7 @@ export default function TradeDemo({
                 <span>Streak 🔥 {streak}</span>
                 <span>Coins 🪙 {coins}</span>
                 <span>
-                  Net {net >= 0 ? "+" : "-"}$
-                  {Math.abs(net).toFixed(2)}
+                  Net {net >= 0 ? "+" : "-"}${Math.abs(net).toFixed(2)}
                 </span>
               </div>
             </div>
@@ -1296,31 +1144,21 @@ export default function TradeDemo({
                   <div className="font-semibold mb-1">Quick Hints</div>
                   <ul className="list-disc pl-5 space-y-1 text-slate-200">
                     <li>
-                      After you click <b>Start</b>, click{" "}
-                      <b>Auto run</b> to stream ticks.
+                      After you click <b>Start</b>, click <b>Auto run</b> to stream ticks.
                     </li>
                     <li>
-                      Backend reachable:{" "}
-                      <code>{apiBase}/health</code>.
+                      Backend reachable: <code>{apiBase}/health</code>.
                     </li>
                     <li>
-                      Use Netlify env like{" "}
-                      <code>REACT_APP_DEMO_API=/bot-api/api</code>{" "}
-                      so the frontend hits your proxy.
+                      Use Netlify env like <code>REACT_APP_DEMO_API=/bot-api/api</code> so the frontend hits your proxy.
                     </li>
                   </ul>
                 </div>
               )}
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-black">
-              Trade {usingDemo ? "Demo" : "Live"}
-            </h1>
-            {haveAny ? (
-              <Badge color="emerald" text="RUNNING" />
-            ) : (
-              <Badge color="slate" text="READY" />
-            )}
+            <h1 className="text-xl sm:text-2xl font-black">Trade {usingDemo ? "Demo" : "Live"}</h1>
+            {haveAny ? <Badge color="emerald" text="RUNNING" /> : <Badge color="slate" text="READY" />}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -1364,13 +1202,11 @@ export default function TradeDemo({
             <button
               onClick={runSelfCheck}
               className="underline font-semibold"
-              title="Call /healthz on your crypto demo server"
+              title="Call /health on your crypto demo server"
             >
               Run Self-Check
             </button>
-            {check.ok === false && (
-              <span className="ml-2">• {check.message}</span>
-            )}
+            {check.ok === false && <span className="ml-2">• {check.message}</span>}
           </div>
         )}
       </div>
@@ -1407,42 +1243,25 @@ export default function TradeDemo({
                 help="Pick crypto (DEX, CEX), STOCKS (equities), BOTH (DEX+CEX), or BUNDLE (DEX+CEX+STOCKS)."
               >
                 <div className="flex flex-wrap gap-2">
-                  {["dex", "cex", "both", "stocks", "bundle"].map(
-                    (v) => (
-                      <button
-                        key={v}
-                        onClick={() => setVenue(v)}
-                        className={`flex-1 rounded-lg px-3 py-2 border text-sm ${
-                          venue === v
-                            ? "bg-emerald-600 border-emerald-400"
-                            : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
-                        }`}
-                      >
-                        {v.toUpperCase()}
-                      </button>
-                    )
-                  )}
+                  {["dex", "cex", "both", "stocks", "bundle"].map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setVenue(v)}
+                      className={`flex-1 rounded-lg px-3 py-2 border text-sm ${
+                        venue === v
+                          ? "bg-emerald-600 border-emerald-400"
+                          : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
+                      }`}
+                    >
+                      {v.toUpperCase()}
+                    </button>
+                  ))}
                 </div>
-                {venue === "both" && (
-                  <div className="mt-2 text-xs text-emerald-300">
-                    BOTH = DEX + CEX (crypto only)
-                  </div>
-                )}
-                {venue === "bundle" && (
-                  <div className="mt-2 text-xs text-emerald-300">
-                    BUNDLE = DEX + CEX + STOCKS
-                  </div>
-                )}
+                {venue === "both" && <div className="mt-2 text-xs text-emerald-300">BOTH = DEX + CEX (crypto only)</div>}
+                {venue === "bundle" && <div className="mt-2 text-xs text-emerald-300">BUNDLE = DEX + CEX + STOCKS</div>}
                 {venue === "dex" && (
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    {[
-                      "ethereum",
-                      "polygon",
-                      "base",
-                      "optimism",
-                      "arbitrum",
-                      "bsc",
-                    ].map((c) => (
+                    {["ethereum", "polygon", "base", "optimism", "arbitrum", "bsc"].map((c) => (
                       <button
                         key={c}
                         onClick={() => setChain(c)}
@@ -1485,12 +1304,7 @@ export default function TradeDemo({
                       <div key={f.key} className="text-xs">
                         <label className="flex items-center gap-2 mb-1 text-slate-200">
                           <span>{f.label}</span>
-                          {f.desc && (
-                            <HoverInfo
-                              label="?"
-                              description={f.desc}
-                            />
-                          )}
+                          {f.desc && <HoverInfo label="?" description={f.desc} />}
                         </label>
                         <input
                           type="number"
@@ -1526,9 +1340,7 @@ export default function TradeDemo({
                         min="5"
                         max="50"
                         value={smaFast}
-                        onChange={(e) =>
-                          setSmaFast(Number(e.target.value))
-                        }
+                        onChange={(e) => setSmaFast(Number(e.target.value))}
                         className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
                       />
                     </label>
@@ -1539,9 +1351,7 @@ export default function TradeDemo({
                         min="10"
                         max="200"
                         value={smaSlow}
-                        onChange={(e) =>
-                          setSmaSlow(Number(e.target.value))
-                        }
+                        onChange={(e) => setSmaSlow(Number(e.target.value))}
                         className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
                       />
                     </label>
@@ -1552,9 +1362,7 @@ export default function TradeDemo({
                         min="5"
                         max="30"
                         value={rsiWindow}
-                        onChange={(e) =>
-                          setRsiWindow(Number(e.target.value))
-                        }
+                        onChange={(e) => setRsiWindow(Number(e.target.value))}
                         className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
                       />
                     </label>
@@ -1565,9 +1373,7 @@ export default function TradeDemo({
                         min="60"
                         max="90"
                         value={rsiTop}
-                        onChange={(e) =>
-                          setRsiTop(Number(e.target.value))
-                        }
+                        onChange={(e) => setRsiTop(Number(e.target.value))}
                         className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
                       />
                     </label>
@@ -1578,9 +1384,7 @@ export default function TradeDemo({
                         min="10"
                         max="40"
                         value={rsiBottom}
-                        onChange={(e) =>
-                          setRsiBottom(Number(e.target.value))
-                        }
+                        onChange={(e) => setRsiBottom(Number(e.target.value))}
                         className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
                       />
                     </label>
@@ -1591,9 +1395,7 @@ export default function TradeDemo({
                         min="1"
                         max="1000"
                         value={stockTradeUnits}
-                        onChange={(e) =>
-                          setStockTradeUnits(Number(e.target.value))
-                        }
+                        onChange={(e) => setStockTradeUnits(Number(e.target.value))}
                         className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
                       />
                     </label>
@@ -1603,9 +1405,7 @@ export default function TradeDemo({
                     Stocks Basket (demo):{" "}
                     <input
                       value={stockSymbols}
-                      onChange={(e) =>
-                        setStockSymbols(e.target.value)
-                      }
+                      onChange={(e) => setStockSymbols(e.target.value)}
                       className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto"
                       title="Comma-separated list, e.g. AAPL,MSFT,NVDA"
                     />
@@ -1614,20 +1414,13 @@ export default function TradeDemo({
               )}
 
               {/* Starting balance + symbols */}
-              <FieldCard
-                title="Starting Balance"
-                help="UI scales to this; backend/sim track equity internally."
-              >
+              <FieldCard title="Starting Balance" help="UI scales to this; backend/sim track equity internally.">
                 <input
                   type="number"
                   min="100"
                   step="50"
                   value={startBalance}
-                  onChange={(e) =>
-                    setStartBalance(
-                      Math.max(0, Number(e.target.value || 0))
-                    )
-                  }
+                  onChange={(e) => setStartBalance(Math.max(0, Number(e.target.value || 0)))}
                   className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm"
                 />
                 {venue !== "stocks" && venue !== "bundle" ? (
@@ -1635,106 +1428,41 @@ export default function TradeDemo({
                     Crypto Symbols:{" "}
                     <input
                       value={symbols}
-                      onChange={(e) =>
-                        setSymbols(e.target.value)
-                      }
+                      onChange={(e) => setSymbols(e.target.value)}
                       className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto"
                       title="Comma-separated list, e.g. BTC,ETH"
                     />
                   </div>
                 ) : (
-                  <div className="mt-2 text-xs text-slate-400">
-                    Demo stocks use the basket above. Remote API may
-                    support custom lists.
-                  </div>
+                  <div className="mt-2 text-xs text-slate-400">Demo stocks use the basket above.</div>
                 )}
               </FieldCard>
 
               {/* Stocks realism controls */}
               {(venue === "stocks" || venue === "bundle") && (
-                <FieldCard
-                  title="Execution & Market Feel"
-                  help="Make fills more/less realistic."
-                >
+                <FieldCard title="Execution & Market Feel" help="Make fills more/less realistic.">
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    <LabeledNumber
-                      label="Fees (bps)"
-                      value={feeBps}
-                      setValue={setFeeBps}
-                      min={0}
-                    />
-                    <LabeledNumber
-                      label="Spread (bps)"
-                      value={spreadBps}
-                      setValue={setSpreadBps}
-                      min={0}
-                    />
-                    <LabeledNumber
-                      label="Slippage (bps)"
-                      value={slipBps}
-                      setValue={setSlipBps}
-                      min={0}
-                    />
-                    <LabeledNumber
-                      label="Fill Delay (ms)"
-                      value={latencyMs}
-                      setValue={setLatencyMs}
-                      min={0}
-                    />
-                    <LabeledNumber
-                      label="Drift (bps/bar)"
-                      value={driftBps}
-                      setValue={setDriftBps}
-                    />
-                    <LabeledNumber
-                      label="Surprise Jumps (0–1)"
-                      value={shockProb}
-                      setValue={setShockProb}
-                      step={0.001}
-                      min={0}
-                      max={1}
-                    />
-                    <LabeledNumber
-                      label="Trend Regime (0–1)"
-                      value={trendProb}
-                      setValue={setTrendProb}
-                      step={0.01}
-                      min={0}
-                      max={1}
-                    />
+                    <LabeledNumber label="Fees (bps)" value={feeBps} setValue={setFeeBps} min={0} />
+                    <LabeledNumber label="Spread (bps)" value={spreadBps} setValue={setSpreadBps} min={0} />
+                    <LabeledNumber label="Slippage (bps)" value={slipBps} setValue={setSlipBps} min={0} />
+                    <LabeledNumber label="Fill Delay (ms)" value={latencyMs} setValue={setLatencyMs} min={0} />
+                    <LabeledNumber label="Drift (bps/bar)" value={driftBps} setValue={setDriftBps} />
+                    <LabeledNumber label="Surprise Jumps (0–1)" value={shockProb} setValue={setShockProb} step={0.001} min={0} max={1} />
+                    <LabeledNumber label="Trend Regime (0–1)" value={trendProb} setValue={setTrendProb} step={0.01} min={0} max={1} />
                   </div>
                 </FieldCard>
               )}
 
-              {/* How to Start (new) */}
-              <FieldCard
-                title="How to Start"
-                help="Follow these quick steps to see the demo moving."
-              >
+              {/* How to Start */}
+              <FieldCard title="How to Start" help="Follow these quick steps to see the demo moving.">
                 <ol className="list-decimal pl-5 space-y-1 text-[13px] text-slate-200">
-                  <li>
-                    Pick <b>Where to trade</b> (DEX, CEX, BOTH, STOCKS, or
-                    BUNDLE).
-                  </li>
-                  <li>
-                    Set your <b>Strategy</b> and{" "}
-                    <b>Starting Balance</b>.
-                  </li>
-                  <li>
-                    Click{" "}
-                    <b>
-                      Start {usingDemo ? "Demo" : "Live"}
-                    </b>
-                    .
-                  </li>
-                  <li>
-                    Then click <b>Auto run</b> (top-right) to stream
-                    ticks automatically every ~4s.
-                  </li>
+                  <li>Pick <b>Where to trade</b>.</li>
+                  <li>Set your <b>Strategy</b> and <b>Starting Balance</b>.</li>
+                  <li>Click <b>Start {usingDemo ? "Demo" : "Live"}</b>.</li>
+                  <li>Then click <b>Auto run</b> (top-right) to stream ticks every ~4s.</li>
                 </ol>
                 <div className="mt-2 text-xs text-slate-400">
-                  Tip: Use <b>Tick once</b> to advance manually; switch
-                  back to <b>Auto run</b> anytime.
+                  Tip: Use <b>Tick once</b> to advance manually.
                 </div>
               </FieldCard>
             </div>
@@ -1746,45 +1474,35 @@ export default function TradeDemo({
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <div className="text-xs mb-1">
-                    Add IMALI (simulation)
-                  </div>
+                  <div className="text-xs mb-1">Add IMALI (simulation)</div>
                   <input
                     type="range"
                     min="0"
                     max="20000"
                     step="100"
                     value={addImali}
-                    onChange={(e) =>
-                      setAddImali(Number(e.target.value))
-                    }
+                    onChange={(e) => setAddImali(Number(e.target.value))}
                     className="w-full"
                   />
                   <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-400 mt-1">
                     <span>+{addImali} IMALI</span>
                     <span>
-                      Tier → <b>{simulatedTier.name}</b> (
-                      {(simulatedTier.takeRate * 100).toFixed(0)}
-                      % take)
+                      Tier → <b>{simulatedTier.name}</b> ({(simulatedTier.takeRate * 100).toFixed(0)}% take)
                     </span>
                   </div>
                   <label className="mt-2 inline-flex items-center gap-2 text-xs text-slate-200">
                     <input
                       type="checkbox"
                       checked={applyNetToDisplay}
-                      onChange={(e) =>
-                        setApplyNetToDisplay(e.target.checked)
-                      }
+                      onChange={(e) => setApplyNetToDisplay(e.target.checked)}
                     />
                     Apply to Net PnL display
                   </label>
                 </div>
                 <div className="text-xs text-slate-300">
-                  Current Tier: <b>{activeTier.name}</b> (
-                  {(activeTier.takeRate * 100).toFixed(0)}% take)
+                  Current Tier: <b>{activeTier.name}</b> ({(activeTier.takeRate * 100).toFixed(0)}% take)
                   <br />
-                  Simulated Tier: <b>{simulatedTier.name}</b> (
-                  {(simulatedTier.takeRate * 100).toFixed(0)}% take)
+                  Simulated Tier: <b>{simulatedTier.name}</b> ({(simulatedTier.takeRate * 100).toFixed(0)}% take)
                 </div>
               </div>
             </FieldCard>
@@ -1796,27 +1514,22 @@ export default function TradeDemo({
                 disabled={busy}
                 className="w-full sm:flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 font-semibold"
               >
-                {busy
-                  ? "Starting…"
-                  : `Start ${usingDemo ? "Demo" : "Live"}`}
+                {busy ? "Starting…" : `Start ${usingDemo ? "Demo" : "Live"}`}
               </button>
-              {venue !== "stocks" &&
-                venue !== "bundle" &&
-                !isLiveEligible && (
-                  <button
-                    onClick={() => setShowUpgrade(true)}
-                    className="w-full sm:w-auto py-3 rounded-xl bg-yellow-600 hover:bg-yellow-500 border border-yellow-400 font-semibold text-black"
-                  >
-                    Upgrade to Go Live
-                  </button>
-                )}
+              {venue !== "stocks" && venue !== "bundle" && !isLiveEligible && (
+                <button
+                  onClick={() => setShowUpgrade(true)}
+                  className="w-full sm:w-auto py-3 rounded-xl bg-yellow-600 hover:bg-yellow-500 border border-yellow-400 font-semibold text-black"
+                >
+                  Upgrade to Go Live
+                </button>
+              )}
             </div>
 
             {/* Post-start nudge */}
             {showAutoHint && (
               <div className="rounded-lg border border-emerald-400/70 bg-emerald-700/30 text-emerald-100 px-3 py-2 text-xs">
-                ✅ Sessions started. Now click <b>Auto run</b> (top-right)
-                to stream ticks automatically every ~4s.
+                ✅ Sessions started. Now click <b>Auto run</b> (top-right) to stream ticks automatically every ~4s.
               </div>
             )}
           </div>
@@ -1827,41 +1540,12 @@ export default function TradeDemo({
           <div className="space-y-4">
             {/* KPIs */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2 sm:gap-3">
-              <Stat
-                label="Equity"
-                value={`$${Number(
-                  (combined?.equity || 0) + simPnL
-                ).toFixed(2)}`}
-                tip="Balance + PnL"
-              />
-              <Stat
-                label="Cash balance"
-                value={`$${Number(
-                  combined?.balance || 0
-                ).toFixed(2)}`}
-              />
-              <Stat
-                label="Gross PnL"
-                value={`${
-                  gross >= 0 ? "+" : "-"
-                }$${Math.abs(gross).toFixed(2)}`}
-              />
-              <Stat
-                label={`Net PnL (${(takeRate * 100).toFixed(0)}% take)`}
-                value={`${
-                  net >= 0 ? "+" : "-"
-                }$${Math.abs(net).toFixed(2)}`}
-              />
-              <Stat
-                label="Wins • Losses"
-                value={`${combined?.wins || 0} • ${
-                  combined?.losses || 0
-                }`}
-              />
-              <Stat
-                label="XP • Streak"
-                value={`${xp} ⭐ / ${streak} 🔥`}
-              />
+              <Stat label="Equity" value={`$${Number((combined?.equity || 0) + simPnL).toFixed(2)}`} tip="Balance + PnL" />
+              <Stat label="Cash balance" value={`$${Number(combined?.balance || 0).toFixed(2)}`} />
+              <Stat label="Gross PnL" value={`${gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)}`} />
+              <Stat label={`Net PnL (${(takeRate * 100).toFixed(0)}% take)`} value={`${net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}`} />
+              <Stat label="Wins • Losses" value={`${combined?.wins || 0} • ${combined?.losses || 0}`} />
+              <Stat label="XP • Streak" value={`${xp} ⭐ / ${streak} 🔥`} />
               <Stat label="Coins" value={`${coins} 🪙`} />
             </div>
 
@@ -1869,9 +1553,7 @@ export default function TradeDemo({
             <div className="flex flex-wrap items-center gap-2">
               {dexSess && <Badge color="emerald" text="DEX active" />}
               {cexSess && <Badge color="sky" text="CEX active" />}
-              {stocksSess && (
-                <Badge color="emerald" text="STOCKS active" />
-              )}
+              {stocksSess && <Badge color="emerald" text="STOCKS active" />}
               <Badge color="slate" text="Auto Run ≈ 4s" />
               <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap gap-2">
                 <Button
@@ -1908,31 +1590,20 @@ export default function TradeDemo({
             {stocksSess && !stocksSess.remote && (
               <div className="rounded-xl border border-slate-600/60 bg-slate-900/90 p-3">
                 <div className="flex items-center gap-2 text-sm mb-2">
-                  <span className="font-semibold">
-                    Manual Stocks Trade:
-                  </span>
-                  <span className="text-slate-300">
-                    {sim.symbols.slice(0, 3).join(", ")}… (basket)
-                  </span>
+                  <span className="font-semibold">Manual Stocks Trade:</span>
+                  <span className="text-slate-300">{sim.symbols.slice(0, 3).join(", ")}… (basket)</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     onClick={() => {
-                      sim.symbols
-                        .slice(0, 3)
-                        .forEach((sym) =>
-                          sim.exec(
-                            sym,
-                            "BUY",
-                            Math.max(1, stockTradeUnits),
-                            {
-                              feeBps,
-                              spreadBps,
-                              slipBps,
-                              latencyMs,
-                            }
-                          )
-                        );
+                      sim.symbols.slice(0, 3).forEach((sym) =>
+                        sim.exec(sym, "BUY", Math.max(1, stockTradeUnits), {
+                          feeBps,
+                          spreadBps,
+                          slipBps,
+                          latencyMs,
+                        })
+                      );
                     }}
                     variant="solid"
                   >
@@ -1940,21 +1611,14 @@ export default function TradeDemo({
                   </Button>
                   <Button
                     onClick={() => {
-                      sim.symbols
-                        .slice(0, 3)
-                        .forEach((sym) =>
-                          sim.exec(
-                            sym,
-                            "SELL",
-                            Math.max(1, stockTradeUnits),
-                            {
-                              feeBps,
-                              spreadBps,
-                              slipBps,
-                              latencyMs,
-                            }
-                          )
-                        );
+                      sim.symbols.slice(0, 3).forEach((sym) =>
+                        sim.exec(sym, "SELL", Math.max(1, stockTradeUnits), {
+                          feeBps,
+                          spreadBps,
+                          slipBps,
+                          latencyMs,
+                        })
+                      );
                     }}
                     variant="ghost"
                   >
@@ -1966,175 +1630,89 @@ export default function TradeDemo({
 
             {/* Last trade indicators */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Card
-                title="Last CEX Trade"
-                tip="Most recent CEX trade impact"
-              >
+              <Card title="Last CEX Trade" tip="Most recent CEX trade impact">
                 <div className="text-sm">
                   {lastCex ? (
                     <span>
-                      {lastCex.sym ||
-                        lastCex.symbol ||
-                        "CEX"}{" "}
-                      • ΔPnL:{" "}
-                      <b
-                        className={`${
-                          (lastCex.pnlDelta || 0) >= 0
-                            ? "text-emerald-300"
-                            : "text-rose-300"
-                        }`}
-                      >
-                        {lastCex.pnlDelta >= 0 ? "+" : ""}
-                        $
-                        {Number(
-                          lastCex.pnlDelta || 0
-                        ).toFixed(2)}
+                      {lastCex.sym || lastCex.symbol || "CEX"} • ΔPnL:{" "}
+                      <b className={`${(lastCex.pnlDelta || 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                        {lastCex.pnlDelta >= 0 ? "+" : ""}${Number(lastCex.pnlDelta || 0).toFixed(2)}
                       </b>
                     </span>
                   ) : (
-                    <span className="text-slate-300">
-                      No CEX trades yet.
-                    </span>
+                    <span className="text-slate-300">No CEX trades yet.</span>
                   )}
                 </div>
               </Card>
-              <Card
-                title="Last DEX Trade"
-                tip="Most recent DEX trade impact"
-              >
+
+              <Card title="Last DEX Trade" tip="Most recent DEX trade impact">
                 <div className="text-sm">
                   {lastDex ? (
                     <span>
-                      {lastDex.sym ||
-                        lastDex.symbol ||
-                        "DEX"}{" "}
-                      • ΔPnL:{" "}
-                      <b
-                        className={`${
-                          (lastDex.pnlDelta || 0) >= 0
-                            ? "text-emerald-300"
-                            : "text-rose-300"
-                        }`}
-                      >
-                        {lastDex.pnlDelta >= 0 ? "+" : ""}
-                        $
-                        {Number(
-                          lastDex.pnlDelta || 0
-                        ).toFixed(2)}
+                      {lastDex.sym || lastDex.symbol || "DEX"} • ΔPnL:{" "}
+                      <b className={`${(lastDex.pnlDelta || 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                        {lastDex.pnlDelta >= 0 ? "+" : ""}${Number(lastDex.pnlDelta || 0).toFixed(2)}
                       </b>
                     </span>
                   ) : (
-                    <span className="text-slate-300">
-                      No DEX trades yet.
-                    </span>
+                    <span className="text-slate-300">No DEX trades yet.</span>
                   )}
                 </div>
               </Card>
-              <Card
-                title="Last STOCKS Trade"
-                tip="Most recent Stocks trade impact"
-              >
+
+              <Card title="Last STOCKS Trade" tip="Most recent Stocks trade impact">
                 <div className="text-sm">
                   {lastStocks ? (
                     <span>
-                      {lastStocks.sym ||
-                        lastStocks.symbol ||
-                        "AAPL"}{" "}
-                      • ΔPnL:{" "}
-                      <b
-                        className={`${
-                          (lastStocks.pnlDelta || 0) >= 0
-                            ? "text-emerald-300"
-                            : "text-rose-300"
-                        }`}
-                      >
-                        {lastStocks.pnlDelta >= 0 ? "+" : ""}
-                        $
-                        {Number(
-                          lastStocks.pnlDelta || 0
-                        ).toFixed(2)}
+                      {lastStocks.sym || lastStocks.symbol || "AAPL"} • ΔPnL:{" "}
+                      <b className={`${(lastStocks.pnlDelta || 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                        {lastStocks.pnlDelta >= 0 ? "+" : ""}${Number(lastStocks.pnlDelta || 0).toFixed(2)}
                       </b>
                     </span>
                   ) : (
-                    <span className="text-slate-300">
-                      No Stocks trades yet.
-                    </span>
+                    <span className="text-slate-300">No Stocks trades yet.</span>
                   )}
                 </div>
               </Card>
             </div>
 
             {/* Trade Tape */}
-            <Card
-              title="Trade Tape (live)"
-              tip="Dots are trades in time order. Newer ones show symbol."
-            >
+            <Card title="Trade Tape (live)" tip="Dots are trades in time order. Newer ones show symbol.">
               <div className="h-10 w-full rounded-xl border border-slate-600/60 bg-slate-950 overflow-hidden">
                 <svg viewBox="0 0 400 40" className="w-full h-full">
-                  <line
-                    x1="0"
-                    y1="20"
-                    x2="400"
-                    y2="20"
-                    stroke="currentColor"
-                    className="text-slate-400/40"
-                    strokeWidth="1"
-                  />
+                  <line x1="0" y1="20" x2="400" y2="20" stroke="currentColor" className="text-slate-400/40" strokeWidth="1" />
                   {tapeMarks.map((m, i) => (
                     <g
                       key={i}
                       className={
-                        m.venue === "DEX"
-                          ? "text-emerald-300"
-                          : m.venue === "CEX"
-                          ? "text-sky-300"
-                          : "text-yellow-300"
+                        m.venue === "DEX" ? "text-emerald-300" : m.venue === "CEX" ? "text-sky-300" : "text-yellow-300"
                       }
                     >
-                      <circle
-                        cx={m.x}
-                        cy={m.y}
-                        r="3"
-                        fill="currentColor"
-                      />
-                      {i > tapeMarks.length * 0.75 &&
-                        m.sym && (
-                          <text
-                            x={m.x + 4}
-                            y={m.y - 4}
-                            fontSize="9.5"
-                            className="fill-current"
-                          >
-                            {m.sym}
-                          </text>
-                        )}
+                      <circle cx={m.x} cy={m.y} r="3" fill="currentColor" />
+                      {i > tapeMarks.length * 0.75 && m.sym && (
+                        <text x={m.x + 4} y={m.y - 4} fontSize="9.5" className="fill-current">
+                          {m.sym}
+                        </text>
+                      )}
                     </g>
                   ))}
                 </svg>
               </div>
               <div className="mt-2 text-[11px] text-slate-300">
-                Markers:{" "}
-                <span className="text-sky-300">★</span> take-profit,{" "}
-                <span className="text-rose-300">▽</span> honeypot
+                Markers: <span className="text-sky-300">★</span> take-profit, <span className="text-rose-300">▽</span> honeypot
               </div>
             </Card>
 
-            {/* Overview dashboard (equity curve + positions + stats) */}
+            {/* Overview dashboard */}
             <div className="rounded-2xl border border-slate-600/60 bg-slate-900/90">
               <div className="p-3 sm:p-4">
                 <TradingOverview
                   feed={
                     combined
                       ? {
-                          equity:
-                            Number(combined.equity || 0) + simPnL,
-                          pnl:
-                            Number(
-                              combined.realizedPnL || 0
-                            ) + simPnL,
-                          balance: Number(
-                            combined.balance || 0
-                          ),
+                          equity: Number(combined.equity || 0) + simPnL,
+                          pnl: Number(combined.realizedPnL || 0) + simPnL,
+                          balance: Number(combined.balance || 0),
                           wins: combined.wins || 0,
                           losses: combined.losses || 0,
                           running: haveAny,
@@ -2155,19 +1733,12 @@ export default function TradeDemo({
 
             {/* Result banner */}
             <div className="p-3 rounded-xl border border-amber-600 bg-amber-400 text-black text-sm sm:text-base">
-              <span className="font-semibold">
-                {usingDemo ? "Demo" : "Live"} result so far:
-              </span>{" "}
+              <span className="font-semibold">{usingDemo ? "Demo" : "Live"} result so far:</span>{" "}
               <b>
-                Gross {gross >= 0 ? "+" : "-"}$
-                {Math.abs(gross).toFixed(2)} • Net (
-                {(takeRate * 100).toFixed(0)}% take){" "}
-                {net >= 0 ? "+" : "-"}$
-                {Math.abs(net).toFixed(2)}
+                Gross {gross >= 0 ? "+" : "-"}${Math.abs(gross).toFixed(2)} • Net ({(takeRate * 100).toFixed(0)}% take){" "}
+                {net >= 0 ? "+" : "-"}${Math.abs(net).toFixed(2)}
               </b>
-              <span className="ml-1">
-                • After Start, click <b>Auto run</b> to stream ticks ⭐
-              </span>
+              <span className="ml-1">• Auto run streams ticks ⭐</span>
             </div>
           </div>
         )}
@@ -2177,12 +1748,9 @@ export default function TradeDemo({
       {showUpgrade && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="max-w-md w-full rounded-2xl border border-yellow-500/70 bg-slate-900 text-white p-5">
-            <div className="text-lg font-extrabold mb-1">
-              Unlock Live Trading
-            </div>
+            <div className="text-lg font-extrabold mb-1">Unlock Live Trading</div>
             <p className="text-sm text-slate-200">
-              To go <b>Live</b>, complete your plan upgrade and wallet
-              verification.
+              To go <b>Live</b>, complete your plan upgrade and wallet verification.
             </p>
             <ul className="list-disc pl-5 text-sm text-slate-200 my-3 space-y-1">
               <li>Access to Live API endpoints</li>
@@ -2190,16 +1758,10 @@ export default function TradeDemo({
               <li>Telegram alerts for fills & risk</li>
             </ul>
             <div className="flex gap-2 mt-3">
-              <a
-                href="/pricing"
-                className="px-4 py-2 rounded-lg bg-yellow-500 text-black font-semibold hover:bg-yellow-400"
-              >
+              <a href="/pricing" className="px-4 py-2 rounded-lg bg-yellow-500 text-black font-semibold hover:bg-yellow-400">
                 See Plans
               </a>
-              <button
-                onClick={() => setShowUpgrade(false)}
-                className="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10"
-              >
+              <button onClick={() => setShowUpgrade(false)} className="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10">
                 Maybe later
               </button>
             </div>
@@ -2211,23 +1773,11 @@ export default function TradeDemo({
 }
 
 /* ——— Small UI atoms ——— */
-function BackendBadges({
-  usingDemo,
-  venue,
-  apiBase,
-  stockDemoApi,
-  stockLiveApi,
-  runMode,
-  stocksSess,
-}) {
+function BackendBadges({ usingDemo, venue, apiBase, stockDemoApi, stockLiveApi, runMode, stocksSess }) {
   const cryptoLive = !usingDemo && includesCrypto(venue);
   const stocksLive = runMode === "live" && !!stockLiveApi;
 
-  const cryptoLabel = includesCrypto(venue)
-    ? cryptoLive
-      ? "CRYPTO • LIVE"
-      : "CRYPTO • DEMO"
-    : null;
+  const cryptoLabel = includesCrypto(venue) ? (cryptoLive ? "CRYPTO • LIVE" : "CRYPTO • DEMO") : null;
 
   const stocksLabel =
     venue === "stocks" || venue === "bundle"
@@ -2240,35 +1790,18 @@ function BackendBadges({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {cryptoLabel && (
-        <Badge
-          color={cryptoLive ? "emerald" : "slate"}
-          text={cryptoLabel}
-        />
-      )}
-      {stocksLabel && (
-        <Badge
-          color={
-            stocksLive ? "emerald" : stocksSess?.remote ? "sky" : "slate"
-          }
-          text={stocksLabel}
-        />
-      )}
+      {cryptoLabel && <Badge color={cryptoLive ? "emerald" : "slate"} text={cryptoLabel} />}
+      {stocksLabel && <Badge color={stocksLive ? "emerald" : stocksSess?.remote ? "sky" : "slate"} text={stocksLabel} />}
       <span className="text-[11px] text-slate-400">
         {includesCrypto(venue) && (
           <>
-            Crypto base:{" "}
-            <code className="text-slate-300">{apiBase}</code>
+            Crypto base: <code className="text-slate-300">{apiBase}</code>
           </>
         )}
         {(venue === "stocks" || venue === "bundle") && (
           <>
             {" "}
-            {stocksLive
-              ? "• Stocks live API"
-              : stockDemoApi
-              ? "• Stocks demo API"
-              : "• Stocks local sim"}
+            {stocksLive ? "• Stocks live API" : stockDemoApi ? "• Stocks demo API" : "• Stocks local sim"}
           </>
         )}
       </span>
@@ -2277,18 +1810,11 @@ function BackendBadges({
 }
 function Badge({ color = "slate", text }) {
   const map = {
-    emerald:
-      "border-emerald-400 bg-emerald-600/90 text-white",
+    emerald: "border-emerald-400 bg-emerald-600/90 text-white",
     sky: "border-sky-400 bg-sky-600/90 text-white",
     slate: "border-slate-400 bg-slate-800 text-white",
   };
-  return (
-    <span
-      className={`text-[11px] rounded-full border px-2 py-1 ${map[color]}`}
-    >
-      {text}
-    </span>
-  );
+  return <span className={`text-[11px] rounded-full border px-2 py-1 ${map[color]}`}>{text}</span>;
 }
 function Button({ children, onClick, variant = "ghost" }) {
   const classes =
@@ -2303,13 +1829,9 @@ function Button({ children, onClick, variant = "ghost" }) {
 }
 function FieldCard({ title, help, children, className = "" }) {
   return (
-    <div
-      className={`rounded-xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4 ${className}`}
-    >
+    <div className={`rounded-xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4 ${className}`}>
       <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-semibold text.white">
-          {title}
-        </div>
+        <div className="text-sm font-semibold text.white">{title}</div>
         <HoverInfo label="?" description={help} />
       </div>
       <div className="mt-2">{children}</div>
@@ -2320,9 +1842,7 @@ function Card({ title, tip, children }) {
   return (
     <div className="rounded-2xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold text-white">
-          {title}
-        </div>
+        <div className="text-sm font-semibold text-white">{title}</div>
         <HoverInfo label="?" description={tip} />
       </div>
       {children}
@@ -2331,61 +1851,40 @@ function Card({ title, tip, children }) {
 }
 function Stat({ label, value, tip }) {
   return (
-    <div
-      className="p-3 rounded-lg border border-slate-600/60 bg-slate-900/90"
-      title={tip}
-    >
-      <div className="text-[11px] sm:text-[12px] uppercase text-slate-100 tracking-wide">
-        {label}
-      </div>
-      <div className="text-sm sm:text-base font-semibold break-all text-white">
-        {value}
-      </div>
+    <div className="p-3 rounded-lg border border-slate-600/60 bg-slate-900/90" title={tip}>
+      <div className="text-[11px] sm:text-[12px] uppercase text-slate-100 tracking-wide">{label}</div>
+      <div className="text-sm sm:text-base font-semibold break-all text-white">{value}</div>
     </div>
   );
 }
 function HoverInfo({ label, description }) {
   return (
     <div className="relative group">
-      <span className="text-xs text-slate-100 underline decoration-dotted cursor-help">
-        {label}
-      </span>
+      <span className="text-xs text-slate-100 underline decoration-dotted cursor-help">{label}</span>
       <div className="pointer-events-none absolute right-0 mt-2 w-64 sm:w-72 rounded-xl border border-slate-600/60 bg-slate-900/95 p-3 text-xs text-white opacity-0 shadow-2xl transition-opacity group-hover:opacity-100">
         {description}
       </div>
     </div>
   );
 }
-function ModeToggle({
-  runMode,
-  setRunMode,
-  isLiveEligible,
-  onUpgrade,
-  venue,
-}) {
+function ModeToggle({ runMode, setRunMode, isLiveEligible, onUpgrade, venue }) {
   const isLive = runMode === "live";
   return (
     <div className="flex items-center gap-2 text-xs">
       <span
         className={`px-2 py-1 rounded border ${
-          !isLive
-            ? "border-emerald-400 text-emerald-300 bg-emerald-900/30"
-            : "border-slate-600 text-slate-300"
+          !isLive ? "border-emerald-400 text-emerald-300 bg-emerald-900/30" : "border-slate-600 text-slate-300"
         }`}
       >
         DEMO
       </span>
-      <label
-        className="relative inline-flex cursor-pointer items-center"
-        title="Toggle Demo / Live"
-      >
+      <label className="relative inline-flex cursor-pointer items-center" title="Toggle Demo / Live">
         <input
           type="checkbox"
           className="sr-only peer"
           checked={isLive}
           onChange={(e) => {
             const nextIsLive = e.target.checked;
-            // Gate Live if venue includes crypto and user isn't eligible
             if (nextIsLive && includesCrypto(venue) && !isLiveEligible) {
               onUpgrade?.();
               return;
@@ -2397,9 +1896,7 @@ function ModeToggle({
       </label>
       <span
         className={`px-2 py-1 rounded border ${
-          isLive
-            ? "border-emerald-400 text-emerald-300 bg-emerald-900/30"
-            : "border-slate-600 text-slate-300"
+          isLive ? "border-emerald-400 text-emerald-300 bg-emerald-900/30" : "border-slate-600 text-slate-300"
         }`}
       >
         LIVE
