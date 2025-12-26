@@ -22,20 +22,31 @@ function getEnvVar(viteKey, craKey) {
  * - If nothing is set, falls back to the given fallback (already a full URL).
  */
 function resolveCryptoBase(raw, fallbackFullUrl) {
+  const normalize = (url) => (url || "").replace(/\/$/, "");
+
+  const upgradeIfNeeded = (url) => {
+    if (typeof window !== "undefined" && window.location?.protocol === "https:") {
+      return url.replace(/^http:\/\//i, "https://");
+    }
+    return url;
+  };
+
   if (raw && raw.trim()) {
     const v = raw.trim();
+
     // Relative path from Netlify env, e.g. "/bot-api/api"
     if (v.startsWith("/")) {
       if (typeof window !== "undefined" && window.location?.origin) {
-        return `${window.location.origin}${v}`.replace(/\/$/, "");
+        return normalize(`${window.location.origin}${v}`);
       }
-      // Last-resort: leave it as is (still a valid fetch path in pure SPA)
-      return v.replace(/\/$/, "");
+      return normalize(v);
     }
-    // Already an absolute URL
-    return v.replace(/\/$/, "");
+
+    // Absolute URL
+    return normalize(upgradeIfNeeded(v));
   }
-  return (fallbackFullUrl || "").replace(/\/$/, "");
+
+  return normalize(upgradeIfNeeded(fallbackFullUrl || ""));
 }
 
 /*  ✅ CRYPTO DEMO/LIVE now use domain-based default
