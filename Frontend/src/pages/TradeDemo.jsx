@@ -20,9 +20,9 @@ function getEnvVar(viteKey, craKey) {
 
 /**
  * Crypto API base resolver:
- * - Accepts full URLs (http://..., https://...) → returns as-is (minus trailing slash).
- * - Accepts relative paths (/bot-api/api) → prefixes with window.location.origin in the browser.
- * - If nothing is set, falls back to the given fallback (already a full URL).
+ * - Full URLs → as-is (minus trailing slash).
+ * - Relative paths (/bot-api/api) → prefixes window.location.origin.
+ * - Fallback to provided full URL.
  */
 function resolveCryptoBase(raw, fallbackFullUrl) {
   const normalize = (url) => (url || "").replace(/\/$/, "");
@@ -36,16 +36,12 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
 
   if (raw && raw.trim()) {
     const v = raw.trim();
-
-    // Relative path from Netlify env, e.g. "/bot-api/api"
     if (v.startsWith("/")) {
       if (typeof window !== "undefined" && window.location?.origin) {
         return normalize(`${window.location.origin}${v}`);
       }
       return normalize(v);
     }
-
-    // Absolute URL
     return normalize(upgradeIfNeeded(v));
   }
 
@@ -63,10 +59,11 @@ const LIVE_API_DEFAULT = resolveCryptoBase(
   "https://api.imali-defi.com/api"
 );
 
-// Telegram notify (we will also auto-fallback to /notify vs /api/notify)
+// Telegram notify base (optional). We will treat notify as best-effort (never blocks UI).
 const TG_NOTIFY_URL_DEFAULT =
   getEnvVar("VITE_TG_NOTIFY_URL", "REACT_APP_TG_NOTIFY_URL") ||
-  "https://api.imali-defi.com/notify";
+  getEnvVar("VITE_TG_NOTIFY_BASE", "REACT_APP_TG_NOTIFY_BASE") ||
+  "https://api.imali-defi.com"; // base, not necessarily /notify
 
 const STOCK_DEMO_API_DEFAULT =
   getEnvVar("VITE_STOCK_DEMO_API", "REACT_APP_STOCK_DEMO_API") || "";
@@ -107,15 +104,34 @@ async function postJson(url, body, { timeoutMs = 12000, headers = {} } = {}) {
         data?.message ||
         data?.raw ||
         `HTTP ${r.status} ${r.statusText}`;
-      throw new Error(`${msg}`);
+      const err = new Error(`${msg}`);
+      err.status = r.status;
+      err.url = url;
+      err.data = data;
+      throw err;
     }
 
     return data;
   } catch (e) {
     if (String(e?.name) === "AbortError") {
-      throw new Error(`Request timeout (${timeoutMs}ms): ${url}`);
+      const err = new Error(`Request timeout (${timeoutMs}ms): ${url}`);
+      err.timeout = true;
+      err.url = url;
+      throw err;
     }
     throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function getJson(url, { timeoutMs = 8000 } = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    const j = await r.json();
+    return j;
   } finally {
     clearTimeout(t);
   }
@@ -335,34 +351,37 @@ export default function TradeDemo({
 }) {
   /* ----------------------- Mode & endpoints ----------------------- */
   const [runMode, setRunMode] = useState(() => {
-    const saved =
-      typeof window !== "undefined" ? window.localStorage.getItem("IMALI_RUNMODE") : null;
-    return saved === "live" || saved === "demo" ? saved : initialRunMode;
+    // bulletproof: respect stored mode but never allow live if not eligible
+    const saved = (localStorage.getItem("IMALI_RUNMODE") || "").toLowerCase();
+    const wanted = saved === "live" ? "live" : initialRunMode;
+    return wanted === "live" ? "live" : "demo";
   });
 
-  const usingDemo = runMode === "demo";
-  const apiBase = usingDemo ? demoApi : liveApi;
+  const runModeRef = useRef(runMode);
+  useEffect(() => {
+    runModeRef.current = runMode;
+  }, [runMode]);
 
-  // Bulletproof: always use latest values inside async/timers
-  const modeRef = useRef(runMode);
+  const [venue, setVenue] = useState(defaultVenue);
+  const venueRef = useRef(venue);
+  useEffect(() => {
+    venueRef.current = venue;
+  }, [venue]);
+
+  const usingDemo = runMode === "demo";
+  const apiBase = useMemo(() => (usingDemo ? demoApi : liveApi), [usingDemo, demoApi, liveApi]);
   const apiBaseRef = useRef(apiBase);
   useEffect(() => {
-    modeRef.current = runMode;
-    apiBaseRef.current = usingDemo ? demoApi : liveApi;
-  }, [runMode, usingDemo, demoApi, liveApi]);
+    apiBaseRef.current = apiBase;
+  }, [apiBase]);
 
   useEffect(() => {
     const title = usingDemo ? "IMALI • Trade Demo" : "IMALI • Trade Live";
     document.title = title;
-    try {
-      localStorage.setItem("IMALI_RUNMODE", runMode);
-    } catch {
-      // ignore
-    }
+    localStorage.setItem("IMALI_RUNMODE", runMode);
   }, [usingDemo, runMode]);
 
   /* ----------------------------- State ---------------------------- */
-  const [venue, setVenue] = useState(defaultVenue);
   const [chain, setChain] = useState("ethereum");
   const [symbols, setSymbols] = useState(defaultSymbols || "BTC,ETH");
   const [stockSymbols, setStockSymbols] = useState("AAPL,MSFT,NVDA,AMZN,TSLA");
@@ -447,6 +466,13 @@ export default function TradeDemo({
   const [cexSess, setCexSess] = useState(null);
   const [stocksSess, setStocksSess] = useState(null);
 
+  const dexRef = useRef(dexSess);
+  const cexRef = useRef(cexSess);
+  const stocksRef = useRef(stocksSess);
+  useEffect(() => void (dexRef.current = dexSess), [dexSess]);
+  useEffect(() => void (cexRef.current = cexSess), [cexSess]);
+  useEffect(() => void (stocksRef.current = stocksSess), [stocksSess]);
+
   // Local Multi-Stocks sim
   const stockList = useMemo(
     () =>
@@ -461,9 +487,20 @@ export default function TradeDemo({
   // UI/gamification
   const [busy, setBusy] = useState(false);
 
-  // IMPORTANT: keep "manual errors" separate from "auto recovery status"
-  const [error, setError] = useState(""); // only for start/config/manual user actions
-  const [status, setStatus] = useState({ level: "idle", message: "" }); // idle|info|warn|error
+  // 🚫 no more “red bar spam” for recoverable issues:
+  // - keep one fatal error slot
+  // - keep one transient status slot (green/neutral)
+  const [fatalError, setFatalError] = useState("");
+  const [statusNote, setStatusNote] = useState(""); // e.g. "Recovered demo connection."
+  const statusTimerRef = useRef(null);
+
+  const setStatus = (msg, ms = 3500) => {
+    setStatusNote(msg || "");
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    if (msg && ms) {
+      statusTimerRef.current = setTimeout(() => setStatusNote(""), ms);
+    }
+  };
 
   const [xp, setXp] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -504,8 +541,9 @@ export default function TradeDemo({
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean);
 
-  /* ---------------------- Telegram alerts ------------------------- */
+  /* ---------------------- Telegram alerts (best-effort) ------------------------- */
   const lastSentRef = useRef({});
+
   function shouldSend(kind, gapMs) {
     const now = Date.now();
     const last = lastSentRef.current[kind] || 0;
@@ -516,28 +554,46 @@ export default function TradeDemo({
 
   function buildNotifyCandidates(baseUrl) {
     const list = [];
+    const base = (TG_NOTIFY_URL_DEFAULT || "").replace(/\/$/, "");
+    const cleanApi = String(baseUrl || "").replace(/\/$/, "");
 
-    if (TG_NOTIFY_URL_DEFAULT?.startsWith("http")) list.push(TG_NOTIFY_URL_DEFAULT);
-
-    if (baseUrl) {
-      const clean = String(baseUrl).replace(/\/$/, "");
-      list.push(`${clean}/notify`);
-      list.push(`${clean.replace(/\/api$/i, "")}/notify`);
-      list.push(`${clean}/api/notify`);
+    // Treat TG_NOTIFY_URL_DEFAULT as base; try common endpoints.
+    if (base) {
+      list.push(`${base}/notify`);
+      list.push(`${base}/api/notify`);
     }
 
-    return Array.from(new Set(list.filter(Boolean)));
+    if (cleanApi) {
+      // If apiBase is https://host/api, try https://host/notify and https://host/api/notify (but avoid api/api)
+      const noApi = cleanApi.replace(/\/api$/i, "");
+      list.push(`${noApi}/notify`);
+      list.push(`${cleanApi}/notify`);
+      // Only add /api/notify if cleanApi isn't already /api
+      list.push(`${noApi}/api/notify`);
+    }
+
+    // de-dupe and drop obvious /api/api/
+    return Array.from(
+      new Set(
+        list
+          .filter(Boolean)
+          .map((u) => u.replace(/\/api\/api\//g, "/api/"))
+      )
+    );
   }
 
   async function notifyTelegram(kind, payload = {}, { minGapMs = 0 } = {}) {
     if (minGapMs && !shouldSend(kind, minGapMs)) return;
+
+    // Best-effort: never throw, never set UI error.
     const candidates = buildNotifyCandidates(apiBaseRef.current);
+
     for (const url of candidates) {
       try {
         await postJson(url, { event: kind, data: payload }, { timeoutMs: 2500 });
         return;
       } catch {
-        // next candidate
+        // silent
       }
     }
   }
@@ -612,7 +668,10 @@ export default function TradeDemo({
       totalDelta += delta;
 
       setStocksSess((prev) => {
-        const history = [...(prev?.history || []), { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta }];
+        const history = [
+          ...(prev?.history || []),
+          { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta },
+        ];
         const realizedPnL = (prev?.realizedPnL || 0) + delta;
         return {
           ...(prev || {}),
@@ -630,66 +689,122 @@ export default function TradeDemo({
     return { delta: totalDelta };
   }
 
-  /* ---------------------- “Bulletproof” operation tokens ---------------------- */
-  const opTokenRef = useRef(0);
-  const nextOpToken = () => {
-    opTokenRef.current += 1;
-    return opTokenRef.current;
-  };
-  const isLatest = (t) => t === opTokenRef.current;
+  /* --------------------------- Start/Config (bulletproof) --------------------------- */
+  function normalizeStartResponse(obj) {
+    const o = obj || {};
+    // backends might return demoId, demo_id, id, sessionId, etc.
+    const demoId = o.demoId || o.demo_id || o.demoID || o.id || o.sessionId || o.session_id;
+    const liveId = o.liveId || o.live_id || o.liveID || o.id || o.sessionId || o.session_id;
+    return { ...o, demoId, liveId };
+  }
 
-  /* --------------------------- Start/Config --------------------------- */
-  function buildCryptoConfigBody(kind, sess, idKey) {
+  function buildCryptoConfigVariants(kind, sess) {
     const symArr = parseSymbols();
     const symCsv = symArr.join(",");
 
-    // Send multiple names to survive backend schema changes
-    return {
-      [idKey]: sess?.[idKey],
-      mode: kind,
-      venue: kind,
+    const baseCommon = {
       chain,
       symbols: symArr,
       symbolsCsv: symCsv,
       pairs: symArr,
       tickers: symArr,
+      // “venue/mode” redundancy
+      mode: kind,
+      venue: kind,
+      market: kind,
+      // strategy redundancy
       strategy,
       strategyKey: strategy,
-      params: params,
+      strategy_name: strategy,
+      // params redundancy
+      params,
       config: { ...params },
+      settings: { ...params },
+    };
+
+    // include all possible id keys, because your screenshots show “unknown_demo_id”
+    const ids = {
+      demoId: sess?.demoId,
+      demo_id: sess?.demoId || sess?.demo_id,
+      demoID: sess?.demoId || sess?.demoID,
+      liveId: sess?.liveId,
+      live_id: sess?.liveId || sess?.live_id,
+      sessionId: sess?.demoId || sess?.liveId || sess?.sessionId,
+      session_id: sess?.demoId || sess?.liveId || sess?.session_id,
+    };
+
+    // Some servers expect config nested
+    const nested = {
+      ...ids,
+      ...baseCommon,
+      configuration: {
+        ...baseCommon,
+        params,
+        config: { ...params },
+      },
+    };
+
+    // Some servers expect top-level “name” or “bot”
+    const withName = {
+      ...ids,
+      ...baseCommon,
+      name: kind.toUpperCase(),
+      bot: kind,
+    };
+
+    // Some servers want symbols as string only
+    const stringOnly = {
+      ...ids,
+      ...baseCommon,
+      symbols: symCsv,
+      tickers: symCsv,
+      pairs: symCsv,
+    };
+
+    return [withName, nested, stringOnly];
+  }
+
+  function buildCryptoPaths(usingDemoNow) {
+    // Try multiple common endpoints. First ones match your current backend.
+    if (usingDemoNow) {
+      return {
+        start: ["/demo/start", "/demo/start-session", "/demo/begin"],
+        config: ["/demo/config", "/demo/configure", "/demo/set-config"],
+        tick: ["/demo/tick", "/demo/step", "/demo/run-once"],
+      };
+    }
+    return {
+      start: ["/live/start", "/live/start-session", "/live/begin"],
+      config: ["/live/config", "/live/configure", "/live/set-config"],
+      tick: ["/live/tick", "/live/step", "/live/run-once"],
     };
   }
 
-  // Keep last "desired config" for auto-recovery
-  const desiredRef = useRef({
-    venue: defaultVenue,
-    chain: "ethereum",
-    symbols: defaultSymbols || "BTC,ETH",
-    stockSymbols: "AAPL,MSFT,NVDA,AMZN,TSLA",
-    strategy: "ai_weighted",
-    params: strategyCatalog["ai_weighted"].defaults,
-    startBalance: 1000,
-  });
-  useEffect(() => {
-    desiredRef.current = {
-      venue,
-      chain,
-      symbols,
-      stockSymbols,
-      strategy,
-      params,
-      startBalance,
-    };
-  }, [venue, chain, symbols, stockSymbols, strategy, params, startBalance]);
+  async function tryPostAny(base, paths, bodies, { timeoutMs = 8000 } = {}) {
+    let lastErr = null;
+    for (const p of paths) {
+      const url = `${base}${p}`;
+      for (const body of bodies) {
+        try {
+          const d = await postJson(url, body, { timeoutMs });
+          return { ok: true, data: d, url, body };
+        } catch (e) {
+          lastErr = e;
+          // If 404, move to next path quickly. If 400, try next body then next path.
+          continue;
+        }
+      }
+    }
+    const err = lastErr || new Error("Request failed");
+    throw err;
+  }
 
-  async function startOne(kind, { silent = false, runModeOverride = null } = {}) {
-    const runModeEff = runModeOverride || modeRef.current;
-    const usingDemoEff = runModeEff === "demo";
-    const apiBaseEff = (usingDemoEff ? demoApi : liveApi) || apiBaseRef.current;
+  async function startOne(kind) {
+    const usingDemoNow = runModeRef.current === "demo";
 
     if (kind === "stocks") {
       const wantRemote = useRemoteStocks;
-      const isLive = runModeEff === "live";
+      const isLive = runModeRef.current === "live";
       const base = isLive ? stockLiveApi : stockDemoApi;
       const startPath = isLive ? "/stocks/live/start" : "/stocks/demo/start";
       const configPath = isLive ? "/stocks/live/config" : "/stocks/demo/config";
@@ -697,17 +812,17 @@ export default function TradeDemo({
 
       if (wantRemote && base) {
         try {
-          const d = await postJson(
+          const d0 = await postJson(
             `${base}${startPath}`,
             { name: "STOCKS", startBalance },
             { timeoutMs: 8000 }
           );
-          if (!d?.stocksId) throw new Error("No stocksId");
+          if (!d0?.stocksId) throw new Error("No stocksId");
 
           const c = await postJson(
             `${base}${configPath}`,
             {
-              stocksId: d.stocksId,
+              stocksId: d0.stocksId,
               symbols: basket,
               symbolsCsv: basket.join(","),
               strategy,
@@ -720,7 +835,7 @@ export default function TradeDemo({
           if (!c?.ok) throw new Error(c?.error || "Stocks config failed");
 
           return {
-            ...d,
+            ...d0,
             __venue: "stocks",
             base,
             remote: true,
@@ -732,17 +847,11 @@ export default function TradeDemo({
             history: [],
           };
         } catch (e) {
-          if (!silent) {
-            setError(
-              `Stocks API unreachable or config rejected — falling back to local basket. (${String(
-                e?.message || e
-              )})`
-            );
-          }
+          // silent fallback (no red bar)
+          setStatus("Stocks API unavailable — using local basket sim.");
         }
       }
 
-      // Local basket simulator session
       sim.reset(basket);
       return {
         local: true,
@@ -757,122 +866,160 @@ export default function TradeDemo({
       };
     }
 
-    // Crypto paths
-    const startPath = usingDemoEff ? "/demo/start" : "/live/start";
-    const configPath = usingDemoEff ? "/demo/config" : "/live/config";
-    const idKey = usingDemoEff ? "demoId" : "liveId";
+    const paths = buildCryptoPaths(usingDemoNow);
 
-    const d = await postJson(
-      `${apiBaseEff}${startPath}`,
-      { name: kind.toUpperCase(), startBalance },
-      { timeoutMs: 8000 }
-    );
-    if (!d?.[idKey]) throw new Error(`No ${idKey} for ${kind}`);
+    // START (try multiple start endpoints + payload variants)
+    const startBodies = [
+      { name: kind.toUpperCase(), startBalance, venue: kind, mode: kind },
+      { bot: kind, startingBalance: startBalance, symbols: parseSymbols() },
+      { venue: kind, balance: startBalance },
+      { startBalance, venue: kind },
+    ];
 
-    // Try config once with our “compat” body; if 400-ish backend changes, still throws with message
-    const body = buildCryptoConfigBody(kind, d, idKey);
-    const c = await postJson(`${apiBaseEff}${configPath}`, body, { timeoutMs: 8000 });
-    if (!c?.ok) throw new Error(c?.error || `Config failed for ${kind}`);
+    const started = await tryPostAny(apiBaseRef.current, paths.start, startBodies, { timeoutMs: 9000 });
+    const d = normalizeStartResponse(started.data);
 
-    return { ...d, __venue: kind, _mode: runModeEff, _apiBase: apiBaseEff };
+    // Identify which id key we should consider “primary”
+    const idKey = usingDemoNow ? "demoId" : "liveId";
+    const primaryId = d?.[idKey] || (usingDemoNow ? d?.demoId : d?.liveId);
+    if (!primaryId) {
+      const err = new Error(`No ${idKey} returned by server`);
+      err.data = d;
+      throw err;
+    }
+
+    // CONFIG (try multiple config endpoints + multiple body variants)
+    const variants = buildCryptoConfigVariants(kind, { ...d, [idKey]: primaryId });
+    const configRes = await tryPostAny(apiBaseRef.current, paths.config, variants, { timeoutMs: 9000 });
+
+    // Some servers return {ok:true}; some return config snapshot.
+    const ok = configRes?.data?.ok;
+    if (ok === false) {
+      throw new Error(configRes?.data?.error || "Config rejected");
+    }
+
+    return { ...d, [idKey]: primaryId, __venue: kind };
   }
 
-  const stopAuto = (reason = "manual") => {
+  /* ------------------- Silent demo auto-recovery (no red bar) ------------------- */
+  const recoveringRef = useRef(false);
+  const lastRecoveryAtRef = useRef(0);
+
+  async function recoverDemoConnection(reason = "connection") {
+    // Only for DEMO. Live should surface real failures.
+    if (runModeRef.current !== "demo") return false;
+    if (recoveringRef.current) return false;
+
+    const now = Date.now();
+    // avoid loops
+    if (now - lastRecoveryAtRef.current < 7000) return false;
+
+    recoveringRef.current = true;
+    lastRecoveryAtRef.current = now;
+
+    try {
+      const wantDex = !!dexRef.current;
+      const wantCex = !!cexRef.current;
+      const wantStocks = !!stocksRef.current;
+
+      const tasks = [];
+      if (wantDex) tasks.push(startOne("dex").then((s) => setDexSess(s)));
+      if (wantCex) tasks.push(startOne("cex").then((s) => setCexSess(s)));
+      if (wantStocks) tasks.push(startOne("stocks").then((s) => setStocksSess(s)));
+
+      if (!tasks.length) return false;
+
+      await Promise.allSettled(tasks);
+      setStatus(`Recovered demo connection (${reason}).`);
+      notifyTelegram("recovered", { reason, mode: "demo", venues: venueRef.current }, { minGapMs: 8000 });
+      return true;
+    } catch {
+      // still silent in demo, but don’t claim recovered
+      return false;
+    } finally {
+      recoveringRef.current = false;
+    }
+  }
+
+  /* --------------------------- Start button --------------------------- */
+  const stopAuto = () => {
     if (timer.current) {
       clearInterval(timer.current);
       timer.current = null;
-      notifyTelegram("stopped", { reason }, { minGapMs: 2000 });
+      notifyTelegram("stopped", { reason: "manual" }, { minGapMs: 2000 });
     }
     stopProgressCycle();
   };
-  useEffect(() => () => stopAuto("unmount"), []);
+  useEffect(() => () => stopAuto(), []);
 
-  const clearSessions = () => {
+  const clearAllSessions = () => {
+    stopAuto();
     setDexSess(null);
     setCexSess(null);
     setStocksSess(null);
   };
 
-  const hardResetRunStats = () => {
+  const handleStart = async () => {
+    setBusy(true);
+    setFatalError("");
+    setStatusNote("");
     setSimPnL(0);
     setXp(0);
     setStreak(0);
     setCoins(0);
-  };
 
-  const handleStart = async ({ silent = false } = {}) => {
-    const t = nextOpToken();
-    if (!silent) {
-      setBusy(true);
-      setError("");
-    }
-    setStatus((s) => (silent ? { ...s } : { level: "idle", message: "" }));
-
-    hardResetRunStats();
-
-    // If running, stop auto and clear sessions before starting fresh
-    if (isRunning) {
-      stopAuto("restart");
-      clearSessions();
-    }
+    if (isRunning) clearAllSessions();
 
     // Gate Live for ANY crypto venue
-    const usingDemoEff = modeRef.current === "demo";
-    if (!usingDemoEff && includesCrypto(venue) && !isLiveEligible) {
-      if (!silent) {
-        setBusy(false);
-        setShowUpgrade(true);
-      }
+    if (!usingDemo && includesCrypto(venue) && !isLiveEligible) {
+      setBusy(false);
+      setShowUpgrade(true);
       return;
     }
 
     try {
       let started = [];
+
       if (venue === "bundle") {
         const [d1, d2, s1] = await Promise.all([
-          startOne("dex", { silent }),
-          startOne("cex", { silent }),
-          startOne("stocks", { silent }),
+          startOne("dex"),
+          startOne("cex"),
+          startOne("stocks"),
         ]);
-        if (!isLatest(t)) return;
         setDexSess(d1);
         setCexSess(d2);
         setStocksSess(s1);
         started = ["dex", "cex", "stocks"];
       } else if (venue === "both") {
-        const [d1, d2] = await Promise.all([startOne("dex", { silent }), startOne("cex", { silent })]);
-        if (!isLatest(t)) return;
+        const [d1, d2] = await Promise.all([startOne("dex"), startOne("cex")]);
         setDexSess(d1);
         setCexSess(d2);
         setStocksSess(null);
         started = ["dex", "cex"];
       } else if (venue === "dex") {
-        const d = await startOne("dex", { silent });
-        if (!isLatest(t)) return;
+        const d = await startOne("dex");
         setDexSess(d);
         setCexSess(null);
         setStocksSess(null);
         started = ["dex"];
       } else if (venue === "cex") {
-        const c = await startOne("cex", { silent });
-        if (!isLatest(t)) return;
+        const c = await startOne("cex");
         setCexSess(c);
         setDexSess(null);
         setStocksSess(null);
         started = ["cex"];
       } else if (venue === "stocks") {
-        const s = await startOne("stocks", { silent });
-        if (!isLatest(t)) return;
+        const s = await startOne("stocks");
         setStocksSess(s);
         setDexSess(null);
         setCexSess(null);
         started = ["stocks"];
       }
 
-      if (!silent) setShowAutoHint(true);
+      setShowAutoHint(true);
 
       notifyTelegram("started", {
-        mode: modeRef.current === "demo" ? "DEMO" : "LIVE",
+        mode: usingDemo ? "DEMO" : "LIVE",
         venues: started.join("+"),
         symbols: parseSymbols(),
         stockSymbols: stockList,
@@ -880,28 +1027,32 @@ export default function TradeDemo({
         params,
         startBalance,
       });
-
-      if (!silent) setStatus({ level: "info", message: "Sessions started." });
     } catch (e) {
-      if (!silent) {
-        setError(`Could not start (${modeRef.current === "demo" ? "DEMO" : "LIVE"}). Error: ${String(e?.message || e)}`);
-      } else {
-        setStatus({ level: "warn", message: "Reconnecting…" });
+      // DEMO: try silent recovery once by restarting immediately, otherwise show a concise message.
+      if (runModeRef.current === "demo") {
+        const recovered = await recoverDemoConnection("start");
+        if (recovered) {
+          setBusy(false);
+          return;
+        }
       }
-      notifyTelegram("error", { where: "handleStart", message: String(e?.message || e) }, { minGapMs: 5000 });
+      setFatalError(
+        `Could not start (${usingDemo ? "DEMO" : "LIVE"}). ${String(e?.message || e)}`
+      );
+      notifyTelegram("error", { where: "handleStart", message: String(e?.message || e) }, { minGapMs: 7000 });
     } finally {
-      if (!silent) setBusy(false);
+      setBusy(false);
     }
   };
 
+  /* ---------------------------- Reconfigure ---------------------------- */
   async function reconfigure(kind, sess) {
-    const runModeEff = modeRef.current;
-    const usingDemoEff = runModeEff === "demo";
-    const apiBaseEff = (usingDemoEff ? demoApi : liveApi) || apiBaseRef.current;
+    // only run if there is a session and we're still in the same mode
+    const usingDemoNow = runModeRef.current === "demo";
 
     if (kind === "stocks") {
       if (!sess?.remote || !sess?.base) return;
-      const configPath = runModeEff === "live" ? "/stocks/live/config" : "/stocks/demo/config";
+      const configPath = runModeRef.current === "live" ? "/stocks/live/config" : "/stocks/demo/config";
       try {
         await postJson(
           `${sess.base}${configPath}`,
@@ -917,130 +1068,78 @@ export default function TradeDemo({
           { timeoutMs: 8000 }
         );
         notifyTelegram("reconfigured", { mode: "stocks", strategy, params, symbols: stockList }, { minGapMs: 8000 });
-      } catch (e) {
-        notifyTelegram("error", { where: "reconfigure:stocks", message: String(e?.message || e) }, { minGapMs: 5000 });
+      } catch {
+        // silent
       }
       return;
     }
 
-    const configPath = usingDemoEff ? "/demo/config" : "/live/config";
-    const idKey = usingDemoEff ? "demoId" : "liveId";
+    const paths = buildCryptoPaths(usingDemoNow);
+    const variants = buildCryptoConfigVariants(kind, sess);
+
     try {
-      const body = buildCryptoConfigBody(kind, sess, idKey);
-      await postJson(`${apiBaseEff}${configPath}`, body, { timeoutMs: 8000 });
+      await tryPostAny(apiBaseRef.current, paths.config, variants, { timeoutMs: 9000 });
       notifyTelegram("reconfigured", { mode: kind, strategy, params, chain, symbols: parseSymbols() }, { minGapMs: 8000 });
     } catch (e) {
-      notifyTelegram("error", { where: "reconfigure", message: String(e?.message || e) }, { minGapMs: 5000 });
+      // DEMO: silent attempt to recover session if config indicates unknown session
+      if (usingDemoNow) {
+        const recovered = await recoverDemoConnection("config");
+        if (recovered) return;
+      }
+      // Live: show as fatal
+      if (!usingDemoNow) setFatalError(`Config failed (${kind.toUpperCase()}): ${String(e?.message || e)}`);
+      notifyTelegram("error", { where: "reconfigure", message: String(e?.message || e) }, { minGapMs: 8000 });
     }
   }
 
   useEffect(() => {
-    // only reconfigure if running; reconfigure should always use latest mode/api
     if (dexSess) reconfigure("dex", dexSess);
     if (cexSess) reconfigure("cex", cexSess);
     if (stocksSess) reconfigure("stocks", stocksSess);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strategy, params, chain, symbols, stockSymbols]);
-
-  /* ------------------------------ Silent demo auto-recovery ----------------------------- */
-  const recoverRef = useRef({
-    failCount: 0,
-    lastFailAt: 0,
-    inFlight: false,
-    lastRecoveryAt: 0,
-  });
-
-  const scheduleBackoffMs = (n) => {
-    // 1s, 2s, 4s, 8s ... capped at 20s
-    const base = Math.min(20_000, 1000 * Math.pow(2, Math.max(0, n - 1)));
-    // small jitter
-    const jitter = Math.floor(Math.random() * 250);
-    return base + jitter;
-  };
-
-  async function attemptRecoverySilently(reason = "tick_failed") {
-    if (recoverRef.current.inFlight) return;
-
-    const now = Date.now();
-    const gap = now - (recoverRef.current.lastRecoveryAt || 0);
-    if (gap < 1000) return; // avoid thrash
-
-    recoverRef.current.inFlight = true;
-    recoverRef.current.lastRecoveryAt = now;
-
-    // Only “silent auto-recovery” in DEMO. Live should not silently restart real sessions.
-    if (modeRef.current !== "demo") {
-      setStatus({ level: "warn", message: "Tick failed. Check connectivity." });
-      recoverRef.current.inFlight = false;
-      return;
-    }
-
-    setStatus({ level: "warn", message: "Reconnecting demo…" });
-
-    try {
-      stopAuto("auto_recover");
-      clearSessions();
-
-      // Rebuild from latest desired config (already in state)
-      await handleStart({ silent: true });
-
-      // If user had auto-run on, bring it back:
-      // (We can infer auto-run if it was running previously by checking timer before stopAuto.
-      // Here we simply keep it easy: if they click Auto run again, it resumes.)
-      recoverRef.current.failCount = 0;
-      setStatus({ level: "info", message: "Recovered demo connection." });
-      notifyTelegram("recovered", { mode: "DEMO", reason }, { minGapMs: 8000 });
-    } catch {
-      // handleStart(silent) already set status
-    } finally {
-      recoverRef.current.inFlight = false;
-    }
-  }
+  }, [strategy, params, chain, symbols, stockSymbols, runMode]);
 
   /* ------------------------------ Ticking ----------------------------- */
-  async function tickOne(sess, setSess) {
-    const runModeEff = modeRef.current;
-    const usingDemoEff = runModeEff === "demo";
-    const apiBaseEff = (usingDemoEff ? demoApi : liveApi) || apiBaseRef.current;
-    const tickPath = usingDemoEff ? "/demo/tick" : "/live/tick";
-    const idKey = usingDemoEff ? "demoId" : "liveId";
+  async function tickCryptoOnce(sess, setSess) {
+    const usingDemoNow = runModeRef.current === "demo";
+    const paths = buildCryptoPaths(usingDemoNow);
 
-    const data = await postJson(
-      `${apiBaseEff}${tickPath}`,
-      { [idKey]: sess[idKey] },
-      { timeoutMs: 8000 }
-    );
+    // tick expects an id; send multiple keys
+    const id = usingDemoNow ? sess?.demoId : sess?.liveId;
+    const body = usingDemoNow
+      ? { demoId: id, demo_id: id, sessionId: id, session_id: id }
+      : { liveId: id, live_id: id, sessionId: id, session_id: id };
+
+    const res = await tryPostAny(apiBaseRef.current, paths.tick, [body], { timeoutMs: 9000 });
+    const data = res?.data || {};
     if (data?.error) throw new Error(data.error);
+
     setSess((prev) => ({ ...prev, ...data, __venue: prev?.__venue }));
     return data;
   }
 
-  async function handleTick({ fromAuto = false } = {}) {
-    // prevent overlapping ticks (auto-run + manual)
-    if (handleTick._inflight) return;
-    handleTick._inflight = true;
-
+  async function handleTick() {
     try {
       let delta = 0;
 
-      if (dexSess) {
-        const d = await tickOne(dexSess, setDexSess);
+      if (dexRef.current) {
+        const d = await tickCryptoOnce(dexRef.current, setDexSess);
         delta += Number(d?.realizedPnLDelta || 0);
       }
-      if (cexSess) {
-        const d = await tickOne(cexSess, setCexSess);
+      if (cexRef.current) {
+        const d = await tickCryptoOnce(cexRef.current, setCexSess);
         delta += Number(d?.realizedPnLDelta || 0);
       }
-      if (stocksSess) {
-        if (stocksSess.remote && stocksSess.base) {
-          const runModeEff = modeRef.current;
-          const tickPath = runModeEff === "live" ? "/stocks/live/tick" : "/stocks/demo/tick";
+
+      if (stocksRef.current) {
+        const s = stocksRef.current;
+        if (s.remote && s.base) {
+          const tickPath = runModeRef.current === "live" ? "/stocks/live/tick" : "/stocks/demo/tick";
           const data = await postJson(
-            `${stocksSess.base}${tickPath}`,
-            { stocksId: stocksSess.stocksId },
+            `${s.base}${tickPath}`,
+            { stocksId: s.stocksId },
             { timeoutMs: 8000 }
           );
-          if (data?.error) throw new Error(data.error);
           setStocksSess((prev) => ({ ...prev, ...data, __venue: "stocks", remote: true }));
           delta += Number(data?.realizedPnLDelta || 0);
         } else {
@@ -1048,10 +1147,6 @@ export default function TradeDemo({
           delta += localDelta;
         }
       }
-
-      // success path: clear “reconnecting” status
-      recoverRef.current.failCount = 0;
-      setStatus((s) => (s.level === "warn" || s.level === "error" ? { level: "idle", message: "" } : s));
 
       if (delta > 0) {
         setXp((x) => x + Math.round(delta));
@@ -1062,91 +1157,22 @@ export default function TradeDemo({
       }
 
       startProgressCycle(4000);
-      notifyTelegram("tick", { pnlDelta: delta }, { minGapMs: 10_000 });
+      notifyTelegram("tick", { pnlDelta: delta }, { minGapMs: 12_000 });
     } catch (e) {
-      // No big red bar for auto-run/ticks.
-      const msg = String(e?.message || e || "Tick failed");
-
-      recoverRef.current.failCount += 1;
-      recoverRef.current.lastFailAt = Date.now();
-
-      // If user manually ticked, show a gentle status; don’t scream red
-      setStatus({
-        level: "warn",
-        message: modeRef.current === "demo" ? "Tick failed. Reconnecting…" : "Tick failed. Check server.",
-      });
-
-      notifyTelegram("error", { where: "handleTick", message: msg }, { minGapMs: 5000 });
-
-      // Auto-recover only in DEMO (silent)
-      if (modeRef.current === "demo") {
-        const waitMs = scheduleBackoffMs(recoverRef.current.failCount);
-        // pause auto interval temporarily but keep UI calm
-        if (timer.current) {
-          clearInterval(timer.current);
-          timer.current = null;
-        }
-        stopProgressCycle();
-        setTimeout(() => attemptRecoverySilently("tick_failed"), waitMs);
-      } else if (fromAuto) {
-        // In LIVE auto mode, stop auto-run after repeated failures
-        if (recoverRef.current.failCount >= 3) {
-          stopAuto("live_errors");
-          setStatus({ level: "error", message: "Auto-run stopped (live). Fix server/keys then resume." });
-        }
-      }
-    } finally {
-      handleTick._inflight = false;
-    }
-  }
-
-  /* ---------------------------- DEMO/LIVE switching (bulletproof) ---------------------------- */
-  const switchingRef = useRef(false);
-
-  const safeSetRunMode = async (nextMode) => {
-    const nextIsLive = nextMode === "live";
-    const nextIsDemo = nextMode === "demo";
-
-    if (switchingRef.current) return;
-    switchingRef.current = true;
-
-    try {
-      // If switching to LIVE and crypto is selected, enforce eligibility up front
-      if (nextIsLive && includesCrypto(venue) && !isLiveEligible) {
-        setShowUpgrade(true);
+      // DEMO: auto-recover silently, no red bar.
+      if (runModeRef.current === "demo") {
+        const recovered = await recoverDemoConnection("tick");
+        if (recovered) return;
+        // if we can’t recover, still don’t spam: show small status only
+        setStatus("Demo connection hiccup. Retrying…", 3000);
         return;
       }
 
-      // Stop everything cleanly
-      const wasAuto = !!timer.current;
-      stopAuto("mode_switch");
-      clearSessions();
-      hardResetRunStats();
-      setError(""); // clear manual errors on switch
-      setStatus({ level: "info", message: nextIsDemo ? "Switched to DEMO." : "Switched to LIVE." });
-
-      setRunMode(nextMode);
-
-      // If user was running before switch, we “auto-restart” in the new mode
-      if (wasAuto || isRunning) {
-        // small delay to allow state to settle
-        setTimeout(async () => {
-          await handleStart({ silent: true });
-          // bring auto-run back if it was on
-          if (wasAuto) {
-            timer.current = setInterval(() => {
-              handleTick({ fromAuto: true });
-              startProgressCycle(4000);
-            }, 4000);
-            startProgressCycle(4000);
-            setStatus({ level: "info", message: "Auto-run resumed." });
-          }
-        }, 50);
-      }
-    } finally {
-      switchingRef.current = false;
+      // LIVE: show fatal so user knows real money path needs attention.
+      setFatalError(String(e?.message || "Tick failed"));
+      notifyTelegram("error", { where: "handleTick", message: String(e?.message || e) }, { minGapMs: 7000 });
     }
-  };
+  }
 
   /* ---------------------------- Aggregation --------------------------- */
   const combined = useMemo(() => {
@@ -1177,7 +1203,7 @@ export default function TradeDemo({
     return { equity, balance, realizedPnL, wins, losses, history };
   }, [dexSess, cexSess, stocksSess, startBalance]);
 
-  // Broadcast snapshot → TradingOverview listens (equity curve etc.)
+  // Broadcast snapshot → TradingOverview listens
   useEffect(() => {
     if (!combined) return;
     window.dispatchEvent(
@@ -1284,18 +1310,16 @@ export default function TradeDemo({
   /* --------------------------- Self-Check panel --------------------------- */
   const runSelfCheck = async () => {
     try {
-      const base = apiBaseRef.current;
-      const url1 = `${base}/health`;
+      const url1 = `${apiBaseRef.current}/health`;
       try {
-        const j = await (await fetch(url1, { cache: "no-store" })).json();
+        const j = await getJson(url1, { timeoutMs: 6000 });
         setCheck({ ok: !!j.ok, message: j.ok ? "Healthy" : "Unhealthy" });
         return;
       } catch {
         // try healthz
       }
-
-      const url2 = `${base}/healthz`;
-      const j2 = await (await fetch(url2, { cache: "no-store" })).json();
+      const url2 = `${apiBaseRef.current}/healthz`;
+      const j2 = await getJson(url2, { timeoutMs: 6000 });
       setCheck({ ok: !!j2.ok, message: j2.ok ? "Healthy" : "Unhealthy" });
     } catch (e) {
       setCheck({ ok: false, message: `Health check failed: ${String(e?.message || e)}` });
@@ -1304,8 +1328,7 @@ export default function TradeDemo({
 
   /* ----------------------------- Restart ----------------------------- */
   function restartDemo() {
-    stopAuto("restart");
-    clearSessions();
+    clearAllSessions();
     setSimPnL(0);
     setXp(0);
     setStreak(0);
@@ -1315,12 +1338,38 @@ export default function TradeDemo({
     setChain("ethereum");
     setSymbols(defaultSymbols || "BTC,ETH");
     setStockSymbols("AAPL,MSFT,NVDA,AMZN,TSLA");
-    setError("");
-    setStatus({ level: "idle", message: "" });
+    setFatalError("");
+    setStatusNote("");
     sim.reset(stockList);
     notifyTelegram("restart", { reason: "user" }, { minGapMs: 2000 });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  /* -------------------- Bulletproof DEMO/LIVE switching -------------------- */
+  const safeSetRunMode = (nextMode) => {
+    const next = nextMode === "live" ? "live" : "demo";
+
+    // If user tries Live without eligibility (and venue includes crypto), block
+    const nextIsLive = next === "live";
+    if (nextIsLive && includesCrypto(venueRef.current) && !isLiveEligible) {
+      setShowUpgrade(true);
+      // snap back to demo (no state change)
+      return;
+    }
+
+    // Any mode switch while running: stop and clear sessions
+    if (timer.current) stopAuto();
+    if (dexRef.current || cexRef.current || stocksRef.current) {
+      setDexSess(null);
+      setCexSess(null);
+      setStocksSess(null);
+      setShowAutoHint(false);
+      setStatus(nextIsLive ? "Switched to LIVE. Start again." : "Switched to DEMO. Start again.");
+    }
+
+    setFatalError("");
+    setRunMode(next);
+  };
 
   /* -------------------------------- UI -------------------------------- */
   return (
@@ -1379,13 +1428,13 @@ export default function TradeDemo({
                       After you click <b>Start</b>, click <b>Auto run</b> to stream ticks.
                     </li>
                     <li>
-                      Backend reachable: <code>{apiBaseRef.current}/health</code> (or <code>{apiBaseRef.current}/healthz</code>).
+                      Backend reachable: <code>{apiBase}/health</code> (or <code>{apiBase}/healthz</code>).
                     </li>
                     <li>
-                      If config returns 400, your backend schema changed—this UI sends compatibility fields (symbols/pairs/tickers, params/config).
+                      If config returns 400, your backend schema changed — this UI now retries multiple compatible payloads and endpoints.
                     </li>
                     <li>
-                      DEMO will auto-recover quietly if the server blips (no red bar).
+                      Demo will auto-recover connection silently if the session gets reset server-side.
                     </li>
                   </ul>
                 </div>
@@ -1394,20 +1443,7 @@ export default function TradeDemo({
 
             <h1 className="text-xl sm:text-2xl font-black">Trade {usingDemo ? "Demo" : "Live"}</h1>
             {haveAny ? <Badge color="emerald" text="RUNNING" /> : <Badge color="slate" text="READY" />}
-            {status?.level !== "idle" && status?.message ? (
-              <span
-                className={`ml-1 text-[11px] px-2 py-1 rounded-full border ${
-                  status.level === "info"
-                    ? "border-sky-400 bg-sky-900/30 text-sky-100"
-                    : status.level === "warn"
-                    ? "border-amber-400 bg-amber-900/30 text-amber-100"
-                    : "border-rose-400 bg-rose-900/30 text-rose-100"
-                }`}
-                title="Auto status (does not block UI)"
-              >
-                {status.message}
-              </span>
-            ) : null}
+            {!!statusNote && <Badge color="sky" text={statusNote} />}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -1436,19 +1472,15 @@ export default function TradeDemo({
           />
         </div>
 
-        {/* Manual errors only (no more red “auto tick” bar) */}
-        {error && (
-          <div className="mt-3 rounded-lg border border-amber-500/50 bg-amber-900/25 px-3 py-2 text-xs sm:text-sm text-amber-100">
-            {error} — Using{" "}
-            <code className="text-amber-100/90">
-              {venue === "stocks"
-                ? runMode === "live"
-                  ? stockLiveApi || "local-sim"
-                  : stockDemoApi || "local-sim"
-                : apiBase}
-            </code>
-            .{" "}
-            <button onClick={runSelfCheck} className="underline font-semibold" title="Call /health on your server">
+        {/* Only show fatal errors (no notify spam, no demo recovery spam) */}
+        {fatalError && (
+          <div className="mt-3 rounded-lg border border-rose-500/80 bg-rose-600 px-3 py-2 text-xs sm:text-sm">
+            {fatalError}{" "}
+            <button
+              onClick={runSelfCheck}
+              className="underline font-semibold"
+              title="Call /health on your server"
+            >
               Run Self-Check
             </button>
             {check.ok === false && <span className="ml-2">• {check.message}</span>}
@@ -1768,7 +1800,7 @@ export default function TradeDemo({
 
             <div className="flex flex-col sm:flex-row gap-2">
               <button
-                onClick={() => handleStart({ silent: false })}
+                onClick={handleStart}
                 disabled={busy}
                 className="w-full sm:flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 font-semibold"
               >
@@ -1813,7 +1845,7 @@ export default function TradeDemo({
               <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap gap-2">
                 <Button
                   onClick={() => {
-                    handleTick({ fromAuto: false });
+                    handleTick();
                     startProgressCycle(4000);
                     setShowAutoHint(false);
                   }}
@@ -1823,26 +1855,20 @@ export default function TradeDemo({
                 </Button>
                 <Button
                   onClick={() => {
+                    // prevent stacking intervals
                     if (timer.current) clearInterval(timer.current);
                     timer.current = setInterval(() => {
-                      handleTick({ fromAuto: true });
+                      handleTick();
                       startProgressCycle(4000);
                     }, 4000);
                     startProgressCycle(4000);
                     setShowAutoHint(false);
-                    setStatus({ level: "info", message: "Auto-run active." });
                   }}
                   variant="solid"
                 >
                   Auto run
                 </Button>
-                <Button
-                  onClick={() => {
-                    stopAuto("manual_stop");
-                    setStatus({ level: "idle", message: "" });
-                  }}
-                  variant="ghost"
-                >
+                <Button onClick={stopAuto} variant="ghost">
                   Stop
                 </Button>
               </div>
@@ -2088,7 +2114,7 @@ function FieldCard({ title, help, children, className = "" }) {
   return (
     <div className={`rounded-xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4 ${className}`}>
       <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-semibold text.white">{title}</div>
+        <div className="text-sm font-semibold text-white">{title}</div>
         <HoverInfo label="?" description={help} />
       </div>
       <div className="mt-2">{children}</div>
@@ -2124,7 +2150,6 @@ function HoverInfo({ label, description }) {
     </div>
   );
 }
-
 function ModeToggle({ runMode, setRunMode, isLiveEligible, onUpgrade, venue }) {
   const isLive = runMode === "live";
   return (
@@ -2145,6 +2170,7 @@ function ModeToggle({ runMode, setRunMode, isLiveEligible, onUpgrade, venue }) {
             const nextIsLive = e.target.checked;
             if (nextIsLive && includesCrypto(venue) && !isLiveEligible) {
               onUpgrade?.();
+              // keep current (don’t flip)
               return;
             }
             setRunMode(nextIsLive ? "live" : "demo");
