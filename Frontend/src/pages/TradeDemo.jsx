@@ -69,7 +69,7 @@ const LIVE_API_DEFAULT = resolveCryptoBase(
 // Prefer routing /notify through the same api domain:
 const TG_NOTIFY_URL_DEFAULT =
   getEnvVar("VITE_TG_NOTIFY_URL", "REACT_APP_TG_NOTIFY_URL") ||
-  "https://api.imali-defi.com/notify";
+  "https://api.imali-defi.com/api/notify";
 
 const STOCK_DEMO_API_DEFAULT =
   getEnvVar("VITE_STOCK_DEMO_API", "REACT_APP_STOCK_DEMO_API") || "";
@@ -1301,7 +1301,7 @@ export default function TradeDemo({
                     </li>
                     <li>
                       Backend reachable:{" "}
-                      <code>{apiBase}/healthz</code>.
+                      <code>{apiBase}/health</code>.
                     </li>
                     <li>
                       Use Netlify env like{" "}
