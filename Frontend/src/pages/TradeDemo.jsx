@@ -48,15 +48,34 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
   return normalize(upgradeIfNeeded(fallbackFullUrl || ""));
 }
 
-/* ✅ defaults (prefer HTTPS domain) */
-const DEMO_API_DEFAULT = resolveCryptoBase(
-  getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
-  "https://api.imali-defi.com/api"
+/**
+ * ✅ Bulletproof: ensure the crypto base ALWAYS ends with /api
+ * so your UI calls /health and /demo/start correctly.
+ *
+ * Examples:
+ *  - https://api.imali-defi.com      -> https://api.imali-defi.com/api
+ *  - https://api.imali-defi.com/     -> https://api.imali-defi.com/api
+ *  - https://api.imali-defi.com/api  -> https://api.imali-defi.com/api
+ */
+function ensureApiSuffix(base) {
+  const b = String(base || "").replace(/\/+$/, "");
+  if (!b) return b;
+  return /\/api$/i.test(b) ? b : `${b}/api`;
+}
+
+/* ✅ defaults (prefer HTTPS domain; we force /api) */
+const DEMO_API_DEFAULT = ensureApiSuffix(
+  resolveCryptoBase(
+    getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
+    "https://api.imali-defi.com"
+  )
 );
 
-const LIVE_API_DEFAULT = resolveCryptoBase(
-  getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
-  "https://api.imali-defi.com/api"
+const LIVE_API_DEFAULT = ensureApiSuffix(
+  resolveCryptoBase(
+    getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
+    "https://api.imali-defi.com"
+  )
 );
 
 // Telegram notify base (optional). We will treat notify as best-effort (never blocks UI).
@@ -125,13 +144,23 @@ async function postJson(url, body, { timeoutMs = 12000, headers = {} } = {}) {
   }
 }
 
+/**
+ * ✅ More informative GET JSON:
+ * - reads text first
+ * - if non-JSON, throws with status + snippet (helps identify nginx/html/proxy)
+ */
 async function getJson(url, { timeoutMs = 8000 } = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const r = await fetch(url, { cache: "no-store", signal: ctrl.signal });
-    const j = await r.json();
-    return j;
+    const text = await r.text();
+    try {
+      return text ? JSON.parse(text) : null;
+    } catch {
+      const snip = String(text || "").slice(0, 180);
+      throw new Error(`Non-JSON response (${r.status}) from ${url}: ${snip}`);
+    }
   } finally {
     clearTimeout(t);
   }
@@ -351,7 +380,6 @@ export default function TradeDemo({
 }) {
   /* ----------------------- Mode & endpoints ----------------------- */
   const [runMode, setRunMode] = useState(() => {
-    // bulletproof: respect stored mode but never allow live if not eligible
     const saved = (localStorage.getItem("IMALI_RUNMODE") || "").toLowerCase();
     const wanted = saved === "live" ? "live" : initialRunMode;
     return wanted === "live" ? "live" : "demo";
@@ -369,7 +397,13 @@ export default function TradeDemo({
   }, [venue]);
 
   const usingDemo = runMode === "demo";
-  const apiBase = useMemo(() => (usingDemo ? demoApi : liveApi), [usingDemo, demoApi, liveApi]);
+
+  // ✅ enforce /api no matter what got passed in props/env
+  const apiBase = useMemo(
+    () => ensureApiSuffix(usingDemo ? demoApi : liveApi),
+    [usingDemo, demoApi, liveApi]
+  );
+
   const apiBaseRef = useRef(apiBase);
   useEffect(() => {
     apiBaseRef.current = apiBase;
@@ -487,11 +521,8 @@ export default function TradeDemo({
   // UI/gamification
   const [busy, setBusy] = useState(false);
 
-  // 🚫 no more “red bar spam” for recoverable issues:
-  // - keep one fatal error slot
-  // - keep one transient status slot (green/neutral)
   const [fatalError, setFatalError] = useState("");
-  const [statusNote, setStatusNote] = useState(""); // e.g. "Recovered demo connection."
+  const [statusNote, setStatusNote] = useState("");
   const statusTimerRef = useRef(null);
 
   const setStatus = (msg, ms = 3500) => {
@@ -509,10 +540,8 @@ export default function TradeDemo({
   const [showHints, setShowHints] = useState(false);
   const [showAutoHint, setShowAutoHint] = useState(false);
 
-  // Simulated take-profit PnL
   const [simPnL, setSimPnL] = useState(0);
 
-  // Self-check display
   const [check, setCheck] = useState({ ok: null, message: "" });
 
   // Tier/IMALI simulator (Net PnL)
@@ -557,35 +586,25 @@ export default function TradeDemo({
     const base = (TG_NOTIFY_URL_DEFAULT || "").replace(/\/$/, "");
     const cleanApi = String(baseUrl || "").replace(/\/$/, "");
 
-    // Treat TG_NOTIFY_URL_DEFAULT as base; try common endpoints.
     if (base) {
       list.push(`${base}/notify`);
       list.push(`${base}/api/notify`);
     }
 
     if (cleanApi) {
-      // If apiBase is https://host/api, try https://host/notify and https://host/api/notify (but avoid api/api)
       const noApi = cleanApi.replace(/\/api$/i, "");
       list.push(`${noApi}/notify`);
       list.push(`${cleanApi}/notify`);
-      // Only add /api/notify if cleanApi isn't already /api
       list.push(`${noApi}/api/notify`);
     }
 
-    // de-dupe and drop obvious /api/api/
     return Array.from(
-      new Set(
-        list
-          .filter(Boolean)
-          .map((u) => u.replace(/\/api\/api\//g, "/api/"))
-      )
+      new Set(list.filter(Boolean).map((u) => u.replace(/\/api\/api\//g, "/api/")))
     );
   }
 
   async function notifyTelegram(kind, payload = {}, { minGapMs = 0 } = {}) {
     if (minGapMs && !shouldSend(kind, minGapMs)) return;
-
-    // Best-effort: never throw, never set UI error.
     const candidates = buildNotifyCandidates(apiBaseRef.current);
 
     for (const url of candidates) {
@@ -692,7 +711,6 @@ export default function TradeDemo({
   /* --------------------------- Start/Config (bulletproof) --------------------------- */
   function normalizeStartResponse(obj) {
     const o = obj || {};
-    // backends might return demoId, demo_id, id, sessionId, etc.
     const demoId = o.demoId || o.demo_id || o.demoID || o.id || o.sessionId || o.session_id;
     const liveId = o.liveId || o.live_id || o.liveID || o.id || o.sessionId || o.session_id;
     return { ...o, demoId, liveId };
@@ -708,21 +726,17 @@ export default function TradeDemo({
       symbolsCsv: symCsv,
       pairs: symArr,
       tickers: symArr,
-      // “venue/mode” redundancy
       mode: kind,
       venue: kind,
       market: kind,
-      // strategy redundancy
       strategy,
       strategyKey: strategy,
       strategy_name: strategy,
-      // params redundancy
       params,
       config: { ...params },
       settings: { ...params },
     };
 
-    // include all possible id keys, because your screenshots show “unknown_demo_id”
     const ids = {
       demoId: sess?.demoId,
       demo_id: sess?.demoId || sess?.demo_id,
@@ -733,7 +747,6 @@ export default function TradeDemo({
       session_id: sess?.demoId || sess?.liveId || sess?.session_id,
     };
 
-    // Some servers expect config nested
     const nested = {
       ...ids,
       ...baseCommon,
@@ -744,7 +757,6 @@ export default function TradeDemo({
       },
     };
 
-    // Some servers expect top-level “name” or “bot”
     const withName = {
       ...ids,
       ...baseCommon,
@@ -752,7 +764,6 @@ export default function TradeDemo({
       bot: kind,
     };
 
-    // Some servers want symbols as string only
     const stringOnly = {
       ...ids,
       ...baseCommon,
@@ -765,7 +776,6 @@ export default function TradeDemo({
   }
 
   function buildCryptoPaths(usingDemoNow) {
-    // Try multiple common endpoints. First ones match your current backend.
     if (usingDemoNow) {
       return {
         start: ["/demo/start", "/demo/start-session", "/demo/begin"],
@@ -790,7 +800,6 @@ export default function TradeDemo({
           return { ok: true, data: d, url, body };
         } catch (e) {
           lastErr = e;
-          // If 404, move to next path quickly. If 400, try next body then next path.
           continue;
         }
       }
@@ -847,7 +856,6 @@ export default function TradeDemo({
             history: [],
           };
         } catch (e) {
-          // silent fallback (no red bar)
           setStatus("Stocks API unavailable — using local basket sim.");
         }
       }
@@ -868,7 +876,6 @@ export default function TradeDemo({
 
     const paths = buildCryptoPaths(usingDemoNow);
 
-    // START (try multiple start endpoints + payload variants)
     const startBodies = [
       { name: kind.toUpperCase(), startBalance, venue: kind, mode: kind },
       { bot: kind, startingBalance: startBalance, symbols: parseSymbols() },
@@ -879,7 +886,6 @@ export default function TradeDemo({
     const started = await tryPostAny(apiBaseRef.current, paths.start, startBodies, { timeoutMs: 9000 });
     const d = normalizeStartResponse(started.data);
 
-    // Identify which id key we should consider “primary”
     const idKey = usingDemoNow ? "demoId" : "liveId";
     const primaryId = d?.[idKey] || (usingDemoNow ? d?.demoId : d?.liveId);
     if (!primaryId) {
@@ -888,11 +894,9 @@ export default function TradeDemo({
       throw err;
     }
 
-    // CONFIG (try multiple config endpoints + multiple body variants)
     const variants = buildCryptoConfigVariants(kind, { ...d, [idKey]: primaryId });
     const configRes = await tryPostAny(apiBaseRef.current, paths.config, variants, { timeoutMs: 9000 });
 
-    // Some servers return {ok:true}; some return config snapshot.
     const ok = configRes?.data?.ok;
     if (ok === false) {
       throw new Error(configRes?.data?.error || "Config rejected");
@@ -906,12 +910,10 @@ export default function TradeDemo({
   const lastRecoveryAtRef = useRef(0);
 
   async function recoverDemoConnection(reason = "connection") {
-    // Only for DEMO. Live should surface real failures.
     if (runModeRef.current !== "demo") return false;
     if (recoveringRef.current) return false;
 
     const now = Date.now();
-    // avoid loops
     if (now - lastRecoveryAtRef.current < 7000) return false;
 
     recoveringRef.current = true;
@@ -934,7 +936,6 @@ export default function TradeDemo({
       notifyTelegram("recovered", { reason, mode: "demo", venues: venueRef.current }, { minGapMs: 8000 });
       return true;
     } catch {
-      // still silent in demo, but don’t claim recovered
       return false;
     } finally {
       recoveringRef.current = false;
@@ -970,7 +971,6 @@ export default function TradeDemo({
 
     if (isRunning) clearAllSessions();
 
-    // Gate Live for ANY crypto venue
     if (!usingDemo && includesCrypto(venue) && !isLiveEligible) {
       setBusy(false);
       setShowUpgrade(true);
@@ -1028,7 +1028,6 @@ export default function TradeDemo({
         startBalance,
       });
     } catch (e) {
-      // DEMO: try silent recovery once by restarting immediately, otherwise show a concise message.
       if (runModeRef.current === "demo") {
         const recovered = await recoverDemoConnection("start");
         if (recovered) {
@@ -1047,7 +1046,6 @@ export default function TradeDemo({
 
   /* ---------------------------- Reconfigure ---------------------------- */
   async function reconfigure(kind, sess) {
-    // only run if there is a session and we're still in the same mode
     const usingDemoNow = runModeRef.current === "demo";
 
     if (kind === "stocks") {
@@ -1081,12 +1079,10 @@ export default function TradeDemo({
       await tryPostAny(apiBaseRef.current, paths.config, variants, { timeoutMs: 9000 });
       notifyTelegram("reconfigured", { mode: kind, strategy, params, chain, symbols: parseSymbols() }, { minGapMs: 8000 });
     } catch (e) {
-      // DEMO: silent attempt to recover session if config indicates unknown session
       if (usingDemoNow) {
         const recovered = await recoverDemoConnection("config");
         if (recovered) return;
       }
-      // Live: show as fatal
       if (!usingDemoNow) setFatalError(`Config failed (${kind.toUpperCase()}): ${String(e?.message || e)}`);
       notifyTelegram("error", { where: "reconfigure", message: String(e?.message || e) }, { minGapMs: 8000 });
     }
@@ -1104,7 +1100,6 @@ export default function TradeDemo({
     const usingDemoNow = runModeRef.current === "demo";
     const paths = buildCryptoPaths(usingDemoNow);
 
-    // tick expects an id; send multiple keys
     const id = usingDemoNow ? sess?.demoId : sess?.liveId;
     const body = usingDemoNow
       ? { demoId: id, demo_id: id, sessionId: id, session_id: id }
@@ -1159,16 +1154,13 @@ export default function TradeDemo({
       startProgressCycle(4000);
       notifyTelegram("tick", { pnlDelta: delta }, { minGapMs: 12_000 });
     } catch (e) {
-      // DEMO: auto-recover silently, no red bar.
       if (runModeRef.current === "demo") {
         const recovered = await recoverDemoConnection("tick");
         if (recovered) return;
-        // if we can’t recover, still don’t spam: show small status only
         setStatus("Demo connection hiccup. Retrying…", 3000);
         return;
       }
 
-      // LIVE: show fatal so user knows real money path needs attention.
       setFatalError(String(e?.message || "Tick failed"));
       notifyTelegram("error", { where: "handleTick", message: String(e?.message || e) }, { minGapMs: 7000 });
     }
@@ -1223,69 +1215,6 @@ export default function TradeDemo({
     );
   }, [combined, haveAny, runMode, usingDemo, simPnL]);
 
-  /* ------------------------- Honeypot & TP markers -------------------- */
-  useEffect(() => {
-    const hist = combined?.history || [];
-    if (!hist.length) return;
-    const hp = [];
-    for (let i = 1; i < hist.length; i++) {
-      const h = hist[i], prev = hist[i - 1];
-      if (h.honeypot || h.flagged) hp.push(h);
-      else if ((Number(h.pnl || 0) - Number(prev.pnl || 0)) < -Math.max(5, startBalance * 0.01))
-        hp.push(h);
-    }
-    const payload = hp.slice(-24).map((e) => ({
-      time: Math.floor((e.t || Date.now()) / 1000),
-      venue: e.venue,
-      kind: "honeypot",
-      text: "Honeypot risk",
-    }));
-    window.dispatchEvent(new CustomEvent("trade-demo:markers", { detail: { hp: payload } }));
-  }, [combined, startBalance]);
-
-  /* ------------------ Automatic simulated profit taking --------------- */
-  const lastEqRef = useRef(null);
-  const lastTpRef = useRef(0);
-  useEffect(() => {
-    if (!combined?.equity) return;
-    const now = Date.now();
-    const prev = lastEqRef.current ?? combined.equity;
-    const rise = combined.equity - prev;
-    lastEqRef.current = combined.equity;
-
-    const MIN_GAP_MS = 12_000;
-    const RISE_THRESHOLD = Math.max(6, startBalance * 0.002);
-    if (rise > RISE_THRESHOLD && now - lastTpRef.current > MIN_GAP_MS) {
-      const dCount = dexSess?.history?.length || 0;
-      const cCount = cexSess?.history?.length || 0;
-      const sCount = stocksSess?.history?.length || 0;
-      const total = Math.max(1, dCount + cCount + sCount);
-
-      const gain = Math.round(Math.max(5, rise * 0.35));
-      const dGain = Math.round((gain * dCount) / total);
-      const cGain = Math.round((gain * cCount) / total);
-      const sGain = gain - dGain - cGain;
-
-      const bump = (venueTag, g) => {
-        if (g <= 0) return;
-        setSimPnL((v) => v + g);
-        setXp((x) => x + Math.max(1, Math.round(g / 5)));
-        window.dispatchEvent(
-          new CustomEvent("trade-demo:markers:tp", {
-            detail: { time: Math.floor(Date.now() / 1000), venue: venueTag, kind: "takeprofit", text: `TP +$${g}` },
-          })
-        );
-      };
-      bump("DEX", dGain);
-      bump("CEX", cGain);
-      bump("STOCKS", sGain);
-
-      setStreak((s) => s + 1);
-      setCoins((c) => c + Math.max(1, Math.round(gain / 10)));
-      lastTpRef.current = now;
-    }
-  }, [combined?.equity, dexSess, cexSess, stocksSess, startBalance]);
-
   /* --------------------------- Derived UI ---------------------------- */
   const gross = (combined ? Number(combined.realizedPnL) : 0) + simPnL;
   const takeRate = (applyNetToDisplay ? simulatedTier.takeRate : activeTier.takeRate) || 0;
@@ -1310,17 +1239,18 @@ export default function TradeDemo({
   /* --------------------------- Self-Check panel --------------------------- */
   const runSelfCheck = async () => {
     try {
+      // ✅ apiBase is now guaranteed to be .../api
       const url1 = `${apiBaseRef.current}/health`;
       try {
         const j = await getJson(url1, { timeoutMs: 6000 });
-        setCheck({ ok: !!j.ok, message: j.ok ? "Healthy" : "Unhealthy" });
+        setCheck({ ok: !!j?.ok, message: j?.ok ? "Healthy" : (j?.message || "Unhealthy") });
         return;
-      } catch {
-        // try healthz
+      } catch (e1) {
+        // try healthz next
       }
       const url2 = `${apiBaseRef.current}/healthz`;
       const j2 = await getJson(url2, { timeoutMs: 6000 });
-      setCheck({ ok: !!j2.ok, message: j2.ok ? "Healthy" : "Unhealthy" });
+      setCheck({ ok: !!j2?.ok, message: j2?.ok ? "Healthy" : (j2?.message || "Unhealthy") });
     } catch (e) {
       setCheck({ ok: false, message: `Health check failed: ${String(e?.message || e)}` });
     }
@@ -1328,10 +1258,18 @@ export default function TradeDemo({
 
   /* ----------------------------- Restart ----------------------------- */
   function restartDemo() {
-    clearAllSessions();
+    if (timer.current) {
+      clearInterval(timer.current);
+      timer.current = null;
+    }
+    stopProgressCycle();
+    setDexSess(null);
+    setCexSess(null);
+    setStocksSess(null);
     setSimPnL(0);
     setXp(0);
     setStreak(0);
+    setCoins(0);
     setStrategy("ai_weighted");
     setParams(strategyCatalog["ai_weighted"].defaults);
     setVenue(defaultVenue);
@@ -1340,6 +1278,7 @@ export default function TradeDemo({
     setStockSymbols("AAPL,MSFT,NVDA,AMZN,TSLA");
     setFatalError("");
     setStatusNote("");
+    setCheck({ ok: null, message: "" });
     sim.reset(stockList);
     notifyTelegram("restart", { reason: "user" }, { minGapMs: 2000 });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1348,17 +1287,19 @@ export default function TradeDemo({
   /* -------------------- Bulletproof DEMO/LIVE switching -------------------- */
   const safeSetRunMode = (nextMode) => {
     const next = nextMode === "live" ? "live" : "demo";
-
-    // If user tries Live without eligibility (and venue includes crypto), block
     const nextIsLive = next === "live";
+
     if (nextIsLive && includesCrypto(venueRef.current) && !isLiveEligible) {
       setShowUpgrade(true);
-      // snap back to demo (no state change)
       return;
     }
 
-    // Any mode switch while running: stop and clear sessions
-    if (timer.current) stopAuto();
+    if (timer.current) {
+      clearInterval(timer.current);
+      timer.current = null;
+    }
+    stopProgressCycle();
+
     if (dexRef.current || cexRef.current || stocksRef.current) {
       setDexSess(null);
       setCexSess(null);
@@ -1431,10 +1372,7 @@ export default function TradeDemo({
                       Backend reachable: <code>{apiBase}/health</code> (or <code>{apiBase}/healthz</code>).
                     </li>
                     <li>
-                      If config returns 400, your backend schema changed — this UI now retries multiple compatible payloads and endpoints.
-                    </li>
-                    <li>
-                      Demo will auto-recover connection silently if the session gets reset server-side.
+                      If self-check fails, your API base is wrong or the backend is down.
                     </li>
                   </ul>
                 </div>
@@ -1472,7 +1410,7 @@ export default function TradeDemo({
           />
         </div>
 
-        {/* Only show fatal errors (no notify spam, no demo recovery spam) */}
+        {/* Only show fatal errors */}
         {fatalError && (
           <div className="mt-3 rounded-lg border border-rose-500/80 bg-rose-600 px-3 py-2 text-xs sm:text-sm">
             {fatalError}{" "}
@@ -1710,34 +1648,6 @@ export default function TradeDemo({
                 )}
               </FieldCard>
 
-              {(venue === "stocks" || venue === "bundle") && (
-                <FieldCard title="Execution & Market Feel" help="Make fills more/less realistic.">
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <LabeledNumber label="Fees (bps)" value={feeBps} setValue={setFeeBps} min={0} />
-                    <LabeledNumber label="Spread (bps)" value={spreadBps} setValue={setSpreadBps} min={0} />
-                    <LabeledNumber label="Slippage (bps)" value={slipBps} setValue={setSlipBps} min={0} />
-                    <LabeledNumber label="Fill Delay (ms)" value={latencyMs} setValue={setLatencyMs} min={0} />
-                    <LabeledNumber label="Drift (bps/bar)" value={driftBps} setValue={setDriftBps} />
-                    <LabeledNumber
-                      label="Surprise Jumps (0–1)"
-                      value={shockProb}
-                      setValue={setShockProb}
-                      step={0.001}
-                      min={0}
-                      max={1}
-                    />
-                    <LabeledNumber
-                      label="Trend Regime (0–1)"
-                      value={trendProb}
-                      setValue={setTrendProb}
-                      step={0.01}
-                      min={0}
-                      max={1}
-                    />
-                  </div>
-                </FieldCard>
-              )}
-
               <FieldCard title="How to Start" help="Follow these quick steps to see the demo moving.">
                 <ol className="list-decimal pl-5 space-y-1 text-[13px] text-slate-200">
                   <li>
@@ -1758,45 +1668,6 @@ export default function TradeDemo({
                 </div>
               </FieldCard>
             </div>
-
-            <FieldCard
-              title="IMALI Discount Simulator"
-              help="More IMALI → lower take rate → higher net PnL. Toggle to apply to display."
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="text-xs mb-1">Add IMALI (simulation)</div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="20000"
-                    step="100"
-                    value={addImali}
-                    onChange={(e) => setAddImali(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-400 mt-1">
-                    <span>+{addImali} IMALI</span>
-                    <span>
-                      Tier → <b>{simulatedTier.name}</b> ({(simulatedTier.takeRate * 100).toFixed(0)}% take)
-                    </span>
-                  </div>
-                  <label className="mt-2 inline-flex items-center gap-2 text-xs text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={applyNetToDisplay}
-                      onChange={(e) => setApplyNetToDisplay(e.target.checked)}
-                    />
-                    Apply to Net PnL display
-                  </label>
-                </div>
-                <div className="text-xs text-slate-300">
-                  Current Tier: <b>{activeTier.name}</b> ({(activeTier.takeRate * 100).toFixed(0)}% take)
-                  <br />
-                  Simulated Tier: <b>{simulatedTier.name}</b> ({(simulatedTier.takeRate * 100).toFixed(0)}% take)
-                </div>
-              </div>
-            </FieldCard>
 
             <div className="flex flex-col sm:flex-row gap-2">
               <button
@@ -1855,7 +1726,6 @@ export default function TradeDemo({
                 </Button>
                 <Button
                   onClick={() => {
-                    // prevent stacking intervals
                     if (timer.current) clearInterval(timer.current);
                     timer.current = setInterval(() => {
                       handleTick();
@@ -1868,52 +1738,19 @@ export default function TradeDemo({
                 >
                   Auto run
                 </Button>
-                <Button onClick={stopAuto} variant="ghost">
+                <Button
+                  onClick={() => {
+                    if (timer.current) clearInterval(timer.current);
+                    timer.current = null;
+                    stopProgressCycle();
+                    notifyTelegram("stopped", { reason: "manual" }, { minGapMs: 2000 });
+                  }}
+                  variant="ghost"
+                >
                   Stop
                 </Button>
               </div>
             </div>
-
-            {stocksSess && !stocksSess.remote && (
-              <div className="rounded-xl border border-slate-600/60 bg-slate-900/90 p-3">
-                <div className="flex items-center gap-2 text-sm mb-2">
-                  <span className="font-semibold">Manual Stocks Trade:</span>
-                  <span className="text-slate-300">{sim.symbols.slice(0, 3).join(", ")}… (basket)</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={() => {
-                      sim.symbols.slice(0, 3).forEach((sym) =>
-                        sim.exec(sym, "BUY", Math.max(1, stockTradeUnits), {
-                          feeBps,
-                          spreadBps,
-                          slipBps,
-                          latencyMs,
-                        })
-                      );
-                    }}
-                    variant="solid"
-                  >
-                    Buy {stockTradeUnits} each (top 3)
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      sim.symbols.slice(0, 3).forEach((sym) =>
-                        sim.exec(sym, "SELL", Math.max(1, stockTradeUnits), {
-                          feeBps,
-                          spreadBps,
-                          slipBps,
-                          latencyMs,
-                        })
-                      );
-                    }}
-                    variant="ghost"
-                  >
-                    Sell {stockTradeUnits} each (top 3)
-                  </Button>
-                </div>
-              </div>
-            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Card title="Last CEX Trade" tip="Most recent CEX trade impact">
@@ -1961,31 +1798,6 @@ export default function TradeDemo({
                 </div>
               </Card>
             </div>
-
-            <Card title="Trade Tape (live)" tip="Dots are trades in time order. Newer ones show symbol.">
-              <div className="h-10 w-full rounded-xl border border-slate-600/60 bg-slate-950 overflow-hidden">
-                <svg viewBox="0 0 400 40" className="w-full h-full">
-                  <line x1="0" y1="20" x2="400" y2="20" stroke="currentColor" className="text-slate-400/40" strokeWidth="1" />
-                  {tapeMarks.map((m, i) => (
-                    <g
-                      key={i}
-                      className={m.venue === "DEX" ? "text-emerald-300" : m.venue === "CEX" ? "text-sky-300" : "text-yellow-300"}
-                    >
-                      <circle cx={m.x} cy={m.y} r="3" fill="currentColor" />
-                      {i > tapeMarks.length * 0.75 && m.sym && (
-                        <text x={m.x + 4} y={m.y - 4} fontSize="9.5" className="fill-current">
-                          {m.sym}
-                        </text>
-                      )}
-                    </g>
-                  ))}
-                </svg>
-              </div>
-              <div className="mt-2 text-[11px] text-slate-300">
-                Markers: <span className="text-sky-300">★</span> take-profit,{" "}
-                <span className="text-rose-300">▽</span> honeypot
-              </div>
-            </Card>
 
             <div className="rounded-2xl border border-slate-600/60 bg-slate-900/90">
               <div className="p-3 sm:p-4">
@@ -2170,7 +1982,6 @@ function ModeToggle({ runMode, setRunMode, isLiveEligible, onUpgrade, venue }) {
             const nextIsLive = e.target.checked;
             if (nextIsLive && includesCrypto(venue) && !isLiveEligible) {
               onUpgrade?.();
-              // keep current (don’t flip)
               return;
             }
             setRunMode(nextIsLive ? "live" : "demo");
@@ -2199,21 +2010,5 @@ function StepHint({ children, highlight = false }) {
     >
       {children}
     </span>
-  );
-}
-function LabeledNumber({ label, value, setValue, step = 1, min, max }) {
-  return (
-    <label>
-      {label}
-      <input
-        type="number"
-        step={step}
-        min={min ?? undefined}
-        max={max ?? undefined}
-        value={value}
-        onChange={(e) => setValue(Number(e.target.value))}
-        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1 text-xs"
-      />
-    </label>
   );
 }
