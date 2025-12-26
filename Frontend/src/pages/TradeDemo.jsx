@@ -3,11 +3,14 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import TradingOverview from "../components/Dashboard/TradingOverview.jsx"; // listens to `trade-demo:update`
 
 /* -------------------------- Env helpers (CRA & Vite) -------------------------- */
-
 function getEnvVar(viteKey, craKey) {
   let v;
-  if (typeof import.meta !== "undefined" && import.meta.env && viteKey) {
-    v = import.meta.env[viteKey];
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.env && viteKey) {
+      v = import.meta.env[viteKey];
+    }
+  } catch {
+    // ignore
   }
   if (!v && typeof process !== "undefined" && process.env && craKey) {
     v = process.env[craKey];
@@ -49,7 +52,7 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
   return normalize(upgradeIfNeeded(fallbackFullUrl || ""));
 }
 
-/* ✅ Default endpoints (domain-based) */
+/* ✅ defaults (prefer HTTPS domain) */
 const DEMO_API_DEFAULT = resolveCryptoBase(
   getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
   "https://api.imali-defi.com/api"
@@ -60,10 +63,10 @@ const LIVE_API_DEFAULT = resolveCryptoBase(
   "https://api.imali-defi.com/api"
 );
 
-// Telegram notify (optional). If your backend doesn't expose /api/notify, leave env blank.
+// Telegram notify (we will also auto-fallback to /notify vs /api/notify)
 const TG_NOTIFY_URL_DEFAULT =
   getEnvVar("VITE_TG_NOTIFY_URL", "REACT_APP_TG_NOTIFY_URL") ||
-  "https://api.imali-defi.com/api/notify";
+  "https://api.imali-defi.com/notify";
 
 const STOCK_DEMO_API_DEFAULT =
   getEnvVar("VITE_STOCK_DEMO_API", "REACT_APP_STOCK_DEMO_API") || "";
@@ -74,6 +77,50 @@ const STOCK_LIVE_API_DEFAULT =
 /* -------------------------------- helpers -------------------------------- */
 const includesCrypto = (v) => ["dex", "cex", "both", "bundle"].includes(v);
 const isStocksOnly = (v) => v === "stocks";
+
+/* ------------------------------ fetch helpers ------------------------------ */
+async function postJson(url, body, { timeoutMs = 12000, headers = {} } = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body ?? {}),
+      signal: ctrl.signal,
+      cache: "no-store",
+      keepalive: true,
+    });
+
+    // parse json OR text (backend sometimes returns text for errors)
+    const text = await r.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { raw: text };
+    }
+
+    if (!r.ok) {
+      const msg =
+        data?.error ||
+        data?.message ||
+        data?.raw ||
+        `HTTP ${r.status} ${r.statusText}`;
+      throw new Error(`${msg}`);
+    }
+
+    return data;
+  } catch (e) {
+    if (String(e?.name) === "AbortError") {
+      throw new Error(`Request timeout (${timeoutMs}ms): ${url}`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 /* -------------------------------- Math helpers -------------------------------- */
 function sma(arr, n) {
@@ -198,7 +245,11 @@ function useStocksSimMulti(
     }
   }
 
-  function tickOne({ driftBps = 1, shockProb = 0.01, trendProb = 0.6 } = {}) {
+  function tickOne({
+    driftBps = 1,
+    shockProb = 0.01,
+    trendProb = 0.6,
+  } = {}) {
     setOhlcMap((prev) => {
       const nextMap = { ...prev };
       Object.keys(nextMap).forEach((sym) => {
@@ -208,7 +259,8 @@ function useStocksSimMulti(
 
         const trend = Math.random() < trendProb;
         const drift = lastClose * (driftBps / 10000);
-        const noise = lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
+        const noise =
+          lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
         let newClose = lastClose + drift + noise;
 
         if (Math.random() < shockProb) {
@@ -303,12 +355,7 @@ export default function TradeDemo({
     ai_weighted: {
       name: "Smart Mix",
       help: "Blends trend, dip-buy, and volume. Only trades when confidence is high.",
-      defaults: {
-        momentumWeight: 0.4,
-        meanRevWeight: 0.3,
-        volumeWeight: 0.3,
-        minScore: 0.65,
-      },
+      defaults: { momentumWeight: 0.4, meanRevWeight: 0.3, volumeWeight: 0.3, minScore: 0.65 },
       fields: [
         { key: "momentumWeight", label: "Trend Bias", step: 0.05, min: 0, max: 1, desc: "How much to follow strength. Higher = chase trends more." },
         { key: "meanRevWeight", label: "Dip-Buy Bias", step: 0.05, min: 0, max: 1, desc: "How much to fade moves. Higher = buy dips/sell rips." },
@@ -384,20 +431,6 @@ export default function TradeDemo({
   const [cexSess, setCexSess] = useState(null);
   const [stocksSess, setStocksSess] = useState(null);
 
-  // ✅ Refs to avoid stale closures inside setInterval / Auto Run
-  const dexRef = useRef(null);
-  const cexRef = useRef(null);
-  const stocksRef = useRef(null);
-  useEffect(() => {
-    dexRef.current = dexSess;
-  }, [dexSess]);
-  useEffect(() => {
-    cexRef.current = cexSess;
-  }, [cexSess]);
-  useEffect(() => {
-    stocksRef.current = stocksSess;
-  }, [stocksSess]);
-
   // Local Multi-Stocks sim
   const stockList = useMemo(
     () =>
@@ -446,11 +479,14 @@ export default function TradeDemo({
   const isRunning = haveAny;
 
   const parseSymbols = () =>
-    symbols.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+    symbols
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
 
-  /* ---------------------- Telegram alerts (safe) ------------------------- */
-  const tgNotifyUrl = TG_NOTIFY_URL_DEFAULT || "";
+  /* ---------------------- Telegram alerts ------------------------- */
   const lastSentRef = useRef({});
+
   function shouldSend(kind, gapMs) {
     const now = Date.now();
     const last = lastSentRef.current[kind] || 0;
@@ -458,19 +494,44 @@ export default function TradeDemo({
     lastSentRef.current[kind] = now;
     return true;
   }
+
+  function buildNotifyCandidates(baseUrl) {
+    const list = [];
+
+    // If env is absolute, use it
+    if (TG_NOTIFY_URL_DEFAULT?.startsWith("http")) list.push(TG_NOTIFY_URL_DEFAULT);
+
+    // Try deriving from apiBase:
+    // - apiBase might be https://api.imali-defi.com/api
+    //   candidates: https://api.imali-defi.com/notify and https://api.imali-defi.com/api/notify
+    if (baseUrl) {
+      const clean = String(baseUrl).replace(/\/$/, "");
+      list.push(`${clean}/notify`);
+      list.push(`${clean.replace(/\/api$/i, "")}/notify`);
+      list.push(`${clean}/api/notify`); // harmless if duplicated
+    }
+
+    // de-dupe
+    return Array.from(new Set(list.filter(Boolean)));
+  }
+
   async function notifyTelegram(kind, payload = {}, { minGapMs = 0 } = {}) {
-    // ✅ Don’t spam or break if notify endpoint isn't configured/doesn't exist
-    if (!tgNotifyUrl) return;
     if (minGapMs && !shouldSend(kind, minGapMs)) return;
-    try {
-      await fetch(tgNotifyUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: kind, data: payload }),
-        keepalive: true,
-      });
-    } catch {
-      /* no-op */
+
+    // Don't let notify ever block UI
+    const candidates = buildNotifyCandidates(apiBase);
+
+    for (const url of candidates) {
+      try {
+        await postJson(
+          url,
+          { event: kind, data: payload },
+          { timeoutMs: 2500 }
+        );
+        return; // first success wins
+      } catch {
+        // try next candidate
+      }
     }
   }
 
@@ -524,31 +585,27 @@ export default function TradeDemo({
       const px = series.at(-1)?.close || 0;
       let did = false;
 
-      if (signal === "BUY") {
+      if (signal === "BUY")
         did = sim.exec(sym, "BUY", Math.max(1, stockTradeUnits), {
           feeBps,
           spreadBps,
           slipBps,
           latencyMs,
         });
-      }
-      if (signal === "SELL") {
+
+      if (signal === "SELL")
         did = sim.exec(sym, "SELL", Math.max(1, stockTradeUnits), {
           feeBps,
           spreadBps,
           slipBps,
           latencyMs,
         });
-      }
 
       const delta = did ? Math.max(1, Math.round(px * 0.1)) : 0;
       totalDelta += delta;
 
       setStocksSess((prev) => {
-        const history = [
-          ...(prev?.history || []),
-          { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta },
-        ];
+        const history = [...(prev?.history || []), { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta }];
         const realizedPnL = (prev?.realizedPnL || 0) + delta;
         return {
           ...(prev || {}),
@@ -567,6 +624,38 @@ export default function TradeDemo({
   }
 
   /* --------------------------- Start/Config --------------------------- */
+  function buildCryptoConfigBody(kind, sess, idKey) {
+    const symArr = parseSymbols();
+    const symCsv = symArr.join(",");
+
+    // Payload intentionally duplicated in multiple naming conventions
+    // so backend changes don't break you.
+    return {
+      // session id
+      [idKey]: sess?.[idKey],
+
+      // venue/mode (some backends want one name only)
+      mode: kind,
+      venue: kind,
+
+      chain,
+
+      // symbols in both formats
+      symbols: symArr,
+      symbolsCsv: symCsv,
+      pairs: symArr,
+      tickers: symArr,
+
+      // strategy in both formats
+      strategy,
+      strategyKey: strategy,
+
+      // params in both formats
+      params: params,
+      config: { ...params },
+    };
+  }
+
   async function startOne(kind) {
     if (kind === "stocks") {
       const wantRemote = useRemoteStocks;
@@ -578,36 +667,27 @@ export default function TradeDemo({
 
       if (wantRemote && base) {
         try {
-          const r = await Promise.race([
-            fetch(`${base}${startPath}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name: "STOCKS", startBalance }),
-            }),
-            new Promise((_, rej) =>
-              setTimeout(() => rej(new Error("stocks start timeout")), 5000)
-            ),
-          ]);
-          const d = await r.json().catch(() => ({}));
+          const d = await postJson(
+            `${base}${startPath}`,
+            { name: "STOCKS", startBalance },
+            { timeoutMs: 8000 }
+          );
           if (!d?.stocksId) throw new Error("No stocksId");
 
-          const r2 = await Promise.race([
-            fetch(`${base}${configPath}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                stocksId: d.stocksId,
-                symbols: basket,
-                strategy,
-                params,
-              }),
-            }),
-            new Promise((_, rej) =>
-              setTimeout(() => rej(new Error("stocks config timeout")), 5000)
-            ),
-          ]);
-          const c = await r2.json().catch(() => ({}));
-          if (!c?.ok) throw new Error("Stocks config failed");
+          const c = await postJson(
+            `${base}${configPath}`,
+            {
+              stocksId: d.stocksId,
+              symbols: basket,
+              symbolsCsv: basket.join(","),
+              strategy,
+              strategyKey: strategy,
+              params,
+              config: { ...params },
+            },
+            { timeoutMs: 8000 }
+          );
+          if (!c?.ok) throw new Error(c?.error || "Stocks config failed");
 
           return {
             ...d,
@@ -622,7 +702,7 @@ export default function TradeDemo({
             history: [],
           };
         } catch (e) {
-          setError("Stocks API unreachable — falling back to local basket.");
+          setError(`Stocks API unreachable or config rejected — falling back to local basket. (${String(e?.message || e)})`);
         }
       }
 
@@ -646,51 +726,19 @@ export default function TradeDemo({
     const configPath = usingDemo ? "/demo/config" : "/live/config";
     const idKey = usingDemo ? "demoId" : "liveId";
 
-    const r = await fetch(`${apiBase}${startPath}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: kind.toUpperCase(), startBalance }),
-    });
-    const d = await r.json().catch(() => ({}));
+    const d = await postJson(
+      `${apiBase}${startPath}`,
+      { name: kind.toUpperCase(), startBalance },
+      { timeoutMs: 8000 }
+    );
     if (!d?.[idKey]) throw new Error(`No ${idKey} for ${kind}`);
 
-    const r2 = await fetch(`${apiBase}${configPath}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        [idKey]: d[idKey],
-        mode: kind,
-        chain,
-        symbols: parseSymbols(),
-        strategy,
-        params,
-      }),
-    });
-    const c = await r2.json().catch(() => ({}));
-    if (!c?.ok) throw new Error(`Config failed for ${kind}`);
+    const body = buildCryptoConfigBody(kind, d, idKey);
+    const c = await postJson(`${apiBase}${configPath}`, body, { timeoutMs: 8000 });
+    if (!c?.ok) throw new Error(c?.error || `Config failed for ${kind}`);
 
-    // ✅ Ensure the session object always keeps its idKey
-    return {
-      ...d,
-      __venue: kind,
-      balance: d.balance ?? startBalance,
-      equity: d.equity ?? startBalance,
-      realizedPnL: d.realizedPnL ?? 0,
-      wins: d.wins ?? 0,
-      losses: d.losses ?? 0,
-      history: d.history ?? [],
-    };
+    return { ...d, __venue: kind };
   }
-
-  const stopAuto = () => {
-    if (timer.current) {
-      clearInterval(timer.current);
-      timer.current = null;
-      notifyTelegram("stopped", { reason: "manual" }, { minGapMs: 2000 });
-    }
-    stopProgressCycle();
-  };
-  useEffect(() => () => stopAuto(), []); // stop on unmount
 
   const handleStart = async () => {
     setBusy(true);
@@ -700,15 +748,14 @@ export default function TradeDemo({
     setStreak(0);
     setCoins(0);
 
-    // stop/clear any existing run
-    if (dexRef.current || cexRef.current || stocksRef.current) {
+    if (isRunning) {
       stopAuto();
       setDexSess(null);
       setCexSess(null);
       setStocksSess(null);
     }
 
-    // Gate Live for ANY crypto venue (dex/cex/both/bundle)
+    // Gate Live for ANY crypto venue
     if (!usingDemo && includesCrypto(venue) && !isLiveEligible) {
       setBusy(false);
       setShowUpgrade(true);
@@ -763,7 +810,7 @@ export default function TradeDemo({
       });
     } catch (e) {
       setError(
-        `Could not start (${usingDemo ? "DEMO" : "LIVE"}). Error: ${e?.message || String(e)}`
+        `Could not start (${usingDemo ? "DEMO" : "LIVE"}). Error: ${String(e?.message || e)}`
       );
       notifyTelegram("error", { where: "handleStart", message: String(e?.message || e) }, { minGapMs: 5000 });
     } finally {
@@ -772,22 +819,23 @@ export default function TradeDemo({
   };
 
   async function reconfigure(kind, sess) {
-    if (!sess) return;
-
     if (kind === "stocks") {
       if (!sess?.remote || !sess?.base) return;
       const configPath = runMode === "live" ? "/stocks/live/config" : "/stocks/demo/config";
       try {
-        await fetch(`${sess.base}${configPath}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        await postJson(
+          `${sess.base}${configPath}`,
+          {
             stocksId: sess.stocksId,
             symbols: stockList,
+            symbolsCsv: stockList.join(","),
             strategy,
+            strategyKey: strategy,
             params,
-          }),
-        });
+            config: { ...params },
+          },
+          { timeoutMs: 8000 }
+        );
         notifyTelegram("reconfigured", { mode: "stocks", strategy, params, symbols: stockList }, { minGapMs: 8000 });
       } catch (e) {
         notifyTelegram("error", { where: "reconfigure:stocks", message: String(e?.message || e) }, { minGapMs: 5000 });
@@ -797,21 +845,9 @@ export default function TradeDemo({
 
     const configPath = usingDemo ? "/demo/config" : "/live/config";
     const idKey = usingDemo ? "demoId" : "liveId";
-    if (!sess?.[idKey]) return; // ✅ don't config without id
-
     try {
-      await fetch(`${apiBase}${configPath}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          [idKey]: sess[idKey],
-          mode: kind,
-          chain,
-          symbols: parseSymbols(),
-          strategy,
-          params,
-        }),
-      });
+      const body = buildCryptoConfigBody(kind, sess, idKey);
+      await postJson(`${apiBase}${configPath}`, body, { timeoutMs: 8000 });
       notifyTelegram("reconfigured", { mode: kind, strategy, params, chain, symbols: parseSymbols() }, { minGapMs: 8000 });
     } catch (e) {
       notifyTelegram("error", { where: "reconfigure", message: String(e?.message || e) }, { minGapMs: 5000 });
@@ -826,84 +862,47 @@ export default function TradeDemo({
   }, [strategy, params, chain, symbols, stockSymbols, runMode]);
 
   /* ------------------------------ Ticking ----------------------------- */
-  async function tickOneCrypto(sess, setSess) {
+  async function tickOne(sess, setSess) {
     const tickPath = usingDemo ? "/demo/tick" : "/live/tick";
     const idKey = usingDemo ? "demoId" : "liveId";
 
-    // ✅ HARD GUARD: never tick without a real id (prevents unknown_demo_id)
-    const idVal = sess?.[idKey];
-    if (!idVal) throw new Error(`Missing ${idKey}. Click Start first.`);
-
-    const r = await fetch(`${apiBase}${tickPath}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [idKey]: idVal }),
-    });
-
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || data?.error) {
-      throw new Error(data?.error || `Tick failed (${r.status})`);
-    }
-
-    // ✅ Preserve id + venue no matter what backend returns
-    setSess((prev) => ({
-      ...(prev || {}),
-      ...data,
-      __venue: prev?.__venue || sess.__venue,
-      [idKey]: prev?.[idKey] || idVal,
-      history: data?.history ?? prev?.history ?? [],
-    }));
-
+    const data = await postJson(
+      `${apiBase}${tickPath}`,
+      { [idKey]: sess[idKey] },
+      { timeoutMs: 8000 }
+    );
+    if (data?.error) throw new Error(data.error);
+    setSess((prev) => ({ ...prev, ...data, __venue: prev?.__venue }));
     return data;
-  }
-
-  async function tickOneStocks(sess) {
-    if (sess.remote && sess.base) {
-      const tickPath = runMode === "live" ? "/stocks/live/tick" : "/stocks/demo/tick";
-      const r = await Promise.race([
-        fetch(`${sess.base}${tickPath}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stocksId: sess.stocksId }),
-        }),
-        new Promise((_, rej) => setTimeout(() => rej(new Error("stocks tick timeout")), 5000)),
-      ]);
-      const data = await r.json().catch(() => ({}));
-      if (data?.error) throw new Error(data.error);
-
-      setStocksSess((prev) => ({
-        ...(prev || {}),
-        ...data,
-        __venue: "stocks",
-        remote: true,
-        history: data?.history ?? prev?.history ?? [],
-      }));
-      return Number(data?.realizedPnLDelta || 0);
-    }
-
-    const { delta: localDelta } = localStocksTick();
-    return Number(localDelta || 0);
   }
 
   async function handleTick() {
     try {
-      // ✅ Always read sessions from refs (Auto Run safe)
-      const dSess = dexRef.current;
-      const cSess = cexRef.current;
-      const sSess = stocksRef.current;
-
       let delta = 0;
 
-      if (dSess) {
-        const d = await tickOneCrypto(dSess, setDexSess);
+      if (dexSess) {
+        const d = await tickOne(dexSess, setDexSess);
         delta += Number(d?.realizedPnLDelta || 0);
       }
-      if (cSess) {
-        const d = await tickOneCrypto(cSess, setCexSess);
+      if (cexSess) {
+        const d = await tickOne(cexSess, setCexSess);
         delta += Number(d?.realizedPnLDelta || 0);
       }
-      if (sSess) {
-        delta += await tickOneStocks(sSess);
+      if (stocksSess) {
+        if (stocksSess.remote && stocksSess.base) {
+          const tickPath = runMode === "live" ? "/stocks/live/tick" : "/stocks/demo/tick";
+          const data = await postJson(
+            `${stocksSess.base}${tickPath}`,
+            { stocksId: stocksSess.stocksId },
+            { timeoutMs: 8000 }
+          );
+          if (data?.error) throw new Error(data.error);
+          setStocksSess((prev) => ({ ...prev, ...data, __venue: "stocks", remote: true }));
+          delta += Number(data?.realizedPnLDelta || 0);
+        } else {
+          const { delta: localDelta } = localStocksTick();
+          delta += localDelta;
+        }
       }
 
       if (delta > 0) {
@@ -917,29 +916,43 @@ export default function TradeDemo({
       startProgressCycle(4000);
       notifyTelegram("tick", { pnlDelta: delta }, { minGapMs: 10_000 });
     } catch (e) {
-      setError(e?.message || "Tick failed");
-      // If the id is missing/invalid, stop auto to prevent spam
-      stopAuto();
+      setError(e.message || "Tick failed");
       notifyTelegram("error", { where: "handleTick", message: String(e?.message || e) }, { minGapMs: 5000 });
     }
   }
+
+  const stopAuto = () => {
+    if (timer.current) {
+      clearInterval(timer.current);
+      timer.current = null;
+      notifyTelegram("stopped", { reason: "manual" }, { minGapMs: 2000 });
+    }
+    stopProgressCycle();
+  };
+  useEffect(() => () => stopAuto(), []);
 
   /* ---------------------------- Aggregation --------------------------- */
   const combined = useMemo(() => {
     const sims = [dexSess, cexSess, stocksSess].filter(Boolean);
     if (!sims.length) return null;
+
     const baseBal = sims.reduce((s, d) => s + Number(d?.balance || 0), 0) || 1;
     const scale = startBalance / baseBal;
 
-    const equity = sims.reduce((s, d) => s + Number(d?.equity ?? d?.balance ?? 0), 0) * scale;
-    const balance = sims.reduce((s, d) => s + Number(d?.balance || 0), 0) * scale;
-    const realizedPnL = sims.reduce((s, d) => s + Number(d?.realizedPnL || 0), 0) * scale;
+    const equity =
+      sims.reduce((s, d) => s + Number(d?.equity ?? d?.balance ?? 0), 0) * scale;
+    const balance =
+      sims.reduce((s, d) => s + Number(d?.balance || 0), 0) * scale;
+    const realizedPnL =
+      sims.reduce((s, d) => s + Number(d?.realizedPnL || 0), 0) * scale;
+
     const wins = sims.reduce((s, d) => s + Number(d?.wins || 0), 0);
     const losses = sims.reduce((s, d) => s + Number(d?.losses || 0), 0);
 
     const dexHist = (dexSess?.history || []).map((h) => ({ ...h, venue: "DEX" }));
     const cexHist = (cexSess?.history || []).map((h) => ({ ...h, venue: "CEX" }));
     const stxHist = (stocksSess?.history || []).map((h) => ({ ...h, venue: "STOCKS" }));
+
     const history = [...dexHist, ...cexHist, ...stxHist]
       .sort((a, b) => (a.t || 0) - (b.t || 0))
       .slice(-220);
@@ -973,10 +986,10 @@ export default function TradeDemo({
     if (!hist.length) return;
     const hp = [];
     for (let i = 1; i < hist.length; i++) {
-      const h = hist[i],
-        prev = hist[i - 1];
+      const h = hist[i], prev = hist[i - 1];
       if (h.honeypot || h.flagged) hp.push(h);
-      else if ((Number(h.pnl || 0) - Number(prev.pnl || 0)) < -Math.max(5, startBalance * 0.01)) hp.push(h);
+      else if ((Number(h.pnl || 0) - Number(prev.pnl || 0)) < -Math.max(5, startBalance * 0.01))
+        hp.push(h);
     }
     const payload = hp.slice(-24).map((e) => ({
       time: Math.floor((e.t || Date.now()) / 1000),
@@ -1016,12 +1029,7 @@ export default function TradeDemo({
         setXp((x) => x + Math.max(1, Math.round(g / 5)));
         window.dispatchEvent(
           new CustomEvent("trade-demo:markers:tp", {
-            detail: {
-              time: Math.floor(Date.now() / 1000),
-              venue: venueTag,
-              kind: "takeprofit",
-              text: `TP +$${g}`,
-            },
+            detail: { time: Math.floor(Date.now() / 1000), venue: venueTag, kind: "takeprofit", text: `TP +$${g}` },
           })
         );
       };
@@ -1042,8 +1050,7 @@ export default function TradeDemo({
 
   const tapeMarks = useMemo(() => {
     const list = combined?.history || [];
-    const w = 400,
-      h = 36;
+    const w = 400, h = 36;
     return list.map((pt, i) => ({
       x: (i / Math.max(1, list.length - 1)) * w,
       y: h / 2,
@@ -1060,10 +1067,19 @@ export default function TradeDemo({
   /* --------------------------- Self-Check panel --------------------------- */
   const runSelfCheck = async () => {
     try {
-      const healthUrl = `${apiBase}/health`;
-      const r = await fetch(healthUrl, { cache: "no-store" });
-      const j = await r.json().catch(() => ({}));
-      setCheck({ ok: !!j.ok, message: j.ok ? "Healthy" : "Unhealthy" });
+      // try /health then fallback /healthz
+      const url1 = `${apiBase}/health`;
+      try {
+        const j = await (await fetch(url1, { cache: "no-store" })).json();
+        setCheck({ ok: !!j.ok, message: j.ok ? "Healthy" : "Unhealthy" });
+        return;
+      } catch {
+        // ignore and try healthz
+      }
+
+      const url2 = `${apiBase}/healthz`;
+      const j2 = await (await fetch(url2, { cache: "no-store" })).json();
+      setCheck({ ok: !!j2.ok, message: j2.ok ? "Healthy" : "Unhealthy" });
     } catch (e) {
       setCheck({ ok: false, message: `Health check failed: ${String(e?.message || e)}` });
     }
@@ -1147,10 +1163,10 @@ export default function TradeDemo({
                       After you click <b>Start</b>, click <b>Auto run</b> to stream ticks.
                     </li>
                     <li>
-                      Backend reachable: <code>{apiBase}/health</code>.
+                      Backend reachable: <code>{apiBase}/health</code> (or <code>{apiBase}/healthz</code>).
                     </li>
                     <li>
-                      Use Netlify env like <code>REACT_APP_DEMO_API=/bot-api/api</code> so the frontend hits your proxy.
+                      If config returns 400, your backend schema changed—this UI now sends multiple compatible fields.
                     </li>
                   </ul>
                 </div>
@@ -1175,7 +1191,6 @@ export default function TradeDemo({
           </div>
         </div>
 
-        {/* Per-venue backend status */}
         <div className="mt-2">
           <BackendBadges
             usingDemo={usingDemo}
@@ -1202,7 +1217,7 @@ export default function TradeDemo({
             <button
               onClick={runSelfCheck}
               className="underline font-semibold"
-              title="Call /health on your crypto demo server"
+              title="Call /health on your server"
             >
               Run Self-Check
             </button>
@@ -1213,7 +1228,6 @@ export default function TradeDemo({
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pb-10">
-        {/* Self-Check row */}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-slate-300">
           <button
             onClick={runSelfCheck}
@@ -1257,8 +1271,7 @@ export default function TradeDemo({
                     </button>
                   ))}
                 </div>
-                {venue === "both" && <div className="mt-2 text-xs text-emerald-300">BOTH = DEX + CEX (crypto only)</div>}
-                {venue === "bundle" && <div className="mt-2 text-xs text-emerald-300">BUNDLE = DEX + CEX + STOCKS</div>}
+
                 {venue === "dex" && (
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">
                     {["ethereum", "polygon", "base", "optimism", "arbitrum", "bsc"].map((c) => (
@@ -1278,7 +1291,6 @@ export default function TradeDemo({
                 )}
               </FieldCard>
 
-              {/* Crypto strategy */}
               {venue !== "stocks" && (
                 <FieldCard
                   title="Crypto Strategy (Step 2)"
@@ -1299,6 +1311,7 @@ export default function TradeDemo({
                       </option>
                     ))}
                   </select>
+
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {strategyCatalog[strategy].fields.map((f) => (
                       <div key={f.key} className="text-xs">
@@ -1313,10 +1326,7 @@ export default function TradeDemo({
                           max={f.max ?? undefined}
                           value={params[f.key]}
                           onChange={(e) =>
-                            setParams((p) => ({
-                              ...p,
-                              [f.key]: Number(e.target.value),
-                            }))
+                            setParams((p) => ({ ...p, [f.key]: Number(e.target.value) }))
                           }
                           className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm"
                         />
@@ -1326,7 +1336,6 @@ export default function TradeDemo({
                 </FieldCard>
               )}
 
-              {/* Stocks strategy controls */}
               {(venue === "stocks" || venue === "bundle") && (
                 <FieldCard
                   title="Stocks Strategy (Step 2)"
@@ -1413,7 +1422,6 @@ export default function TradeDemo({
                 </FieldCard>
               )}
 
-              {/* Starting balance + symbols */}
               <FieldCard title="Starting Balance" help="UI scales to this; backend/sim track equity internally.">
                 <input
                   type="number"
@@ -1434,11 +1442,12 @@ export default function TradeDemo({
                     />
                   </div>
                 ) : (
-                  <div className="mt-2 text-xs text-slate-400">Demo stocks use the basket above.</div>
+                  <div className="mt-2 text-xs text-slate-400">
+                    Demo stocks use the basket above. Remote API may support custom lists.
+                  </div>
                 )}
               </FieldCard>
 
-              {/* Stocks realism controls */}
               {(venue === "stocks" || venue === "bundle") && (
                 <FieldCard title="Execution & Market Feel" help="Make fills more/less realistic.">
                   <div className="grid grid-cols-2 gap-2 text-xs">
@@ -1447,27 +1456,47 @@ export default function TradeDemo({
                     <LabeledNumber label="Slippage (bps)" value={slipBps} setValue={setSlipBps} min={0} />
                     <LabeledNumber label="Fill Delay (ms)" value={latencyMs} setValue={setLatencyMs} min={0} />
                     <LabeledNumber label="Drift (bps/bar)" value={driftBps} setValue={setDriftBps} />
-                    <LabeledNumber label="Surprise Jumps (0–1)" value={shockProb} setValue={setShockProb} step={0.001} min={0} max={1} />
-                    <LabeledNumber label="Trend Regime (0–1)" value={trendProb} setValue={setTrendProb} step={0.01} min={0} max={1} />
+                    <LabeledNumber
+                      label="Surprise Jumps (0–1)"
+                      value={shockProb}
+                      setValue={setShockProb}
+                      step={0.001}
+                      min={0}
+                      max={1}
+                    />
+                    <LabeledNumber
+                      label="Trend Regime (0–1)"
+                      value={trendProb}
+                      setValue={setTrendProb}
+                      step={0.01}
+                      min={0}
+                      max={1}
+                    />
                   </div>
                 </FieldCard>
               )}
 
-              {/* How to Start */}
               <FieldCard title="How to Start" help="Follow these quick steps to see the demo moving.">
                 <ol className="list-decimal pl-5 space-y-1 text-[13px] text-slate-200">
-                  <li>Pick <b>Where to trade</b>.</li>
-                  <li>Set your <b>Strategy</b> and <b>Starting Balance</b>.</li>
-                  <li>Click <b>Start {usingDemo ? "Demo" : "Live"}</b>.</li>
-                  <li>Then click <b>Auto run</b> (top-right) to stream ticks every ~4s.</li>
+                  <li>
+                    Pick <b>Where to trade</b> (DEX, CEX, BOTH, STOCKS, or BUNDLE).
+                  </li>
+                  <li>
+                    Set your <b>Strategy</b> and <b>Starting Balance</b>.
+                  </li>
+                  <li>
+                    Click <b>Start {usingDemo ? "Demo" : "Live"}</b>.
+                  </li>
+                  <li>
+                    Then click <b>Auto run</b> (top-right) to stream ticks automatically every ~4s.
+                  </li>
                 </ol>
                 <div className="mt-2 text-xs text-slate-400">
-                  Tip: Use <b>Tick once</b> to advance manually.
+                  Tip: Use <b>Tick once</b> to advance manually; switch back to <b>Auto run</b> anytime.
                 </div>
               </FieldCard>
             </div>
 
-            {/* IMALI take-rate simulation */}
             <FieldCard
               title="IMALI Discount Simulator"
               help="More IMALI → lower take rate → higher net PnL. Toggle to apply to display."
@@ -1507,7 +1536,6 @@ export default function TradeDemo({
               </div>
             </FieldCard>
 
-            {/* Start */}
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 onClick={handleStart}
@@ -1526,7 +1554,6 @@ export default function TradeDemo({
               )}
             </div>
 
-            {/* Post-start nudge */}
             {showAutoHint && (
               <div className="rounded-lg border border-emerald-400/70 bg-emerald-700/30 text-emerald-100 px-3 py-2 text-xs">
                 ✅ Sessions started. Now click <b>Auto run</b> (top-right) to stream ticks automatically every ~4s.
@@ -1538,7 +1565,6 @@ export default function TradeDemo({
         {/* Running */}
         {haveAny && (
           <div className="space-y-4">
-            {/* KPIs */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2 sm:gap-3">
               <Stat label="Equity" value={`$${Number((combined?.equity || 0) + simPnL).toFixed(2)}`} tip="Balance + PnL" />
               <Stat label="Cash balance" value={`$${Number(combined?.balance || 0).toFixed(2)}`} />
@@ -1549,7 +1575,6 @@ export default function TradeDemo({
               <Stat label="Coins" value={`${coins} 🪙`} />
             </div>
 
-            {/* Live controls */}
             <div className="flex flex-wrap items-center gap-2">
               {dexSess && <Badge color="emerald" text="DEX active" />}
               {cexSess && <Badge color="sky" text="CEX active" />}
@@ -1586,7 +1611,6 @@ export default function TradeDemo({
               </div>
             </div>
 
-            {/* Manual stocks trade (local sim) */}
             {stocksSess && !stocksSess.remote && (
               <div className="rounded-xl border border-slate-600/60 bg-slate-900/90 p-3">
                 <div className="flex items-center gap-2 text-sm mb-2">
@@ -1628,7 +1652,6 @@ export default function TradeDemo({
               </div>
             )}
 
-            {/* Last trade indicators */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Card title="Last CEX Trade" tip="Most recent CEX trade impact">
                 <div className="text-sm">
@@ -1676,7 +1699,6 @@ export default function TradeDemo({
               </Card>
             </div>
 
-            {/* Trade Tape */}
             <Card title="Trade Tape (live)" tip="Dots are trades in time order. Newer ones show symbol.">
               <div className="h-10 w-full rounded-xl border border-slate-600/60 bg-slate-950 overflow-hidden">
                 <svg viewBox="0 0 400 40" className="w-full h-full">
@@ -1684,9 +1706,7 @@ export default function TradeDemo({
                   {tapeMarks.map((m, i) => (
                     <g
                       key={i}
-                      className={
-                        m.venue === "DEX" ? "text-emerald-300" : m.venue === "CEX" ? "text-sky-300" : "text-yellow-300"
-                      }
+                      className={m.venue === "DEX" ? "text-emerald-300" : m.venue === "CEX" ? "text-sky-300" : "text-yellow-300"}
                     >
                       <circle cx={m.x} cy={m.y} r="3" fill="currentColor" />
                       {i > tapeMarks.length * 0.75 && m.sym && (
@@ -1699,11 +1719,11 @@ export default function TradeDemo({
                 </svg>
               </div>
               <div className="mt-2 text-[11px] text-slate-300">
-                Markers: <span className="text-sky-300">★</span> take-profit, <span className="text-rose-300">▽</span> honeypot
+                Markers: <span className="text-sky-300">★</span> take-profit,{" "}
+                <span className="text-rose-300">▽</span> honeypot
               </div>
             </Card>
 
-            {/* Overview dashboard */}
             <div className="rounded-2xl border border-slate-600/60 bg-slate-900/90">
               <div className="p-3 sm:p-4">
                 <TradingOverview
@@ -1731,20 +1751,20 @@ export default function TradeDemo({
               </div>
             </div>
 
-            {/* Result banner */}
             <div className="p-3 rounded-xl border border-amber-600 bg-amber-400 text-black text-sm sm:text-base">
               <span className="font-semibold">{usingDemo ? "Demo" : "Live"} result so far:</span>{" "}
               <b>
                 Gross {gross >= 0 ? "+" : "-"}${Math.abs(gross).toFixed(2)} • Net ({(takeRate * 100).toFixed(0)}% take){" "}
                 {net >= 0 ? "+" : "-"}${Math.abs(net).toFixed(2)}
               </b>
-              <span className="ml-1">• Auto run streams ticks ⭐</span>
+              <span className="ml-1">
+                • After Start, click <b>Auto run</b> to stream ticks ⭐
+              </span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Upgrade overlay */}
       {showUpgrade && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="max-w-md w-full rounded-2xl border border-yellow-500/70 bg-slate-900 text-white p-5">
