@@ -49,33 +49,30 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
 }
 
 /**
- * ✅ Bulletproof: ensure the crypto base ALWAYS ends with /api
- * so your UI calls /health and /demo/start correctly.
+ * ✅ Robust: return BOTH base styles so we never 404:
+ * - with /api suffix
+ * - without /api suffix
  *
- * Examples:
- *  - https://api.imali-defi.com      -> https://api.imali-defi.com/api
- *  - https://api.imali-defi.com/     -> https://api.imali-defi.com/api
- *  - https://api.imali-defi.com/api  -> https://api.imali-defi.com/api
+ * Some nginx configs strip /api before forwarding; some do not.
+ * We try both and take the first that works.
  */
-function ensureApiSuffix(base) {
+function buildApiCandidates(base) {
   const b = String(base || "").replace(/\/+$/, "");
-  if (!b) return b;
-  return /\/api$/i.test(b) ? b : `${b}/api`;
+  if (!b) return [];
+  const withApi = /\/api$/i.test(b) ? b : `${b}/api`;
+  const withoutApi = b.replace(/\/api$/i, "");
+  return Array.from(new Set([withApi, withoutApi].filter(Boolean)));
 }
 
-/* ✅ defaults (prefer HTTPS domain; we force /api) */
-const DEMO_API_DEFAULT = ensureApiSuffix(
-  resolveCryptoBase(
-    getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
-    "https://api.imali-defi.com"
-  )
+/* ✅ defaults */
+const DEMO_API_DEFAULT = resolveCryptoBase(
+  getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
+  "https://api.imali-defi.com"
 );
 
-const LIVE_API_DEFAULT = ensureApiSuffix(
-  resolveCryptoBase(
-    getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
-    "https://api.imali-defi.com"
-  )
+const LIVE_API_DEFAULT = resolveCryptoBase(
+  getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
+  "https://api.imali-defi.com"
 );
 
 // Telegram notify base (optional). We will treat notify as best-effort (never blocks UI).
@@ -120,6 +117,7 @@ async function postJson(url, body, { timeoutMs = 12000, headers = {} } = {}) {
     if (!r.ok) {
       const msg =
         data?.error ||
+        data?.detail ||
         data?.message ||
         data?.raw ||
         `HTTP ${r.status} ${r.statusText}`;
@@ -147,7 +145,7 @@ async function postJson(url, body, { timeoutMs = 12000, headers = {} } = {}) {
 /**
  * ✅ More informative GET JSON:
  * - reads text first
- * - if non-JSON, throws with status + snippet (helps identify nginx/html/proxy)
+ * - if non-JSON, throws with status + snippet
  */
 async function getJson(url, { timeoutMs = 8000 } = {}) {
   const ctrl = new AbortController();
@@ -398,16 +396,25 @@ export default function TradeDemo({
 
   const usingDemo = runMode === "demo";
 
-  // ✅ enforce /api no matter what got passed in props/env
-  const apiBase = useMemo(
-    () => ensureApiSuffix(usingDemo ? demoApi : liveApi),
-    [usingDemo, demoApi, liveApi]
-  );
+  /**
+   * ✅ KEY FIX:
+   * We keep TWO candidates (with /api and without),
+   * then every request tries both. This removes your "not_found" issue
+   * regardless of nginx proxy prefix behavior.
+   */
+  const apiCandidates = useMemo(() => {
+    const raw = usingDemo ? demoApi : liveApi;
+    const resolved = resolveCryptoBase(raw, "https://api.imali-defi.com");
+    return buildApiCandidates(resolved);
+  }, [usingDemo, demoApi, liveApi]);
 
-  const apiBaseRef = useRef(apiBase);
+  const apiCandidatesRef = useRef(apiCandidates);
   useEffect(() => {
-    apiBaseRef.current = apiBase;
-  }, [apiBase]);
+    apiCandidatesRef.current = apiCandidates;
+  }, [apiCandidates]);
+
+  // For display only (what user sees as "Crypto base:")
+  const apiBaseDisplay = apiCandidates[0] || "";
 
   useEffect(() => {
     const title = usingDemo ? "IMALI • Trade Demo" : "IMALI • Trade Live";
@@ -581,33 +588,36 @@ export default function TradeDemo({
     return true;
   }
 
-  function buildNotifyCandidates(baseUrl) {
+  function buildNotifyCandidates(anyApiBaseCandidate) {
     const list = [];
     const base = (TG_NOTIFY_URL_DEFAULT || "").replace(/\/$/, "");
-    const cleanApi = String(baseUrl || "").replace(/\/$/, "");
+    const clean = String(anyApiBaseCandidate || "").replace(/\/$/, "");
 
     if (base) {
       list.push(`${base}/notify`);
       list.push(`${base}/api/notify`);
     }
 
-    if (cleanApi) {
-      const noApi = cleanApi.replace(/\/api$/i, "");
+    if (clean) {
+      const noApi = clean.replace(/\/api$/i, "");
       list.push(`${noApi}/notify`);
-      list.push(`${cleanApi}/notify`);
+      list.push(`${clean}/notify`);
       list.push(`${noApi}/api/notify`);
     }
 
-    return Array.from(
-      new Set(list.filter(Boolean).map((u) => u.replace(/\/api\/api\//g, "/api/")))
-    );
+    return Array.from(new Set(list.filter(Boolean)));
   }
 
   async function notifyTelegram(kind, payload = {}, { minGapMs = 0 } = {}) {
     if (minGapMs && !shouldSend(kind, minGapMs)) return;
-    const candidates = buildNotifyCandidates(apiBaseRef.current);
 
-    for (const url of candidates) {
+    const candidates = [];
+    for (const b of apiCandidatesRef.current || []) {
+      candidates.push(...buildNotifyCandidates(b));
+    }
+    const urls = Array.from(new Set(candidates));
+
+    for (const url of urls) {
       try {
         await postJson(url, { event: kind, data: payload }, { timeoutMs: 2500 });
         return;
@@ -775,35 +785,48 @@ export default function TradeDemo({
     return [withName, nested, stringOnly];
   }
 
+  /**
+   * ✅ FIX: include both styles in PATHS too:
+   * - /demo/start
+   * - /api/demo/start
+   */
   function buildCryptoPaths(usingDemoNow) {
     if (usingDemoNow) {
       return {
-        start: ["/demo/start", "/demo/start-session", "/demo/begin"],
-        config: ["/demo/config", "/demo/configure", "/demo/set-config"],
-        tick: ["/demo/tick", "/demo/step", "/demo/run-once"],
+        start: ["/demo/start", "/api/demo/start", "/demo/begin", "/api/demo/begin"],
+        config: ["/demo/config", "/api/demo/config", "/demo/configure", "/api/demo/configure"],
+        tick: ["/demo/tick", "/api/demo/tick", "/demo/step", "/api/demo/step"],
       };
     }
     return {
-      start: ["/live/start", "/live/start-session", "/live/begin"],
-      config: ["/live/config", "/live/configure", "/live/set-config"],
-      tick: ["/live/tick", "/live/step", "/live/run-once"],
+      start: ["/live/start", "/api/live/start", "/live/begin", "/api/live/begin"],
+      config: ["/live/config", "/api/live/config", "/live/configure", "/api/live/configure"],
+      tick: ["/live/tick", "/api/live/tick", "/live/step", "/api/live/step"],
     };
   }
 
-  async function tryPostAny(base, paths, bodies, { timeoutMs = 8000 } = {}) {
+  /**
+   * ✅ KEY FIX: try ALL api candidates (with /api and without)
+   */
+  async function tryPostAny(bases, paths, bodies, { timeoutMs = 8000 } = {}) {
     let lastErr = null;
-    for (const p of paths) {
-      const url = `${base}${p}`;
-      for (const body of bodies) {
-        try {
-          const d = await postJson(url, body, { timeoutMs });
-          return { ok: true, data: d, url, body };
-        } catch (e) {
-          lastErr = e;
-          continue;
+    const baseList = Array.isArray(bases) ? bases : [bases].filter(Boolean);
+
+    for (const base of baseList) {
+      for (const p of paths) {
+        const url = `${String(base).replace(/\/+$/, "")}${p}`;
+        for (const body of bodies) {
+          try {
+            const d = await postJson(url, body, { timeoutMs });
+            return { ok: true, data: d, url, body };
+          } catch (e) {
+            lastErr = e;
+            continue;
+          }
         }
       }
     }
+
     const err = lastErr || new Error("Request failed");
     throw err;
   }
@@ -883,7 +906,7 @@ export default function TradeDemo({
       { startBalance, venue: kind },
     ];
 
-    const started = await tryPostAny(apiBaseRef.current, paths.start, startBodies, { timeoutMs: 9000 });
+    const started = await tryPostAny(apiCandidatesRef.current, paths.start, startBodies, { timeoutMs: 9000 });
     const d = normalizeStartResponse(started.data);
 
     const idKey = usingDemoNow ? "demoId" : "liveId";
@@ -895,7 +918,7 @@ export default function TradeDemo({
     }
 
     const variants = buildCryptoConfigVariants(kind, { ...d, [idKey]: primaryId });
-    const configRes = await tryPostAny(apiBaseRef.current, paths.config, variants, { timeoutMs: 9000 });
+    const configRes = await tryPostAny(apiCandidatesRef.current, paths.config, variants, { timeoutMs: 9000 });
 
     const ok = configRes?.data?.ok;
     if (ok === false) {
@@ -1076,7 +1099,7 @@ export default function TradeDemo({
     const variants = buildCryptoConfigVariants(kind, sess);
 
     try {
-      await tryPostAny(apiBaseRef.current, paths.config, variants, { timeoutMs: 9000 });
+      await tryPostAny(apiCandidatesRef.current, paths.config, variants, { timeoutMs: 9000 });
       notifyTelegram("reconfigured", { mode: kind, strategy, params, chain, symbols: parseSymbols() }, { minGapMs: 8000 });
     } catch (e) {
       if (usingDemoNow) {
@@ -1105,7 +1128,7 @@ export default function TradeDemo({
       ? { demoId: id, demo_id: id, sessionId: id, session_id: id }
       : { liveId: id, live_id: id, sessionId: id, session_id: id };
 
-    const res = await tryPostAny(apiBaseRef.current, paths.tick, [body], { timeoutMs: 9000 });
+    const res = await tryPostAny(apiCandidatesRef.current, paths.tick, [body], { timeoutMs: 9000 });
     const data = res?.data || {};
     if (data?.error) throw new Error(data.error);
 
@@ -1239,18 +1262,25 @@ export default function TradeDemo({
   /* --------------------------- Self-Check panel --------------------------- */
   const runSelfCheck = async () => {
     try {
-      // ✅ apiBase is now guaranteed to be .../api
-      const url1 = `${apiBaseRef.current}/health`;
-      try {
-        const j = await getJson(url1, { timeoutMs: 6000 });
-        setCheck({ ok: !!j?.ok, message: j?.ok ? "Healthy" : (j?.message || "Unhealthy") });
-        return;
-      } catch (e1) {
-        // try healthz next
+      // ✅ Try both base styles for health checks
+      const bases = apiCandidatesRef.current || [];
+      const healthPaths = ["/health", "/api/health", "/healthz", "/api/healthz"];
+
+      let lastErr = null;
+      for (const b of bases) {
+        for (const p of healthPaths) {
+          const url = `${String(b).replace(/\/+$/, "")}${p}`;
+          try {
+            const j = await getJson(url, { timeoutMs: 6000 });
+            const ok = !!j?.ok;
+            setCheck({ ok, message: ok ? "Healthy" : (j?.message || j?.error || "Unhealthy") });
+            return;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
       }
-      const url2 = `${apiBaseRef.current}/healthz`;
-      const j2 = await getJson(url2, { timeoutMs: 6000 });
-      setCheck({ ok: !!j2?.ok, message: j2?.ok ? "Healthy" : (j2?.message || "Unhealthy") });
+      throw lastErr || new Error("Health check failed");
     } catch (e) {
       setCheck({ ok: false, message: `Health check failed: ${String(e?.message || e)}` });
     }
@@ -1369,7 +1399,7 @@ export default function TradeDemo({
                       After you click <b>Start</b>, click <b>Auto run</b> to stream ticks.
                     </li>
                     <li>
-                      Backend reachable: <code>{apiBase}/health</code> (or <code>{apiBase}/healthz</code>).
+                      Backend reachable: <code>{apiBaseDisplay}/health</code> (or <code>{apiBaseDisplay}/healthz</code>).
                     </li>
                     <li>
                       If self-check fails, your API base is wrong or the backend is down.
@@ -1402,7 +1432,7 @@ export default function TradeDemo({
           <BackendBadges
             usingDemo={usingDemo}
             venue={venue}
-            apiBase={apiBase}
+            apiBase={apiBaseDisplay}
             stockDemoApi={stockDemoApi}
             stockLiveApi={stockLiveApi}
             runMode={runMode}
@@ -1829,8 +1859,8 @@ export default function TradeDemo({
             <div className="p-3 rounded-xl border border-amber-600 bg-amber-400 text-black text-sm sm:text-base">
               <span className="font-semibold">{usingDemo ? "Demo" : "Live"} result so far:</span>{" "}
               <b>
-                Gross {gross >= 0 ? "+" : "-"}${Math.abs(gross).toFixed(2)} • Net ({(takeRate * 100).toFixed(0)}% take){" "}
-                {net >= 0 ? "+" : "-"}${Math.abs(net).toFixed(2)}
+                Gross {gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)} • Net ({(takeRate * 100).toFixed(0)}% take){" "}
+                {net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}
               </b>
               <span className="ml-1">
                 • After Start, click <b>Auto run</b> to stream ticks ⭐
