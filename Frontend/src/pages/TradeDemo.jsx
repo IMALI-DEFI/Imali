@@ -56,14 +56,21 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
  * Some nginx configs strip /api before forwarding; some do not.
  * We try both and take the first that works.
  */
+function buildStocksCandidates(base) {
+  const b = String(base || "").replace(/\/+$/, "");
+  if (!b) return [];
+  // Some deployments use /api prefix even for stocks routes
+  const withApi = /\/api$/i.test(b) ? b : `${b}/api`;
+  const withoutApi = b.replace(/\/api$/i, "");
+  return Array.from(new Set([withoutApi, withApi].filter(Boolean)));
+}
 function buildApiCandidates(base) {
   const b = String(base || "").replace(/\/+$/, "");
   if (!b) return [];
   const withApi = /\/api$/i.test(b) ? b : `${b}/api`;
   const withoutApi = b.replace(/\/api$/i, "");
-  return Array.from(new Set([withApi, withoutApi].filter(Boolean)));
+  return Array.from(new Set([withoutApi, withApi].filter(Boolean)));
 }
-
 /* ✅ defaults */
 const DEMO_API_DEFAULT = resolveCryptoBase(
   getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
@@ -153,6 +160,13 @@ async function getJson(url, { timeoutMs = 8000 } = {}) {
   try {
     const r = await fetch(url, { cache: "no-store", signal: ctrl.signal });
     const text = await r.text();
+
+    // ✅ if server returns non-2xx, throw (include snippet)
+    if (!r.ok) {
+      const snip = String(text || "").slice(0, 180);
+      throw new Error(`HTTP ${r.status} from ${url}: ${snip}`);
+    }
+
     try {
       return text ? JSON.parse(text) : null;
     } catch {
@@ -163,7 +177,6 @@ async function getJson(url, { timeoutMs = 8000 } = {}) {
     clearTimeout(t);
   }
 }
-
 /* -------------------------------- Math helpers -------------------------------- */
 function sma(arr, n) {
   if (!arr || arr.length < n) return null;
@@ -223,12 +236,19 @@ function useStocksSimMulti(
     Object.fromEntries(symList.current.map((s) => [s, makeSeedSeries(s)]))
   );
 
+  // ✅ state first
   const [cash, setCash] = useState(10000);
   const [hold, setHold] = useState(() =>
     Object.fromEntries(symList.current.map((s) => [s, 0]))
   );
   const [trades, setTrades] = useState([]);
   const [equity, setEquity] = useState([]);
+
+  // ✅ refs after
+  const cashRef = useRef(cash);
+  const holdRef = useRef(hold);
+  useEffect(() => { cashRef.current = cash; }, [cash]);
+  useEffect(() => { holdRef.current = hold; }, [hold]);
 
   const lastPrice = (sym) => ohlcMap[sym]?.at(-1)?.close ?? initialPrice;
 
@@ -246,52 +266,29 @@ function useStocksSimMulti(
     const notional = px * qty;
     const fee = notional * (feeBps / 10000);
 
+    const cNow = Number(cashRef.current || 0);
+    const hNow = holdRef.current || {};
+
     if (side === "BUY") {
-      if (cash < notional + fee) return false;
+      if (cNow < notional + fee) return false;
       setTimeout(() => {
         setCash((c) => c - notional - fee);
         setHold((h) => ({ ...h, [sym]: (h[sym] || 0) + qty }));
-        setTrades((t) => [
-          ...t,
-          {
-            t: Date.now(),
-            venue: "STOCKS",
-            sym,
-            action: "BUY",
-            price: px,
-            amount: qty,
-            fee,
-          },
-        ]);
+        setTrades((t) => [...t, { t: Date.now(), venue: "STOCKS", sym, action: "BUY", price: px, amount: qty, fee }]);
       }, latencyMs);
       return true;
     } else {
-      if ((hold[sym] || 0) < qty) return false;
+      if ((hNow[sym] || 0) < qty) return false;
       setTimeout(() => {
         setCash((c) => c + notional - fee);
         setHold((h) => ({ ...h, [sym]: (h[sym] || 0) - qty }));
-        setTrades((t) => [
-          ...t,
-          {
-            t: Date.now(),
-            venue: "STOCKS",
-            sym,
-            action: "SELL",
-            price: px,
-            amount: qty,
-            fee,
-          },
-        ]);
+        setTrades((t) => [...t, { t: Date.now(), venue: "STOCKS", sym, action: "SELL", price: px, amount: qty, fee }]);
       }, latencyMs);
       return true;
     }
   }
 
-  function tickOne({
-    driftBps = 1,
-    shockProb = 0.01,
-    trendProb = 0.6,
-  } = {}) {
+  function tickOne({ driftBps = 1, shockProb = 0.01, trendProb = 0.6 } = {}) {
     setOhlcMap((prev) => {
       const nextMap = { ...prev };
       Object.keys(nextMap).forEach((sym) => {
@@ -301,8 +298,7 @@ function useStocksSimMulti(
 
         const trend = Math.random() < trendProb;
         const drift = lastClose * (driftBps / 10000);
-        const noise =
-          lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
+        const noise = lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
         let newClose = lastClose + drift + noise;
 
         if (Math.random() < shockProb) {
@@ -315,52 +311,38 @@ function useStocksSimMulti(
         const low = Math.min(open, newClose) * (1 - Math.random() * 0.004);
         const vol = 5000 + Math.random() * 9000;
 
-        const next = {
+        nextMap[sym] = [...series.slice(-99), {
           t: mkTime(t0.current, series.length, stepMs),
-          open,
-          high,
-          low,
+          open, high, low,
           close: Math.max(0.01, newClose),
           volume: vol,
           symbol: sym,
-        };
-
-        nextMap[sym] = [...series.slice(-99), next];
+        }];
       });
       return nextMap;
     });
 
-    const totalHoldValue = Object.entries(hold).reduce(
+    const hNow = holdRef.current || {};
+    const cNow = Number(cashRef.current || 0);
+    const totalHoldValue = Object.entries(hNow).reduce(
       (sum, [sym, q]) => sum + lastPrice(sym) * (q || 0),
       0
     );
-    const eq = cash + totalHoldValue;
-    setEquity((e) => [...e.slice(-199), { t: Date.now(), value: eq }]);
-  }
+
+    setEquity((e) => [...e.slice(-199), { t: Date.now(), value: cNow + totalHoldValue }]);
+  } // ✅ missing brace fixed
 
   function reset(newSymbols = symList.current) {
     symList.current = newSymbols;
     t0.current = Date.now() - 50 * stepMs;
-    const seeded = Object.fromEntries(newSymbols.map((s) => [s, makeSeedSeries(s)]));
-    setOhlcMap(seeded);
+    setOhlcMap(Object.fromEntries(newSymbols.map((s) => [s, makeSeedSeries(s)])));
     setCash(10000);
     setHold(Object.fromEntries(newSymbols.map((s) => [s, 0])));
     setTrades([]);
     setEquity([]);
   }
 
-  return {
-    ohlcMap,
-    cash,
-    hold,
-    trades,
-    equity,
-    exec,
-    tickOne,
-    reset,
-    lastPrice,
-    symbols: symList.current,
-  };
+  return { ohlcMap, cash, hold, trades, equity, exec, tickOne, reset, lastPrice, symbols: symList.current };
 }
 
 /* -------------------------------- Component -------------------------------- */
@@ -592,19 +574,16 @@ export default function TradeDemo({
     const list = [];
     const base = (TG_NOTIFY_URL_DEFAULT || "").replace(/\/$/, "");
     const clean = String(anyApiBaseCandidate || "").replace(/\/$/, "");
-
-    if (base) {
-      list.push(`${base}/notify`);
-      list.push(`${base}/api/notify`);
-    }
-
-    if (clean) {
-      const noApi = clean.replace(/\/api$/i, "");
-      list.push(`${noApi}/notify`);
-      list.push(`${clean}/notify`);
-      list.push(`${noApi}/api/notify`);
-    }
-
+  
+    const addApiNotify = (b) => {
+      if (!b) return;
+      const withApi = /\/api$/i.test(b) ? b : `${b}/api`;
+      list.push(`${withApi}/notify`);
+    };
+  
+    addApiNotify(base);
+    addApiNotify(clean);
+  
     return Array.from(new Set(list.filter(Boolean)));
   }
 
@@ -833,56 +812,69 @@ export default function TradeDemo({
 
   async function startOne(kind) {
     const usingDemoNow = runModeRef.current === "demo";
-
+  
     if (kind === "stocks") {
       const wantRemote = useRemoteStocks;
       const isLive = runModeRef.current === "live";
-      const base = isLive ? stockLiveApi : stockDemoApi;
+    
+      const rawBase = isLive ? stockLiveApi : stockDemoApi;
+      const bases = buildStocksCandidates(rawBase); // ✅ try with/without /api
+    
       const startPath = isLive ? "/stocks/live/start" : "/stocks/demo/start";
       const configPath = isLive ? "/stocks/live/config" : "/stocks/demo/config";
       const basket = stockList;
-
-      if (wantRemote && base) {
-        try {
-          const d0 = await postJson(
-            `${base}${startPath}`,
-            { name: "STOCKS", startBalance },
-            { timeoutMs: 8000 }
-          );
-          if (!d0?.stocksId) throw new Error("No stocksId");
-
-          const c = await postJson(
-            `${base}${configPath}`,
-            {
-              stocksId: d0.stocksId,
-              symbols: basket,
-              symbolsCsv: basket.join(","),
-              strategy,
-              strategyKey: strategy,
-              params,
-              config: { ...params },
-            },
-            { timeoutMs: 8000 }
-          );
-          if (!c?.ok) throw new Error(c?.error || "Stocks config failed");
-
-          return {
-            ...d0,
-            __venue: "stocks",
-            base,
-            remote: true,
-            balance: startBalance,
-            equity: startBalance,
-            realizedPnL: 0,
-            wins: 0,
-            losses: 0,
-            history: [],
-          };
-        } catch (e) {
-          setStatus("Stocks API unavailable — using local basket sim.");
+    
+      if (wantRemote && bases.length) {
+        // try bases until one works
+        for (const base of bases) {
+          try {
+            const d0 = await postJson(
+              `${base}${startPath}`,
+              { name: "STOCKS", startBalance },
+              { timeoutMs: 8000 }
+            );
+    
+            const stocksId = d0?.stocksId || d0?.id || d0?.sessionId;
+            if (!stocksId) throw new Error("No stocksId");
+    
+            const c = await postJson(
+              `${base}${configPath}`,
+              {
+                stocksId,
+                symbols: basket,
+                symbolsCsv: basket.join(","),
+                strategy,
+                strategyKey: strategy,
+                params,
+                config: { ...params },
+              },
+              { timeoutMs: 8000 }
+            );
+    
+            if (c?.ok === false) throw new Error(c?.error || "Stocks config failed");
+    
+            return {
+              ...d0,
+              stocksId,
+              __venue: "stocks",
+              base, // ✅ the working base
+              remote: true,
+              balance: startBalance,
+              equity: startBalance,
+              realizedPnL: 0,
+              wins: 0,
+              losses: 0,
+              history: [],
+            };
+          } catch (e) {
+            // try next base
+          }
         }
+    
+        setStatus("Stocks API unavailable — using local basket sim.");
       }
-
+    
+      // ✅ fallback: local sim
       sim.reset(basket);
       return {
         local: true,
