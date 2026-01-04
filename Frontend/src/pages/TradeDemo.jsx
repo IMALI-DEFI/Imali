@@ -74,12 +74,14 @@ function buildApiCandidates(base) {
 /* ✅ Option 2: Use relative paths in production */
 const isProduction = process.env.NODE_ENV === 'production';
 
-const DEMO_API_DEFAULT = isProduction 
-  ? '/api/demo'  // Use relative path in production
-  : resolveCryptoBase(
-      getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
-      "https://api.imali-defi.com"
-    );
+const isLocalhost =
+  typeof window !== "undefined" &&
+  window.location.hostname === "localhost";
+
+const DEMO_API_DEFAULT = resolveCryptoBase(
+  getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
+  isLocalhost ? "http://localhost:5055" : ""
+);
 
 const LIVE_API_DEFAULT = isProduction
   ? '/api/demo'  // Use relative path in production
