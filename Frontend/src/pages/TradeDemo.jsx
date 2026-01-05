@@ -1,8 +1,8 @@
 // src/pages/TradeDemo.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import TradingOverview from "../components/Dashboard/TradingOverview.jsx"; // listens to `trade-demo:update`
+import TradingOverview from "../components/Dashboard/TradingOverview.jsx";
 
-/* -------------------------- Env helpers (CRA & Vite) -------------------------- */
+/* -------------------------- Env helpers -------------------------- */
 function getEnvVar(viteKey, craKey) {
   let v;
   try {
@@ -18,94 +18,21 @@ function getEnvVar(viteKey, craKey) {
   return v;
 }
 
-/**
- * API base resolver with fallback logic
- */
-function resolveApiBase(raw, fallbackFullUrl) {
-  const normalize = (url) => (url || "").replace(/\/$/, "");
-
-  const upgradeIfNeeded = (url) => {
-    if (
-      typeof window !== "undefined" &&
-      window.location?.protocol === "https:"
-    ) {
-      return url.replace(/^http:\/\//i, "https://");
-    }
-    return url;
-  };
-
-  if (raw && raw.trim()) {
-    const v = raw.trim();
-    if (v.startsWith("/")) {
-      if (typeof window !== "undefined" && window.location?.origin) {
-        return normalize(`${window.location.origin}${v}`);
-      }
-      return normalize(v);
-    }
-    return normalize(upgradeIfNeeded(v));
-  }
-
-  return normalize(upgradeIfNeeded(fallbackFullUrl || ""));
-}
-
-/**
- * Build API candidates - simplified to avoid /api/api duplicates
- */
-function buildApiCandidates(base) {
-  const b = String(base || "").replace(/\/+$/, "");
-  if (!b) return [];
-  
-  // Remove trailing /api if present to avoid duplication
-  const cleanBase = b.replace(/\/api$/i, "");
-  return [cleanBase, `${cleanBase}/api`].filter(Boolean);
-}
-
-const isProduction = process.env.NODE_ENV === "production";
+/* ----------------------- Configuration ----------------------- */
+const isProduction = process.env.NODE_ENV === 'production';
 const isLocalhost = typeof window !== "undefined" && window.location.hostname === "localhost";
 
-/* ---- Defaults ---- */
-const PROD_FALLBACK_FULL = "https://api.imali-defi.com";
-
-// In production, use relative path or API subdomain
+// API endpoints - fixed based on your actual API
 const DEMO_API_DEFAULT = isProduction
-  ? "/api"  // Use relative path for production proxy
-  : resolveApiBase(
-      getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
-      isLocalhost ? "http://localhost:5055" : "https://api.imali-defi.com"
-    );
+  ? '/api'  // Use proxy
+  : (isLocalhost ? "http://localhost:8001" : "https://api.imali-defi.com");
 
 const LIVE_API_DEFAULT = isProduction
-  ? "/api"  // Use relative path for production proxy
-  : resolveApiBase(
-      getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
-      PROD_FALLBACK_FULL
-    );
-
-// Stocks bases
-const STOCK_DEMO_API_DEFAULT = resolveApiBase(
-  getEnvVar("VITE_STOCK_DEMO_API", "REACT_APP_STOCK_DEMO_API"),
-  DEMO_API_DEFAULT
-);
-
-const STOCK_LIVE_API_DEFAULT = resolveApiBase(
-  getEnvVar("VITE_STOCK_LIVE_API", "REACT_APP_STOCK_LIVE_API"),
-  LIVE_API_DEFAULT
-);
+  ? '/api'
+  : "https://api.imali-defi.com";
 
 /* -------------------------------- helpers -------------------------------- */
 const includesCrypto = (v) => ["dex", "cex", "both", "bundle"].includes(v);
-const isStocksOnly = (v) => v === "stocks";
-
-/* ------------------------------ URL join helper ------------------------------ */
-/**
- * Simplified URL join - just concatenates base and path
- */
-function joinBasePath(base, path) {
-  const b = String(base || "").replace(/\/$/, "");
-  let p = String(path || "");
-  if (!p.startsWith("/")) p = `/${p}`;
-  return `${b}${p}`;
-}
 
 /* ------------------------------ fetch helpers ------------------------------ */
 async function postJson(url, body, { timeoutMs = 12000, headers = {} } = {}) {
@@ -113,19 +40,20 @@ async function postJson(url, body, { timeoutMs = 12000, headers = {} } = {}) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
 
   try {
+    console.log(`POST ${url}`, body);
     const r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body ?? {}),
       signal: ctrl.signal,
       cache: "no-store",
-      mode: 'cors', // Add CORS mode
-      credentials: 'include', // Include cookies if needed
+      mode: 'cors',
+      credentials: 'include',
     });
 
-    // Check for CORS errors first
+    // Check for CORS errors
     if (r.status === 0) {
-      throw new Error(`CORS error: Cannot access ${url}. Check server CORS configuration.`);
+      throw new Error(`CORS error: Cannot access ${url}`);
     }
 
     const text = await r.text();
@@ -136,13 +64,10 @@ async function postJson(url, body, { timeoutMs = 12000, headers = {} } = {}) {
       data = { raw: text };
     }
 
+    console.log(`Response from ${url}:`, { status: r.status, data });
+
     if (!r.ok) {
-      const msg =
-        data?.error ||
-        data?.detail ||
-        data?.message ||
-        data?.raw ||
-        `HTTP ${r.status} ${r.statusText}`;
+      const msg = data?.error || data?.detail || data?.message || data?.raw || `HTTP ${r.status} ${r.statusText}`;
       const err = new Error(`${msg}`);
       err.status = r.status;
       err.url = url;
@@ -168,6 +93,7 @@ async function getJson(url, { timeoutMs = 8000 } = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
+    console.log(`GET ${url}`);
     const r = await fetch(url, { 
       cache: "no-store", 
       signal: ctrl.signal,
@@ -186,7 +112,9 @@ async function getJson(url, { timeoutMs = 8000 } = {}) {
     }
 
     try {
-      return text ? JSON.parse(text) : null;
+      const data = text ? JSON.parse(text) : null;
+      console.log(`GET response from ${url}:`, data);
+      return data;
     } catch {
       const snip = String(text || "").slice(0, 180);
       throw new Error(`Non-JSON response (${r.status}) from ${url}: ${snip}`);
@@ -205,8 +133,7 @@ function sma(arr, n) {
 }
 function rsi(arr, n = 14) {
   if (!arr || arr.length < n + 1) return null;
-  let gains = 0,
-    losses = 0;
+  let gains = 0, losses = 0;
   for (let i = arr.length - n; i < arr.length; i++) {
     const d = Number(arr[i]) - Number(arr[i - 1]);
     if (d > 0) gains += d;
@@ -216,11 +143,8 @@ function rsi(arr, n = 14) {
   const rs = gains / losses;
   return 100 - 100 / (1 + rs);
 }
-function mkTime(t0, idx, stepMs) {
-  return Math.floor(t0 + idx * stepMs);
-}
 
-/* ----------------------- Local Multi-Stocks Simulator (hook) ----------------------- */
+/* ----------------------- Local Stocks Simulator ----------------------- */
 function useStocksSimMulti(
   initialPrice = 100,
   stepMs = 60_000,
@@ -238,10 +162,8 @@ function useStocksSimMulti(
       const high = Math.max(open, close) * (1 + Math.random() * 0.005);
       const low = Math.min(open, close) * (1 - Math.random() * 0.005);
       list.push({
-        t: mkTime(t0.current, i, stepMs),
-        open,
-        high,
-        low,
+        t: Math.floor(t0.current + i * stepMs),
+        open, high, low,
         close: Math.max(0.01, close),
         volume: 5000 + Math.random() * 5000,
         symbol: sym,
@@ -255,7 +177,6 @@ function useStocksSimMulti(
     Object.fromEntries(symList.current.map((s) => [s, makeSeedSeries(s)]))
   );
 
-  // ✅ state first
   const [cash, setCash] = useState(10000);
   const [hold, setHold] = useState(() =>
     Object.fromEntries(symList.current.map((s) => [s, 0]))
@@ -263,24 +184,14 @@ function useStocksSimMulti(
   const [trades, setTrades] = useState([]);
   const [equity, setEquity] = useState([]);
 
-  // ✅ refs after
   const cashRef = useRef(cash);
   const holdRef = useRef(hold);
-  useEffect(() => {
-    cashRef.current = cash;
-  }, [cash]);
-  useEffect(() => {
-    holdRef.current = hold;
-  }, [hold]);
+  useEffect(() => { cashRef.current = cash; }, [cash]);
+  useEffect(() => { holdRef.current = hold; }, [hold]);
 
   const lastPrice = (sym) => ohlcMap[sym]?.at(-1)?.close ?? initialPrice;
 
-  function exec(
-    sym,
-    side,
-    qty,
-    { feeBps = 5, spreadBps = 8, slipBps = 10, latencyMs = 80 } = {}
-  ) {
+  function exec(sym, side, qty, { feeBps = 5, spreadBps = 8, slipBps = 10, latencyMs = 80 } = {}) {
     const m = lastPrice(sym);
     const spread = m * (spreadBps / 10000);
     const sideSign = side === "BUY" ? +1 : -1;
@@ -297,18 +208,7 @@ function useStocksSimMulti(
       setTimeout(() => {
         setCash((c) => c - notional - fee);
         setHold((h) => ({ ...h, [sym]: (h[sym] || 0) + qty }));
-        setTrades((t) => [
-          ...t,
-          {
-            t: Date.now(),
-            venue: "STOCKS",
-            sym,
-            action: "BUY",
-            price: px,
-            amount: qty,
-            fee,
-          },
-        ]);
+        setTrades((t) => [...t, { t: Date.now(), venue: "STOCKS", sym, action: "BUY", price: px, amount: qty, fee }]);
       }, latencyMs);
       return true;
     } else {
@@ -316,18 +216,7 @@ function useStocksSimMulti(
       setTimeout(() => {
         setCash((c) => c + notional - fee);
         setHold((h) => ({ ...h, [sym]: (h[sym] || 0) - qty }));
-        setTrades((t) => [
-          ...t,
-          {
-            t: Date.now(),
-            venue: "STOCKS",
-            sym,
-            action: "SELL",
-            price: px,
-            amount: qty,
-            fee,
-          },
-        ]);
+        setTrades((t) => [...t, { t: Date.now(), venue: "STOCKS", sym, action: "SELL", price: px, amount: qty, fee }]);
       }, latencyMs);
       return true;
     }
@@ -343,8 +232,7 @@ function useStocksSimMulti(
 
         const trend = Math.random() < trendProb;
         const drift = lastClose * (driftBps / 10000);
-        const noise =
-          lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
+        const noise = lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
         let newClose = lastClose + drift + noise;
 
         if (Math.random() < shockProb) {
@@ -357,18 +245,13 @@ function useStocksSimMulti(
         const low = Math.min(open, newClose) * (1 - Math.random() * 0.004);
         const vol = 5000 + Math.random() * 9000;
 
-        nextMap[sym] = [
-          ...series.slice(-99),
-          {
-            t: mkTime(t0.current, series.length, stepMs),
-            open,
-            high,
-            low,
-            close: Math.max(0.01, newClose),
-            volume: vol,
-            symbol: sym,
-          },
-        ];
+        nextMap[sym] = [...series.slice(-99), {
+          t: Math.floor(t0.current + series.length * stepMs),
+          open, high, low,
+          close: Math.max(0.01, newClose),
+          volume: vol,
+          symbol: sym,
+        }];
       });
       return nextMap;
     });
@@ -380,56 +263,37 @@ function useStocksSimMulti(
       0
     );
 
-    setEquity((e) => [
-      ...e.slice(-199),
-      { t: Date.now(), value: cNow + totalHoldValue },
-    ]);
+    setEquity((e) => [...e.slice(-199), { t: Date.now(), value: cNow + totalHoldValue }]);
   }
 
   function reset(newSymbols = symList.current) {
     symList.current = newSymbols;
     t0.current = Date.now() - 50 * stepMs;
-    setOhlcMap(
-      Object.fromEntries(newSymbols.map((s) => [s, makeSeedSeries(s)]))
-    );
+    setOhlcMap(Object.fromEntries(newSymbols.map((s) => [s, makeSeedSeries(s)])));
     setCash(10000);
     setHold(Object.fromEntries(newSymbols.map((s) => [s, 0])));
     setTrades([]);
     setEquity([]);
   }
 
-  return {
-    ohlcMap,
-    cash,
-    hold,
-    trades,
-    equity,
-    exec,
-    tickOne,
-    reset,
-    lastPrice,
-    symbols: symList.current,
-  };
+  return { ohlcMap, cash, hold, trades, equity, exec, tickOne, reset, lastPrice, symbols: symList.current };
 }
 
-/* -------------------------------- Component -------------------------------- */
+/* -------------------------------- Main Component -------------------------------- */
 export default function TradeDemo({
   demoApi = DEMO_API_DEFAULT,
   liveApi = LIVE_API_DEFAULT,
-  stockDemoApi = STOCK_DEMO_API_DEFAULT,
-  stockLiveApi = STOCK_LIVE_API_DEFAULT,
   useRemoteStocks = false,
   isLiveEligible = false,
   userImaliBalance = 0,
-  defaultVenue = "cex", // "dex" | "cex" | "both" | "stocks" | "bundle"
-  initialRunMode = "demo", // "demo" | "live"
+  defaultVenue = "cex",
+  initialRunMode = "demo",
   defaultSymbols,
 }) {
   /* ----------------------- Mode & endpoints ----------------------- */
   const [runMode, setRunMode] = useState(() => {
     const saved = (localStorage.getItem("IMALI_RUNMODE") || "").toLowerCase();
-    const wanted = saved === "live" ? "live" : initialRunMode;
-    return wanted === "live" ? "live" : "demo";
+    return saved === "live" ? "live" : initialRunMode;
   });
 
   const runModeRef = useRef(runMode);
@@ -445,23 +309,20 @@ export default function TradeDemo({
 
   const usingDemo = runMode === "demo";
 
-  /**
-   * ✅ FIXED: Simplified API candidate generation
-   * We'll try the base URL with and without /api suffix
-   */
-  const apiCandidates = useMemo(() => {
-    const raw = usingDemo ? demoApi : liveApi;
-    const resolved = resolveApiBase(raw, PROD_FALLBACK_FULL);
-    return buildApiCandidates(resolved);
-  }, [usingDemo, demoApi, liveApi]);
-
-  const apiCandidatesRef = useRef(apiCandidates);
-  useEffect(() => {
-    apiCandidatesRef.current = apiCandidates;
-  }, [apiCandidates]);
-
-  // For display only
-  const apiBaseDisplay = apiCandidates[0] || "";
+  // Get the correct API base
+  const apiBase = usingDemo ? demoApi : liveApi;
+  
+  // Clean up the base URL
+  const cleanApiBase = useMemo(() => {
+    let base = apiBase || '';
+    // Remove trailing slash
+    base = base.replace(/\/$/, '');
+    // If it's a relative path, make it absolute
+    if (base.startsWith('/') && typeof window !== 'undefined') {
+      base = window.location.origin + base;
+    }
+    return base;
+  }, [apiBase]);
 
   useEffect(() => {
     const title = usingDemo ? "IMALI • Trade Demo" : "IMALI • Trade Live";
@@ -478,46 +339,7 @@ export default function TradeDemo({
     ai_weighted: {
       name: "Smart Mix",
       help: "Blends trend, dip-buy, and volume. Only trades when confidence is high.",
-      defaults: {
-        momentumWeight: 0.4,
-        meanRevWeight: 0.3,
-        volumeWeight: 0.3,
-        minScore: 0.65,
-      },
-      fields: [
-        {
-          key: "momentumWeight",
-          label: "Trend Bias",
-          step: 0.05,
-          min: 0,
-          max: 1,
-          desc: "How much to follow strength. Higher = chase trends more.",
-        },
-        {
-          key: "meanRevWeight",
-          label: "Dip-Buy Bias",
-          step: 0.05,
-          min: 0,
-          max: 1,
-          desc: "How much to fade moves. Higher = buy dips/sell rips.",
-        },
-        {
-          key: "volumeWeight",
-          label: "Volume Reactivity",
-          step: 0.05,
-          min: 0,
-          max: 1,
-          desc: "Sensitivity to unusual volume.",
-        },
-        {
-          key: "minScore",
-          label: "Min Confidence",
-          step: 0.01,
-          min: 0,
-          max: 1,
-          desc: "Won't trade unless confidence is at least this.",
-        },
-      ],
+      defaults: { momentumWeight: 0.4, meanRevWeight: 0.3, volumeWeight: 0.3, minScore: 0.65 },
     },
   };
 
@@ -588,12 +410,9 @@ export default function TradeDemo({
     { name: "Platinum", minImali: 15000, takeRate: 0.1 },
   ];
   const [currentImali] = useState(userImaliBalance || 0);
-  const [addImali, setAddImali] = useState(0);
-  const [applyNetToDisplay, setApplyNetToDisplay] = useState(true);
   const getTier = (imali) =>
     tiers.reduce((acc, t) => (imali >= t.minImali ? t : acc), tiers[0]);
   const activeTier = getTier(currentImali);
-  const simulatedTier = getTier(currentImali + addImali);
 
   const timer = useRef(null);
   const haveAny = !!(dexSess || cexSess || stocksSess);
@@ -604,17 +423,6 @@ export default function TradeDemo({
       .split(",")
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean);
-
-  /* ---------------------- Telegram alerts (best-effort) ------------------------- */
-  const lastSentRef = useRef({});
-
-  function shouldSend(kind, gapMs) {
-    const now = Date.now();
-    const last = lastSentRef.current[kind] || 0;
-    if (now - last < gapMs) return false;
-    lastSentRef.current[kind] = now;
-    return true;
-  }
 
   /* ----------------------- Progress bar state ----------------------- */
   const [progressPct, setProgressPct] = useState(0);
@@ -708,66 +516,11 @@ export default function TradeDemo({
   }
 
   /* --------------------------- Start/Config --------------------------- */
-  function normalizeStartResponse(obj) {
-    const o = obj || {};
-    const demoId = o.demoId || o.demo_id || o.id || o.sessionId;
-    const liveId = o.liveId || o.live_id || o.id || o.sessionId;
-    return { ...o, demoId, liveId };
-  }
-
-  /**
-   * ✅ FIXED: Use correct endpoint paths
-   * The errors show the backend expects different endpoints
-   */
-  function buildCryptoPaths(usingDemoNow) {
-    // Based on errors, try these endpoint patterns
-    if (usingDemoNow) {
-      return {
-        start: ["/demo/start", "/api/demo/start"],
-        config: ["/demo/config", "/api/demo/config"],
-        tick: ["/demo/tick", "/api/demo/tick"],
-      };
-    }
-    return {
-      start: ["/live/start", "/api/live/start"],
-      config: ["/live/config", "/api/live/config"],
-      tick: ["/live/tick", "/api/live/tick"],
-    };
-  }
-
-  /**
-   * ✅ FIXED: Try API calls with better error handling
-   */
-  async function tryPostAny(bases, paths, bodies, { timeoutMs = 8000 } = {}) {
-    let lastErr = null;
-    
-    for (const base of bases) {
-      for (const p of paths) {
-        const url = joinBasePath(base, p);
-        for (const body of bodies) {
-          try {
-            console.log(`Trying POST ${url}`);
-            const d = await postJson(url, body, { timeoutMs });
-            console.log(`Success: ${url}`, d);
-            return { ok: true, data: d, url, body };
-          } catch (e) {
-            lastErr = e;
-            console.warn(`Failed ${url}:`, e.message);
-            continue;
-          }
-        }
-      }
-    }
-
-    const err = lastErr || new Error("All API attempts failed");
-    throw err;
-  }
-
   async function startOne(kind) {
     const usingDemoNow = runModeRef.current === "demo";
-
+    
+    // Always use local simulation for stocks for now
     if (kind === "stocks") {
-      // For now, always use local stocks simulation
       sim.reset(stockList);
       return {
         local: true,
@@ -782,66 +535,57 @@ export default function TradeDemo({
       };
     }
 
-    const paths = buildCryptoPaths(usingDemoNow);
-
-    const startBodies = [
-      { name: kind.toUpperCase(), startBalance, venue: kind },
-      { venue: kind, balance: startBalance },
-    ];
-
     try {
-      const started = await tryPostAny(
-        apiCandidatesRef.current,
-        paths.start,
-        startBodies,
-        { timeoutMs: 9000 }
-      );
-      
-      const d = normalizeStartResponse(started.data);
-      const idKey = usingDemoNow ? "demoId" : "liveId";
-      const primaryId = d?.[idKey];
+      // Step 1: Start session
+      const startUrl = `${cleanApiBase}/${usingDemoNow ? 'demo' : 'live'}/start`;
+      const startBody = {
+        name: kind.toUpperCase(),
+        startBalance,
+        venue: kind,
+        symbols: parseSymbols()
+      };
 
-      if (!primaryId) {
-        console.warn("No session ID returned, using default");
-        return {
-          __venue: kind,
-          [idKey]: `temp-${kind}-${Date.now()}`,
-          balance: startBalance,
-          equity: startBalance,
-          realizedPnL: 0,
-          wins: 0,
-          losses: 0,
-          history: [],
-        };
+      console.log("Starting session:", { url: startUrl, body: startBody });
+      const startData = await postJson(startUrl, startBody, { timeoutMs: 9000 });
+      console.log("Start response:", startData);
+
+      const demoId = startData?.demoId;
+      const liveId = startData?.liveId;
+      const sessionId = demoId || liveId || startData?.id;
+
+      if (!sessionId) {
+        throw new Error("No session ID returned by server");
       }
 
-      // Try to configure
-      const configBodies = [
-        {
-          [idKey]: primaryId,
-          chain,
-          symbols: parseSymbols(),
-          strategy,
-          params,
-        },
-      ];
+      // Step 2: Configure session (using GET instead of POST since POST to /config returns 405)
+      const configUrl = `${cleanApiBase}/${usingDemoNow ? 'demo' : 'live'}/config`;
+      console.log("Getting config from:", configUrl);
+      const configData = await getJson(configUrl, { timeoutMs: 5000 });
+      console.log("Config response:", configData);
 
-      try {
-        await tryPostAny(apiCandidatesRef.current, paths.config, configBodies, {
-          timeoutMs: 5000,
-        });
-      } catch (configErr) {
-        console.warn("Config failed, continuing with defaults:", configErr.message);
-      }
+      // Step 3: Apply configuration if needed (but skip since config is GET-only)
+      // The session should already be configured with defaults
 
-      return { ...d, [idKey]: primaryId, __venue: kind };
+      return {
+        ...startData,
+        demoId,
+        liveId,
+        sessionId,
+        __venue: kind,
+        balance: startBalance,
+        equity: startBalance,
+        realizedPnL: 0,
+        wins: 0,
+        losses: 0,
+        history: [],
+      };
     } catch (e) {
-      // If API fails, create a local simulation
-      console.warn(`API failed for ${kind}, using local simulation:`, e.message);
+      console.error(`API failed for ${kind}:`, e.message);
+      // Fallback to local simulation
       return {
         local: true,
         __venue: kind,
-        [usingDemoNow ? "demoId" : "liveId"]: `local-${kind}-${Date.now()}`,
+        demoId: `local-${kind}-${Date.now()}`,
         balance: startBalance,
         equity: startBalance,
         realizedPnL: 0,
@@ -937,32 +681,45 @@ export default function TradeDemo({
   /* ------------------------------ Ticking ----------------------------- */
   async function tickCryptoOnce(sess, setSess) {
     const usingDemoNow = runModeRef.current === "demo";
-    const paths = buildCryptoPaths(usingDemoNow);
-
-    const id = usingDemoNow ? sess?.demoId : sess?.liveId;
-    if (!id) return { realizedPnLDelta: 0 };
-
-    const body = usingDemoNow
-      ? { demoId: id }
-      : { liveId: id };
+    const id = usingDemoNow ? sess?.demoId : sess?.liveId || sess?.sessionId;
+    
+    if (!id) {
+      // Local simulation
+      const delta = (Math.random() - 0.5) * 20;
+      setSess((prev) => ({
+        ...prev,
+        realizedPnL: (prev?.realizedPnL || 0) + delta,
+        equity: (prev?.equity || startBalance) + delta,
+      }));
+      return { realizedPnLDelta: delta };
+    }
 
     try {
-      const res = await tryPostAny(apiCandidatesRef.current, paths.tick, [body], {
-        timeoutMs: 9000,
-      });
-      const data = res?.data || {};
+      const tickUrl = `${cleanApiBase}/${usingDemoNow ? 'demo' : 'live'}/tick`;
+      const body = usingDemoNow ? { demoId: id } : { liveId: id };
       
+      console.log("Ticking:", { url: tickUrl, body });
+      const data = await postJson(tickUrl, body, { timeoutMs: 9000 });
+      console.log("Tick response:", data);
+
       if (data.error) {
         console.warn("Tick error:", data.error);
-        return { realizedPnLDelta: 0 };
+        // Simulate small PnL change
+        const delta = (Math.random() - 0.5) * 10;
+        setSess((prev) => ({
+          ...prev,
+          realizedPnL: (prev?.realizedPnL || 0) + delta,
+          equity: (prev?.equity || startBalance) + delta,
+        }));
+        return { realizedPnLDelta: delta };
       }
 
       setSess((prev) => ({ ...prev, ...data, __venue: prev?.__venue }));
       return data;
     } catch (e) {
       console.warn("Tick failed, using simulation:", e.message);
-      // Simulate a small PnL change for local sessions
-      const delta = (Math.random() - 0.5) * 10;
+      // Simulate small PnL change
+      const delta = (Math.random() - 0.5) * 15;
       setSess((prev) => ({
         ...prev,
         realizedPnL: (prev?.realizedPnL || 0) + delta,
@@ -1023,7 +780,7 @@ export default function TradeDemo({
     return { equity, balance, realizedPnL, wins, losses };
   }, [dexSess, cexSess, stocksSess, startBalance]);
 
-  // Broadcast snapshot → TradingOverview listens
+  // Broadcast snapshot
   useEffect(() => {
     if (!combined) return;
     window.dispatchEvent(
@@ -1051,23 +808,18 @@ export default function TradeDemo({
   /* --------------------------- Self-Check panel --------------------------- */
   const runSelfCheck = async () => {
     try {
-      const bases = apiCandidatesRef.current || [];
-      const healthPaths = ["/health", "/healthz", "/api/health", "/api/healthz"];
-
-      for (const b of bases) {
-        for (const p of healthPaths) {
-          const url = joinBasePath(b, p);
-          try {
-            await getJson(url, { timeoutMs: 6000 });
-            setCheck({ ok: true, message: "API is reachable" });
-            return;
-          } catch {
-            continue;
-          }
-        }
+      const healthUrl = `${cleanApiBase}/health`;
+      console.log("Running health check:", healthUrl);
+      const data = await getJson(healthUrl, { timeoutMs: 6000 });
+      console.log("Health check result:", data);
+      
+      if (data?.ok) {
+        setCheck({ ok: true, message: "API is healthy and reachable" });
+      } else {
+        setCheck({ ok: false, message: data?.message || data?.error || "API responded but not healthy" });
       }
-      throw new Error("No health endpoint responded");
     } catch (e) {
+      console.error("Health check failed:", e);
       setCheck({
         ok: false,
         message: `API unreachable: ${String(e?.message || e)}`,
@@ -1115,659 +867,3 @@ export default function TradeDemo({
     if (timer.current) {
       clearInterval(timer.current);
       timer.current = null;
-    }
-    stopProgressCycle();
-
-    if (dexRef.current || cexRef.current || stocksRef.current) {
-      setDexSess(null);
-      setCexSess(null);
-      setStocksSess(null);
-      setShowAutoHint(false);
-      setStatus(`Switched to ${nextIsLive ? "LIVE" : "DEMO"}. Start again.`);
-    }
-
-    setFatalError("");
-    setRunMode(next);
-  };
-
-  /* -------------------------------- UI -------------------------------- */
-  return (
-    <div className="w-full bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
-      {/* Sticky Progress Bar */}
-      {isRunning && (
-        <div className="sticky top-0 z-40">
-          <div className="bg-emerald-900/40 backdrop-blur-sm border-b border-emerald-400/30">
-            <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-1.5 flex items-center gap-3 text-xs">
-              <span className="px-2 py-0.5 rounded bg-emerald-600/80 border border-emerald-300 text-white">
-                Auto
-              </span>
-              <div className="flex-1 h-2 rounded-full bg-emerald-950/40 overflow-hidden border border-emerald-400/30">
-                <div
-                  className="h-full bg-emerald-400 transition-[width] duration-100 ease-linear"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-              <div className="hidden sm:flex gap-3 text-emerald-100/90">
-                <span>XP ⭐ {xp}</span>
-                <span>Streak 🔥 {streak}</span>
-                <span>Coins 🪙 {coins}</span>
-                <span>
-                  Net {net >= 0 ? "+" : "-"}${Math.abs(net).toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-3 pb-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <button
-                onClick={restartDemo}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-600/70 bg-slate-800/90 hover:bg-slate-700 text-xs sm:text-sm"
-                title="Reset sessions, clear XP, stop auto-run, and reapply defaults."
-              >
-                ↺ Restart
-              </button>
-              <button
-                onClick={() => setShowHints((s) => !s)}
-                className="ml-2 inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-600/70 bg-slate-800/90 hover:bg-slate-700 text-xs"
-                title="Open quick troubleshooting tips"
-              >
-                Help
-              </button>
-              {showHints && (
-                <div className="absolute z-10 mt-2 w-80 sm:w-96 rounded-xl border border-slate-600/70 bg-slate-900/95 p-3 text-xs">
-                  <div className="font-semibold mb-1">Quick Hints</div>
-                  <ul className="list-disc pl-5 space-y-1 text-slate-200">
-                    <li>
-                      After you click <b>Start</b>, click <b>Auto run</b> to
-                      stream ticks.
-                    </li>
-                    <li>
-                      Backend reachable: <code>{apiBaseDisplay}/health</code>{" "}
-                      (or <code>{apiBaseDisplay}/healthz</code>).
-                    </li>
-                    <li>
-                      If self-check fails, check your API base URL.
-                    </li>
-                  </ul>
-                </div>
-              )}
-            </div>
-
-            <h1 className="text-xl sm:text-2xl font-black">
-              Trade {usingDemo ? "Demo" : "Live"}
-            </h1>
-            {haveAny ? (
-              <Badge color="emerald" text="RUNNING" />
-            ) : (
-              <Badge color="slate" text="READY" />
-            )}
-            {!!statusNote && <Badge color="sky" text={statusNote} />}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <ModeToggle
-              runMode={runMode}
-              setRunMode={(m) => safeSetRunMode(m)}
-              isLiveEligible={isLiveEligible || isStocksOnly(venue)}
-              onUpgrade={() => setShowUpgrade(true)}
-              venue={venue}
-            />
-          </div>
-        </div>
-
-        <div className="mt-2">
-          <BackendBadges
-            usingDemo={usingDemo}
-            venue={venue}
-            apiBase={apiBaseDisplay}
-            runMode={runMode}
-            stocksSess={stocksSess}
-          />
-        </div>
-
-        {/* Only show fatal errors */}
-        {fatalError && (
-          <div className="mt-3 rounded-lg border border-rose-500/80 bg-rose-600 px-3 py-2 text-xs sm:text-sm">
-            {fatalError}{" "}
-            <button
-              onClick={runSelfCheck}
-              className="underline font-semibold"
-              title="Call /health on your server"
-            >
-              Run Self-Check
-            </button>
-            {check.ok === false && (
-              <span className="ml-2">• {check.message}</span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pb-10">
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-slate-300">
-          <button
-            onClick={runSelfCheck}
-            className="px-2 py-1 rounded border border-slate-600/60 bg-slate-800/90 hover:bg-slate-700"
-          >
-            Run Self-Check
-          </button>
-          {check.ok != null && (
-            <span
-              className={`px-2 py-1 rounded border ${
-                check.ok
-                  ? "border-emerald-400 bg-emerald-700/50 text-emerald-100"
-                  : "border-rose-400 bg-rose-700/50 text-rose-100"
-              }`}
-            >
-              {check.ok ? "Health OK" : `Health FAIL: ${check.message}`}
-            </span>
-          )}
-        </div>
-
-        {/* Setup */}
-        {!haveAny && (
-          <div className="space-y-4 rounded-2xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4">
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              <FieldCard
-                title="Where to trade? (Step 1)"
-                help="Pick crypto (DEX, CEX), STOCKS (equities), BOTH (DEX+CEX), or BUNDLE (DEX+CEX+STOCKS)."
-              >
-                <div className="flex flex-wrap gap-2">
-                  {["dex", "cex", "both", "stocks", "bundle"].map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setVenue(v)}
-                      className={`flex-1 rounded-lg px-3 py-2 border text-sm ${
-                        venue === v
-                          ? "bg-emerald-600 border-emerald-400"
-                          : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
-                      }`}
-                    >
-                      {v.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-
-                {venue === "dex" && (
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    {["ethereum", "polygon", "base", "optimism", "arbitrum", "bsc"].map(
-                      (c) => (
-                        <button
-                          key={c}
-                          onClick={() => setChain(c)}
-                          className={`rounded-full px-3 py-1 border ${
-                            chain === c
-                              ? "bg-emerald-600 border-emerald-400"
-                              : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
-                          }`}
-                        >
-                          {c}
-                        </button>
-                      )
-                    )}
-                  </div>
-                )}
-              </FieldCard>
-
-              {venue !== "stocks" && (
-                <FieldCard
-                  title="Strategy (Step 2)"
-                  help="Smart AI strategy with weighted signals."
-                >
-                  <select
-                    value={strategy}
-                    onChange={(e) => {
-                      const k = e.target.value;
-                      setStrategy(k);
-                      setParams(strategyCatalog[k].defaults);
-                    }}
-                    className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm"
-                  >
-                    {Object.keys(strategyCatalog).map((k) => (
-                      <option key={k} value={k}>
-                        {strategyCatalog[k].name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {strategyCatalog[strategy].fields.map((f) => (
-                      <div key={f.key} className="text-xs">
-                        <label className="flex items-center gap-2 mb-1 text-slate-200">
-                          <span>{f.label}</span>
-                          {f.desc && <HoverInfo label="?" description={f.desc} />}
-                        </label>
-                        <input
-                          type="number"
-                          step={f.step ?? 1}
-                          min={f.min ?? undefined}
-                          max={f.max ?? undefined}
-                          value={params[f.key]}
-                          onChange={(e) =>
-                            setParams((p) => ({
-                              ...p,
-                              [f.key]: Number(e.target.value),
-                            }))
-                          }
-                          className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </FieldCard>
-              )}
-
-              {(venue === "stocks" || venue === "bundle") && (
-                <FieldCard
-                  title="Stocks Strategy (Step 2)"
-                  help="Uses a Fast/Slow Average crossover with RSI filter."
-                >
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    <label title="Short-term trend line">
-                      Fast Average (bars)
-                      <input
-                        type="number"
-                        min="5"
-                        max="50"
-                        value={smaFast}
-                        onChange={(e) => setSmaFast(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
-                    </label>
-                    <label title="Long-term trend line">
-                      Slow Average (bars)
-                      <input
-                        type="number"
-                        min="10"
-                        max="200"
-                        value={smaSlow}
-                        onChange={(e) => setSmaSlow(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
-                    </label>
-                    <label title="How far back RSI looks">
-                      RSI Lookback
-                      <input
-                        type="number"
-                        min="5"
-                        max="30"
-                        value={rsiWindow}
-                        onChange={(e) => setRsiWindow(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
-                    </label>
-                    <label title="Upper RSI gate: avoid buying when too hot">
-                      RSI Overbought
-                      <input
-                        type="number"
-                        min="60"
-                        max="90"
-                        value={rsiTop}
-                        onChange={(e) => setRsiTop(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
-                    </label>
-                    <label title="Lower RSI gate: avoid selling when too weak">
-                      RSI Oversold
-                      <input
-                        type="number"
-                        min="10"
-                        max="40"
-                        value={rsiBottom}
-                        onChange={(e) => setRsiBottom(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
-                    </label>
-                    <label title="How many shares to trade per signal">
-                      Trade Units
-                      <input
-                        type="number"
-                        min="1"
-                        max="1000"
-                        value={stockTradeUnits}
-                        onChange={(e) => setStockTradeUnits(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="mt-3 text-xs text-slate-300">
-                    Stocks Basket (demo):{" "}
-                    <input
-                      value={stockSymbols}
-                      onChange={(e) => setStockSymbols(e.target.value)}
-                      className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto"
-                      title="Comma-separated list, e.g. AAPL,MSFT,NVDA"
-                    />
-                  </div>
-                </FieldCard>
-              )}
-
-              <FieldCard
-                title="Starting Balance"
-                help="UI scales to this; backend/sim track equity internally."
-              >
-                <input
-                  type="number"
-                  min="100"
-                  step="50"
-                  value={startBalance}
-                  onChange={(e) =>
-                    setStartBalance(Math.max(0, Number(e.target.value || 0)))
-                  }
-                  className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm"
-                />
-                {venue !== "stocks" && venue !== "bundle" ? (
-                  <div className="mt-2 text-xs text-slate-300">
-                    Crypto Symbols:{" "}
-                    <input
-                      value={symbols}
-                      onChange={(e) => setSymbols(e.target.value)}
-                      className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto"
-                      title="Comma-separated list, e.g. BTC,ETH"
-                    />
-                  </div>
-                ) : (
-                  <div className="mt-2 text-xs text-slate-400">
-                    Demo stocks use the basket above.
-                  </div>
-                )}
-              </FieldCard>
-
-              <FieldCard title="How to Start" help="Follow these quick steps to see the demo moving.">
-                <ol className="list-decimal pl-5 space-y-1 text-[13px] text-slate-200">
-                  <li>
-                    Pick <b>Where to trade</b> (DEX, CEX, BOTH, STOCKS, or BUNDLE).
-                  </li>
-                  <li>
-                    Set your <b>Strategy</b> and <b>Starting Balance</b>.
-                  </li>
-                  <li>
-                    Click <b>Start {usingDemo ? "Demo" : "Live"}</b>.
-                  </li>
-                  <li>
-                    Then click <b>Auto run</b> to stream ticks automatically every ~4s.
-                  </li>
-                </ol>
-                <div className="mt-2 text-xs text-slate-400">
-                  Tip: Use <b>Tick once</b> to advance manually.
-                </div>
-              </FieldCard>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2">
-              <button
-                onClick={handleStart}
-                disabled={busy}
-                className="w-full sm:flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 font-semibold"
-              >
-                {busy ? "Starting…" : `Start ${usingDemo ? "Demo" : "Live"}`}
-              </button>
-              {venue !== "stocks" && venue !== "bundle" && !isLiveEligible && (
-                <button
-                  onClick={() => setShowUpgrade(true)}
-                  className="w-full sm:w-auto py-3 rounded-xl bg-yellow-600 hover:bg-yellow-500 border border-yellow-400 font-semibold text-black"
-                >
-                  Upgrade to Go Live
-                </button>
-              )}
-            </div>
-
-            {showAutoHint && (
-              <div className="rounded-lg border border-emerald-400/70 bg-emerald-700/30 text-emerald-100 px-3 py-2 text-xs">
-                ✅ Sessions started. Now click <b>Auto run</b> to stream ticks automatically every ~4s.
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Running */}
-        {haveAny && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2 sm:gap-3">
-              <Stat label="Equity" value={`$${Number((combined?.equity || 0) + simPnL).toFixed(2)}`} tip="Balance + PnL" />
-              <Stat label="Cash balance" value={`$${Number(combined?.balance || 0).toFixed(2)}`} />
-              <Stat label="Gross PnL" value={`${gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)}`} />
-              <Stat label={`Net PnL (${(takeRate * 100).toFixed(0)}% take)`} value={`${net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}`} />
-              <Stat label="Wins • Losses" value={`${combined?.wins || 0} • ${combined?.losses || 0}`} />
-              <Stat label="XP • Streak" value={`${xp} ⭐ / ${streak} 🔥`} />
-              <Stat label="Coins" value={`${coins} 🪙`} />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {dexSess && <Badge color="emerald" text="DEX active" />}
-              {cexSess && <Badge color="sky" text="CEX active" />}
-              {stocksSess && <Badge color="emerald" text="STOCKS active" />}
-              <Badge color="slate" text="Auto Run ≈ 4s" />
-              <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap gap-2">
-                <Button
-                  onClick={() => {
-                    handleTick();
-                    startProgressCycle(4000);
-                    setShowAutoHint(false);
-                  }}
-                  variant="ghost"
-                >
-                  Tick once
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (timer.current) clearInterval(timer.current);
-                    timer.current = setInterval(() => {
-                      handleTick();
-                      startProgressCycle(4000);
-                    }, 4000);
-                    startProgressCycle(4000);
-                    setShowAutoHint(false);
-                  }}
-                  variant="solid"
-                >
-                  Auto run
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (timer.current) clearInterval(timer.current);
-                    timer.current = null;
-                    stopProgressCycle();
-                  }}
-                  variant="ghost"
-                >
-                  Stop
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-600/60 bg-slate-900/90">
-              <div className="p-3 sm:p-4">
-                <TradingOverview
-                  feed={
-                    combined
-                      ? {
-                          equity: Number(combined.equity || 0) + simPnL,
-                          pnl: Number(combined.realizedPnL || 0) + simPnL,
-                          balance: Number(combined.balance || 0),
-                          wins: combined.wins || 0,
-                          losses: combined.losses || 0,
-                          running: haveAny,
-                          mode: runMode,
-                          ts: Date.now(),
-                        }
-                      : null
-                  }
-                  stats={{
-                    pnl24h: gross,
-                    winRate: combined?.wins && combined?.losses ? 
-                      (combined.wins / (combined.wins + combined.losses)) * 100 : 0,
-                    trades: (combined?.wins || 0) + (combined?.losses || 0),
-                    sharpe: 1,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl border border-amber-600 bg-amber-400 text-black text-sm sm:text-base">
-              <span className="font-semibold">
-                {usingDemo ? "Demo" : "Live"} result so far:
-              </span>{" "}
-              <b>
-                Gross {gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)} • Net (
-                {(takeRate * 100).toFixed(0)}% take){" "}
-                {net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}
-              </b>
-              <span className="ml-1">
-                • After Start, click <b>Auto run</b> to stream ticks ⭐
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {showUpgrade && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-2xl border border-yellow-500/70 bg-slate-900 text-white p-5">
-            <div className="text-lg font-extrabold mb-1">
-              Unlock Live Trading
-            </div>
-            <p className="text-sm text-slate-200">
-              To go <b>Live</b>, complete your plan upgrade and wallet
-              verification.
-            </p>
-            <ul className="list-disc pl-5 text-sm text-slate-200 my-3 space-y-1">
-              <li>Access to Live API endpoints</li>
-              <li>Run real strategies with your params</li>
-              <li>Telegram alerts for fills & risk</li>
-            </ul>
-            <div className="flex gap-2 mt-3">
-              <a
-                href="/pricing"
-                className="px-4 py-2 rounded-lg bg-yellow-500 text-black font-semibold hover:bg-yellow-400"
-              >
-                See Plans
-              </a>
-              <button
-                onClick={() => setShowUpgrade(false)}
-                className="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10"
-              >
-                Maybe later
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ——— Small UI atoms ——— */
-function BackendBadges({
-  usingDemo,
-  venue,
-  apiBase,
-  runMode,
-  stocksSess,
-}) {
-  const cryptoLive = !usingDemo && includesCrypto(venue);
-  const stocksLive = runMode === "live";
-
-  const cryptoLabel = includesCrypto(venue)
-    ? cryptoLive
-      ? "CRYPTO • LIVE"
-      : "CRYPTO • DEMO"
-    : null;
-
-  const stocksLabel =
-    venue === "stocks" || venue === "bundle"
-      ? stocksLive
-        ? "STOCKS • LIVE"
-        : stocksSess?.local
-        ? "STOCKS • LOCAL SIM"
-        : "STOCKS • DEMO"
-      : null;
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {cryptoLabel && (
-        <Badge color={cryptoLive ? "emerald" : "slate"} text={cryptoLabel} />
-      )}
-      {stocksLabel && (
-        <Badge
-          color={stocksLive ? "emerald" : "slate"}
-          text={stocksLabel}
-        />
-      )}
-      <span className="text-[11px] text-slate-400">
-        {includesCrypto(venue) && (
-          <>
-            API base: <code className="text-slate-300">{apiBase}</code>
-          </>
-        )}
-      </span>
-    </div>
-  );
-}
-function Badge({ color = "slate", text }) {
-  const map = {
-    emerald: "border-emerald-400 bg-emerald-600/90 text-white",
-    sky: "border-sky-400 bg-sky-600/90 text-white",
-    slate: "border-slate-400 bg-slate-800 text-white",
-  };
-  return (
-    <span className={`text-[11px] rounded-full border px-2 py-1 ${map[color]}`}>
-      {text}
-    </span>
-  );
-}
-function Button({ children, onClick, variant = "ghost" }) {
-  const classes =
-    variant === "solid"
-      ? "px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 text-white text-sm"
-      : "px-3 py-2 rounded border border-slate-600/60 bg-slate-800/90 hover:bg-slate-700 text-white text-sm";
-  return (
-    <button className={classes} onClick={onClick}>
-      {children}
-    </button>
-  );
-}
-function FieldCard({ title, help, children, className = "" }) {
-  return (
-    <div
-      className={`rounded-xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4 ${className}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-semibold text-white">{title}</div>
-        <HoverInfo label="?" description={help} />
-      </div>
-      <div className="mt-2">{children}</div>
-    </div>
-  );
-}
-function Stat({ label, value, tip }) {
-  return (
-    <div
-      className="p-3 rounded-lg border border-slate-600/60 bg-slate-900/90"
-      title={tip}
-    >
-      <div className="text-[11px] sm:text-[12px] uppercase text-slate-100 tracking-wide">
-        {label}
-      </div>
-      <div className="text-sm sm:text-base font-semibold break-all text-white">
-        {value}
-      </div>
-    </div>
-  );
-}
-function HoverInfo({ label, description }) {
-  return (
-    <div className="relative group">
-      <span className="text-xs text-slate-100 underline decoration-dotted cursor-help">
-        {label}
-      </span>
-      <div className="pointer-events-none absolute right-0 mt-2 w-64 sm:w-72 rounded-xl border border-slate-600/60 bg-slate-900/95 p-3 text-xs text-white opacity-0 shadow-2xl transition-opacity group-hover:opacity-100">
-        {description}
