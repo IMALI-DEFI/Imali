@@ -59,7 +59,6 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
 function buildStocksCandidates(base) {
   const b = String(base || "").replace(/\/+$/, "");
   if (!b) return [];
-  // Some deployments use /api prefix even for stocks routes
   const withApi = /\/api$/i.test(b) ? b : `${b}/api`;
   const withoutApi = b.replace(/\/api$/i, "");
   return Array.from(new Set([withoutApi, withApi].filter(Boolean)));
@@ -71,20 +70,30 @@ function buildApiCandidates(base) {
   const withoutApi = b.replace(/\/api$/i, "");
   return Array.from(new Set([withoutApi, withApi].filter(Boolean)));
 }
-/* ✅ Option 2: Use relative paths in production */
-const isProduction = process.env.NODE_ENV === 'production';
+
+/* ✅ Option A FIX: In production use a ROOT base (NOT /api/demo) */
+const isProduction = process.env.NODE_ENV === "production";
 
 const isLocalhost =
-  typeof window !== "undefined" &&
-  window.location.hostname === "localhost";
+  typeof window !== "undefined" && window.location.hostname === "localhost";
 
-const DEMO_API_DEFAULT = resolveCryptoBase(
-  getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
-  isLocalhost ? "http://localhost:5055" : ""
-);
+/**
+ * In production, nginx typically routes:
+ *   /api/*  → backend
+ * So our base should be "/api" (root), and the paths decide /demo/* vs /live/*.
+ * Never set base to "/api/demo" because you'll end up with "/api/demo/demo/start".
+ */
+const PROD_BASE = "/api";
+
+const DEMO_API_DEFAULT = isProduction
+  ? PROD_BASE
+  : resolveCryptoBase(
+      getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
+      isLocalhost ? "http://localhost:5055" : ""
+    );
 
 const LIVE_API_DEFAULT = isProduction
-  ? '/api/demo'  // Use relative path in production
+  ? PROD_BASE
   : resolveCryptoBase(
       getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
       "https://api.imali-defi.com"
@@ -92,17 +101,17 @@ const LIVE_API_DEFAULT = isProduction
 
 // Telegram notify base (optional). We will treat notify as best-effort (never blocks UI).
 const TG_NOTIFY_URL_DEFAULT = isProduction
-  ? '/api/demo'  // Use relative path in production
+  ? PROD_BASE
   : getEnvVar("VITE_TG_NOTIFY_URL", "REACT_APP_TG_NOTIFY_URL") ||
     getEnvVar("VITE_TG_NOTIFY_BASE", "REACT_APP_TG_NOTIFY_BASE") ||
     "https://api.imali-defi.com"; // base, not necessarily /notify
 
 const STOCK_DEMO_API_DEFAULT = isProduction
-  ? '/api/demo'  // Use relative path in production
+  ? PROD_BASE
   : getEnvVar("VITE_STOCK_DEMO_API", "REACT_APP_STOCK_DEMO_API") || "";
 
 const STOCK_LIVE_API_DEFAULT = isProduction
-  ? '/api/demo'  // Use relative path in production
+  ? PROD_BASE
   : getEnvVar("VITE_STOCK_LIVE_API", "REACT_APP_STOCK_LIVE_API") || "";
 
 /* -------------------------------- helpers -------------------------------- */
@@ -172,7 +181,6 @@ async function getJson(url, { timeoutMs = 8000 } = {}) {
     const r = await fetch(url, { cache: "no-store", signal: ctrl.signal });
     const text = await r.text();
 
-    // ✅ if server returns non-2xx, throw (include snippet)
     if (!r.ok) {
       const snip = String(text || "").slice(0, 180);
       throw new Error(`HTTP ${r.status} from ${url}: ${snip}`);
@@ -188,6 +196,7 @@ async function getJson(url, { timeoutMs = 8000 } = {}) {
     clearTimeout(t);
   }
 }
+
 /* -------------------------------- Math helpers -------------------------------- */
 function sma(arr, n) {
   if (!arr || arr.length < n) return null;
@@ -258,8 +267,12 @@ function useStocksSimMulti(
   // ✅ refs after
   const cashRef = useRef(cash);
   const holdRef = useRef(hold);
-  useEffect(() => { cashRef.current = cash; }, [cash]);
-  useEffect(() => { holdRef.current = hold; }, [hold]);
+  useEffect(() => {
+    cashRef.current = cash;
+  }, [cash]);
+  useEffect(() => {
+    holdRef.current = hold;
+  }, [hold]);
 
   const lastPrice = (sym) => ohlcMap[sym]?.at(-1)?.close ?? initialPrice;
 
@@ -285,7 +298,10 @@ function useStocksSimMulti(
       setTimeout(() => {
         setCash((c) => c - notional - fee);
         setHold((h) => ({ ...h, [sym]: (h[sym] || 0) + qty }));
-        setTrades((t) => [...t, { t: Date.now(), venue: "STOCKS", sym, action: "BUY", price: px, amount: qty, fee }]);
+        setTrades((t) => [
+          ...t,
+          { t: Date.now(), venue: "STOCKS", sym, action: "BUY", price: px, amount: qty, fee },
+        ]);
       }, latencyMs);
       return true;
     } else {
@@ -293,7 +309,10 @@ function useStocksSimMulti(
       setTimeout(() => {
         setCash((c) => c + notional - fee);
         setHold((h) => ({ ...h, [sym]: (h[sym] || 0) - qty }));
-        setTrades((t) => [...t, { t: Date.now(), venue: "STOCKS", sym, action: "SELL", price: px, amount: qty, fee }]);
+        setTrades((t) => [
+          ...t,
+          { t: Date.now(), venue: "STOCKS", sym, action: "SELL", price: px, amount: qty, fee },
+        ]);
       }, latencyMs);
       return true;
     }
@@ -322,13 +341,18 @@ function useStocksSimMulti(
         const low = Math.min(open, newClose) * (1 - Math.random() * 0.004);
         const vol = 5000 + Math.random() * 9000;
 
-        nextMap[sym] = [...series.slice(-99), {
-          t: mkTime(t0.current, series.length, stepMs),
-          open, high, low,
-          close: Math.max(0.01, newClose),
-          volume: vol,
-          symbol: sym,
-        }];
+        nextMap[sym] = [
+          ...series.slice(-99),
+          {
+            t: mkTime(t0.current, series.length, stepMs),
+            open,
+            high,
+            low,
+            close: Math.max(0.01, newClose),
+            volume: vol,
+            symbol: sym,
+          },
+        ];
       });
       return nextMap;
     });
@@ -341,7 +365,7 @@ function useStocksSimMulti(
     );
 
     setEquity((e) => [...e.slice(-199), { t: Date.now(), value: cNow + totalHoldValue }]);
-  } // ✅ missing brace fixed
+  }
 
   function reset(newSymbols = symList.current) {
     symList.current = newSymbols;
@@ -353,7 +377,18 @@ function useStocksSimMulti(
     setEquity([]);
   }
 
-  return { ohlcMap, cash, hold, trades, equity, exec, tickOne, reset, lastPrice, symbols: symList.current };
+  return {
+    ohlcMap,
+    cash,
+    hold,
+    trades,
+    equity,
+    exec,
+    tickOne,
+    reset,
+    lastPrice,
+    symbols: symList.current,
+  };
 }
 
 /* -------------------------------- Component -------------------------------- */
@@ -424,12 +459,45 @@ export default function TradeDemo({
     ai_weighted: {
       name: "Smart Mix",
       help: "Blends trend, dip-buy, and volume. Only trades when confidence is high.",
-      defaults: { momentumWeight: 0.4, meanRevWeight: 0.3, volumeWeight: 0.3, minScore: 0.65 },
+      defaults: {
+        momentumWeight: 0.4,
+        meanRevWeight: 0.3,
+        volumeWeight: 0.3,
+        minScore: 0.65,
+      },
       fields: [
-        { key: "momentumWeight", label: "Trend Bias", step: 0.05, min: 0, max: 1, desc: "How much to follow strength. Higher = chase trends more." },
-        { key: "meanRevWeight", label: "Dip-Buy Bias", step: 0.05, min: 0, max: 1, desc: "How much to fade moves. Higher = buy dips/sell rips." },
-        { key: "volumeWeight", label: "Volume Reactivity", step: 0.05, min: 0, max: 1, desc: "Sensitivity to unusual volume." },
-        { key: "minScore", label: "Min Confidence", step: 0.01, min: 0, max: 1, desc: "Won't trade unless confidence is at least this." },
+        {
+          key: "momentumWeight",
+          label: "Trend Bias",
+          step: 0.05,
+          min: 0,
+          max: 1,
+          desc: "How much to follow strength. Higher = chase trends more.",
+        },
+        {
+          key: "meanRevWeight",
+          label: "Dip-Buy Bias",
+          step: 0.05,
+          min: 0,
+          max: 1,
+          desc: "How much to fade moves. Higher = buy dips/sell rips.",
+        },
+        {
+          key: "volumeWeight",
+          label: "Volume Reactivity",
+          step: 0.05,
+          min: 0,
+          max: 1,
+          desc: "Sensitivity to unusual volume.",
+        },
+        {
+          key: "minScore",
+          label: "Min Confidence",
+          step: 0.01,
+          min: 0,
+          max: 1,
+          desc: "Won't trade unless confidence is at least this.",
+        },
       ],
     },
     momentum: {
@@ -555,8 +623,7 @@ export default function TradeDemo({
   const [currentImali] = useState(userImaliBalance || 0);
   const [addImali, setAddImali] = useState(0);
   const [applyNetToDisplay, setApplyNetToDisplay] = useState(true);
-  const getTier = (imali) =>
-    tiers.reduce((acc, t) => (imali >= t.minImali ? t : acc), tiers[0]);
+  const getTier = (imali) => tiers.reduce((acc, t) => (imali >= t.minImali ? t : acc), tiers[0]);
   const activeTier = getTier(currentImali);
   const simulatedTier = getTier(currentImali + addImali);
 
@@ -585,16 +652,16 @@ export default function TradeDemo({
     const list = [];
     const base = (TG_NOTIFY_URL_DEFAULT || "").replace(/\/$/, "");
     const clean = String(anyApiBaseCandidate || "").replace(/\/$/, "");
-  
+
     const addApiNotify = (b) => {
       if (!b) return;
       const withApi = /\/api$/i.test(b) ? b : `${b}/api`;
       list.push(`${withApi}/notify`);
     };
-  
+
     addApiNotify(base);
     addApiNotify(clean);
-  
+
     return Array.from(new Set(list.filter(Boolean)));
   }
 
@@ -687,10 +754,7 @@ export default function TradeDemo({
       totalDelta += delta;
 
       setStocksSess((prev) => {
-        const history = [
-          ...(prev?.history || []),
-          { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta },
-        ];
+        const history = [...(prev?.history || []), { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta }];
         const realizedPnL = (prev?.realizedPnL || 0) + delta;
         return {
           ...(prev || {}),
@@ -775,11 +839,6 @@ export default function TradeDemo({
     return [withName, nested, stringOnly];
   }
 
-  /**
-   * ✅ FIX: include both styles in PATHS too:
-   * - /demo/start
-   * - /api/demo/start
-   */
   function buildCryptoPaths(usingDemoNow) {
     if (usingDemoNow) {
       return {
@@ -795,9 +854,6 @@ export default function TradeDemo({
     };
   }
 
-  /**
-   * ✅ KEY FIX: try ALL api candidates (with /api and without)
-   */
   async function tryPostAny(bases, paths, bodies, { timeoutMs = 8000 } = {}) {
     let lastErr = null;
     const baseList = Array.isArray(bases) ? bases : [bases].filter(Boolean);
@@ -823,20 +879,19 @@ export default function TradeDemo({
 
   async function startOne(kind) {
     const usingDemoNow = runModeRef.current === "demo";
-  
+
     if (kind === "stocks") {
       const wantRemote = useRemoteStocks;
       const isLive = runModeRef.current === "live";
-    
+
       const rawBase = isLive ? stockLiveApi : stockDemoApi;
-      const bases = buildStocksCandidates(rawBase); // ✅ try with/without /api
-    
+      const bases = buildStocksCandidates(rawBase);
+
       const startPath = isLive ? "/stocks/live/start" : "/stocks/demo/start";
       const configPath = isLive ? "/stocks/live/config" : "/stocks/demo/config";
       const basket = stockList;
-    
+
       if (wantRemote && bases.length) {
-        // try bases until one works
         for (const base of bases) {
           try {
             const d0 = await postJson(
@@ -844,10 +899,10 @@ export default function TradeDemo({
               { name: "STOCKS", startBalance },
               { timeoutMs: 8000 }
             );
-    
+
             const stocksId = d0?.stocksId || d0?.id || d0?.sessionId;
             if (!stocksId) throw new Error("No stocksId");
-    
+
             const c = await postJson(
               `${base}${configPath}`,
               {
@@ -861,14 +916,14 @@ export default function TradeDemo({
               },
               { timeoutMs: 8000 }
             );
-    
+
             if (c?.ok === false) throw new Error(c?.error || "Stocks config failed");
-    
+
             return {
               ...d0,
               stocksId,
               __venue: "stocks",
-              base, // ✅ the working base
+              base,
               remote: true,
               balance: startBalance,
               equity: startBalance,
@@ -877,15 +932,14 @@ export default function TradeDemo({
               losses: 0,
               history: [],
             };
-          } catch (e) {
+          } catch {
             // try next base
           }
         }
-    
+
         setStatus("Stocks API unavailable — using local basket sim.");
       }
-    
-      // ✅ fallback: local sim
+
       sim.reset(basket);
       return {
         local: true,
@@ -1007,11 +1061,7 @@ export default function TradeDemo({
       let started = [];
 
       if (venue === "bundle") {
-        const [d1, d2, s1] = await Promise.all([
-          startOne("dex"),
-          startOne("cex"),
-          startOne("stocks"),
-        ]);
+        const [d1, d2, s1] = await Promise.all([startOne("dex"), startOne("cex"), startOne("stocks")]);
         setDexSess(d1);
         setCexSess(d2);
         setStocksSess(s1);
@@ -1061,9 +1111,7 @@ export default function TradeDemo({
           return;
         }
       }
-      setFatalError(
-        `Could not start (${usingDemo ? "DEMO" : "LIVE"}). ${String(e?.message || e)}`
-      );
+      setFatalError(`Could not start (${usingDemo ? "DEMO" : "LIVE"}). ${String(e?.message || e)}`);
       notifyTelegram("error", { where: "handleStart", message: String(e?.message || e) }, { minGapMs: 7000 });
     } finally {
       setBusy(false);
@@ -1156,11 +1204,7 @@ export default function TradeDemo({
         const s = stocksRef.current;
         if (s.remote && s.base) {
           const tickPath = runModeRef.current === "live" ? "/stocks/live/tick" : "/stocks/demo/tick";
-          const data = await postJson(
-            `${s.base}${tickPath}`,
-            { stocksId: s.stocksId },
-            { timeoutMs: 8000 }
-          );
+          const data = await postJson(`${s.base}${tickPath}`, { stocksId: s.stocksId }, { timeoutMs: 8000 });
           setStocksSess((prev) => ({ ...prev, ...data, __venue: "stocks", remote: true }));
           delta += Number(data?.realizedPnLDelta || 0);
         } else {
@@ -1200,12 +1244,9 @@ export default function TradeDemo({
     const baseBal = sims.reduce((s, d) => s + Number(d?.balance || 0), 0) || 1;
     const scale = startBalance / baseBal;
 
-    const equity =
-      sims.reduce((s, d) => s + Number(d?.equity ?? d?.balance ?? 0), 0) * scale;
-    const balance =
-      sims.reduce((s, d) => s + Number(d?.balance || 0), 0) * scale;
-    const realizedPnL =
-      sims.reduce((s, d) => s + Number(d?.realizedPnL || 0), 0) * scale;
+    const equity = sims.reduce((s, d) => s + Number(d?.equity ?? d?.balance ?? 0), 0) * scale;
+    const balance = sims.reduce((s, d) => s + Number(d?.balance || 0), 0) * scale;
+    const realizedPnL = sims.reduce((s, d) => s + Number(d?.realizedPnL || 0), 0) * scale;
 
     const wins = sims.reduce((s, d) => s + Number(d?.wins || 0), 0);
     const losses = sims.reduce((s, d) => s + Number(d?.losses || 0), 0);
@@ -1248,7 +1289,8 @@ export default function TradeDemo({
 
   const tapeMarks = useMemo(() => {
     const list = combined?.history || [];
-    const w = 400, h = 36;
+    const w = 400,
+      h = 36;
     return list.map((pt, i) => ({
       x: (i / Math.max(1, list.length - 1)) * w,
       y: h / 2,
@@ -1265,7 +1307,6 @@ export default function TradeDemo({
   /* --------------------------- Self-Check panel --------------------------- */
   const runSelfCheck = async () => {
     try {
-      // ✅ Try both base styles for health checks
       const bases = apiCandidatesRef.current || [];
       const healthPaths = ["/health", "/api/health", "/healthz", "/api/healthz"];
 
@@ -1276,7 +1317,7 @@ export default function TradeDemo({
           try {
             const j = await getJson(url, { timeoutMs: 6000 });
             const ok = !!j?.ok;
-            setCheck({ ok, message: ok ? "Healthy" : (j?.message || j?.error || "Unhealthy") });
+            setCheck({ ok, message: ok ? "Healthy" : j?.message || j?.error || "Unhealthy" });
             return;
           } catch (e) {
             lastErr = e;
@@ -1353,14 +1394,9 @@ export default function TradeDemo({
         <div className="sticky top-0 z-40">
           <div className="bg-emerald-900/40 backdrop-blur-sm border-b border-emerald-400/30">
             <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-1.5 flex items-center gap-3 text-xs">
-              <span className="px-2 py-0.5 rounded bg-emerald-600/80 border border-emerald-300 text-white">
-                Auto
-              </span>
+              <span className="px-2 py-0.5 rounded bg-emerald-600/80 border border-emerald-300 text-white">Auto</span>
               <div className="flex-1 h-2 rounded-full bg-emerald-950/40 overflow-hidden border border-emerald-400/30">
-                <div
-                  className="h-full bg-emerald-400 transition-[width] duration-100 ease-linear"
-                  style={{ width: `${progressPct}%` }}
-                />
+                <div className="h-full bg-emerald-400 transition-[width] duration-100 ease-linear" style={{ width: `${progressPct}%` }} />
               </div>
               <div className="hidden sm:flex gap-3 text-emerald-100/90">
                 <span>XP ⭐ {xp}</span>
@@ -1404,9 +1440,7 @@ export default function TradeDemo({
                     <li>
                       Backend reachable: <code>{apiBaseDisplay}/health</code> (or <code>{apiBaseDisplay}/healthz</code>).
                     </li>
-                    <li>
-                      If self-check fails, your API base is wrong or the backend is down.
-                    </li>
+                    <li>If self-check fails, your API base is wrong or the backend is down.</li>
                   </ul>
                 </div>
               )}
@@ -1432,26 +1466,14 @@ export default function TradeDemo({
         </div>
 
         <div className="mt-2">
-          <BackendBadges
-            usingDemo={usingDemo}
-            venue={venue}
-            apiBase={apiBaseDisplay}
-            stockDemoApi={stockDemoApi}
-            stockLiveApi={stockLiveApi}
-            runMode={runMode}
-            stocksSess={stocksSess}
-          />
+          <BackendBadges usingDemo={usingDemo} venue={venue} apiBase={apiBaseDisplay} stockDemoApi={stockDemoApi} stockLiveApi={stockLiveApi} runMode={runMode} stocksSess={stocksSess} />
         </div>
 
         {/* Only show fatal errors */}
         {fatalError && (
           <div className="mt-3 rounded-lg border border-rose-500/80 bg-rose-600 px-3 py-2 text-xs sm:text-sm">
             {fatalError}{" "}
-            <button
-              onClick={runSelfCheck}
-              className="underline font-semibold"
-              title="Call /health on your server"
-            >
+            <button onClick={runSelfCheck} className="underline font-semibold" title="Call /health on your server">
               Run Self-Check
             </button>
             {check.ok === false && <span className="ml-2">• {check.message}</span>}
@@ -1462,18 +1484,13 @@ export default function TradeDemo({
       {/* Content */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pb-10">
         <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-slate-300">
-          <button
-            onClick={runSelfCheck}
-            className="px-2 py-1 rounded border border-slate-600/60 bg-slate-800/90 hover:bg-slate-700"
-          >
+          <button onClick={runSelfCheck} className="px-2 py-1 rounded border border-slate-600/60 bg-slate-800/90 hover:bg-slate-700">
             Run Self-Check
           </button>
           {check.ok != null && (
             <span
               className={`px-2 py-1 rounded border ${
-                check.ok
-                  ? "border-emerald-400 bg-emerald-700/50 text-emerald-100"
-                  : "border-rose-400 bg-rose-700/50 text-rose-100"
+                check.ok ? "border-emerald-400 bg-emerald-700/50 text-emerald-100" : "border-rose-400 bg-rose-700/50 text-rose-100"
               }`}
             >
               {check.ok ? "Health OK" : `Health FAIL: ${check.message}`}
@@ -1485,19 +1502,14 @@ export default function TradeDemo({
         {!haveAny && (
           <div className="space-y-4 rounded-2xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4">
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              <FieldCard
-                title="Where to trade? (Step 1)"
-                help="Pick crypto (DEX, CEX), STOCKS (equities), BOTH (DEX+CEX), or BUNDLE (DEX+CEX+STOCKS)."
-              >
+              <FieldCard title="Where to trade? (Step 1)" help="Pick crypto (DEX, CEX), STOCKS (equities), BOTH (DEX+CEX), or BUNDLE (DEX+CEX+STOCKS).">
                 <div className="flex flex-wrap gap-2">
                   {["dex", "cex", "both", "stocks", "bundle"].map((v) => (
                     <button
                       key={v}
                       onClick={() => setVenue(v)}
                       className={`flex-1 rounded-lg px-3 py-2 border text-sm ${
-                        venue === v
-                          ? "bg-emerald-600 border-emerald-400"
-                          : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
+                        venue === v ? "bg-emerald-600 border-emerald-400" : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
                       }`}
                     >
                       {v.toUpperCase()}
@@ -1512,9 +1524,7 @@ export default function TradeDemo({
                         key={c}
                         onClick={() => setChain(c)}
                         className={`rounded-full px-3 py-1 border ${
-                          chain === c
-                            ? "bg-emerald-600 border-emerald-400"
-                            : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
+                          chain === c ? "bg-emerald-600 border-emerald-400" : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
                         }`}
                       >
                         {c}
@@ -1525,10 +1535,7 @@ export default function TradeDemo({
               </FieldCard>
 
               {venue !== "stocks" && (
-                <FieldCard
-                  title="Crypto Strategy (Step 2)"
-                  help="Simple knobs with plain English. Less to tweak, easier to understand."
-                >
+                <FieldCard title="Crypto Strategy (Step 2)" help="Simple knobs with plain English. Less to tweak, easier to understand.">
                   <select
                     value={strategy}
                     onChange={(e) => {
@@ -1558,9 +1565,7 @@ export default function TradeDemo({
                           min={f.min ?? undefined}
                           max={f.max ?? undefined}
                           value={params[f.key]}
-                          onChange={(e) =>
-                            setParams((p) => ({ ...p, [f.key]: Number(e.target.value) }))
-                          }
+                          onChange={(e) => setParams((p) => ({ ...p, [f.key]: Number(e.target.value) }))}
                           className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm"
                         />
                       </div>
@@ -1570,114 +1575,50 @@ export default function TradeDemo({
               )}
 
               {(venue === "stocks" || venue === "bundle") && (
-                <FieldCard
-                  title="Stocks Strategy (Step 2)"
-                  help="Uses a Fast/Slow Average crossover with RSI filter."
-                >
+                <FieldCard title="Stocks Strategy (Step 2)" help="Uses a Fast/Slow Average crossover with RSI filter.">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     <label title="Short-term trend line">
                       Fast Average (bars)
-                      <input
-                        type="number"
-                        min="5"
-                        max="50"
-                        value={smaFast}
-                        onChange={(e) => setSmaFast(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
+                      <input type="number" min="5" max="50" value={smaFast} onChange={(e) => setSmaFast(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
                     </label>
                     <label title="Long-term trend line">
                       Slow Average (bars)
-                      <input
-                        type="number"
-                        min="10"
-                        max="200"
-                        value={smaSlow}
-                        onChange={(e) => setSmaSlow(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
+                      <input type="number" min="10" max="200" value={smaSlow} onChange={(e) => setSmaSlow(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
                     </label>
                     <label title="How far back RSI looks">
                       RSI Lookback
-                      <input
-                        type="number"
-                        min="5"
-                        max="30"
-                        value={rsiWindow}
-                        onChange={(e) => setRsiWindow(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
+                      <input type="number" min="5" max="30" value={rsiWindow} onChange={(e) => setRsiWindow(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
                     </label>
                     <label title="Upper RSI gate: avoid buying when too hot">
                       RSI Overbought
-                      <input
-                        type="number"
-                        min="60"
-                        max="90"
-                        value={rsiTop}
-                        onChange={(e) => setRsiTop(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
+                      <input type="number" min="60" max="90" value={rsiTop} onChange={(e) => setRsiTop(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
                     </label>
                     <label title="Lower RSI gate: avoid selling when too weak">
                       RSI Oversold
-                      <input
-                        type="number"
-                        min="10"
-                        max="40"
-                        value={rsiBottom}
-                        onChange={(e) => setRsiBottom(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
+                      <input type="number" min="10" max="40" value={rsiBottom} onChange={(e) => setRsiBottom(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
                     </label>
                     <label title="How many shares to trade per signal">
                       Trade Units
-                      <input
-                        type="number"
-                        min="1"
-                        max="1000"
-                        value={stockTradeUnits}
-                        onChange={(e) => setStockTradeUnits(Number(e.target.value))}
-                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
-                      />
+                      <input type="number" min="1" max="1000" value={stockTradeUnits} onChange={(e) => setStockTradeUnits(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
                     </label>
                   </div>
 
                   <div className="mt-3 text-xs text-slate-300">
                     Stocks Basket (demo):{" "}
-                    <input
-                      value={stockSymbols}
-                      onChange={(e) => setStockSymbols(e.target.value)}
-                      className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto"
-                      title="Comma-separated list, e.g. AAPL,MSFT,NVDA"
-                    />
+                    <input value={stockSymbols} onChange={(e) => setStockSymbols(e.target.value)} className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto" title="Comma-separated list, e.g. AAPL,MSFT,NVDA" />
                   </div>
                 </FieldCard>
               )}
 
               <FieldCard title="Starting Balance" help="UI scales to this; backend/sim track equity internally.">
-                <input
-                  type="number"
-                  min="100"
-                  step="50"
-                  value={startBalance}
-                  onChange={(e) => setStartBalance(Math.max(0, Number(e.target.value || 0)))}
-                  className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm"
-                />
+                <input type="number" min="100" step="50" value={startBalance} onChange={(e) => setStartBalance(Math.max(0, Number(e.target.value || 0)))} className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm" />
                 {venue !== "stocks" && venue !== "bundle" ? (
                   <div className="mt-2 text-xs text-slate-300">
                     Crypto Symbols:{" "}
-                    <input
-                      value={symbols}
-                      onChange={(e) => setSymbols(e.target.value)}
-                      className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto"
-                      title="Comma-separated list, e.g. BTC,ETH"
-                    />
+                    <input value={symbols} onChange={(e) => setSymbols(e.target.value)} className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto" title="Comma-separated list, e.g. BTC,ETH" />
                   </div>
                 ) : (
-                  <div className="mt-2 text-xs text-slate-400">
-                    Demo stocks use the basket above. Remote API may support custom lists.
-                  </div>
+                  <div className="mt-2 text-xs text-slate-400">Demo stocks use the basket above. Remote API may support custom lists.</div>
                 )}
               </FieldCard>
 
@@ -1703,18 +1644,11 @@ export default function TradeDemo({
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2">
-              <button
-                onClick={handleStart}
-                disabled={busy}
-                className="w-full sm:flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 font-semibold"
-              >
+              <button onClick={handleStart} disabled={busy} className="w-full sm:flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 font-semibold">
                 {busy ? "Starting…" : `Start ${usingDemo ? "Demo" : "Live"}`}
               </button>
               {venue !== "stocks" && venue !== "bundle" && !isLiveEligible && (
-                <button
-                  onClick={() => setShowUpgrade(true)}
-                  className="w-full sm:w-auto py-3 rounded-xl bg-yellow-600 hover:bg-yellow-500 border border-yellow-400 font-semibold text-black"
-                >
+                <button onClick={() => setShowUpgrade(true)} className="w-full sm:w-auto py-3 rounded-xl bg-yellow-600 hover:bg-yellow-500 border border-yellow-400 font-semibold text-black">
                   Upgrade to Go Live
                 </button>
               )}
@@ -2036,9 +1970,7 @@ function StepHint({ children, highlight = false }) {
   return (
     <span
       className={`hidden md:inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${
-        highlight
-          ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
-          : "border-slate-300/30 bg-slate-200/10 text-slate-100"
+        highlight ? "border-emerald-400 bg-emerald-500/20 text-emerald-100" : "border-slate-300/30 bg-slate-200/10 text-slate-100"
       }`}
     >
       {children}
