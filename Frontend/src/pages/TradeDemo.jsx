@@ -21,14 +21,17 @@ function getEnvVar(viteKey, craKey) {
 /**
  * Crypto API base resolver:
  * - Full URLs → as-is (minus trailing slash).
- * - Relative paths (/bot-api/api) → prefixes window.location.origin.
+ * - Relative paths (/api) → prefixes window.location.origin.
  * - Fallback to provided full URL.
  */
 function resolveCryptoBase(raw, fallbackFullUrl) {
   const normalize = (url) => (url || "").replace(/\/$/, "");
 
   const upgradeIfNeeded = (url) => {
-    if (typeof window !== "undefined" && window.location?.protocol === "https:") {
+    if (
+      typeof window !== "undefined" &&
+      window.location?.protocol === "https:"
+    ) {
       return url.replace(/^http:\/\//i, "https://");
     }
     return url;
@@ -56,13 +59,6 @@ function resolveCryptoBase(raw, fallbackFullUrl) {
  * Some nginx configs strip /api before forwarding; some do not.
  * We try both and take the first that works.
  */
-function buildStocksCandidates(base) {
-  const b = String(base || "").replace(/\/+$/, "");
-  if (!b) return [];
-  const withApi = /\/api$/i.test(b) ? b : `${b}/api`;
-  const withoutApi = b.replace(/\/api$/i, "");
-  return Array.from(new Set([withoutApi, withApi].filter(Boolean)));
-}
 function buildApiCandidates(base) {
   const b = String(base || "").replace(/\/+$/, "");
   if (!b) return [];
@@ -70,53 +66,81 @@ function buildApiCandidates(base) {
   const withoutApi = b.replace(/\/api$/i, "");
   return Array.from(new Set([withoutApi, withApi].filter(Boolean)));
 }
+function buildStocksCandidates(base) {
+  const b = String(base || "").replace(/\/+$/, "");
+  if (!b) return [];
+  const withApi = /\/api$/i.test(b) ? b : `${b}/api`;
+  const withoutApi = b.replace(/\/api$/i, "");
+  return Array.from(new Set([withoutApi, withApi].filter(Boolean)));
+}
 
-/* ✅ Option A FIX: In production use a ROOT base (NOT /api/demo) */
+/* ✅ Fix: production should NOT hardcode "/api/demo" (causes /api/demo/* 404s) */
 const isProduction = process.env.NODE_ENV === "production";
 
 const isLocalhost =
   typeof window !== "undefined" && window.location.hostname === "localhost";
 
-/**
- * In production, nginx typically routes:
- *   /api/*  → backend
- * So our base should be "/api" (root), and the paths decide /demo/* vs /live/*.
- * Never set base to "/api/demo" because you'll end up with "/api/demo/demo/start".
- */
-const PROD_BASE = "/api";
+/* ---- Defaults ----
+   In production we use "/api" as the proxy base (NOT "/api/demo").
+   We also keep a fallback to the API subdomain if the proxy isn't present.
+*/
+const PROD_PROXY_BASE = "/api";
+const PROD_FALLBACK_FULL = "https://api.imali-defi.com";
 
 const DEMO_API_DEFAULT = isProduction
-  ? PROD_BASE
+  ? PROD_PROXY_BASE
   : resolveCryptoBase(
       getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
       isLocalhost ? "http://localhost:5055" : ""
     );
 
 const LIVE_API_DEFAULT = isProduction
-  ? PROD_BASE
+  ? PROD_PROXY_BASE
   : resolveCryptoBase(
       getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
-      "https://api.imali-defi.com"
+      PROD_FALLBACK_FULL
     );
 
-// Telegram notify base (optional). We will treat notify as best-effort (never blocks UI).
+// Telegram notify base (optional). Best-effort.
 const TG_NOTIFY_URL_DEFAULT = isProduction
-  ? PROD_BASE
+  ? PROD_PROXY_BASE
   : getEnvVar("VITE_TG_NOTIFY_URL", "REACT_APP_TG_NOTIFY_URL") ||
     getEnvVar("VITE_TG_NOTIFY_BASE", "REACT_APP_TG_NOTIFY_BASE") ||
-    "https://api.imali-defi.com"; // base, not necessarily /notify
+    PROD_FALLBACK_FULL;
 
+// Stocks bases
 const STOCK_DEMO_API_DEFAULT = isProduction
-  ? PROD_BASE
+  ? PROD_PROXY_BASE
   : getEnvVar("VITE_STOCK_DEMO_API", "REACT_APP_STOCK_DEMO_API") || "";
 
 const STOCK_LIVE_API_DEFAULT = isProduction
-  ? PROD_BASE
+  ? PROD_PROXY_BASE
   : getEnvVar("VITE_STOCK_LIVE_API", "REACT_APP_STOCK_LIVE_API") || "";
 
 /* -------------------------------- helpers -------------------------------- */
 const includesCrypto = (v) => ["dex", "cex", "both", "bundle"].includes(v);
 const isStocksOnly = (v) => v === "stocks";
+
+/* ------------------------------ URL join helper ------------------------------ */
+/**
+ * ✅ Fix: prevent "/api/api/..." doubles.
+ * If base ends with "/api" and path starts with "/api/", strip one.
+ */
+function joinBasePath(base, path) {
+  const b = String(base || "").replace(/\/+$/, "");
+  let p = String(path || "");
+  if (!p.startsWith("/")) p = `/${p}`;
+
+  const baseEndsApi = /\/api$/i.test(b);
+  const pathStartsApi = /^\/api\//i.test(p);
+
+  if (baseEndsApi && pathStartsApi) {
+    p = p.replace(/^\/api/i, ""); // remove leading "/api"
+    if (!p.startsWith("/")) p = `/${p}`;
+  }
+
+  return `${b}${p}`;
+}
 
 /* ------------------------------ fetch helpers ------------------------------ */
 async function postJson(url, body, { timeoutMs = 12000, headers = {} } = {}) {
@@ -300,7 +324,15 @@ function useStocksSimMulti(
         setHold((h) => ({ ...h, [sym]: (h[sym] || 0) + qty }));
         setTrades((t) => [
           ...t,
-          { t: Date.now(), venue: "STOCKS", sym, action: "BUY", price: px, amount: qty, fee },
+          {
+            t: Date.now(),
+            venue: "STOCKS",
+            sym,
+            action: "BUY",
+            price: px,
+            amount: qty,
+            fee,
+          },
         ]);
       }, latencyMs);
       return true;
@@ -311,7 +343,15 @@ function useStocksSimMulti(
         setHold((h) => ({ ...h, [sym]: (h[sym] || 0) - qty }));
         setTrades((t) => [
           ...t,
-          { t: Date.now(), venue: "STOCKS", sym, action: "SELL", price: px, amount: qty, fee },
+          {
+            t: Date.now(),
+            venue: "STOCKS",
+            sym,
+            action: "SELL",
+            price: px,
+            amount: qty,
+            fee,
+          },
         ]);
       }, latencyMs);
       return true;
@@ -328,7 +368,8 @@ function useStocksSimMulti(
 
         const trend = Math.random() < trendProb;
         const drift = lastClose * (driftBps / 10000);
-        const noise = lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
+        const noise =
+          lastClose * (Math.random() - 0.5) * (trend ? 0.01 : 0.006);
         let newClose = lastClose + drift + noise;
 
         if (Math.random() < shockProb) {
@@ -364,13 +405,18 @@ function useStocksSimMulti(
       0
     );
 
-    setEquity((e) => [...e.slice(-199), { t: Date.now(), value: cNow + totalHoldValue }]);
+    setEquity((e) => [
+      ...e.slice(-199),
+      { t: Date.now(), value: cNow + totalHoldValue },
+    ]);
   }
 
   function reset(newSymbols = symList.current) {
     symList.current = newSymbols;
     t0.current = Date.now() - 50 * stepMs;
-    setOhlcMap(Object.fromEntries(newSymbols.map((s) => [s, makeSeedSeries(s)])));
+    setOhlcMap(
+      Object.fromEntries(newSymbols.map((s) => [s, makeSeedSeries(s)]))
+    );
     setCash(10000);
     setHold(Object.fromEntries(newSymbols.map((s) => [s, 0])));
     setTrades([]);
@@ -426,14 +472,19 @@ export default function TradeDemo({
 
   /**
    * ✅ KEY FIX:
-   * We keep TWO candidates (with /api and without),
-   * then every request tries both. This removes your "not_found" issue
-   * regardless of nginx proxy prefix behavior.
+   * - production base = "/api" (proxy) not "/api/demo"
+   * - also add fallback to https://api.imali-defi.com to avoid 404 if proxy isn't configured
    */
   const apiCandidates = useMemo(() => {
     const raw = usingDemo ? demoApi : liveApi;
-    const resolved = resolveCryptoBase(raw, "https://api.imali-defi.com");
-    return buildApiCandidates(resolved);
+
+    // If raw is "/api", resolve to full origin+"/api" in browser.
+    const resolved = resolveCryptoBase(raw, PROD_FALLBACK_FULL);
+    const list = buildApiCandidates(resolved);
+
+    // Always include the API subdomain as a final fallback (prevents proxy-missing 404s)
+    const fall = buildApiCandidates(PROD_FALLBACK_FULL);
+    return Array.from(new Set([...list, ...fall].filter(Boolean)));
   }, [usingDemo, demoApi, liveApi]);
 
   const apiCandidatesRef = useRef(apiCandidates);
@@ -441,7 +492,7 @@ export default function TradeDemo({
     apiCandidatesRef.current = apiCandidates;
   }, [apiCandidates]);
 
-  // For display only (what user sees as "Crypto base:")
+  // For display only
   const apiBaseDisplay = apiCandidates[0] || "";
 
   useEffect(() => {
@@ -505,9 +556,26 @@ export default function TradeDemo({
       help: "Buys strength, sells weakness.",
       defaults: { lookback: 30, threshold: 1.5, cooldown: 10 },
       fields: [
-        { key: "lookback", label: "Lookback Bars", step: 1, min: 5, desc: "How many bars to judge trend." },
-        { key: "threshold", label: "Signal Threshold", step: 0.1, desc: "How strong the trend must be to act." },
-        { key: "cooldown", label: "Cooldown Bars", step: 1, min: 0, desc: "Wait this long between trades." },
+        {
+          key: "lookback",
+          label: "Lookback Bars",
+          step: 1,
+          min: 5,
+          desc: "How many bars to judge trend.",
+        },
+        {
+          key: "threshold",
+          label: "Signal Threshold",
+          step: 0.1,
+          desc: "How strong the trend must be to act.",
+        },
+        {
+          key: "cooldown",
+          label: "Cooldown Bars",
+          step: 1,
+          min: 0,
+          desc: "Wait this long between trades.",
+        },
       ],
     },
     meanrev: {
@@ -515,9 +583,26 @@ export default function TradeDemo({
       help: "Fades extremes back to average.",
       defaults: { band: 2.0, maxHoldBars: 60, size: 1 },
       fields: [
-        { key: "band", label: "Band (σ)", step: 0.1, desc: "How far price must wander before acting." },
-        { key: "maxHoldBars", label: "Max Hold Bars", step: 1, min: 5, desc: "Force exit after this many bars." },
-        { key: "size", label: "Position Size", step: 1, min: 1, desc: "Relative size multiplier." },
+        {
+          key: "band",
+          label: "Band (σ)",
+          step: 0.1,
+          desc: "How far price must wander before acting.",
+        },
+        {
+          key: "maxHoldBars",
+          label: "Max Hold Bars",
+          step: 1,
+          min: 5,
+          desc: "Force exit after this many bars.",
+        },
+        {
+          key: "size",
+          label: "Position Size",
+          step: 1,
+          min: 1,
+          desc: "Relative size multiplier.",
+        },
       ],
     },
     volume_spike: {
@@ -525,9 +610,27 @@ export default function TradeDemo({
       help: "Jumps on unusual volume surges.",
       defaults: { window: 50, spikeMultiplier: 2.5, cooldown: 15 },
       fields: [
-        { key: "window", label: "Average Window", step: 1, min: 5, desc: "Bars used to compute normal volume." },
-        { key: "spikeMultiplier", label: "Spike × Normal", step: 0.1, min: 1, desc: "How big volume must be vs. normal." },
-        { key: "cooldown", label: "Cooldown Bars", step: 1, min: 0, desc: "Wait time between signals." },
+        {
+          key: "window",
+          label: "Average Window",
+          step: 1,
+          min: 5,
+          desc: "Bars used to compute normal volume.",
+        },
+        {
+          key: "spikeMultiplier",
+          label: "Spike × Normal",
+          step: 0.1,
+          min: 1,
+          desc: "How big volume must be vs. normal.",
+        },
+        {
+          key: "cooldown",
+          label: "Cooldown Bars",
+          step: 1,
+          min: 0,
+          desc: "Wait time between signals.",
+        },
       ],
     },
     trade_signal: {
@@ -535,9 +638,28 @@ export default function TradeDemo({
       help: "Trades only if confidence passes a bar.",
       defaults: { minConfidence: 0.7, maxPositions: 2, cooldown: 10 },
       fields: [
-        { key: "minConfidence", label: "Min Confidence", step: 0.01, min: 0, max: 1, desc: "Only trade when high conviction." },
-        { key: "maxPositions", label: "Max Positions", step: 1, min: 1, desc: "Limit open positions." },
-        { key: "cooldown", label: "Cooldown Bars", step: 1, min: 0, desc: "Wait time between signals." },
+        {
+          key: "minConfidence",
+          label: "Min Confidence",
+          step: 0.01,
+          min: 0,
+          max: 1,
+          desc: "Only trade when high conviction.",
+        },
+        {
+          key: "maxPositions",
+          label: "Max Positions",
+          step: 1,
+          min: 1,
+          desc: "Limit open positions.",
+        },
+        {
+          key: "cooldown",
+          label: "Cooldown Bars",
+          step: 1,
+          min: 0,
+          desc: "Wait time between signals.",
+        },
       ],
     },
   };
@@ -623,7 +745,8 @@ export default function TradeDemo({
   const [currentImali] = useState(userImaliBalance || 0);
   const [addImali, setAddImali] = useState(0);
   const [applyNetToDisplay, setApplyNetToDisplay] = useState(true);
-  const getTier = (imali) => tiers.reduce((acc, t) => (imali >= t.minImali ? t : acc), tiers[0]);
+  const getTier = (imali) =>
+    tiers.reduce((acc, t) => (imali >= t.minImali ? t : acc), tiers[0]);
   const activeTier = getTier(currentImali);
   const simulatedTier = getTier(currentImali + addImali);
 
@@ -653,14 +776,19 @@ export default function TradeDemo({
     const base = (TG_NOTIFY_URL_DEFAULT || "").replace(/\/$/, "");
     const clean = String(anyApiBaseCandidate || "").replace(/\/$/, "");
 
-    const addApiNotify = (b) => {
+    const addNotifyBoth = (b) => {
       if (!b) return;
+
+      // Try /notify at base
+      list.push(`${b}/notify`);
+
+      // Try /api/notify if backend is nested under /api
       const withApi = /\/api$/i.test(b) ? b : `${b}/api`;
       list.push(`${withApi}/notify`);
     };
 
-    addApiNotify(base);
-    addApiNotify(clean);
+    addNotifyBoth(base);
+    addNotifyBoth(clean);
 
     return Array.from(new Set(list.filter(Boolean)));
   }
@@ -754,7 +882,10 @@ export default function TradeDemo({
       totalDelta += delta;
 
       setStocksSess((prev) => {
-        const history = [...(prev?.history || []), { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta }];
+        const history = [
+          ...(prev?.history || []),
+          { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta },
+        ];
         const realizedPnL = (prev?.realizedPnL || 0) + delta;
         return {
           ...(prev || {}),
@@ -775,8 +906,10 @@ export default function TradeDemo({
   /* --------------------------- Start/Config (bulletproof) --------------------------- */
   function normalizeStartResponse(obj) {
     const o = obj || {};
-    const demoId = o.demoId || o.demo_id || o.demoID || o.id || o.sessionId || o.session_id;
-    const liveId = o.liveId || o.live_id || o.liveID || o.id || o.sessionId || o.session_id;
+    const demoId =
+      o.demoId || o.demo_id || o.demoID || o.id || o.sessionId || o.session_id;
+    const liveId =
+      o.liveId || o.live_id || o.liveID || o.id || o.sessionId || o.session_id;
     return { ...o, demoId, liveId };
   }
 
@@ -839,28 +972,38 @@ export default function TradeDemo({
     return [withName, nested, stringOnly];
   }
 
+  /**
+   * ✅ Fix: PATHS should NOT include "/api/..." variants.
+   * We already try BOTH base styles (with/without /api).
+   * Keeping "/api/..." paths causes "/api/api/..." duplicates.
+   */
   function buildCryptoPaths(usingDemoNow) {
     if (usingDemoNow) {
       return {
-        start: ["/demo/start", "/api/demo/start", "/demo/begin", "/api/demo/begin"],
-        config: ["/demo/config", "/api/demo/config", "/demo/configure", "/api/demo/configure"],
-        tick: ["/demo/tick", "/api/demo/tick", "/demo/step", "/api/demo/step"],
+        start: ["/demo/start", "/demo/begin"],
+        config: ["/demo/config", "/demo/configure"],
+        tick: ["/demo/tick", "/demo/step"],
       };
     }
     return {
-      start: ["/live/start", "/api/live/start", "/live/begin", "/api/live/begin"],
-      config: ["/live/config", "/api/live/config", "/live/configure", "/api/live/configure"],
-      tick: ["/live/tick", "/api/live/tick", "/live/step", "/api/live/step"],
+      start: ["/live/start", "/live/begin"],
+      config: ["/live/config", "/live/configure"],
+      tick: ["/live/tick", "/live/step"],
     };
   }
 
+  /**
+   * ✅ KEY FIX:
+   * - try ALL api candidates (with /api and without)
+   * - join via joinBasePath to prevent "/api/api/..."
+   */
   async function tryPostAny(bases, paths, bodies, { timeoutMs = 8000 } = {}) {
     let lastErr = null;
     const baseList = Array.isArray(bases) ? bases : [bases].filter(Boolean);
 
     for (const base of baseList) {
       for (const p of paths) {
-        const url = `${String(base).replace(/\/+$/, "")}${p}`;
+        const url = joinBasePath(base, p);
         for (const body of bodies) {
           try {
             const d = await postJson(url, body, { timeoutMs });
@@ -885,7 +1028,12 @@ export default function TradeDemo({
       const isLive = runModeRef.current === "live";
 
       const rawBase = isLive ? stockLiveApi : stockDemoApi;
-      const bases = buildStocksCandidates(rawBase);
+
+      // Resolve + add fallback
+      const resolved = resolveCryptoBase(rawBase, PROD_FALLBACK_FULL);
+      const bases = Array.from(
+        new Set([...buildStocksCandidates(resolved), ...buildStocksCandidates(PROD_FALLBACK_FULL)])
+      );
 
       const startPath = isLive ? "/stocks/live/start" : "/stocks/demo/start";
       const configPath = isLive ? "/stocks/live/config" : "/stocks/demo/config";
@@ -895,7 +1043,7 @@ export default function TradeDemo({
         for (const base of bases) {
           try {
             const d0 = await postJson(
-              `${base}${startPath}`,
+              joinBasePath(base, startPath),
               { name: "STOCKS", startBalance },
               { timeoutMs: 8000 }
             );
@@ -904,7 +1052,7 @@ export default function TradeDemo({
             if (!stocksId) throw new Error("No stocksId");
 
             const c = await postJson(
-              `${base}${configPath}`,
+              joinBasePath(base, configPath),
               {
                 stocksId,
                 symbols: basket,
@@ -917,7 +1065,8 @@ export default function TradeDemo({
               { timeoutMs: 8000 }
             );
 
-            if (c?.ok === false) throw new Error(c?.error || "Stocks config failed");
+            if (c?.ok === false)
+              throw new Error(c?.error || "Stocks config failed");
 
             return {
               ...d0,
@@ -963,7 +1112,12 @@ export default function TradeDemo({
       { startBalance, venue: kind },
     ];
 
-    const started = await tryPostAny(apiCandidatesRef.current, paths.start, startBodies, { timeoutMs: 9000 });
+    const started = await tryPostAny(
+      apiCandidatesRef.current,
+      paths.start,
+      startBodies,
+      { timeoutMs: 9000 }
+    );
     const d = normalizeStartResponse(started.data);
 
     const idKey = usingDemoNow ? "demoId" : "liveId";
@@ -975,7 +1129,12 @@ export default function TradeDemo({
     }
 
     const variants = buildCryptoConfigVariants(kind, { ...d, [idKey]: primaryId });
-    const configRes = await tryPostAny(apiCandidatesRef.current, paths.config, variants, { timeoutMs: 9000 });
+    const configRes = await tryPostAny(
+      apiCandidatesRef.current,
+      paths.config,
+      variants,
+      { timeoutMs: 9000 }
+    );
 
     const ok = configRes?.data?.ok;
     if (ok === false) {
@@ -1007,13 +1166,18 @@ export default function TradeDemo({
       const tasks = [];
       if (wantDex) tasks.push(startOne("dex").then((s) => setDexSess(s)));
       if (wantCex) tasks.push(startOne("cex").then((s) => setCexSess(s)));
-      if (wantStocks) tasks.push(startOne("stocks").then((s) => setStocksSess(s)));
+      if (wantStocks)
+        tasks.push(startOne("stocks").then((s) => setStocksSess(s)));
 
       if (!tasks.length) return false;
 
       await Promise.allSettled(tasks);
       setStatus(`Recovered demo connection (${reason}).`);
-      notifyTelegram("recovered", { reason, mode: "demo", venues: venueRef.current }, { minGapMs: 8000 });
+      notifyTelegram(
+        "recovered",
+        { reason, mode: "demo", venues: venueRef.current },
+        { minGapMs: 8000 }
+      );
       return true;
     } catch {
       return false;
@@ -1061,7 +1225,11 @@ export default function TradeDemo({
       let started = [];
 
       if (venue === "bundle") {
-        const [d1, d2, s1] = await Promise.all([startOne("dex"), startOne("cex"), startOne("stocks")]);
+        const [d1, d2, s1] = await Promise.all([
+          startOne("dex"),
+          startOne("cex"),
+          startOne("stocks"),
+        ]);
         setDexSess(d1);
         setCexSess(d2);
         setStocksSess(s1);
@@ -1111,8 +1279,16 @@ export default function TradeDemo({
           return;
         }
       }
-      setFatalError(`Could not start (${usingDemo ? "DEMO" : "LIVE"}). ${String(e?.message || e)}`);
-      notifyTelegram("error", { where: "handleStart", message: String(e?.message || e) }, { minGapMs: 7000 });
+      setFatalError(
+        `Could not start (${usingDemo ? "DEMO" : "LIVE"}). ${String(
+          e?.message || e
+        )}`
+      );
+      notifyTelegram(
+        "error",
+        { where: "handleStart", message: String(e?.message || e) },
+        { minGapMs: 7000 }
+      );
     } finally {
       setBusy(false);
     }
@@ -1124,10 +1300,13 @@ export default function TradeDemo({
 
     if (kind === "stocks") {
       if (!sess?.remote || !sess?.base) return;
-      const configPath = runModeRef.current === "live" ? "/stocks/live/config" : "/stocks/demo/config";
+      const configPath =
+        runModeRef.current === "live"
+          ? "/stocks/live/config"
+          : "/stocks/demo/config";
       try {
         await postJson(
-          `${sess.base}${configPath}`,
+          joinBasePath(sess.base, configPath),
           {
             stocksId: sess.stocksId,
             symbols: stockList,
@@ -1139,7 +1318,11 @@ export default function TradeDemo({
           },
           { timeoutMs: 8000 }
         );
-        notifyTelegram("reconfigured", { mode: "stocks", strategy, params, symbols: stockList }, { minGapMs: 8000 });
+        notifyTelegram(
+          "reconfigured",
+          { mode: "stocks", strategy, params, symbols: stockList },
+          { minGapMs: 8000 }
+        );
       } catch {
         // silent
       }
@@ -1150,15 +1333,28 @@ export default function TradeDemo({
     const variants = buildCryptoConfigVariants(kind, sess);
 
     try {
-      await tryPostAny(apiCandidatesRef.current, paths.config, variants, { timeoutMs: 9000 });
-      notifyTelegram("reconfigured", { mode: kind, strategy, params, chain, symbols: parseSymbols() }, { minGapMs: 8000 });
+      await tryPostAny(apiCandidatesRef.current, paths.config, variants, {
+        timeoutMs: 9000,
+      });
+      notifyTelegram(
+        "reconfigured",
+        { mode: kind, strategy, params, chain, symbols: parseSymbols() },
+        { minGapMs: 8000 }
+      );
     } catch (e) {
       if (usingDemoNow) {
         const recovered = await recoverDemoConnection("config");
         if (recovered) return;
       }
-      if (!usingDemoNow) setFatalError(`Config failed (${kind.toUpperCase()}): ${String(e?.message || e)}`);
-      notifyTelegram("error", { where: "reconfigure", message: String(e?.message || e) }, { minGapMs: 8000 });
+      if (!usingDemoNow)
+        setFatalError(
+          `Config failed (${kind.toUpperCase()}): ${String(e?.message || e)}`
+        );
+      notifyTelegram(
+        "error",
+        { where: "reconfigure", message: String(e?.message || e) },
+        { minGapMs: 8000 }
+      );
     }
   }
 
@@ -1179,7 +1375,9 @@ export default function TradeDemo({
       ? { demoId: id, demo_id: id, sessionId: id, session_id: id }
       : { liveId: id, live_id: id, sessionId: id, session_id: id };
 
-    const res = await tryPostAny(apiCandidatesRef.current, paths.tick, [body], { timeoutMs: 9000 });
+    const res = await tryPostAny(apiCandidatesRef.current, paths.tick, [body], {
+      timeoutMs: 9000,
+    });
     const data = res?.data || {};
     if (data?.error) throw new Error(data.error);
 
@@ -1203,9 +1401,21 @@ export default function TradeDemo({
       if (stocksRef.current) {
         const s = stocksRef.current;
         if (s.remote && s.base) {
-          const tickPath = runModeRef.current === "live" ? "/stocks/live/tick" : "/stocks/demo/tick";
-          const data = await postJson(`${s.base}${tickPath}`, { stocksId: s.stocksId }, { timeoutMs: 8000 });
-          setStocksSess((prev) => ({ ...prev, ...data, __venue: "stocks", remote: true }));
+          const tickPath =
+            runModeRef.current === "live"
+              ? "/stocks/live/tick"
+              : "/stocks/demo/tick";
+          const data = await postJson(
+            joinBasePath(s.base, tickPath),
+            { stocksId: s.stocksId },
+            { timeoutMs: 8000 }
+          );
+          setStocksSess((prev) => ({
+            ...prev,
+            ...data,
+            __venue: "stocks",
+            remote: true,
+          }));
           delta += Number(data?.realizedPnLDelta || 0);
         } else {
           const { delta: localDelta } = localStocksTick();
@@ -1232,7 +1442,11 @@ export default function TradeDemo({
       }
 
       setFatalError(String(e?.message || "Tick failed"));
-      notifyTelegram("error", { where: "handleTick", message: String(e?.message || e) }, { minGapMs: 7000 });
+      notifyTelegram(
+        "error",
+        { where: "handleTick", message: String(e?.message || e) },
+        { minGapMs: 7000 }
+      );
     }
   }
 
@@ -1241,19 +1455,26 @@ export default function TradeDemo({
     const sims = [dexSess, cexSess, stocksSess].filter(Boolean);
     if (!sims.length) return null;
 
-    const baseBal = sims.reduce((s, d) => s + Number(d?.balance || 0), 0) || 1;
+    const baseBal =
+      sims.reduce((s, d) => s + Number(d?.balance || 0), 0) || 1;
     const scale = startBalance / baseBal;
 
-    const equity = sims.reduce((s, d) => s + Number(d?.equity ?? d?.balance ?? 0), 0) * scale;
+    const equity =
+      sims.reduce((s, d) => s + Number(d?.equity ?? d?.balance ?? 0), 0) *
+      scale;
     const balance = sims.reduce((s, d) => s + Number(d?.balance || 0), 0) * scale;
-    const realizedPnL = sims.reduce((s, d) => s + Number(d?.realizedPnL || 0), 0) * scale;
+    const realizedPnL =
+      sims.reduce((s, d) => s + Number(d?.realizedPnL || 0), 0) * scale;
 
     const wins = sims.reduce((s, d) => s + Number(d?.wins || 0), 0);
     const losses = sims.reduce((s, d) => s + Number(d?.losses || 0), 0);
 
     const dexHist = (dexSess?.history || []).map((h) => ({ ...h, venue: "DEX" }));
     const cexHist = (cexSess?.history || []).map((h) => ({ ...h, venue: "CEX" }));
-    const stxHist = (stocksSess?.history || []).map((h) => ({ ...h, venue: "STOCKS" }));
+    const stxHist = (stocksSess?.history || []).map((h) => ({
+      ...h,
+      venue: "STOCKS",
+    }));
 
     const history = [...dexHist, ...cexHist, ...stxHist]
       .sort((a, b) => (a.t || 0) - (b.t || 0))
@@ -1284,7 +1505,8 @@ export default function TradeDemo({
 
   /* --------------------------- Derived UI ---------------------------- */
   const gross = (combined ? Number(combined.realizedPnL) : 0) + simPnL;
-  const takeRate = (applyNetToDisplay ? simulatedTier.takeRate : activeTier.takeRate) || 0;
+  const takeRate =
+    (applyNetToDisplay ? simulatedTier.takeRate : activeTier.takeRate) || 0;
   const net = gross * (1 - takeRate);
 
   const tapeMarks = useMemo(() => {
@@ -1299,7 +1521,8 @@ export default function TradeDemo({
     }));
   }, [combined]);
 
-  const lastByVenue = (tag) => (combined?.history || []).filter((h) => h.venue === tag).at(-1) || null;
+  const lastByVenue = (tag) =>
+    (combined?.history || []).filter((h) => h.venue === tag).at(-1) || null;
   const lastCex = lastByVenue("CEX");
   const lastDex = lastByVenue("DEX");
   const lastStocks = lastByVenue("STOCKS");
@@ -1308,16 +1531,21 @@ export default function TradeDemo({
   const runSelfCheck = async () => {
     try {
       const bases = apiCandidatesRef.current || [];
-      const healthPaths = ["/health", "/api/health", "/healthz", "/api/healthz"];
+      const healthPaths = ["/health", "/healthz", "/api/health", "/api/healthz"];
 
       let lastErr = null;
       for (const b of bases) {
         for (const p of healthPaths) {
-          const url = `${String(b).replace(/\/+$/, "")}${p}`;
+          const url = joinBasePath(b, p);
           try {
             const j = await getJson(url, { timeoutMs: 6000 });
             const ok = !!j?.ok;
-            setCheck({ ok, message: ok ? "Healthy" : j?.message || j?.error || "Unhealthy" });
+            setCheck({
+              ok,
+              message: ok
+                ? "Healthy"
+                : j?.message || j?.error || "Unhealthy",
+            });
             return;
           } catch (e) {
             lastErr = e;
@@ -1326,7 +1554,10 @@ export default function TradeDemo({
       }
       throw lastErr || new Error("Health check failed");
     } catch (e) {
-      setCheck({ ok: false, message: `Health check failed: ${String(e?.message || e)}` });
+      setCheck({
+        ok: false,
+        message: `Health check failed: ${String(e?.message || e)}`,
+      });
     }
   };
 
@@ -1379,7 +1610,9 @@ export default function TradeDemo({
       setCexSess(null);
       setStocksSess(null);
       setShowAutoHint(false);
-      setStatus(nextIsLive ? "Switched to LIVE. Start again." : "Switched to DEMO. Start again.");
+      setStatus(
+        nextIsLive ? "Switched to LIVE. Start again." : "Switched to DEMO. Start again."
+      );
     }
 
     setFatalError("");
@@ -1394,9 +1627,14 @@ export default function TradeDemo({
         <div className="sticky top-0 z-40">
           <div className="bg-emerald-900/40 backdrop-blur-sm border-b border-emerald-400/30">
             <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-1.5 flex items-center gap-3 text-xs">
-              <span className="px-2 py-0.5 rounded bg-emerald-600/80 border border-emerald-300 text-white">Auto</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-600/80 border border-emerald-300 text-white">
+                Auto
+              </span>
               <div className="flex-1 h-2 rounded-full bg-emerald-950/40 overflow-hidden border border-emerald-400/30">
-                <div className="h-full bg-emerald-400 transition-[width] duration-100 ease-linear" style={{ width: `${progressPct}%` }} />
+                <div
+                  className="h-full bg-emerald-400 transition-[width] duration-100 ease-linear"
+                  style={{ width: `${progressPct}%` }}
+                />
               </div>
               <div className="hidden sm:flex gap-3 text-emerald-100/90">
                 <span>XP ⭐ {xp}</span>
@@ -1435,19 +1673,30 @@ export default function TradeDemo({
                   <div className="font-semibold mb-1">Quick Hints</div>
                   <ul className="list-disc pl-5 space-y-1 text-slate-200">
                     <li>
-                      After you click <b>Start</b>, click <b>Auto run</b> to stream ticks.
+                      After you click <b>Start</b>, click <b>Auto run</b> to
+                      stream ticks.
                     </li>
                     <li>
-                      Backend reachable: <code>{apiBaseDisplay}/health</code> (or <code>{apiBaseDisplay}/healthz</code>).
+                      Backend reachable: <code>{apiBaseDisplay}/health</code>{" "}
+                      (or <code>{apiBaseDisplay}/healthz</code>).
                     </li>
-                    <li>If self-check fails, your API base is wrong or the backend is down.</li>
+                    <li>
+                      If self-check fails, your API base is wrong or the backend
+                      is down.
+                    </li>
                   </ul>
                 </div>
               )}
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-black">Trade {usingDemo ? "Demo" : "Live"}</h1>
-            {haveAny ? <Badge color="emerald" text="RUNNING" /> : <Badge color="slate" text="READY" />}
+            <h1 className="text-xl sm:text-2xl font-black">
+              Trade {usingDemo ? "Demo" : "Live"}
+            </h1>
+            {haveAny ? (
+              <Badge color="emerald" text="RUNNING" />
+            ) : (
+              <Badge color="slate" text="READY" />
+            )}
             {!!statusNote && <Badge color="sky" text={statusNote} />}
           </div>
 
@@ -1466,17 +1715,31 @@ export default function TradeDemo({
         </div>
 
         <div className="mt-2">
-          <BackendBadges usingDemo={usingDemo} venue={venue} apiBase={apiBaseDisplay} stockDemoApi={stockDemoApi} stockLiveApi={stockLiveApi} runMode={runMode} stocksSess={stocksSess} />
+          <BackendBadges
+            usingDemo={usingDemo}
+            venue={venue}
+            apiBase={apiBaseDisplay}
+            stockDemoApi={stockDemoApi}
+            stockLiveApi={stockLiveApi}
+            runMode={runMode}
+            stocksSess={stocksSess}
+          />
         </div>
 
         {/* Only show fatal errors */}
         {fatalError && (
           <div className="mt-3 rounded-lg border border-rose-500/80 bg-rose-600 px-3 py-2 text-xs sm:text-sm">
             {fatalError}{" "}
-            <button onClick={runSelfCheck} className="underline font-semibold" title="Call /health on your server">
+            <button
+              onClick={runSelfCheck}
+              className="underline font-semibold"
+              title="Call /health on your server"
+            >
               Run Self-Check
             </button>
-            {check.ok === false && <span className="ml-2">• {check.message}</span>}
+            {check.ok === false && (
+              <span className="ml-2">• {check.message}</span>
+            )}
           </div>
         )}
       </div>
@@ -1484,13 +1747,18 @@ export default function TradeDemo({
       {/* Content */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pb-10">
         <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-slate-300">
-          <button onClick={runSelfCheck} className="px-2 py-1 rounded border border-slate-600/60 bg-slate-800/90 hover:bg-slate-700">
+          <button
+            onClick={runSelfCheck}
+            className="px-2 py-1 rounded border border-slate-600/60 bg-slate-800/90 hover:bg-slate-700"
+          >
             Run Self-Check
           </button>
           {check.ok != null && (
             <span
               className={`px-2 py-1 rounded border ${
-                check.ok ? "border-emerald-400 bg-emerald-700/50 text-emerald-100" : "border-rose-400 bg-rose-700/50 text-rose-100"
+                check.ok
+                  ? "border-emerald-400 bg-emerald-700/50 text-emerald-100"
+                  : "border-rose-400 bg-rose-700/50 text-rose-100"
               }`}
             >
               {check.ok ? "Health OK" : `Health FAIL: ${check.message}`}
@@ -1502,14 +1770,19 @@ export default function TradeDemo({
         {!haveAny && (
           <div className="space-y-4 rounded-2xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4">
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              <FieldCard title="Where to trade? (Step 1)" help="Pick crypto (DEX, CEX), STOCKS (equities), BOTH (DEX+CEX), or BUNDLE (DEX+CEX+STOCKS).">
+              <FieldCard
+                title="Where to trade? (Step 1)"
+                help="Pick crypto (DEX, CEX), STOCKS (equities), BOTH (DEX+CEX), or BUNDLE (DEX+CEX+STOCKS)."
+              >
                 <div className="flex flex-wrap gap-2">
                   {["dex", "cex", "both", "stocks", "bundle"].map((v) => (
                     <button
                       key={v}
                       onClick={() => setVenue(v)}
                       className={`flex-1 rounded-lg px-3 py-2 border text-sm ${
-                        venue === v ? "bg-emerald-600 border-emerald-400" : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
+                        venue === v
+                          ? "bg-emerald-600 border-emerald-400"
+                          : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
                       }`}
                     >
                       {v.toUpperCase()}
@@ -1519,23 +1792,30 @@ export default function TradeDemo({
 
                 {venue === "dex" && (
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    {["ethereum", "polygon", "base", "optimism", "arbitrum", "bsc"].map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => setChain(c)}
-                        className={`rounded-full px-3 py-1 border ${
-                          chain === c ? "bg-emerald-600 border-emerald-400" : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
-                        }`}
-                      >
-                        {c}
-                      </button>
-                    ))}
+                    {["ethereum", "polygon", "base", "optimism", "arbitrum", "bsc"].map(
+                      (c) => (
+                        <button
+                          key={c}
+                          onClick={() => setChain(c)}
+                          className={`rounded-full px-3 py-1 border ${
+                            chain === c
+                              ? "bg-emerald-600 border-emerald-400"
+                              : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      )
+                    )}
                   </div>
                 )}
               </FieldCard>
 
               {venue !== "stocks" && (
-                <FieldCard title="Crypto Strategy (Step 2)" help="Simple knobs with plain English. Less to tweak, easier to understand.">
+                <FieldCard
+                  title="Crypto Strategy (Step 2)"
+                  help="Simple knobs with plain English. Less to tweak, easier to understand."
+                >
                   <select
                     value={strategy}
                     onChange={(e) => {
@@ -1565,7 +1845,12 @@ export default function TradeDemo({
                           min={f.min ?? undefined}
                           max={f.max ?? undefined}
                           value={params[f.key]}
-                          onChange={(e) => setParams((p) => ({ ...p, [f.key]: Number(e.target.value) }))}
+                          onChange={(e) =>
+                            setParams((p) => ({
+                              ...p,
+                              [f.key]: Number(e.target.value),
+                            }))
+                          }
                           className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm"
                         />
                       </div>
@@ -1575,50 +1860,120 @@ export default function TradeDemo({
               )}
 
               {(venue === "stocks" || venue === "bundle") && (
-                <FieldCard title="Stocks Strategy (Step 2)" help="Uses a Fast/Slow Average crossover with RSI filter.">
+                <FieldCard
+                  title="Stocks Strategy (Step 2)"
+                  help="Uses a Fast/Slow Average crossover with RSI filter."
+                >
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     <label title="Short-term trend line">
                       Fast Average (bars)
-                      <input type="number" min="5" max="50" value={smaFast} onChange={(e) => setSmaFast(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
+                      <input
+                        type="number"
+                        min="5"
+                        max="50"
+                        value={smaFast}
+                        onChange={(e) => setSmaFast(Number(e.target.value))}
+                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
+                      />
                     </label>
                     <label title="Long-term trend line">
                       Slow Average (bars)
-                      <input type="number" min="10" max="200" value={smaSlow} onChange={(e) => setSmaSlow(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
+                      <input
+                        type="number"
+                        min="10"
+                        max="200"
+                        value={smaSlow}
+                        onChange={(e) => setSmaSlow(Number(e.target.value))}
+                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
+                      />
                     </label>
                     <label title="How far back RSI looks">
                       RSI Lookback
-                      <input type="number" min="5" max="30" value={rsiWindow} onChange={(e) => setRsiWindow(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
+                      <input
+                        type="number"
+                        min="5"
+                        max="30"
+                        value={rsiWindow}
+                        onChange={(e) => setRsiWindow(Number(e.target.value))}
+                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
+                      />
                     </label>
                     <label title="Upper RSI gate: avoid buying when too hot">
                       RSI Overbought
-                      <input type="number" min="60" max="90" value={rsiTop} onChange={(e) => setRsiTop(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
+                      <input
+                        type="number"
+                        min="60"
+                        max="90"
+                        value={rsiTop}
+                        onChange={(e) => setRsiTop(Number(e.target.value))}
+                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
+                      />
                     </label>
                     <label title="Lower RSI gate: avoid selling when too weak">
                       RSI Oversold
-                      <input type="number" min="10" max="40" value={rsiBottom} onChange={(e) => setRsiBottom(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
+                      <input
+                        type="number"
+                        min="10"
+                        max="40"
+                        value={rsiBottom}
+                        onChange={(e) => setRsiBottom(Number(e.target.value))}
+                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
+                      />
                     </label>
                     <label title="How many shares to trade per signal">
                       Trade Units
-                      <input type="number" min="1" max="1000" value={stockTradeUnits} onChange={(e) => setStockTradeUnits(Number(e.target.value))} className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1" />
+                      <input
+                        type="number"
+                        min="1"
+                        max="1000"
+                        value={stockTradeUnits}
+                        onChange={(e) => setStockTradeUnits(Number(e.target.value))}
+                        className="w-full mt-1 border border-slate-600/60 rounded bg-slate-950 px-2 py-1"
+                      />
                     </label>
                   </div>
 
                   <div className="mt-3 text-xs text-slate-300">
                     Stocks Basket (demo):{" "}
-                    <input value={stockSymbols} onChange={(e) => setStockSymbols(e.target.value)} className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto" title="Comma-separated list, e.g. AAPL,MSFT,NVDA" />
+                    <input
+                      value={stockSymbols}
+                      onChange={(e) => setStockSymbols(e.target.value)}
+                      className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto"
+                      title="Comma-separated list, e.g. AAPL,MSFT,NVDA"
+                    />
                   </div>
                 </FieldCard>
               )}
 
-              <FieldCard title="Starting Balance" help="UI scales to this; backend/sim track equity internally.">
-                <input type="number" min="100" step="50" value={startBalance} onChange={(e) => setStartBalance(Math.max(0, Number(e.target.value || 0)))} className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm" />
+              <FieldCard
+                title="Starting Balance"
+                help="UI scales to this; backend/sim track equity internally."
+              >
+                <input
+                  type="number"
+                  min="100"
+                  step="50"
+                  value={startBalance}
+                  onChange={(e) =>
+                    setStartBalance(Math.max(0, Number(e.target.value || 0)))
+                  }
+                  className="w-full border border-slate-600/60 rounded bg-slate-950 px-3 py-2 text-sm"
+                />
                 {venue !== "stocks" && venue !== "bundle" ? (
                   <div className="mt-2 text-xs text-slate-300">
                     Crypto Symbols:{" "}
-                    <input value={symbols} onChange={(e) => setSymbols(e.target.value)} className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto" title="Comma-separated list, e.g. BTC,ETH" />
+                    <input
+                      value={symbols}
+                      onChange={(e) => setSymbols(e.target.value)}
+                      className="ml-1 rounded bg-slate-800/80 border border-slate-600/60 px-2 py-[2px] w-full sm:w-auto"
+                      title="Comma-separated list, e.g. BTC,ETH"
+                    />
                   </div>
                 ) : (
-                  <div className="mt-2 text-xs text-slate-400">Demo stocks use the basket above. Remote API may support custom lists.</div>
+                  <div className="mt-2 text-xs text-slate-400">
+                    Demo stocks use the basket above. Remote API may support
+                    custom lists.
+                  </div>
                 )}
               </FieldCard>
 
@@ -1644,11 +1999,18 @@ export default function TradeDemo({
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2">
-              <button onClick={handleStart} disabled={busy} className="w-full sm:flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 font-semibold">
+              <button
+                onClick={handleStart}
+                disabled={busy}
+                className="w-full sm:flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 font-semibold"
+              >
                 {busy ? "Starting…" : `Start ${usingDemo ? "Demo" : "Live"}`}
               </button>
               {venue !== "stocks" && venue !== "bundle" && !isLiveEligible && (
-                <button onClick={() => setShowUpgrade(true)} className="w-full sm:w-auto py-3 rounded-xl bg-yellow-600 hover:bg-yellow-500 border border-yellow-400 font-semibold text-black">
+                <button
+                  onClick={() => setShowUpgrade(true)}
+                  className="w-full sm:w-auto py-3 rounded-xl bg-yellow-600 hover:bg-yellow-500 border border-yellow-400 font-semibold text-black"
+                >
                   Upgrade to Go Live
                 </button>
               )}
@@ -1794,9 +2156,12 @@ export default function TradeDemo({
             </div>
 
             <div className="p-3 rounded-xl border border-amber-600 bg-amber-400 text-black text-sm sm:text-base">
-              <span className="font-semibold">{usingDemo ? "Demo" : "Live"} result so far:</span>{" "}
+              <span className="font-semibold">
+                {usingDemo ? "Demo" : "Live"} result so far:
+              </span>{" "}
               <b>
-                Gross {gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)} • Net ({(takeRate * 100).toFixed(0)}% take){" "}
+                Gross {gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)} • Net (
+                {(takeRate * 100).toFixed(0)}% take){" "}
                 {net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}
               </b>
               <span className="ml-1">
@@ -1810,9 +2175,12 @@ export default function TradeDemo({
       {showUpgrade && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="max-w-md w-full rounded-2xl border border-yellow-500/70 bg-slate-900 text-white p-5">
-            <div className="text-lg font-extrabold mb-1">Unlock Live Trading</div>
+            <div className="text-lg font-extrabold mb-1">
+              Unlock Live Trading
+            </div>
             <p className="text-sm text-slate-200">
-              To go <b>Live</b>, complete your plan upgrade and wallet verification.
+              To go <b>Live</b>, complete your plan upgrade and wallet
+              verification.
             </p>
             <ul className="list-disc pl-5 text-sm text-slate-200 my-3 space-y-1">
               <li>Access to Live API endpoints</li>
@@ -1820,10 +2188,16 @@ export default function TradeDemo({
               <li>Telegram alerts for fills & risk</li>
             </ul>
             <div className="flex gap-2 mt-3">
-              <a href="/pricing" className="px-4 py-2 rounded-lg bg-yellow-500 text-black font-semibold hover:bg-yellow-400">
+              <a
+                href="/pricing"
+                className="px-4 py-2 rounded-lg bg-yellow-500 text-black font-semibold hover:bg-yellow-400"
+              >
                 See Plans
               </a>
-              <button onClick={() => setShowUpgrade(false)} className="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10">
+              <button
+                onClick={() => setShowUpgrade(false)}
+                className="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10"
+              >
                 Maybe later
               </button>
             </div>
@@ -1835,11 +2209,23 @@ export default function TradeDemo({
 }
 
 /* ——— Small UI atoms ——— */
-function BackendBadges({ usingDemo, venue, apiBase, stockDemoApi, stockLiveApi, runMode, stocksSess }) {
+function BackendBadges({
+  usingDemo,
+  venue,
+  apiBase,
+  stockDemoApi,
+  stockLiveApi,
+  runMode,
+  stocksSess,
+}) {
   const cryptoLive = !usingDemo && includesCrypto(venue);
   const stocksLive = runMode === "live" && !!stockLiveApi;
 
-  const cryptoLabel = includesCrypto(venue) ? (cryptoLive ? "CRYPTO • LIVE" : "CRYPTO • DEMO") : null;
+  const cryptoLabel = includesCrypto(venue)
+    ? cryptoLive
+      ? "CRYPTO • LIVE"
+      : "CRYPTO • DEMO"
+    : null;
 
   const stocksLabel =
     venue === "stocks" || venue === "bundle"
@@ -1852,8 +2238,15 @@ function BackendBadges({ usingDemo, venue, apiBase, stockDemoApi, stockLiveApi, 
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {cryptoLabel && <Badge color={cryptoLive ? "emerald" : "slate"} text={cryptoLabel} />}
-      {stocksLabel && <Badge color={stocksLive ? "emerald" : stocksSess?.remote ? "sky" : "slate"} text={stocksLabel} />}
+      {cryptoLabel && (
+        <Badge color={cryptoLive ? "emerald" : "slate"} text={cryptoLabel} />
+      )}
+      {stocksLabel && (
+        <Badge
+          color={stocksLive ? "emerald" : stocksSess?.remote ? "sky" : "slate"}
+          text={stocksLabel}
+        />
+      )}
       <span className="text-[11px] text-slate-400">
         {includesCrypto(venue) && (
           <>
@@ -1863,7 +2256,11 @@ function BackendBadges({ usingDemo, venue, apiBase, stockDemoApi, stockLiveApi, 
         {(venue === "stocks" || venue === "bundle") && (
           <>
             {" "}
-            {stocksLive ? "• Stocks live API" : stockDemoApi ? "• Stocks demo API" : "• Stocks local sim"}
+            {stocksLive
+              ? "• Stocks live API"
+              : stockDemoApi
+              ? "• Stocks demo API"
+              : "• Stocks local sim"}
           </>
         )}
       </span>
@@ -1876,7 +2273,11 @@ function Badge({ color = "slate", text }) {
     sky: "border-sky-400 bg-sky-600/90 text-white",
     slate: "border-slate-400 bg-slate-800 text-white",
   };
-  return <span className={`text-[11px] rounded-full border px-2 py-1 ${map[color]}`}>{text}</span>;
+  return (
+    <span className={`text-[11px] rounded-full border px-2 py-1 ${map[color]}`}>
+      {text}
+    </span>
+  );
 }
 function Button({ children, onClick, variant = "ghost" }) {
   const classes =
@@ -1891,7 +2292,9 @@ function Button({ children, onClick, variant = "ghost" }) {
 }
 function FieldCard({ title, help, children, className = "" }) {
   return (
-    <div className={`rounded-xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4 ${className}`}>
+    <div
+      className={`rounded-xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4 ${className}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="text-sm font-semibold text-white">{title}</div>
         <HoverInfo label="?" description={help} />
@@ -1913,16 +2316,25 @@ function Card({ title, tip, children }) {
 }
 function Stat({ label, value, tip }) {
   return (
-    <div className="p-3 rounded-lg border border-slate-600/60 bg-slate-900/90" title={tip}>
-      <div className="text-[11px] sm:text-[12px] uppercase text-slate-100 tracking-wide">{label}</div>
-      <div className="text-sm sm:text-base font-semibold break-all text-white">{value}</div>
+    <div
+      className="p-3 rounded-lg border border-slate-600/60 bg-slate-900/90"
+      title={tip}
+    >
+      <div className="text-[11px] sm:text-[12px] uppercase text-slate-100 tracking-wide">
+        {label}
+      </div>
+      <div className="text-sm sm:text-base font-semibold break-all text-white">
+        {value}
+      </div>
     </div>
   );
 }
 function HoverInfo({ label, description }) {
   return (
     <div className="relative group">
-      <span className="text-xs text-slate-100 underline decoration-dotted cursor-help">{label}</span>
+      <span className="text-xs text-slate-100 underline decoration-dotted cursor-help">
+        {label}
+      </span>
       <div className="pointer-events-none absolute right-0 mt-2 w-64 sm:w-72 rounded-xl border border-slate-600/60 bg-slate-900/95 p-3 text-xs text-white opacity-0 shadow-2xl transition-opacity group-hover:opacity-100">
         {description}
       </div>
@@ -1935,12 +2347,17 @@ function ModeToggle({ runMode, setRunMode, isLiveEligible, onUpgrade, venue }) {
     <div className="flex items-center gap-2 text-xs">
       <span
         className={`px-2 py-1 rounded border ${
-          !isLive ? "border-emerald-400 text-emerald-300 bg-emerald-900/30" : "border-slate-600 text-slate-300"
+          !isLive
+            ? "border-emerald-400 text-emerald-300 bg-emerald-900/30"
+            : "border-slate-600 text-slate-300"
         }`}
       >
         DEMO
       </span>
-      <label className="relative inline-flex cursor-pointer items-center" title="Toggle Demo / Live">
+      <label
+        className="relative inline-flex cursor-pointer items-center"
+        title="Toggle Demo / Live"
+      >
         <input
           type="checkbox"
           className="sr-only peer"
@@ -1958,7 +2375,9 @@ function ModeToggle({ runMode, setRunMode, isLiveEligible, onUpgrade, venue }) {
       </label>
       <span
         className={`px-2 py-1 rounded border ${
-          isLive ? "border-emerald-400 text-emerald-300 bg-emerald-900/30" : "border-slate-600 text-slate-300"
+          isLive
+            ? "border-emerald-400 text-emerald-300 bg-emerald-900/30"
+            : "border-slate-600 text-slate-300"
         }`}
       >
         LIVE
@@ -1970,7 +2389,9 @@ function StepHint({ children, highlight = false }) {
   return (
     <span
       className={`hidden md:inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${
-        highlight ? "border-emerald-400 bg-emerald-500/20 text-emerald-100" : "border-slate-300/30 bg-slate-200/10 text-slate-100"
+        highlight
+          ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
+          : "border-slate-300/30 bg-slate-200/10 text-slate-100"
       }`}
     >
       {children}
