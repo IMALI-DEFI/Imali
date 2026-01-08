@@ -1,5 +1,3 @@
-TradeDemo
-
 // src/pages/TradeDemo.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import TradingOverview from "../components/Dashboard/TradingOverview.jsx";
