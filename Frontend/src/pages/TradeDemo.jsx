@@ -335,11 +335,32 @@ export default function TradeDemo({
   const [symbols, setSymbols] = useState(defaultSymbols || "BTC,ETH");
   const [stockSymbols, setStockSymbols] = useState("AAPL,MSFT,NVDA,AMZN,TSLA");
 
+  // STRATEGIES ADDED BACK HERE
   const strategyCatalog = {
     ai_weighted: {
       name: "Smart Mix",
       help: "Blends trend, dip-buy, and volume. Only trades when confidence is high.",
       defaults: { momentumWeight: 0.4, meanRevWeight: 0.3, volumeWeight: 0.3, minScore: 0.65 },
+    },
+    momentum: {
+      name: "Momentum",
+      help: "Buys when prices are rising.",
+      defaults: { lookbackPeriod: 10, minPriceChange: 0.02 },
+    },
+    dip_buyer: {
+      name: "Dip Buyer",
+      help: "Buys after price drops.",
+      defaults: { dipThreshold: -0.05, recoveryTarget: 0.03, maxHoldPeriod: 20 },
+    },
+    mean_reversion: {
+      name: "Mean Reversion",
+      help: "Trades when prices return to normal.",
+      defaults: { meanPeriod: 20, deviationThreshold: 0.1, reversionTarget: 0.02 },
+    },
+    volume_spike: {
+      name: "Volume Spike",
+      help: "Trades when activity suddenly increases.",
+      defaults: { volumeLookback: 10, spikeMultiplier: 2.5, cooldownPeriod: 5 },
     },
   };
 
