@@ -1,7 +1,8 @@
 // src/components/Dashboard/YieldFarming.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
-import { useWallet, getContractInstance } from "../../getContractInstance";
+import { useWallet } from "../../context/WalletContext.js";
+import { short } from "../../getContractInstance.js";
 
 export default function YieldFarming() {
   const { account, provider } = useWallet();
