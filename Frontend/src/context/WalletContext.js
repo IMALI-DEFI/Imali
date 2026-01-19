@@ -1,10 +1,4 @@
-import React, {
-  createContext,
-  useState,
-  useEffect,
-  useCallback,
-  useContext
-} from "react";
+import React, { createContext, useState, useCallback, useContext } from "react";
 import EthereumProvider from "@walletconnect/ethereum-provider";
 import { BrowserProvider } from "ethers";
 
@@ -23,7 +17,7 @@ export const WalletProvider = ({ children }) => {
       navigator.userAgent
     );
 
-  const connectWallet = useCallback(async (type) => {
+  const connectWallet = useCallback(async (type = "metamask") => {
     setIsConnecting(true);
     setError(null);
 
@@ -35,24 +29,16 @@ export const WalletProvider = ({ children }) => {
           if (isMobile()) {
             const universalLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`;
             window.location.href = universalLink;
-            setTimeout(() => window.open(universalLink, "_blank"), 500);
             return;
-          } else {
-            window.open("https://metamask.io/download.html", "_blank");
-            throw new Error("Please install MetaMask extension.");
           }
+          window.open("https://metamask.io/download.html", "_blank");
+          throw new Error("Please install MetaMask.");
         }
 
         const metamaskProvider =
-          window.ethereum.providers?.find((p) => p.isMetaMask) ||
-          window.ethereum;
-
-        if (!metamaskProvider?.isMetaMask) {
-          throw new Error("MetaMask provider not found.");
-        }
+          window.ethereum.providers?.find((p) => p.isMetaMask) || window.ethereum;
 
         ethersProvider = new BrowserProvider(metamaskProvider);
-
         const accounts = await ethersProvider.send("eth_requestAccounts", []);
         const network = await ethersProvider.getNetwork();
 
@@ -60,34 +46,30 @@ export const WalletProvider = ({ children }) => {
         setChainId(Number(network.chainId));
         setProvider(ethersProvider);
         setWalletType("metamask");
-      } else if (type === "walletconnect") {
+      }
+
+      if (type === "walletconnect") {
         const projectId =
           process.env.REACT_APP_WC_PROJECT_ID ||
-          (typeof import.meta !== "undefined" &&
-            import.meta.env &&
-            import.meta.env.VITE_WC_PROJECT_ID) ||
+          (typeof import.meta !== "undefined" && import.meta.env?.VITE_WC_PROJECT_ID) ||
           "";
 
         if (!projectId) {
-          throw new Error(
-            "Missing WalletConnect Project ID. Set REACT_APP_WC_PROJECT_ID (CRA) or VITE_WC_PROJECT_ID (Vite)."
-          );
+          throw new Error("Missing WalletConnect Project ID (WC_PROJECT_ID).");
         }
 
         const wc = await EthereumProvider.init({
           projectId,
-          chains: [1, 137, 8453], // ETH, Polygon, Base
+          chains: [1, 137, 8453],
           showQrModal: true,
-          optionalMethods: [
-            "eth_sendTransaction",
-            "personal_sign",
-            "eth_signTypedData",
-            "eth_signTypedData_v4"
-          ]
+          rpcMap: {
+            1: process.env.REACT_APP_RPC_ETH || "https://cloudflare-eth.com",
+            137: process.env.REACT_APP_RPC_POLYGON || "https://polygon-rpc.com",
+            8453: process.env.REACT_APP_RPC_BASE || "https://mainnet.base.org",
+          },
         });
 
         await wc.connect();
-
         ethersProvider = new BrowserProvider(wc);
 
         const signer = await ethersProvider.getSigner();
@@ -103,7 +85,7 @@ export const WalletProvider = ({ children }) => {
       localStorage.setItem("walletType", type);
     } catch (err) {
       console.error("Connection error:", err);
-      setError(err.message || "Failed to connect wallet.");
+      setError(err?.message || "Failed to connect wallet.");
     } finally {
       setIsConnecting(false);
     }
@@ -111,21 +93,19 @@ export const WalletProvider = ({ children }) => {
 
   const disconnectWallet = useCallback(async () => {
     try {
-      // WalletConnect v2: if provider is the WC provider, disconnect it cleanly
-      if (walletType === "walletconnect" && provider?.provider?.disconnect) {
-        await provider.provider.disconnect();
-      }
+      // if it's WalletConnect v2 provider, it supports .disconnect()
+      const p = provider?._provider || provider?.provider || null;
+      if (p?.disconnect) await p.disconnect();
     } catch (e) {
-      // ignore disconnect errors
+      // ignore
     }
-
     setAccount(null);
     setProvider(null);
     setWalletType(null);
     setChainId(null);
     setError(null);
     localStorage.removeItem("walletType");
-  }, [provider, walletType]);
+  }, [provider]);
 
   return (
     <WalletContext.Provider
@@ -141,7 +121,7 @@ export const WalletProvider = ({ children }) => {
         getSigner: async () => {
           if (!provider) throw new Error("Wallet not connected.");
           return await provider.getSigner();
-        }
+        },
       }}
     >
       {children}
