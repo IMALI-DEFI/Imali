@@ -25,11 +25,11 @@ const API_BASE =
 
 // Pricing (USD / month). Discount handled post-purchase during activation.
 const TIERS = {
-  starter: { img: StarterNFT, label: "Starter", base: 0,    xp: 50,  color: "from-sky-500 to-sky-700" },
-  pro:     { img: ProNFT,     label: "Pro",     base: 19,   xp: 150, color: "from-fuchsia-500 to-fuchsia-700" },
-  elite:   { img: EliteNFT,   label: "Elite",   base: 49,   xp: 300, color: "from-amber-500 to-amber-700" },
-  stock:   { img: StockNFT,   label: "Stocks",  base: 99,   xp: 300, color: "from-yellow-500 to-yellow-700" },
-  bundle:  { img: BundleNFT,  label: "Bundle",  base: 199,  xp: 600, color: "from-zinc-500 to-zinc-700" },
+  starter: { img: StarterNFT, label: "Free (CEX + Stocks)", base: 0,   xp: 50,  color: "from-sky-500 to-sky-700" },
+  pro:     { img: ProNFT,     label: "Stocks (Pro)",        base: 19,  xp: 150, color: "from-fuchsia-500 to-fuchsia-700" },
+  elite:   { img: EliteNFT,   label: "CEX + Stocks (Pro+)", base: 49,  xp: 300, color: "from-amber-500 to-amber-700" },
+  stock:   { img: StockNFT,   label: "DEX + Crypto Pro",    base: 99,  xp: 450, color: "from-yellow-500 to-yellow-700" },
+  bundle:  { img: BundleNFT,  label: "Bundle (All Bots)",   base: 199, xp: 650, color: "from-zinc-500 to-zinc-700" },
 };
 
 // Strategy catalog
@@ -292,7 +292,7 @@ export default function SignupForm() {
           </p>
           <div className="mt-3 text-sm text-indigo-200">
             New to wallets or funding?{" "}
-            <Link to="/funding-guide" className="text-emerald-300 underline">
+            <Link to="/how-to/fund-okx" className="text-emerald-300 underline">
               See the 5-minute OKX guide
             </Link>
           </div>
@@ -404,8 +404,8 @@ export default function SignupForm() {
                 </li>
               </ul>
               <div className="mt-3 space-y-1">
-                <Link to="/funding-guide" className="block text-emerald-300 underline text-sm">Open 5-min OKX Funding Guide →</Link>
-                <Link to="/funding-guide" className="block text-emerald-300 underline text-sm">MetaMask: install + fund →</Link>
+                <Link to="/how-to/fund-okx" className="block text-emerald-300 underline text-sm">Open 5-min OKX Funding Guide →</Link>
+                <Link to="/how-to/wallet-metamask" className="block text-emerald-300 underline text-sm">MetaMask: install + fund →</Link>
               </div>
             </div>
           </aside>
@@ -517,9 +517,9 @@ export default function SignupForm() {
                   <div className="rounded-lg bg-white/5 border border-white/10 p-3">
                     <div className="font-semibold mb-1">📚 Guides</div>
                     <div className="text-gray-300">
-                      <Link to="/funding-guide" className="underline text-emerald-300">OKX Funding</Link> ·{" "}
+                      <Link to="/FundingGuide" className="underline text-emerald-300">OKX Funding</Link> ·{" "}
                       <Link to="/supported-chains" className="underline text-indigo-300">Chains</Link> ·{" "}
-                      <Link to="/funding-guide" className="underline text-indigo-300">MetaMask</Link>
+                      <Link to="/FundingGuide" className="underline text-indigo-300">MetaMask</Link>
                     </div>
                   </div>
                 </div>

@@ -118,8 +118,9 @@ export default function HowItWorks() {
             <div className="text-sm mb-2 text-indigo-300">Level 5</div>
             <h3 className="text-xl font-bold mb-3">Tiers & Profit Share</h3>
             <p className="text-indigo-100/90 mb-3">
-              Starter (free) includes alerts and a <b>30% profit share</b>.  
-              Upgrading to Pro or Elite lowers the share and unlocks analytics + fast RPC.
+              Starter (free) runs <b>CEX + Stocks</b> with a <b>30% profit share</b> on net profits above a 3% floor.
+              Paid tiers reduce performance fees and unlock premium modules. The $99+ crypto tiers include premium RPC
+              plus yield farming, staking, and lending tools (premium modules unlock with a $25 IMALI entry fee).
             </p>
             <Link
               to="/pricing"
