@@ -146,5 +146,10 @@ if (typeof window !== "undefined" && window.ethereum) {
   window.ethereum.on("chainChanged", () => contractCache.clear());
   window.ethereum.on("accountsChanged", () => contractCache.clear());
 }
-
+// Small UI helper: 0x1234...abcd
+export const short = (addr = "", left = 6, right = 4) => {
+  if (!addr || typeof addr !== "string") return "";
+  if (addr.length <= left + right) return addr;
+  return `${addr.slice(0, left)}...${addr.slice(-right)}`;
+};
 export default getContractInstance;
