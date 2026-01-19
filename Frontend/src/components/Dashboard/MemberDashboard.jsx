@@ -7,7 +7,7 @@ import { Link, useLocation } from "react-router-dom";
 
 // Utils
 import { getUserData } from "../../utils/firebase.js";
-import { useWallet } from "../context/WalletContext.js";
+import { useWallet } from "../../context/WalletContext.js";
 import { short } from "../../getContractInstance.js";
 
 // Child modules
