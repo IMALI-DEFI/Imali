@@ -25,11 +25,11 @@ const API_BASE =
 
 // Pricing (USD / month). Discount handled post-purchase during activation.
 const TIERS = {
-  starter: { img: StarterNFT, label: "Free (CEX + Stocks)", base: 0,   xp: 50,  color: "from-sky-500 to-sky-700" },
-  pro:     { img: ProNFT,     label: "Stocks (Pro)",        base: 19,  xp: 150, color: "from-fuchsia-500 to-fuchsia-700" },
-  elite:   { img: EliteNFT,   label: "CEX + Stocks (Pro+)", base: 49,  xp: 300, color: "from-amber-500 to-amber-700" },
-  stock:   { img: StockNFT,   label: "DEX + Crypto Pro",    base: 99,  xp: 450, color: "from-yellow-500 to-yellow-700" },
-  bundle:  { img: BundleNFT,  label: "Bundle (All Bots)",   base: 199, xp: 650, color: "from-zinc-500 to-zinc-700" },
+  starter: { img: StarterNFT, label: "Starter", base: 0,    xp: 50,  color: "from-sky-500 to-sky-700" },
+  pro:     { img: ProNFT,     label: "Pro",     base: 19,   xp: 150, color: "from-fuchsia-500 to-fuchsia-700" },
+  elite:   { img: EliteNFT,   label: "Elite",   base: 49,   xp: 300, color: "from-amber-500 to-amber-700" },
+  stock:   { img: StockNFT,   label: "Stocks",  base: 99,   xp: 300, color: "from-yellow-500 to-yellow-700" },
+  bundle:  { img: BundleNFT,  label: "Bundle",  base: 199,  xp: 600, color: "from-zinc-500 to-zinc-700" },
 };
 
 // Strategy catalog
