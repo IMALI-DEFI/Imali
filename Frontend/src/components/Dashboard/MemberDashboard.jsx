@@ -1,6 +1,6 @@
 // src/components/Dashboard/MemberDashboard.jsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { BotAPI } from "../utils/api.js";
+import { BotAPI } from "../../utils/api.js";
 import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
 import { Link, useLocation } from "react-router-dom";
