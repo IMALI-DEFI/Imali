@@ -18,7 +18,7 @@ import {
   LiquidityManagerABI,
   VestingVaultABI,
   AirdropDistributorABI,
-} from "../abi";
+} from "./abi";
 
 // -------------------- Chains --------------------
 export const ETHEREUM_MAINNET = "ethereum";
