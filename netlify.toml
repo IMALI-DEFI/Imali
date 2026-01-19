@@ -4,7 +4,7 @@ command = "npm ci && CI=false npm run build"
 publish = "build"
 
 [build.environment]
-NODE_VERSION = "18.20.3"
+NODE_VERSION = "20"
 
 # 🔥 1. PROXY API REQUESTS TO YOUR SERVER
 [[redirects]]
