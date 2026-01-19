@@ -1,10 +1,10 @@
 // src/components/Dashboard/YieldFarming.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
-import { useEvmWallet, getContractInstance } from "../../getContractInstance";
+import { useWallet, getContractInstance } from "../../getContractInstance";
 
 export default function YieldFarming() {
-  const { account, provider } = useEvmWallet();
+  const { account, provider } = useWallet();
   const [stakingContract, setStakingContract] = useState(null);
   const [farmBalance, setFarmBalance] = useState("0");
   const [earnedRewards, setEarnedRewards] = useState("0");

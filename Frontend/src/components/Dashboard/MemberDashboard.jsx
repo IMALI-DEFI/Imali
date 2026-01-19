@@ -7,7 +7,7 @@ import { Link, useLocation } from "react-router-dom";
 
 // Utils
 import { getUserData } from "../../utils/firebase.js";
-import { useEvmWallet, short } from "../../getContractInstance.js";
+import { useWallet, short } from "../../getContractInstance.js";
 
 // Child modules
 import * as ImaliBalanceNS from "./ImaliBalance.jsx";
@@ -402,7 +402,7 @@ function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx,
 /* ---------------- Dashboard ---------------- */
 export default function MemberDashboard() {
   const { pathname } = useLocation();
-  const { account, chainId, connect, disconnect } = useEvmWallet();
+  const { account, chainId, connect, disconnect } = useWallet();
 
   const [userData, setUserData] = useState(null);
   const [imaliBalance, setImaliBalance] = useState(0);
