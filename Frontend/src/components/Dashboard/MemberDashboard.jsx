@@ -1,6 +1,6 @@
 // src/components/Dashboard/MemberDashboard.jsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import axios from "axios";
+import { BotAPI } from "../utils/api.js";
 import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
 import { Link, useLocation } from "react-router-dom";
@@ -450,24 +450,40 @@ export default function MemberDashboard() {
     })();
   }, [account, pathname]);
 
-  /* Live stats from backend */
+  /* Live stats (PnL + trades) from backend
+     - Uses a resilient client that tries multiple endpoints/prefixes
+     - Won't break the dashboard if a route is missing; it just logs
+  */
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchData() {
       try {
-        const [sniperRes, tradesRes] = await Promise.all([
-          axios.get(`${API_BASE}/sniper/metrics`, { timeout: 8000 }),
-          axios.get(`${API_BASE}/sniper/trades`, { timeout: 8000 }),
+        const [pnl, trades] = await Promise.all([
+          BotAPI.getPnLSummary({ wallet: account || "" }),
+          BotAPI.getRecentTrades({ wallet: account || "", limit: 50 }),
         ]);
-        setSniperStats(sniperRes.data || {});
-        setRecentTrades((tradesRes.data || []).slice(0, 50));
+        if (cancelled) return;
+
+        // Normalize shapes (so the UI doesn't care about backend format)
+        const pnlObj = pnl && typeof pnl === "object" ? pnl : {};
+        const tradesArr = Array.isArray(trades) ? trades : trades?.trades || [];
+
+        setSniperStats(pnlObj);
+        setRecentTrades((tradesArr || []).slice(0, 50));
       } catch (error) {
+        if (cancelled) return;
         console.error("Dashboard data error:", error?.message || error);
       }
     }
+
     fetchData();
-    const id = setInterval(fetchData, 30000);
-    return () => clearInterval(id);
-  }, [API_BASE]);
+    const id = window.setInterval(fetchData, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [account]);
 
   /* Derived UI */
   const tier = userData?.tier || "Starter";
