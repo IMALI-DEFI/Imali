@@ -1,5 +1,5 @@
 // src/pages/Pricing.jsx
-import React from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 
 // 🖼️ Tier NFT art (ensure these paths exist)
@@ -25,14 +25,43 @@ const PRICE = {
 };
 
 const fmt = (n) => (n === 0 ? "$0" : `$${n}/mo`);
+const clampInt = (n, min, max) => Math.max(min, Math.min(max, n));
 
 export default function Pricing() {
-  // --- Fee rules copy (keep consistent across cards) ---
-  const feeFloorLine = "Performance fees apply only on net positive profits above a 3% floor (per billing period).";
+  // ---------------- Promo counter (First 50) ----------------
+  const PROMO_LIMIT = 50;
+  const claimedFromEnv = useMemo(() => {
+    const raw = process.env.REACT_APP_PROMO_FIRST50_CLAIMED;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  }, []);
+  const [localClaimed, setLocalClaimed] = useState(0);
+
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem("imali_promo_claimed") || "0");
+      setLocalClaimed(Number.isFinite(v) ? v : 0);
+    } catch {
+      setLocalClaimed(0);
+    }
+  }, []);
+
+  const totalClaimed = clampInt(claimedFromEnv + localClaimed, 0, PROMO_LIMIT);
+  const spotsLeft = clampInt(PROMO_LIMIT - totalClaimed, 0, PROMO_LIMIT);
+
+  // --- Simple, novice-friendly fee rules copy ---
+  const feeFloorLine =
+    "Performance fees only apply when you are up (positive) AND you are up more than 3% for the billing month.";
+  const alertsVsAutoLine =
+    "Auto or Manual: You can choose auto-execution OR alerts-only. If you use alerts-only, any performance fee is still based on the bot’s suggestions for that month.";
   const netProfitLine =
-    "“Net profits” means realized PnL after bot trades close, excluding exchange/broker/blockchain/platform fees.";
-  const cancelLine = "Cancel anytime. Fees are time-adjusted for partial months after cancellation.";
-  const noAdviceLine = "Not financial advice. Trading involves risk, including total loss.";
+    "“Net profits” = closed (realized) trade results after positions close. This does NOT include OKX/Alpaca fees, spreads, funding rates, gas, or blockchain/RPC fees.";
+  const stopLine =
+    "Safety: You’ll have a big STOP TRADING button and a Cancel Plan button so you can pause or leave anytime.";
+  const cancelLine =
+    "Cancel anytime. If you cancel mid-month, subscription charges are time-adjusted for the days used.";
+  const noAdviceLine =
+    "Not financial advice. Trading is risky and you can lose money.";
 
   // Keep tier slugs aligned with backend checkout tiers: starter/pro/elite/stock/bundle
   const plans = [
@@ -40,20 +69,23 @@ export default function Pricing() {
       name: "Starter",
       slug: "starter",
       price: fmt(PRICE.starter),
-      kicker: "Free access + pay only on results",
+      kicker: "Free + pay only when you win",
       description:
-        "Auto-execution for CEX + Stocks with a performance fee only when you’re up and above the floor.",
+        "Best for beginners who want help with Stocks and Established Crypto (CEX). Choose auto or alerts-only.",
       perks: [
-        "Live: OKX (CEX) + Alpaca (Stocks)",
-        "Auto-execution (when enabled in your account settings)",
+        "Stocks (Alpaca) + Established Crypto (OKX / CEX)",
+        "Choose: Auto execution OR Alerts-only",
         "30% performance fee on net profits above 3% (monthly)",
-        "Reduce performance fee to 20% with a $100 IMALI purchase (monthly)",
-        "Basic dashboards + alerts",
+        "Lower fee to 20% with $100 IMALI purchase/hold (monthly)",
+        "Simple dashboard + Telegram alerts",
+        "Big STOP TRADING + Cancel buttons",
       ],
       fineprint: [
         feeFloorLine,
+        alertsVsAutoLine,
         netProfitLine,
         "IMALI discount requires holding/purchasing at least $100 worth of IMALI during the billing month.",
+        stopLine,
         cancelLine,
       ],
       color: "from-sky-500 to-indigo-600",
@@ -68,19 +100,22 @@ export default function Pricing() {
       price: fmt(PRICE.pro),
       kicker: "Stocks-first plan",
       description:
-        "Focused Alpaca stock bot plan with lower ongoing cost and a small performance fee on wins.",
+        "For people who want a focused Stocks bot plan. Choose auto or alerts-only.",
       perks: [
-        "Live: Alpaca (Stocks)",
-        "Auto-execution (when enabled)",
+        "Stocks (Alpaca)",
+        "Choose: Auto execution OR Alerts-only",
         "5% performance fee on net profits above 3% (monthly)",
-        "Reduce performance fee to 2% with a $100 IMALI purchase (monthly)",
-        "Improved risk controls + alerts",
-        "Suggested minimum: $150+ to start (not required)",
+        "Lower fee to 2% with $100 IMALI purchase/hold (monthly)",
+        "Better alerts + basic risk settings",
+        "Suggested starting amount: $150+ (optional)",
+        "Big STOP TRADING + Cancel buttons",
       ],
       fineprint: [
         feeFloorLine,
+        alertsVsAutoLine,
         netProfitLine,
         "IMALI discount requires holding/purchasing at least $100 worth of IMALI during the billing month.",
+        stopLine,
         cancelLine,
       ],
       color: "from-fuchsia-500 to-purple-600",
@@ -94,21 +129,24 @@ export default function Pricing() {
       name: "Pro+ (CEX + Stocks)",
       slug: "elite",
       price: fmt(PRICE.elite),
-      kicker: "CEX + Stocks combined",
+      kicker: "Stocks + Established Crypto",
       description:
-        "OKX + Alpaca automation with stronger controls and the same reduced performance fee rules.",
+        "For users who want Stocks + Established Crypto (CEX). Choose auto or alerts-only.",
       perks: [
-        "Live: OKX (CEX) + Alpaca (Stocks)",
-        "Auto-execution (when enabled)",
+        "Established Crypto (OKX / CEX) + Stocks (Alpaca)",
+        "Choose: Auto execution OR Alerts-only",
         "5% performance fee on net profits above 3% (monthly)",
-        "Reduce performance fee to 2% with a $100 IMALI purchase (monthly)",
-        "Priority alerts + faster support",
-        "Suggested minimum: $150+ to start (not required)",
+        "Lower fee to 2% with $100 IMALI purchase/hold (monthly)",
+        "Better controls + priority alerts",
+        "Suggested starting amount: $150+ (optional)",
+        "Big STOP TRADING + Cancel buttons",
       ],
       fineprint: [
         feeFloorLine,
+        alertsVsAutoLine,
         netProfitLine,
         "IMALI discount requires holding/purchasing at least $100 worth of IMALI during the billing month.",
+        stopLine,
         cancelLine,
       ],
       color: "from-amber-400 to-orange-600",
@@ -118,24 +156,27 @@ export default function Pricing() {
 
     // STOCK (slug = stock, price = 99) => DEX + (Stocks OR CEX) + DeFi unlocks + lending
     {
-      name: "Elite (DeFi)",
+      name: "Elite (DeFi / New Crypto)",
       slug: "stock",
       price: fmt(PRICE.stock),
-      kicker: "DEX access + DeFi unlocks",
+      kicker: "New Crypto (DEX) + DeFi unlocks",
       description:
-        "DEX trading plus premium infra and DeFi tools. Choose DEX + (CEX or Stocks) and unlock advanced modules.",
+        "For people who want New Crypto (DEX) plus better reliability and DeFi tools. Choose DEX + (Stocks or CEX).",
       perks: [
-        "DEX access (Uniswap/QuickSwap-style execution)",
-        "Choose: DEX + Stocks OR DEX + CEX",
-        "Paid RPC access (better reliability under load)",
+        "New Crypto (DEX) trading (Uniswap/QuickSwap-style)",
+        "Choose: DEX + Stocks OR DEX + Established Crypto (CEX)",
+        "Paid RPC access (more reliable under load)",
         "Yield Farming + Staking unlock with $25 IMALI entry fee",
-        "Lending features included (higher tiers)",
-        "Suggested minimum: $150+ to start (not required)",
+        "Lending included (higher tiers)",
+        "Suggested starting amount: $150+ (optional)",
+        "Big STOP TRADING + Cancel buttons",
       ],
       fineprint: [
         "DEX trading depends on wallet connection, gas, slippage, and network conditions.",
         "Yield/Staking unlock requires a $25 IMALI entry fee (one-time, non-refundable).",
+        alertsVsAutoLine,
         netProfitLine,
+        stopLine,
         cancelLine,
       ],
       color: "from-yellow-500 to-amber-600",
@@ -150,17 +191,19 @@ export default function Pricing() {
       price: fmt(PRICE.bundle),
       kicker: "Everything unlocked",
       description:
-        "Full stack: DEX + CEX + Stocks, plus DeFi modules (staking/yield/lending) and the best access.",
+        "Best for power users: Stocks + Established Crypto (CEX) + New Crypto (DEX) plus DeFi tools.",
       perks: [
-        "All: DEX + CEX (OKX) + Stocks (Alpaca)",
-        "Auto-execution (when enabled) + unified dashboard",
+        "All: Stocks (Alpaca) + Established Crypto (OKX/CEX) + New Crypto (DEX)",
+        "Choose: Auto execution OR Alerts-only",
         "Paid RPC + DeFi modules + lending included",
         "Priority support + fastest updates",
-        "Suggested minimum: $150+ to start (not required)",
+        "Suggested starting amount: $150+ (optional)",
+        "Big STOP TRADING + Cancel buttons",
       ],
       fineprint: [
+        alertsVsAutoLine,
         netProfitLine,
-        "Fees and execution reliability depend on connected services and network conditions.",
+        stopLine,
         cancelLine,
       ],
       color: "from-zinc-300 to-slate-500",
@@ -182,21 +225,44 @@ export default function Pricing() {
           IMALI Pricing
         </h1>
 
-        {/* First 50 promo banner */}
+        {/* First 50 promo banner + counter */}
         <div className="mx-auto mb-10 max-w-3xl rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-6 py-5 text-left">
-          <div className="text-sm font-semibold text-emerald-200">Limited promo</div>
-          <div className="text-xl font-extrabold text-white mt-1">
-            First 50 customers: 5% performance fee over 3% for 90 days
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-emerald-200">Limited promo</div>
+              <div className="text-xl font-extrabold text-white mt-1">
+                First 50 customers: 5% performance fee over 3% for 90 days
+              </div>
+              <div className="text-sm text-white/80 mt-2">
+                Cancel anytime. Promo ends when the 50 spots are filled.
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-xs text-white/70">Spots left</div>
+              <div className="text-3xl font-extrabold text-emerald-200 tabular-nums">
+                {spotsLeft}
+              </div>
+              <div className="text-[11px] text-white/60">out of {PROMO_LIMIT}</div>
+            </div>
           </div>
-          <div className="text-sm text-white/80 mt-2">
-            Applies to eligible paid plans after signup. Promo terms may require verification and can end when the first 50
-            spots are filled.
+
+          <div className="mt-4 h-2 w-full rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full bg-emerald-400/80"
+              style={{ width: `${(totalClaimed / PROMO_LIMIT) * 100}%` }}
+            />
+          </div>
+
+          <div className="mt-4 text-xs text-white/70">
+            Tip: set <span className="font-mono">REACT_APP_PROMO_FIRST50_CLAIMED</span> in Netlify to control the counter.
           </div>
         </div>
 
         <p className="text-lg mb-10 text-gray-300 max-w-3xl mx-auto">
-          Auto bots across <b>Stocks (Alpaca)</b>, <b>CEX (OKX)</b>, and <b>DEX</b>.
-          Pick a plan, connect your accounts, and track performance in one dashboard.
+          Simple language, beginner-friendly:
+          <b> Established Crypto</b> = CEX (like OKX). <b>New Crypto</b> = DEX (wallet trading).
+          You can run <b>Auto</b> or use <b>Manual alerts</b>. Your performance fee is based on the bot’s suggestions
+          for that month.
         </p>
 
         {/* Pricing Plans */}
@@ -263,6 +329,16 @@ export default function Pricing() {
                 >
                   Select {plan.name}
                 </Link>
+
+                {/* Visible safety actions (UX reminder) */}
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-semibold text-white/80">
+                    ⛔ STOP TRADING
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-semibold text-white/80">
+                    ❌ Cancel Plan
+                  </div>
+                </div>
               </div>
             </div>
           ))}
@@ -275,7 +351,7 @@ export default function Pricing() {
             • Platform fees are not included (OKX fees, Alpaca fees, spreads, funding rates, and any blockchain gas/RPC
             costs).
           </div>
-          <div>• Performance fee calculations are based on realized (closed) trades and net PnL for the billing period.</div>
+          <div>• Performance fee calculations are based on realized (closed) trades and net PnL for the billing month.</div>
           <div>• By continuing, you agree to the Terms of Service and acknowledge trading risks.</div>
         </div>
       </div>
