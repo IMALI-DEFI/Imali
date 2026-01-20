@@ -231,7 +231,7 @@ export default function Pricing() {
             <div>
               <div className="text-sm font-semibold text-emerald-200">Limited promo</div>
               <div className="text-xl font-extrabold text-white mt-1">
-                First 50 customers: 5% performance fee over 3% for 90 days
+                First 50 customers: 5% performance fee if account closes over 3% in period for 90 days!!
               </div>
               <div className="text-sm text-white/80 mt-2">
                 Cancel anytime. Promo ends when the 50 spots are filled.
