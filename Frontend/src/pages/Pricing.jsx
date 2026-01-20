@@ -28,13 +28,15 @@ const fmt = (n) => (n === 0 ? "$0" : `$${n}/mo`);
 const clampInt = (n, min, max) => Math.max(min, Math.min(max, n));
 
 export default function Pricing() {
-  // ---------------- Promo counter (First 50) ----------------
+  // Promo counter (First 50)
   const PROMO_LIMIT = 50;
+
   const claimedFromEnv = useMemo(() => {
     const raw = process.env.REACT_APP_PROMO_FIRST50_CLAIMED;
     const n = Number(raw);
     return Number.isFinite(n) ? n : 0;
   }, []);
+
   const [localClaimed, setLocalClaimed] = useState(0);
 
   useEffect(() => {
@@ -49,17 +51,22 @@ export default function Pricing() {
   const totalClaimed = clampInt(claimedFromEnv + localClaimed, 0, PROMO_LIMIT);
   const spotsLeft = clampInt(PROMO_LIMIT - totalClaimed, 0, PROMO_LIMIT);
 
-  // --- Simple, novice-friendly fee rules copy ---
+  // Copy blocks
   const feeFloorLine =
     "Performance fees only apply when you are up (positive) AND you are up more than 3% for the billing month.";
+
   const alertsVsAutoLine =
     "Auto or Manual: You can choose auto-execution OR alerts-only. If you use alerts-only, any performance fee is still based on the bot’s suggestions for that month.";
+
   const netProfitLine =
     "“Net profits” = closed (realized) trade results after positions close. This does NOT include OKX/Alpaca fees, spreads, funding rates, gas, or blockchain/RPC fees.";
+
   const stopLine =
     "Safety: You’ll have a big STOP TRADING button and a Cancel Plan button so you can pause or leave anytime.";
+
   const cancelLine =
     "Cancel anytime. If you cancel mid-month, subscription charges are time-adjusted for the days used.";
+
   const noAdviceLine =
     "Not financial advice. Trading is risky and you can lose money.";
 
@@ -71,10 +78,10 @@ export default function Pricing() {
       price: fmt(PRICE.starter),
       kicker: "Free + pay only when you win",
       description:
-        "Best for beginners who want help with Stocks and Established Crypto (CEX). Choose auto or alerts-only.",
+        "Best for beginners who want help with Stocks and Established Crypto (CEX). Starter is auto-only.",
       perks: [
         "Stocks (Alpaca) + Established Crypto (OKX / CEX)",
-        "Choose: Auto execution OR Alerts-only",
+        "Auto execution only (Starter)",
         "30% performance fee on net profits above 3% (monthly)",
         "Lower fee to 20% with $100 IMALI purchase/hold (monthly)",
         "Simple dashboard + Telegram alerts",
@@ -82,7 +89,6 @@ export default function Pricing() {
       ],
       fineprint: [
         feeFloorLine,
-        alertsVsAutoLine,
         netProfitLine,
         "IMALI discount requires holding/purchasing at least $100 worth of IMALI during the billing month.",
         stopLine,
@@ -93,7 +99,7 @@ export default function Pricing() {
       badgeClass: "bg-sky-600/20 text-sky-200 border border-sky-300/30",
     },
 
-    // PRO (slug = pro, price = 19) => Stocks-only plan per your request
+    // PRO (slug = pro, price = 19) => Stocks-only plan
     {
       name: "Pro (Stocks)",
       slug: "pro",
@@ -120,7 +126,8 @@ export default function Pricing() {
       ],
       color: "from-fuchsia-500 to-purple-600",
       nft: ProNFT,
-      badgeClass: "bg-fuchsia-600/20 text-fuchsia-200 border border-fuchsia-300/30",
+      badgeClass:
+        "bg-fuchsia-600/20 text-fuchsia-200 border border-fuchsia-300/30",
       popular: true,
     },
 
@@ -200,12 +207,7 @@ export default function Pricing() {
         "Suggested starting amount: $150+ (optional)",
         "Big STOP TRADING + Cancel buttons",
       ],
-      fineprint: [
-        alertsVsAutoLine,
-        netProfitLine,
-        stopLine,
-        cancelLine,
-      ],
+      fineprint: [alertsVsAutoLine, netProfitLine, stopLine, cancelLine],
       color: "from-zinc-300 to-slate-500",
       nft: BundleNFT,
       badgeClass: "bg-zinc-300/20 text-zinc-100 border border-zinc-200/30",
@@ -229,20 +231,26 @@ export default function Pricing() {
         <div className="mx-auto mb-10 max-w-3xl rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-6 py-5 text-left">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-sm font-semibold text-emerald-200">Limited promo</div>
+              <div className="text-sm font-semibold text-emerald-200">
+                Limited promo
+              </div>
               <div className="text-xl font-extrabold text-white mt-1">
-                First 50 customers: 5% performance fee if account closes over 3% in period for 90 days!!
+                First 50 customers: 5% performance fee if account closes over 3%
+                for 90 days
               </div>
               <div className="text-sm text-white/80 mt-2">
                 Cancel anytime. Promo ends when the 50 spots are filled.
               </div>
             </div>
+
             <div className="shrink-0 text-right">
               <div className="text-xs text-white/70">Spots left</div>
               <div className="text-3xl font-extrabold text-emerald-200 tabular-nums">
                 {spotsLeft}
               </div>
-              <div className="text-[11px] text-white/60">out of {PROMO_LIMIT}</div>
+              <div className="text-[11px] text-white/60">
+                out of {PROMO_LIMIT}
+              </div>
             </div>
           </div>
 
@@ -252,10 +260,7 @@ export default function Pricing() {
               style={{ width: `${(totalClaimed / PROMO_LIMIT) * 100}%` }}
             />
           </div>
-
-        
-
-
+        </div>
 
         {/* Pricing Plans */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
@@ -271,6 +276,7 @@ export default function Pricing() {
                   >
                     {plan.name}
                   </div>
+
                   {plan.popular && (
                     <div className="text-[10px] font-bold px-2 py-1 rounded bg-amber-400 text-black shadow">
                       MOST POPULAR
@@ -306,7 +312,9 @@ export default function Pricing() {
                 {/* fine print */}
                 {plan.fineprint?.length ? (
                   <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4 text-left">
-                    <div className="text-xs font-semibold text-white/80 mb-2">Important</div>
+                    <div className="text-xs font-semibold text-white/80 mb-2">
+                      Important
+                    </div>
                     <ul className="text-xs text-white/70 space-y-2">
                       {plan.fineprint.map((line, idx) => (
                         <li key={idx}>• {line}</li>
@@ -340,11 +348,17 @@ export default function Pricing() {
         <div className="mt-10 max-w-4xl mx-auto text-left text-sm text-white/60 space-y-2">
           <div>• {noAdviceLine}</div>
           <div>
-            • Platform fees are not included (OKX fees, Alpaca fees, spreads, funding rates, and any blockchain gas/RPC
-            costs).
+            • Platform fees are not included (OKX fees, Alpaca fees, spreads,
+            funding rates, and any blockchain gas/RPC costs).
           </div>
-          <div>• Performance fee calculations are based on realized (closed) trades and net PnL for the billing month.</div>
-          <div>• By continuing, you agree to the Terms of Service and acknowledge trading risks.</div>
+          <div>
+            • Performance fee calculations are based on realized (closed) trades
+            and net PnL for the billing month.
+          </div>
+          <div>
+            • By continuing, you agree to the Terms of Service and acknowledge
+            trading risks.
+          </div>
         </div>
       </div>
     </div>
