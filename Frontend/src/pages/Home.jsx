@@ -8,10 +8,12 @@ import tradeWin from "../assets/images/cards/trade_win_template2.PNG";
 
 function useCountUp({ to = 1000, durationMs = 2000, fps = 60 }) {
   const [val, setVal] = useState(0);
+
   useEffect(() => {
     let raf;
     const totalFrames = Math.max(1, Math.round((durationMs / 1000) * fps));
     let frame = 0;
+
     const tick = () => {
       frame += 1;
       const p = Math.min(1, frame / totalFrames);
@@ -19,9 +21,11 @@ function useCountUp({ to = 1000, durationMs = 2000, fps = 60 }) {
       setVal(Math.round(to * eased));
       if (p < 1) raf = requestAnimationFrame(tick);
     };
+
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [to, durationMs, fps]);
+
   return val;
 }
 
@@ -34,15 +38,17 @@ const Home = () => {
   const totalProfits = useCountUp({ to: 3281907, durationMs: 2200 });
   const activeTraders = useCountUp({ to: 24189, durationMs: 2200 });
 
-  // ---------------- First 50 promo counter ----------------
-  // Set this in Netlify to control the counter without redeploying:
+  // Promo counter (First 50)
+  // Dev note: set this in Netlify to control the counter without redeploying:
   // REACT_APP_PROMO_FIRST50_CLAIMED=12
   const PROMO_LIMIT = 50;
+
   const claimedFromEnv = useMemo(() => {
     const raw = process.env.REACT_APP_PROMO_FIRST50_CLAIMED;
     const n = Number(raw);
     return Number.isFinite(n) ? n : 0;
   }, []);
+
   const [localClaimed, setLocalClaimed] = useState(0);
 
   useEffect(() => {
@@ -56,14 +62,17 @@ const Home = () => {
 
   const totalClaimed = clampInt(claimedFromEnv + localClaimed, 0, PROMO_LIMIT);
   const spotsLeft = clampInt(PROMO_LIMIT - totalClaimed, 0, PROMO_LIMIT);
-  const progressPct = (totalClaimed / PROMO_LIMIT) * 100;
+  const progressPct =
+    PROMO_LIMIT > 0 ? (totalClaimed / PROMO_LIMIT) * 100 : 0;
 
   return (
     <div className="page bg-gradient-to-br from-gray-900 to-indigo-900 text-white min-h-screen">
-      {/* Hero */}
       <div className="relative">
         {/* Background */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden"
+          aria-hidden="true"
+        >
           <div className="absolute inset-0 flex justify-center items-center gap-20 opacity-15 md:opacity-20 lg:opacity-25">
             <img
               src={tradeLoss}
@@ -88,20 +97,24 @@ const Home = () => {
           </h1>
 
           <p className="text-xl mb-3 max-w-3xl mx-auto text-white/90">
-            <span className="font-bold">IMALI</span> helps beginners trade with bots — with a simple dashboard, clear
-            alerts, and the option to run <b>Auto</b> or <b>Manual</b>.
+            <span className="font-bold">IMALI</span> helps beginners trade with
+            bots — with a simple dashboard, clear alerts, and the option to run{" "}
+            <b>Auto</b> or <b>Manual</b>.
           </p>
 
           <p className="text-base text-indigo-200/90 max-w-3xl mx-auto">
-            <b>Established Crypto</b> = CEX (like OKX). <b>New Crypto</b> = DEX (wallet trading).
-            Stocks use <b>Alpaca</b>. Start in Demo, then go Live when you’re ready.
+            <b>Established Crypto</b> = CEX (like OKX). <b>New Crypto</b> = DEX
+            (wallet trading). Stocks use <b>Alpaca</b>. Start in Demo, then go
+            Live when you’re ready.
           </p>
 
           {/* Promo banner */}
           <div className="mx-auto mt-8 mb-10 max-w-3xl rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-6 py-5 text-left">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-sm font-semibold text-emerald-200">Limited promo</div>
+                <div className="text-sm font-semibold text-emerald-200">
+                  Limited promo
+                </div>
                 <div className="text-xl font-extrabold text-white mt-1">
                   First 50 customers: 5% performance fee over 3% for 90 days
                 </div>
@@ -115,16 +128,17 @@ const Home = () => {
                 <div className="text-3xl font-extrabold text-emerald-200 tabular-nums">
                   {spotsLeft}
                 </div>
-                <div className="text-[11px] text-white/60">out of {PROMO_LIMIT}</div>
+                <div className="text-[11px] text-white/60">
+                  out of {PROMO_LIMIT}
+                </div>
               </div>
             </div>
 
             <div className="mt-4 h-2 w-full rounded-full bg-white/10 overflow-hidden">
-              <div className="h-full bg-emerald-400/80" style={{ width: `${progressPct}%` }} />
-            </div>
-
-            <div className="mt-4 text-xs text-white/70">
-              Tip: set <span className="font-mono">REACT_APP_PROMO_FIRST50_CLAIMED</span> in Netlify to control the counter.
+              <div
+                className="h-full bg-emerald-400/80"
+                style={{ width: `${progressPct}%` }}
+              />
             </div>
           </div>
 
@@ -164,13 +178,17 @@ const Home = () => {
                 <div className="text-2xl font-mono tabular-nums">
                   ${totalProfits.toLocaleString()}
                 </div>
-                <div className="text-indigo-300">Example Profits (Demo Counter)</div>
+                <div className="text-indigo-300">
+                  Example Profits (Demo Counter)
+                </div>
               </div>
               <div className="text-right">
                 <div className="text-2xl font-mono tabular-nums">
                   {activeTraders.toLocaleString()}
                 </div>
-                <div className="text-indigo-300">Example Users (Demo Counter)</div>
+                <div className="text-indigo-300">
+                  Example Users (Demo Counter)
+                </div>
               </div>
             </div>
           </div>
@@ -179,18 +197,22 @@ const Home = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             {/* Crypto Demo */}
             <div className="rounded-2xl p-5 border border-white/10 bg-white/10 text-left">
-              <div className="text-sm uppercase tracking-wide text-indigo-300 mb-1">Crypto Bot</div>
-              <h3 className="text-2xl font-bold mb-2">New Crypto (DEX) + Established Crypto (CEX)</h3>
+              <div className="text-sm uppercase tracking-wide text-indigo-300 mb-1">
+                Crypto Bot
+              </div>
+              <h3 className="text-2xl font-bold mb-2">
+                New Crypto (DEX) + Established Crypto (CEX)
+              </h3>
               <p className="text-white/85 text-sm mb-4">
-                See live PnL, markers, and alerts. Start with demo signals, then choose Auto or Manual when you’re ready.
+                See live PnL, markers, and alerts. Start with demo signals, then
+                choose Auto or Manual when you’re ready.
               </p>
               <div className="flex items-center gap-2">
                 <Link
                   to="/demo"
                   className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg font-semibold"
                 >
-                  Launch Crypto Demo
-                  <span aria-hidden>↗</span>
+                  Launch Crypto Demo <span aria-hidden>↗</span>
                 </Link>
                 <button
                   onClick={() => navigate("/how-it-works")}
@@ -203,18 +225,20 @@ const Home = () => {
 
             {/* Stocks Demo */}
             <div className="rounded-2xl p-5 border border-white/10 bg-white/10 text-left">
-              <div className="text-sm uppercase tracking-wide text-emerald-300 mb-1">Stock Bot</div>
+              <div className="text-sm uppercase tracking-wide text-emerald-300 mb-1">
+                Stock Bot
+              </div>
               <h3 className="text-2xl font-bold mb-2">Stocks (Alpaca)</h3>
               <p className="text-white/85 text-sm mb-4">
-                Start in paper mode. See alerts, simple rules, and performance tracking before you go live.
+                Start in paper mode. See alerts, simple rules, and performance
+                tracking before you go live.
               </p>
               <div className="flex items-center gap-2">
                 <Link
                   to="/demo?venue=stocks"
                   className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg font-semibold"
                 >
-                  Launch Stock Demo
-                  <span aria-hidden>↗</span>
+                  Launch Stock Demo <span aria-hidden>↗</span>
                 </Link>
                 <button
                   onClick={() => navigate("/pricing")}
