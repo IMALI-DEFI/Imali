@@ -253,17 +253,9 @@ export default function Pricing() {
             />
           </div>
 
-          <div className="mt-4 text-xs text-white/70">
-            Tip: set <span className="font-mono">REACT_APP_PROMO_FIRST50_CLAIMED</span> in Netlify to control the counter.
-          </div>
-        </div>
+        
 
-        <p className="text-lg mb-10 text-gray-300 max-w-3xl mx-auto">
-          Simple language, beginner-friendly:
-          <b> Established Crypto</b> = CEX (like OKX). <b>New Crypto</b> = DEX (wallet trading).
-          You can run <b>Auto</b> or use <b>Manual alerts</b>. Your performance fee is based on the bot’s suggestions
-          for that month.
-        </p>
+
 
         {/* Pricing Plans */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
