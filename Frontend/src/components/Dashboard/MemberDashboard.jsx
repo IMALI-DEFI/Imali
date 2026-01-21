@@ -1,11 +1,10 @@
 // src/components/Dashboard/MemberDashboard.jsx
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { BotAPI } from "../../utils/api.js";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
 import { Link, useLocation } from "react-router-dom";
 
-// Utils
+import { BotAPI } from "../../utils/api.js";
 import { getUserData } from "../../utils/firebase.js";
 import { useWallet } from "../../context/WalletContext.js";
 import { short } from "../../getContractInstance.js";
@@ -17,10 +16,12 @@ import * as LendingNS from "./Lending.js";
 import * as YieldFarmingNS from "./YieldFarming.jsx";
 import * as LPLotteryNS from "./LPLottery.js";
 import * as NFTPreviewNS from "./NFTPreview.jsx";
-import * as TierStatusNS from "./TierStatus.jsx";
 import * as RecentTradesTableNS from "./RecentTradesTable.jsx";
 import * as ReferralSystemNS from "../ReferralSystem.js";
 import * as TradeDemoNS from "../../pages/TradeDemo.jsx";
+
+// ✅ New: Live overview component that listens to TradeDemo window events too
+import TradingOverview from "./TradingOverview.js";
 
 /* ---------------- Env (CRA + Vite, no dynamic process usage) ---------------- */
 const DEMO_API =
@@ -57,7 +58,6 @@ const Lending = pick(LendingNS, "Lending");
 const YieldFarming = pick(YieldFarmingNS, "YieldFarming");
 const LPLottery = pick(LPLotteryNS, "LPLottery");
 const NFTPreview = pick(NFTPreviewNS, "NFTPreview");
-const TierStatus = pick(TierStatusNS, "TierStatus");
 const RecentTradesTable = pick(RecentTradesTableNS, "RecentTradesTable");
 const ReferralSystem = pick(ReferralSystemNS, "ReferralSystem");
 const TradeDemo = pick(TradeDemoNS, "TradeDemo");
@@ -66,6 +66,7 @@ const TradeDemo = pick(TradeDemoNS, "TradeDemo");
 function InfoBubble({ text }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+
   useEffect(() => {
     const onDoc = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
@@ -73,6 +74,7 @@ function InfoBubble({ text }) {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -155,14 +157,12 @@ function ExpandableCard({
   );
 }
 
-/* ---------------- Lightweight Guided Tour (robust targeting + visible controls) ---------------- */
+/* ---------------- Lightweight Guided Tour ---------------- */
 function useTour(steps, { onClose, activeTab, setActiveTab }) {
-  const [idx, setIdx] = useState(-1); // -1 = off
+  const [idx, setIdx] = useState(-1);
   const [targetRect, setTargetRect] = useState(null);
-
   const current = idx >= 0 ? steps[idx] : null;
 
-  // robust query with retries to handle mounts & tab switches
   const queryWithRetry = (selector, { attempts = 12, interval = 80 } = {}) =>
     new Promise((resolve) => {
       let tries = 0;
@@ -187,7 +187,6 @@ function useTour(steps, { onClose, activeTab, setActiveTab }) {
         height: r.height,
       };
       setTargetRect(rect);
-      // Scroll so target sits in upper-middle to leave room for tooltip & controls
       const viewportH = window.innerHeight;
       const desiredTop = Math.max(0, rect.top - Math.max(120, viewportH * 0.25));
       window.scrollTo({ top: desiredTop, behavior: "smooth" });
@@ -206,7 +205,6 @@ function useTour(steps, { onClose, activeTab, setActiveTab }) {
     const step = steps[i];
     if (typeof step.tabIndex === "number" && step.tabIndex !== activeTab) {
       setActiveTab(step.tabIndex);
-      // wait for tab panel content
       setTimeout(async () => {
         setIdx(i);
         await focusTarget(step.selector);
@@ -222,7 +220,6 @@ function useTour(steps, { onClose, activeTab, setActiveTab }) {
   const prev = () => go(idx - 1);
   const stop = () => go(steps.length);
 
-  // Keep highlight aligned on resize/scroll
   useEffect(() => {
     if (idx < 0 || !current?.selector) return;
     const update = () => {
@@ -244,7 +241,6 @@ function useTour(steps, { onClose, activeTab, setActiveTab }) {
     };
   }, [idx, current]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     if (idx < 0) return;
     const onKey = (e) => {
@@ -269,7 +265,6 @@ function useTour(steps, { onClose, activeTab, setActiveTab }) {
 function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx, total }) {
   if (!isActive || !step) return null;
 
-  // Tooltip placement: below target normally; if target is in lower half, place above.
   const viewportTop = window.scrollY;
   const viewportH = window.innerHeight;
   const inLowerHalf = targetRect && targetRect.top - viewportTop > viewportH * 0.55;
@@ -284,20 +279,15 @@ function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx,
           top: Math.min(targetRect.top + targetRect.height + 12, viewportTop + viewportH - 260),
           left: Math.min(targetRect.left, window.scrollX + window.innerWidth - 420),
         }
-    : {
-        top: viewportTop + 80,
-        left: window.scrollX + 20,
-      };
+    : { top: viewportTop + 80, left: window.scrollX + 20 };
 
   return (
     <div className="fixed inset-0 z-[1000] pointer-events-none">
-      {/* Dim background */}
       <div className="absolute inset-0 bg-black/60" />
 
-      {/* Highlight ring */}
       {targetRect && (
         <div
-          className="absolute border-2 border-emerald-300/80 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] pointer-events-none"
+          className="absolute border-2 border-emerald-300/80 rounded-xl pointer-events-none"
           style={{
             top: targetRect.top - 8,
             left: targetRect.left - 8,
@@ -308,7 +298,6 @@ function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx,
         />
       )}
 
-      {/* Tooltip (with inline controls, always near the target) */}
       <div
         className="absolute w-[360px] md:w-[420px] rounded-2xl border border-white/10 bg-slate-900/95 text-white p-4 pointer-events-auto"
         style={tooltipStyle}
@@ -320,12 +309,8 @@ function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx,
             </div>
             <div className="mt-1 text-base md:text-lg font-extrabold">{step.title}</div>
           </div>
-          {/* Mini top-right controls (secondary) */}
           <div className="hidden sm:flex items-center gap-1">
-            <button
-              onClick={onPrev}
-              className="text-[11px] px-2 py-1 rounded-md border border-white/20 hover:bg-white/10"
-            >
+            <button onClick={onPrev} className="text-[11px] px-2 py-1 rounded-md border border-white/20 hover:bg-white/10">
               Back
             </button>
             <button
@@ -339,7 +324,7 @@ function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx,
 
         <div className="mt-2 text-[13px] md:text-[14px] leading-relaxed text-slate-100">{step.body}</div>
 
-        {step.points && step.points.length > 0 && (
+        {step.points?.length > 0 && (
           <ul className="mt-2 text-[13px] leading-relaxed text-emerald-200 list-disc pl-5">
             {step.points.map((p, i) => (
               <li key={i}>{p}</li>
@@ -347,19 +332,12 @@ function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx,
           </ul>
         )}
 
-        {/* Primary controls (always visible in-tooltip) */}
         <div className="mt-3 flex items-center justify-between gap-2">
-          <button
-            onClick={onClose}
-            className="text-xs px-3 py-1 rounded-lg border border-white/20 hover:bg-white/10"
-          >
+          <button onClick={onClose} className="text-xs px-3 py-1 rounded-lg border border-white/20 hover:bg-white/10">
             Skip
           </button>
           <div className="flex gap-2">
-            <button
-              onClick={onPrev}
-              className="text-xs px-3 py-1 rounded-lg border border-white/20 hover:bg-white/10"
-            >
+            <button onClick={onPrev} className="text-xs px-3 py-1 rounded-lg border border-white/20 hover:bg-white/10">
               Back (←)
             </button>
             <button
@@ -372,14 +350,10 @@ function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx,
         </div>
       </div>
 
-      {/* Compact floating header control (backup, always top-right) */}
       <div className="pointer-events-auto fixed top-3 right-3 z-[1001]">
         <div className="rounded-xl border border-white/10 bg-slate-900/85 backdrop-blur px-2 py-1 flex items-center gap-2">
           <span className="text-[11px] text-slate-100 hidden sm:inline">{step.title}</span>
-          <button
-            onClick={onPrev}
-            className="text-[11px] px-2 py-0.5 rounded-md border border-white/20 hover:bg-white/10"
-          >
+          <button onClick={onPrev} className="text-[11px] px-2 py-0.5 rounded-md border border-white/20 hover:bg-white/10">
             Back
           </button>
           <button
@@ -388,10 +362,7 @@ function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx,
           >
             {idx + 1 >= total ? "Finish" : "Next"}
           </button>
-          <button
-            onClick={onClose}
-            className="text-[11px] px-2 py-0.5 rounded-md border border-white/20 hover:bg-white/10"
-          >
+          <button onClick={onClose} className="text-[11px] px-2 py-0.5 rounded-md border border-white/20 hover:bg-white/10">
             Skip
           </button>
         </div>
@@ -407,24 +378,33 @@ export default function MemberDashboard() {
 
   const [userData, setUserData] = useState(null);
   const [imaliBalance, setImaliBalance] = useState(0);
+
+  // backend stats + trades (for LIVE or fallback)
   const [sniperStats, setSniperStats] = useState({});
   const [recentTrades, setRecentTrades] = useState([]);
-  const [activeTab, setActiveTab] = useState(0);
 
-  // Live PnL + wins/losses broadcast by TradeDemo
+  // UI
+  const [activeTab, setActiveTab] = useState(0);
+  const [openCards, setOpenCards] = useState({
+    "trade-demo-card": true,
+    "recent-trades-card": false,
+  });
+
+  // live broadcast from TradeDemo
   const [demoHeader, setDemoHeader] = useState(null);
-  const [lastSource, setLastSource] = useState(null); // "trade-demo" | "trade-live"
+  const [lastSource, setLastSource] = useState(null);
+
   useEffect(() => {
     function onDemo(e) {
-      setDemoHeader(e.detail || null);
-      setLastSource(e.detail?.source || null);
+      const d = e.detail || null;
+      setDemoHeader(d);
+      setLastSource(d?.source || null);
     }
     window.addEventListener("trade-demo:update", onDemo);
     return () => window.removeEventListener("trade-demo:update", onDemo);
   }, []);
 
   const refTradeDemo = useRef(null);
-  const refBalance = useRef(null);
 
   /* Profile */
   useEffect(() => {
@@ -437,9 +417,6 @@ export default function MemberDashboard() {
           ...data,
           wallet: account,
           tier: data.tier || "Starter",
-          profitShareRate: data.profitShareRate || 30,
-          profitCap: data.profitCap || 100,
-          cumulativeProfit: data.cumulativeProfit || 0,
           referralCode: data.referralCode || "IMALI-N/A",
           referrals: data.referrals || 0,
           referralEarnings: data.referralEarnings || 0,
@@ -451,10 +428,15 @@ export default function MemberDashboard() {
     })();
   }, [account, pathname]);
 
-  /* Live stats (PnL + trades) from backend
-     - Uses a resilient client that tries multiple endpoints/prefixes
-     - Won't break the dashboard if a route is missing; it just logs
+  /* Decide mode:
+     - Prefer TradeDemo event mode when present (because it’s the UI engine)
+     - Fall back to env MODE
+     - Also treat API_BASE === LIVE_API as live
   */
+  const mode = String(demoHeader?.mode || MODE_ENV || (API_BASE === LIVE_API ? "live" : "demo")).toLowerCase();
+  const isLive = mode === "live";
+
+  /* Backend fetch (LIVE stats + trades OR fallback for demo pages) */
   useEffect(() => {
     let cancelled = false;
 
@@ -466,10 +448,8 @@ export default function MemberDashboard() {
         ]);
         if (cancelled) return;
 
-        // Normalize shapes (so the UI doesn't care about backend format)
         const pnlObj = pnl && typeof pnl === "object" ? pnl : {};
         const tradesArr = Array.isArray(trades) ? trades : trades?.trades || [];
-
         setSniperStats(pnlObj);
         setRecentTrades((tradesArr || []).slice(0, 50));
       } catch (error) {
@@ -488,131 +468,75 @@ export default function MemberDashboard() {
 
   /* Derived UI */
   const tier = userData?.tier || "Starter";
-  const wins = Number(demoHeader?.wins ?? 0);
-  const losses = Number(demoHeader?.losses ?? 0);
-  const total = Math.max(0, wins + losses);
-  const liveWinRate = total > 0 ? Math.round((wins / total) * 100) : 0;
-  const progressPct = demoHeader?.running ? Math.max(5, Math.min(95, liveWinRate)) : 12;
 
-  /* ---------------- Guided Tour Content (make sure each selector exists in DOM) ---------------- */
+  // unified feed for TradingOverview (prefer demoHeader, fall back to backend)
+  const overviewFeed = useMemo(() => {
+    const d = demoHeader || {};
+    const s = sniperStats || {};
+    const feed = {
+      source: d.source || (isLive ? "trade-live" : "trade-demo"),
+      mode: mode,
+      running: !!d.running,
+      pnl: Number.isFinite(d.pnl) ? Number(d.pnl) : Number(s.pnl || 0),
+      equity: Number.isFinite(d.equity) ? Number(d.equity) : Number(s.equity || 0),
+      balance: Number.isFinite(d.balance) ? Number(d.balance) : Number(s.balance || 0),
+      wins: Number.isFinite(d.wins) ? Number(d.wins) : Number(s.wins || 0),
+      losses: Number.isFinite(d.losses) ? Number(d.losses) : Number(s.losses || 0),
+      ts: d.ts || Date.now(),
+      venues: Array.isArray(d.venues) ? d.venues : d.venue ? [d.venue] : [],
+    };
+    return feed;
+  }, [demoHeader, sniperStats, isLive, mode]);
+
+  const toggleCard = (id) => {
+    setOpenCards((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  /* ---------------- Guided Tour Content ---------------- */
   const tourSteps = useMemo(
     () => [
       {
         selector: '[data-tour-id="header"]',
         tabIndex: 0,
-        title: "Welcome to your Member Hub",
+        title: "Your Member Hub",
         body:
-          "This is your all-in-one dashboard. You’ll try the bot (Demo or Live), see performance, manage IMALI, and explore extras like staking and referrals.",
-        points: [
-          "PnL and win-rate update in real time as the bot runs.",
-          "LIVE/DEMO badge tells you which engine is active.",
-          "Coins 🪙 and XP ⭐ come from profitable ticks and take-profit markers.",
-        ],
+          "This is your control room. Run the simulator (or live when enabled), see results instantly, and explore staking + referrals.",
+        points: ["The LIVE/DEMO badge reflects the active engine.", "The overview updates in real-time from the Trade Demo feed."],
       },
       {
-        selector: '[data-tour-id="promo-performance"]',
+        selector: '[data-tour-id="promo-overview"]',
         tabIndex: 0,
-        title: "Performance Card",
-        body: "Shows PnL, equity, win-rate and the data source (LIVE or DEMO). This mirrors the Trade Demo widget.",
-        points: [
-          "PnL increases award XP ⭐ (bigger gains → more XP).",
-          "Sustained gains increase Streak 🔥.",
-          "Coins 🪙 accumulate from realized profits and TP markers.",
-        ],
+        title: "Trading Overview",
+        body:
+          "This mirrors the Trade Demo: equity curve, win/loss, and gross PnL. It stays in sync while the bot runs.",
+        points: ["If the demo is running, this panel is the source of truth.", "If the demo is idle, it falls back to backend stats."],
       },
       {
         selector: '[data-tour-id="promo-balance"]',
         tabIndex: 0,
         title: "IMALI Balance & Tier",
-        body: "Your IMALI holdings unlock discounts, staking rewards, and lower take-rates in the simulator.",
-        points: [
-          "Hold ≥100 IMALI for Pro/Elite signup discounts.",
-          "Higher holdings reduce take-rate on net PnL in the demo.",
-        ],
-      },
-      {
-        selector: '[data-tour-id="promo-progress"]',
-        tabIndex: 0,
-        title: "Progress Bar",
-        body:
-          "A simple % based on recent win-rate. When the bot runs, this gives a quick feel for how things are going.",
-        points: [
-          "Win trades → progress nudges up; long red streaks reset it.",
-          "XP ⭐ and Coins 🪙 are also summarized in the Trade Demo header.",
-        ],
+        body: "Your tier and IMALI balance unlock perks across the app (discounts, staking boosts, access).",
+        points: ["Hold IMALI to strengthen your tier perks.", "Staking modules live in the Extras tab."],
       },
       {
         selector: '[data-tour-id="trade-demo-card"]',
         tabIndex: 0,
-        title: "Trade Demo (Crypto & Stocks)",
+        title: "Trade Demo",
         body:
-          "Open this to pick venue (DEX/CEX/BOTH/STOCKS), choose a strategy, and press Start. Auto tick ≈4s.",
-        points: [
-          "Demo is risk-free; Live requires upgrade/eligibility.",
-          "Take-profit markers add bonus Coins 🪙 and XP ⭐.",
-          "The Overview inside shows equity curve, trade tape, and a trades table.",
-        ],
+          "Choose venue (New Crypto / Established Crypto / Both / Stocks), pick a strategy, then Start. It broadcasts live updates to the overview above.",
+        points: ["Demo is risk-free.", "Live mode requires eligibility and a connected wallet."],
       },
       {
         selector: '[data-tour-id="recent-trades-card"]',
         tabIndex: 0,
-        title: "Recent Trades Table",
-        body:
-          "Sortable table of fills: symbol, venue, side, size, and PnL—mirrors the tape inside the demo.",
-        points: ["Green PnL rows contribute to XP ⭐.", "Take-profit markers grant bonus Coins 🪙."],
+        title: "Recent Trades",
+        body: "This table shows your latest fills and PnL from the backend feed.",
       },
       {
         selector: '[data-tour-id="extras-tab"]',
         tabIndex: 1,
-        title: "Extras Tab",
-        body:
-          "Stake, farm, lend/borrow, preview NFTs, and manage referrals. These modules complement your trading.",
-        points: [
-          "Actions like staking or harvesting may complete quests for XP/Coins.",
-          "Referral earnings are tracked and paid to your wallet.",
-        ],
-      },
-      {
-        selector: '[data-tour-id="staking-card"]',
-        tabIndex: 1,
-        title: "Staking",
-        body: "Stake IMALI/LP tokens to earn rewards. Track pending rewards and APR here.",
-        points: ["First stake → XP ⭐ milestone.", "Claiming may credit Coins 🪙 during promos."],
-      },
-      {
-        selector: '[data-tour-id="yield-card"]',
-        tabIndex: 1,
-        title: "Yield Farming",
-        body: "Provide liquidity and harvest IMALI rewards. Pools, APYs, and claims live here.",
-        points: ["Bigger/longer LP commits can unlock badge NFTs.", "Harvest events may count toward quests."],
-      },
-      {
-        selector: '[data-tour-id="lending-card"]',
-        tabIndex: 1,
-        title: "Lending",
-        body: "Deposit collateral and borrow stablecoins. Watch health factor & interest.",
-        points: ["Open/close your first loan → XP ⭐.", "Healthy management can earn Coins 🪙 bonuses."],
-      },
-      {
-        selector: '[data-tour-id="referral-card"]',
-        tabIndex: 1,
-        title: "Referral Partner",
-        body: "Share your link, track signups, and see referral earnings.",
-        points: ["First referral → Coins 🪙 reward.", "Higher tiers may amplify payouts."],
-      },
-      {
-        selector: '[data-tour-id="lottery-card"]',
-        tabIndex: 1,
-        title: "LP Lottery",
-        body: "Stake LP to receive weekly tickets. Winners are drawn via verifiable randomness.",
-        points: ["Participating can grant XP ⭐ streaks.", "Prizes may include IMALI or discount vouchers."],
-      },
-      {
-        selector: '[data-tour-id="nft-card"]',
-        tabIndex: 1,
-        title: "NFT Preview",
-        body: "Achievement NFTs for milestones (Starter/Pro/Elite & special events).",
-        points: ["Completing tours & quests can unlock badges.", "Some NFTs reduce fees or boost yield during events."],
+        title: "Extras",
+        body: "Stake, farm, borrow/lend, referrals, lottery, and NFTs live here.",
       },
     ],
     []
@@ -625,29 +549,27 @@ export default function MemberDashboard() {
     setActiveTab,
   });
 
-  /* -------------------------------- Render -------------------------------- */
-  const isLiveBadge = (demoHeader?.mode || MODE_ENV) === "live";
-
   return (
     <div className="relative bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white min-h-screen">
       <div className="max-w-7xl mx-auto px-6 py-6">
         {/* HEADER */}
-        <div
-          data-tour-id="header"
-          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4"
-        >
+        <div data-tour-id="header" className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">🎮 Member Hub</h1>
-          <div className="flex items-center gap-2">
+
+          <div className="flex flex-wrap items-center gap-2">
             <span
               className={`text-[10px] rounded-full px-2 py-1 border ${
-                isLiveBadge
-                  ? "border-emerald-300/40 bg-emerald-600/40"
-                  : "border-amber-300/40 bg-amber-600/40"
+                isLive ? "border-emerald-300/40 bg-emerald-600/40" : "border-amber-300/40 bg-amber-600/40"
               }`}
-              title={`Backend: ${API_BASE}`}
+              title={`API_BASE: ${API_BASE}\nDEMO_API: ${DEMO_API}\nLIVE_API: ${LIVE_API}`}
             >
-              {isLiveBadge ? "LIVE" : "DEMO"}
+              {isLive ? "LIVE" : "DEMO"}
             </span>
+
+            <span className="text-[10px] rounded-full px-2 py-1 border border-white/20 bg-white/10">
+              Source: <b>{lastSource === "trade-live" ? "LIVE" : "DEMO"}</b>
+            </span>
+
             <button
               onClick={() => {
                 setTourOpen(true);
@@ -658,128 +580,93 @@ export default function MemberDashboard() {
             >
               Start Guided Tour
             </button>
-            <div className="flex items-center gap-2">
-              {account ? (
-                <>
-                  <span className="text-xs rounded-full bg-black/30 border border-white/15 px-2 py-1">
-                    {short(account)} {chainId ? `• Chain ${chainId}` : ""}
-                  </span>
-                  <button
-                    onClick={disconnect}
-                    className="text-xs px-3 py-2 rounded-lg border bg-black/30 border-white/15 hover:bg-black/40"
-                  >
-                    Disconnect
-                  </button>
-                </>
-              ) : (
+
+            {account ? (
+              <>
+                <span className="text-xs rounded-full bg-black/30 border border-white/15 px-2 py-1">
+                  {short(account)} {chainId ? `• Chain ${chainId}` : ""}
+                </span>
                 <button
-                  onClick={connect}
-                  className="text-xs px-3 py-2 rounded-lg border bg-emerald-700/40 border-emerald-400/40 text-emerald-100 hover:bg-emerald-700/60"
+                  onClick={disconnect}
+                  className="text-xs px-3 py-2 rounded-lg border bg-black/30 border-white/15 hover:bg-black/40"
                 >
-                  Connect Wallet
+                  Disconnect
                 </button>
-              )}
-            </div>
+              </>
+            ) : (
+              <button
+                onClick={connect}
+                className="text-xs px-3 py-2 rounded-lg border bg-emerald-700/40 border-emerald-400/40 text-emerald-100 hover:bg-emerald-700/60"
+              >
+                Connect Wallet
+              </button>
+            )}
           </div>
         </div>
 
-        {/* PROMO STRIP */}
+        {/* TOP STRIP (mirrors Demo tone) */}
         <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Performance */}
-          <div
-            data-tour-id="promo-performance"
-            className="rounded-2xl border border-white/10 bg-white/10 p-4"
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-white/80 flex items-center gap-2">
-                Performance
-                {demoHeader?.running && (
-                  <span className="text-[10px] rounded-full border border-emerald-300/40 bg-emerald-600/40 px-2 py-0.5">
-                    {(demoHeader.mode || (isLiveBadge ? "live" : "demo")).toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <div className="text-[10px] text-white/70">
-                Source: <b>{lastSource === "trade-live" ? "LIVE" : "DEMO"}</b>
-              </div>
-            </div>
-            <div className="mt-2 text-3xl font-extrabold">
-              {`PnL $${Number(demoHeader?.pnl ?? sniperStats?.pnl ?? 0).toFixed(2)}`}
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs text-white/80 mt-2">
-              <span>
-                Equity: <b>${Number(demoHeader?.equity ?? sniperStats?.equity ?? 0).toFixed(2)}</b>
-              </span>
-              <span className="opacity-60">•</span>
-              <span>
-                Win rate:{" "}
-                <b>
-                  {total > 0
-                    ? `${liveWinRate}%`
-                    : `${Number(sniperStats?.winRate ?? 0).toFixed(0)}%`}
-                </b>
-              </span>
-              <span className="opacity-60">•</span>
-              <span>
-                W/L: <b>{wins} / {losses}</b>
-              </span>
-            </div>
-            <div className="mt-1 text-[11px] text-white/60">
-              This header reflects your <b>unified</b> Trade Demo (choose CEX/DEX/BOTH/STOCKS inside the widget).
+          {/* TradingOverview (mirrors demo output + live) */}
+          <div data-tour-id="promo-overview" className="rounded-2xl border border-white/10 overflow-hidden bg-black/20">
+            <TradingOverview feed={overviewFeed} stats={sniperStats || {}} />
+            <div className="px-4 pb-4 text-[11px] text-white/70">
+              This panel stays synced while the Trade Demo runs. When idle, it falls back to backend summaries.
             </div>
           </div>
 
-          {/* IMALI Balance */}
-          <div
-            data-tour-id="promo-balance"
-            ref={refBalance}
-            className="rounded-2xl border border-white/10 bg-white/10 p-4"
-          >
+          {/* IMALI Balance / Tier */}
+          <div data-tour-id="promo-balance" className="rounded-2xl border border-white/10 bg-white/10 p-4">
             <div className="flex items-center justify-between">
               <div className="text-sm text-white/80">IMALI Balance</div>
               <span className="inline-flex items-center rounded-full bg-black/30 px-3 py-1 text-xs font-semibold border border-white/10">
                 Tier: {tier}
               </span>
             </div>
-            <div className="mt-2 text-3xl font-extrabold">
-              {Number(imaliBalance).toFixed(2)} IMALI
+            <div className="mt-2 text-3xl font-extrabold">{Number(imaliBalance).toFixed(2)} IMALI</div>
+            <div className="text-xs text-white/70 mt-1">
+              Hold IMALI for perks & staking rewards. Visit <b>Extras</b> to stake and earn.
             </div>
-            <div className="text-xs text-white/70 mt-1">Hold IMALI for perks & staking rewards.</div>
+
+            {/* Optional: quick link */}
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => setActiveTab(1)}
+                className="text-xs px-3 py-2 rounded-lg border bg-black/30 border-white/15 hover:bg-black/40"
+              >
+                Go to Extras
+              </button>
+              <Link
+                to="/pricing"
+                className="text-xs px-3 py-2 rounded-lg border bg-emerald-700/30 border-emerald-300/30 hover:bg-emerald-700/45"
+              >
+                Upgrade
+              </Link>
+            </div>
           </div>
 
-          {/* Progress */}
-          <div
-            data-tour-id="promo-progress"
-            className="rounded-2xl border border-white/10 bg-white/10 p-4"
-          >
+          {/* Status / Guidance (demo-like wording) */}
+          <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
             <div className="flex items-center justify-between">
-              <div className="text-sm text-white/80 mb-1">Progress</div>
-              {demoHeader?.running ? (
-                <span className="text-[10px] rounded-full border border-sky-300/40 bg-sky-600/40 px-2 py-0.5">
-                  LIVE
-                </span>
-              ) : (
-                <span className="text-[10px] rounded-full border border-white/20 bg-white/10 px-2 py-0.5">
-                  IDLE
-                </span>
-              )}
+              <div className="text-sm text-white/80">Quick Start</div>
+              <span className="text-[10px] rounded-full border border-white/20 bg-white/10 px-2 py-0.5">
+                {overviewFeed?.running ? "SESSION ACTIVE" : "READY"}
+              </span>
             </div>
-            <div className="h-2 w-full rounded bg-white/10 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-400 to-yellow-300 transition-[width] duration-500"
-                style={{ width: `${progressPct}%` }}
-              />
+
+            <div className="mt-3 text-sm text-white/80 leading-relaxed">
+              1) Open <b>Trade Demo</b> below<br />
+              2) Choose a venue (New Crypto / Established Crypto / Both / Stocks)<br />
+              3) Pick a strategy and press <b>Start</b>
             </div>
-            <div className="mt-3 flex items-center justify-between text-sm">
-              <div>
-                Win Rate: <b>{total > 0 ? `${liveWinRate}%` : "—"}</b>
-              </div>
-              <div>
-                Sessions: <b>{demoHeader?.running ? "Active" : "Standby"}</b>
-              </div>
+
+            <div className="mt-3 text-[11px] text-white/60">
+              Demo is risk-free. Live runs only when your account is eligible and configured.
             </div>
-            <div className="text-[11px] text-white/70 mt-2">
-              Run the Trade Demo (inside Overview) to push your win rate.
+
+            <div className="mt-3 text-xs text-white/70">
+              Current engine:{" "}
+              <b className={isLive ? "text-emerald-200" : "text-amber-200"}>{isLive ? "LIVE" : "DEMO"}</b> • API_BASE:{" "}
+              <b>{API_BASE}</b>
             </div>
           </div>
         </div>
@@ -798,29 +685,29 @@ export default function MemberDashboard() {
                 id="trade-demo-card"
                 title="Trade Demo"
                 subtitle="Crypto & Stocks (Demo or Live)"
-                info="Use the venue buttons inside (CEX/DEX/BOTH/STOCKS). Auto-run ticks ~4s. Live mode requires eligibility."
+                info="Choose venue + strategy inside. Start runs an automated session and broadcasts updates to Trading Overview."
                 priority
+                open={!!openCards["trade-demo-card"]}
+                onToggle={toggleCard}
               >
                 <div className="rounded-xl overflow-hidden bg-white">
                   <TradeDemo />
                 </div>
-                <div className="mt-3 text-[12px] text-emerald-200">
-                  Points 101: Profitable ticks and take-profit markers add <b>XP</b> ⭐ and{" "}
-                  <b>Coins</b> 🪙. Long green streaks increase <b>Streak</b> 🔥.
+
+                <div className="mt-3 text-[12px] text-white/80">
+                  Tip: keep this open while running to see markers and the live trade tape.
                 </div>
               </ExpandableCard>
 
               <ExpandableCard
                 id="recent-trades-card"
                 title="Recent Trades"
-                subtitle="Table (fills, symbol, venue, PnL)"
-                info="This mirrors the tape in the demo, but as a sortable table."
-                open={false}
+                subtitle="Backend feed (fills + PnL)"
+                info="Your latest trades from the backend. This complements the demo tape."
+                open={!!openCards["recent-trades-card"]}
+                onToggle={toggleCard}
               >
                 <RecentTradesTable rows={recentTrades} />
-                <div className="mt-2 text-xs text-white/70">
-                  Tip: Green rows add XP ⭐, and a burst of Coins 🪙 when take-profit markers fire.
-                </div>
               </ExpandableCard>
             </div>
           </TabPanel>
@@ -828,30 +715,15 @@ export default function MemberDashboard() {
           {/* EXTRAS */}
           <TabPanel>
             <div className="grid grid-cols-1 gap-4">
-              <ExpandableCard
-                id="staking-card"
-                title="Staking"
-                subtitle="Earn rewards"
-                info="Stake IMALI / LP tokens and compound over time."
-              >
+              <ExpandableCard id="staking-card" title="Staking" subtitle="Earn rewards" info="Stake IMALI / LP tokens and compound over time.">
                 <Staking />
               </ExpandableCard>
 
-              <ExpandableCard
-                id="yield-card"
-                title="Yield Farming"
-                subtitle="LP rewards"
-                info="Provide liquidity and farm IMALI."
-              >
+              <ExpandableCard id="yield-card" title="Yield Farming" subtitle="LP rewards" info="Provide liquidity and farm IMALI.">
                 <YieldFarming />
               </ExpandableCard>
 
-              <ExpandableCard
-                id="lending-card"
-                title="Lending"
-                subtitle="Borrow & lend"
-                info="Deposit collateral and borrow stablecoins."
-              >
+              <ExpandableCard id="lending-card" title="Lending" subtitle="Borrow & lend" info="Deposit collateral and borrow stablecoins.">
                 <Lending />
               </ExpandableCard>
 
@@ -859,8 +731,12 @@ export default function MemberDashboard() {
                 id="referral-card"
                 title="Referral Partner Dashboard"
                 subtitle="Invite & earn"
-                right={<Link to="/referral" className="text-xs underline">Open full</Link>}
-                info="Share your link, track referrals and payouts."
+                right={
+                  <Link to="/referral" className="text-xs underline">
+                    Open full
+                  </Link>
+                }
+                info="Share your link, track signups, and see earnings."
               >
                 <ReferralSystem
                   referrals={userData?.referrals || 0}
@@ -869,22 +745,16 @@ export default function MemberDashboard() {
                 />
               </ExpandableCard>
 
-              <ExpandableCard
-                id="lottery-card"
-                title="LP Lottery"
-                subtitle="Weekly raffle"
-                info="Stake LP to receive weekly tickets."
-              >
+              <ExpandableCard id="lottery-card" title="LP Lottery" subtitle="Weekly raffle" info="Stake LP to receive weekly tickets.">
                 <LPLottery />
               </ExpandableCard>
 
-              <ExpandableCard
-                id="nft-card"
-                title="NFT Preview"
-                subtitle="Collectibles"
-                info="Achievement NFTs for milestones & events."
-              >
+              <ExpandableCard id="nft-card" title="NFT Preview" subtitle="Collectibles" info="Achievement NFTs for milestones & events.">
                 <NFTPreview />
+              </ExpandableCard>
+
+              <ExpandableCard id="imali-balance-card" title="IMALI Wallet Balance" subtitle="On-chain" info="Shows on-chain balance and token info.">
+                <ImaliBalance />
               </ExpandableCard>
             </div>
           </TabPanel>
