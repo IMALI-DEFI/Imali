@@ -331,14 +331,7 @@ export default function Pricing() {
                 </Link>
 
                 {/* Visible safety actions (UX reminder) */}
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-semibold text-white/80">
-                    ⛔ STOP TRADING
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-semibold text-white/80">
-                    ❌ Cancel Plan
-                  </div>
-                </div>
+
               </div>
             </div>
           ))}
