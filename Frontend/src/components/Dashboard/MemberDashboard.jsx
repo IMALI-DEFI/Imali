@@ -21,7 +21,7 @@ import * as ReferralSystemNS from "../ReferralSystem.js";
 import * as TradeDemoNS from "../../pages/TradeDemo.jsx";
 
 // ✅ New: Live overview component that listens to TradeDemo window events too
-import TradingOverview from "./TradingOverview.js";
+import TradingOverview from "./TradingOverview.jsx";
 
 /* ---------------- Env (CRA + Vite, no dynamic process usage) ---------------- */
 const DEMO_API =
