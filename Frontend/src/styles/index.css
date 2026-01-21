@@ -2,32 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Brand variables */
+/* =========================
+   Brand variables
+   ========================= */
 :root {
   --brand: #0ea5e9;
 }
 
 /* =========================
-   Global page background
-   (prevents iOS white flash)
+   HARD iOS + Mobile Fixes
+   - Prevent white flash / gutter
+   - Prevent sideways "grab" (horizontal overflow)
    ========================= */
 html,
 body {
-  @apply min-h-screen bg-gray-950 text-slate-100;
+  height: 100%;
   margin: 0;
-  overscroll-behavior: none; /* stops scroll-chain + reduces bounce artifacts */
+
+  /* Safari sometimes ignores Tailwind-applied backgrounds during bounce/toolbar changes */
+  background: #030712 !important; /* bg-gray-950 */
+  color: #f1f5f9; /* slate-100 */
+
+  /* This is the big one: kills the sideways "grab" reveal */
+  overflow-x: hidden;
+
+  /* Helps with scroll chaining / bounce artifacts */
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
+
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Pin a dark layer behind everything (covers iOS rubber-band + toolbar collapse) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: #030712; /* bg-gray-950 */
+  z-index: -1;
+  pointer-events: none;
 }
 
 #root {
-  @apply min-h-screen bg-gray-950 text-slate-100;
+  min-height: 100svh; /* better than 100vh on iOS */
+  background: #030712 !important;
+  overflow-x: hidden;
 }
 
-/* Optional: ensure common app wrapper always stays dark */
+/* Prevent common offenders from forcing horizontal overflow */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Optional helper for your top-level wrapper if you use one */
 .app-root {
-  @apply min-h-screen bg-gray-950;
+  min-height: 100svh;
+  width: 100%;
+  overflow-x: hidden;
+  background: #030712;
 }
 
-/* Improve mobile rendering */
+/* Improve rendering */
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -35,7 +80,7 @@ body {
 }
 
 /* =========================
-   Common UI helpers
+   Tailwind helper classes
    ========================= */
 .card {
   @apply rounded-2xl p-5 shadow border border-white/10 backdrop-blur;
@@ -57,11 +102,13 @@ body {
 }
 
 /* =========================
-   Mobile-safe text helpers
-   (prevents clipped headings)
+   Optional: mobile-safe hero title helper
+   (use className="hero-title" if you want)
    ========================= */
 .hero-title {
   font-size: clamp(2.25rem, 8vw, 4rem);
-  line-height: 1.15;
+  line-height: 1.05;
   padding-inline: 1rem;
+  text-align: center;
+  word-break: break-word;
 }
