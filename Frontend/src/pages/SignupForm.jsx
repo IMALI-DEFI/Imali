@@ -1,4 +1,3 @@
-
 // src/pages/SignupForm.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
@@ -35,20 +34,23 @@ function fireConfetti(container) {
   if (!container) return;
   const EMOJI = ["🎉", "✨", "🏆", "💎", "🚀"];
   const pieces = 22;
+
   for (let i = 0; i < pieces; i++) {
     const span = document.createElement("span");
     span.textContent = EMOJI[Math.floor(Math.random() * EMOJI.length)];
     span.style.position = "fixed";
     span.style.left = Math.random() * 100 + "vw";
     span.style.top = "-2vh";
-    span.style.fontSize = (16 + Math.random() * 18) + "px";
+    span.style.fontSize = `${16 + Math.random() * 18}px`;
     span.style.pointerEvents = "none";
     span.style.transition = "transform 1.1s ease-out, opacity 1.1s ease-out";
     container.appendChild(span);
+
     requestAnimationFrame(() => {
       span.style.transform = `translateY(${110 + Math.random() * 80}vh) rotate(${(Math.random() * 360) | 0}deg)`;
       span.style.opacity = "0";
     });
+
     setTimeout(() => span.remove(), 1300);
   }
 }
@@ -59,7 +61,7 @@ export default function SignupForm() {
   const confettiRootRef = useRef(null);
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState(""); // ✅ add password (FastAPI should create session/cookie)
+  const [password, setPassword] = useState("");
   const [tier, setTier] = useState("starter");
   const [strategy, setStrategy] = useState("momentum");
   const [loading, setLoading] = useState(false);
@@ -71,13 +73,14 @@ export default function SignupForm() {
     if (qTier && TIERS[qTier]) setTier(qTier);
   }, [params]);
 
-  const emailValid = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), [email]);
+  const emailValid = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), [email]);
   const activeTier = TIERS[tier] || TIERS.starter;
   const badgeStyle = `bg-gradient-to-r ${activeTier.color} text-white`;
 
   // OPTIONAL: ask FastAPI for promo status (safe to ignore if endpoint doesn't exist yet)
   useEffect(() => {
     let mounted = true;
+
     (async () => {
       try {
         const { data } = await axios.get(`${API_BASE}/promo/status`, { withCredentials: true });
@@ -87,6 +90,7 @@ export default function SignupForm() {
         // ignore
       }
     })();
+
     return () => {
       mounted = false;
     };
@@ -95,21 +99,24 @@ export default function SignupForm() {
   const submit = async (e) => {
     e.preventDefault();
     if (loading) return;
+
     setLoading(true);
     setErr("");
 
     try {
+      const cleanEmail = email.trim();
+
       if (!emailValid) throw new Error("Enter a valid email.");
       if (!password || password.length < 8) throw new Error("Password must be at least 8 characters.");
 
       // 1) Create account (FastAPI should set a session cookie OR return a token)
       await axios.post(
         `${API_BASE}/auth/signup`,
-        { email, password, tier, strategy },
+        { email: cleanEmail, password, tier, strategy },
         { withCredentials: true }
       );
 
-      localStorage.setItem("IMALI_EMAIL", email);
+      localStorage.setItem("IMALI_EMAIL", cleanEmail);
 
       // 2) Free tier -> go Activation (or dashboard)
       if (tier === "starter") {
@@ -141,21 +148,21 @@ export default function SignupForm() {
   };
 
   return (
-    <div ref={confettiRootRef} className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white">
+    <div
+      ref={confettiRootRef}
+      className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white"
+    >
       <div className="max-w-6xl mx-auto px-6 py-10">
         <div className="text-center mb-8">
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
-            Create your IMALI account
-          </h1>
-          <p className="mt-2 text-gray-300">
-            Pick a plan - Pick a strategy - Activate your account - Cancel anytime
-          </p>
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">Create your IMALI account</h1>
+
+          <p className="mt-2 text-gray-300">Pick a plan - Pick a strategy - Activate your account - Cancel anytime</p>
+
           <div className="mt-3 text-sm text-emerald-200">
             New promo: <b>First 50 users</b> get <b>5% fee over 3%</b> for <b>90 days</b>. Cancel anytime.
           </div>
-          {promo?.message ? (
-            <div className="mt-2 text-xs text-white/70">{promo.message}</div>
-          ) : null}
+
+          {promo?.message ? <div className="mt-2 text-xs text-white/70">{promo.message}</div> : null}
         </div>
 
         <div className="grid lg:grid-cols-5 gap-6">
@@ -166,7 +173,11 @@ export default function SignupForm() {
               </div>
 
               <div className="mt-3 flex items-center gap-3">
-                <img src={activeTier.img} alt="Tier" className="w-14 h-14 rounded-lg ring-1 ring-white/10" />
+                <img
+                  src={activeTier.img}
+                  alt="Tier"
+                  className="w-14 h-14 rounded-lg ring-1 ring-white/10"
+                />
                 <div>
                   <div className="font-bold">{activeTier.base ? `$${activeTier.base}/mo` : "Free"}</div>
                   <div className="text-xs text-white/70">Activation happens after checkout (paid tiers)</div>
@@ -179,9 +190,7 @@ export default function SignupForm() {
                 <div className="text-xs text-amber-200/90">Not financial advice. Trading has risk.</div>
               </div>
 
-              <div className="mt-4 text-xs text-white/60">
-                “Stocks and Established Cryto Trades"
-              </div>
+              <div className="mt-4 text-xs text-white/60">“Stocks and Established Cryto Trades"</div>
             </div>
 
             <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
@@ -199,9 +208,9 @@ export default function SignupForm() {
             <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
               <div className={`h-1 w-full bg-gradient-to-r ${activeTier.color}`} />
 
+              {/* Header strip */}
               <div className="p-5 border-b border-white/10">
-                <div className="text-sm text-white/70 mt-1">
-                  Create your account to get started with IMALI.  
+                <div className="text-sm text-white/70 mt-1">Create your account to get started with IMALI.</div>
               </div>
 
               {err ? (
@@ -275,7 +284,10 @@ export default function SignupForm() {
                 </button>
 
                 <div className="text-xs text-white/60">
-                  Already have an account? <Link className="underline text-emerald-300" to="/login">Log in</Link>
+                  Already have an account?{" "}
+                  <Link className="underline text-emerald-300" to="/login">
+                    Log in
+                  </Link>
                 </div>
               </form>
             </div>
