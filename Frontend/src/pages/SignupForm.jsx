@@ -1,3 +1,4 @@
+
 // src/pages/SignupForm.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
@@ -24,10 +25,10 @@ const TIERS = {
 };
 
 const STRATEGIES = [
-  { value: "momentum", label: "Momentum" },
-  { value: "mean_reversion", label: "Mean Reversion" },
-  { value: "ai_weighted", label: "AI Weighted" },
-  { value: "volume_spike", label: "Volume Spike" },
+  { value: "momentum", label: "Growth" },
+  { value: "mean_reversion", label: "Conservative" },
+  { value: "ai_weighted", label: "Balanced" },
+  { value: "volume_spike", label: "Agressive" },
 ];
 
 function fireConfetti(container) {
@@ -147,7 +148,7 @@ export default function SignupForm() {
             Create your IMALI account
           </h1>
           <p className="mt-2 text-gray-300">
-            Pick a plan, pick a strategy, then activate your bots in one place.
+            Pick a plan - Pick a strategy - Activate your account - Cancel anytime
           </p>
           <div className="mt-3 text-sm text-emerald-200">
             New promo: <b>First 50 users</b> get <b>5% fee over 3%</b> for <b>90 days</b>. Cancel anytime.
@@ -173,23 +174,23 @@ export default function SignupForm() {
               </div>
 
               <div className="mt-4 text-sm text-white/80 space-y-2">
-                <div>✅ You can switch to <b>Manual (alerts)</b> or <b>Auto</b> later.</div>
-                <div>✅ Big STOP buttons exist in your dashboard.</div>
+                <div>✅ Auto Trading ONLY</div>
+                <div>✅ Cancel any time</div>
                 <div className="text-xs text-amber-200/90">Not financial advice. Trading has risk.</div>
               </div>
 
               <div className="mt-4 text-xs text-white/60">
-                “New Crypto” = DEX tokens (higher risk). “Established Crypto” = CEX pairs like OKX (typically more liquid).
+                “Stocks and Established Cryto Trades"
               </div>
             </div>
 
             <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
               <h3 className="font-bold mb-2">What you’ll do on Activation</h3>
               <ul className="text-sm text-white/80 space-y-1">
-                <li>• Connect OKX (Established Crypto) if you want CEX trading</li>
-                <li>• Connect Wallet (New Crypto) if you want DEX trading</li>
-                <li>• Connect Stock broker (Paper or live keys)</li>
-                <li>• Choose Auto or Manual (alerts)</li>
+                <li>1. Create or connect your OKX account</li>
+                <li>2. Create or connect crypto wallet</li>
+                <li>3. Create or connect your Stock broker account</li>
+                <li>4. Start Auto trading</li>
               </ul>
             </div>
           </aside>
@@ -199,8 +200,8 @@ export default function SignupForm() {
               <div className={`h-1 w-full bg-gradient-to-r ${activeTier.color}`} />
 
               <div className="p-5 border-b border-white/10">
-                <h2 className="text-xl font-bold">Signup</h2>
-                <p className="text-xs text-gray-400">FastAPI handles your account + billing + activation.</p>
+                <div className="text-sm text-white/70 mt-1">
+                  Create your account to get started with IMALI.  
               </div>
 
               {err ? (
