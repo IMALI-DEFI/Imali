@@ -4,10 +4,25 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 /**
  * TradingOverview (dark, self-contained)
  * Drives from `feed` prop, and ALSO listens to window events as a fallback:
- *  • "trade-demo:update"  → { source, pnl, equity, balance, wins, losses, running, mode, ts? }
+ *  • "trade-demo:update"  → { source, pnl, equity, balance, wins, losses, running, mode, ts?, venues? }
  *  • "trade-demo:markers" → { hp: [{ time, venue, kind, text }] }
  *  • "trade-demo:markers:tp" → { time, venue, kind, text }
+ *
+ * ✅ Venue labels match TradeDemo UI:
+ *   dex    -> New Crypto
+ *   cex    -> Established Crypto
+ *   stocks -> Stocks
+ *   both   -> New & Established
+ *   bundle -> All
  */
+const VENUE_UI = {
+  dex: "New Crypto",
+  cex: "Established Crypto",
+  stocks: "Stocks",
+  both: "New & Established",
+  bundle: "All",
+};
+
 export default function TradingOverview({ stats = {}, className = "", feed = null }) {
   // live state
   const [mode, setMode] = useState("demo");
@@ -17,6 +32,10 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
   const [balance, setBalance] = useState(0);
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
+
+  // ✅ optional active venues badges (if provided)
+  // expected shape: ["dex","cex"] or ["stocks"] etc.
+  const [venues, setVenues] = useState([]);
 
   // local series for sparkline
   const [series, setSeries] = useState([{ t: Date.now(), v: 1000 }]);
@@ -30,6 +49,7 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
   useEffect(() => {
     if (!feed) return;
     const d = feed;
+
     setMode(d.mode || "demo");
     setRunning(!!d.running);
     if (Number.isFinite(d.pnl)) setPnl(Number(d.pnl));
@@ -37,6 +57,9 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
     if (Number.isFinite(d.balance)) setBalance(Number(d.balance));
     if (Number.isFinite(d.wins)) setWins(Number(d.wins));
     if (Number.isFinite(d.losses)) setLosses(Number(d.losses));
+
+    if (Array.isArray(d.venues)) setVenues(d.venues.filter(Boolean));
+    else if (typeof d.venue === "string" && d.venue) setVenues([d.venue]);
 
     const now = Number.isFinite(d.ts) ? Number(d.ts) : Date.now();
     if (now - lastT.current > 250) {
@@ -60,6 +83,9 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
       if (Number.isFinite(d.wins)) setWins(Number(d.wins));
       if (Number.isFinite(d.losses)) setLosses(Number(d.losses));
 
+      if (Array.isArray(d.venues)) setVenues(d.venues.filter(Boolean));
+      else if (typeof d.venue === "string" && d.venue) setVenues([d.venue]);
+
       const now = Number.isFinite(d.ts) ? Number(d.ts) : Date.now();
       if (now - lastT.current > 900) {
         const v = Number(d.equity);
@@ -68,6 +94,7 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
         lastT.current = now;
       }
     }
+
     function onHp(e) {
       const list = (e.detail?.hp || []).map((m) => ({
         time: (m.time || Math.floor(Date.now() / 1000)) * 1000,
@@ -76,6 +103,7 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
       }));
       if (list.length) setHpMarkers((prev) => [...prev, ...list].slice(-50));
     }
+
     function onTp(e) {
       const m = e.detail || {};
       const one = {
@@ -102,12 +130,14 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
 
   // sparkline geometry
   const spark = useMemo(() => {
-    const w = 600, h = 120;
+    const w = 600,
+      h = 120;
     const values = series.map((d) => d.v);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const pad = (max - min) * 0.1 || 1;
-    const lo = min - pad, hi = max + pad;
+    const lo = min - pad,
+      hi = max + pad;
 
     const x = (i) => (i / Math.max(1, series.length - 1)) * (w - 8) + 4;
     const y = (v) => {
@@ -119,7 +149,7 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
     const path =
       points.length >= 2
         ? points.reduce((s, [px, py], i) => (i ? s + ` L ${px} ${py}` : `M ${px} ${py}`), "")
-        : ""; // with <2 points we’ll just show the last dot
+        : "";
 
     return { w, h, min, max, last: values.at(-1) ?? 0, path, points, isEmpty: points.length < 2 };
   }, [series]);
@@ -136,11 +166,28 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
     return <span className={`text-[11px] rounded-full border px-2 py-1 ${map[tone]}`}>{children}</span>;
   };
 
+  const venueBadges = (venues || [])
+    .map((v) => String(v).toLowerCase())
+    .filter(Boolean)
+    .slice(0, 4);
+
   return (
     <div className={`tr-over w-full text-white ${className}`} style={{ backgroundColor: "rgba(2, 6, 23, 0.96)" }}>
       {/* top strip */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs p-3 border-b border-slate-700/60 bg-slate-900/80">
         <div className="font-black text-white">Trading Overview</div>
+
+        {/* ✅ Venue labels */}
+        {venueBadges.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            {venueBadges.map((v) => (
+              <Badge key={v} tone="slate">
+                {VENUE_UI[v] || v.toUpperCase()}
+              </Badge>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center gap-2 ml-auto">
           <Badge tone={running ? "emerald" : "slate"}>{running ? "RUNNING" : "READY"}</Badge>
           <Badge tone="sky">{(mode || "DEMO").toUpperCase()}</Badge>
@@ -157,7 +204,7 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
         <Kpi label="Gross PnL" value={`${gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)}`} />
         <Kpi label="Win rate" value={`${winRate}%`} />
         <Kpi label="Wins • Losses" value={`${wins} • ${losses}`} />
-        <Kpi label="Trades (hdr)" value={`${wl.total}`} />
+        <Kpi label="Trades" value={`${wl.total}`} />
       </div>
 
       {/* sparkline */}
@@ -177,15 +224,33 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
                 style={{ background: "transparent" }}
                 preserveAspectRatio="none"
               >
-                {/* Background */}
                 <rect x="0" y="0" width={spark.w} height={spark.h} fill="#0f172a" />
 
-                {/* Grid */}
-                <line x1="0" y1={spark.h * 0.25} x2={spark.w} y2={spark.h * 0.25} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-                <line x1="0" y1={spark.h * 0.5} x2={spark.w} y2={spark.h * 0.5} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-                <line x1="0" y1={spark.h * 0.75} x2={spark.w} y2={spark.h * 0.75} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                <line
+                  x1="0"
+                  y1={spark.h * 0.25}
+                  x2={spark.w}
+                  y2={spark.h * 0.25}
+                  stroke="rgba(255,255,255,0.05)"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="0"
+                  y1={spark.h * 0.5}
+                  x2={spark.w}
+                  y2={spark.h * 0.5}
+                  stroke="rgba(255,255,255,0.05)"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="0"
+                  y1={spark.h * 0.75}
+                  x2={spark.w}
+                  y2={spark.h * 0.75}
+                  stroke="rgba(255,255,255,0.05)"
+                  strokeWidth="1"
+                />
 
-                {/* price path */}
                 {spark.path && (
                   <path
                     d={spark.path}
@@ -197,7 +262,6 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
                   />
                 )}
 
-                {/* area fill */}
                 {!spark.isEmpty && spark.path && (
                   <>
                     <defs>
@@ -213,7 +277,6 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
                   </>
                 )}
 
-                {/* last point */}
                 {spark.points.length > 0 && (
                   <circle
                     cx={spark.points.at(-1)[0]}
@@ -225,9 +288,15 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
                   />
                 )}
 
-                {/* waiting text */}
                 {spark.isEmpty && (
-                  <text x={spark.w / 2} y={spark.h / 2} textAnchor="middle" fill="#6b7280" fontSize="14" fontFamily="monospace">
+                  <text
+                    x={spark.w / 2}
+                    y={spark.h / 2}
+                    textAnchor="middle"
+                    fill="#6b7280"
+                    fontSize="14"
+                    fontFamily="monospace"
+                  >
                     Waiting for data…
                   </text>
                 )}
@@ -250,7 +319,10 @@ export default function TradingOverview({ stats = {}, className = "", feed = nul
 
       {/* bottom stats (props) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 p-3">
-        <Kpi label="24h PnL (prop)" value={`${Number(stats.pnl24h || 0) >= 0 ? "+" : "-"}$${Math.abs(Number(stats.pnl24h || 0)).toFixed(2)}`} />
+        <Kpi
+          label="24h PnL (prop)"
+          value={`${Number(stats.pnl24h || 0) >= 0 ? "+" : "-"}$${Math.abs(Number(stats.pnl24h || 0)).toFixed(2)}`}
+        />
         <Kpi label="Sharpe (prop)" value={`${Number(stats.sharpe || 0).toFixed(2)}`} />
         <Kpi label="Trades (prop)" value={`${Number(stats.trades || 0)}`} />
         <Kpi label="Win rate (prop)" value={`${Number(stats.winRate || 0)}%`} />
