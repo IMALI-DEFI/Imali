@@ -92,14 +92,13 @@ const Home = () => {
         <div className="max-w-7xl mx-auto px-4 py-24 text-center relative z-10">
           <h1 className="text-5xl md:text-7xl font-extrabold mb-6 leading-tight">
             <span className="text-indigo-400">AI-POWERED</span>{" "}
-            <span className="whitespace-nowrap">CRYPTO & STOCK</span>{" "}
+            <span className="whitespace-nowrap">STOCK & CRYPTO  </span>{" "}
             PROFITS
           </h1>
 
           <p className="text-xl mb-3 max-w-3xl mx-auto text-white/90">
             <span className="font-bold">IMALI</span> helps beginners trade with
-            bots — with a simple dashboard, clear alerts, and the option to run{" "}
-            <b>Auto</b> or <b>Manual</b>.
+            auto trading options, NO percentage fee unless your account exceeds a net 3% profit, cancel anytime.
           </p>
 
           <p className="text-base text-indigo-200/90 max-w-3xl mx-auto">
