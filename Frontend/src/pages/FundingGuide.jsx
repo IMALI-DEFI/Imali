@@ -1,7 +1,7 @@
 /*
 =============================================================
 File: src/pages/FundingGuide.jsx
-Purpose: Unified funding guide for IMALI — CEX, DEX & Stocks
+Purpose: Simple funding guide for IMALI — Crypto & Stocks
 =============================================================
 */
 
@@ -15,48 +15,68 @@ export default function FundingGuide() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
       <div className="max-w-5xl mx-auto px-6 py-16">
+        {/* Header */}
         <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-center">
           Fund Your Account in{" "}
           <span className="text-emerald-300">5 Minutes</span>
         </h1>
         <p className="mt-3 text-gray-300 text-center">
-          Choose your route — Crypto (CEX or DEX) or Stocks (Alpaca API). All
-          secure, beginner-friendly options.
+          Choose how you want to trade. Crypto (OKX or Wallet) or Stocks
+          (Alpaca). All options are secure and beginner-friendly.
         </p>
 
-        {/* ─────────────── Funding Routes ─────────────── */}
+        {/* ─────────────── Funding Options ─────────────── */}
         <div className="grid md:grid-cols-3 gap-6 mt-8">
-          {/* CEX ROUTE */}
+          {/* OKX */}
           <div className={card}>
             <h3 className="text-lg font-bold mb-2">
-              🏦 CEX Route (OKX) – Fastest
+              🏦 Crypto via OKX (Easiest)
             </h3>
             <ol className="list-decimal ml-5 text-sm text-gray-200 space-y-1">
-              <li>Open OKX → <b>Assets → Deposit</b></li>
+              <li>Log in to OKX</li>
+              <li>
+                Go to{" "}
+                <b>Assets → Deposit</b>
+              </li>
               <li>Select <b>USDT</b> or <b>USDC</b></li>
-              <li>Choose <b>ERC20 (Ethereum)</b> network</li>
-              <li>Send <b>$5 test</b>, then full amount</li>
-              <li>Return to app → Dashboard updates balance</li>
+              <li>Choose <b>Ethereum (ERC20)</b></li>
+              <li>Send a small test first, then your full amount</li>
+              <li>Return to IMALI — balance updates automatically</li>
             </ol>
+
+            <div className="mt-3 text-sm">
+              🔑 <b>Create API Key:</b>{" "}
+              <a
+                href="https://app.okx.com/en-us/account/my-api"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-emerald-300"
+              >
+                OKX API Management
+              </a>
+            </div>
+
             <div className="text-xs text-amber-200/90 mt-2">
-              Avoid TRC20/BEP20 unless you fully understand the risks.
+              Use <b>Read-Only</b> or <b>Trade</b> permissions only.
+              Never enable withdrawals.
             </div>
           </div>
 
-          {/* DEX ROUTE */}
+          {/* Wallet / DEX */}
           <div className={card}>
             <h3 className="text-lg font-bold mb-2">
-              🔁 DEX Route (Advanced Users)
+              🔁 Crypto via Wallet (Advanced)
             </h3>
             <ol className="list-decimal ml-5 text-sm text-gray-200 space-y-1">
-              <li>Install MetaMask or use WalletConnect</li>
-              <li>Add gas: <b>ETH</b> (Ethereum) or <b>MATIC</b> (Polygon)</li>
-              <li>On-ramp to wallet (USDT/USDC)</li>
-              <li>Swap via official DEX link (IMALI contract)</li>
-              <li>Connect wallet → Start trading</li>
+              <li>Install MetaMask or connect with WalletConnect</li>
+              <li>Add gas token (ETH or MATIC)</li>
+              <li>Buy USDT or USDC into your wallet</li>
+              <li>Connect wallet inside IMALI</li>
+              <li>Run Demo or Live trades</li>
             </ol>
+
             <div className="text-xs text-amber-200/90 mt-2">
-              Only use verified contracts listed under{" "}
+              Only use official contract links listed under{" "}
               <Link
                 to="/supported-chains"
                 className="underline text-indigo-300"
@@ -67,14 +87,14 @@ export default function FundingGuide() {
             </div>
           </div>
 
-          {/* STOCKS ROUTE (ALPACA) */}
+          {/* Stocks */}
           <div className={card}>
             <h3 className="text-lg font-bold mb-2">
-              📈 Stocks Route (Alpaca API)
+              📈 Stocks via Alpaca
             </h3>
             <ol className="list-decimal ml-5 text-sm text-gray-200 space-y-1">
               <li>
-                Go to{" "}
+                Create a free account at{" "}
                 <a
                   href="https://alpaca.markets"
                   target="_blank"
@@ -82,36 +102,41 @@ export default function FundingGuide() {
                   className="underline text-emerald-300"
                 >
                   Alpaca Markets
-                </a>{" "}
-                → Create a free account
+                </a>
               </li>
-              <li>Complete quick KYC (name, ID, funding source)</li>
-              <li>
-                Fund your Alpaca account via <b>Bank Transfer</b> or{" "}
-                <b>Debit Card</b>
-              </li>
-              <li>
-                In IMALI Dashboard → Connect Alpaca via API key & secret
-              </li>
-              <li>
-                Start live or paper trading stocks with your chosen strategy
-              </li>
+              <li>Complete identity check (KYC)</li>
+              <li>Fund with bank transfer or debit card</li>
+              <li>Generate API Key & Secret</li>
+              <li>Paste keys into IMALI Dashboard</li>
             </ol>
+
+            <div className="mt-3 text-sm">
+              🔑 <b>API Keys Location:</b>{" "}
+              <a
+                href="https://app.alpaca.markets/dashboard/overview"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-emerald-300"
+              >
+                Alpaca Dashboard (bottom-left → API Keys)
+              </a>
+            </div>
+
             <div className="text-xs text-amber-200/90 mt-2">
-              Tip: Use <b>Paper Mode</b> first — it simulates trades safely.
+              Tip: Start with <b>Paper Mode</b> before Live trading.
             </div>
           </div>
         </div>
 
-        {/* ─────────────── Help + Warnings ─────────────── */}
+        {/* ─────────────── Warnings & Help ─────────────── */}
         <div className="mt-10 grid md:grid-cols-2 gap-6">
           <div className={card}>
             <h3 className="text-lg font-bold mb-2">⚠️ Common Mistakes</h3>
             <ul className="list-disc ml-5 text-sm text-gray-200 space-y-1">
-              <li>Wrong network (TRC20/BEP20) → funds stuck</li>
-              <li>No gas token in wallet → can’t move funds</li>
-              <li>Fake DEX or contract links → scams</li>
-              <li>Wrong Alpaca API key permissions → blocked trades</li>
+              <li>Wrong network selected</li>
+              <li>No gas token in wallet</li>
+              <li>Using fake contract links</li>
+              <li>API keys without trading permissions</li>
             </ul>
           </div>
 
@@ -128,7 +153,7 @@ export default function FundingGuide() {
               </li>
               <li>
                 <Link to="/support" className="underline text-indigo-300">
-                  Contact Support
+                  Contact IMALI Support
                 </Link>
               </li>
               <li>
@@ -138,7 +163,7 @@ export default function FundingGuide() {
                   rel="noopener noreferrer"
                   className="underline text-indigo-300"
                 >
-                  Alpaca Support Center
+                  Alpaca Support
                 </a>
               </li>
             </ul>
@@ -157,15 +182,23 @@ export default function FundingGuide() {
             to="/supported-chains"
             className="px-5 py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 font-semibold"
           >
-            View Supported Chains
+            Supported Chains
           </Link>
           <a
-            href="https://alpaca.markets"
+            href="https://app.okx.com/en-us/account/my-api"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold"
+          >
+            OKX API Keys
+          </a>
+          <a
+            href="https://app.alpaca.markets/dashboard/overview"
             target="_blank"
             rel="noopener noreferrer"
             className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-semibold"
           >
-            Visit Alpaca
+            Alpaca API Keys
           </a>
         </div>
       </div>
