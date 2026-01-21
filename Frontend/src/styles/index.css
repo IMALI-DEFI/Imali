@@ -7,21 +7,45 @@
   --brand: #0ea5e9;
 }
 
-/* FULL dark background – prevents white overscroll */
+/* =========================
+   Global page background
+   (prevents iOS white flash)
+   ========================= */
 html,
-body,
+body {
+  @apply min-h-screen bg-gray-950 text-slate-100;
+  margin: 0;
+  overscroll-behavior: none; /* stops scroll-chain + reduces bounce artifacts */
+}
+
 #root {
   @apply min-h-screen bg-gray-950 text-slate-100;
 }
 
-/* Common UI helpers */
+/* Optional: ensure common app wrapper always stays dark */
+.app-root {
+  @apply min-h-screen bg-gray-950;
+}
+
+/* Improve mobile rendering */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* =========================
+   Common UI helpers
+   ========================= */
 .card {
-  @apply bg-gray-900/80 backdrop-blur rounded-2xl shadow p-5 border border-white/10;
+  @apply rounded-2xl p-5 shadow border border-white/10 backdrop-blur;
+  @apply bg-gray-900/80 text-slate-100;
 }
 
 .btn {
-  @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium
-         border border-white/10 bg-white/5 hover:bg-white/10 text-slate-100;
+  @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium;
+  @apply border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10;
+  @apply transition-colors duration-150;
 }
 
 .btn-primary {
@@ -30,4 +54,14 @@ body,
 
 .kpi {
   @apply card flex flex-col gap-1;
+}
+
+/* =========================
+   Mobile-safe text helpers
+   (prevents clipped headings)
+   ========================= */
+.hero-title {
+  font-size: clamp(2.25rem, 8vw, 4rem);
+  line-height: 1.15;
+  padding-inline: 1rem;
 }
