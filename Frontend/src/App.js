@@ -34,13 +34,13 @@ import ProtectedRoute from "./components/routing/ProtectedRoute";
 // Simple 404
 function NotFound() {
   return (
-    <div className="min-h-[40vh] flex items-center justify-center text-center p-8">
+    <div className="min-h-[40svh] flex items-center justify-center text-center p-8">
       <div>
         <h1 className="text-3xl font-bold mb-2">Page not found</h1>
-        <p className="text-gray-500 mb-4">
+        <p className="text-slate-400 mb-4">
           The page you’re looking for doesn’t exist.
         </p>
-        <a href="/" className="text-indigo-600 underline">
+        <a href="/" className="text-sky-400 underline">
           Go home
         </a>
       </div>
@@ -50,9 +50,12 @@ function NotFound() {
 
 export default function App() {
   return (
-    <>
+    // App shell: forces dark background + prevents sideways "grab" globally
+    <div className="min-h-[100svh] w-full overflow-x-hidden bg-gray-950 text-slate-100">
       <Header />
-      <main className="min-h-screen pt-16">
+
+      {/* Use 100svh-safe height and avoid min-h-screen (100vh) on iOS */}
+      <main className="w-full overflow-x-hidden pt-16">
         <Routes>
           {/* ---------------- Public marketing ---------------- */}
           <Route path="/" element={<Home />} />
@@ -66,15 +69,11 @@ export default function App() {
 
           {/* ---------------- Signup / Activation ---------------- */}
           <Route path="/signup" element={<SignupForm />} />
-
-          {/* Free-tier “onboarding” should land here */}
           <Route path="/signup-activation" element={<SignupActivation />} />
           <Route
             path="/onboarding"
             element={<Navigate to="/signup-activation" replace />}
           />
-
-          {/* Stripe success landing (paid tiers) */}
           <Route path="/activation" element={<Activation />} />
 
           {/* ---------------- Public demo (unprotected) ---------------- */}
@@ -114,7 +113,6 @@ export default function App() {
           {/* ---------------- Legacy aliases ---------------- */}
           <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
           <Route path="/demo/*" element={<Navigate to="/trade-demo" replace />} />
-
           <Route
             path="/MemberDashboard"
             element={<Navigate to="/dashboard" replace />}
@@ -129,7 +127,8 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
+
       <Footer />
-    </>
+    </div>
   );
 }
