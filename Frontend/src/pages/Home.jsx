@@ -101,12 +101,6 @@ const Home = () => {
             auto trading options, NO percentage fee unless your account exceeds a net 3% profit, cancel anytime.
           </p>
 
-          <p className="text-base text-indigo-200/90 max-w-3xl mx-auto">
-            <b>Established Crypto</b> = CEX (like OKX). <b>New Crypto</b> = DEX
-            (wallet trading). Stocks use <b>Alpaca</b>. Start in Demo, then go
-            Live when you’re ready.
-          </p>
-
           {/* Promo banner */}
           <div className="mx-auto mt-8 mb-10 max-w-3xl rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-6 py-5 text-left">
             <div className="flex items-start justify-between gap-4">
