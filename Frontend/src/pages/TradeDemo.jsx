@@ -43,35 +43,45 @@ function resolveApiBase(raw, fallbackFullUrl) {
 function buildApiCandidates(base) {
   const b = String(base || "").replace(/\/+$/, "");
   if (!b) return [];
-  
+
   // If base already ends with /api, don't add another
   if (/\/api$/i.test(b)) {
     return [b];
   }
-  
+
   // Try with /api suffix only if not present
   const withApi = `${b}/api`;
   return [b, withApi];
 }
 
 /* ✅ Environment configuration */
-const isProduction = process.env.NODE_ENV === 'production';
-const isLocalhost = typeof window !== "undefined" && window.location.hostname === "localhost";
+const isProduction = process.env.NODE_ENV === "production";
 
 // Use relative paths in production for better compatibility
 const DEMO_API_DEFAULT = isProduction
-  ? '/api'  // Use relative path in production
-  : resolveApiBase(
-      getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"),
-      "http://localhost:5055"
-    );
+  ? "/api" // Use relative path in production
+  : resolveApiBase(getEnvVar("VITE_DEMO_API", "REACT_APP_DEMO_API"), "http://localhost:5055");
 
 const LIVE_API_DEFAULT = isProduction
-  ? '/api'  // Use relative path in production
-  : resolveApiBase(
-      getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"),
-      "https://api.imali-defi.com"
-    );
+  ? "/api" // Use relative path in production
+  : resolveApiBase(getEnvVar("VITE_LIVE_API", "REACT_APP_LIVE_API"), "https://api.imali-defi.com");
+
+/* -------------------------------- terminology maps (UI ONLY) -------------------------------- */
+const VENUE_LABELS = {
+  dex: "New Crypto",
+  cex: "Established Crypto",
+  both: "New & Established",
+  stocks: "Stocks",
+  bundle: "All",
+};
+
+// Strategies: keep internal keys, change labels shown to users
+const STRATEGY_UI = {
+  mean_reversion: { name: "Conservative", help: "Safer, slower moves. Focuses on steady setups." },
+  ai_weighted: { name: "Balanced", help: "A mix of safety and opportunity. Recommended for most users." },
+  momentum: { name: "Growth", help: "Looks for rising trends and tries to ride the move." },
+  volume_spike: { name: "Aggressive", help: "Fast moves based on sudden activity. Higher risk." },
+};
 
 /* -------------------------------- helpers -------------------------------- */
 const includesCrypto = (v) => ["dex", "cex", "both", "bundle"].includes(v);
@@ -85,14 +95,14 @@ async function postJson(url, body, { timeoutMs = 8000, headers = {} } = {}) {
   try {
     const r = await fetch(url, {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json", 
-        ...headers 
+      headers: {
+        "Content-Type": "application/json",
+        ...headers,
       },
       body: JSON.stringify(body ?? {}),
       signal: ctrl.signal,
       cache: "no-store",
-      credentials: 'include', // Important for CORS
+      credentials: "include", // Important for CORS
     });
 
     // Handle CORS errors gracefully
@@ -110,11 +120,7 @@ async function postJson(url, body, { timeoutMs = 8000, headers = {} } = {}) {
 
     if (!r.ok) {
       const msg =
-        data?.error ||
-        data?.detail ||
-        data?.message ||
-        data?.raw ||
-        `HTTP ${r.status} ${r.statusText}`;
+        data?.error || data?.detail || data?.message || data?.raw || `HTTP ${r.status} ${r.statusText}`;
       const err = new Error(`${msg}`);
       err.status = r.status;
       err.url = url;
@@ -140,16 +146,16 @@ async function getJson(url, { timeoutMs = 5000 } = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { 
-      cache: "no-store", 
+    const r = await fetch(url, {
+      cache: "no-store",
       signal: ctrl.signal,
-      credentials: 'include',
+      credentials: "include",
     });
-    
+
     if (r.status === 0) {
       throw new Error(`CORS error: Cannot access ${url}`);
     }
-    
+
     const text = await r.text();
 
     if (!r.ok) {
@@ -187,7 +193,9 @@ function useStocksSimMulti(
       const low = Math.min(open, close) * (1 - Math.random() * 0.005);
       list.push({
         t: Math.floor(t0.current + i * stepMs),
-        open, high, low,
+        open,
+        high,
+        low,
         close: Math.max(0.01, close),
         volume: 5000 + Math.random() * 5000,
         symbol: sym,
@@ -202,16 +210,18 @@ function useStocksSimMulti(
   );
 
   const [cash, setCash] = useState(10000);
-  const [hold, setHold] = useState(() =>
-    Object.fromEntries(symList.current.map((s) => [s, 0]))
-  );
+  const [hold, setHold] = useState(() => Object.fromEntries(symList.current.map((s) => [s, 0])));
   const [trades, setTrades] = useState([]);
   const [equity, setEquity] = useState([]);
 
   const cashRef = useRef(cash);
   const holdRef = useRef(hold);
-  useEffect(() => { cashRef.current = cash; }, [cash]);
-  useEffect(() => { holdRef.current = hold; }, [hold]);
+  useEffect(() => {
+    cashRef.current = cash;
+  }, [cash]);
+  useEffect(() => {
+    holdRef.current = hold;
+  }, [hold]);
 
   const lastPrice = (sym) => ohlcMap[sym]?.at(-1)?.close ?? initialPrice;
 
@@ -269,23 +279,25 @@ function useStocksSimMulti(
         const low = Math.min(open, newClose) * (1 - Math.random() * 0.004);
         const vol = 5000 + Math.random() * 9000;
 
-        nextMap[sym] = [...series.slice(-99), {
-          t: Math.floor(t0.current + series.length * stepMs),
-          open, high, low,
-          close: Math.max(0.01, newClose),
-          volume: vol,
-          symbol: sym,
-        }];
+        nextMap[sym] = [
+          ...series.slice(-99),
+          {
+            t: Math.floor(t0.current + series.length * stepMs),
+            open,
+            high,
+            low,
+            close: Math.max(0.01, newClose),
+            volume: vol,
+            symbol: sym,
+          },
+        ];
       });
       return nextMap;
     });
 
     const hNow = holdRef.current || {};
     const cNow = Number(cashRef.current || 0);
-    const totalHoldValue = Object.entries(hNow).reduce(
-      (sum, [sym, q]) => sum + lastPrice(sym) * (q || 0),
-      0
-    );
+    const totalHoldValue = Object.entries(hNow).reduce((sum, [sym, q]) => sum + lastPrice(sym) * (q || 0), 0);
 
     setEquity((e) => [...e.slice(-199), { t: Date.now(), value: cNow + totalHoldValue }]);
   }
@@ -355,32 +367,36 @@ export default function TradeDemo({
   const [symbols, setSymbols] = useState(defaultSymbols || "BTC,ETH");
   const [stockSymbols, setStockSymbols] = useState("AAPL,MSFT,NVDA,AMZN,TSLA");
 
-  // FIXED: Add all strategies back with proper structure
+  // ✅ Strategy catalog: internal keys unchanged; names changed for UI
   const strategyCatalog = {
     ai_weighted: {
-      name: "Smart Mix",
-      help: "Blends trend, dip-buy, and volume. Only trades when confidence is high.",
+      name: STRATEGY_UI.ai_weighted.name, // Balanced
+      help: STRATEGY_UI.ai_weighted.help,
       defaults: { momentumWeight: 0.4, meanRevWeight: 0.3, volumeWeight: 0.3, minScore: 0.65 },
     },
     momentum: {
-      name: "Momentum",
-      help: "Buys when prices are rising.",
+      name: STRATEGY_UI.momentum.name, // Growth
+      help: STRATEGY_UI.momentum.help,
       defaults: { lookback: 30, threshold: 1.5, cooldown: 10 },
     },
+    mean_reversion: {
+      name: STRATEGY_UI.mean_reversion.name, // Conservative
+      help: STRATEGY_UI.mean_reversion.help,
+      defaults: { band: 2.0, maxHoldBars: 60, size: 1 },
+    },
+    volume_spike: {
+      name: STRATEGY_UI.volume_spike.name, // Aggressive
+      help: STRATEGY_UI.volume_spike.help,
+      defaults: { window: 50, spikeMultiplier: 2.5, cooldown: 15 },
+    },
+
+    // NOTE: dip_buyer exists internally in your file; not requested to show.
+    // Keeping it here is fine, but it would show in the dropdown.
+    // If you do NOT want it visible, remove it or gate it.
     dip_buyer: {
       name: "Dip Buyer",
       help: "Buys after price drops.",
       defaults: { dipThreshold: -0.05, recoveryTarget: 0.03, maxHoldBars: 60 },
-    },
-    mean_reversion: {
-      name: "Mean Reversion",
-      help: "Trades when prices return to normal.",
-      defaults: { band: 2.0, maxHoldBars: 60, size: 1 },
-    },
-    volume_spike: {
-      name: "Volume Spike",
-      help: "Trades when activity suddenly increases.",
-      defaults: { window: 50, spikeMultiplier: 2.5, cooldown: 15 },
     },
   };
 
@@ -451,8 +467,7 @@ export default function TradeDemo({
     { name: "Platinum", minImali: 15000, takeRate: 0.1 },
   ];
   const [currentImali] = useState(userImaliBalance || 0);
-  const getTier = (imali) =>
-    tiers.reduce((acc, t) => (imali >= t.minImali ? t : acc), tiers[0]);
+  const getTier = (imali) => tiers.reduce((acc, t) => (imali >= t.minImali ? t : acc), tiers[0]);
   const activeTier = getTier(currentImali);
 
   const timer = useRef(null);
@@ -513,7 +528,8 @@ export default function TradeDemo({
 
   function rsi(arr, n = 14) {
     if (!arr || arr.length < n + 1) return null;
-    let gains = 0, losses = 0;
+    let gains = 0,
+      losses = 0;
     for (let i = arr.length - n; i < arr.length; i++) {
       const d = Number(arr[i]) - Number(arr[i - 1]);
       if (d > 0) gains += d;
@@ -556,10 +572,7 @@ export default function TradeDemo({
       totalDelta += delta;
 
       setStocksSess((prev) => {
-        const history = [
-          ...(prev?.history || []),
-          { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta },
-        ];
+        const history = [...(prev?.history || []), { t: Date.now(), venue: "STOCKS", sym, pnlDelta: delta }];
         const realizedPnL = (prev?.realizedPnL || 0) + delta;
         return {
           ...(prev || {}),
@@ -580,7 +593,7 @@ export default function TradeDemo({
   /* --------------------------- Start/Config --------------------------- */
   async function startOne(kind) {
     const usingDemoNow = runModeRef.current === "demo";
-    
+
     // Always use local simulation for stocks for now
     if (kind === "stocks") {
       sim.reset(stockList);
@@ -602,16 +615,16 @@ export default function TradeDemo({
       for (const base of apiCandidatesRef.current) {
         try {
           // Step 1: Start session - use only the standard endpoint
-          const startUrl = `${base}/${usingDemoNow ? 'demo' : 'live'}/start`;
+          const startUrl = `${base}/${usingDemoNow ? "demo" : "live"}/start`;
           const startBody = {
             name: kind.toUpperCase(),
             startBalance,
             venue: kind,
-            symbols: parseSymbols()
+            symbols: parseSymbols(),
           };
 
           const startData = await postJson(startUrl, startBody, { timeoutMs: 8000 });
-          
+
           const demoId = startData?.demoId;
           const liveId = startData?.liveId;
           const sessionId = demoId || liveId || startData?.id;
@@ -621,9 +634,9 @@ export default function TradeDemo({
           }
 
           // Step 2: Configure session
-          const configUrl = `${base}/${usingDemoNow ? 'demo' : 'live'}/config`;
+          const configUrl = `${base}/${usingDemoNow ? "demo" : "live"}/config`;
           const configBody = {
-            [usingDemoNow ? 'demoId' : 'liveId']: sessionId,
+            [usingDemoNow ? "demoId" : "liveId"]: sessionId,
             chain,
             symbols: parseSymbols(),
             strategy,
@@ -650,12 +663,10 @@ export default function TradeDemo({
           continue;
         }
       }
-      
-      // If all candidates fail, throw the last error
+
       throw new Error("All API endpoints failed");
     } catch (e) {
       console.error(`API failed for ${kind}:`, e.message);
-      // Fallback to local simulation for demo mode only
       if (usingDemoNow) {
         return {
           local: true,
@@ -711,11 +722,7 @@ export default function TradeDemo({
       let started = [];
 
       if (venue === "bundle") {
-        const [d1, d2, s1] = await Promise.all([
-          startOne("dex"),
-          startOne("cex"),
-          startOne("stocks"),
-        ]);
+        const [d1, d2, s1] = await Promise.all([startOne("dex"), startOne("cex"), startOne("stocks")]);
         setDexSess(d1);
         setCexSess(d2);
         setStocksSess(s1);
@@ -759,9 +766,8 @@ export default function TradeDemo({
   async function tickCryptoOnce(sess, setSess) {
     const usingDemoNow = runModeRef.current === "demo";
     const id = usingDemoNow ? sess?.demoId : sess?.liveId || sess?.sessionId;
-    
+
     if (!id || sess?.local) {
-      // Local simulation
       const delta = (Math.random() - 0.5) * 20;
       setSess((prev) => ({
         ...prev,
@@ -772,12 +778,11 @@ export default function TradeDemo({
     }
 
     try {
-      // Try each API candidate
       for (const base of apiCandidatesRef.current) {
         try {
-          const tickUrl = `${base}/${usingDemoNow ? 'demo' : 'live'}/tick`;
+          const tickUrl = `${base}/${usingDemoNow ? "demo" : "live"}/tick`;
           const body = usingDemoNow ? { demoId: id } : { liveId: id };
-          
+
           const data = await postJson(tickUrl, body, { timeoutMs: 8000 });
 
           setSess((prev) => ({ ...prev, ...data, __venue: prev?.__venue }));
@@ -787,8 +792,7 @@ export default function TradeDemo({
           continue;
         }
       }
-      
-      // If all fail, simulate
+
       const delta = (Math.random() - 0.5) * 15;
       setSess((prev) => ({
         ...prev,
@@ -887,17 +891,19 @@ export default function TradeDemo({
   /* --------------------------- Self-Check panel --------------------------- */
   const runSelfCheck = async () => {
     try {
-      // Try each API candidate
       for (const base of apiCandidatesRef.current) {
         try {
           const healthUrl = `${base}/health`;
           const data = await getJson(healthUrl, { timeoutMs: 5000 });
-          
+
           if (data?.ok) {
             setCheck({ ok: true, message: "API is healthy and reachable" });
             return;
           } else {
-            setCheck({ ok: false, message: data?.message || data?.error || "API responded but not healthy" });
+            setCheck({
+              ok: false,
+              message: data?.message || data?.error || "API responded but not healthy",
+            });
             return;
           }
         } catch (e) {
@@ -905,7 +911,7 @@ export default function TradeDemo({
           continue;
         }
       }
-      
+
       setCheck({
         ok: false,
         message: `All API endpoints unreachable`,
@@ -996,7 +1002,7 @@ export default function TradeDemo({
                 <span>Streak 🔥 {streak}</span>
                 <span>Coins 🪙 {coins}</span>
                 <span>
-                  Net {net >= 0 ? "+" : "-"}${Math.abs(net).toFixed(2)}
+                  Net P&amp;L {net >= 0 ? "+" : "-"}${Math.abs(net).toFixed(2)}
                 </span>
               </div>
             </div>
@@ -1033,9 +1039,7 @@ export default function TradeDemo({
                     <li>
                       Backend reachable: <code>{apiBaseDisplay}/health</code>
                     </li>
-                    <li>
-                      If self-check fails, check your API base URL.
-                    </li>
+                    <li>If self-check fails, check your API base URL.</li>
                   </ul>
                 </div>
               )}
@@ -1069,11 +1073,7 @@ export default function TradeDemo({
         {fatalError && (
           <div className="mt-3 rounded-lg border border-rose-500/80 bg-rose-600 px-3 py-2 text-xs sm:text-sm">
             {fatalError}{" "}
-            <button
-              onClick={runSelfCheck}
-              className="underline font-semibold"
-              title="Call /health on your server"
-            >
+            <button onClick={runSelfCheck} className="underline font-semibold" title="Call /health on your server">
               Run Self-Check
             </button>
             {check.ok === false && <span className="ml-2">• {check.message}</span>}
@@ -1108,8 +1108,8 @@ export default function TradeDemo({
           <div className="space-y-4 rounded-2xl border border-slate-600/60 bg-slate-900/90 p-3 sm:p-4">
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               <FieldCard
-                title="Where to trade? (Step 1)"
-                help="Pick crypto (DEX, CEX), STOCKS (equities), BOTH (DEX+CEX), or BUNDLE (DEX+CEX+STOCKS)."
+                title="What to trade? (Step 1)"
+                help="Choose New Crypto, Established Crypto, New & Established, Stocks, or All."
               >
                 <div className="flex flex-wrap gap-2">
                   {["dex", "cex", "both", "stocks", "bundle"].map((v) => (
@@ -1122,7 +1122,7 @@ export default function TradeDemo({
                           : "bg-slate-800/90 border-slate-600/60 hover:bg-slate-700"
                       }`}
                     >
-                      {v.toUpperCase()}
+                      {VENUE_LABELS[v] || v.toUpperCase()}
                     </button>
                   ))}
                 </div>
@@ -1147,10 +1147,7 @@ export default function TradeDemo({
               </FieldCard>
 
               {venue !== "stocks" && (
-                <FieldCard
-                  title="Crypto Strategy (Step 2)"
-                  help="Choose a trading strategy for crypto markets."
-                >
+                <FieldCard title="Risk Level (Step 2)" help="Choose how conservative or aggressive you want to be.">
                   <select
                     value={strategy}
                     onChange={(e) => {
@@ -1167,6 +1164,10 @@ export default function TradeDemo({
                     ))}
                   </select>
 
+                  <div className="mt-2 text-xs text-slate-400">
+                    {strategyCatalog[strategy]?.help}
+                  </div>
+
                   <div className="mt-3 text-xs text-slate-300">
                     Crypto Symbols:{" "}
                     <input
@@ -1180,10 +1181,7 @@ export default function TradeDemo({
               )}
 
               {(venue === "stocks" || venue === "bundle") && (
-                <FieldCard
-                  title="Stocks Strategy (Step 2)"
-                  help="Uses a Fast/Slow Average crossover with RSI filter."
-                >
+                <FieldCard title="Stocks Strategy (Step 2)" help="Uses a Fast/Slow Average crossover with RSI filter.">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     <label title="Short-term trend line">
                       Fast Average (bars)
@@ -1265,7 +1263,7 @@ export default function TradeDemo({
                 </FieldCard>
               )}
 
-              <FieldCard title="Starting Balance" help="UI scales to this; backend/sim track equity internally.">
+              <FieldCard title="Starting Balance" help="UI scales to this; backend/sim track performance internally.">
                 <input
                   type="number"
                   min="100"
@@ -1279,10 +1277,10 @@ export default function TradeDemo({
               <FieldCard title="How to Start" help="Follow these quick steps to see the demo moving.">
                 <ol className="list-decimal pl-5 space-y-1 text-[13px] text-slate-200">
                   <li>
-                    Pick <b>Where to trade</b> (DEX, CEX, BOTH, STOCKS, or BUNDLE).
+                    Pick <b>What to trade</b> (New Crypto, Established Crypto, New &amp; Established, Stocks, or All).
                   </li>
                   <li>
-                    Set your <b>Strategy</b> and <b>Starting Balance</b>.
+                    Choose your <b>Risk Level</b> and <b>Starting Balance</b>.
                   </li>
                   <li>
                     Click <b>Start {usingDemo ? "Demo" : "Live"}</b>.
@@ -1291,9 +1289,7 @@ export default function TradeDemo({
                     Then click <b>Auto run</b> to stream ticks automatically every ~4s.
                   </li>
                 </ol>
-                <div className="mt-2 text-xs text-slate-400">
-                  Tip: Use <b>Tick once</b> to advance manually.
-                </div>
+                <div className="mt-2 text-xs text-slate-400">Tip: Use <b>Tick once</b> to advance manually.</div>
               </FieldCard>
             </div>
 
@@ -1327,18 +1323,25 @@ export default function TradeDemo({
         {haveAny && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2 sm:gap-3">
-              <Stat label="Equity" value={`$${Number((combined?.equity || 0) + simPnL).toFixed(2)}`} tip="Balance + PnL" />
-              <Stat label="Cash balance" value={`$${Number(combined?.balance || 0).toFixed(2)}`} />
-              <Stat label="Gross PnL" value={`${gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)}`} />
-              <Stat label={`Net PnL (${(takeRate * 100).toFixed(0)}% take)`} value={`${net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}`} />
+              <Stat
+                label="Balance"
+                value={`$${Number((combined?.equity || 0) + simPnL).toFixed(2)}`}
+                tip="Cash + holdings value (simulated)"
+              />
+              <Stat label="Cash Balance" value={`$${Number(combined?.balance || 0).toFixed(2)}`} />
+              <Stat label="Profit & Loss" value={`${gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)}`} />
+              <Stat
+                label={`Net Profit & Loss (${(takeRate * 100).toFixed(0)}% take)`}
+                value={`${net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}`}
+              />
               <Stat label="Wins • Losses" value={`${combined?.wins || 0} • ${combined?.losses || 0}`} />
               <Stat label="XP • Streak" value={`${xp} ⭐ / ${streak} 🔥`} />
               <Stat label="Coins" value={`${coins} 🪙`} />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {dexSess && <Badge color="emerald" text="DEX active" />}
-              {cexSess && <Badge color="sky" text="CEX active" />}
+              {dexSess && <Badge color="emerald" text="New Crypto active" />}
+              {cexSess && <Badge color="sky" text="Established Crypto active" />}
               {stocksSess && <Badge color="emerald" text="STOCKS active" />}
               <Badge color="slate" text="Auto Run ≈ 4s" />
               <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap gap-2">
@@ -1398,8 +1401,8 @@ export default function TradeDemo({
                   }
                   stats={{
                     pnl24h: gross,
-                    winRate: combined?.wins && combined?.losses ? 
-                      (combined.wins / (combined.wins + combined.losses)) * 100 : 0,
+                    winRate:
+                      combined?.wins && combined?.losses ? (combined.wins / (combined.wins + combined.losses)) * 100 : 0,
                     trades: (combined?.wins || 0) + (combined?.losses || 0),
                     sharpe: 1,
                   }}
@@ -1410,8 +1413,8 @@ export default function TradeDemo({
             <div className="p-3 rounded-xl border border-amber-600 bg-amber-400 text-black text-sm sm:text-base">
               <span className="font-semibold">{usingDemo ? "Demo" : "Live"} result so far:</span>{" "}
               <b>
-                Gross {gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)} • Net ({(takeRate * 100).toFixed(0)}% take){" "}
-                {net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}
+                Profit &amp; Loss {gross >= 0 ? "+" : "-"}$${Math.abs(gross).toFixed(2)} • Net ({(takeRate * 100).toFixed(0)}
+                % take) {net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}
               </b>
               <span className="ml-1">
                 • After Start, click <b>Auto run</b> to stream ticks ⭐
@@ -1431,13 +1434,19 @@ export default function TradeDemo({
             <ul className="list-disc pl-5 text-sm text-slate-200 my-3 space-y-1">
               <li>Access to Live API endpoints</li>
               <li>Run real strategies with your params</li>
-              <li>Telegram alerts for fills & risk</li>
+              <li>Telegram alerts for fills &amp; risk</li>
             </ul>
             <div className="flex gap-2 mt-3">
-              <a href="/pricing" className="px-4 py-2 rounded-lg bg-yellow-500 text-black font-semibold hover:bg-yellow-400">
+              <a
+                href="/pricing"
+                className="px-4 py-2 rounded-lg bg-yellow-500 text-black font-semibold hover:bg-yellow-400"
+              >
                 See Plans
               </a>
-              <button onClick={() => setShowUpgrade(false)} className="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10">
+              <button
+                onClick={() => setShowUpgrade(false)}
+                className="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10"
+              >
                 Maybe later
               </button>
             </div>
