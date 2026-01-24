@@ -5,24 +5,27 @@ import { Link } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 
 /* -------------------------- API base resolver (CRA + Vite) -------------------------- */
-// Use the same env convention as your other files
 const RAW_BASE =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) ||
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE) ||
   process.env.REACT_APP_API_BASE_URL ||
   process.env.REACT_APP_API_BASE ||
-  "https://api.imali-defi.com"; // ✅ production-safe
+  "https://api.imali-defi.com"; // production-safe
 
-// Normalize + ensure we hit the API namespace
 const API_BASE = String(RAW_BASE || "").replace(/\/+$/, "");
 const API_PREFIX = "/api";
-const apiUrl = (path) => {
-  const p = String(path || "");
+
+function apiUrl(path) {
+  const p = String(path || "").trim();
   if (!p) return `${API_BASE}${API_PREFIX}`;
+
   const withSlash = p.startsWith("/") ? p : `/${p}`;
-  // If caller already includes /api, keep it; otherwise prefix it
-  return `${API_BASE}${withSlash.startsWith("/api/") ? "" : API_PREFIX}${withSlash}`;
-};
+  // If already includes /api, keep it; otherwise prefix /api
+  if (withSlash.startsWith("/api/") || withSlash === "/api") {
+    return `${API_BASE}${withSlash}`;
+  }
+  return `${API_BASE}${API_PREFIX}${withSlash}`;
+}
 
 /* -------------------------- Help Links -------------------------- */
 const LINKS = {
@@ -74,8 +77,12 @@ function safeTier(me) {
   return "starter";
 }
 
-const shortAddr = (a) => (a && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a || "");
-const cx = (...xs) => xs.filter(Boolean).join(" ");
+const shortAddr = (a) =>
+  a && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a || "";
+
+function cx(...xs) {
+  return xs.filter(Boolean).join(" ");
+}
 
 function Check({ ok }) {
   return ok ? (
@@ -98,7 +105,9 @@ function LockBadge() {
 }
 
 export default function Activation() {
+  /* -------------------------- Wallet context (safe) -------------------------- */
   const wallet = typeof useWallet === "function" ? useWallet() : null;
+
   const connect = wallet?.connect;
   const disconnect = wallet?.disconnect;
   const address = wallet?.address;
@@ -107,12 +116,15 @@ export default function Activation() {
   const walletReady = !!wallet && typeof connect === "function";
   const walletConnected = !!address;
 
-  const [tab, setTab] = useState("overview");
+  /* -------------------------- Tabs -------------------------- */
+  const [tab, setTab] = useState("overview"); // overview | stocks | cex | dex
 
+  /* -------------------------- Me -------------------------- */
   const [me, setMe] = useState(null);
   const [meErr, setMeErr] = useState("");
   const [meLoading, setMeLoading] = useState(true);
 
+  /* -------------------------- Execution mode -------------------------- */
   const [execMode, setExecMode] = useState("auto");
   const [execSaving, setExecSaving] = useState(false);
   const [execMsg, setExecMsg] = useState("");
@@ -149,37 +161,48 @@ export default function Activation() {
   const [wErr, setWErr] = useState("");
   const [wOk, setWOk] = useState("");
 
-  /* -------------------------- Email source-of-truth -------------------------- */
-  // You must have *some* email to satisfy /api/me in your current backend
-  const localEmail = useMemo(() => {
-    const v =
-      (typeof window !== "undefined" && (localStorage.getItem("imali_email") || localStorage.getItem("email"))) || "";
-    return String(v || "").trim().toLowerCase();
-  }, []);
+  /* -------------------------- Email getter -------------------------- */
+  const getEmail = () => {
+    try {
+      const v =
+        (typeof window !== "undefined" &&
+          (localStorage.getItem("imali_email") || localStorage.getItem("email"))) ||
+        "";
+      return String(v || "").trim().toLowerCase();
+    } catch {
+      return "";
+    }
+  };
 
-  /* -------------------------- axios instance -------------------------- */
+  /* -------------------------- axios instance + header injection -------------------------- */
   const AX = useMemo(() => {
-    return axios.create({
+    const ax = axios.create({
       withCredentials: true,
       timeout: 20_000,
       headers: { "Content-Type": "application/json" },
     });
+
+    ax.interceptors.request.use((config) => {
+      const email = (me?.email || getEmail() || "").trim().toLowerCase();
+      if (email) config.headers["X-Imali-Email"] = email;
+      return config;
+    });
+
+    return ax;
+    // IMPORTANT: don't depend on `me` here (would recreate AX too often)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const authHeaders = useMemo(() => {
-    // Use me.email if present, else localStorage
-    const email = String(me?.email || localEmail || "").trim().toLowerCase();
-    return email ? { "X-Imali-Email": email } : {};
-  }, [me?.email, localEmail]);
-
   const requireEmailOrFail = () => {
-    const email = String(me?.email || localEmail || "").trim().toLowerCase();
+    const email = (me?.email || getEmail() || "").trim().toLowerCase();
     if (!email) {
-      setMeErr("Email missing. Please log in or sign up again so we can load /api/me.");
-      return null;
+      setMeErr("Email missing. Please log in or sign up again so we can load your account.");
+      return "";
     }
     return email;
   };
+
+  const normalizeMe = (data) => (data?.user ? data.user : data);
 
   const loadMe = async () => {
     setMeLoading(true);
@@ -192,12 +215,13 @@ export default function Activation() {
     }
 
     try {
-      const { data } = await AX.get(apiUrl("/me"), { headers: { ...authHeaders } });
-      setMe(data?.user ? data.user : data); // supports either {user} or flat me
+      const { data } = await AX.get(apiUrl("/me"));
+      const meObj = normalizeMe(data);
+      setMe(meObj || null);
 
-      const t = safeTier(data?.user || data);
-      const rules = TIER_RULES[t];
-      const serverMode = (data?.user || data)?.execution_mode || "auto";
+      const t = safeTier(meObj);
+      const rules = TIER_RULES[t] || TIER_RULES.starter;
+      const serverMode = meObj?.execution_mode || "auto";
 
       if (rules.lockMode === "auto") setExecMode("auto");
       else setExecMode(serverMode === "manual" ? "manual" : "auto");
@@ -228,8 +252,7 @@ export default function Activation() {
 
       try {
         const { data } = await AX.get(apiUrl("/activation/stock-setup"), {
-          headers: { ...authHeaders },
-          params: { email }, // optional
+          params: { email }, // optional on backend
         });
         if (!mounted || !data) return;
 
@@ -262,7 +285,8 @@ export default function Activation() {
   const walletSaved = !!(activation.wallet_saved || me?.wallet_saved || me?.walletAddress);
 
   const walletStepOk = walletConnected && walletSaved;
-  const execOk = rules.lockMode === "auto" ? execMode === "auto" : execMode === "manual" || execMode === "auto";
+  const execOk =
+    rules.lockMode === "auto" ? execMode === "auto" : execMode === "manual" || execMode === "auto";
 
   const stocksOk = !rules.require.stocks || brokerConnected;
   const okxOk = !rules.require.okx || okxVerified;
@@ -270,6 +294,7 @@ export default function Activation() {
 
   const activationComplete = execOk && stocksOk && okxOk && dexOk;
 
+  /* -------------------------- tab gating -------------------------- */
   const canOpenDex = rules.allowDex;
   const canOpenOkx = rules.allowOkx;
   const canOpenStocks = rules.allowStocks;
@@ -308,18 +333,14 @@ export default function Activation() {
 
     try {
       const desired = rules.lockMode === "auto" ? "auto" : execMode;
-
-      await AX.post(
-        apiUrl("/me/execution-mode"),
-        { execution_mode: desired, email },
-        { headers: { ...authHeaders } }
-      );
-
+      await AX.post(apiUrl("/me/execution-mode"), { execution_mode: desired, email });
       setExecMsg("Saved ✓");
       setTimeout(() => setExecMsg(""), 1500);
       await loadMe();
     } catch (e) {
-      setExecMsg(e?.response?.data?.detail || e?.response?.data?.error || e?.message || "Save failed");
+      setExecMsg(
+        e?.response?.data?.detail || e?.response?.data?.error || e?.message || "Save failed"
+      );
     } finally {
       setExecSaving(false);
     }
@@ -332,7 +353,7 @@ export default function Activation() {
     if (!email) return;
 
     try {
-      await AX.post(apiUrl("/me/trading/stop"), { email }, { headers: { ...authHeaders } });
+      await AX.post(apiUrl("/me/trading/stop"), { email });
       alert("Trading stopped.");
     } catch (e) {
       alert(e?.response?.data?.detail || e?.response?.data?.error || "Stop failed");
@@ -353,32 +374,32 @@ export default function Activation() {
 
     try {
       if (stockBroker === "paper") {
-        await AX.post(apiUrl("/broker/connect"), { broker: "paper", email }, { headers: { ...authHeaders } });
+        await AX.post(apiUrl("/broker/connect"), { broker: "paper", email });
         setSOk("✅ Paper mode saved for Stocks.");
       } else {
         if (!sApiKey.trim() || !sApiSecret.trim()) throw new Error("API Key & Secret required.");
 
-        // ✅ Alpaca only right now
-        await AX.post(
-          apiUrl("/broker/connect"),
-          {
-            broker: "alpaca",
-            api_key: sApiKey.trim(),
-            api_secret: sApiSecret.trim(),
-            passphrase: sPassphrase.trim() || null,
-            email,
-          },
-          { headers: { ...authHeaders } }
-        );
+        // If you're only supporting Alpaca for now, force it:
+        await AX.post(apiUrl("/broker/connect"), {
+          broker: "alpaca",
+          api_key: sApiKey.trim(),
+          api_secret: sApiSecret.trim(),
+          passphrase: sPassphrase.trim() || null,
+          email,
+        });
 
-        const { data } = await AX.post(apiUrl("/broker/test"), { broker: "alpaca", email }, { headers: { ...authHeaders } });
+        const { data } = await AX.post(apiUrl("/broker/test"), { broker: "alpaca", email });
         setSOk(data?.ok ? "✅ Alpaca connected and verified." : "⚠️ Saved. Verification pending.");
         setSApiSecret("");
       }
-
       await loadMe();
     } catch (e2) {
-      setSErr(e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Failed to connect broker.");
+      setSErr(
+        e2?.response?.data?.detail ||
+          e2?.response?.data?.error ||
+          e2?.message ||
+          "Failed to connect broker."
+      );
     } finally {
       setSSaving(false);
     }
@@ -395,27 +416,31 @@ export default function Activation() {
     }
 
     try {
-      await AX.post(
-        apiUrl("/activation/stock-setup"),
-        {
-          email,
-          mode,
-          symbols:
-            mode === "fixed"
-              ? symbols.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean)
-              : [],
-          autoCount: Number(autoCount),
-          minPrice: Number(minPrice),
-          minDollarVol: Number(minDollarVol),
-          blacklist: blacklist.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
-        },
-        { headers: { ...authHeaders } }
-      );
+      await AX.post(apiUrl("/activation/stock-setup"), {
+        email,
+        mode,
+        symbols:
+          mode === "fixed"
+            ? symbols
+                .split(",")
+                .map((s) => s.trim().toUpperCase())
+                .filter(Boolean)
+            : [],
+        autoCount: Number(autoCount),
+        minPrice: Number(minPrice),
+        minDollarVol: Number(minDollarVol),
+        blacklist: blacklist
+          .split(",")
+          .map((s) => s.trim().toUpperCase())
+          .filter(Boolean),
+      });
 
       setUMsg("Saved ✓");
       setTimeout(() => setUMsg(""), 1500);
     } catch (e2) {
-      setUMsg(e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Save failed");
+      setUMsg(
+        e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Save failed"
+      );
     } finally {
       setUSaving(false);
     }
@@ -438,26 +463,27 @@ export default function Activation() {
         throw new Error("API Key, Secret, and Passphrase are required.");
       }
 
-      await AX.post(
-        apiUrl("/exchange/connect"),
-        {
-          exchange: "okx",
-          api_key: apiKey.trim(),
-          api_secret: apiSecret.trim(),
-          passphrase: passphrase.trim(),
-          subaccount: subaccount.trim() || null,
-          email,
-        },
-        { headers: { ...authHeaders } }
-      );
+      await AX.post(apiUrl("/exchange/connect"), {
+        exchange: "okx",
+        api_key: apiKey.trim(),
+        api_secret: apiSecret.trim(),
+        passphrase: passphrase.trim(),
+        subaccount: subaccount.trim() || null,
+        email,
+      });
 
-      const { data } = await AX.post(apiUrl("/exchange/test"), { exchange: "okx", email }, { headers: { ...authHeaders } });
+      const { data } = await AX.post(apiUrl("/exchange/test"), { exchange: "okx", email });
       setCOk(data?.ok ? "✅ OKX connected and verified." : "⚠️ OKX saved. Verification pending.");
       setApiSecret("");
 
       await loadMe();
     } catch (e2) {
-      setCErr(e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Failed to connect OKX.");
+      setCErr(
+        e2?.response?.data?.detail ||
+          e2?.response?.data?.error ||
+          e2?.message ||
+          "Failed to connect OKX."
+      );
     } finally {
       setCSaving(false);
     }
@@ -478,22 +504,28 @@ export default function Activation() {
       if (!walletReady) throw new Error("Wallet system not loaded. Check WalletProvider.");
       if (!address) throw new Error("Please connect your wallet first.");
 
-      await AX.post(
-        apiUrl("/me/wallet"),
-        { email, address, chainId: Number(chainId) || null },
-        { headers: { ...authHeaders } }
-      );
+      await AX.post(apiUrl("/me/wallet"), {
+        email,
+        address,
+        chainId: Number(chainId) || null,
+      });
 
       setWOk("Saved ✓");
       setTimeout(() => setWOk(""), 1500);
       await loadMe();
     } catch (e2) {
-      setWErr(e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Failed to save wallet.");
+      setWErr(
+        e2?.response?.data?.detail ||
+          e2?.response?.data?.error ||
+          e2?.message ||
+          "Failed to save wallet."
+      );
     } finally {
       setWSaving(false);
     }
   };
 
+  /* -------------------------- UI bits -------------------------- */
   const TabBtn = ({ id, label, disabled }) => (
     <button
       type="button"
@@ -520,6 +552,7 @@ export default function Activation() {
 
   return (
     <div className="max-w-4xl mx-auto p-6 text-white">
+      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Activation</h1>
@@ -527,11 +560,10 @@ export default function Activation() {
             Connect what you want to trade. Starter is <b>Auto-only</b>. Your dashboard unlocks after required steps.
           </p>
           <div className="mt-2 text-xs text-white/50">
-            API Base: <span className="font-mono">{API_BASE}</span>
+            API Base: <span className="font-mono">{apiUrl("")}</span>
           </div>
         </div>
 
-        {/* ✅ Gate STOP button so it doesn’t scare users / show when not ready */}
         {activationComplete && (
           <button
             type="button"
@@ -567,7 +599,7 @@ export default function Activation() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm">
               <div className="text-white/90">
-                Signed in as <span className="font-mono">{me?.email || localEmail || "—"}</span>
+                Signed in as <span className="font-mono">{me?.email || getEmail() || "—"}</span>
               </div>
               <div className="text-white/70">
                 Tier: <b>{tierLabel}</b> • Status: <b>{me?.is_active ? "Active" : "Pending"}</b>
@@ -591,6 +623,64 @@ export default function Activation() {
         )}
       </div>
 
+      {/* Execution mode */}
+      <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold mb-1">How should IMALI run?</h2>
+            <p className="text-sm text-white/70">
+              <b>Manual</b> = alerts only (you click Buy/Sell). <b>Auto</b> = IMALI can place trades for you.
+            </p>
+            {rules.lockMode === "auto" ? (
+              <div className="mt-2 text-xs text-amber-200/90">
+                Starter tier is <b>Auto-only</b>.
+              </div>
+            ) : null}
+          </div>
+          <div className="text-sm">
+            <Check ok={execOk} />
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2 items-center">
+          <button
+            type="button"
+            disabled={!rules.allowManual}
+            onClick={() => setExecMode("manual")}
+            className={cx(
+              "px-3 py-2 rounded-xl border",
+              execMode === "manual" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10",
+              !rules.allowManual ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10"
+            )}
+          >
+            ✅ Manual (alerts)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setExecMode("auto")}
+            className={cx(
+              "px-3 py-2 rounded-xl border",
+              execMode === "auto" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10",
+              "hover:bg-white/10"
+            )}
+          >
+            ⚡ Auto
+          </button>
+
+          <button
+            type="button"
+            disabled={execSaving}
+            onClick={saveExecutionMode}
+            className="ml-auto px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold disabled:opacity-60"
+          >
+            {execSaving ? "Saving…" : "Save"}
+          </button>
+        </div>
+
+        {execMsg ? <div className="mt-2 text-sm text-white/80">{execMsg}</div> : null}
+      </div>
+
       {/* Tabs */}
       <div className="mt-6 flex gap-2 flex-wrap">
         <TabBtn id="overview" label="Overview" />
@@ -608,74 +698,183 @@ export default function Activation() {
         </div>
       ) : null}
 
-      {/* STOCKS */}
-      {tab === "stocks" && (
+      {/* OVERVIEW */}
+      {tab === "overview" && (
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold mb-1">Stocks: pick Paper or connect Alpaca</h2>
-              <p className="text-sm text-white/70">Paper = simulator (recommended first). Alpaca = live broker keys.</p>
+          <h3 className="text-lg font-bold mb-3">Activation checklist</h3>
+
+          <div className="space-y-3 text-sm text-white/85">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold">1) Run mode</div>
+                <div className="text-white/60">Starter is Auto-only. Other tiers can use alerts or auto-trading.</div>
+              </div>
+              <Check ok={execOk} />
             </div>
-            <Check ok={brokerConnected} />
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold">2) Stocks (optional unless required by tier)</div>
+                <div className="text-white/60">Paper simulator is fine to start.</div>
+              </div>
+              <Check ok={stocksOk} />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold">3) Established Crypto (OKX)</div>
+                <div className="text-white/60">Add keys + verify. Shows a green check when verified.</div>
+              </div>
+              <Check ok={okxOk} />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold">4) New Crypto (Wallet / DEX)</div>
+                <div className="text-white/60">Connect wallet + save it (required only on DEX-enabled tiers).</div>
+              </div>
+              <Check ok={dexOk} />
+            </div>
           </div>
 
-          <form onSubmit={connectStock} className="space-y-4 mt-4">
-            <label className="block">
-              <span className="text-sm">Broker</span>
-              <select
-                value={stockBroker}
-                onChange={(e) => {
-                  setStockBroker(e.target.value);
-                  setSErr("");
-                  setSOk("");
-                }}
-                className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
-              >
-                <option value="paper">Paper (Simulator)</option>
-                <option value="alpaca">Alpaca</option>
-              </select>
-            </label>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link
+              to={activationComplete ? LINKS.dashboard : "#"}
+              onClick={(e) => {
+                if (!activationComplete) e.preventDefault();
+              }}
+              className={cx(
+                "px-4 py-2 rounded-2xl font-bold",
+                activationComplete
+                  ? "bg-indigo-600 hover:bg-indigo-500"
+                  : "bg-white/10 border border-white/10 text-white/50 cursor-not-allowed"
+              )}
+              title={activationComplete ? "Open dashboard" : "Complete activation steps to unlock dashboard"}
+            >
+              Go to Dashboard
+            </Link>
 
-            {stockBroker !== "paper" && (
-              <>
-                <label className="block">
-                  <span className="text-sm">API Key</span>
-                  <input value={sApiKey} onChange={(e) => setSApiKey(e.target.value)}
-                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10" autoComplete="off" required />
-                </label>
+            <Link
+              to={LINKS.pricing}
+              className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 font-bold"
+            >
+              View Plans
+            </Link>
 
-                <label className="block">
-                  <span className="text-sm">API Secret</span>
-                  <input value={sApiSecret} onChange={(e) => setSApiSecret(e.target.value)} type="password"
-                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10" autoComplete="new-password" required />
-                </label>
-
-                <label className="block">
-                  <span className="text-sm">Passphrase (not used for Alpaca)</span>
-                  <input value={sPassphrase} onChange={(e) => setSPassphrase(e.target.value)}
-                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10" placeholder="Leave blank" />
-                </label>
-              </>
+            {!activationComplete ? (
+              <span className="self-center text-xs text-amber-200/90">
+                Dashboard is locked until required steps are complete.
+              </span>
+            ) : (
+              <span className="self-center text-xs text-emerald-300/90">
+                Activation complete — you’re good to go.
+              </span>
             )}
+          </div>
+        </div>
+      )}
 
-            <button disabled={sSaving} className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 font-bold disabled:opacity-60">
-              {sSaving ? "Saving..." : stockBroker === "paper" ? "Save Paper Mode" : "Save & Verify"}
-            </button>
+      {/* STOCKS */}
+      {tab === "stocks" && (
+        <>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold mb-1">Stocks: pick Paper or connect Alpaca</h2>
+                <p className="text-sm text-white/70">Paper = simulator (recommended first). Alpaca = live broker keys.</p>
+              </div>
+              <Check ok={brokerConnected} />
+            </div>
 
-            {sErr && <div className="text-red-300 text-sm">{sErr}</div>}
-            {sOk && <div className="text-emerald-300 text-sm">{sOk}</div>}
-          </form>
+            <form onSubmit={connectStock} className="space-y-4 mt-4">
+              <label className="block">
+                <span className="text-sm">Broker</span>
+                <select
+                  value={stockBroker}
+                  onChange={(e) => {
+                    setStockBroker(e.target.value);
+                    setSErr("");
+                    setSOk("");
+                  }}
+                  className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                >
+                  <option value="paper">Paper (Simulator)</option>
+                  <option value="alpaca">Alpaca</option>
+                </select>
+              </label>
+
+              {stockBroker !== "paper" && (
+                <>
+                  <label className="block">
+                    <span className="text-sm">API Key</span>
+                    <input
+                      value={sApiKey}
+                      onChange={(e) => setSApiKey(e.target.value)}
+                      className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                      autoComplete="off"
+                      required
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm">API Secret</span>
+                    <input
+                      value={sApiSecret}
+                      onChange={(e) => setSApiSecret(e.target.value)}
+                      type="password"
+                      className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                      autoComplete="new-password"
+                      required
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm">Passphrase (optional)</span>
+                    <input
+                      value={sPassphrase}
+                      onChange={(e) => setSPassphrase(e.target.value)}
+                      className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                      placeholder="Leave blank if not used"
+                    />
+                  </label>
+                </>
+              )}
+
+              <button
+                disabled={sSaving}
+                className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 font-bold disabled:opacity-60"
+              >
+                {sSaving ? "Saving..." : stockBroker === "paper" ? "Save Paper Mode" : "Save & Verify"}
+              </button>
+
+              {sErr && <div className="text-red-300 text-sm">{sErr}</div>}
+              {sOk && <div className="text-emerald-300 text-sm">{sOk}</div>}
+            </form>
+          </div>
 
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
             <h2 className="text-lg font-bold mb-2">Stocks: choose symbols (or auto-pick)</h2>
 
             <div className="flex gap-2 mb-4">
-              <button type="button" onClick={() => setMode("fixed")}
-                className={cx("px-3 py-2 rounded-xl border", mode === "fixed" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10")}>
+              <button
+                type="button"
+                onClick={() => setMode("fixed")}
+                className={cx(
+                  "px-3 py-2 rounded-xl border",
+                  mode === "fixed" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10"
+                )}
+              >
                 Pick symbols
               </button>
-              <button type="button" onClick={() => setMode("auto")}
-                className={cx("px-3 py-2 rounded-xl border", mode === "auto" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10")}>
+
+              <button
+                type="button"
+                onClick={() => setMode("auto")}
+                className={cx(
+                  "px-3 py-2 rounded-xl border",
+                  mode === "auto" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10"
+                )}
+              >
                 Auto-pick top movers
               </button>
             </div>
@@ -683,47 +882,220 @@ export default function Activation() {
             {mode === "fixed" ? (
               <label className="block">
                 <span className="text-sm">Symbols (comma separated)</span>
-                <input value={symbols} onChange={(e) => setSymbols(e.target.value)}
-                  placeholder="SPY,QQQ,AAPL" className="w-full p-3 bg-black/30 rounded-xl border border-white/10" />
+                <input
+                  value={symbols}
+                  onChange={(e) => setSymbols(e.target.value)}
+                  placeholder="SPY,QQQ,AAPL"
+                  className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                />
               </label>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-sm">Top N</span>
-                  <input type="number" min={5} max={100} value={autoCount} onChange={(e) => setAutoCount(e.target.value)}
-                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10" />
+                  <input
+                    type="number"
+                    min={5}
+                    max={100}
+                    value={autoCount}
+                    onChange={(e) => setAutoCount(e.target.value)}
+                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                  />
                 </label>
+
                 <label className="block">
                   <span className="text-sm">Min price ($)</span>
-                  <input type="number" min={1} value={minPrice} onChange={(e) => setMinPrice(e.target.value)}
-                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10" />
+                  <input
+                    type="number"
+                    min={1}
+                    value={minPrice}
+                    onChange={(e) => setMinPrice(e.target.value)}
+                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                  />
                 </label>
+
                 <label className="block">
                   <span className="text-sm">Min dollar volume</span>
-                  <input type="number" step={100000} value={minDollarVol} onChange={(e) => setMinDollarVol(e.target.value)}
-                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10" />
+                  <input
+                    type="number"
+                    step={100000}
+                    value={minDollarVol}
+                    onChange={(e) => setMinDollarVol(e.target.value)}
+                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                  />
                 </label>
+
                 <label className="block md:col-span-2">
                   <span className="text-sm">Blacklist</span>
-                  <input value={blacklist} onChange={(e) => setBlacklist(e.target.value)} placeholder="OTC,LOWFLOAT"
-                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10" />
+                  <input
+                    value={blacklist}
+                    onChange={(e) => setBlacklist(e.target.value)}
+                    placeholder="OTC,LOWFLOAT"
+                    className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                  />
                 </label>
               </div>
             )}
 
             <div className="mt-4 flex items-center gap-3">
-              <button type="button" disabled={uSaving} onClick={saveUniverse}
-                className="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 font-bold disabled:opacity-60">
+              <button
+                type="button"
+                disabled={uSaving}
+                onClick={saveUniverse}
+                className="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 font-bold disabled:opacity-60"
+              >
                 {uSaving ? "Saving…" : "Save"}
               </button>
               {uMsg && <span className="text-sm">{uMsg}</span>}
             </div>
           </div>
+        </>
+      )}
+
+      {/* CEX */}
+      {tab === "cex" && (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold mb-1">Established Crypto: connect OKX</h2>
+              <p className="text-sm text-white/70">
+                Add keys and verify. You’ll see a green check when OKX is correctly connected.
+              </p>
+
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <Link className="underline text-emerald-300" to={LINKS.okxApiGuide}>
+                  How to create OKX API keys
+                </Link>
+                <Link className="underline text-emerald-300" to={LINKS.okxFunding}>
+                  Funding guide
+                </Link>
+              </div>
+            </div>
+            <Check ok={okxVerified} />
+          </div>
+
+          <form onSubmit={connectOKX} className="space-y-4 mt-4">
+            <label className="block">
+              <span className="text-sm">API Key</span>
+              <input
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                autoComplete="off"
+                required
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm">API Secret</span>
+              <input
+                value={apiSecret}
+                onChange={(e) => setApiSecret(e.target.value)}
+                type="password"
+                className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                autoComplete="new-password"
+                required
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm">Passphrase</span>
+              <input
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                required
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm">Subaccount (optional)</span>
+              <input
+                value={subaccount}
+                onChange={(e) => setSubaccount(e.target.value)}
+                className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
+                placeholder="Leave blank if not used"
+              />
+            </label>
+
+            <button
+              disabled={cSaving}
+              className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 font-bold disabled:opacity-60"
+            >
+              {cSaving ? "Saving..." : "Save & Verify"}
+            </button>
+
+            {cErr && <div className="text-red-300 text-sm">{cErr}</div>}
+            {cOk && <div className="text-emerald-300 text-sm">{cOk}</div>}
+          </form>
         </div>
       )}
 
-      {/* CEX + DEX sections unchanged in this shortened patch */}
-      {/* Keep your existing CEX/DEX UI but ensure apiUrl("/...") routes match backend */}
+      {/* DEX */}
+      {tab === "dex" && (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold mb-1">New Crypto: connect your wallet (DEX)</h2>
+              <p className="text-sm text-white/70">
+                DEX tokens can be very new and risky. This step connects your wallet for DEX features.
+              </p>
+
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <a className="underline text-emerald-300" href={LINKS.metamaskInstall} target="_blank" rel="noreferrer">
+                  Get MetaMask
+                </a>
+                <Link className="underline text-emerald-300" to={LINKS.walletFunding}>
+                  Funding guide
+                </Link>
+              </div>
+            </div>
+            <Check ok={walletStepOk} />
+          </div>
+
+          {!walletReady ? (
+            <div className="mt-4 text-sm text-amber-200">
+              Wallet system isn’t available. Fix WalletContext/WalletProvider first so{" "}
+              <code className="bg-black/30 px-1 rounded">useWallet()</code> works.
+            </div>
+          ) : walletConnected ? (
+            <>
+              <div className="mt-4 text-sm">
+                Connected: <span className="font-mono">{shortAddr(address)}</span>
+                {chainId ? <span className="text-white/60"> (chain {chainId})</span> : null}
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={disconnect} className="px-4 py-2 rounded-2xl bg-gray-700 hover:bg-gray-600">
+                  Disconnect
+                </button>
+
+                <button
+                  type="button"
+                  disabled={wSaving}
+                  onClick={saveWallet}
+                  className="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {wSaving ? "Saving…" : walletSaved ? "Saved ✓" : "Save Wallet"}
+                </button>
+              </div>
+
+              {wErr && <div className="text-red-300 text-sm mt-2">{wErr}</div>}
+              {wOk && <div className="text-emerald-300 text-sm mt-2">{wOk}</div>}
+            </>
+          ) : (
+            <>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={connect} className="px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500">
+                  Connect Wallet
+                </button>
+              </div>
+
+              <div className="text-xs text-gray-400 mt-2">No API keys required for this step.</div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
