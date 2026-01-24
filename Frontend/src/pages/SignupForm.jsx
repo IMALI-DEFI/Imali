@@ -10,24 +10,70 @@ import EliteNFT from "../assets/images/nfts/nft-elite.png";
 import StockNFT from "../assets/images/nfts/nft-stock.png";
 import BundleNFT from "../assets/images/nfts/nft-bundle.png";
 
+/**
+ * API Base resolution (supports CRA + Vite)
+ * - Vite:  VITE_API_BASE
+ * - CRA:   REACT_APP_API_BASE
+ * - Local: http://localhost:8001 (only when hostname is localhost)
+ * - Prod:  https://api.imali-defi.com (safe default)
+ */
 const API_BASE =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE) ||
   process.env.REACT_APP_API_BASE ||
-  "http://localhost:8001";
+  (typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:8001"
+    : "https://api.imali-defi.com");
 
-const TIERS = {
-  starter: { img: StarterNFT, label: "Starter", base: 0, color: "from-sky-500 to-sky-700" },
-  pro: { img: ProNFT, label: "Pro", base: 19, color: "from-fuchsia-500 to-fuchsia-700" },
-  elite: { img: EliteNFT, label: "Elite", base: 49, color: "from-amber-500 to-amber-700" },
-  stock: { img: StockNFT, label: "Stocks", base: 99, color: "from-yellow-500 to-yellow-700" },
-  bundle: { img: BundleNFT, label: "Bundle", base: 199, color: "from-zinc-500 to-zinc-700" },
+// ✅ Python backend routes are under /api/*
+const API = {
+  signup: `${API_BASE}/api/signup`,
+  promoStatus: `${API_BASE}/api/promo/status`, // optional (safe if missing)
+  checkout: `${API_BASE}/api/billing/create-checkout`, // ensure your backend matches this
 };
 
+const TIERS = {
+  starter: {
+    img: StarterNFT,
+    label: "Starter",
+    base: 0,
+    color: "from-sky-500 to-sky-700",
+  },
+  pro: {
+    img: ProNFT,
+    label: "Pro",
+    base: 19,
+    color: "from-fuchsia-500 to-fuchsia-700",
+  },
+  elite: {
+    img: EliteNFT,
+    label: "Elite",
+    base: 49,
+    color: "from-amber-500 to-amber-700",
+  },
+  stock: {
+    img: StockNFT,
+    label: "Stocks",
+    base: 99,
+    color: "from-yellow-500 to-yellow-700",
+  },
+  bundle: {
+    img: BundleNFT,
+    label: "Bundle",
+    base: 199,
+    color: "from-zinc-500 to-zinc-700",
+  },
+};
+
+/**
+ * IMPORTANT:
+ * Your backend tests used "growth" as the strategy value.
+ * So the dropdown values here match backend values.
+ */
 const STRATEGIES = [
-  { value: "momentum", label: "Growth" },
-  { value: "mean_reversion", label: "Conservative" },
-  { value: "ai_weighted", label: "Balanced" },
-  { value: "volume_spike", label: "Agressive" },
+  { value: "growth", label: "Growth" },
+  { value: "conservative", label: "Conservative" },
+  { value: "balanced", label: "Balanced" },
+  { value: "aggressive", label: "Aggressive" },
 ];
 
 function fireConfetti(container) {
@@ -55,6 +101,16 @@ function fireConfetti(container) {
   }
 }
 
+function pickTierFromQuery(qTierRaw) {
+  const qTier = (qTierRaw || "").toLowerCase().trim();
+  return qTier && TIERS[qTier] ? qTier : null;
+}
+
+function pickStrategyFromQuery(qStratRaw) {
+  const q = (qStratRaw || "").toLowerCase().trim();
+  return STRATEGIES.some((s) => s.value === q) ? q : null;
+}
+
 export default function SignupForm() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -62,28 +118,38 @@ export default function SignupForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [tier, setTier] = useState("starter");
-  const [strategy, setStrategy] = useState("momentum");
+  const [strategy, setStrategy] = useState("growth");
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+
   const [promo, setPromo] = useState(null); // { eligible:boolean, remaining:number, message:string } optional
 
+  // Pull tier + strategy from query (Telegram links etc)
   useEffect(() => {
-    const qTier = (params.get("tier") || "").toLowerCase();
-    if (qTier && TIERS[qTier]) setTier(qTier);
+    const qTier = pickTierFromQuery(params.get("tier"));
+    if (qTier) setTier(qTier);
+
+    const qStrategy = pickStrategyFromQuery(params.get("strategy"));
+    if (qStrategy) setStrategy(qStrategy);
   }, [params]);
 
   const emailValid = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), [email]);
   const activeTier = TIERS[tier] || TIERS.starter;
   const badgeStyle = `bg-gradient-to-r ${activeTier.color} text-white`;
 
-  // OPTIONAL: ask FastAPI for promo status (safe to ignore if endpoint doesn't exist yet)
+  // OPTIONAL: promo status (safe to ignore if endpoint doesn't exist)
   useEffect(() => {
     let mounted = true;
 
     (async () => {
       try {
-        const { data } = await axios.get(`${API_BASE}/promo/status`, { withCredentials: true });
+        const { data } = await axios.get(API.promoStatus, {
+          withCredentials: true,
+          timeout: 6000,
+        });
         if (!mounted) return;
         setPromo(data || null);
       } catch {
@@ -109,11 +175,11 @@ export default function SignupForm() {
       if (!emailValid) throw new Error("Enter a valid email.");
       if (!password || password.length < 8) throw new Error("Password must be at least 8 characters.");
 
-      // 1) Create account (FastAPI should set a session cookie OR return a token)
+      // 1) Create account (Python backend: POST /api/signup)
       await axios.post(
-        `${API_BASE}/auth/signup`,
+        API.signup,
         { email: cleanEmail, password, tier, strategy },
-        { withCredentials: true }
+        { withCredentials: true, timeout: 15000 }
       );
 
       localStorage.setItem("IMALI_EMAIL", cleanEmail);
@@ -125,17 +191,16 @@ export default function SignupForm() {
         return;
       }
 
-      // 3) Paid tiers -> Stripe checkout created by FastAPI
+      // 3) Paid tiers -> Stripe checkout created by backend (ensure route exists)
       const { data } = await axios.post(
-        `${API_BASE}/billing/create-checkout`,
+        API.checkout,
         {
           tier,
           strategy,
-          // backend decides pricing + promo eligibility
           success_path: "/activation",
           cancel_path: `/signup?tier=${tier}&canceled=1`,
         },
-        { withCredentials: true }
+        { withCredentials: true, timeout: 15000 }
       );
 
       if (!data?.checkout_url) throw new Error("No checkout URL returned.");
@@ -163,6 +228,11 @@ export default function SignupForm() {
           </div>
 
           {promo?.message ? <div className="mt-2 text-xs text-white/70">{promo.message}</div> : null}
+
+          {/* Helpful debug line (safe to remove later) */}
+          <div className="mt-2 text-[11px] text-white/40">
+            API: {API_BASE}
+          </div>
         </div>
 
         <div className="grid lg:grid-cols-5 gap-6">
@@ -190,7 +260,7 @@ export default function SignupForm() {
                 <div className="text-xs text-amber-200/90">Not financial advice. Trading has risk.</div>
               </div>
 
-              <div className="mt-4 text-xs text-white/60">“Stocks and Established Cryto Trades"</div>
+              <div className="mt-4 text-xs text-white/60">“Stocks and Established Crypto Trades"</div>
             </div>
 
             <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
@@ -208,7 +278,6 @@ export default function SignupForm() {
             <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
               <div className={`h-1 w-full bg-gradient-to-r ${activeTier.color}`} />
 
-              {/* Header strip */}
               <div className="p-5 border-b border-white/10">
                 <div className="text-sm text-white/70 mt-1">Create your account to get started with IMALI.</div>
               </div>
