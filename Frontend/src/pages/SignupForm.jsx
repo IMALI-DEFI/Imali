@@ -27,8 +27,8 @@ const API_BASE =
 // ✅ Python backend routes are under /api/*
 const API = {
   signup: `${API_BASE}/api/signup`,
-  promoStatus: `${API_BASE}/api/promo/status`, // optional (safe if missing)
-  checkout: `${API_BASE}/api/billing/create-checkout`, // ensure your backend matches this
+  promoStatus: `${API_BASE}/api/promo/status`,
+  checkout: `${API_BASE}/api/billing/create-checkout`, // Fixed endpoint
 };
 
 const TIERS = {
@@ -125,7 +125,7 @@ export default function SignupForm() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  const [promo, setPromo] = useState(null); // { eligible:boolean, remaining:number, message:string } optional
+  const [promo, setPromo] = useState(null);
 
   // Pull tier + strategy from query (Telegram links etc)
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function SignupForm() {
   const activeTier = TIERS[tier] || TIERS.starter;
   const badgeStyle = `bg-gradient-to-r ${activeTier.color} text-white`;
 
-  // OPTIONAL: promo status (safe to ignore if endpoint doesn't exist)
+  // OPTIONAL: promo status
   useEffect(() => {
     let mounted = true;
 
@@ -176,37 +176,80 @@ export default function SignupForm() {
       if (!password || password.length < 8) throw new Error("Password must be at least 8 characters.");
 
       // 1) Create account (Python backend: POST /api/signup)
-      await axios.post(
+      const signupResponse = await axios.post(
         API.signup,
-        { email: cleanEmail, password, tier, strategy },
-        { withCredentials: true, timeout: 15000 }
-      );
-
-      localStorage.setItem("IMALI_EMAIL", cleanEmail);
-
-      // 2) Free tier -> go Activation (or dashboard)
-      if (tier === "starter") {
-        fireConfetti(confettiRootRef.current);
-        navigate("/activation", { replace: true });
-        return;
-      }
-
-      // 3) Paid tiers -> Stripe checkout created by backend (ensure route exists)
-      const { data } = await axios.post(
-        API.checkout,
-        {
-          tier,
+        { 
+          email: cleanEmail, 
+          password, 
+          tier, 
           strategy,
-          success_path: "/activation",
-          cancel_path: `/signup?tier=${tier}&canceled=1`,
+          execution_mode: tier === "starter" ? "auto" : "manual" // Default to manual for paid tiers
         },
         { withCredentials: true, timeout: 15000 }
       );
 
-      if (!data?.checkout_url) throw new Error("No checkout URL returned.");
-      window.location.href = data.checkout_url;
-    } catch (e2) {
-      setErr(e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Signup failed.");
+      console.log("Signup response:", signupResponse.data);
+
+      localStorage.setItem("IMALI_EMAIL", cleanEmail);
+
+      // 2) Free tier -> go to Activation
+      if (tier === "starter") {
+        fireConfetti(confettiRootRef.current);
+        // Optional: Add a small delay for confetti to show
+        setTimeout(() => {
+          navigate("/activation", { 
+            replace: true,
+            state: { email: cleanEmail, tier: "starter" }
+          });
+        }, 500);
+        return;
+      }
+
+      // 3) Paid tiers -> Stripe checkout
+      const checkoutResponse = await axios.post(
+        API.checkout,
+        {
+          tier,
+          email: cleanEmail, // Backend expects email parameter
+          // Note: Backend doesn't expect success_path/cancel_path - it uses env vars
+          // The backend sets success_url and cancel_url from environment variables
+        },
+        { withCredentials: true, timeout: 15000 }
+      );
+
+      console.log("Checkout response:", checkoutResponse.data);
+
+      if (!checkoutResponse.data.ok) {
+        throw new Error(checkoutResponse.data.detail || "Checkout failed");
+      }
+
+      // Backend returns checkoutUrl (not checkout_url)
+      const checkoutUrl = checkoutResponse.data.checkoutUrl || checkoutResponse.data.checkout_url;
+      
+      if (!checkoutUrl) {
+        throw new Error("No checkout URL returned from server");
+      }
+
+      // Redirect to Stripe checkout
+      window.location.href = checkoutUrl;
+    } catch (error) {
+      console.error("Signup error:", error);
+      
+      let errorMessage = "Signup failed.";
+      
+      if (error.response) {
+        // Axios error with response
+        const { data } = error.response;
+        errorMessage = data.detail || data.error || data.message || "Server error";
+      } else if (error.request) {
+        // Network error
+        errorMessage = "Network error. Please check your connection.";
+      } else {
+        // Other error
+        errorMessage = error.message || "An error occurred.";
+      }
+      
+      setErr(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -250,7 +293,11 @@ export default function SignupForm() {
                 />
                 <div>
                   <div className="font-bold">{activeTier.base ? `$${activeTier.base}/mo` : "Free"}</div>
-                  <div className="text-xs text-white/70">Activation happens after checkout (paid tiers)</div>
+                  <div className="text-xs text-white/70">
+                    {tier === "starter" 
+                      ? "Activation after signup" 
+                      : "Activation after payment"}
+                  </div>
                 </div>
               </div>
 
@@ -260,11 +307,11 @@ export default function SignupForm() {
                 <div className="text-xs text-amber-200/90">Not financial advice. Trading has risk.</div>
               </div>
 
-              <div className="mt-4 text-xs text-white/60">“Stocks and Established Crypto Trades"</div>
+              <div className="mt-4 text-xs text-white/60">"Stocks and Established Crypto Trades"</div>
             </div>
 
             <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
-              <h3 className="font-bold mb-2">What you’ll do on Activation</h3>
+              <h3 className="font-bold mb-2">What you'll do on Activation</h3>
               <ul className="text-sm text-white/80 space-y-1">
                 <li>1. Create or connect your OKX account</li>
                 <li>2. Create or connect crypto wallet</li>
@@ -279,6 +326,7 @@ export default function SignupForm() {
               <div className={`h-1 w-full bg-gradient-to-r ${activeTier.color}`} />
 
               <div className="p-5 border-b border-white/10">
+                <h2 className="text-xl font-bold">Account Details</h2>
                 <div className="text-sm text-white/70 mt-1">Create your account to get started with IMALI.</div>
               </div>
 
@@ -344,17 +392,38 @@ export default function SignupForm() {
                   </select>
                 </label>
 
+                <div className="text-xs text-white/60 mb-2">
+                  By creating an account, you agree to our Terms of Service and Privacy Policy.
+                  {tier === "starter" && (
+                    <div className="mt-1 text-emerald-300">
+                      ✓ Starter tier is free with auto-trading only
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="submit"
                   disabled={!emailValid || loading}
-                  className="w-full rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 disabled:opacity-60 py-3 font-bold"
+                  className="w-full rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 disabled:opacity-60 disabled:cursor-not-allowed py-3 font-bold transition-all duration-200"
                 >
-                  {loading ? "Processing…" : tier === "starter" ? "Create account (Free)" : "Continue to secure checkout"}
+                  {loading ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin h-5 w-5 mr-2 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Processing…
+                    </span>
+                  ) : tier === "starter" ? (
+                    "Create Free Account"
+                  ) : (
+                    "Continue to Secure Checkout"
+                  )}
                 </button>
 
-                <div className="text-xs text-white/60">
+                <div className="text-xs text-white/60 text-center">
                   Already have an account?{" "}
-                  <Link className="underline text-emerald-300" to="/login">
+                  <Link className="underline text-emerald-300 hover:text-emerald-200" to="/login">
                     Log in
                   </Link>
                 </div>
