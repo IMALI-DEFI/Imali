@@ -1,15 +1,38 @@
 // src/pages/Activation.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { Link } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 
-const API_BASE =
+/**
+ * IMPORTANT:
+ * - Your NGINX is routing /api/* → FastAPI/Flask upstream (127.0.0.1:8001)
+ * - So the frontend should call `${API_BASE}/api/...` (NOT `${API_BASE}/me`)
+ * - This file is written to be resilient if WalletProvider is missing (no hard crash).
+ */
+
+const RAW_BASE =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE) ||
   process.env.REACT_APP_API_BASE ||
   "http://localhost:8001";
 
+const API_BASE = String(RAW_BASE || "").replace(/\/+$/, ""); // trim trailing slash
+const apiUrl = (path) => {
+  const p = String(path || "");
+  if (!p) return API_BASE;
+  return `${API_BASE}${p.startsWith("/") ? "" : "/"}${p}`;
+};
+
 export default function Activation() {
-  const { connect, disconnect, address, chainId } = useWallet();
+  // ✅ Guard: prevents "Cannot destructure property 'connect' ... as it is undefined."
+  const wallet = typeof useWallet === "function" ? useWallet() : null;
+
+  const connect = wallet?.connect;
+  const disconnect = wallet?.disconnect;
+  const address = wallet?.address;
+  const chainId = wallet?.chainId;
+
+  const walletReady = !!wallet && typeof connect === "function";
 
   const [tab, setTab] = useState("overview"); // overview | stocks | cex | dex
 
@@ -32,6 +55,7 @@ export default function Activation() {
   const [sErr, setSErr] = useState("");
   const [sOk, setSOk] = useState("");
 
+  // Stock universe settings
   const [mode, setMode] = useState("fixed"); // fixed | auto
   const [symbols, setSymbols] = useState("SPY,QQQ,AAPL");
   const [autoCount, setAutoCount] = useState(20);
@@ -55,16 +79,32 @@ export default function Activation() {
   const [wErr, setWErr] = useState("");
   const [wOk, setWOk] = useState("");
 
-  // Fetch /me as source of truth
+  // axios defaults (helps debugging + avoids hanging requests)
+  const AX = useMemo(() => {
+    const inst = axios.create({
+      withCredentials: true,
+      timeout: 20_000,
+      headers: { "Content-Type": "application/json" },
+    });
+    return inst;
+  }, []);
+
+  // Fetch /api/me as source of truth
   const loadMe = async () => {
     setMeLoading(true);
     setMeErr("");
+
     try {
-      const { data } = await axios.get(`${API_BASE}/me`, { withCredentials: true });
-      setMe(data);
+      const { data } = await AX.get(apiUrl("/api/me"));
+      setMe(data || null);
       if (data?.execution_mode) setExecMode(data.execution_mode);
     } catch (e) {
-      setMeErr(e?.response?.data?.detail || e?.response?.data?.error || e?.message || "Failed to load account.");
+      setMeErr(
+        e?.response?.data?.detail ||
+          e?.response?.data?.error ||
+          e?.message ||
+          "Failed to load account."
+      );
     } finally {
       setMeLoading(false);
     }
@@ -72,53 +112,54 @@ export default function Activation() {
 
   useEffect(() => {
     loadMe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const tierLabel = useMemo(() => {
-    const t = (me?.tier || "").toLowerCase();
-    if (!t) return "Unknown";
+    const t = String(me?.tier || "").toLowerCase();
+    if (!t) return "UNKNOWN";
     return t.toUpperCase();
   }, [me?.tier]);
 
   // Prefill stock universe settings (optional)
   useEffect(() => {
     let mounted = true;
+
     (async () => {
       try {
-        const { data } = await axios.get(`${API_BASE}/activation/stock-setup`, {
-          withCredentials: true,
-        });
+        const { data } = await AX.get(apiUrl("/api/activation/stock-setup"));
         if (!mounted || !data) return;
+
         if (data.mode) setMode(data.mode);
         if (Array.isArray(data.symbols)) setSymbols(data.symbols.join(","));
-        if (data.autoCount) setAutoCount(data.autoCount);
-        if (data.minPrice) setMinPrice(data.minPrice);
-        if (data.minDollarVol) setMinDollarVol(data.minDollarVol);
+        if (Number.isFinite(Number(data.autoCount))) setAutoCount(Number(data.autoCount));
+        if (Number.isFinite(Number(data.minPrice))) setMinPrice(Number(data.minPrice));
+        if (Number.isFinite(Number(data.minDollarVol))) setMinDollarVol(Number(data.minDollarVol));
         if (Array.isArray(data.blacklist)) setBlacklist(data.blacklist.join(","));
       } catch {
-        // ignore
+        // ignore (endpoint optional)
       }
     })();
+
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [AX]);
 
   // Save execution mode (manual vs auto)
   const saveExecutionMode = async () => {
     setExecSaving(true);
     setExecMsg("");
+
     try {
-      await axios.post(
-        `${API_BASE}/me/execution-mode`,
-        { execution_mode: execMode },
-        { withCredentials: true }
-      );
+      await AX.post(apiUrl("/api/me/execution-mode"), { execution_mode: execMode });
       setExecMsg("Saved ✓");
       setTimeout(() => setExecMsg(""), 1500);
       await loadMe();
     } catch (e) {
-      setExecMsg(e?.response?.data?.detail || e?.response?.data?.error || e?.message || "Save failed");
+      setExecMsg(
+        e?.response?.data?.detail || e?.response?.data?.error || e?.message || "Save failed"
+      );
     } finally {
       setExecSaving(false);
     }
@@ -127,8 +168,9 @@ export default function Activation() {
   // Emergency stop (you implement endpoint)
   const stopAllTrading = async () => {
     if (!window.confirm("Stop all trading now?")) return;
+
     try {
-      await axios.post(`${API_BASE}/me/trading/stop`, {}, { withCredentials: true });
+      await AX.post(apiUrl("/api/me/trading/stop"), {});
       alert("Trading stopped.");
     } catch (e) {
       alert(e?.response?.data?.detail || e?.response?.data?.error || "Stop failed");
@@ -141,38 +183,35 @@ export default function Activation() {
     setSSaving(true);
     setSErr("");
     setSOk("");
+
     try {
       if (stockBroker === "paper") {
-        await axios.post(
-          `${API_BASE}/broker/connect`,
-          { broker: "paper" },
-          { withCredentials: true }
-        );
+        await AX.post(apiUrl("/api/broker/connect"), { broker: "paper" });
         setSOk("Paper mode saved for Stocks.");
       } else {
         if (!sApiKey.trim() || !sApiSecret.trim()) throw new Error("API Key & Secret required.");
-        await axios.post(
-          `${API_BASE}/broker/connect`,
-          {
-            broker: stockBroker,
-            api_key: sApiKey.trim(),
-            api_secret: sApiSecret.trim(),
-            passphrase: sPassphrase.trim() || null,
-          },
-          { withCredentials: true }
-        );
 
-        const { data } = await axios.post(
-          `${API_BASE}/broker/test`,
-          { broker: stockBroker },
-          { withCredentials: true }
-        );
+        await AX.post(apiUrl("/api/broker/connect"), {
+          broker: stockBroker,
+          api_key: sApiKey.trim(),
+          api_secret: sApiSecret.trim(),
+          passphrase: sPassphrase.trim() || null,
+        });
 
-        setSOk(data?.ok ? "Stock broker connected and verified." : "Stock broker saved. Verification pending.");
-        setSApiSecret("");
+        const { data } = await AX.post(apiUrl("/api/broker/test"), { broker: stockBroker });
+
+        setSOk(
+          data?.ok ? "Stock broker connected and verified." : "Stock broker saved. Verification pending."
+        );
+        setSApiSecret(""); // wipe secret from UI
       }
     } catch (e2) {
-      setSErr(e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Failed to connect broker.");
+      setSErr(
+        e2?.response?.data?.detail ||
+          e2?.response?.data?.error ||
+          e2?.message ||
+          "Failed to connect broker."
+      );
     } finally {
       setSSaving(false);
     }
@@ -181,29 +220,32 @@ export default function Activation() {
   const saveUniverse = async () => {
     setUSaving(true);
     setUMsg("");
+
     try {
-      await axios.post(
-        `${API_BASE}/activation/stock-setup`,
-        {
-          mode,
-          symbols: symbols
-            .split(",")
-            .map((s) => s.trim().toUpperCase())
-            .filter(Boolean),
-          autoCount: Number(autoCount),
-          minPrice: Number(minPrice),
-          minDollarVol: Number(minDollarVol),
-          blacklist: blacklist
-            .split(",")
-            .map((s) => s.trim().toUpperCase())
-            .filter(Boolean),
-        },
-        { withCredentials: true }
-      );
+      await AX.post(apiUrl("/api/activation/stock-setup"), {
+        mode,
+        symbols:
+          mode === "fixed"
+            ? symbols
+                .split(",")
+                .map((s) => s.trim().toUpperCase())
+                .filter(Boolean)
+            : [],
+        autoCount: Number(autoCount),
+        minPrice: Number(minPrice),
+        minDollarVol: Number(minDollarVol),
+        blacklist: blacklist
+          .split(",")
+          .map((s) => s.trim().toUpperCase())
+          .filter(Boolean),
+      });
+
       setUMsg("Saved ✓");
       setTimeout(() => setUMsg(""), 1500);
     } catch (e2) {
-      setUMsg(e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Save failed");
+      setUMsg(
+        e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Save failed"
+      );
     } finally {
       setUSaving(false);
     }
@@ -215,33 +257,31 @@ export default function Activation() {
     setCSaving(true);
     setCErr("");
     setCOk("");
+
     try {
       if (!apiKey.trim() || !apiSecret.trim() || !passphrase.trim()) {
         throw new Error("API Key, Secret, and Passphrase are required.");
       }
 
-      await axios.post(
-        `${API_BASE}/exchange/connect`,
-        {
-          exchange: "okx",
-          api_key: apiKey.trim(),
-          api_secret: apiSecret.trim(),
-          passphrase: passphrase.trim(),
-          subaccount: subaccount.trim() || null,
-        },
-        { withCredentials: true }
-      );
+      await AX.post(apiUrl("/api/exchange/connect"), {
+        exchange: "okx",
+        api_key: apiKey.trim(),
+        api_secret: apiSecret.trim(),
+        passphrase: passphrase.trim(),
+        subaccount: subaccount.trim() || null,
+      });
 
-      const { data } = await axios.post(
-        `${API_BASE}/exchange/test`,
-        { exchange: "okx" },
-        { withCredentials: true }
-      );
+      const { data } = await AX.post(apiUrl("/api/exchange/test"), { exchange: "okx" });
 
       setCOk(data?.ok ? "✅ OKX connected and verified." : "⚠️ OKX saved. Verification pending.");
-      setApiSecret("");
+      setApiSecret(""); // wipe secret from UI
     } catch (e2) {
-      setCErr(e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Failed to connect OKX.");
+      setCErr(
+        e2?.response?.data?.detail ||
+          e2?.response?.data?.error ||
+          e2?.message ||
+          "Failed to connect OKX."
+      );
     } finally {
       setCSaving(false);
     }
@@ -252,18 +292,26 @@ export default function Activation() {
     setWSaving(true);
     setWErr("");
     setWOk("");
+
     try {
+      if (!walletReady) throw new Error("Wallet system not loaded. Check WalletProvider.");
       if (!address) throw new Error("Please connect your wallet first.");
-      await axios.post(
-        `${API_BASE}/me/wallet`,
-        { address, chainId: Number(chainId) || null },
-        { withCredentials: true }
-      );
+
+      await AX.post(apiUrl("/api/me/wallet"), {
+        address,
+        chainId: Number(chainId) || null,
+      });
+
       setWOk("Wallet saved ✓");
       setTimeout(() => setWOk(""), 1500);
       await loadMe();
     } catch (e2) {
-      setWErr(e2?.response?.data?.detail || e2?.response?.data?.error || e2?.message || "Failed to save wallet.");
+      setWErr(
+        e2?.response?.data?.detail ||
+          e2?.response?.data?.error ||
+          e2?.message ||
+          "Failed to save wallet."
+      );
     } finally {
       setWSaving(false);
     }
@@ -271,6 +319,7 @@ export default function Activation() {
 
   const TabBtn = ({ id, label }) => (
     <button
+      type="button"
       onClick={() => setTab(id)}
       className={`px-3 py-2 rounded-xl border ${
         tab === id ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10"
@@ -280,6 +329,15 @@ export default function Activation() {
     </button>
   );
 
+  // If wallet context is missing, show a helpful banner but don’t crash the page.
+  const WalletBanner = () =>
+    walletReady ? null : (
+      <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-amber-200 text-sm">
+        Wallet system isn’t loaded (WalletProvider missing or hook path mismatch). You can still activate
+        Stocks/OKX, but DEX wallet connect won’t work until it’s fixed.
+      </div>
+    );
+
   return (
     <div className="max-w-4xl mx-auto p-6 text-white">
       <div className="flex items-start justify-between gap-4">
@@ -288,9 +346,13 @@ export default function Activation() {
           <p className="text-sm text-gray-300">
             Connect what you want to trade. Pick <b>Manual (alerts)</b> or <b>Auto</b>. You can change anytime.
           </p>
+          <div className="mt-2 text-xs text-white/50">
+            API Base: <span className="font-mono">{API_BASE}</span>
+          </div>
         </div>
 
         <button
+          type="button"
           onClick={stopAllTrading}
           className="px-4 py-2 rounded-2xl bg-red-600 hover:bg-red-500 font-extrabold"
           title="Emergency stop"
@@ -299,24 +361,30 @@ export default function Activation() {
         </button>
       </div>
 
+      <WalletBanner />
+
       {/* Account status */}
       <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5">
         {meLoading ? (
           <div className="text-sm text-gray-300">Loading your account…</div>
         ) : meErr ? (
           <div className="text-sm text-red-300">
-            {meErr}{" "}
+            {meErr}
             <div className="mt-2">
-              <Link className="underline text-emerald-300" to="/login">Log in</Link>
+              <Link className="underline text-emerald-300" to="/login">
+                Log in
+              </Link>
               <span className="mx-2 text-white/40">•</span>
-              <button onClick={loadMe} className="underline text-indigo-300">Retry</button>
+              <button type="button" onClick={loadMe} className="underline text-indigo-300">
+                Retry
+              </button>
             </div>
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm">
               <div className="text-white/90">
-                Signed in as <span className="font-mono">{me?.email}</span>
+                Signed in as <span className="font-mono">{me?.email || "—"}</span>
               </div>
               <div className="text-white/70">
                 Tier: <b>{tierLabel}</b> • Status: <b>{me?.is_active ? "Active" : "Pending"}</b>
@@ -324,6 +392,7 @@ export default function Activation() {
             </div>
 
             <button
+              type="button"
               onClick={loadMe}
               className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10"
             >
@@ -342,6 +411,7 @@ export default function Activation() {
 
         <div className="flex flex-wrap gap-2">
           <button
+            type="button"
             onClick={() => setExecMode("manual")}
             className={`px-3 py-2 rounded-xl border ${
               execMode === "manual" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10"
@@ -349,7 +419,9 @@ export default function Activation() {
           >
             ✅ Manual (alerts)
           </button>
+
           <button
+            type="button"
             onClick={() => setExecMode("auto")}
             className={`px-3 py-2 rounded-xl border ${
               execMode === "auto" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10"
@@ -359,6 +431,7 @@ export default function Activation() {
           </button>
 
           <button
+            type="button"
             disabled={execSaving}
             onClick={saveExecutionMode}
             className="ml-auto px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold disabled:opacity-60"
@@ -368,8 +441,9 @@ export default function Activation() {
         </div>
 
         {execMsg ? <div className="mt-2 text-sm text-white/80">{execMsg}</div> : null}
+
         <div className="mt-2 text-xs text-amber-200/90">
-          Fee logic should be based on “suggested trades” only (Manual mode) if that’s your rule — enforce it server-side.
+          Enforce fee rules server-side (Manual vs Auto) — don’t rely on frontend.
         </div>
       </div>
 
@@ -393,10 +467,17 @@ export default function Activation() {
           </ul>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link to="/MemberDashboard" className="px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 font-bold">
+            <Link
+              to="/MemberDashboard"
+              className="px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 font-bold"
+            >
               Go to Dashboard
             </Link>
-            <Link to="/pricing" className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 font-bold">
+
+            <Link
+              to="/pricing"
+              className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 font-bold"
+            >
               View Plans
             </Link>
           </div>
@@ -443,6 +524,7 @@ export default function Activation() {
                       required
                     />
                   </label>
+
                   <label className="block">
                     <span className="text-sm">API Secret</span>
                     <input
@@ -454,6 +536,7 @@ export default function Activation() {
                       required
                     />
                   </label>
+
                   <label className="block">
                     <span className="text-sm">Passphrase (if required)</span>
                     <input
@@ -475,6 +558,7 @@ export default function Activation() {
 
               {sErr && <div className="text-red-300 text-sm">{sErr}</div>}
               {sOk && <div className="text-emerald-300 text-sm">{sOk}</div>}
+
               <div className="text-xs text-amber-200/90">Revoke/rotate keys anytime in your broker account.</div>
             </form>
           </div>
@@ -484,6 +568,7 @@ export default function Activation() {
 
             <div className="flex gap-2 mb-4">
               <button
+                type="button"
                 onClick={() => setMode("fixed")}
                 className={`px-3 py-2 rounded-xl border ${
                   mode === "fixed" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10"
@@ -491,7 +576,9 @@ export default function Activation() {
               >
                 Pick symbols
               </button>
+
               <button
+                type="button"
                 onClick={() => setMode("auto")}
                 className={`px-3 py-2 rounded-xl border ${
                   mode === "auto" ? "bg-white/10 border-white/30" : "bg-white/5 border-white/10"
@@ -524,6 +611,7 @@ export default function Activation() {
                     className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
                   />
                 </label>
+
                 <label className="block">
                   <span className="text-sm">Min price ($)</span>
                   <input
@@ -534,6 +622,7 @@ export default function Activation() {
                     className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
                   />
                 </label>
+
                 <label className="block">
                   <span className="text-sm">Min dollar volume</span>
                   <input
@@ -544,6 +633,7 @@ export default function Activation() {
                     className="w-full p-3 bg-black/30 rounded-xl border border-white/10"
                   />
                 </label>
+
                 <label className="block md:col-span-2">
                   <span className="text-sm">Blacklist</span>
                   <input
@@ -558,6 +648,7 @@ export default function Activation() {
 
             <div className="mt-4 flex items-center gap-3">
               <button
+                type="button"
                 disabled={uSaving}
                 onClick={saveUniverse}
                 className="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 font-bold disabled:opacity-60"
@@ -647,7 +738,11 @@ export default function Activation() {
             DEX tokens can be very new and risky. This step just connects your wallet for DEX features.
           </p>
 
-          {address ? (
+          {!walletReady ? (
+            <div className="text-sm text-amber-200">
+              WalletProvider/hook is not available. Fix WalletContext first (so <code>useWallet()</code> is not undefined).
+            </div>
+          ) : address ? (
             <>
               <div className="text-sm">
                 Connected: <span className="font-mono">{address}</span>
@@ -655,10 +750,16 @@ export default function Activation() {
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <button onClick={disconnect} className="px-4 py-2 rounded-2xl bg-gray-700 hover:bg-gray-600">
+                <button
+                  type="button"
+                  onClick={disconnect}
+                  className="px-4 py-2 rounded-2xl bg-gray-700 hover:bg-gray-600"
+                >
                   Disconnect
                 </button>
+
                 <button
+                  type="button"
                   disabled={wSaving}
                   onClick={saveWallet}
                   className="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
@@ -672,7 +773,11 @@ export default function Activation() {
             </>
           ) : (
             <>
-              <button onClick={connect} className="px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500">
+              <button
+                type="button"
+                onClick={connect}
+                className="px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500"
+              >
                 Connect Wallet
               </button>
               <div className="text-xs text-gray-400 mt-2">No API keys required for this step.</div>
