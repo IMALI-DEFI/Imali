@@ -1,3 +1,4 @@
+// src/context/WalletContext.js (or .jsx)
 import React, {
   createContext,
   useState,
@@ -32,6 +33,19 @@ const getEnv = (key) => {
   return "";
 };
 
+const getDappUrl = () => {
+  // MetaMask mobile expects a full URL with protocol
+  const origin =
+    typeof window !== "undefined" && window.location
+      ? window.location.origin
+      : "";
+  const path =
+    typeof window !== "undefined" && window.location
+      ? window.location.pathname + window.location.search
+      : "";
+  return `${origin}${path}`; // ex: https://imali-defi.com/activation
+};
+
 /* ---------------- Provider ---------------- */
 
 export const WalletProvider = ({ children }) => {
@@ -55,7 +69,9 @@ export const WalletProvider = ({ children }) => {
       if (type === "metamask") {
         if (!window.ethereum) {
           if (isMobileUA()) {
-            const deepLink = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`;
+            const deepLink = `https://metamask.app.link/dapp/${encodeURIComponent(
+              getDappUrl().replace(/^https?:\/\//, "")
+            )}`;
             window.location.href = deepLink;
             return;
           }
@@ -84,18 +100,25 @@ export const WalletProvider = ({ children }) => {
           getEnv("VITE_WC_PROJECT_ID") ||
           "";
 
-        if (!projectId) {
-          throw new Error("Missing WalletConnect Project ID.");
-        }
+        if (!projectId) throw new Error("Missing WalletConnect Project ID.");
 
         const wc = await EthereumProvider.init({
           projectId,
           chains: [1, 137, 8453],
           showQrModal: true,
           rpcMap: {
-            1: getEnv("REACT_APP_RPC_ETH") || getEnv("VITE_RPC_ETH") || "https://cloudflare-eth.com",
-            137: getEnv("REACT_APP_RPC_POLYGON") || getEnv("VITE_RPC_POLYGON") || "https://polygon-rpc.com",
-            8453: getEnv("REACT_APP_RPC_BASE") || getEnv("VITE_RPC_BASE") || "https://mainnet.base.org",
+            1:
+              getEnv("REACT_APP_RPC_ETH") ||
+              getEnv("VITE_RPC_ETH") ||
+              "https://cloudflare-eth.com",
+            137:
+              getEnv("REACT_APP_RPC_POLYGON") ||
+              getEnv("VITE_RPC_POLYGON") ||
+              "https://polygon-rpc.com",
+            8453:
+              getEnv("REACT_APP_RPC_BASE") ||
+              getEnv("VITE_RPC_BASE") ||
+              "https://mainnet.base.org",
           },
         });
 
@@ -158,7 +181,7 @@ export const WalletProvider = ({ children }) => {
       error,
       isConnecting,
 
-      isConnected: !!account, // ✅ stable flag
+      isConnected: !!account,
 
       connectWallet,
       disconnectWallet,
@@ -167,7 +190,7 @@ export const WalletProvider = ({ children }) => {
 
       getSigner: async () => {
         if (!provider) throw new Error("Wallet not connected.");
-        return provider.getSigner();
+        return await provider.getSigner(); // ✅ ethers v6
       },
     }),
     [
