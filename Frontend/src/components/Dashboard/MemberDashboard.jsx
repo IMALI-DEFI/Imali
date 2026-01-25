@@ -1,8 +1,9 @@
 // src/components/Dashboard/MemberDashboard.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
 import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { BotAPI } from "../../utils/api.js";
 import { getUserData } from "../../utils/firebase.js";
@@ -20,7 +21,7 @@ import * as RecentTradesTableNS from "./RecentTradesTable.jsx";
 import * as ReferralSystemNS from "../ReferralSystem.js";
 import * as TradeDemoNS from "../../pages/TradeDemo.jsx";
 
-// ✅ New: Live overview component that listens to TradeDemo window events too
+// Live overview component that listens to TradeDemo window events too
 import TradingOverview from "./TradingOverview.jsx";
 
 /* ---------------- Env (CRA + Vite, no dynamic process usage) ---------------- */
@@ -371,15 +372,99 @@ function TourOverlay({ isActive, step, targetRect, onNext, onPrev, onClose, idx,
   );
 }
 
+/* ---------------- Helpers: backend bootstrap + activation gating ---------------- */
+async function fetchBackendMe() {
+  try {
+    const res = await axios.get(`${API_BASE}/api/me`, { withCredentials: true, timeout: 15000 });
+    return res.data?.user || null;
+  } catch (e) {
+    console.error("GET /api/me failed:", e?.message || e);
+    return null;
+  }
+}
+
+async function fetchActivationStatus() {
+  try {
+    const res = await axios.get(`${API_BASE}/api/me/activation-status`, { withCredentials: true, timeout: 15000 });
+    return res.data?.status || null;
+  } catch (e) {
+    console.error("GET /api/me/activation-status failed:", e?.message || e);
+    return null;
+  }
+}
+
+function LockedDashboard({ status }) {
+  const stripeActive = !!status?.stripe_active;
+  const apiConnected = !!status?.api_connected;
+  const botSelected = !!status?.bot_selected;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white flex items-center justify-center">
+      <div className="max-w-md mx-auto p-6 rounded-2xl border border-white/10 bg-white/5 text-center">
+        <h2 className="text-2xl font-bold mb-4">Dashboard Locked 🔒</h2>
+        <p className="text-gray-300 mb-4">Complete activation to access the trading dashboard.</p>
+
+        <div className="space-y-2 mb-6 text-left text-sm">
+          <div className="flex items-center justify-between">
+            <span>Payment Method</span>
+            <span className={stripeActive ? "text-emerald-300" : "text-amber-300"}>
+              {stripeActive ? "✅ Complete" : "⏳ Pending"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>API Connected</span>
+            <span className={apiConnected ? "text-emerald-300" : "text-amber-300"}>
+              {apiConnected ? "✅ Complete" : "⏳ Pending"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Bot Selected</span>
+            <span className={botSelected ? "text-emerald-300" : "text-amber-300"}>
+              {botSelected ? "✅ Complete" : "⏳ Pending"}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex gap-2 justify-center">
+          <Link
+            to="/activation"
+            className="inline-block px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
+          >
+            Complete Activation
+          </Link>
+          <Link
+            to="/pricing"
+            className="inline-block px-6 py-3 rounded-xl bg-emerald-700/40 border border-emerald-300/30 hover:bg-emerald-700/55 font-semibold"
+          >
+            View Plans
+          </Link>
+        </div>
+
+        <div className="mt-5 text-[11px] text-white/60">
+          This lock prevents access until billing + API + bot selection are complete.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Dashboard ---------------- */
 export default function MemberDashboard() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { account, chainId, connect, disconnect } = useWallet();
 
+  // Firebase profile (wallet-based UI data)
   const [userData, setUserData] = useState(null);
   const [imaliBalance, setImaliBalance] = useState(0);
 
-  // backend stats + trades (for LIVE or fallback)
+  // Backend truth for gating + tier
+  const [backendUser, setBackendUser] = useState(null);
+  const [activationStatus, setActivationStatus] = useState(null);
+  const [dashLoading, setDashLoading] = useState(true);
+  const [authMissing, setAuthMissing] = useState(false);
+
+  // backend stats + trades
   const [sniperStats, setSniperStats] = useState({});
   const [recentTrades, setRecentTrades] = useState([]);
 
@@ -406,13 +491,51 @@ export default function MemberDashboard() {
 
   const refTradeDemo = useRef(null);
 
-  /* Profile */
+  /* ---------------- Bootstrap: backend gating first ---------------- */
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const [me, status] = await Promise.all([fetchBackendMe(), fetchActivationStatus()]);
+        if (!mounted) return;
+
+        setBackendUser(me);
+        setActivationStatus(status);
+
+        if (!me) {
+          setAuthMissing(true);
+        }
+      } catch (e) {
+        console.error("Dashboard bootstrap failed:", e?.message || e);
+        setAuthMissing(true);
+      } finally {
+        if (mounted) setDashLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  /* ---------------- Optional: If not authenticated, move to login ---------------- */
+  useEffect(() => {
+    if (!dashLoading && authMissing) {
+      // We render a nice card, but also ensure route exists
+      // navigate("/login", { replace: true }); // uncomment if you prefer hard redirect
+    }
+  }, [dashLoading, authMissing, navigate]);
+
+  /* ---------------- Profile: Firebase (wallet-dependent) ---------------- */
   useEffect(() => {
     if (!account) return;
+
     (async () => {
       try {
         const data = await getUserData(account);
         if (!data) return;
+
         setUserData({
           ...data,
           wallet: account,
@@ -421,31 +544,34 @@ export default function MemberDashboard() {
           referrals: data.referrals || 0,
           referralEarnings: data.referralEarnings || 0,
         });
+
         if (data.imaliBalance) setImaliBalance(data.imaliBalance);
       } catch (e) {
-        console.error("Failed to load user profile:", e);
+        console.error("Failed to load user profile:", e?.message || e);
       }
     })();
   }, [account, pathname]);
 
   /* Decide mode:
-     - Prefer TradeDemo event mode when present (because it’s the UI engine)
+     - Prefer TradeDemo event mode when present
      - Fall back to env MODE
      - Also treat API_BASE === LIVE_API as live
   */
   const mode = String(demoHeader?.mode || MODE_ENV || (API_BASE === LIVE_API ? "live" : "demo")).toLowerCase();
   const isLive = mode === "live";
 
-  /* Backend fetch (LIVE stats + trades OR fallback for demo pages) */
+  /* Backend fetch (stats + trades) - safe even if wallet not connected */
   useEffect(() => {
     let cancelled = false;
 
     async function fetchData() {
       try {
+        const wallet = account || "";
         const [pnl, trades] = await Promise.all([
-          BotAPI.getPnLSummary({ wallet: account || "" }),
-          BotAPI.getRecentTrades({ wallet: account || "", limit: 50 }),
+          BotAPI.getPnLSummary({ wallet }),
+          BotAPI.getRecentTrades({ wallet, limit: 50 }),
         ]);
+
         if (cancelled) return;
 
         const pnlObj = pnl && typeof pnl === "object" ? pnl : {};
@@ -466,16 +592,22 @@ export default function MemberDashboard() {
     };
   }, [account]);
 
-  /* Derived UI */
-  const tier = userData?.tier || "Starter";
+  /* Derived tier/fee from backend */
+  const tierSlug = String(
+    backendUser?.tier_active || backendUser?.tier_selected || backendUser?.tier || userData?.tier || "starter"
+  ).toLowerCase();
 
-  // unified feed for TradingOverview (prefer demoHeader, fall back to backend)
+  const isStarter = tierSlug === "starter";
+  const feeText = isStarter ? "30% fee over 3%" : "5% fee over 3%";
+  const tierLabel = tierSlug ? tierSlug.charAt(0).toUpperCase() + tierSlug.slice(1) : "Starter";
+
+  /* Unified feed for TradingOverview (prefer demoHeader, fall back to backend) */
   const overviewFeed = useMemo(() => {
     const d = demoHeader || {};
     const s = sniperStats || {};
-    const feed = {
+    return {
       source: d.source || (isLive ? "trade-live" : "trade-demo"),
-      mode: mode,
+      mode,
       running: !!d.running,
       pnl: Number.isFinite(d.pnl) ? Number(d.pnl) : Number(s.pnl || 0),
       equity: Number.isFinite(d.equity) ? Number(d.equity) : Number(s.equity || 0),
@@ -485,12 +617,9 @@ export default function MemberDashboard() {
       ts: d.ts || Date.now(),
       venues: Array.isArray(d.venues) ? d.venues : d.venue ? [d.venue] : [],
     };
-    return feed;
   }, [demoHeader, sniperStats, isLive, mode]);
 
-  const toggleCard = (id) => {
-    setOpenCards((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  const toggleCard = (id) => setOpenCards((prev) => ({ ...prev, [id]: !prev[id] }));
 
   /* ---------------- Guided Tour Content ---------------- */
   const tourSteps = useMemo(
@@ -521,10 +650,10 @@ export default function MemberDashboard() {
       {
         selector: '[data-tour-id="trade-demo-card"]',
         tabIndex: 0,
-        title: "Trade Demo",
+        title: "Trade Engine",
         body:
-          "Choose venue (New Crypto / Established Crypto / Both / Stocks), pick a strategy, then Start. It broadcasts live updates to the overview above.",
-        points: ["Demo is risk-free.", "Live mode requires eligibility and a connected wallet."],
+          "Choose venue + strategy and start a session. Live mode requires billing + API + bot selection to be complete.",
+        points: ["Demo is risk-free.", "Live mode only runs when your account is activated."],
       },
       {
         selector: '[data-tour-id="recent-trades-card"]',
@@ -549,6 +678,43 @@ export default function MemberDashboard() {
     setActiveTab,
   });
 
+  /* ---------------- Render states ---------------- */
+  if (dashLoading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-white/70">
+          Loading your dashboard…
+        </div>
+      </div>
+    );
+  }
+
+  if (authMissing) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="max-w-md p-6 rounded-2xl border border-white/10 bg-white/5 text-center">
+          <h2 className="text-2xl font-bold mb-3">Please log in</h2>
+          <p className="text-white/70 mb-5">Your session expired or you’re not signed in.</p>
+          <div className="flex gap-2 justify-center">
+            <Link to="/login" className="inline-block px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold">
+              Go to Login
+            </Link>
+            <Link to="/signup" className="inline-block px-6 py-3 rounded-xl bg-emerald-700/40 border border-emerald-300/30 hover:bg-emerald-700/55 font-semibold">
+              Create Account
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Gate access based on backend truth
+  const activationComplete = !!activationStatus?.complete;
+  if (!activationComplete) {
+    return <LockedDashboard status={activationStatus || {}} />;
+  }
+
+  /* ---------------- Main UI ---------------- */
   return (
     <div className="relative bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white min-h-screen">
       <div className="max-w-7xl mx-auto px-6 py-6">
@@ -604,9 +770,9 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        {/* TOP STRIP (mirrors Demo tone) */}
+        {/* TOP STRIP */}
         <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* TradingOverview (mirrors demo output + live) */}
+          {/* TradingOverview */}
           <div data-tour-id="promo-overview" className="rounded-2xl border border-white/10 overflow-hidden bg-black/20">
             <TradingOverview feed={overviewFeed} stats={sniperStats || {}} />
             <div className="px-4 pb-4 text-[11px] text-white/70">
@@ -619,15 +785,18 @@ export default function MemberDashboard() {
             <div className="flex items-center justify-between">
               <div className="text-sm text-white/80">IMALI Balance</div>
               <span className="inline-flex items-center rounded-full bg-black/30 px-3 py-1 text-xs font-semibold border border-white/10">
-                Tier: {tier}
+                Tier: {tierLabel} • {feeText}
               </span>
             </div>
+
             <div className="mt-2 text-3xl font-extrabold">{Number(imaliBalance).toFixed(2)} IMALI</div>
+
             <div className="text-xs text-white/70 mt-1">
-              Hold IMALI for perks & staking rewards. Visit <b>Extras</b> to stake and earn.
+              {isStarter
+                ? "Starter: Card required. 30% fee on profits over 3%. Connect your API to track activity."
+                : "Paid tier: 5% fee on profits over 3%. Connect your API to track activity."}
             </div>
 
-            {/* Optional: quick link */}
             <div className="mt-3 flex gap-2">
               <button
                 onClick={() => setActiveTab(1)}
@@ -644,7 +813,7 @@ export default function MemberDashboard() {
             </div>
           </div>
 
-          {/* Status / Guidance (demo-like wording) */}
+          {/* Status / Guidance */}
           <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
             <div className="flex items-center justify-between">
               <div className="text-sm text-white/80">Quick Start</div>
@@ -654,13 +823,13 @@ export default function MemberDashboard() {
             </div>
 
             <div className="mt-3 text-sm text-white/80 leading-relaxed">
-              1) Open <b>Trade Demo</b> below<br />
+              1) Open <b>Trade Engine</b> below<br />
               2) Choose a venue (New Crypto / Established Crypto / Both / Stocks)<br />
               3) Pick a strategy and press <b>Start</b>
             </div>
 
             <div className="mt-3 text-[11px] text-white/60">
-              Demo is risk-free. Live runs only when your account is eligible and configured.
+              Demo is risk-free. Live runs only when your account is activated.
             </div>
 
             <div className="mt-3 text-xs text-white/70">
@@ -683,7 +852,7 @@ export default function MemberDashboard() {
               <ExpandableCard
                 innerRef={refTradeDemo}
                 id="trade-demo-card"
-                title="Trade Demo"
+                title="Trade Engine"
                 subtitle="Crypto & Stocks (Demo or Live)"
                 info="Choose venue + strategy inside. Start runs an automated session and broadcasts updates to Trading Overview."
                 priority
