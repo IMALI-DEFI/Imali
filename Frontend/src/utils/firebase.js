@@ -2,70 +2,82 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
-/* -------------------------- Env helpers (CRA + Vite) -------------------------- */
-const E = (k, fallback = "") => {
-  try {
-    // Vite: import.meta.env.VITE_*
-    if (typeof import.meta !== "undefined" && import.meta?.env && k in import.meta.env) {
-      const v = import.meta.env[k];
-      return (v ?? fallback) || fallback;
+/* -------------------------- CRA-only env helper -------------------------- */
+const getEnvVar = (key, fallback = "") => {
+  // CRA uses process.env.REACT_APP_*
+  if (typeof process !== "undefined" && process.env) {
+    const value = process.env[key];
+    // Return value if it exists and is not undefined/null
+    if (value !== undefined && value !== null && value !== "") {
+      return value;
     }
-  } catch {
-    // ignore
   }
-
-  // CRA: process.env.REACT_APP_*
-  try {
-    if (typeof process !== "undefined" && process?.env && k in process.env) {
-      const v = process.env[k];
-      return (v ?? fallback) || fallback;
-    }
-  } catch {
-    // ignore
-  }
-
   return fallback;
 };
 
+// Debug: Log available Firebase env vars
+if (process.env.NODE_ENV === 'development') {
+  console.log('[Firebase Debug] Available env vars:');
+  Object.keys(process.env)
+    .filter(key => key.includes('FIREBASE') || key.includes('REACT_APP'))
+    .forEach(key => {
+      console.log(`  ${key}: ${process.env[key] ? '***SET***' : 'MISSING'}`);
+    });
+}
+
 const firebaseConfig = {
-  apiKey: E("REACT_APP_FIREBASE_API_KEY") || E("VITE_FIREBASE_API_KEY"),
-  authDomain: E("REACT_APP_FIREBASE_AUTH_DOMAIN") || E("VITE_FIREBASE_AUTH_DOMAIN"),
-  projectId: E("REACT_APP_FIREBASE_PROJECT_ID") || E("VITE_FIREBASE_PROJECT_ID"),
-  storageBucket: E("REACT_APP_FIREBASE_STORAGE_BUCKET") || E("VITE_FIREBASE_STORAGE_BUCKET"),
-  messagingSenderId:
-    E("REACT_APP_FIREBASE_MESSAGING_SENDER_ID") || E("VITE_FIREBASE_MESSAGING_SENDER_ID"),
-  appId: E("REACT_APP_FIREBASE_APP_ID") || E("VITE_FIREBASE_APP_ID"),
+  apiKey: getEnvVar("REACT_APP_FIREBASE_API_KEY"),
+  authDomain: getEnvVar("REACT_APP_FIREBASE_AUTH_DOMAIN"),
+  projectId: getEnvVar("REACT_APP_FIREBASE_PROJECT_ID"),
+  storageBucket: getEnvVar("REACT_APP_FIREBASE_STORAGE_BUCKET"),
+  messagingSenderId: getEnvVar("REACT_APP_FIREBASE_MESSAGING_SENDER_ID"),
+  appId: getEnvVar("REACT_APP_FIREBASE_APP_ID"),
 };
 
 function missingKeys(cfg) {
-  const req = ["apiKey", "authDomain", "projectId", "appId"];
-  return req.filter((k) => !cfg[k] || String(cfg[k]).trim() === "");
+  const required = ["apiKey", "authDomain", "projectId", "appId"];
+  return required.filter((k) => !cfg[k] || String(cfg[k]).trim() === "");
 }
 
 const missing = missingKeys(firebaseConfig);
 const FIREBASE_READY = missing.length === 0;
 
-// ✅ Don’t crash production. Just disable Firebase features if not configured.
+// Show warning in development if Firebase is not configured
 if (!FIREBASE_READY) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    `[firebase] Missing config (${missing.join(", ")}). Firebase features are disabled until env vars are set.`
-  );
+  if (process.env.NODE_ENV === 'development') {
+    console.warn(
+      `[Firebase] Missing config: ${missing.join(", ")}. ` +
+      `Please set REACT_APP_FIREBASE_* environment variables in .env file.`
+    );
+    console.warn('[Firebase] Firebase features will be disabled.');
+  }
 }
 
-/* -------------------------- Init (SAFE) -------------------------- */
+/* -------------------------- Initialize Firebase -------------------------- */
 let app = null;
 let db = null;
 
 if (FIREBASE_READY) {
-  app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  db = getFirestore(app);
+  try {
+    // Check if already initialized
+    if (getApps().length === 0) {
+      app = initializeApp(firebaseConfig);
+      console.log('[Firebase] Successfully initialized');
+    } else {
+      app = getApps()[0];
+      console.log('[Firebase] Using existing app instance');
+    }
+    db = getFirestore(app);
+  } catch (error) {
+    console.error('[Firebase] Initialization error:', error);
+    FIREBASE_READY = false;
+  }
 }
 
 export { db };
 export const FIREBASE_ENABLED = FIREBASE_READY;
 
-/* -------------------------- Helpers -------------------------- */
+/* -------------------------- Utility Functions -------------------------- */
 export function normalizeUserId(id) {
   if (!id) return "";
   const s = String(id).trim();
@@ -73,9 +85,8 @@ export function normalizeUserId(id) {
   return s;
 }
 
-// ✅ IMPORTANT: match your real collection name.
-// If your backend/telegram uses "imali_users", use that here too.
-const COLLECTION = "imali_users"; // <- change if needed
+// Firebase collection name
+const COLLECTION = "imali_users";
 
 const userConverter = {
   toFirestore(data) {
@@ -91,7 +102,10 @@ const userConverter = {
 export async function getUserData(userIdOrWallet) {
   const id = normalizeUserId(userIdOrWallet);
   if (!id) return null;
-  if (!db) return null; // ✅ Firebase not configured
+  if (!db) {
+    console.warn('[Firebase] Database not available. Check Firebase configuration.');
+    return null;
+  }
 
   try {
     const ref = doc(db, COLLECTION, id).withConverter(userConverter);
@@ -106,7 +120,11 @@ export async function getUserData(userIdOrWallet) {
 export async function upsertUser(userIdOrWallet, fields = {}) {
   const id = normalizeUserId(userIdOrWallet);
   if (!id) throw new Error("Missing user id / wallet.");
-  if (!db) return { ok: false, error: "Firebase not configured." }; // ✅ no crash
+  if (!db) {
+    const error = "Firebase not configured. Please check environment variables.";
+    console.error(error);
+    return { ok: false, error };
+  }
 
   try {
     const ref = doc(db, COLLECTION, id).withConverter(userConverter);
