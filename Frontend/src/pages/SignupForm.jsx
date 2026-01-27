@@ -3,6 +3,15 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
+// Stripe Elements
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  useStripe,
+  useElements,
+  PaymentElement,
+} from "@stripe/react-stripe-js";
+
 // Art
 import StarterNFT from "../assets/images/nfts/nft-starter.png";
 import ProNFT from "../assets/images/nfts/nft-pro.png";
@@ -16,10 +25,16 @@ const API_BASE = process.env.REACT_APP_API_BASE ||
     ? "http://localhost:8001" 
     : "https://api.imali-defi.com");
 
+// Initialize Stripe
+const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLIC_KEY || "pk_test_xxx");
+
 const API = {
   signup: `${API_BASE}/api/signup`,
   promoStatus: `${API_BASE}/api/promo/status`,
+  setupIntent: `${API_BASE}/api/billing/create-setup-intent`,
+  completeSetup: `${API_BASE}/api/billing/complete-setup`,
   checkout: `${API_BASE}/api/billing/create-checkout`,
+  setupFlow: `${API_BASE}/api/billing/setup-flow`,
 };
 
 // Strategy options
@@ -155,6 +170,198 @@ function parseQueryParams(params) {
   };
 }
 
+// Payment Form Component
+function PaymentForm({ userData, onComplete, onError, onCancel }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      // Confirm the SetupIntent
+      const { error: confirmError, setupIntent } = await stripe.confirmSetup({
+        elements,
+        redirect: "if_required",
+        confirmParams: {
+          return_url: `${window.location.origin}/signup/complete`,
+        },
+      });
+
+      if (confirmError) {
+        throw new Error(confirmError.message);
+      }
+
+      if (setupIntent.status !== "succeeded") {
+        throw new Error(`SetupIntent status: ${setupIntent.status}`);
+      }
+
+      // Call backend to complete setup
+      const completeResponse = await axios.post(API.completeSetup, {
+        user_id: userData.user_id,
+        setup_intent_id: setupIntent.id,
+      });
+
+      if (!completeResponse.data?.ok) {
+        throw new Error(completeResponse.data?.detail || "Setup completion failed");
+      }
+
+      onComplete(completeResponse.data);
+
+    } catch (err) {
+      console.error("Payment setup failed:", err);
+      setError(err.message || "Payment setup failed");
+      onError(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="text-sm text-gray-300">
+        <p className="mb-2">🔒 Secure billing setup required for all tiers</p>
+        <p>Your card will be charged performance fees (30% on profits over 3% for Starter).</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="p-4 border border-gray-600 rounded-xl bg-gray-900/30">
+          <PaymentElement />
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+            <p className="text-red-300 text-sm">{error}</p>
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={!stripe || loading}
+            className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all ${
+              !stripe || loading
+                ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+                : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500"
+            }`}
+          >
+            {loading ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Processing...
+              </div>
+            ) : (
+              "Save Payment Method"
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-6 py-3 rounded-xl border border-gray-600 hover:border-gray-500 hover:bg-gray-800/30 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// Subscription Checkout Component
+function SubscriptionCheckout({ userData, tier, onComplete, onError }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubscribe = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await axios.post(API.checkout, {
+        tier: tier,
+        stripe_customer_id: userData.stripe_customer_id,
+        user_id: userData.user_id,
+      });
+
+      if (!response.data?.ok) {
+        throw new Error(response.data?.detail || "Checkout creation failed");
+      }
+
+      const { client_secret, requires_action } = response.data;
+
+      if (requires_action && client_secret) {
+        onComplete({ client_secret, requires_action: true });
+      } else {
+        onComplete({});
+      }
+      
+    } catch (err) {
+      console.error("Subscription failed:", err);
+      setError(err.message || "Subscription setup failed");
+      onError(err);
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="p-4 rounded-xl bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center">
+            <span className="text-xl">✨</span>
+          </div>
+          <div>
+            <div className="font-bold">{TIERS[tier].label} Tier</div>
+            <div className="text-sm text-gray-300">{TIERS[tier].monthly}</div>
+          </div>
+        </div>
+        <p className="text-sm text-gray-300">
+          Complete your subscription to unlock all {TIERS[tier].label} features.
+        </p>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+          <p className="text-red-300 text-sm">{error}</p>
+        </div>
+      )}
+
+      <button
+        onClick={handleSubscribe}
+        disabled={loading}
+        className={`w-full py-3 px-4 rounded-xl font-medium transition-all ${
+          loading
+            ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+            : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500"
+        }`}
+      >
+        {loading ? (
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+            Processing...
+          </div>
+        ) : (
+          `Subscribe to ${TIERS[tier].label} - ${TIERS[tier].monthly}`
+        )}
+      </button>
+
+      <button
+        onClick={() => onComplete({ skip: true })}
+        className="w-full py-3 px-4 rounded-xl border border-gray-600 hover:border-gray-500 hover:bg-gray-800/30 transition-colors text-sm"
+      >
+        Skip for now (trading disabled)
+      </button>
+    </div>
+  );
+}
+
 export default function SignupForm() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -174,6 +381,9 @@ export default function SignupForm() {
   const [success, setSuccess] = useState(false);
   const [promo, setPromo] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null);
+  const [signupData, setSignupData] = useState(null);
+  const [billingStep, setBillingStep] = useState("signup"); // signup, payment, subscription, complete
+  const [setupIntentClientSecret, setSetupIntentClientSecret] = useState("");
 
   // Initialize from query params
   useEffect(() => {
@@ -227,8 +437,8 @@ export default function SignupForm() {
     if (error) setError("");
   };
 
-  // Submit handler
-  const handleSubmit = async (e) => {
+  // Step 1: Signup
+  const handleSignup = async (e) => {
     e.preventDefault();
     if (loading || !formValid) return;
 
@@ -242,7 +452,6 @@ export default function SignupForm() {
 
       console.log("Starting signup process...");
 
-      // Step 1: Create user account
       const signupPayload = {
         email: cleanEmail,
         password: formData.password,
@@ -264,70 +473,42 @@ export default function SignupForm() {
 
       console.log("Signup response:", signupResponse.data);
 
-      if (!signupResponse.data?.ok && !signupResponse.data?.success) {
+      if (!signupResponse.data?.ok) {
         throw new Error(signupResponse.data?.detail || signupResponse.data?.message || "Signup failed");
       }
+
+      const userData = signupResponse.data;
+      setSignupData(userData);
 
       // Store user data locally
       localStorage.setItem("IMALI_USER", JSON.stringify({
         email: cleanEmail,
         tier: formData.tier,
         strategy: formData.strategy,
+        user_id: userData.user_id,
+        stripe_customer_id: userData.stripe_customer_id,
         timestamp: Date.now()
       }));
 
-      // Step 2: Create billing checkout
-      const billingPayload = {
+      // Move to payment step
+      setBillingStep("payment");
+
+      // Create SetupIntent for payment method collection
+      const setupIntentResponse = await axios.post(API.setupIntent, {
+        stripe_customer_id: userData.stripe_customer_id,
+        user_id: userData.user_id,
         tier: formData.tier,
-        email: cleanEmail,
-        strategy: formData.strategy,
-        execution_mode: executionMode,
-        user_id: signupResponse.data?.user_id || signupResponse.data?.userId,
-        success_url: `${window.location.origin}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${window.location.origin}/signup?tier=${formData.tier}&strategy=${formData.strategy}`,
-        metadata: {
-          signup_source: "web",
-          promo_hint: "first50",
-          timestamp: new Date().toISOString()
-        }
-      };
-
-      console.log("Sending billing request:", billingPayload);
-
-      const billingResponse = await axios.post(API.checkout, billingPayload, {
-        timeout: 15000,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
       });
 
-      console.log("Billing response:", billingResponse.data);
-
-      // Extract checkout URL from various response formats
-      const responseData = billingResponse.data;
-      const checkoutUrl = responseData?.checkoutUrl || 
-                         responseData?.checkout_url || 
-                         responseData?.url || 
-                         responseData?.session_url || 
-                         responseData?.redirect_url;
-
-      if (!checkoutUrl) {
-        throw new Error("No checkout URL received from server");
+      if (!setupIntentResponse.data?.ok) {
+        throw new Error(setupIntentResponse.data?.detail || "Payment setup failed");
       }
 
-      // Success - show confetti and redirect
-      setSuccess(true);
-      fireConfetti(confettiRootRef.current);
-
-      setTimeout(() => {
-        window.location.href = checkoutUrl;
-      }, 800);
+      setSetupIntentClientSecret(setupIntentResponse.data.client_secret);
 
     } catch (error) {
       console.error("Signup process failed:", error);
 
-      // Enhanced error handling
       let errorMessage = "An unexpected error occurred. Please try again.";
 
       if (error.response) {
@@ -340,9 +521,6 @@ export default function SignupForm() {
             break;
           case 401:
             errorMessage = "Authentication failed";
-            break;
-          case 403:
-            errorMessage = "Access denied";
             break;
           case 409:
             errorMessage = "Account already exists with this email";
@@ -360,7 +538,6 @@ export default function SignupForm() {
             errorMessage = `Server error (${status})`;
         }
 
-        // Store debug info for troubleshooting
         setDebugInfo({
           status,
           data,
@@ -376,6 +553,283 @@ export default function SignupForm() {
       setError(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Step 2: Payment method setup complete
+  const handlePaymentComplete = async (result) => {
+    try {
+      if (formData.tier === "starter") {
+        // Starter tier is now ready
+        setSuccess(true);
+        fireConfetti(confettiRootRef.current);
+
+        setTimeout(() => {
+          navigate("/dashboard", { 
+            state: { 
+              message: "Welcome! Your billing setup is complete and trading is now enabled." 
+            }
+          });
+        }, 1500);
+      } else {
+        // Paid tiers need subscription
+        setBillingStep("subscription");
+      }
+    } catch (err) {
+      setError("Failed to complete billing setup: " + err.message);
+      setBillingStep("signup");
+    }
+  };
+
+  // Step 3: Subscription complete
+  const handleSubscriptionComplete = (result) => {
+    setSuccess(true);
+    fireConfetti(confettiRootRef.current);
+
+    if (result.skip) {
+      // User skipped subscription
+      setTimeout(() => {
+        navigate("/dashboard", { 
+          state: { 
+            message: "Account created! Please subscribe to enable trading features." 
+          }
+        });
+      }, 1500);
+    } else if (result.requires_action && result.client_secret) {
+      // Handle 3D Secure authentication
+      // You would typically handle this with Stripe.js
+      console.log("Requires 3D Secure authentication");
+    } else {
+      // Subscription successful
+      setTimeout(() => {
+        navigate("/dashboard", { 
+          state: { 
+            message: "Welcome! Your subscription is active and trading is now enabled." 
+          }
+        });
+      }, 1500);
+    }
+  };
+
+  // Render billing steps
+  const renderBillingStep = () => {
+    switch (billingStep) {
+      case "payment":
+        return (
+          <Elements stripe={stripePromise} options={{
+            clientSecret: setupIntentClientSecret,
+            appearance: {
+              theme: 'night',
+              variables: {
+                colorPrimary: '#6366f1',
+                colorBackground: '#0f172a',
+                colorText: '#f8fafc',
+              },
+            },
+          }}>
+            <PaymentForm
+              userData={signupData}
+              onComplete={handlePaymentComplete}
+              onError={(err) => setError(err.message)}
+              onCancel={() => setBillingStep("signup")}
+            />
+          </Elements>
+        );
+
+      case "subscription":
+        return (
+          <SubscriptionCheckout
+            userData={signupData}
+            tier={formData.tier}
+            onComplete={handleSubscriptionComplete}
+            onError={(err) => setError(err.message)}
+          />
+        );
+
+      case "complete":
+        return (
+          <div className="text-center py-8">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">🎉</span>
+            </div>
+            <h3 className="text-xl font-bold mb-2">Setup Complete!</h3>
+            <p className="text-gray-300 mb-6">Redirecting to dashboard...</p>
+          </div>
+        );
+
+      default:
+        return (
+          <form onSubmit={handleSignup} className="space-y-6">
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => handleChange("email", e.target.value)}
+                className={`w-full px-4 py-3 rounded-xl bg-gray-900/50 border ${
+                  formData.email ? 
+                    (emailValid ? "border-emerald-500/50" : "border-red-500/50") : 
+                    "border-gray-600"
+                } focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all`}
+                placeholder="you@example.com"
+                disabled={loading || success}
+                required
+              />
+              {formData.email && !emailValid && (
+                <p className="mt-1 text-sm text-red-400">Please enter a valid email address</p>
+              )}
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                value={formData.password}
+                onChange={(e) => handleChange("password", e.target.value)}
+                className={`w-full px-4 py-3 rounded-xl bg-gray-900/50 border ${
+                  formData.password ? 
+                    (passwordValid ? "border-emerald-500/50" : "border-red-500/50") : 
+                    "border-gray-600"
+                } focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all`}
+                placeholder="At least 8 characters"
+                disabled={loading || success}
+                required
+              />
+              <p className="mt-1 text-sm text-gray-400">
+                {formData.password.length > 0 && !passwordValid 
+                  ? "Password must be at least 8 characters"
+                  : "Use a strong, unique password"
+                }
+              </p>
+            </div>
+
+            {/* Strategy Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Trading Strategy
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {STRATEGIES.map((strategyOption) => (
+                  <button
+                    key={strategyOption.value}
+                    type="button"
+                    onClick={() => handleChange("strategy", strategyOption.value)}
+                    className={`p-4 rounded-xl border text-left transition-all ${
+                      formData.strategy === strategyOption.value
+                        ? "border-blue-500 bg-blue-500/10"
+                        : "border-gray-600 bg-gray-900/30 hover:border-gray-500"
+                    }`}
+                    disabled={loading || success}
+                  >
+                    <div className="font-medium">{strategyOption.label}</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {strategyOption.description}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tier Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Select Your Tier
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Object.entries(TIERS).map(([key, tierOption]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => handleChange("tier", key)}
+                    className={`p-4 rounded-xl border transition-all relative overflow-hidden ${
+                      formData.tier === key
+                        ? "border-blue-500 bg-gradient-to-br from-gray-800 to-gray-900"
+                        : "border-gray-600 bg-gray-900/30 hover:border-gray-500"
+                    }`}
+                    disabled={loading || success}
+                  >
+                    {formData.tier === key && (
+                      <div className="absolute top-0 right-0 w-3 h-3 bg-blue-500 rounded-bl-full" />
+                    )}
+                    <div className="flex items-center gap-3 mb-2">
+                      <img
+                        src={tierOption.img}
+                        alt={tierOption.label}
+                        className="w-10 h-10 rounded-lg"
+                      />
+                      <div>
+                        <div className="font-bold text-left">{tierOption.label}</div>
+                        <div className="text-sm font-semibold">{tierOption.monthly}</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-300 text-left">
+                      {tierOption.description}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Terms */}
+            <div className="text-xs text-gray-400">
+              <p className="mb-2">
+                By creating an account, you agree to our{" "}
+                <Link to="/terms" className="text-blue-400 hover:text-blue-300 underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link to="/privacy" className="text-blue-400 hover:text-blue-300 underline">
+                  Privacy Policy
+                </Link>.
+              </p>
+              <p className="text-amber-300/80">
+                💳 <strong>Billing setup required:</strong> All tiers need payment method for performance fees.
+              </p>
+            </div>
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={!formValid || loading || success}
+              className={`w-full py-4 px-6 rounded-xl font-bold text-lg transition-all duration-300 ${
+                !formValid || loading || success
+                  ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+                  : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              }`}
+            >
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span>Creating Account...</span>
+                </div>
+              ) : success ? (
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-xl">✨</span>
+                  <span>Redirecting...</span>
+                </div>
+              ) : (
+                "Create Account & Setup Billing"
+              )}
+            </button>
+
+            {/* Login Link */}
+            <div className="text-center text-sm text-gray-400 pt-4 border-t border-gray-700">
+              Already have an account?{" "}
+              <Link
+                to="/login"
+                className="text-blue-400 hover:text-blue-300 font-medium underline"
+              >
+                Log in here
+              </Link>
+            </div>
+          </form>
+        );
     }
   };
 
@@ -406,22 +860,30 @@ export default function SignupForm() {
         {/* Header */}
         <div className="text-center mb-10 md:mb-12">
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mb-4">
-            Start Your Trading Journey
+            {billingStep === "payment" ? "Secure Billing Setup" : 
+             billingStep === "subscription" ? "Complete Your Subscription" : 
+             "Start Your Trading Journey"}
           </h1>
+          
           <p className="text-lg md:text-xl text-gray-300 max-w-3xl mx-auto mb-6">
-            Join thousands of traders using AI-powered strategies to maximize returns
+            {billingStep === "payment" ? 
+              "Add a payment method for performance fee collection (required)" :
+              billingStep === "subscription" ? 
+              `Subscribe to ${currentTier.label} tier to unlock all features` :
+              "Join thousands of traders using AI-powered strategies to maximize returns"
+            }
           </p>
           
-          {promo && (
+          {promo && billingStep === "signup" && (
             <div className="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-sm font-semibold shadow-lg">
               🎯 {promo.message || "First 50 users get 90 days of reduced fees!"}
             </div>
           )}
 
           {/* API debug - development only */}
-          {process.env.NODE_ENV === 'development' && (
+          {process.env.NODE_ENV === 'development' && billingStep === "signup" && (
             <div className="mt-3 text-xs text-gray-500">
-              API: {API_BASE} | Endpoint: {API.checkout}
+              API: {API_BASE}
             </div>
           )}
         </div>
@@ -470,11 +932,70 @@ export default function SignupForm() {
               </div>
 
               <div className="text-xs text-gray-400 pt-4 border-t border-gray-700">
-                {formData.tier === "starter" ? (
+                {billingStep === "payment" ? (
+                  <>Add payment method to enable trading</>
+                ) : billingStep === "subscription" ? (
+                  <>Subscribe now to unlock all features</>
+                ) : formData.tier === "starter" ? (
                   <>Free tier requires billing setup for performance fee collection</>
                 ) : (
                   <>Includes all features from lower tiers</>
                 )}
+              </div>
+            </div>
+
+            {/* Billing Steps */}
+            <div className="rounded-2xl bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 p-6 shadow-xl">
+              <h3 className="font-bold text-lg mb-4">Billing Setup</h3>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    billingStep === "signup" ? "bg-blue-500/20 border border-blue-500" :
+                    billingStep === "payment" ? "bg-blue-500" :
+                    "bg-emerald-500"
+                  }`}>
+                    <span className="text-sm">1</span>
+                  </div>
+                  <span className={`text-sm ${billingStep === "signup" ? "text-white" : "text-gray-400"}`}>
+                    Create Account
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    billingStep === "payment" ? "bg-blue-500" :
+                    billingStep === "subscription" || billingStep === "complete" ? "bg-emerald-500" :
+                    "bg-gray-700"
+                  }`}>
+                    <span className="text-sm">2</span>
+                  </div>
+                  <span className={`text-sm ${billingStep === "payment" ? "text-white" : "text-gray-400"}`}>
+                    Add Payment Method
+                  </span>
+                </div>
+                {formData.tier !== "starter" && (
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      billingStep === "subscription" ? "bg-blue-500" :
+                      billingStep === "complete" ? "bg-emerald-500" :
+                      "bg-gray-700"
+                    }`}>
+                      <span className="text-sm">3</span>
+                    </div>
+                    <span className={`text-sm ${billingStep === "subscription" ? "text-white" : "text-gray-400"}`}>
+                      Subscribe ({currentTier.monthly})
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    billingStep === "complete" ? "bg-emerald-500" : "bg-gray-700"
+                  }`}>
+                    <span className="text-sm">{formData.tier === "starter" ? "3" : "4"}</span>
+                  </div>
+                  <span className={`text-sm ${billingStep === "complete" ? "text-white" : "text-gray-400"}`}>
+                    Start Trading
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -494,37 +1015,6 @@ export default function SignupForm() {
                 You can change strategies anytime in your dashboard.
               </div>
             </div>
-
-            {/* Next Steps */}
-            <div className="rounded-2xl bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700 p-6 shadow-xl">
-              <h3 className="font-bold text-lg mb-4">What Happens Next</h3>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm">1</span>
-                  </div>
-                  <span className="text-sm">Secure billing setup (required)</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm">2</span>
-                  </div>
-                  <span className="text-sm">Connect your trading account</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm">3</span>
-                  </div>
-                  <span className="text-sm">Configure your bot settings</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm">4</span>
-                  </div>
-                  <span className="text-sm">Launch automated trading</span>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Right Side - Form */}
@@ -533,16 +1023,40 @@ export default function SignupForm() {
               <div className={`h-2 bg-gradient-to-r ${currentTier.color}`} />
               
               <div className="p-6 md:p-8">
-                <h2 className="text-2xl font-bold mb-2">Create Your Account</h2>
-                <p className="text-gray-400 mb-6">
-                  Enter your details to get started. All tiers require billing setup for performance fee collection.
-                </p>
+                {billingStep === "payment" && (
+                  <div className="mb-6">
+                    <h2 className="text-2xl font-bold mb-2">Add Payment Method</h2>
+                    <p className="text-gray-400 mb-6">
+                      Your card will be charged performance fees when you make profits.
+                      Starter: 30% on profits over 3%. Paid tiers: 5% on profits over 3%.
+                    </p>
+                  </div>
+                )}
+
+                {billingStep === "subscription" && (
+                  <div className="mb-6">
+                    <h2 className="text-2xl font-bold mb-2">Complete Your Subscription</h2>
+                    <p className="text-gray-400 mb-6">
+                      Subscribe to {currentTier.label} tier to unlock all features.
+                      {currentTier.monthly} + {currentTier.fee} performance fee.
+                    </p>
+                  </div>
+                )}
+
+                {billingStep === "signup" && (
+                  <>
+                    <h2 className="text-2xl font-bold mb-2">Create Your Account</h2>
+                    <p className="text-gray-400 mb-6">
+                      Enter your details to get started. All tiers require billing setup for performance fee collection.
+                    </p>
+                  </>
+                )}
 
                 {success && (
                   <div className="mb-6 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                     <div className="flex items-center gap-2 text-emerald-300">
                       <span className="text-xl">🎉</span>
-                      <span>Account created successfully! Redirecting to secure checkout...</span>
+                      <span>Setup complete! Redirecting to dashboard...</span>
                     </div>
                   </div>
                 )}
@@ -552,7 +1066,11 @@ export default function SignupForm() {
                     <div className="flex items-start gap-2">
                       <span className="text-red-400 mt-0.5">⚠️</span>
                       <div className="flex-1">
-                        <div className="font-medium text-red-300">Signup Failed</div>
+                        <div className="font-medium text-red-300">
+                          {billingStep === "payment" ? "Payment Setup Failed" : 
+                           billingStep === "subscription" ? "Subscription Failed" : 
+                           "Signup Failed"}
+                        </div>
                         <div className="text-sm text-red-200/80 mt-1">{error}</div>
                         {process.env.NODE_ENV === 'development' && (
                           <button
@@ -567,176 +1085,7 @@ export default function SignupForm() {
                   </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  {/* Email */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => handleChange("email", e.target.value)}
-                      className={`w-full px-4 py-3 rounded-xl bg-gray-900/50 border ${
-                        formData.email ? 
-                          (emailValid ? "border-emerald-500/50" : "border-red-500/50") : 
-                          "border-gray-600"
-                      } focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all`}
-                      placeholder="you@example.com"
-                      disabled={loading || success}
-                      required
-                    />
-                    {formData.email && !emailValid && (
-                      <p className="mt-1 text-sm text-red-400">Please enter a valid email address</p>
-                    )}
-                  </div>
-
-                  {/* Password */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Password
-                    </label>
-                    <input
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => handleChange("password", e.target.value)}
-                      className={`w-full px-4 py-3 rounded-xl bg-gray-900/50 border ${
-                        formData.password ? 
-                          (passwordValid ? "border-emerald-500/50" : "border-red-500/50") : 
-                          "border-gray-600"
-                      } focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all`}
-                      placeholder="At least 8 characters"
-                      disabled={loading || success}
-                      required
-                    />
-                    <p className="mt-1 text-sm text-gray-400">
-                      {formData.password.length > 0 && !passwordValid 
-                        ? "Password must be at least 8 characters"
-                        : "Use a strong, unique password"
-                      }
-                    </p>
-                  </div>
-
-                  {/* Strategy Selection */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Trading Strategy
-                    </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {STRATEGIES.map((strategyOption) => (
-                        <button
-                          key={strategyOption.value}
-                          type="button"
-                          onClick={() => handleChange("strategy", strategyOption.value)}
-                          className={`p-4 rounded-xl border text-left transition-all ${
-                            formData.strategy === strategyOption.value
-                              ? "border-blue-500 bg-blue-500/10"
-                              : "border-gray-600 bg-gray-900/30 hover:border-gray-500"
-                          }`}
-                          disabled={loading || success}
-                        >
-                          <div className="font-medium">{strategyOption.label}</div>
-                          <div className="text-xs text-gray-400 mt-1">
-                            {strategyOption.description}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Tier Selection */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Select Your Tier
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {Object.entries(TIERS).map(([key, tierOption]) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => handleChange("tier", key)}
-                          className={`p-4 rounded-xl border transition-all relative overflow-hidden ${
-                            formData.tier === key
-                              ? "border-blue-500 bg-gradient-to-br from-gray-800 to-gray-900"
-                              : "border-gray-600 bg-gray-900/30 hover:border-gray-500"
-                          }`}
-                          disabled={loading || success}
-                        >
-                          {formData.tier === key && (
-                            <div className="absolute top-0 right-0 w-3 h-3 bg-blue-500 rounded-bl-full" />
-                          )}
-                          <div className="flex items-center gap-3 mb-2">
-                            <img
-                              src={tierOption.img}
-                              alt={tierOption.label}
-                              className="w-10 h-10 rounded-lg"
-                            />
-                            <div>
-                              <div className="font-bold text-left">{tierOption.label}</div>
-                              <div className="text-sm font-semibold">{tierOption.monthly}</div>
-                            </div>
-                          </div>
-                          <div className="text-xs text-gray-300 text-left">
-                            {tierOption.description}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Terms */}
-                  <div className="text-xs text-gray-400">
-                    <p className="mb-2">
-                      By creating an account, you agree to our{" "}
-                      <Link to="/terms" className="text-blue-400 hover:text-blue-300 underline">
-                        Terms of Service
-                      </Link>{" "}
-                      and{" "}
-                      <Link to="/privacy" className="text-blue-400 hover:text-blue-300 underline">
-                        Privacy Policy
-                      </Link>.
-                    </p>
-                    <p className="text-amber-300/80">
-                      💳 Billing setup is required for all tiers to enable performance fee collection.
-                    </p>
-                  </div>
-
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={!formValid || loading || success}
-                    className={`w-full py-4 px-6 rounded-xl font-bold text-lg transition-all duration-300 ${
-                      !formValid || loading || success
-                        ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                        : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                    }`}
-                  >
-                    {loading ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        <span>Processing...</span>
-                      </div>
-                    ) : success ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <span className="text-xl">✨</span>
-                        <span>Redirecting to Checkout...</span>
-                      </div>
-                    ) : (
-                      "Continue to Secure Checkout"
-                    )}
-                  </button>
-
-                  {/* Login Link */}
-                  <div className="text-center text-sm text-gray-400 pt-4 border-t border-gray-700">
-                    Already have an account?{" "}
-                    <Link
-                      to="/login"
-                      className="text-blue-400 hover:text-blue-300 font-medium underline"
-                    >
-                      Log in here
-                    </Link>
-                  </div>
-                </form>
+                {renderBillingStep()}
               </div>
             </div>
           </div>
