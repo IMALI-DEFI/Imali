@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
-import { useWallet } from '../context/WalletContext';
+import { useWallet } from '../../context/WalletContext';
 import { getContractInstance } from '../../getContractInstance';
 import { FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
 import stakingBanner from '../assets/images/staking-banner.png';
