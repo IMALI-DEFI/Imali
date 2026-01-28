@@ -1,20 +1,19 @@
 [build]
-base = "Frontend"
-command = "npm ci && CI=false npm run build"
-publish = "build"
+  base = "Frontend"
+  command = "npm install --legacy-peer-deps && npm run build"
+  publish = "Frontend/build"
 
 [build.environment]
-NODE_VERSION = "20"
+  NODE_VERSION = "20"
+  CI = "false"
 
-# 🔥 1. PROXY API REQUESTS TO YOUR SERVER
 [[redirects]]
-from = "/bot-api/*"
-to = "http://129.213.90.84:8001/:splat"
-status = 200
-force = true
+  from = "/bot-api/*"
+  to = "http://129.213.90.84:8001/:splat"
+  status = 200
+  force = true
 
-# 🔥 2. REACT SPA FALLBACK (must be LAST)
 [[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200
+  from = "/*"
+  to = "/index.html"
+  status = 200
