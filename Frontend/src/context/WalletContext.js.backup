@@ -3,8 +3,10 @@ import React, {
   useState,
   useCallback,
   useContext,
-  useEffect
+  useEffect,
+  useRef
 } from "react";
+import EthereumProvider from "@walletconnect/ethereum-provider";
 import { BrowserProvider } from "ethers";
 
 const WalletContext = createContext(null);
@@ -16,12 +18,14 @@ export const WalletProvider = ({ children }) => {
   const [walletType, setWalletType] = useState(null);
   const [error, setError] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const isMounted = useRef(true);
 
   const isMobile = () =>
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
       navigator.userAgent
     );
 
+  /* ----------------------------- CONNECT ----------------------------- */
   const connectWallet = useCallback(async (type) => {
     setIsConnecting(true);
     setError(null);
@@ -29,6 +33,7 @@ export const WalletProvider = ({ children }) => {
     try {
       let ethersProvider;
 
+      /* -------- MetaMask -------- */
       if (type === "metamask") {
         if (!window.ethereum) {
           if (isMobile()) {
@@ -54,9 +59,32 @@ export const WalletProvider = ({ children }) => {
         setWalletType("metamask");
       }
 
-      // WalletConnect removed - using web3modal instead
+      /* -------- WalletConnect -------- */
       if (type === "walletconnect") {
-        throw new Error("WalletConnect temporarily disabled. Please use MetaMask.");
+        const projectId = process.env.REACT_APP_WC_PROJECT_ID;
+
+        if (!projectId) {
+          throw new Error("Missing REACT_APP_WC_PROJECT_ID");
+        }
+
+        const wcProvider = await EthereumProvider.init({
+          projectId,
+          chains: [1, 137, 8453], // ETH, Polygon, Base
+          showQrModal: true
+        });
+
+        await wcProvider.connect();
+
+        ethersProvider = new BrowserProvider(wcProvider);
+
+        const signer = await ethersProvider.getSigner();
+        const address = await signer.getAddress();
+        const network = await ethersProvider.getNetwork();
+
+        setAccount(address);
+        setChainId(Number(network.chainId));
+        setProvider(ethersProvider);
+        setWalletType("walletconnect");
       }
 
       localStorage.setItem("walletType", type);
@@ -64,13 +92,18 @@ export const WalletProvider = ({ children }) => {
       console.error(err);
       setError(err.message || "Wallet connection failed");
     } finally {
-      setIsConnecting(false);
+      if (isMounted.current) {
+        setIsConnecting(false);
+      }
     }
   }, []);
 
+  /* ---------------------------- DISCONNECT ---------------------------- */
   const disconnectWallet = useCallback(async () => {
     try {
-      // WalletConnect disconnect removed
+      if (walletType === "walletconnect" && provider?.provider?.disconnect) {
+        await provider.provider.disconnect();
+      }
     } catch (_) {}
 
     setAccount(null);
@@ -79,15 +112,24 @@ export const WalletProvider = ({ children }) => {
     setWalletType(null);
     setError(null);
     localStorage.removeItem("walletType");
-  }, []);
+  }, [provider, walletType]);
 
+  /* ----------------------- AUTO-RECONNECT ----------------------- */
   useEffect(() => {
     const saved = localStorage.getItem("walletType");
-    if (saved && saved === "metamask") { // Only auto-connect MetaMask
+    if (saved && !account && !isConnecting) {
       connectWallet(saved);
     }
-  }, [connectWallet]);
+  }, [account, connectWallet, isConnecting]);
 
+  /* ---------------------- CLEANUP ON UNMOUNT --------------------- */
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  /* ----------------------------- CONTEXT ----------------------------- */
   return (
     <WalletContext.Provider
       value={{
