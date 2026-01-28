@@ -1,7 +1,7 @@
 // Lending.js (Final: APY, Fees, Token Prices, Beginner Layout)
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
-import { useWallet } from "../context/WalletContext";
+import { useWallet } from "../../context/WalletContext";
 import { getContractInstance } from "../../getContractInstance";
 import lendingGuideImage from "../assets/images/lending-guide-visual.png";
 import { FaEthereum, FaBitcoin, FaDollarSign } from "react-icons/fa";
