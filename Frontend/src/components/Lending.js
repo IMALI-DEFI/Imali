@@ -47,13 +47,13 @@ const Lending = () => {
     try {
       const contract = await getContractInstance("Lending");
       const [ethRaw, imaliRaw, maticRaw] = await Promise.all([
-        contract.ethCollateral(account).catch(() => 0n),
-        contract.imaliCollateral(account).catch(() => 0n),
-        contract.maticCollateral(account).catch(() => 0n),
+        contract.ethCollateral(account).catch(() => ethers.BigNumber.from(0)),
+        contract.imaliCollateral(account).catch(() => ethers.BigNumber.from(0)),
+        contract.maticCollateral(account).catch(() => ethers.BigNumber.from(0)),
       ]);
-      const eth = ethers.formatUnits(ethRaw || 0n, 18);
-      const imali = ethers.formatUnits(imaliRaw || 0n, 18);
-      const matic = ethers.formatUnits(maticRaw || 0n, 18);
+      const eth = ethers.utils.formatUnits(ethRaw || ethers.BigNumber.from(0), 18);
+      const imali = ethers.utils.formatUnits(imaliRaw || ethers.BigNumber.from(0), 18);
+      const matic = ethers.utils.formatUnits(maticRaw || ethers.BigNumber.from(0), 18);
       const total = (parseFloat(eth) + parseFloat(imali) + parseFloat(matic)).toFixed(4);
       setCollateral({ eth, imali, matic, total });
     } catch (err) {
@@ -75,8 +75,8 @@ const Lending = () => {
       setStats({
         supplyApy: (Number(supplyRate) / 10000).toFixed(2) + "%",
         borrowApy: (Number(borrowRate) / 10000).toFixed(2) + "%",
-        depositFee: ethers.formatEther(depositFee) + " ETH",
-        borrowFee: ethers.formatEther(borrowFee) + " ETH",
+        depositFee: ethers.utils.formatEther(depositFee) + " ETH",
+        borrowFee: ethers.utils.formatEther(borrowFee) + " ETH",
       });
     } catch (err) {
       console.error("Failed to fetch lending stats:", err);
@@ -88,12 +88,12 @@ const Lending = () => {
     try {
       const rpcUrl = process.env.REACT_APP_ALCHEMY_ETHERIUM;
       if (!rpcUrl) return;
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
       const abi = ["function latestRoundData() external view returns (uint80, int256 answer, uint256, uint256, uint80)"];
       for (let key in tokenAddresses) {
         const feed = new ethers.Contract(tokenAddresses[key], abi, provider);
         const data = await feed.latestRoundData();
-        prices[key] = ethers.formatUnits(data.answer, 8);
+        prices[key] = ethers.utils.formatUnits(data.answer, 8);
       }
       setTokenPrices(prices);
     } catch (err) {
@@ -129,13 +129,13 @@ const Lending = () => {
       const signer = await provider.getSigner();
       let tx;
       if (modalType === "supply") {
-        tx = await contract.connect(signer).depositEthCollateral({ value: ethers.parseUnits(amount, 18) });
+        tx = await contract.connect(signer).depositEthCollateral({ value: ethers.utils.parseUnits(amount, 18) });
       } else if (modalType === "borrow") {
-        tx = await contract.connect(signer).borrow(ethers.parseUnits(amount, 18), selectedToken.symbol);
+        tx = await contract.connect(signer).borrow(ethers.utils.parseUnits(amount, 18), selectedToken.symbol);
       } else if (modalType === "repay") {
-        tx = await contract.connect(signer).repay(ethers.parseUnits(amount, 18));
+        tx = await contract.connect(signer).repay(ethers.utils.parseUnits(amount, 18));
       } else if (modalType === "withdraw") {
-        tx = await contract.connect(signer).withdrawCollateral(ethers.parseUnits(amount, 18), selectedToken.symbol);
+        tx = await contract.connect(signer).withdrawCollateral(ethers.utils.parseUnits(amount, 18), selectedToken.symbol);
       }
       await tx.wait();
       fetchUserCollateral();
@@ -156,7 +156,7 @@ const Lending = () => {
         />
         <h2 className="text-3xl font-bold text-center text-green-700 mb-4">Lending for Beginners</h2>
         <p className="text-center text-gray-700 mb-6">
-          IMALI’s lending system lets you earn and borrow at your own pace. Deposit crypto like ETH, IMALI, or MATIC as collateral — and access stablecoins without giving up your assets. You stay in control.
+          IMALI's lending system lets you earn and borrow at your own pace. Deposit crypto like ETH, IMALI, or MATIC as collateral — and access stablecoins without giving up your assets. You stay in control.
         </p>
 
         {!account ? (
