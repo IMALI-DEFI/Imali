@@ -9,7 +9,7 @@
     "eject": "react-scripts eject"
   },
   "dependencies": {
-    "@stripe/stripe-js": "^7.9.0",
+    "@stripe/stripe-js": "^8.3.0",
     "@stripe/react-stripe-js": "^5.5.0",
 
     "@walletconnect/ethereum-provider": "^2.23.3",
