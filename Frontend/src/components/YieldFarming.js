@@ -1,199 +1,288 @@
-// YieldFarming.js (Refactored with Visual Layout, Banner, and Functional Logic)
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ethers } from "ethers";
-import { useWallet } from "../context/WalletContext";
-import getContractInstance from "../getContractInstance";
-import { toast } from "react-toastify";
-import farmingBanner from "../assets/images/farming-guide-visual.png";
+// src/components/Dashboard/YieldFarming.jsx
+import React, { useState, useEffect, useCallback } from "react";
+import * as ethers from "ethers";
+import { useWallet } from "../../context/WalletContext.js";
+import { getContractInstance } from "../../getContractInstance.js";
 
-const YieldFarming = () => {
-  const { account, connectWallet, disconnectWallet, provider } = useWallet();
+export default function YieldFarming() {
+  const { account, provider } = useWallet();
+
+  const [stakingContract, setStakingContract] = useState(null);
+  const [farmBalance, setFarmBalance] = useState("0");
+  const [earnedRewards, setEarnedRewards] = useState("0");
+  const [apy, setApy] = useState("0");
   const [amount, setAmount] = useState("");
+  const [status, setStatus] = useState({ message: "", type: "" });
   const [loading, setLoading] = useState(false);
-  const [apy, setApy] = useState("0.00");
-  const [rewards, setRewards] = useState("0.00");
-  const [staked, setStaked] = useState("0.00");
-  const [error, setError] = useState(null);
+  const [lpBalance, setLpBalance] = useState("0");
 
-  const stakingRef = useRef(null);
-  const tokenRef = useRef(null);
-
-  const initContracts = useCallback(async () => {
+  const initContract = useCallback(async () => {
+    if (!provider) return;
     try {
-      stakingRef.current = await getContractInstance("Staking");
-      tokenRef.current = await getContractInstance("LPToken");
-    } catch (err) {
-      console.error("Contract init failed:", err);
-      setError("Failed to initialize contracts");
+      // Uses your Staking contract’s LP functions (your getContractInstance loader)
+      const contract = await getContractInstance("Staking", provider);
+      setStakingContract(contract);
+    } catch (error) {
+      console.error("YieldFarming init error:", error);
+      setStatus({ message: "Failed to initialize contract", type: "error" });
     }
-  }, []);
+  }, [provider]);
 
-  const fetchStats = useCallback(async () => {
-    if (!stakingRef.current || !account) return;
+  const fetchFarmData = useCallback(async () => {
+    if (!stakingContract || !account || !provider) return;
+
+    setLoading(true);
     try {
-      const [userStakeData, rewardRate] = await Promise.all([
-        stakingRef.current.lpStakers(account).catch(() => [0n, 0n, 0n]),
-        stakingRef.current.lpRewardRate().catch(() => 0n),
+      const signer = await provider.getSigner();
+
+      // lpStakers(account) might not exist on every contract — safe fallback
+      const stakedLPData = await stakingContract
+        .connect(signer)
+        .lpStakers(account)
+        .catch(() => ({ rewards: 0n }));
+
+      setEarnedRewards(ethers.formatUnits(stakedLPData?.rewards ?? 0n, 18));
+
+      const lpTokenAddress = await stakingContract.lpToken();
+      const stakingAddr = await stakingContract.getAddress();
+
+      const erc20ReadAbi = ["function balanceOf(address) view returns (uint256)"];
+      const lpTokenRead = new ethers.Contract(lpTokenAddress, erc20ReadAbi, signer);
+
+      const [stakedLPToken, userLpBalance, rewardRate] = await Promise.all([
+        lpTokenRead.balanceOf(stakingAddr),
+        lpTokenRead.balanceOf(account),
+        stakingContract.lpRewardRate().catch(() => 0n),
       ]);
 
-      const stakedAmount = ethers.formatUnits(userStakeData[0] || 0n, 18);
-      const rewardAmount = ethers.formatUnits(userStakeData[2] || 0n, 18);
-      const rate = ethers.formatUnits(rewardRate || 0n, 18);
-      const apyEstimate = ((parseFloat(rate) * 31536000) / parseFloat(stakedAmount || "1")) * 100;
+      setFarmBalance(ethers.formatUnits(stakedLPToken ?? 0n, 18));
+      setLpBalance(ethers.formatUnits(userLpBalance ?? 0n, 18));
 
-      setStaked(stakedAmount);
-      setRewards(rewardAmount);
-      setApy(apyEstimate.toFixed(2));
-    } catch (err) {
-      console.error("Stats fetch failed:", err);
-      setError("Failed to fetch farming stats");
+      const stakedTotal = Number(ethers.formatUnits(stakedLPToken ?? 0n, 18));
+      const rateNum = Number(ethers.formatUnits(rewardRate ?? 0n, 18));
+
+      const apyValue =
+        stakedTotal > 0 ? ((rateNum * 31536000) / stakedTotal) * 100 : 0;
+
+      setApy(Number.isFinite(apyValue) ? apyValue.toFixed(2) : "0.00");
+    } catch (error) {
+      console.error("YieldFarming fetch error:", error);
+      setStatus({ message: "Failed to fetch farm data", type: "error" });
+    } finally {
+      setLoading(false);
     }
-  }, [account]);
+  }, [stakingContract, account, provider]);
 
   useEffect(() => {
-    if (account) {
-      initContracts().then(fetchStats);
-    }
-  }, [account, initContracts, fetchStats]);
+    initContract();
+  }, [initContract]);
 
-  const handleStake = async () => {
-    if (!amount || !stakingRef.current || !tokenRef.current || !provider) return;
+  useEffect(() => {
+    fetchFarmData();
+  }, [fetchFarmData]);
+
+  const handleStakeLP = async () => {
+    if (!stakingContract || !provider) {
+      setStatus({ message: "Contract not ready", type: "error" });
+      return;
+    }
+    if (!amount || Number(amount) <= 0) {
+      setStatus({ message: "Enter a valid amount", type: "error" });
+      return;
+    }
+
+    if (Number(amount) > Number(lpBalance)) {
+      setStatus({ message: "Insufficient LP balance", type: "error" });
+      return;
+    }
+
     setLoading(true);
     try {
       const signer = await provider.getSigner();
-      const wei = ethers.parseUnits(amount, 18);
-      const contractAddress = await stakingRef.current.getAddress();
-      const allowance = await tokenRef.current.allowance(account, contractAddress);
+      const amountInWei = ethers.parseUnits(String(amount), 18);
 
-      if (allowance < wei) {
-        const tx = await tokenRef.current.connect(signer).approve(contractAddress, wei);
-        await tx.wait();
+      const lpTokenAddress = await stakingContract.lpToken();
+      const stakingAddr = await stakingContract.getAddress();
+
+      const erc20Abi = [
+        "function allowance(address,address) view returns (uint256)",
+        "function approve(address,uint256) returns (bool)",
+      ];
+      const lpToken = new ethers.Contract(lpTokenAddress, erc20Abi, signer);
+
+      const allowance = await lpToken.allowance(account, stakingAddr);
+
+      if (allowance < amountInWei) {
+        setStatus({ message: "Approving LP...", type: "info" });
+        await (await lpToken.approve(stakingAddr, amountInWei)).wait();
       }
 
-      const tx = await stakingRef.current.connect(signer).stakeLP(wei);
-      await tx.wait();
-      toast.success("✅ Staked successfully!");
-      fetchStats();
-    } catch (err) {
-      console.error(err);
-      toast.error("Stake failed: " + (err.reason || err.message));
+      setStatus({ message: "Staking...", type: "info" });
+      await (await stakingContract.connect(signer).stakeLP(amountInWei)).wait();
+
+      setStatus({ message: "LP Staked!", type: "success" });
+      setAmount("");
+      await fetchFarmData();
+    } catch (e) {
+      console.error("Stake LP error:", e);
+      setStatus({
+        message: e?.reason || e?.message || "Stake failed",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUnstake = async () => {
-    if (!amount || !stakingRef.current || !provider) return;
+  const handleUnstakeLP = async () => {
+    if (!stakingContract || !provider) {
+      setStatus({ message: "Contract not ready", type: "error" });
+      return;
+    }
+    if (!amount || Number(amount) <= 0) {
+      setStatus({ message: "Enter a valid amount", type: "error" });
+      return;
+    }
+
     setLoading(true);
     try {
       const signer = await provider.getSigner();
-      const tx = await stakingRef.current.connect(signer).unstakeLP(ethers.parseUnits(amount, 18));
-      await tx.wait();
-      toast.success("✅ Unstaked successfully!");
-      fetchStats();
-    } catch (err) {
-      toast.error("Unstake failed: " + (err.reason || err.message));
+      const amountWei = ethers.parseUnits(String(amount), 18);
+
+      await (await stakingContract.connect(signer).unstakeLP(amountWei)).wait();
+
+      setStatus({ message: "Unstaked!", type: "success" });
+      setAmount("");
+      await fetchFarmData();
+    } catch (e) {
+      console.error("Unstake LP error:", e);
+      setStatus({
+        message: e?.reason || e?.message || "Unstake failed",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleClaim = async () => {
-    if (!stakingRef.current || !provider) return;
+  const handleClaimRewards = async () => {
+    if (!stakingContract || !provider) return;
+
     setLoading(true);
     try {
       const signer = await provider.getSigner();
-      const tx = await stakingRef.current.connect(signer).claimRewards();
-      await tx.wait();
-      toast.success("✅ Rewards claimed!");
-      fetchStats();
-    } catch (err) {
-      toast.error("Claim failed: " + (err.reason || err.message));
+      await (await stakingContract.connect(signer).claimRewards()).wait();
+
+      setStatus({ message: "Rewards claimed!", type: "success" });
+      await fetchFarmData();
+    } catch (e) {
+      console.error("Claim error:", e);
+      setStatus({
+        message: e?.reason || e?.message || "Claim failed",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
+  };
+
+  if (!account) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-black/40 p-4 text-sm">
+        Connect your wallet from the header to start farming.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-4 rounded-2xl border border-white/10 bg-gradient-to-r from-cyan-600/30 to-emerald-500/20 p-4">
+        <div className="text-sm opacity-80">Yield Farming</div>
+        <div className="text-2xl font-extrabold tracking-tight">
+          Stake LP • Earn IMALI
+        </div>
+        <div className="text-xs opacity-80 mt-1">Gamified visuals. Real rewards.</div>
+      </div>
+
+      <div className="grid md:grid-cols-4 gap-3 mb-4">
+        <Stat label="Pool APY" value={`${apy}%`} />
+        <Stat label="Pool LP" value={farmBalance} />
+        <Stat label="My Rewards" value={`${earnedRewards} IMALI`} />
+        <Stat label="My LP Balance" value={`${lpBalance} LP`} />
+      </div>
+
+      <div className="rounded-xl bg-white/5 border border-white/10 p-4">
+        <div className="flex flex-col sm:flex-row gap-3 items-end">
+          <div className="grow">
+            <label className="block text-xs text-white/70 mb-1">LP Amount</label>
+            <input
+              type="number"
+              min="0"
+              step="0.0001"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full bg-black/40 border border-white/15 rounded px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <Action onClick={handleStakeLP} disabled={loading || !amount}>
+              Stake LP
+            </Action>
+            <Action
+              onClick={handleUnstakeLP}
+              disabled={loading || !amount}
+              kind="secondary"
+            >
+              Unstake LP
+            </Action>
+            <Action onClick={handleClaimRewards} disabled={loading} kind="ghost">
+              Claim
+            </Action>
+          </div>
+        </div>
+
+        {!!status.message && (
+          <div
+            className={`mt-3 text-xs ${
+              status.type === "error"
+                ? "text-rose-300"
+                : status.type === "success"
+                ? "text-emerald-300"
+                : "text-yellow-300"
+            }`}
+          >
+            {status.message}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+      <div className="text-xs opacity-70">{label}</div>
+      <div className="text-lg font-extrabold">{value}</div>
+    </div>
+  );
+}
+
+function Action({ children, onClick, disabled, kind = "primary" }) {
+  const styles = {
+    primary: "bg-emerald-600/80 hover:bg-emerald-600 border-emerald-400/40",
+    secondary: "bg-indigo-600/70 hover:bg-indigo-600 border-indigo-400/40",
+    ghost: "bg-black/30 hover:bg-black/40 border-white/20",
   };
 
   return (
-    <section className="bg-gray-50 text-gray-900 py-10 px-4">
-      <div className="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-md">
-        <img
-          src={farmingBanner}
-          alt="Yield Farming Guide"
-          className="w-full max-w-2xl mx-auto rounded mb-6"
-        />
-        <h2 className="text-3xl font-bold text-center text-green-700 mb-4">💰 Yield Farming</h2>
-        <p className="text-center text-gray-700 mb-6">
-          Provide liquidity and stake your LP tokens to earn rewards in real time.
-        </p>
-
-        {!account ? (
-          <div className="text-center">
-            <button
-              onClick={() => connectWallet("metamask")}
-              className="bg-green-600 text-white px-6 py-2 rounded"
-            >
-              Connect Wallet
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-gray-100 p-4 rounded text-center">
-                <h4 className="font-semibold">Staked LP</h4>
-                <p>{staked}</p>
-              </div>
-              <div className="bg-gray-100 p-4 rounded text-center">
-                <h4 className="font-semibold">Rewards</h4>
-                <p>{rewards}</p>
-              </div>
-              <div className="bg-gray-100 p-4 rounded text-center">
-                <h4 className="font-semibold">APY</h4>
-                <p>{apy}%</p>
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Enter amount"
-                className="border p-3 rounded w-full mb-4"
-              />
-              <div className="flex flex-wrap gap-4 justify-center">
-                <button
-                  onClick={handleStake}
-                  disabled={loading}
-                  className="bg-green-600 text-white px-6 py-2 rounded"
-                >Stake</button>
-                <button
-                  onClick={handleUnstake}
-                  disabled={loading}
-                  className="bg-red-600 text-white px-6 py-2 rounded"
-                >Unstake</button>
-                <button
-                  onClick={handleClaim}
-                  disabled={loading}
-                  className="bg-blue-600 text-white px-6 py-2 rounded"
-                >Claim</button>
-              </div>
-            </div>
-          </>
-        )}
-
-        <div className="mt-8 text-sm text-gray-600">
-          <h3 className="text-lg font-semibold mb-2">📘 How It Works</h3>
-          <ul className="list-disc list-inside space-y-2">
-            <li>Stake LP tokens you’ve earned by providing liquidity.</li>
-            <li>Earn rewards over time based on the pool’s APY.</li>
-            <li>Unstake anytime. Rewards are claimable on demand.</li>
-            <li>Watch your yield grow with our real-time stats.</li>
-          </ul>
-        </div>
-      </div>
-    </section>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`px-4 py-2 rounded-lg border ${styles[kind]} disabled:opacity-50 disabled:pointer-events-none`}
+    >
+      {children}
+    </button>
   );
-};
-
-export default YieldFarming;
+}
