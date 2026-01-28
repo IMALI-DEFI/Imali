@@ -1,6 +1,6 @@
 // src/components/Dashboard/YieldFarming.jsx
 import React, { useState, useEffect, useCallback } from "react";
-import { Contract, formatUnits, parseUnits } from "ethers";
+import { ethers } from "ethers";
 import { useWallet } from "../../context/WalletContext.js";
 import { getContractInstance } from "../../getContractInstance.js";
 
@@ -39,27 +39,27 @@ export default function YieldFarming() {
       const stakedLPData = await stakingContract
         .connect(signer)
         .lpStakers(account)
-        .catch(() => ({ rewards: 0n }));
+        .catch(() => ({ rewards: ethers.BigNumber.from(0) }));
 
-      setEarnedRewards(formatUnits(stakedLPData?.rewards ?? 0n, 18));
+      setEarnedRewards(ethers.utils.formatUnits(stakedLPData?.rewards ?? 0, 18));
 
       const lpTokenAddress = await stakingContract.lpToken();
-      const stakingAddr = await stakingContract.getAddress();
+      const stakingAddr = await stakingContract.address;
 
       const erc20ReadAbi = ["function balanceOf(address) view returns (uint256)"];
-      const lpTokenRead = new Contract(lpTokenAddress, erc20ReadAbi, signer);
+      const lpTokenRead = new ethers.Contract(lpTokenAddress, erc20ReadAbi, signer);
 
       const [stakedLPToken, userLpBalance, rewardRate] = await Promise.all([
         lpTokenRead.balanceOf(stakingAddr),
         lpTokenRead.balanceOf(account),
-        stakingContract.lpRewardRate().catch(() => 0n),
+        stakingContract.lpRewardRate().catch(() => ethers.BigNumber.from(0)),
       ]);
 
-      setFarmBalance(formatUnits(stakedLPToken ?? 0n, 18));
-      setLpBalance(formatUnits(userLpBalance ?? 0n, 18));
+      setFarmBalance(ethers.utils.formatUnits(stakedLPToken ?? 0, 18));
+      setLpBalance(ethers.utils.formatUnits(userLpBalance ?? 0, 18));
 
-      const stakedTotal = Number(formatUnits(stakedLPToken ?? 0n, 18));
-      const rateNum = Number(formatUnits(rewardRate ?? 0n, 18));
+      const stakedTotal = Number(ethers.utils.formatUnits(stakedLPToken ?? 0, 18));
+      const rateNum = Number(ethers.utils.formatUnits(rewardRate ?? 0, 18));
 
       const apyValue =
         stakedTotal > 0 ? ((rateNum * 31536000) / stakedTotal) * 100 : 0;
@@ -99,20 +99,20 @@ export default function YieldFarming() {
     setLoading(true);
     try {
       const signer = await provider.getSigner();
-      const amountInWei = parseUnits(String(amount), 18);
+      const amountInWei = ethers.utils.parseUnits(String(amount), 18);
 
       const lpTokenAddress = await stakingContract.lpToken();
-      const stakingAddr = await stakingContract.getAddress();
+      const stakingAddr = await stakingContract.address;
 
       const erc20Abi = [
         "function allowance(address,address) view returns (uint256)",
         "function approve(address,uint256) returns (bool)",
       ];
-      const lpToken = new Contract(lpTokenAddress, erc20Abi, signer);
+      const lpToken = new ethers.Contract(lpTokenAddress, erc20Abi, signer);
 
       const allowance = await lpToken.allowance(account, stakingAddr);
 
-      if (allowance < amountInWei) {
+      if (allowance.lt(amountInWei)) {
         setStatus({ message: "Approving LP...", type: "info" });
         await (await lpToken.approve(stakingAddr, amountInWei)).wait();
       }
@@ -147,7 +147,7 @@ export default function YieldFarming() {
     setLoading(true);
     try {
       const signer = await provider.getSigner();
-      const amountWei = parseUnits(String(amount), 18);
+      const amountWei = ethers.utils.parseUnits(String(amount), 18);
 
       await (await stakingContract.connect(signer).unstakeLP(amountWei)).wait();
 
