@@ -1,7 +1,7 @@
 [build]
-  base = "Frontend"
+  base = "imali_defi"
   command = "npm install --legacy-peer-deps && npm run build"
-  publish = "Frontend/build"
+  publish = "build"
 
 [build.environment]
   NODE_VERSION = "20"
