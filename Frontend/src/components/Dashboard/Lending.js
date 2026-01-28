@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../../context/WalletContext";
 import { getContractInstance } from "../../getContractInstance";
-import lendingGuideImage from "../assets/images/lending-guide-visual.png";
+import lendingGuideImage from "../../assets/images/lending-guide-visual.png";
 import { FaEthereum, FaBitcoin, FaDollarSign } from "react-icons/fa";
 
 const tokenAddresses = {
