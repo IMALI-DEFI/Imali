@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import { useWallet } from "../context/WalletContext";
+import { useWallet } from "../../context/WalletContext";
 import getContractInstance from "../../getContractInstance";
 import { FaTrophy, FaTicketAlt, FaHistory, FaInfoCircle } from "react-icons/fa";
 import Countdown from "react-countdown";
