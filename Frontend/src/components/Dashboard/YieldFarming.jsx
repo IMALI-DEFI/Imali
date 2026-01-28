@@ -19,7 +19,7 @@ export default function YieldFarming() {
   const initContract = useCallback(async () => {
     if (!provider) return;
     try {
-      // Uses your Staking contract’s LP functions
+      // Uses your Staking contract's LP functions (your getContractInstance loader)
       const contract = await getContractInstance("Staking", provider);
       setStakingContract(contract);
     } catch (error) {
@@ -35,7 +35,7 @@ export default function YieldFarming() {
     try {
       const signer = await provider.getSigner();
 
-      // lpStakers(account) might not exist on every version — keep the safe fallback
+      // lpStakers(account) might not exist on every contract — safe fallback
       const stakedLPData = await stakingContract
         .connect(signer)
         .lpStakers(account)
@@ -44,11 +44,10 @@ export default function YieldFarming() {
       setEarnedRewards(formatUnits(stakedLPData?.rewards ?? 0n, 18));
 
       const lpTokenAddress = await stakingContract.lpToken();
+      const stakingAddr = await stakingContract.getAddress();
 
       const erc20ReadAbi = ["function balanceOf(address) view returns (uint256)"];
       const lpTokenRead = new Contract(lpTokenAddress, erc20ReadAbi, signer);
-
-      const stakingAddr = await stakingContract.getAddress();
 
       const [stakedLPToken, userLpBalance, rewardRate] = await Promise.all([
         lpTokenRead.balanceOf(stakingAddr),
@@ -61,10 +60,11 @@ export default function YieldFarming() {
 
       const stakedTotal = Number(formatUnits(stakedLPToken ?? 0n, 18));
       const rateNum = Number(formatUnits(rewardRate ?? 0n, 18));
+
       const apyValue =
         stakedTotal > 0 ? ((rateNum * 31536000) / stakedTotal) * 100 : 0;
 
-      setApy(apyValue.toFixed(2));
+      setApy(Number.isFinite(apyValue) ? apyValue.toFixed(2) : "0.00");
     } catch (error) {
       console.error("YieldFarming fetch error:", error);
       setStatus({ message: "Failed to fetch farm data", type: "error" });
@@ -82,12 +82,14 @@ export default function YieldFarming() {
   }, [fetchFarmData]);
 
   const handleStakeLP = async () => {
-    if (!stakingContract || !amount) {
-      setStatus({ message: "Enter amount", type: "error" });
+    if (!stakingContract || !provider) {
+      setStatus({ message: "Contract not ready", type: "error" });
       return;
     }
-
-    const amountInWei = parseUnits(String(amount), 18);
+    if (!amount || Number(amount) <= 0) {
+      setStatus({ message: "Enter a valid amount", type: "error" });
+      return;
+    }
 
     if (Number(amount) > Number(lpBalance)) {
       setStatus({ message: "Insufficient LP balance", type: "error" });
@@ -97,6 +99,7 @@ export default function YieldFarming() {
     setLoading(true);
     try {
       const signer = await provider.getSigner();
+      const amountInWei = parseUnits(String(amount), 18);
 
       const lpTokenAddress = await stakingContract.lpToken();
       const stakingAddr = await stakingContract.getAddress();
@@ -121,6 +124,7 @@ export default function YieldFarming() {
       setAmount("");
       await fetchFarmData();
     } catch (e) {
+      console.error("Stake LP error:", e);
       setStatus({
         message: e?.reason || e?.message || "Stake failed",
         type: "error",
@@ -131,22 +135,27 @@ export default function YieldFarming() {
   };
 
   const handleUnstakeLP = async () => {
-    if (!stakingContract || !amount) {
-      setStatus({ message: "Enter amount", type: "error" });
+    if (!stakingContract || !provider) {
+      setStatus({ message: "Contract not ready", type: "error" });
+      return;
+    }
+    if (!amount || Number(amount) <= 0) {
+      setStatus({ message: "Enter a valid amount", type: "error" });
       return;
     }
 
     setLoading(true);
     try {
       const signer = await provider.getSigner();
-      await (
-        await stakingContract.connect(signer).unstakeLP(parseUnits(String(amount), 18))
-      ).wait();
+      const amountWei = parseUnits(String(amount), 18);
+
+      await (await stakingContract.connect(signer).unstakeLP(amountWei)).wait();
 
       setStatus({ message: "Unstaked!", type: "success" });
       setAmount("");
       await fetchFarmData();
     } catch (e) {
+      console.error("Unstake LP error:", e);
       setStatus({
         message: e?.reason || e?.message || "Unstake failed",
         type: "error",
@@ -157,7 +166,7 @@ export default function YieldFarming() {
   };
 
   const handleClaimRewards = async () => {
-    if (!stakingContract) return;
+    if (!stakingContract || !provider) return;
 
     setLoading(true);
     try {
@@ -167,6 +176,7 @@ export default function YieldFarming() {
       setStatus({ message: "Rewards claimed!", type: "success" });
       await fetchFarmData();
     } catch (e) {
+      console.error("Claim error:", e);
       setStatus({
         message: e?.reason || e?.message || "Claim failed",
         type: "error",
