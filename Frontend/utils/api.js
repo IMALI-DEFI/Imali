@@ -4,18 +4,38 @@ import axios from "axios";
 /* ---------------- Environment Helpers ---------------- */
 const IS_BROWSER = typeof window !== "undefined";
 
-function getEnv(key, fallback = "") {
-  // works both in Vite (frontend) & Node (backend)
-  if (typeof import.meta !== "undefined" && import.meta.env && key in import.meta.env)
-    return import.meta.env[key] || fallback;
-  if (typeof process !== "undefined" && process.env && key in process.env)
+// Unified environment variable access
+function getEnvVar(key, fallback = "") {
+  // Node.js environment (backend)
+  if (typeof process !== "undefined" && process.env) {
     return process.env[key] || fallback;
+  }
+  
+  // Browser environment - check various possible sources
+  if (IS_BROWSER) {
+    // Check if values are injected via global variable (common in SSR/SSG setups)
+    if (window.__ENV && window.__ENV[key] !== undefined) {
+      return window.__ENV[key];
+    }
+    
+    // Check if values are in window object directly
+    if (window[key] !== undefined) {
+      return window[key];
+    }
+    
+    // For create-react-app style apps
+    if (window.process?.env?.[key]) {
+      return window.process.env[key];
+    }
+  }
+  
   return fallback;
 }
 
 const BASE_URL =
-  getEnv("VITE_API_BASE_URL") ||
-  getEnv("REACT_APP_API_BASE_URL") ||
+  getEnvVar("API_BASE_URL") ||
+  getEnvVar("VITE_API_BASE_URL") ||
+  getEnvVar("REACT_APP_API_BASE_URL") ||
   (IS_BROWSER
     ? "https://api.imali-defi.com/api" // Frontend fallback
     : "http://localhost:3001/api");    // Backend local fallback
@@ -27,9 +47,10 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-if (IS_BROWSER && import.meta.env?.MODE === "development") {
+// Logging without import.meta.env
+if (IS_BROWSER) {
   console.log(`[BotAPI] Running in BROWSER → baseURL: ${BASE_URL}`);
-} else if (!IS_BROWSER) {
+} else {
   console.log(`[BotAPI] Running in BACKEND → baseURL: ${BASE_URL}`);
 }
 
