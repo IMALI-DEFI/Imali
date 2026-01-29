@@ -1,157 +1,319 @@
 // src/getContractInstance.js
+import {
+  BrowserProvider,
+  Contract,
+  ZeroAddress,
+  getAddress as toChecksum,
+  isAddress,
+} from "ethers";
 
-import { ethers } from "ethers";
+import {
+  IMALITOKENABI,
+  IMALITOKENBASEABI,
+  PresaleABI,
+  StakingABI,
+  ReferralSystemABI,
+  BuybackABI,
+  FeeDistributorABI,
+  LiquidityManagerABI,
+  VestingVaultABI,
+  AirdropDistributorABI,
+} from "../abi";
 
-// Import ABIs - Updated paths from ./utils/ to ./abi/
-import LendingABI from "./abi/LendingABI.json";
-import YieldFarmingABI from "./abi/YieldFarmingABI.json";
-import StakingABI from "./abi/StakingABI.json";
-import TokenPolygonABI from "./abi/TokenABI.json";
-import TokenBaseABI from "./abi/IMALITOKENBASEABI.json";
-import LPTokenABI from "./abi/LPTokenABI.json";
-import DAOABI from "./abi/IMALIDAOABI.json";
-import PresaleABI from "./abi/PresaleABI.json";
-import NFTABI from "./abi/IMALINFTABI.json";
-import FeeDistributorABI from "./abi/FeeDistributorABI.json";
-import LPLotteryABI from "./abi/LPLotteryABI.json";
-import BuybackABI from "./abi/BuybackABI.json";
-import VestingVaultABI from "./abi/VestingVaultABI.json";
-import AirdropABI from "./abi/AirdropABI.json";
-import LiquidityManagerABI from "./abi/LiquidityManagerABI.json";
+// -------------------- Chains --------------------
+export const ETHEREUM_MAINNET = "ethereum";
+export const POLYGON_MAINNET  = "polygon";
+export const BASE_MAINNET     = "base";
 
-// Network Chain IDs
-export const ETHEREUM_MAINNET = 1;
-export const POLYGON_MAINNET = 137;
-export const BASE_MAINNET = 8453;
-
-// Contract addresses
-const CONTRACT_ADDRESSES = {
-  Lending: { [ETHEREUM_MAINNET]: process.env.REACT_APP_LENDING_ETHEREUM },
-  YieldFarming: { [POLYGON_MAINNET]: process.env.REACT_APP_YIELDFARMING_POLYGON },
-  Staking: { [POLYGON_MAINNET]: process.env.REACT_APP_STAKING_POLYGON },
-  Token: {
-    [POLYGON_MAINNET]: process.env.REACT_APP_TOKEN_POLYGON,
-    [BASE_MAINNET]: process.env.REACT_APP_TOKEN_BASE,
+export const NETWORKS = {
+  [ETHEREUM_MAINNET]: { chainIdHex: "0x1",    name: "Ethereum",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrlsKey: "RPC_ETHEREUM",
+    explorers: ["https://etherscan.io/"],
   },
-  LPToken: { [POLYGON_MAINNET]: process.env.REACT_APP_LPTOKEN_POLYGON },
-  DAO: { [POLYGON_MAINNET]: process.env.REACT_APP_DAO_POLYGON },
-  Presale: { [POLYGON_MAINNET]: process.env.REACT_APP_PRESALE_POLYGON },
-  NFT: { [POLYGON_MAINNET]: process.env.REACT_APP_NFT_POLYGON },
-  FeeDistributor: { [POLYGON_MAINNET]: process.env.REACT_APP_FEEDISTRIBUTOR_POLYGON },
-  LPLottery: { [POLYGON_MAINNET]: process.env.REACT_APP_LPLOTTERY_POLYGON },
-  Buyback: { [POLYGON_MAINNET]: process.env.REACT_APP_BUYBACK_ADDRESS },
-  VestingVault: { [POLYGON_MAINNET]: process.env.REACT_APP_VESTINGVAULT_ADDRESS },
-  AirdropDistributor: { [POLYGON_MAINNET]: process.env.REACT_APP_AIRDROPDISTRIBUTOR_ADDRESS },
-  LiquidityManager: { [POLYGON_MAINNET]: process.env.REACT_APP_LIQUIDITYMANAGER_ADDRESS },
-};
-
-// Contract ABIs
-const CONTRACT_ABIS = {
-  Lending: LendingABI,
-  YieldFarming: YieldFarmingABI,
-  Staking: StakingABI,
-  Token: {
-    [POLYGON_MAINNET]: TokenPolygonABI,
-    [BASE_MAINNET]: TokenBaseABI,
+  [POLYGON_MAINNET]:  { chainIdHex: "0x89",   name: "Polygon",
+    nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
+    rpcUrlsKey: "RPC_POLYGON",
+    explorers: ["https://polygonscan.com/"],
   },
-  LPToken: LPTokenABI,
-  DAO: DAOABI,
-  Presale: PresaleABI,
-  NFT: NFTABI,
-  FeeDistributor: FeeDistributorABI,
-  LPLottery: LPLotteryABI,
-  Buyback: BuybackABI,
-  VestingVault: VestingVaultABI,
-  AirdropDistributor: AirdropABI,
-  LiquidityManager: LiquidityManagerABI,
+  [BASE_MAINNET]:     { chainIdHex: "0x2105", name: "Base",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrlsKey: "RPC_BASE",
+    explorers: ["https://basescan.org/"],
+  },
 };
 
-// Cache to prevent re-creating contract instances
-const contractCache = new Map();
+export const short = (a) => (a ? a.slice(0, 6) + "..." + a.slice(-4) : "");
 
-// Get a contract instance
-export const getContractInstance = async (contractType, options = {}) => {
-  try {
-    const externalProvider = options.externalProvider;
-    const targetChainId = contractType === "Lending" ? ETHEREUM_MAINNET : POLYGON_MAINNET;
-    const cacheKey = `${contractType}-${targetChainId}`;
+// -------------------- Env helpers --------------------
+const IS_BROWSER = typeof window !== "undefined";
 
-    if (contractCache.has(cacheKey)) {
-      return contractCache.get(cacheKey);
-    }
-
-    let provider = externalProvider
-      ? new ethers.providers.Web3Provider(externalProvider)
-      : new ethers.providers.Web3Provider(window.ethereum);
-
-    const network = await provider.getNetwork();
-    const isWalletConnect = externalProvider?.wc || externalProvider?.isWalletConnect;
-
-    if (!isWalletConnect && network.chainId !== targetChainId) {
-      await switchNetwork(targetChainId);
-      provider = externalProvider
-        ? new ethers.providers.Web3Provider(externalProvider)
-        : new ethers.providers.Web3Provider(window.ethereum);
-    }
-
-    const contractAddress = CONTRACT_ADDRESSES[contractType]?.[targetChainId];
-    const contractABI = contractType === "Token"
-      ? CONTRACT_ABIS[contractType][targetChainId]
-      : CONTRACT_ABIS[contractType];
-
-    if (!contractAddress || !contractABI) {
-      throw new Error(`Missing configuration for ${contractType} on chain ${targetChainId}`);
-    }
-
-    const signer = await provider.getSigner();
-    const contract = new ethers.Contract(contractAddress, contractABI, signer);
-
-    contractCache.set(cacheKey, contract);
-    console.log(`✅ Loaded ${contractType} contract`, {
-      address: contractAddress,
-      chainId: targetChainId,
-    });
-
-    return contract;
-  } catch (error) {
-    console.error(`❌ Error creating ${contractType} contract:`, {
-      message: error.message,
-    });
-    throw error;
+function readEnv(key, fallback = "") {
+  // Node.js environment
+  if (typeof process !== "undefined" && process.env && process.env[key] !== undefined) {
+    return process.env[key] || fallback;
   }
+  
+  // Browser environment
+  if (IS_BROWSER) {
+    // Check global config
+    if (window.__APP_CONFIG__ && window.__APP_CONFIG__[key] !== undefined) {
+      return window.__APP_CONFIG__[key];
+    }
+    
+    // Check create-react-app style
+    if (window.process?.env?.[key]) {
+      return window.process.env[key];
+    }
+    
+    // Check window object directly
+    if (window[key]) {
+      return window[key];
+    }
+  }
+  
+  return fallback;
+}
+
+// Optional public RPCs (read-only fallback)
+function readRpcUrlFor(chainKey) {
+  const def = NETWORKS[chainKey]?.rpcUrlsKey;
+  return def ? readEnv(def, "") : "";
+}
+
+// Normalize an address (empty -> "", invalid -> throw), returns checksum
+function norm(addr, label) {
+  if (!addr) return "";
+  if (!isAddress(addr)) throw new Error(`Invalid address for ${label}: ${addr}`);
+  return toChecksum(addr);
+}
+
+// -------------------- Address book --------------------
+const ADDR = {
+  IMALI: {
+    [ETHEREUM_MAINNET]: readEnv("IMALI_TOKEN_ETH") || readEnv("REACT_APP_IMALI_TOKEN_ETH"),
+    [POLYGON_MAINNET]:  readEnv("IMALI_TOKEN_POLYGON") || readEnv("REACT_APP_IMALI_TOKEN_POLYGON"),
+    [BASE_MAINNET]:     readEnv("IMALI_TOKEN_BASE") || readEnv("REACT_APP_IMALI_TOKEN_BASE"),
+  },
+  PRESALE: {
+    [ETHEREUM_MAINNET]: readEnv("PRESALE_ETH") || readEnv("REACT_APP_PRESALE_ETH"),
+    [POLYGON_MAINNET]:  readEnv("PRESALE_POLYGON") || readEnv("REACT_APP_PRESALE_POLYGON"),
+    [BASE_MAINNET]:     readEnv("PRESALE_BASE") || readEnv("REACT_APP_PRESALE_BASE"),
+  },
+  STAKING: {
+    [ETHEREUM_MAINNET]: readEnv("STAKING_ETH") || readEnv("REACT_APP_STAKING_ETH"),
+    [POLYGON_MAINNET]:  readEnv("STAKING_POLYGON") || readEnv("REACT_APP_STAKING_POLYGON"),
+    [BASE_MAINNET]:     readEnv("STAKING_BASE") || readEnv("REACT_APP_STAKING_BASE"),
+  },
+  REFERRAL: {
+    [ETHEREUM_MAINNET]: readEnv("REFERRAL_ETH") || readEnv("REACT_APP_REFERRAL_ETH"),
+    [POLYGON_MAINNET]:  readEnv("REFERRAL_POLYGON") || readEnv("REACT_APP_REFERRAL_POLYGON"),
+    [BASE_MAINNET]:     readEnv("REFERRAL_BASE") || readEnv("REACT_APP_REFERRAL_BASE"),
+  },
+  BUYBACK: {
+    [ETHEREUM_MAINNET]: readEnv("BUYBACK_ETH") || readEnv("REACT_APP_BUYBACK_ETH"),
+    [POLYGON_MAINNET]:  readEnv("BUYBACK_POLYGON") || readEnv("REACT_APP_BUYBACK_POLYGON"),
+    [BASE_MAINNET]:     readEnv("BUYBACK_BASE") || readEnv("REACT_APP_BUYBACK_BASE"),
+  },
+  FEEDIST: {
+    [ETHEREUM_MAINNET]: readEnv("FEEDIST_ETH") || readEnv("REACT_APP_FEEDIST_ETH"),
+    [POLYGON_MAINNET]:  readEnv("FEEDIST_POLYGON") || readEnv("REACT_APP_FEEDIST_POLYGON"),
+    [BASE_MAINNET]:     readEnv("FEEDIST_BASE") || readEnv("REACT_APP_FEEDIST_BASE"),
+  },
+  LIQUIDITY: {
+    [ETHEREUM_MAINNET]: readEnv("LIQ_ETH") || readEnv("REACT_APP_LIQ_ETH"),
+    [POLYGON_MAINNET]:  readEnv("LIQ_POLYGON") || readEnv("REACT_APP_LIQ_POLYGON"),
+    [BASE_MAINNET]:     readEnv("LIQ_BASE") || readEnv("REACT_APP_LIQ_BASE"),
+  },
+  VESTING: {
+    [ETHEREUM_MAINNET]: readEnv("VESTING_ETH") || readEnv("REACT_APP_VESTING_ETH"),
+    [POLYGON_MAINNET]:  readEnv("VESTING_POLYGON") || readEnv("REACT_APP_VESTING_POLYGON"),
+    [BASE_MAINNET]:     readEnv("VESTING_BASE") || readEnv("REACT_APP_VESTING_BASE"),
+  },
+  AIRDROP: {
+    [ETHEREUM_MAINNET]: readEnv("AIRDROP_ETH") || readEnv("REACT_APP_AIRDROP_ETH"),
+    [POLYGON_MAINNET]:  readEnv("AIRDROP_POLYGON") || readEnv("REACT_APP_AIRDROP_POLYGON"),
+    [BASE_MAINNET]:     readEnv("AIRDROP_BASE") || readEnv("REACT_APP_AIRDROP_BASE"),
+  },
 };
 
-// Helper to switch MetaMask network
-const switchNetwork = async (chainId) => {
-  if (!window.ethereum?.request) {
-    throw new Error("No wallet available");
-  }
+// -------------------- ABIs --------------------
+const ABIS = {
+  IMALI: IMALITOKENABI,        // default IMALI ABI
+  IMALI_BASE: IMALITOKENBASEABI, // if Base has a variant
+  PRESALE: PresaleABI,
+  STAKING: StakingABI,
+  REFERRAL: ReferralSystemABI,
+  BUYBACK: BuybackABI,
+  FEEDIST: FeeDistributorABI,
+  LIQUIDITY: LiquidityManagerABI,
+  VESTING: VestingVaultABI,
+  AIRDROP: AirdropDistributorABI,
+};
+
+// -------------------- Caches & lifecycle --------------------
+const contractCache = new Map(); // key -> Contract
+const providerCache = new Map(); // chainKey -> BrowserProvider | JsonRpcProvider-like
+const signerCache   = new Map(); // chainKey -> Signer
+
+const keyOf = (type, chain, addr, withSigner) => `${type}:${chain}:${addr}:${withSigner ? "w" : "r"}`;
+
+export function clearContractCache() {
+  contractCache.clear();
+  signerCache.clear();
+  providerCache.clear();
+}
+
+// Clear stale caches when wallet changes chain/accounts
+if (IS_BROWSER && window.ethereum && !window.__imali_cache_hooks__) {
+  window.__imali_cache_hooks__ = true;
+  window.ethereum.on?.("chainChanged", () => clearContractCache());
+  window.ethereum.on?.("accountsChanged", () => clearContractCache());
+}
+
+// -------------------- Network helpers --------------------
+export async function ensureNetwork(chainKey) {
+  if (!window.ethereum) return;
+  const net = NETWORKS[chainKey];
+  if (!net) return;
 
   try {
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
-      params: [{ chainId: `0x${chainId.toString(16)}` }],
+      params: [{ chainId: net.chainIdHex }],
     });
-  } catch (switchError) {
-    if (switchError.code === 4902) {
-      throw new Error("Unsupported network");
+  } catch (e) {
+    // 4902 = Unrecognized chain; try adding it
+    if (e && e.code === 4902) {
+      const rpc = readRpcUrlFor(chainKey);
+      await window.ethereum.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: net.chainIdHex,
+          chainName: net.name,
+          nativeCurrency: net.nativeCurrency,
+          rpcUrls: rpc ? [rpc] : [],
+          blockExplorerUrls: NETWORKS[chainKey].explorers || [],
+        }],
+      });
+      // retry once
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: net.chainIdHex }],
+      });
     } else {
-      throw new Error("Network switch rejected");
+      throw e;
     }
   }
-};
-
-// Clear cache on network or account change
-if (typeof window !== "undefined" && window.ethereum) {
-  window.ethereum.on("chainChanged", () => contractCache.clear());
-  window.ethereum.on("accountsChanged", () => contractCache.clear());
 }
 
-// Small UI helper: 0x1234...abcd
-export const short = (addr = "", left = 6, right = 4) => {
-  if (!addr || typeof addr !== "string") return "";
-  if (addr.length <= left + right) return addr;
-  return `${addr.slice(0, left)}...${addr.slice(-right)}`;
-};
+// Read-only provider fallback if no wallet is present (optional)
+async function getReadOnlyProvider(chainKey) {
+  const cached = providerCache.get(chainKey);
+  if (cached) return cached;
 
-export default getContractInstance;
+  const rpc = readRpcUrlFor(chainKey);
+  if (!rpc) throw new Error(`No wallet and no RPC configured for ${chainKey}. Set ${NETWORKS[chainKey]?.rpcUrlsKey}.`);
+
+  // Use BrowserProvider when wallet exists, otherwise build a lightweight provider via ethers' fetch abstraction.
+  // For simplicity, reuse BrowserProvider type guard; here we keep it minimal and rely on Contract with a URL runner.
+  // ethers v6 allows passing a simple { send } compatible object; but to keep things simple,
+  // we just error if no wallet unless RPC is provided (above).
+  const p = new (class MinimalJsonRpcProvider {
+    constructor(url) { this.url = url; }
+    async send(method, params) {
+      const res = await fetch(this.url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message || "RPC error");
+      return json.result;
+    }
+  })(rpc);
+
+  providerCache.set(chainKey, p);
+  return p;
+}
+
+export async function getProvider(chainKey = POLYGON_MAINNET) {
+  if (providerCache.get(chainKey)) return providerCache.get(chainKey);
+
+  if (IS_BROWSER && window.ethereum) {
+    const provider = new BrowserProvider(window.ethereum);
+    providerCache.set(chainKey, provider);
+    return provider;
+  }
+  // read-only fallback
+  return getReadOnlyProvider(chainKey);
+}
+
+export async function getSigner(chainKey = POLYGON_MAINNET) {
+  if (signerCache.get(chainKey)) return signerCache.get(chainKey);
+  const provider = await getProvider(chainKey);
+  if (!(provider instanceof BrowserProvider)) {
+    throw new Error("No signer available: wallet not detected (read-only mode).");
+  }
+  await provider.send("eth_requestAccounts", []);
+  const signer = await provider.getSigner();
+  signerCache.set(chainKey, signer);
+  return signer;
+}
+
+// -------------------- Address utils --------------------
+export function getAddressFor(type, chainKey) {
+  const raw =
+    (ADDR[type] && ADDR[type][chainKey]) ||
+    (type === "IMALI" && ADDR.IMALI[chainKey]) ||
+    (type === "IMALI_BASE" && ADDR.IMALI[BASE_MAINNET]) ||
+    "";
+
+  return raw ? norm(raw, `${type} on ${chainKey}`) : "";
+}
+
+// -------------------- Main factory --------------------
+/**
+ * getContractInstance(type, chainKey, opts)
+ *  - type: one of keys in ABIS (e.g., "IMALI", "STAKING", ...)
+ *  - chainKey: ethereum | polygon | base (default polygon)
+ *  - opts:
+ *      - address?: override address
+ *      - withSigner?: boolean (default true)
+ *      - autoSwitch?: boolean (default false) — try switch/add network in wallet
+ */
+export async function getContractInstance(type, chainKey, opts = {}) {
+  const {
+    address,
+    withSigner = true,
+    autoSwitch = false,
+  } = opts;
+
+  const chain = chainKey || POLYGON_MAINNET;
+
+  if (!(type in ABIS)) throw new Error(`ABI not found for type ${type}`);
+
+  // Resolve & normalize address
+  let resolvedAddr = address || getAddressFor(type, chain);
+  if (!resolvedAddr || resolvedAddr === ZeroAddress) {
+    throw new Error(`No address configured for ${type} on ${chain}`);
+  }
+
+  if (autoSwitch && IS_BROWSER && window.ethereum) {
+    await ensureNetwork(chain);
+  }
+
+  // Runner: signer for write, provider for read
+  const provider = await getProvider(chain);
+  const runner = withSigner ? await getSigner(chain) : provider;
+
+  const cacheKey = keyOf(type, chain, resolvedAddr, !!withSigner);
+  if (contractCache.has(cacheKey)) return contractCache.get(cacheKey);
+
+  const abi =
+    (type === "IMALI" && chain === BASE_MAINNET ? ABIS.IMALI_BASE : ABIS[type]) || ABIS[type];
+
+  const contract = new Contract(resolvedAddr, abi, runner);
+  contractCache.set(cacheKey, contract);
+  return contract;
+}
