@@ -1,10 +1,11 @@
 [build]
   base = "Frontend"
   command = "npm install --legacy-peer-deps && npm run build"
-  publish = "Frontend/build"
+  publish = "build"
 
 [build.environment]
-  NODE_VERSION = "18"  # Change to 18 for secp256k1 compatibility
+  NODE_VERSION = "18.20.8"
+  NODE_OPTIONS = "--openssl-legacy-provider"
   CI = "false"
 
 [[redirects]]
