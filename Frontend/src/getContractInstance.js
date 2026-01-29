@@ -1,23 +1,23 @@
 // src/getContractInstance.js
 
-import { BrowserProvider, Contract } from "ethers";
+import { ethers } from "ethers";
 
-// Import ABIs
-import LendingABI from "./utils/LendingABI.json";
-import YieldFarmingABI from "./utils/YieldFarmingABI.json";
-import StakingABI from "./utils/StakingABI.json";
-import TokenPolygonABI from "./utils/TokenABI.json";
-import TokenBaseABI from "./utils/IMALITOKENBASEABI.json";
-import LPTokenABI from "./utils/LPTokenABI.json";
-import DAOABI from "./utils/IMALIDAOABI.json";
-import PresaleABI from "./utils/PresaleABI.json";
-import NFTABI from "./utils/IMALINFTABI.json";
-import FeeDistributorABI from "./utils/FeeDistributorABI.json";
-import LPLotteryABI from "./utils/LPLotteryABI.json";
-import BuybackABI from "./utils/BuybackABI.json";
-import VestingVaultABI from "./utils/VestingVaultABI.json";
-import AirdropABI from "./utils/AirdropABI.json";
-import LiquidityManagerABI from "./utils/LiquidityManagerABI.json";
+// Import ABIs - Updated paths from ./utils/ to ./abi/
+import LendingABI from "./abi/LendingABI.json";
+import YieldFarmingABI from "./abi/YieldFarmingABI.json";
+import StakingABI from "./abi/StakingABI.json";
+import TokenPolygonABI from "./abi/TokenABI.json";
+import TokenBaseABI from "./abi/IMALITOKENBASEABI.json";
+import LPTokenABI from "./abi/LPTokenABI.json";
+import DAOABI from "./abi/IMALIDAOABI.json";
+import PresaleABI from "./abi/PresaleABI.json";
+import NFTABI from "./abi/IMALINFTABI.json";
+import FeeDistributorABI from "./abi/FeeDistributorABI.json";
+import LPLotteryABI from "./abi/LPLotteryABI.json";
+import BuybackABI from "./abi/BuybackABI.json";
+import VestingVaultABI from "./abi/VestingVaultABI.json";
+import AirdropABI from "./abi/AirdropABI.json";
+import LiquidityManagerABI from "./abi/LiquidityManagerABI.json";
 
 // Network Chain IDs
 export const ETHEREUM_MAINNET = 1;
@@ -81,8 +81,8 @@ export const getContractInstance = async (contractType, options = {}) => {
     }
 
     let provider = externalProvider
-      ? new BrowserProvider(externalProvider)
-      : new BrowserProvider(window.ethereum);
+      ? new ethers.providers.Web3Provider(externalProvider)
+      : new ethers.providers.Web3Provider(window.ethereum);
 
     const network = await provider.getNetwork();
     const isWalletConnect = externalProvider?.wc || externalProvider?.isWalletConnect;
@@ -90,8 +90,8 @@ export const getContractInstance = async (contractType, options = {}) => {
     if (!isWalletConnect && network.chainId !== targetChainId) {
       await switchNetwork(targetChainId);
       provider = externalProvider
-        ? new BrowserProvider(externalProvider)
-        : new BrowserProvider(window.ethereum);
+        ? new ethers.providers.Web3Provider(externalProvider)
+        : new ethers.providers.Web3Provider(window.ethereum);
     }
 
     const contractAddress = CONTRACT_ADDRESSES[contractType]?.[targetChainId];
@@ -104,7 +104,7 @@ export const getContractInstance = async (contractType, options = {}) => {
     }
 
     const signer = await provider.getSigner();
-    const contract = new Contract(contractAddress, contractABI, signer);
+    const contract = new ethers.Contract(contractAddress, contractABI, signer);
 
     contractCache.set(cacheKey, contract);
     console.log(`✅ Loaded ${contractType} contract`, {
@@ -146,10 +146,12 @@ if (typeof window !== "undefined" && window.ethereum) {
   window.ethereum.on("chainChanged", () => contractCache.clear());
   window.ethereum.on("accountsChanged", () => contractCache.clear());
 }
+
 // Small UI helper: 0x1234...abcd
 export const short = (addr = "", left = 6, right = 4) => {
   if (!addr || typeof addr !== "string") return "";
   if (addr.length <= left + right) return addr;
   return `${addr.slice(0, left)}...${addr.slice(-right)}`;
 };
+
 export default getContractInstance;
