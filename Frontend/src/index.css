@@ -2,54 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-/* =========================
-   Brand variables
-   ========================= */
+/* Brand variables */
 :root {
   --brand: #0ea5e9;
 }
 
-/* =========================
-   HARD iOS + Mobile Fixes
-   - Prevent white flash / gutter
-   - Prevent sideways "grab" (horizontal overflow)
-   ========================= */
+/* Base page behavior */
 html,
 body {
   height: 100%;
   margin: 0;
+  background: #030712; /* no !important */
+  color: #f1f5f9;
 
-  /* Safari sometimes ignores Tailwind-applied backgrounds during bounce/toolbar changes */
-  background: #030712 !important; /* bg-gray-950 */
-  color: #f1f5f9; /* slate-100 */
-
-  /* This is the big one: kills the sideways "grab" reveal */
   overflow-x: hidden;
-
-  /* Helps with scroll chaining / bounce artifacts */
   overscroll-behavior-x: none;
   overscroll-behavior-y: none;
 
   -webkit-text-size-adjust: 100%;
 }
 
-/* Pin a dark layer behind everything (covers iOS rubber-band + toolbar collapse) */
+/* Dark layer behind app (safe stacking) */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
-  background: #030712; /* bg-gray-950 */
-  z-index: -1;
+  background: #030712;
+  z-index: 0;            /* was -1 */
   pointer-events: none;
 }
 
 #root {
-  min-height: 100svh; /* better than 100vh on iOS */
-  background: #030712 !important;
+  position: relative;    /* NEW */
+  z-index: 1;            /* NEW */
+  min-height: 100svh;
+  background: transparent; /* let body control the bg */
   overflow-x: hidden;
 }
 
-/* Prevent common offenders from forcing horizontal overflow */
+/* Layout safety */
 *,
 *::before,
 *::after {
@@ -64,24 +55,20 @@ svg {
   height: auto;
 }
 
-/* Optional helper for your top-level wrapper if you use one */
 .app-root {
   min-height: 100svh;
   width: 100%;
   overflow-x: hidden;
-  background: #030712;
 }
 
-/* Improve rendering */
+/* Rendering */
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-overflow-scrolling: touch;
 }
 
-/* =========================
-   Tailwind helper classes
-   ========================= */
+/* Tailwind helper classes */
 .card {
   @apply rounded-2xl p-5 shadow border border-white/10 backdrop-blur;
   @apply bg-gray-900/80 text-slate-100;
@@ -101,10 +88,6 @@ body {
   @apply card flex flex-col gap-1;
 }
 
-/* =========================
-   Optional: mobile-safe hero title helper
-   (use className="hero-title" if you want)
-   ========================= */
 .hero-title {
   font-size: clamp(2.25rem, 8vw, 4rem);
   line-height: 1.05;
