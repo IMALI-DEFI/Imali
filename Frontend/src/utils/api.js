@@ -1,3 +1,4 @@
+
 // src/utils/BotAPI.js
 import axios from "axios";
 
@@ -5,13 +6,7 @@ import axios from "axios";
 const IS_BROWSER = typeof window !== "undefined";
 
 function getEnv(key, fallback = "") {
-  try {
-    if (typeof import.meta !== "undefined" && import.meta.env && key in import.meta.env) {
-      return import.meta.env[key] || fallback;
-    }
-  } catch {
-    // ignore
-  }
+  // CRA uses process.env, not import.meta.env
   if (typeof process !== "undefined" && process.env && key in process.env) {
     return process.env[key] || fallback;
   }
@@ -24,10 +19,8 @@ function normalizeBase(url) {
 }
 
 function resolveBaseUrl() {
-  // Prefer explicit env
+  // Prefer explicit env - CRA uses REACT_APP_ prefix
   const envBase =
-    getEnv("VITE_API_BASE_URL") ||
-    getEnv("VITE_API_BASE") ||
     getEnv("REACT_APP_API_BASE_URL") ||
     getEnv("REACT_APP_API_BASE");
 
