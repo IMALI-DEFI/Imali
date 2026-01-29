@@ -5,7 +5,7 @@ import React, {
   useContext,
   useEffect
 } from "react";
-import { BrowserProvider } from "ethers";
+import { ethers } from "ethers";
 
 const WalletContext = createContext(null);
 
@@ -43,7 +43,7 @@ export const WalletProvider = ({ children }) => {
           window.ethereum.providers?.find((p) => p.isMetaMask) ||
           window.ethereum;
 
-        ethersProvider = new BrowserProvider(injected);
+        ethersProvider = new ethers.providers.Web3Provider(injected);
 
         const accounts = await ethersProvider.send("eth_requestAccounts", []);
         const network = await ethersProvider.getNetwork();
