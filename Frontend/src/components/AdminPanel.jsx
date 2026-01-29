@@ -18,11 +18,32 @@ import SocialManager from "../admin/SocialManager.js";
 import AccessControl from "../admin/AccessControl.jsx";
 
 /* -------------------- Env + Chain helpers -------------------- */
+const IS_BROWSER = typeof window !== "undefined";
+
 const E = (k, fb = "") => {
-  if (typeof import.meta !== "undefined" && import.meta.env && k in import.meta.env)
-    return import.meta.env[k] ?? fb;
-  if (typeof process !== "undefined" && process.env && k in process.env)
-    return process.env[k] ?? fb;
+  // Node.js environment
+  if (typeof process !== "undefined" && process.env && process.env[k] !== undefined) {
+    return process.env[k] || fb;
+  }
+  
+  // Browser environment
+  if (IS_BROWSER) {
+    // Check global config
+    if (window.__APP_CONFIG__ && window.__APP_CONFIG__[k] !== undefined) {
+      return window.__APP_CONFIG__[k];
+    }
+    
+    // Check create-react-app style
+    if (window.process?.env?.[k]) {
+      return window.process.env[k];
+    }
+    
+    // Check window object directly for prefixed keys
+    if (window[`${k}`]) {
+      return window[`${k}`];
+    }
+  }
+  
   return fb;
 };
 
@@ -75,9 +96,13 @@ export default function AdminPanel({ forceOwner = false }) {
     []
   );
 
+  // Dev-mode detection
+  const isDevelopment = 
+    (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') ||
+    (IS_BROWSER && window.location.hostname === 'localhost');
+
   // Dev-mode env bypass
-  const BYPASS =
-    (import.meta?.env?.DEV ?? process.env.NODE_ENV === "development") &&
+  const BYPASS = isDevelopment &&
     (E("VITE_BYPASS_OWNER") === "1" || E("REACT_APP_BYPASS_OWNER") === "1");
 
   // Path-based bypass for /test/admin
