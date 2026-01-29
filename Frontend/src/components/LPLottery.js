@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useWallet } from "../context/WalletContext";
-import getContractInstance from "../getContractInstance";
+import { getContractInstance } from "../getContractInstance"; // ← Changed this line
 import { FaTrophy, FaTicketAlt, FaHistory, FaInfoCircle } from "react-icons/fa";
 import Countdown from "react-countdown";
-
 const LPLottery = () => {
   const { account, chainId } = useWallet();
   const [lotteryContract, setLotteryContract] = useState(null);
