@@ -4,7 +4,7 @@
   publish = "Frontend/build"
 
 [build.environment]
-  NODE_VERSION = "16"  # CHANGE FROM 20 TO 16
+  NODE_VERSION = "18"  # Change to 18 for secp256k1 compatibility
   CI = "false"
 
 [[redirects]]
