@@ -8,36 +8,45 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
-/**
- * CRA-only env helper.
- * NOTE: CRA only exposes variables prefixed with REACT_APP_*
- */
-const E = (k, fallback = undefined) => {
-  if (typeof process !== "undefined" && process.env && process.env[k] != null) {
-    return process.env[k];
-  }
-  return fallback;
-};
-
+// Use process.env directly - CRA injects these at build time
 const firebaseConfig = {
-  apiKey: E("REACT_APP_FIREBASE_API_KEY"),
-  authDomain: E("REACT_APP_FIREBASE_AUTH_DOMAIN"),
-  projectId: E("REACT_APP_FIREBASE_PROJECT_ID"),
-  storageBucket: E("REACT_APP_FIREBASE_STORAGE_BUCKET"),
-  messagingSenderId: E("REACT_APP_FIREBASE_MESSAGING_SENDER_ID"),
-  appId: E("REACT_APP_FIREBASE_APP_ID"),
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
 };
 
-if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId || !firebaseConfig.appId) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    "[firebase] Missing config (apiKey/authDomain/projectId/appId). " +
+// Check if config is missing (development only)
+if (process.env.NODE_ENV === 'development') {
+  const required = ['apiKey', 'authDomain', 'projectId', 'appId'];
+  const missing = required.filter(key => !firebaseConfig[key]);
+  if (missing.length > 0) {
+    console.warn(
+      `[firebase] Missing config: ${missing.join(', ')}. ` +
       "Check Netlify env vars: REACT_APP_FIREBASE_*"
-  );
+    );
+  }
 }
 
 // Initialize Firebase once
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+let app;
+try {
+  const apps = getApps();
+  app = apps.length ? apps[0] : initializeApp(firebaseConfig);
+} catch (error) {
+  console.error("Firebase initialization error:", error);
+  // Create empty app with dummy config to prevent crashes
+  app = initializeApp({
+    apiKey: "dummy",
+    authDomain: "dummy",
+    projectId: "dummy",
+    storageBucket: "dummy",
+    messagingSenderId: "dummy",
+    appId: "dummy"
+  });
+}
 
 // Firestore instance
 export const db = getFirestore(app);
