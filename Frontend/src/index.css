@@ -2,96 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Brand variables */
-:root {
-  --brand: #0ea5e9;
-}
-
-/* Base page behavior */
-html,
-body {
-  height: 100%;
-  margin: 0;
-  background: #030712; /* no !important */
-  color: #f1f5f9;
-
-  overflow-x: hidden;
-  overscroll-behavior-x: none;
-  overscroll-behavior-y: none;
-
-  -webkit-text-size-adjust: 100%;
-}
-
-/* Dark layer behind app (safe stacking) */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: #030712;
-  z-index: 0;            /* was -1 */
-  pointer-events: none;
-}
-
-#root {
-  position: relative;    /* NEW */
-  z-index: 1;            /* NEW */
-  min-height: 100svh;
-  background: transparent; /* let body control the bg */
-  overflow-x: hidden;
-}
-
-/* Layout safety */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-img,
-video,
-canvas,
-svg {
-  max-width: 100%;
-  height: auto;
-}
-
-.app-root {
-  min-height: 100svh;
-  width: 100%;
-  overflow-x: hidden;
-}
-
-/* Rendering */
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Tailwind helper classes */
-.card {
-  @apply rounded-2xl p-5 shadow border border-white/10 backdrop-blur;
-  @apply bg-gray-900/80 text-slate-100;
-}
-
-.btn {
-  @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium;
-  @apply border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10;
-  @apply transition-colors duration-150;
-}
-
-.btn-primary {
-  @apply bg-sky-500 text-white hover:bg-sky-600 border-transparent;
-}
-
-.kpi {
-  @apply card flex flex-col gap-1;
-}
-
-.hero-title {
-  font-size: clamp(2.25rem, 8vw, 4rem);
-  line-height: 1.05;
-  padding-inline: 1rem;
-  text-align: center;
-  word-break: break-word;
-}
+/* your @apply utilities here… */
+:root { --brand: #0ea5e9; }
+body { @apply bg-slate-50 text-slate-900; }
+.card { @apply bg-white rounded-2xl shadow p-5; }
+.btn { @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium border border-slate-200 hover:bg-slate-100; }
+.btn-primary { @apply bg-sky-500 text-white hover:bg-sky-600 border-transparent; }
+.kpi { @apply card flex flex-col gap-1; }
