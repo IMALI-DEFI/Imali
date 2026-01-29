@@ -2,10 +2,113 @@
 @tailwind components;
 @tailwind utilities;
 
-/* your @apply utilities here… */
-:root { --brand: #0ea5e9; }
-body { @apply bg-slate-50 text-slate-900; }
-.card { @apply bg-white rounded-2xl shadow p-5; }
-.btn { @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium border border-slate-200 hover:bg-slate-100; }
-.btn-primary { @apply bg-sky-500 text-white hover:bg-sky-600 border-transparent; }
-.kpi { @apply card flex flex-col gap-1; }
+/* =========================
+   Brand variables
+   ========================= */
+:root {
+  --brand: #0ea5e9;
+}
+
+/* =========================
+   HARD iOS + Mobile Fixes
+   - Prevent white flash / gutter
+   - Prevent sideways "grab" (horizontal overflow)
+   ========================= */
+html,
+body {
+  height: 100%;
+  margin: 0;
+
+  /* Safari sometimes ignores Tailwind-applied backgrounds during bounce/toolbar changes */
+  background: #030712 !important; /* bg-gray-950 */
+  color: #f1f5f9; /* slate-100 */
+
+  /* This is the big one: kills the sideways "grab" reveal */
+  overflow-x: hidden;
+
+  /* Helps with scroll chaining / bounce artifacts */
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
+
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Pin a dark layer behind everything (covers iOS rubber-band + toolbar collapse) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: #030712; /* bg-gray-950 */
+  z-index: -1;
+  pointer-events: none;
+}
+
+#root {
+  min-height: 100svh; /* better than 100vh on iOS */
+  background: #030712 !important;
+  overflow-x: hidden;
+}
+
+/* Prevent common offenders from forcing horizontal overflow */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Optional helper for your top-level wrapper if you use one */
+.app-root {
+  min-height: 100svh;
+  width: 100%;
+  overflow-x: hidden;
+  background: #030712;
+}
+
+/* Improve rendering */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* =========================
+   Tailwind helper classes
+   ========================= */
+.card {
+  @apply rounded-2xl p-5 shadow border border-white/10 backdrop-blur;
+  @apply bg-gray-900/80 text-slate-100;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium;
+  @apply border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10;
+  @apply transition-colors duration-150;
+}
+
+.btn-primary {
+  @apply bg-sky-500 text-white hover:bg-sky-600 border-transparent;
+}
+
+.kpi {
+  @apply card flex flex-col gap-1;
+}
+
+/* =========================
+   Optional: mobile-safe hero title helper
+   (use className="hero-title" if you want)
+   ========================= */
+.hero-title {
+  font-size: clamp(2.25rem, 8vw, 4rem);
+  line-height: 1.05;
+  padding-inline: 1rem;
+  text-align: center;
+  word-break: break-word;
+}
