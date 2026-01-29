@@ -1,113 +1,116 @@
-import React, {
-  createContext,
-  useState,
-  useCallback,
-  useContext,
-  useEffect
-} from "react";
-import { ethers } from "ethers";
+// src/context/WalletContext.js
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { ethers } from 'ethers';
 
-const WalletContext = createContext(null);
+const WalletContext = createContext();
+
+export const useWallet = () => useContext(WalletContext);
 
 export const WalletProvider = ({ children }) => {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
-  const [provider, setProvider] = useState(null);
-  const [walletType, setWalletType] = useState(null);
+  const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(false);
   const [error, setError] = useState(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const isMobile = () =>
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    );
+  // Check if MetaMask is installed
+  useEffect(() => {
+    const checkMetaMask = () => {
+      if (window.ethereum && window.ethereum.isMetaMask) {
+        setIsMetaMaskInstalled(true);
+        setError(null);
+        return true;
+      } else {
+        setIsMetaMaskInstalled(false);
+        setError("Please install MetaMask to use this application");
+        return false;
+      }
+    };
 
-  const connectWallet = useCallback(async (type) => {
-    setIsConnecting(true);
+    checkMetaMask();
+
+    // Listen for MetaMask installation
+    const checkInterval = setInterval(checkMetaMask, 3000);
+    return () => clearInterval(checkInterval);
+  }, []);
+
+  const connectWallet = async () => {
+    setLoading(true);
     setError(null);
 
     try {
-      let ethersProvider;
-
-      if (type === "metamask") {
-        if (!window.ethereum) {
-          if (isMobile()) {
-            const link = `https://metamask.app.link/dapp/${window.location.host}`;
-            window.location.href = link;
-            return;
-          }
-          throw new Error("MetaMask is not installed.");
-        }
-
-        const injected =
-          window.ethereum.providers?.find((p) => p.isMetaMask) ||
-          window.ethereum;
-
-        ethersProvider = new ethers.providers.Web3Provider(injected);
-
-        const accounts = await ethersProvider.send("eth_requestAccounts", []);
-        const network = await ethersProvider.getNetwork();
-
-        setAccount(accounts[0]);
-        setChainId(Number(network.chainId));
-        setProvider(ethersProvider);
-        setWalletType("metamask");
+      if (!window.ethereum) {
+        throw new Error("MetaMask is not installed");
       }
 
-      // WalletConnect removed - using web3modal instead
-      if (type === "walletconnect") {
-        throw new Error("WalletConnect temporarily disabled. Please use MetaMask.");
-      }
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const accounts = await provider.send("eth_requestAccounts", []);
+      const network = await provider.getNetwork();
 
-      localStorage.setItem("walletType", type);
+      setAccount(accounts[0]);
+      setChainId(network.chainId);
+      
+      // Setup listeners
+      window.ethereum.on('accountsChanged', (accounts) => {
+        setAccount(accounts[0] || null);
+      });
+
+      window.ethereum.on('chainChanged', (chainId) => {
+        setChainId(parseInt(chainId, 16));
+        window.location.reload();
+      });
+
+      setError(null);
     } catch (err) {
-      console.error(err);
-      setError(err.message || "Wallet connection failed");
+      console.error("Wallet connection error:", err);
+      setError(err.message);
+      setAccount(null);
+      setChainId(null);
     } finally {
-      setIsConnecting(false);
+      setLoading(false);
     }
-  }, []);
+  };
 
-  const disconnectWallet = useCallback(async () => {
-    try {
-      // WalletConnect disconnect removed
-    } catch (_) {}
-
+  const disconnectWallet = () => {
     setAccount(null);
     setChainId(null);
-    setProvider(null);
-    setWalletType(null);
     setError(null);
-    localStorage.removeItem("walletType");
-  }, []);
+  };
 
+  // Auto-connect if previously connected
   useEffect(() => {
-    const saved = localStorage.getItem("walletType");
-    if (saved && saved === "metamask") { // Only auto-connect MetaMask
-      connectWallet(saved);
-    }
-  }, [connectWallet]);
+    const checkConnection = async () => {
+      if (window.ethereum) {
+        try {
+          const provider = new ethers.providers.Web3Provider(window.ethereum);
+          const accounts = await provider.listAccounts();
+          if (accounts.length > 0) {
+            const network = await provider.getNetwork();
+            setAccount(accounts[0]);
+            setChainId(network.chainId);
+          }
+        } catch (err) {
+          console.error("Auto-connect error:", err);
+        }
+      }
+    };
+
+    checkConnection();
+  }, []);
 
   return (
     <WalletContext.Provider
       value={{
         account,
         chainId,
-        provider,
-        walletType,
+        isMetaMaskInstalled,
         error,
-        isConnecting,
+        loading,
         connectWallet,
-        disconnectWallet,
-        getSigner: async () => {
-          if (!provider) throw new Error("Wallet not connected");
-          return provider.getSigner();
-        }
+        disconnectWallet
       }}
     >
       {children}
     </WalletContext.Provider>
   );
 };
-
-export const useWallet = () => useContext(WalletContext);
