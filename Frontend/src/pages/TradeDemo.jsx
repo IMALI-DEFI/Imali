@@ -3,19 +3,37 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import TradingOverview from "../components/Dashboard/TradingOverview.jsx";
 
 /* -------------------------- Env helpers (CRA & Vite) -------------------------- */
+const IS_BROWSER = typeof window !== "undefined";
+
 function getEnvVar(viteKey, craKey) {
-  let v;
-  try {
-    if (typeof import.meta !== "undefined" && import.meta.env && viteKey) {
-      v = import.meta.env[viteKey];
+  // Node.js environment
+  if (typeof process !== "undefined" && process.env) {
+    if (craKey && process.env[craKey]) {
+      return process.env[craKey];
     }
-  } catch {
-    // ignore
   }
-  if (!v && typeof process !== "undefined" && process.env && craKey) {
-    v = process.env[craKey];
+  
+  // Browser environment
+  if (IS_BROWSER) {
+    // Check global config
+    if (window.__APP_CONFIG__) {
+      if (viteKey && window.__APP_CONFIG__[viteKey]) {
+        return window.__APP_CONFIG__[viteKey];
+      }
+      if (craKey && window.__APP_CONFIG__[craKey]) {
+        return window.__APP_CONFIG__[craKey];
+      }
+    }
+    
+    // Check create-react-app style
+    if (window.process?.env) {
+      if (craKey && window.process.env[craKey]) {
+        return window.process.env[craKey];
+      }
+    }
   }
-  return v;
+  
+  return undefined;
 }
 
 /**
@@ -28,7 +46,7 @@ function resolveApiBase(raw, fallbackFullUrl) {
 
   if (raw && raw.trim()) {
     const v = raw.trim();
-    if (v.startsWith("/") && typeof window !== "undefined" && window.location?.origin) {
+    if (v.startsWith("/") && IS_BROWSER && window.location?.origin) {
       return normalize(`${window.location.origin}${v}`);
     }
     return normalize(v);
@@ -1391,8 +1409,8 @@ export default function TradeDemo({
                           equity: Number(combined.equity || 0) + simPnL,
                           pnl: Number(combined.realizedPnL || 0) + simPnL,
                           balance: Number(combined.balance || 0),
-                          wins: combined.wins || 0,
-                          losses: combined.losses || 0,
+                          wins: combined.wins,
+                          losses: combined.losses,
                           running: haveAny,
                           mode: runMode,
                           ts: Date.now(),
