@@ -26,16 +26,4 @@ button {
          transition-colors duration-150;
 }
 
-/* DEBUG — remove after confirmation */
-body::before {
-  content: "✅ ACTIVE CSS: src/index.css";
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  z-index: 999999;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: red;
-  color: white;
-  font: 14px/1.2 monospace;
-}
+
