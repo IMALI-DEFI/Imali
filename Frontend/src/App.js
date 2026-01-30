@@ -56,7 +56,6 @@ export default function App() {
     <WalletProvider>
       {/* App shell */}
       <div className="min-h-[100svh] w-full overflow-x-hidden bg-gray-950 text-slate-100">
-    <div className="fixed inset-0 bg-red-500 z-[9999]" />
         <Header />
 
         {/* Main content */}
