@@ -8,43 +8,62 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
-/**
- * CRA-only env helper.
- * NOTE: CRA only exposes variables prefixed with REACT_APP_*
- */
-const E = (k, fallback = undefined) => {
-  if (typeof process !== "undefined" && process.env && process.env[k] != null) {
-    return process.env[k];
-  }
-  return fallback;
-};
-
+/* =========================================================
+   Firebase config (CRA only — injected at build time)
+   ========================================================= */
 const firebaseConfig = {
-  apiKey: E("REACT_APP_FIREBASE_API_KEY"),
-  authDomain: E("REACT_APP_FIREBASE_AUTH_DOMAIN"),
-  projectId: E("REACT_APP_FIREBASE_PROJECT_ID"),
-  storageBucket: E("REACT_APP_FIREBASE_STORAGE_BUCKET"),
-  messagingSenderId: E("REACT_APP_FIREBASE_MESSAGING_SENDER_ID"),
-  appId: E("REACT_APP_FIREBASE_APP_ID"),
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "",
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId:
+    process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || "",
 };
 
-if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId || !firebaseConfig.appId) {
-  // eslint-disable-next-line no-console
+/* =========================================================
+   Detect whether Firebase is actually usable
+   ========================================================= */
+const REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
+
+const firebaseEnabled = REQUIRED_KEYS.every(
+  (k) => Boolean(firebaseConfig[k])
+);
+
+if (!firebaseEnabled) {
   console.warn(
-    "[firebase] Missing config (apiKey/authDomain/projectId/appId). " +
-      "Check Netlify env vars: REACT_APP_FIREBASE_*"
+    "[firebase] Disabled — missing REACT_APP_FIREBASE_* env vars. " +
+      "Firestore features will be no-ops."
   );
 }
 
-// Initialize Firebase once
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+/* =========================================================
+   Initialize Firebase ONCE (or not at all)
+   ========================================================= */
+let app = null;
+let db = null;
 
-// Firestore instance
-export const db = getFirestore(app);
+if (firebaseEnabled) {
+  try {
+    const apps = getApps();
+    app = apps.length ? apps[0] : initializeApp(firebaseConfig);
+    db = getFirestore(app);
+  } catch (err) {
+    console.error("[firebase] Initialization failed:", err);
+    app = null;
+    db = null;
+  }
+}
+
+export { db };
+
+/* =========================================================
+   Helpers
+   ========================================================= */
 
 /**
  * Normalize a user doc id (wallet or uid).
- * - for wallets: lower-case to prevent duplicates (backend can checksum)
+ * - Wallets are lowercased to avoid duplicates
  */
 export function normalizeUserId(id) {
   if (!id) return "";
@@ -55,7 +74,13 @@ export function normalizeUserId(id) {
 
 const COLLECTION = "users"; // change to "imali_users" if needed
 
+/* =========================================================
+   Firestore accessors (SAFE no-ops when disabled)
+   ========================================================= */
+
 export async function getUserData(userIdOrWallet) {
+  if (!db) return null;
+
   const id = normalizeUserId(userIdOrWallet);
   if (!id) return null;
 
@@ -70,18 +95,31 @@ export async function getUserData(userIdOrWallet) {
 }
 
 export async function upsertUser(userIdOrWallet, fields = {}) {
+  if (!db) {
+    return { ok: false, error: "Firebase disabled" };
+  }
+
   const id = normalizeUserId(userIdOrWallet);
-  if (!id) throw new Error("Missing user id / wallet.");
+  if (!id) {
+    return { ok: false, error: "Missing user id / wallet" };
+  }
 
   try {
     const ref = doc(db, COLLECTION, id);
-
     const snap = await getDoc(ref);
+
     const base = snap.exists()
       ? {}
-      : { createdAt: serverTimestamp(), wallet: /^0x/i.test(id) ? id : undefined };
+      : {
+          createdAt: serverTimestamp(),
+          wallet: /^0x/i.test(id) ? id : undefined,
+        };
 
-    await setDoc(ref, { ...base, ...fields, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(
+      ref,
+      { ...base, ...fields, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
 
     return { ok: true };
   } catch (err) {
@@ -91,6 +129,8 @@ export async function upsertUser(userIdOrWallet, fields = {}) {
 }
 
 export async function saveUserStrategy(userIdOrWallet, strategy) {
-  if (!userIdOrWallet) throw new Error("Missing user id / wallet.");
+  if (!userIdOrWallet) {
+    return { ok: false, error: "Missing user id / wallet" };
+  }
   return upsertUser(userIdOrWallet, { strategy });
 }
