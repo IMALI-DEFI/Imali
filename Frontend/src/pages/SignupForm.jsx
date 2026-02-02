@@ -19,10 +19,13 @@ const API_BASE =
     ? "http://localhost:8001"
     : "https://api.imali-defi.com");
 
+/** Must match BotAPI.js */
+const TOKEN_KEY = "imali_token";
+
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
-  withCredentials: true,
   timeout: 15000,
+  headers: { "Content-Type": "application/json" },
 });
 
 /* =========================
@@ -100,6 +103,17 @@ function pickFromQuery(value, allowed) {
   return allowed.includes(v) ? v : null;
 }
 
+function saveToken(token) {
+  const t = String(token || "").trim();
+  if (!t) return false;
+  try {
+    localStorage.setItem(TOKEN_KEY, t);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function SignupForm() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -140,13 +154,12 @@ export default function SignupForm() {
 
     try {
       if (!emailValid) throw new Error("Enter a valid email");
-      if (password.length < 8)
-        throw new Error("Password must be at least 8 characters");
+      if (password.length < 8) throw new Error("Password must be at least 8 characters");
 
       const execution_mode = tier === "starter" ? "auto" : "manual";
 
-      // Create user (backend should set session cookie)
-      await api.post("/signup", {
+      // Create user
+      const res = await api.post("/signup", {
         email: email.trim(),
         password,
         tier,
@@ -154,19 +167,35 @@ export default function SignupForm() {
         execution_mode,
       });
 
+      // Expect a token from backend (or nested)
+      const data = res?.data || {};
+      const token =
+        data?.token ||
+        data?.access_token ||
+        data?.auth_token ||
+        data?.jwt ||
+        data?.user?.token ||
+        "";
+
+      // If backend didn't return token, you WILL get /me 401 later.
+      if (!saveToken(token)) {
+        throw new Error(
+          "Signup succeeded but no auth token was returned. Update backend /api/signup to return { token } (or access_token)."
+        );
+      }
+
       fireConfetti(confettiRef.current);
 
-      // Move to billing page which will create checkout + redirect
+      // Go billing (Billing should also use the same token key)
       setTimeout(() => {
         navigate(
-          `/billing?tier=${encodeURIComponent(
-            tier
-          )}&strategy=${encodeURIComponent(strategy)}`
+          `/billing?tier=${encodeURIComponent(tier)}&strategy=${encodeURIComponent(strategy)}`
         );
       }, 350);
     } catch (e) {
       setErr(
         e?.response?.data?.detail ||
+          e?.response?.data?.message ||
           e?.response?.data?.error ||
           e?.message ||
           "Signup failed"
@@ -190,9 +219,7 @@ export default function SignupForm() {
           Signup → Billing → Activation → Trade
         </p>
 
-        <div className="text-center text-xs text-white/40 mb-4">
-          API: {API_BASE}
-        </div>
+        <div className="text-center text-xs text-white/40 mb-4">API: {API_BASE}</div>
 
         {err && (
           <div className="mb-4 rounded bg-red-500/10 border border-red-500/30 p-3 text-red-200">
