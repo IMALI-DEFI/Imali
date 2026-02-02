@@ -2,48 +2,63 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
-// Context
-import { WalletProvider } from "./context/WalletContext";
-
 // Layout
 import Header from "./components/Header";
 import Footer from "./components/Footer";
+import ThemeDebug from "./components/ThemeDebug";
 
-// Features
+// Guards
+import ProtectedRoute from "./components/routing/ProtectedRoute";
+
+// Core Features
 import StrategySelector from "./components/StrategySelector";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel.jsx";
 import ReferralSystem from "./components/ReferralSystem";
 
-// Pages
-import AboutUs from "./pages/AboutUs.jsx";
+// Marketing Pages
 import Home from "./pages/Home.jsx";
+import AboutUs from "./pages/AboutUs.jsx";
 import HowItWorks from "./pages/HowItWorks.jsx";
 import Pricing from "./pages/Pricing.jsx";
+import Support from "./pages/Support.jsx";
 import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
+import TermsOfService from "./pages/TermsOfService.jsx";
+
+// Onboarding / Auth
 import SignupForm from "./pages/SignupForm.jsx";
 import SignupActivation from "./pages/SignupActivation.jsx";
 import Activation from "./pages/Activation.jsx";
-import Support from "./pages/Support.jsx";
-import TermsOfService from "./pages/TermsOfService.jsx";
+
+// Billing
+import Billing from "./pages/Billing.jsx";
+import BillingSuccess from "./pages/BillingSuccess.jsx";
+import BillingCancel from "./pages/BillingCancel.jsx";
+import Upgrade from "./pages/Upgrade.jsx";
+
+// Trading / Demo
 import TradeDemo from "./pages/TradeDemo.jsx";
+
+// Guides
 import FundingGuide from "./pages/FundingGuide.jsx";
 import SupportedChains from "./pages/SupportedChains.jsx";
 import MetaMaskGuide from "./pages/MetaMaskGuide.jsx";
 
-// Auth guard
-import ProtectedRoute from "./components/routing/ProtectedRoute";
-
-// 404
+/* ---------------- Simple 404 ---------------- */
 function NotFound() {
   return (
-    <div className="min-h-[40svh] flex items-center justify-center text-center p-8">
+    <div className="min-h-[40vh] flex items-center justify-center text-center p-8">
       <div>
-        <h1 className="text-3xl font-bold mb-2">Page not found</h1>
-        <p className="text-slate-400 mb-4">
+        <h1 className="text-3xl font-bold mb-2 text-imali-green">
+          Page not found
+        </h1>
+        <p className="text-gray-500 mb-4">
           The page you’re looking for doesn’t exist.
         </p>
-        <a href="/" className="text-sky-400 underline">
+        <a
+          href="/"
+          className="text-imali-green underline hover:text-imali-dark"
+        >
           Go home
         </a>
       </div>
@@ -53,95 +68,101 @@ function NotFound() {
 
 export default function App() {
   return (
-    <WalletProvider>
-      {/* App shell */}
-      <div className="min-h-[100svh] w-full overflow-x-hidden bg-gray-950 text-slate-100">
-        <Header />
+    <>
+      <Header />
 
-        {/* Main content */}
-        <main className="w-full overflow-x-hidden pt-16">
-          <Routes>
-            {/* ---------------- Public marketing ---------------- */}
-            <Route path="/" element={<Home />} />
-            <Route path="/home" element={<Navigate to="/" replace />} />
-            <Route path="/about-us" element={<AboutUs />} />
-            <Route path="/how-it-works" element={<HowItWorks />} />
-            <Route path="/pricing" element={<Pricing />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/terms-of-service" element={<TermsOfService />} />
-            <Route path="/support" element={<Support />} />
+      <main className="min-h-screen pt-16 bg-gradient-to-b from-gray-50 to-imali-light">
+        <Routes>
 
-            {/* ---------------- Signup / Activation ---------------- */}
-            <Route path="/signup" element={<SignupForm />} />
-            <Route path="/signup-activation" element={<SignupActivation />} />
-            <Route
-              path="/onboarding"
-              element={<Navigate to="/signup-activation" replace />}
-            />
-            <Route path="/activation" element={<Activation />} />
+          {/* ================= PUBLIC MARKETING ================= */}
+          <Route path="/" element={<Home />} />
+          <Route path="/home" element={<Navigate to="/" replace />} />
+          <Route path="/about-us" element={<AboutUs />} />
+          <Route path="/how-it-works" element={<HowItWorks />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/support" element={<Support />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms-of-service" element={<TermsOfService />} />
+          <Route path="/theme-test" element={<ThemeDebug />} />
 
-            {/* ---------------- Public demo ---------------- */}
-            <Route path="/trade-demo" element={<TradeDemo />} />
+          {/* ================= DEMO (NO LOGIN) ================= */}
+          <Route path="/trade-demo" element={<TradeDemo />} />
+          <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
+          <Route path="/demo/*" element={<Navigate to="/trade-demo" replace />} />
 
-            {/* ---------------- Guides / utilities ---------------- */}
-            <Route path="/funding-guide" element={<FundingGuide />} />
-            <Route path="/supported-chains" element={<SupportedChains />} />
-            <Route path="/wallet-metamask" element={<MetaMaskGuide />} />
-            <Route path="/referral" element={<ReferralSystem />} />
-            <Route path="/strategy-selector" element={<StrategySelector />} />
+          {/* ================= SIGNUP / ONBOARDING ================= */}
+          <Route path="/signup" element={<SignupForm />} />
 
-            {/* Aliases */}
-            <Route
-              path="/how-to/fund-okx"
-              element={<Navigate to="/funding-guide" replace />}
-            />
-            <Route
-              path="/how-to/wallet-metamask"
-              element={<Navigate to="/wallet-metamask" replace />}
-            />
-            <Route
-              path="/FundingGuide"
-              element={<Navigate to="/funding-guide" replace />}
-            />
+          {/* Free tier + post-signup */}
+          <Route path="/signup-activation" element={<SignupActivation />} />
+          <Route
+            path="/onboarding"
+            element={<Navigate to="/signup-activation" replace />}
+          />
 
-            {/* ---------------- Protected ---------------- */}
-            <Route element={<ProtectedRoute />}>
-              <Route path="/dashboard" element={<MemberDashboard />} />
-              <Route path="/admin" element={<AdminPanel forceOwner />} />
-            </Route>
+          {/* ================= BILLING ================= */}
+          <Route path="/billing" element={<Billing />} />
+          <Route path="/billing/success" element={<BillingSuccess />} />
+          <Route path="/billing/cancel" element={<BillingCancel />} />
+          <Route path="/upgrade" element={<Upgrade />} />
 
-            {/* ---------------- Unprotected test routes ---------------- */}
-            <Route path="/test/dashboard" element={<MemberDashboard />} />
-            <Route path="/test/admin" element={<AdminPanel />} />
+          {/* Stripe success → activation */}
+          <Route path="/activation" element={<Activation />} />
 
-            {/* ---------------- Legacy ---------------- */}
-            <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
-            <Route
-              path="/demo/*"
-              element={<Navigate to="/trade-demo" replace />}
-            />
-            <Route
-              path="/MemberDashboard"
-              element={<Navigate to="/dashboard" replace />}
-            />
-            <Route
-              path="/memberdashboard"
-              element={<Navigate to="/dashboard" replace />}
-            />
-            <Route
-              path="/member"
-              element={<Navigate to="/dashboard" replace />}
-            />
+          {/* ================= GUIDES ================= */}
+          <Route path="/funding-guide" element={<FundingGuide />} />
+          <Route path="/supported-chains" element={<SupportedChains />} />
+          <Route path="/wallet-metamask" element={<MetaMaskGuide />} />
 
-            {/* ---------------- Catch-all ---------------- */}
-            <Route path="*" element={<NotFound />} />
-              
+          {/* Aliases (do not break existing links) */}
+          <Route
+            path="/how-to/fund-okx"
+            element={<Navigate to="/funding-guide" replace />}
+          />
+          <Route
+            path="/how-to/wallet-metamask"
+            element={<Navigate to="/wallet-metamask" replace />}
+          />
+          <Route
+            path="/FundingGuide"
+            element={<Navigate to="/funding-guide" replace />}
+          />
 
-          </Routes>
-        </main>
+          {/* ================= UTILITIES ================= */}
+          <Route path="/referral" element={<ReferralSystem />} />
+          <Route path="/strategy-selector" element={<StrategySelector />} />
 
-        <Footer />
-      </div>
-    </WalletProvider>
+          {/* ================= PROTECTED (MEMBER) ================= */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<MemberDashboard />} />
+            <Route path="/admin" element={<AdminPanel forceOwner />} />
+          </Route>
+
+          {/* ================= TEST ROUTES ================= */}
+          <Route path="/test/dashboard" element={<MemberDashboard />} />
+          <Route path="/test/admin" element={<AdminPanel />} />
+
+          {/* ================= LEGACY ALIASES ================= */}
+          <Route
+            path="/MemberDashboard"
+            element={<Navigate to="/dashboard" replace />}
+          />
+          <Route
+            path="/memberdashboard"
+            element={<Navigate to="/dashboard" replace />}
+          />
+          <Route
+            path="/member"
+            element={<Navigate to="/dashboard" replace />}
+          />
+
+          {/* ================= 404 ================= */}
+          <Route path="*" element={<NotFound />} />
+
+        </Routes>
+      </main>
+
+      <Footer />
+    </>
   );
 }
