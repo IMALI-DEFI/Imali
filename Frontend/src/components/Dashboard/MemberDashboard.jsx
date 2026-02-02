@@ -1,270 +1,209 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// src/pages/MemberDashboard.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
-import "react-tabs/style/react-tabs.css";
-import { Link, useNavigate } from "react-router-dom";
+import { Line, Doughnut } from "react-chartjs-2";
 
-import { BotAPI } from "../../utils/api";
-import { useWallet } from "../../context/WalletContext";
-import { short } from "../../getContractInstance";
+/* ================= CONFIG ================= */
+const API = axios.create({
+  baseURL: process.env.REACT_APP_API_BASE || "https://api.imali-defi.com",
+  withCredentials: true,
+});
 
-// Components
-import TradingOverview from "./TradingOverview";
-import TradeDemo from "../../pages/TradeDemo";
-import ImaliBalance from "./ImaliBalance";
-import Staking from "./Staking";
-import Lending from "./Lending";
-import YieldFarming from "./YieldFarming";
-import LPLottery from "./LPLottery";
-import NFTPreview from "./NFTPreview";
-import ReferralSystem from "../ReferralSystem";
-import RecentTradesTable from "./RecentTradesTable";
+/* ================= NFT TIERS ================= */
+const NFT_TIERS = {
+  none: {
+    name: "No Membership",
+    color: "border-slate-600",
+    glow: "",
+    perks: ["Standard fees", "Basic strategies"],
+  },
+  common: {
+    name: "Common",
+    color: "border-emerald-400",
+    glow: "shadow-emerald-500/40",
+    perks: ["Lower fees", "Priority execution"],
+  },
+  rare: {
+    name: "Rare",
+    color: "border-sky-400",
+    glow: "shadow-sky-500/40",
+    perks: ["Even lower fees", "Advanced bots"],
+  },
+  epic: {
+    name: "Epic",
+    color: "border-purple-400",
+    glow: "shadow-purple-500/40",
+    perks: ["Best fees", "All bots", "Faster routing"],
+  },
+  legendary: {
+    name: "Legendary",
+    color: "border-yellow-400",
+    glow: "shadow-yellow-500/50",
+    perks: ["Lowest fees", "Alpha access", "VIP support"],
+  },
+};
 
-/* ---------------- ENV ---------------- */
-const API_BASE =
-  process.env.REACT_APP_API_BASE ||
-  "https://api.imali-defi.com";
+/* ================= ACHIEVEMENTS ================= */
+const ACHIEVEMENTS = [
+  { id: "first_trade", label: "First Trade", icon: "🚀" },
+  { id: "streak_7", label: "7-Day Streak", icon: "🔥" },
+  { id: "trades_50", label: "50 Trades", icon: "🏆" },
+  { id: "profitable", label: "Profitable Day", icon: "💰" },
+  { id: "nft_holder", label: "NFT Holder", icon: "🎟️" },
+];
 
-/* ---------------- HELPERS ---------------- */
-async function fetchMe() {
-  try {
-    const res = await axios.get(`${API_BASE}/api/me`, {
-      withCredentials: true,
-    });
-    return res.data?.user || null;
-  } catch {
-    return null;
-  }
-}
+/* ================= HELPERS ================= */
+const usd = (n = 0) => `$${Number(n).toFixed(2)}`;
+const pct = (n = 0) => `${Number(n).toFixed(1)}%`;
 
-async function fetchActivation() {
-  try {
-    const res = await axios.get(`${API_BASE}/api/me/activation-status`, {
-      withCredentials: true,
-    });
-    return res.data?.status || null;
-  } catch {
-    return null;
-  }
-}
-
-/* ---------------- LOCKED VIEW ---------------- */
-function LockedDashboard({ status }) {
-  const stripe = !!status?.stripe_active;
-  const api = !!status?.api_connected;
-  const bot = !!status?.bot_selected;
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white flex items-center justify-center">
-      <div className="max-w-md p-6 rounded-2xl border border-white/10 bg-white/5 text-center">
-        <h2 className="text-2xl font-bold mb-3">Dashboard Locked 🔒</h2>
-        <p className="text-white/70 mb-5">
-          Complete activation to access trading.
-        </p>
-
-        <div className="space-y-2 text-sm text-left mb-6">
-          <StatusRow label="Payment Method" ok={stripe} />
-          <StatusRow label="API Connected" ok={api} />
-          <StatusRow label="Bot Selected" ok={bot} />
-        </div>
-
-        <div className="flex gap-2 justify-center">
-          <Link
-            to="/activation"
-            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
-          >
-            Complete Activation
-          </Link>
-          <Link
-            to="/pricing"
-            className="px-6 py-3 rounded-xl bg-emerald-700/40 border border-emerald-300/30 hover:bg-emerald-700/55 font-semibold"
-          >
-            View Plans
-          </Link>
-        </div>
-
-        <div className="mt-4 text-xs text-white/50">
-          Starter requires a card (30% fee over 3%). All tiers must connect API + bot.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusRow({ label, ok }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span>{label}</span>
-      <span className={ok ? "text-emerald-300" : "text-amber-300"}>
-        {ok ? "✅ Complete" : "⏳ Pending"}
-      </span>
-    </div>
-  );
-}
-
-/* ---------------- MAIN ---------------- */
+/* ================= COMPONENT ================= */
 export default function MemberDashboard() {
-  const navigate = useNavigate();
-  const { account, chainId, connect, disconnect } = useWallet();
-
+  const nav = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [me, setMe] = useState(null);
-  const [activation, setActivation] = useState(null);
-
+  const [user, setUser] = useState(null);
   const [stats, setStats] = useState({});
-  const [trades, setTrades] = useState([]);
+  const [series, setSeries] = useState([]);
+  const [streak, setStreak] = useState(0);
 
-  const [tab, setTab] = useState(0);
-
-  /* ---------- BOOTSTRAP ---------- */
+  /* -------- Fetch -------- */
   useEffect(() => {
-    let mounted = true;
-
     (async () => {
-      const [u, a] = await Promise.all([fetchMe(), fetchActivation()]);
-      if (!mounted) return;
-
-      if (!u) {
-        navigate("/login", { replace: true });
-        return;
-      }
-
-      setMe(u);
-      setActivation(a);
-      setLoading(false);
-    })();
-
-    return () => (mounted = false);
-  }, [navigate]);
-
-  /* ---------- DATA FEED ---------- */
-  useEffect(() => {
-    if (!activation?.complete) return;
-
-    let cancel = false;
-
-    async function load() {
       try {
-        const [pnl, recent] = await Promise.all([
-          BotAPI.getPnLSummary({ wallet: account || "" }),
-          BotAPI.getRecentTrades({ wallet: account || "", limit: 50 }),
-        ]);
+        const me = await API.post("/api/me");
+        if (!me.data?.success) return nav("/login");
+        setUser(me.data.user);
 
-        if (cancel) return;
+        const pnl = await API.post("/api/analytics/pnl/series", {
+          period: "30d",
+          interval: "daily",
+        });
 
-        setStats(pnl || {});
-        setTrades(recent?.trades || recent || []);
-      } catch {}
-    }
+        setStats(pnl.data.summary || {});
+        setSeries(
+          (pnl.data.series || []).map((p) => ({
+            x: p.x,
+            y: p.y,
+          }))
+        );
 
-    load();
-    const id = setInterval(load, 30000);
-    return () => {
-      cancel = true;
-      clearInterval(id);
-    };
-  }, [account, activation]);
+        setStreak(pnl.data.summary?.current_streak || 0);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [nav]);
 
-  /* ---------- GUARDS ---------- */
+  /* -------- Derived -------- */
+  const nftKey = user?.nft_tier || "none";
+  const nft = NFT_TIERS[nftKey] || NFT_TIERS.none;
+
+  const confidence = useMemo(() => {
+    let score = 0;
+    score += Math.min(30, (stats.win_rate || 0) * 0.3);
+    score += Math.min(30, (stats.total_trades || 0) * 0.3);
+    score += Math.min(20, streak * 2);
+    score += nftKey !== "none" ? 20 : 0;
+    return Math.min(100, Math.round(score));
+  }, [stats, streak, nftKey]);
+
+  const unlockedAchievements = useMemo(() => {
+    const list = [];
+    if (stats.total_trades > 0) list.push("first_trade");
+    if (streak >= 7) list.push("streak_7");
+    if (stats.total_trades >= 50) list.push("trades_50");
+    if (stats.total_pnl > 0) list.push("profitable");
+    if (nftKey !== "none") list.push("nft_holder");
+    return list;
+  }, [stats, streak, nftKey]);
+
   if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Loading dashboard…
-      </div>
-    );
+    return <div className="min-h-screen bg-black text-white flex items-center justify-center">Loading…</div>;
   }
 
-  if (!activation?.complete) {
-    return <LockedDashboard status={activation || {}} />;
-  }
-
-  const tier = (me?.tier_active || "starter").toLowerCase();
-  const isStarter = tier === "starter";
-
-  /* ---------- UI ---------- */
+  /* ================= UI ================= */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white">
-      <div className="max-w-7xl mx-auto px-6 py-6">
+    <div className="min-h-screen bg-black text-white p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
 
         {/* HEADER */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl md:text-3xl font-extrabold">🎮 Member Dashboard</h1>
+        <h1 className="text-3xl font-bold">Welcome back 👋</h1>
 
-          <div className="flex items-center gap-2">
-            {account ? (
-              <>
-                <span className="text-xs px-2 py-1 rounded-full bg-black/30 border border-white/20">
-                  {short(account)} {chainId && `• ${chainId}`}
-                </span>
-                <button onClick={disconnect} className="btn">
-                  Disconnect
-                </button>
-              </>
-            ) : (
-              <button onClick={connect} className="btn btn-primary">
-                Connect Wallet
-              </button>
-            )}
+        {/* NFT CARD */}
+        <div className={`rounded-2xl border ${nft.color} ${nft.glow} bg-white/5 p-5`}>
+          <h2 className="text-xl font-semibold">🧬 Membership NFT — {nft.name}</h2>
+          <ul className="mt-2 text-sm text-white/70 list-disc pl-5">
+            {nft.perks.map((p) => <li key={p}>{p}</li>)}
+          </ul>
+          {nftKey === "none" && (
+            <button onClick={() => nav("/nft")} className="mt-3 px-4 py-2 bg-indigo-600 rounded-lg">
+              Upgrade Membership
+            </button>
+          )}
+        </div>
+
+        {/* CONFIDENCE METER */}
+        <div className="rounded-xl bg-white/5 p-4 border border-white/10">
+          <h3 className="font-semibold mb-2">📊 Trading Confidence</h3>
+          <div className="w-full bg-slate-800 rounded-full h-4 overflow-hidden">
+            <div
+              className={`h-full ${confidence >= 70 ? "bg-emerald-500" : "bg-yellow-500"}`}
+              style={{ width: `${confidence}%` }}
+            />
+          </div>
+          <p className="text-xs text-white/60 mt-1">
+            Confidence is built from win rate, consistency, and experience.
+          </p>
+        </div>
+
+        {/* STATS */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Stat label="Total Profit" value={usd(stats.total_pnl)} />
+          <Stat label="Win Rate" value={pct(stats.win_rate)} />
+          <Stat label="Trades" value={stats.total_trades} />
+          <Stat label="Daily Streak" value={`🔥 ${streak}`} />
+        </div>
+
+        {/* ACHIEVEMENTS */}
+        <div className="rounded-xl bg-white/5 p-4 border border-white/10">
+          <h3 className="font-semibold mb-3">🏆 Achievements</h3>
+          <div className="flex flex-wrap gap-3">
+            {ACHIEVEMENTS.map((a) => (
+              <div
+                key={a.id}
+                className={`px-3 py-2 rounded-lg border ${
+                  unlockedAchievements.includes(a.id)
+                    ? "border-emerald-400 bg-emerald-500/20"
+                    : "border-white/10 bg-white/5 opacity-40"
+                }`}
+              >
+                {a.icon} {a.label}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* OVERVIEW STRIP */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-          <TradingOverview feed={stats} />
-
-          <div className="card">
-            <div className="flex justify-between items-center">
-              <span className="text-sm">Tier</span>
-              <span className="badge">
-                {tier.toUpperCase()} • {isStarter ? "30%" : "5%"} fee
-              </span>
-            </div>
-            <div className="mt-2 text-xs text-white/70">
-              {isStarter
-                ? "Starter requires card. 30% fee on profits over 3%."
-                : "Paid tier: 5% fee on profits over 3%."}
-            </div>
-          </div>
-
-          <div className="card text-sm text-white/80">
-            1) Select bot<br />
-            2) Connect API<br />
-            3) Start trading
-          </div>
+        {/* CTA */}
+        <div className="grid md:grid-cols-3 gap-4">
+          <CTA title="Trade Demo" onClick={() => nav("/trade-demo")} />
+          <CTA title="Go Live" onClick={() => nav("/trade-demo?mode=live")} />
+          <CTA title="Learn" onClick={() => nav("/help")} />
         </div>
-
-        {/* TABS */}
-        <Tabs selectedIndex={tab} onSelect={setTab}>
-          <TabList>
-            <Tab>Trading</Tab>
-            <Tab>Extras</Tab>
-          </TabList>
-
-          <TabPanel>
-            <div className="space-y-4">
-              <div className="card">
-                <TradeDemo />
-              </div>
-
-              <div className="card">
-                <RecentTradesTable rows={trades} />
-              </div>
-            </div>
-          </TabPanel>
-
-          <TabPanel>
-            <div className="space-y-4">
-              <Staking />
-              <YieldFarming />
-              <Lending />
-              <ReferralSystem />
-              <LPLottery />
-              <NFTPreview />
-              <ImaliBalance />
-            </div>
-          </TabPanel>
-        </Tabs>
       </div>
     </div>
   );
 }
+
+/* ================= SMALL ================= */
+const Stat = ({ label, value }) => (
+  <div className="rounded-xl bg-white/5 p-4 border border-white/10">
+    <div className="text-xs text-white/60">{label}</div>
+    <div className="text-xl font-bold">{value}</div>
+  </div>
+);
+
+const CTA = ({ title, onClick }) => (
+  <button onClick={onClick} className="rounded-xl bg-indigo-600 py-3 font-semibold">
+    {title}
+  </button>
+);
