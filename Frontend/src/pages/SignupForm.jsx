@@ -10,26 +10,24 @@ import EliteNFT from "../assets/images/nfts/nft-elite.png";
 import StockNFT from "../assets/images/nfts/nft-stock.png";
 import BundleNFT from "../assets/images/nfts/nft-bundle.png";
 
-/* ============================================================
-   API BASE (CRA ONLY — NO VITE)
-   ============================================================ */
-
+/* =========================
+   API BASE RESOLVER (CRA)
+========================= */
 const API_BASE =
   process.env.REACT_APP_API_BASE ||
   (typeof window !== "undefined" && window.location.hostname === "localhost"
     ? "http://localhost:8001"
     : "https://api.imali-defi.com");
 
-const API = {
-  signup: `${API_BASE}/api/signup`,
-  promoStatus: `${API_BASE}/api/promo/status`,
-  checkout: `${API_BASE}/api/billing/create-checkout`,
-};
+const api = axios.create({
+  baseURL: `${API_BASE}/api`,
+  withCredentials: true,
+  timeout: 15000,
+});
 
-/* ============================================================
+/* =========================
    CONSTANTS
-   ============================================================ */
-
+========================= */
 const STRATEGIES = [
   { value: "momentum", label: "Growth" },
   { value: "mean_reversion", label: "Conservative" },
@@ -41,7 +39,6 @@ const TIERS = {
   starter: {
     img: StarterNFT,
     label: "Starter",
-    color: "from-sky-500 to-sky-700",
     fee: "30% on profits over 3%",
     monthly: "No monthly fee",
     description: "Auto-trading only",
@@ -49,7 +46,6 @@ const TIERS = {
   pro: {
     img: ProNFT,
     label: "Pro",
-    color: "from-fuchsia-500 to-fuchsia-700",
     fee: "5% on profits over 3%",
     monthly: "$19/month",
     description: "Manual + Auto trading",
@@ -57,7 +53,6 @@ const TIERS = {
   elite: {
     img: EliteNFT,
     label: "Elite",
-    color: "from-amber-500 to-amber-700",
     fee: "5% on profits over 3%",
     monthly: "$49/month",
     description: "All features + DEX",
@@ -65,7 +60,6 @@ const TIERS = {
   stock: {
     img: StockNFT,
     label: "Stocks",
-    color: "from-yellow-500 to-yellow-700",
     fee: "5% on profits over 3%",
     monthly: "$99/month",
     description: "Stock trading focus",
@@ -73,21 +67,16 @@ const TIERS = {
   bundle: {
     img: BundleNFT,
     label: "Bundle",
-    color: "from-zinc-500 to-zinc-700",
     fee: "5% on profits over 3%",
     monthly: "$199/month",
     description: "Complete package",
   },
 };
 
-/* ============================================================
-   HELPERS
-   ============================================================ */
-
 function fireConfetti(container) {
   if (!container) return;
   const EMOJI = ["🎉", "✨", "🚀", "💎"];
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 18; i++) {
     const span = document.createElement("span");
     span.textContent = EMOJI[Math.floor(Math.random() * EMOJI.length)];
     span.style.position = "fixed";
@@ -111,10 +100,6 @@ function pickFromQuery(value, allowed) {
   return allowed.includes(v) ? v : null;
 }
 
-/* ============================================================
-   COMPONENT
-   ============================================================ */
-
 export default function SignupForm() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -127,9 +112,8 @@ export default function SignupForm() {
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [promo, setPromo] = useState(null);
 
-  /* Pull query params */
+  // Pull query params (tier/strategy)
   useEffect(() => {
     const t = pickFromQuery(params.get("tier"), Object.keys(TIERS));
     const s = pickFromQuery(
@@ -147,18 +131,6 @@ export default function SignupForm() {
 
   const activeTier = TIERS[tier];
 
-  /* Promo info (optional) */
-  useEffect(() => {
-    axios
-      .get(API.promoStatus, { timeout: 5000 })
-      .then((r) => setPromo(r.data))
-      .catch(() => {});
-  }, []);
-
-  /* ============================================================
-     SUBMIT
-     ============================================================ */
-
   const submit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -173,7 +145,8 @@ export default function SignupForm() {
 
       const execution_mode = tier === "starter" ? "auto" : "manual";
 
-      await axios.post(API.signup, {
+      // Create user (backend should set session cookie)
+      await api.post("/signup", {
         email: email.trim(),
         password,
         tier,
@@ -181,37 +154,27 @@ export default function SignupForm() {
         execution_mode,
       });
 
-      const billing = await axios.post(API.checkout, {
-        email: email.trim(),
-        tier,
-        strategy,
-        execution_mode,
-      });
-
-      const checkoutUrl =
-        billing.data?.checkoutUrl ||
-        billing.data?.checkout_url ||
-        billing.data?.url;
-
-      if (!checkoutUrl) throw new Error("Billing setup failed");
-
       fireConfetti(confettiRef.current);
-      setTimeout(() => (window.location.href = checkoutUrl), 400);
+
+      // Move to billing page which will create checkout + redirect
+      setTimeout(() => {
+        navigate(
+          `/billing?tier=${encodeURIComponent(
+            tier
+          )}&strategy=${encodeURIComponent(strategy)}`
+        );
+      }, 350);
     } catch (e) {
       setErr(
-        e.response?.data?.detail ||
-          e.response?.data?.error ||
-          e.message ||
+        e?.response?.data?.detail ||
+          e?.response?.data?.error ||
+          e?.message ||
           "Signup failed"
       );
     } finally {
       setLoading(false);
     }
   };
-
-  /* ============================================================
-     RENDER
-     ============================================================ */
 
   return (
     <div
@@ -241,11 +204,26 @@ export default function SignupForm() {
           onSubmit={submit}
           className="rounded-2xl bg-white/5 border border-white/10 p-6 space-y-4"
         >
+          <div className="flex items-center gap-3">
+            <img
+              src={activeTier?.img}
+              alt={activeTier?.label}
+              className="w-12 h-12 rounded-xl object-cover"
+            />
+            <div>
+              <div className="font-semibold">{activeTier?.label}</div>
+              <div className="text-xs text-white/50">
+                {activeTier?.monthly} · {activeTier?.fee}
+              </div>
+            </div>
+          </div>
+
           <input
             className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
           />
 
           <input
@@ -254,6 +232,7 @@ export default function SignupForm() {
             placeholder="Password (8+ chars)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
           />
 
           <select
@@ -284,11 +263,18 @@ export default function SignupForm() {
             disabled={loading || !emailValid}
             className="w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-700 font-bold disabled:opacity-60"
           >
-            {loading ? "Processing…" : "Continue to Billing"}
+            {loading ? "Creating Account…" : "Continue to Billing"}
           </button>
 
           <div className="text-xs text-center text-white/60">
-            Billing setup required for performance fee collection.
+            Billing setup is required for performance-fee collection.
+          </div>
+
+          <div className="text-xs text-center text-white/40">
+            Already have an account?{" "}
+            <Link to="/login" className="underline">
+              Log in
+            </Link>
           </div>
         </form>
       </div>
