@@ -21,7 +21,7 @@ const api = axios.create({
   baseURL: `${API_BASE}/api`,
   timeout: 15000,
   headers: { "Content-Type": "application/json" },
-  withCredentials: true, // harmless even if you use tokens
+  withCredentials: true, // ok whether you use cookies or bearer tokens
 });
 
 // Inject token automatically (if present)
@@ -54,6 +54,19 @@ function saveTokenFromResponse(data) {
   }
 }
 
+function normalizeStatusPayload(resData) {
+  // backend may return: { status: {...} } or { success: true, status: {...} } or { ...statusFields }
+  const s = resData?.status || resData?.data?.status || resData;
+  return s && typeof s === "object" ? s : null;
+}
+
+function pickDashboardRoute(status) {
+  // Your app might register the route as /MemberDashboard, /member-dashboard, /dashboard, etc.
+  // Prefer the canonical one you used earlier: "/MemberDashboard"
+  // If you later change it, update this ONE place.
+  return "/MemberDashboard";
+}
+
 export default function Login() {
   const navigate = useNavigate();
 
@@ -73,14 +86,13 @@ export default function Login() {
     setError("");
 
     try {
-      // 1) Login (your backend MUST implement POST /api/login for this to succeed)
-      // If you don’t have it yet, you should add it OR change this page to not exist.
+      // 1) Login
+      // Your backend MUST implement POST /api/login for this to succeed.
       const loginRes = await api.post("/login", {
         email: emailTrimmed,
         password,
       });
 
-      // Some backends return { ok: true }, some { success: true }, etc.
       const ok =
         loginRes.data?.ok === true ||
         loginRes.data?.success === true ||
@@ -90,9 +102,7 @@ export default function Login() {
 
       if (!ok) {
         throw new Error(
-          loginRes.data?.message ||
-            loginRes.data?.error ||
-            "Login failed"
+          loginRes.data?.message || loginRes.data?.error || "Login failed"
         );
       }
 
@@ -101,16 +111,16 @@ export default function Login() {
         localStorage.setItem("IMALI_EMAIL", emailTrimmed);
       } catch {}
 
-      // Store token if backend provided one (token auth path)
-      // If your backend uses cookies instead, this just won’t store anything—still fine.
+      // Store token if backend provided one
+      // (If your backend uses cookies instead, this just won’t store anything.)
       saveTokenFromResponse(loginRes.data);
 
-      // 2) Ask backend for activation truth (GET /api/me/activation-status exists in your route list)
-      const statusRes = await api.get("/me/activation-status");
-      const status = statusRes.data?.status || statusRes.data || null;
+      // 2) Activation truth
+      // IMPORTANT: In your backend file, /api/me/activation-status is POST (not GET).
+      const statusRes = await api.post("/me/activation-status", {});
+      const status = normalizeStatusPayload(statusRes.data);
 
       if (!status) {
-        // If status endpoint is down, at least try to enter activation page
         navigate("/activation", { replace: true });
         return;
       }
@@ -118,19 +128,17 @@ export default function Login() {
       // 3) Route based on activation state (align to your Activation.jsx fields)
       const billingComplete = !!status.billing_complete;
       const tradingEnabled = !!status.trading_enabled;
-
-      // fallback for older keys (just in case)
-      const complete =
+      const activationComplete =
+        status.activation_complete === true ||
         status.complete === true ||
         status.stripe_webhook_confirmed === true ||
         (billingComplete && tradingEnabled);
 
-      if (complete || (billingComplete && tradingEnabled)) {
-        navigate("/MemberDashboard", { replace: true });
+      if (activationComplete) {
+        navigate(pickDashboardRoute(status), { replace: true });
         return;
       }
 
-      // Not complete → activation page shows the remaining steps
       navigate("/activation", { replace: true });
     } catch (err) {
       console.error("Login error:", err);
@@ -143,10 +151,12 @@ export default function Login() {
         "Login failed.";
 
       // If /api/login doesn't exist, call it out clearly:
-      if (String(msg).includes("404") || err?.response?.status === 404) {
+      if (err?.response?.status === 404 || String(msg).toLowerCase().includes("404")) {
         setError(
-          "Backend route POST /api/login was not found. Add /api/login on the server or remove Login and use a tokenless flow."
+          "Backend route POST /api/login was not found. Add /api/login on the server or remove this Login page and use your wallet/google auth flow."
         );
+      } else if (err?.response?.status === 401) {
+        setError("Invalid email or password.");
       } else {
         setError(msg);
       }
