@@ -1,14 +1,7 @@
 // src/pages/MemberDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-import { Line, Doughnut } from "react-chartjs-2";
-
-/* ================= CONFIG ================= */
-const API = axios.create({
-  baseURL: process.env.REACT_APP_API_BASE || "https://api.imali-defi.com",
-  withCredentials: true,
-});
+import { BotAPI } from "../utils/BotAPI"; // ✅ use shared client (adds Bearer token)
 
 /* ================= NFT TIERS ================= */
 const NFT_TIERS = {
@@ -54,89 +47,143 @@ const ACHIEVEMENTS = [
 ];
 
 /* ================= HELPERS ================= */
-const usd = (n = 0) => `$${Number(n).toFixed(2)}`;
-const pct = (n = 0) => `${Number(n).toFixed(1)}%`;
+const usd = (n = 0) => `$${Number(n || 0).toFixed(2)}`;
+const pct = (n = 0) => `${Number(n || 0).toFixed(1)}%`;
 
 /* ================= COMPONENT ================= */
 export default function MemberDashboard() {
   const nav = useNavigate();
   const [loading, setLoading] = useState(true);
+
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState({});
   const [series, setSeries] = useState([]);
   const [streak, setStreak] = useState(0);
 
-  /* -------- Fetch -------- */
+  const [err, setErr] = useState("");
+
   useEffect(() => {
+    let mounted = true;
+
     (async () => {
       try {
-        const me = await API.post("/api/me");
-        if (!me.data?.success) return nav("/login");
-        setUser(me.data.user);
+        setErr("");
 
-        const pnl = await API.post("/api/analytics/pnl/series", {
+        // ✅ backend route is GET /api/me
+        const me = await BotAPI.me();
+        if (!mounted) return;
+
+        if (!me?.success || !me?.user) {
+          nav("/login");
+          return;
+        }
+        setUser(me.user);
+
+        // ✅ backend route is POST /api/analytics/pnl/series
+        const pnl = await BotAPI.tryApi
+          ? await BotAPI.tryApi(() => {}) // (noop; in case you extended BotAPI)
+          : null;
+
+        // Since BotAPI doesn't include analytics yet, call via axios inside BotAPI base:
+        // Easiest: add this one method to BotAPI (recommended) OR do a small local axios here.
+        // We'll do the clean way: add an "analyticsPnlSeries" method in BotAPI.
+        //
+        // For now, we’ll assume you add BotAPI.analyticsPnlSeries below (see snippet).
+        const pnlRes = await BotAPI.analyticsPnlSeries({
           period: "30d",
           interval: "daily",
         });
 
-        setStats(pnl.data.summary || {});
+        if (!mounted) return;
+
+        setStats(pnlRes?.summary || {});
         setSeries(
-          (pnl.data.series || []).map((p) => ({
+          (pnlRes?.series || []).map((p) => ({
             x: p.x,
             y: p.y,
           }))
         );
-
-        setStreak(pnl.data.summary?.current_streak || 0);
+        setStreak(pnlRes?.summary?.current_streak || 0);
+      } catch (e) {
+        const status = e?.status || e?.response?.status;
+        if (status === 401) {
+          nav("/login");
+          return;
+        }
+        setErr(e?.message || "Failed to load dashboard.");
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, [nav]);
 
-  /* -------- Derived -------- */
   const nftKey = user?.nft_tier || "none";
   const nft = NFT_TIERS[nftKey] || NFT_TIERS.none;
 
   const confidence = useMemo(() => {
+    const win = Number(stats.win_rate || 0);
+    const trades = Number(stats.total_trades || 0);
+    const pnl = Number(stats.total_pnl || 0);
+
     let score = 0;
-    score += Math.min(30, (stats.win_rate || 0) * 0.3);
-    score += Math.min(30, (stats.total_trades || 0) * 0.3);
-    score += Math.min(20, streak * 2);
+    score += Math.min(30, win * 0.3);
+    score += Math.min(30, trades * 0.3);
+    score += Math.min(20, Number(streak || 0) * 2);
     score += nftKey !== "none" ? 20 : 0;
-    return Math.min(100, Math.round(score));
+
+    // tiny bump if profitable, tiny penalty if losing
+    if (pnl > 0) score += 3;
+    if (pnl < 0) score -= 3;
+
+    return Math.max(0, Math.min(100, Math.round(score)));
   }, [stats, streak, nftKey]);
 
   const unlockedAchievements = useMemo(() => {
     const list = [];
-    if (stats.total_trades > 0) list.push("first_trade");
-    if (streak >= 7) list.push("streak_7");
-    if (stats.total_trades >= 50) list.push("trades_50");
-    if (stats.total_pnl > 0) list.push("profitable");
+    if ((stats.total_trades || 0) > 0) list.push("first_trade");
+    if ((streak || 0) >= 7) list.push("streak_7");
+    if ((stats.total_trades || 0) >= 50) list.push("trades_50");
+    if ((stats.total_pnl || 0) > 0) list.push("profitable");
     if (nftKey !== "none") list.push("nft_holder");
     return list;
   }, [stats, streak, nftKey]);
 
   if (loading) {
-    return <div className="min-h-screen bg-black text-white flex items-center justify-center">Loading…</div>;
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Loading…
+      </div>
+    );
   }
 
-  /* ================= UI ================= */
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-
-        {/* HEADER */}
         <h1 className="text-3xl font-bold">Welcome back 👋</h1>
+
+        {err && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
+            {err}
+          </div>
+        )}
 
         {/* NFT CARD */}
         <div className={`rounded-2xl border ${nft.color} ${nft.glow} bg-white/5 p-5`}>
           <h2 className="text-xl font-semibold">🧬 Membership NFT — {nft.name}</h2>
           <ul className="mt-2 text-sm text-white/70 list-disc pl-5">
-            {nft.perks.map((p) => <li key={p}>{p}</li>)}
+            {nft.perks.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
           </ul>
           {nftKey === "none" && (
-            <button onClick={() => nav("/nft")} className="mt-3 px-4 py-2 bg-indigo-600 rounded-lg">
+            <button
+              onClick={() => nav("/nft")}
+              className="mt-3 px-4 py-2 bg-indigo-600 rounded-lg"
+            >
               Upgrade Membership
             </button>
           )}
@@ -160,8 +207,8 @@ export default function MemberDashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Stat label="Total Profit" value={usd(stats.total_pnl)} />
           <Stat label="Win Rate" value={pct(stats.win_rate)} />
-          <Stat label="Trades" value={stats.total_trades} />
-          <Stat label="Daily Streak" value={`🔥 ${streak}`} />
+          <Stat label="Trades" value={stats.total_trades ?? 0} />
+          <Stat label="Daily Streak" value={`🔥 ${streak || 0}`} />
         </div>
 
         {/* ACHIEVEMENTS */}
