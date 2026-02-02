@@ -1,35 +1,29 @@
+// src/pages/Activation.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 
-/* =====================================================
-   ENV / CONFIG
-===================================================== */
+/* =========================
+   API BASE RESOLVER (CRA)
+========================= */
 const API_BASE =
   process.env.REACT_APP_API_BASE ||
-  "https://api.imali-defi.com";
+  (typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:8001"
+    : "https://api.imali-defi.com");
 
-/* OWNER / ADMIN OVERRIDE */
-const OWNER_EMAILS = [
-  "wayne@imali-defi.com",
-  "admin@imali-defi.com",
-];
+/* OWNER OVERRIDE */
+const OWNER_EMAILS = ["wayne@imali-defi.com", "admin@imali-defi.com"];
 
 /* 24h billing grace */
 const BILLING_GRACE_MS = 24 * 60 * 60 * 1000;
 
-/* =====================================================
-   API
-===================================================== */
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
   withCredentials: true,
   timeout: 15000,
 });
 
-/* =====================================================
-   HELPERS
-===================================================== */
 const now = () => Date.now();
 
 const isOwner = (me) =>
@@ -41,9 +35,21 @@ function Status({ ok, grace }) {
   return <span className="text-white/40">⬜ Pending</span>;
 }
 
-/* =====================================================
-   MAIN
-===================================================== */
+function Row({ label, ok, grace, action, note }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <div className="font-semibold">{label}</div>
+        {note && <div className="text-xs text-white/50">{note}</div>}
+      </div>
+      <div className="flex items-center gap-3">
+        <Status ok={ok} grace={grace} />
+        {action}
+      </div>
+    </div>
+  );
+}
+
 export default function Activation() {
   const navigate = useNavigate();
 
@@ -52,9 +58,7 @@ export default function Activation() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  /* =====================================================
-     LOAD USER + ACTIVATION STATUS
-  ===================================================== */
+  // Load user + activation status
   useEffect(() => {
     let mounted = true;
 
@@ -70,7 +74,7 @@ export default function Activation() {
         setMe(meRes.data?.user || null);
         setStatus(statusRes.data?.status || null);
       } catch (e) {
-        setError("Unable to load activation status.");
+        setError("Unable to load activation status. Please log in again.");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -80,10 +84,7 @@ export default function Activation() {
     return () => (mounted = false);
   }, []);
 
-  /* =====================================================
-     DERIVED STATE (BACKEND IS SOURCE OF TRUTH)
-  ===================================================== */
-  const owner = isOwner(me);
+  const owner = useMemo(() => isOwner(me), [me]);
 
   const tier = String(me?.tier_active || "starter").toLowerCase();
 
@@ -110,34 +111,28 @@ export default function Activation() {
   const readOnlyMode =
     !activationComplete && (stripeWebhookConfirmed || inBillingGrace);
 
-  /* =====================================================
-     ANALYTICS (SAFE)
-  ===================================================== */
+  // Optional: analytics ping (safe)
   useEffect(() => {
     if (!status) return;
-
-    api.post("/analytics/activation", {
-      billing_started: !!status.billing_started_at,
-      billing_confirmed: stripeWebhookConfirmed,
-      api_connected: apiConnected,
-      bot_selected: botSelected,
-      paper_trading: paperTrading,
-      live_trading: liveTrading,
-    }).catch(() => {});
+    api
+      .post("/analytics/activation", {
+        billing_started: !!status.billing_started_at,
+        billing_confirmed: stripeWebhookConfirmed,
+        api_connected: apiConnected,
+        bot_selected: botSelected,
+        paper_trading: paperTrading,
+        live_trading: liveTrading,
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  /* =====================================================
-     NAV ACTIONS
-  ===================================================== */
-  const goStripe = () => navigate("/billing");
+  const goBilling = () => navigate("/billing");
   const goAPI = () => navigate("/activation?step=api");
   const goBot = () => navigate("/activation?step=bot");
   const goDashboard = () => navigate("/MemberDashboard");
   const goAdmin = () => navigate("/admin");
 
-  /* =====================================================
-     GUARDS
-  ===================================================== */
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -148,8 +143,8 @@ export default function Activation() {
 
   if (!me) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Session expired.{" "}
+      <div className="min-h-screen bg-black text-white flex flex-col gap-3 items-center justify-center p-6 text-center">
+        <div>{error || "Session expired."}</div>
         <Link to="/login" className="underline">
           Log in
         </Link>
@@ -157,37 +152,31 @@ export default function Activation() {
     );
   }
 
-  /* =====================================================
-     UI
-  ===================================================== */
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white p-6">
       <div className="max-w-4xl mx-auto">
-
         {/* HEADER */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold">Account Activation</h1>
-          <p className="text-white/70">
-            Complete setup to unlock live trading
-          </p>
+          <p className="text-white/70">Complete setup to unlock live trading</p>
 
           {owner && (
             <div className="mt-2 text-xs text-emerald-300">
               👑 Owner override active
             </div>
           )}
+          <div className="mt-2 text-xs text-white/40">API: {API_BASE}</div>
         </div>
 
-        {/* ACTIVATION STEPS */}
+        {/* STEPS */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
-
           <Row
             label="Payment (Stripe)"
             ok={stripeWebhookConfirmed}
             grace={inBillingGrace}
             action={
               !stripeWebhookConfirmed && (
-                <button onClick={goStripe} className="btn-primary">
+                <button onClick={goBilling} className="btn-primary">
                   {inBillingGrace ? "Retry Billing" : "Add Card"}
                 </button>
               )
@@ -234,7 +223,7 @@ export default function Activation() {
           />
         </div>
 
-        {/* MODE STATUS */}
+        {/* MODE */}
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
           {activationComplete ? (
             <div className="text-emerald-300 font-semibold">
@@ -281,28 +270,9 @@ export default function Activation() {
           </Link>
         </div>
 
-        {/* FOOTER */}
         <div className="mt-8 text-xs text-white/50">
           Trading involves risk. Never trade money you can’t afford to lose.
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* =====================================================
-   SMALL COMPONENTS
-===================================================== */
-function Row({ label, ok, grace, action, note }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
-        <div className="font-semibold">{label}</div>
-        {note && <div className="text-xs text-white/50">{note}</div>}
-      </div>
-      <div className="flex items-center gap-3">
-        <Status ok={ok} grace={grace} />
-        {action}
       </div>
     </div>
   );
