@@ -6,7 +6,6 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 
-
 // Guards
 import ProtectedRoute from "./components/routing/ProtectedRoute";
 
@@ -73,7 +72,6 @@ export default function App() {
 
       <main className="min-h-screen pt-16 bg-gradient-to-b from-gray-50 to-imali-light">
         <Routes>
-
           {/* ================= PUBLIC MARKETING ================= */}
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Navigate to="/" replace />} />
@@ -83,7 +81,6 @@ export default function App() {
           <Route path="/support" element={<Support />} />
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/terms-of-service" element={<TermsOfService />} />
-          <Route path="/theme-test" element={<ThemeDebug />} />
 
           {/* ================= DEMO (NO LOGIN) ================= */}
           <Route path="/trade-demo" element={<TradeDemo />} />
@@ -151,14 +148,10 @@ export default function App() {
             path="/memberdashboard"
             element={<Navigate to="/dashboard" replace />}
           />
-          <Route
-            path="/member"
-            element={<Navigate to="/dashboard" replace />}
-          />
+          <Route path="/member" element={<Navigate to="/dashboard" replace />} />
 
           {/* ================= 404 ================= */}
           <Route path="*" element={<NotFound />} />
-
         </Routes>
       </main>
 
