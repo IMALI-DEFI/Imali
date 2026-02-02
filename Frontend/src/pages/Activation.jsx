@@ -15,8 +15,8 @@ const API_ORIGIN =
 
 const API_BASE = String(API_ORIGIN).replace(/\/+$/, "");
 
-// Must match what you store after login
-const TOKEN_KEY = "IMALI_AUTH_TOKEN";
+// MUST MATCH BotAPI.js token storage key
+const TOKEN_KEY = "imali_token";
 
 /* OWNER OVERRIDE */
 const OWNER_EMAILS = ["wayne@imali-defi.com", "admin@imali-defi.com"];
@@ -84,7 +84,7 @@ export default function Activation() {
       setLoading(true);
       setError("");
 
-      // If no token, send them to login
+      // If no token, force login
       let token = "";
       try {
         token = localStorage.getItem(TOKEN_KEY) || "";
@@ -93,6 +93,7 @@ export default function Activation() {
         if (mounted) {
           setLoading(false);
           setMe(null);
+          setStatus(null);
           setError("You are not logged in.");
         }
         return;
@@ -107,13 +108,18 @@ export default function Activation() {
         if (!mounted) return;
 
         setMe(meRes.data?.user || null);
-        setStatus(statusRes.data?.status || null);
+
+        // Your backend might return {success:true,status:{...}} OR {success:true,...}
+        const st = statusRes.data?.status ?? statusRes.data ?? null;
+        setStatus(st);
       } catch (e) {
         const msg =
           e?.response?.data?.message ||
           e?.response?.data?.error ||
+          e?.response?.data?.detail ||
           "Unable to load activation status. Please log in again.";
         if (mounted) setError(msg);
+        if (mounted) setMe(null);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -126,19 +132,28 @@ export default function Activation() {
   const owner = useMemo(() => isOwner(me), [me]);
   const tier = String(me?.tier_active || me?.tier || "starter").toLowerCase();
 
-  // ---- Align to backend status keys (from your api_main.py) ----
-  const billingComplete = !!status?.billing_complete;
-  const billingRequired = !!status?.billing_required;
-  const hasCardOnFile = !!status?.has_card_on_file;
-  const stripeCustomerId = status?.stripe_customer_id || "";
+  /* =========================
+     STATUS NORMALIZATION
+     We don't assume key names.
+     We check a few common variants safely.
+  ========================= */
 
-  // Stripe created timestamps are usually seconds; handle both seconds + ms
-  const rawBillingStarted = status?.billing_started_at;
+  const billingComplete =
+    !!status?.billing_complete ||
+    !!status?.stripe_webhook_confirmed ||
+    !!status?.payment_confirmed ||
+    !!status?.paid;
+
+  const rawBillingStarted =
+    status?.billing_started_at ?? status?.billingStartedAt ?? null;
+
   const billingStartedAtMs =
     typeof rawBillingStarted === "number"
       ? rawBillingStarted < 2_000_000_000
         ? rawBillingStarted * 1000
         : rawBillingStarted
+      : typeof rawBillingStarted === "string"
+      ? Date.parse(rawBillingStarted) || null
       : null;
 
   const inBillingGrace =
@@ -146,31 +161,20 @@ export default function Activation() {
     !!billingStartedAtMs &&
     now() - billingStartedAtMs < BILLING_GRACE_MS;
 
-  const apiConnected = !!status?.api_connected;
-  const botExecuted = !!status?.bot_executed || !!status?.has_trades; // either is “connected enough”
-  const tradingEnabled = !!status?.trading_enabled;
+  const tradingEnabled =
+    !!status?.trading_enabled ||
+    !!status?.live_trading_enabled ||
+    !!status?.execution_enabled ||
+    !!me?.tradingEnabled;
+
+  const botExecuted =
+    !!status?.bot_executed ||
+    !!status?.has_trades ||
+    !!status?.bot_selected ||
+    !!status?.api_connected;
 
   const activationComplete = owner || (billingComplete && tradingEnabled);
-
-  const readOnlyMode =
-    !activationComplete && (billingComplete || inBillingGrace);
-
-  // Optional: analytics ping (safe). Only if your backend actually has this endpoint.
-  useEffect(() => {
-    if (!status) return;
-    api
-      .post("/analytics/activation", {
-        billing_required: billingRequired,
-        billing_complete: billingComplete,
-        has_card_on_file: hasCardOnFile,
-        api_connected: apiConnected,
-        bot_executed: botExecuted,
-        trading_enabled: tradingEnabled,
-        tier,
-      })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  const readOnlyMode = !activationComplete && (billingComplete || inBillingGrace);
 
   const goBilling = () => navigate("/billing");
   const goDashboard = () => navigate("/MemberDashboard");
@@ -207,9 +211,7 @@ export default function Activation() {
           <p className="text-white/70">Complete setup to unlock live trading</p>
 
           {owner && (
-            <div className="mt-2 text-xs text-emerald-300">
-              👑 Owner override active
-            </div>
+            <div className="mt-2 text-xs text-emerald-300">👑 Owner override active</div>
           )}
           <div className="mt-2 text-xs text-white/40">API: {API_BASE}</div>
         </div>
@@ -237,30 +239,20 @@ export default function Activation() {
           <Row
             label="Trading Enabled"
             ok={tradingEnabled || owner}
-            note={
-              tradingEnabled
-                ? "Live trading enabled"
-                : "Execution disabled until enabled"
-            }
+            note={tradingEnabled ? "Execution enabled" : "Execution disabled until enabled"}
           />
 
           <Row
             label="Bot Activity"
             ok={botExecuted || owner}
-            note={
-              botExecuted
-                ? "Bot has executed or trades exist"
-                : "No bot executions/trades recorded yet"
-            }
+            note={botExecuted ? "Bot activity detected" : "No bot activity recorded yet"}
           />
         </div>
 
         {/* MODE */}
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
           {activationComplete ? (
-            <div className="text-emerald-300 font-semibold">
-              ✅ Live trading enabled
-            </div>
+            <div className="text-emerald-300 font-semibold">✅ Live trading enabled</div>
           ) : readOnlyMode ? (
             <div className="text-amber-300 font-semibold">
               👀 Read-only mode — execution disabled
@@ -269,6 +261,16 @@ export default function Activation() {
             <div className="text-white/60">🔒 Locked — complete steps</div>
           )}
         </div>
+
+        {/* DEBUG (optional but SUPER helpful right now) */}
+        <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+          <summary className="cursor-pointer text-sm text-white/70">
+            Debug status payload
+          </summary>
+          <pre className="mt-3 text-xs whitespace-pre-wrap text-white/70 overflow-auto">
+            {JSON.stringify({ me, status }, null, 2)}
+          </pre>
+        </details>
 
         {/* CTA */}
         <div className="mt-6 flex flex-wrap gap-3">
