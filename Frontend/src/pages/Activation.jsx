@@ -1,16 +1,22 @@
 // src/pages/Activation.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 
 /* =========================
-   API BASE RESOLVER (CRA)
+   API BASE RESOLVER
 ========================= */
-const API_BASE =
+const API_ORIGIN =
+  process.env.REACT_APP_API_BASE_URL ||
   process.env.REACT_APP_API_BASE ||
   (typeof window !== "undefined" && window.location.hostname === "localhost"
     ? "http://localhost:8001"
     : "https://api.imali-defi.com");
+
+const API_BASE = String(API_ORIGIN).replace(/\/+$/, "");
+
+// Must match what you store after login
+const TOKEN_KEY = "IMALI_AUTH_TOKEN";
 
 /* OWNER OVERRIDE */
 const OWNER_EMAILS = ["wayne@imali-defi.com", "admin@imali-defi.com"];
@@ -20,8 +26,19 @@ const BILLING_GRACE_MS = 24 * 60 * 60 * 1000;
 
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
-  withCredentials: true,
   timeout: 15000,
+  headers: { "Content-Type": "application/json" },
+});
+
+// Attach token automatically
+api.interceptors.request.use((cfg) => {
+  try {
+    const t = localStorage.getItem(TOKEN_KEY);
+    if (t) cfg.headers.Authorization = `Bearer ${t}`;
+  } catch {
+    // ignore
+  }
+  return cfg;
 });
 
 const now = () => Date.now();
@@ -52,6 +69,7 @@ function Row({ label, ok, grace, action, note }) {
 
 export default function Activation() {
   const navigate = useNavigate();
+  const confettiRef = useRef(null);
 
   const [me, setMe] = useState(null);
   const [status, setStatus] = useState(null);
@@ -63,6 +81,23 @@ export default function Activation() {
     let mounted = true;
 
     async function load() {
+      setLoading(true);
+      setError("");
+
+      // If no token, send them to login
+      let token = "";
+      try {
+        token = localStorage.getItem(TOKEN_KEY) || "";
+      } catch {}
+      if (!token) {
+        if (mounted) {
+          setLoading(false);
+          setMe(null);
+          setError("You are not logged in.");
+        }
+        return;
+      }
+
       try {
         const [meRes, statusRes] = await Promise.all([
           api.get("/me"),
@@ -74,7 +109,11 @@ export default function Activation() {
         setMe(meRes.data?.user || null);
         setStatus(statusRes.data?.status || null);
       } catch (e) {
-        setError("Unable to load activation status. Please log in again.");
+        const msg =
+          e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          "Unable to load activation status. Please log in again.";
+        if (mounted) setError(msg);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -85,51 +124,55 @@ export default function Activation() {
   }, []);
 
   const owner = useMemo(() => isOwner(me), [me]);
+  const tier = String(me?.tier_active || me?.tier || "starter").toLowerCase();
 
-  const tier = String(me?.tier_active || "starter").toLowerCase();
+  // ---- Align to backend status keys (from your api_main.py) ----
+  const billingComplete = !!status?.billing_complete;
+  const billingRequired = !!status?.billing_required;
+  const hasCardOnFile = !!status?.has_card_on_file;
+  const stripeCustomerId = status?.stripe_customer_id || "";
 
-  const stripeWebhookConfirmed = !!status?.stripe_webhook_confirmed;
-  const billingStartedAt = status?.billing_started_at
-    ? new Date(status.billing_started_at).getTime()
-    : null;
+  // Stripe created timestamps are usually seconds; handle both seconds + ms
+  const rawBillingStarted = status?.billing_started_at;
+  const billingStartedAtMs =
+    typeof rawBillingStarted === "number"
+      ? rawBillingStarted < 2_000_000_000
+        ? rawBillingStarted * 1000
+        : rawBillingStarted
+      : null;
 
   const inBillingGrace =
-    !stripeWebhookConfirmed &&
-    billingStartedAt &&
-    now() - billingStartedAt < BILLING_GRACE_MS;
+    !billingComplete &&
+    !!billingStartedAtMs &&
+    now() - billingStartedAtMs < BILLING_GRACE_MS;
 
   const apiConnected = !!status?.api_connected;
-  const botSelected = !!status?.bot_selected;
+  const botExecuted = !!status?.bot_executed || !!status?.has_trades; // either is “connected enough”
+  const tradingEnabled = !!status?.trading_enabled;
 
-  const paperTrading = !!status?.paper_trading_enabled;
-  const liveTrading = !!status?.live_trading_enabled;
-
-  const activationComplete =
-    owner ||
-    (stripeWebhookConfirmed && apiConnected && botSelected && liveTrading);
+  const activationComplete = owner || (billingComplete && tradingEnabled);
 
   const readOnlyMode =
-    !activationComplete && (stripeWebhookConfirmed || inBillingGrace);
+    !activationComplete && (billingComplete || inBillingGrace);
 
-  // Optional: analytics ping (safe)
+  // Optional: analytics ping (safe). Only if your backend actually has this endpoint.
   useEffect(() => {
     if (!status) return;
     api
       .post("/analytics/activation", {
-        billing_started: !!status.billing_started_at,
-        billing_confirmed: stripeWebhookConfirmed,
+        billing_required: billingRequired,
+        billing_complete: billingComplete,
+        has_card_on_file: hasCardOnFile,
         api_connected: apiConnected,
-        bot_selected: botSelected,
-        paper_trading: paperTrading,
-        live_trading: liveTrading,
+        bot_executed: botExecuted,
+        trading_enabled: tradingEnabled,
+        tier,
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
   const goBilling = () => navigate("/billing");
-  const goAPI = () => navigate("/activation?step=api");
-  const goBot = () => navigate("/activation?step=bot");
   const goDashboard = () => navigate("/MemberDashboard");
   const goAdmin = () => navigate("/admin");
 
@@ -153,7 +196,10 @@ export default function Activation() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white p-6">
+    <div
+      ref={confettiRef}
+      className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white p-6"
+    >
       <div className="max-w-4xl mx-auto">
         {/* HEADER */}
         <div className="mb-6">
@@ -172,53 +218,39 @@ export default function Activation() {
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
           <Row
             label="Payment (Stripe)"
-            ok={stripeWebhookConfirmed}
+            ok={billingComplete || owner}
             grace={inBillingGrace}
             action={
-              !stripeWebhookConfirmed && (
+              !billingComplete && !owner ? (
                 <button onClick={goBilling} className="btn-primary">
                   {inBillingGrace ? "Retry Billing" : "Add Card"}
                 </button>
-              )
+              ) : null
             }
             note={
               tier === "starter"
-                ? "Starter: 30% fee on profits over 3%"
+                ? "Starter: 30% fee on profits over 3% (card on file required)"
                 : "Paid tier: 5% fee on profits over 3%"
             }
           />
 
           <Row
-            label="API Connected"
-            ok={apiConnected}
-            action={
-              !apiConnected && (
-                <button onClick={goAPI} className="btn-primary">
-                  Connect API
-                </button>
-              )
-            }
-          />
-
-          <Row
-            label="Bot Selected"
-            ok={botSelected}
-            action={
-              !botSelected && (
-                <button onClick={goBot} className="btn-primary">
-                  Select Bot
-                </button>
-              )
-            }
-          />
-
-          <Row
-            label="Trading Mode"
-            ok={liveTrading}
+            label="Trading Enabled"
+            ok={tradingEnabled || owner}
             note={
-              paperTrading
-                ? "Paper trading enabled (safe mode)"
-                : "Live trading disabled"
+              tradingEnabled
+                ? "Live trading enabled"
+                : "Execution disabled until enabled"
+            }
+          />
+
+          <Row
+            label="Bot Activity"
+            ok={botExecuted || owner}
+            note={
+              botExecuted
+                ? "Bot has executed or trades exist"
+                : "No bot executions/trades recorded yet"
             }
           />
         </div>
@@ -234,9 +266,7 @@ export default function Activation() {
               👀 Read-only mode — execution disabled
             </div>
           ) : (
-            <div className="text-white/60">
-              🔒 Locked — complete activation steps
-            </div>
+            <div className="text-white/60">🔒 Locked — complete steps</div>
           )}
         </div>
 
