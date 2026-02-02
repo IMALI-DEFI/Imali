@@ -1,7 +1,7 @@
 // src/pages/MemberDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BotAPI } from "../utils/BotAPI"; // ✅ use shared client (adds Bearer token)
+import { BotAPI } from "../../utils/BotAPI"; // ✅ use shared client (adds Bearer token)
 
 /* ================= NFT TIERS ================= */
 const NFT_TIERS = {
