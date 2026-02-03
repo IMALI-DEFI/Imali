@@ -4,11 +4,17 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import TradingOverview from "../components/Dashboard/TradingOverview.jsx";
 
 /* ===================== CONSTANTS ===================== */
+
+/**
+ * Internals stay the same (values):
+ * - mean_reversion, ai_weighted, momentum, volume_spike
+ * But labels are now novice-first everywhere (dropdown + cards).
+ */
 const STRATEGIES = [
-  { value: "momentum", label: "Growth (Momentum)" },
-  { value: "mean_reversion", label: "Conservative (Mean Reversion)" },
-  { value: "ai_weighted", label: "Balanced (AI Weighted)" },
-  { value: "volume_spike", label: "Aggressive (Volume Spike)" },
+  { value: "mean_reversion", label: "Conservative" },
+  { value: "ai_weighted", label: "Balanced" },
+  { value: "momentum", label: "Growth" },
+  { value: "volume_spike", label: "Aggressive" },
 ];
 
 const PLANS = [
@@ -18,6 +24,22 @@ const PLANS = [
   { value: "stock", label: "Stocks" },
   { value: "bundle", label: "Bundle" },
 ];
+
+/* ===================== NOVICE DISPLAY MAPS ===================== */
+const STRATEGY_NOVICE = {
+  mean_reversion: { title: "Conservative", sub: "Lower risk • slower trades" },
+  ai_weighted: { title: "Balanced", sub: "Balanced risk • AI-assisted" },
+  momentum: { title: "Growth", sub: "Trend-focused • moderate risk" },
+  volume_spike: { title: "Aggressive", sub: "High risk • fast moves" },
+};
+
+const PLAN_NFT = {
+  starter: { name: "Starter Pass NFT", icon: "🎟️" },
+  pro: { name: "Pro Pass NFT", icon: "⭐" },
+  elite: { name: "Elite Pass NFT", icon: "👑" },
+  stock: { name: "Stock Access NFT", icon: "📈" },
+  bundle: { name: "Bundle VIP NFT", icon: "🧩" },
+};
 
 /* ===================== HELPERS ===================== */
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
@@ -30,6 +52,12 @@ function safeLower(v) {
 function pickAllowed(v, allowed, fallback) {
   const x = safeLower(v);
   return allowed.includes(x) ? x : fallback;
+}
+
+function sentenceCasePlan(v) {
+  const s = String(v || "").toLowerCase();
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /* ===================== COMPONENT ===================== */
@@ -58,16 +86,11 @@ export default function TradeDemo() {
   /* ===================== INIT: Load saved selections + query params ===================== */
   useEffect(() => {
     // URL overrides (optional): /trade-demo?plan=pro&strategy=momentum
-    const planFromUrl = pickAllowed(
-      params.get("plan") || params.get("tier"),
-      PLANS.map((p) => p.value),
-      ""
-    );
-    const stratFromUrl = pickAllowed(
-      params.get("strategy"),
-      STRATEGIES.map((s) => s.value),
-      ""
-    );
+    const allowedPlans = PLANS.map((p) => p.value);
+    const allowedStrats = STRATEGIES.map((s) => s.value);
+
+    const planFromUrl = pickAllowed(params.get("plan") || params.get("tier"), allowedPlans, "");
+    const stratFromUrl = pickAllowed(params.get("strategy"), allowedStrats, "");
 
     // localStorage fallbacks
     let planFromStore = "";
@@ -79,10 +102,8 @@ export default function TradeDemo() {
       // ignore
     }
 
-    const nextPlan =
-      planFromUrl || pickAllowed(planFromStore, PLANS.map((p) => p.value), "starter");
-    const nextStrat =
-      stratFromUrl || pickAllowed(stratFromStore, STRATEGIES.map((s) => s.value), "ai_weighted");
+    const nextPlan = planFromUrl || pickAllowed(planFromStore, allowedPlans, "starter");
+    const nextStrat = stratFromUrl || pickAllowed(stratFromStore, allowedStrats, "ai_weighted");
 
     setPlan(nextPlan);
     setStrategy(nextStrat);
@@ -153,7 +174,8 @@ export default function TradeDemo() {
             mode: "demo",
             plan,
             strategy,
-            pnl: undefined, // keep event lightweight; overview gets real props below
+            // keep event lightweight; overview gets real props below
+            pnl: undefined,
             equity: undefined,
             wins: undefined,
             losses: undefined,
@@ -170,11 +192,24 @@ export default function TradeDemo() {
     };
   }, [running, plan, strategy]);
 
+  /* ===================== NOVICE DISPLAY VALUES ===================== */
+  const planPretty = sentenceCasePlan(plan);
+  const planNft = PLAN_NFT[plan] || { name: "Membership NFT", icon: "🪪" };
+  const stratMeta = STRATEGY_NOVICE[strategy] || STRATEGY_NOVICE.ai_weighted;
+
   /* ===================== ACTIONS ===================== */
   const goLive = () => {
-    // No auth here. Just funnel them into signup (or activation) to enable live trading.
-    // If you have a dedicated activation page, you can route there after signup flow.
     nav("/signup");
+  };
+
+  const resetDemo = () => {
+    setRunning(false);
+    setEquity(1000);
+    setPnl(0);
+    setWins(0);
+    setLosses(0);
+    setStreak(0);
+    setLastTradeDay(null);
   };
 
   return (
@@ -188,33 +223,43 @@ export default function TradeDemo() {
           </div>
         </div>
 
-        {/* Plan + Strategy + Go Live */}
+        {/* Membership + Trading Style + Go Live */}
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <select
-            className="px-3 py-2 rounded-xl bg-black/30 border border-white/10 text-sm"
-            value={plan}
-            onChange={(e) => setPlan(e.target.value)}
-            title="Choose plan (demo only)"
-          >
-            {PLANS.map((p) => (
-              <option key={p.value} value={p.value}>
-                Plan: {p.label}
-              </option>
-            ))}
-          </select>
+          {/* Membership */}
+          <div className="flex flex-col gap-1">
+            <select
+              className="px-3 py-2 rounded-xl bg-black/30 border border-white/10 text-sm"
+              value={plan}
+              onChange={(e) => setPlan(e.target.value)}
+              title="Choose membership (demo only)"
+            >
+              {PLANS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  Membership: {p.label}
+                </option>
+              ))}
+            </select>
+            <div className="text-[11px] text-white/50 pl-1">
+              {planNft.icon} NFT included: {planNft.name}
+            </div>
+          </div>
 
-          <select
-            className="px-3 py-2 rounded-xl bg-black/30 border border-white/10 text-sm"
-            value={strategy}
-            onChange={(e) => setStrategy(e.target.value)}
-            title="Choose strategy (demo only)"
-          >
-            {STRATEGIES.map((s) => (
-              <option key={s.value} value={s.value}>
-                Strategy: {s.label}
-              </option>
-            ))}
-          </select>
+          {/* Trading Style */}
+          <div className="flex flex-col gap-1">
+            <select
+              className="px-3 py-2 rounded-xl bg-black/30 border border-white/10 text-sm"
+              value={strategy}
+              onChange={(e) => setStrategy(e.target.value)}
+              title="Choose trading style (demo only)"
+            >
+              {STRATEGIES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  Trading Style: {s.label}
+                </option>
+              ))}
+            </select>
+            <div className="text-[11px] text-white/50 pl-1">{stratMeta.sub}</div>
+          </div>
 
           <button
             onClick={goLive}
@@ -225,13 +270,17 @@ export default function TradeDemo() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats (novice terminology) */}
       <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-3 px-4">
-        <Stat label="Plan" value={plan} />
-        <Stat label="Strategy" value={strategy} />
-        <Stat label="Equity" value={usd(equity)} />
-        <Stat label="P&L" value={usd(pnl)} />
-        <Stat label="Confidence" value={`${confidence}%`} />
+        <Stat label="Membership" value={planPretty} sub={`${planNft.icon} NFT: ${planNft.name}`} />
+        <Stat label="Trading Style" value={stratMeta.title} sub={stratMeta.sub} />
+        <Stat label="Account Value" value={usd(equity)} sub="Demo balance" />
+        <Stat
+          label="Today’s Gain/Loss"
+          value={usd(pnl)}
+          sub={pnl >= 0 ? "You’re up (demo)" : "You’re down (demo)"}
+        />
+        <Stat label="Bot Confidence" value={`${confidence}%`} sub="Higher = more reliable signals" />
       </div>
 
       {/* Controls */}
@@ -244,15 +293,7 @@ export default function TradeDemo() {
         </button>
 
         <button
-          onClick={() => {
-            setRunning(false);
-            setEquity(1000);
-            setPnl(0);
-            setWins(0);
-            setLosses(0);
-            setStreak(0);
-            setLastTradeDay(null);
-          }}
+          onClick={resetDemo}
           className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 font-semibold"
         >
           Reset
@@ -305,11 +346,12 @@ export default function TradeDemo() {
 }
 
 /* ===================== SMALL ===================== */
-function Stat({ label, value }) {
+function Stat({ label, value, sub }) {
   return (
     <div className="rounded-xl bg-white/5 p-4 border border-white/10">
       <div className="text-xs text-white/60">{label}</div>
-      <div className="text-lg font-bold">{value}</div>
+      <div className="text-lg font-bold leading-tight">{value}</div>
+      {sub ? <div className="mt-1 text-xs text-white/50">{sub}</div> : null}
     </div>
   );
 }
