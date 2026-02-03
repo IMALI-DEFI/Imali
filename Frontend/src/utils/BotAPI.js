@@ -5,18 +5,14 @@ import axios from "axios";
 const IS_BROWSER = typeof window !== "undefined";
 
 function getEnv(key, fallback = "") {
-  // Node (backend / SSR)
   if (typeof process !== "undefined" && process.env && process.env[key] !== undefined) {
     return process.env[key] || fallback;
   }
-
-  // Browser (CRA/Vite/Netlify injected)
   if (IS_BROWSER) {
     if (window.__ENV && window.__ENV[key] !== undefined) return window.__ENV[key];
     if (window[key] !== undefined) return window[key];
     if (window.process?.env?.[key]) return window.process.env[key];
   }
-
   return fallback;
 }
 
@@ -25,22 +21,18 @@ function stripTrailingSlash(s) {
 }
 
 function resolveApiOrigin() {
-  // Prefer explicit env
   const raw =
     getEnv("API_BASE_URL") ||
     getEnv("VITE_API_BASE_URL") ||
     getEnv("REACT_APP_API_BASE_URL") ||
-    getEnv("REACT_APP_API_BASE") ||
     "";
 
   if (raw) {
-    // If someone set ".../api" already, normalize to origin and let us append /api once
     const cleaned = stripTrailingSlash(raw);
     if (cleaned.endsWith("/api")) return cleaned.slice(0, -4);
     return cleaned;
   }
 
-  // Default fallback
   if (IS_BROWSER) {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") return "http://localhost:8001";
@@ -69,11 +61,6 @@ export function getAuthToken() {
   return localStorage.getItem(TOKEN_KEY) || "";
 }
 
-export function clearAuthToken() {
-  if (!IS_BROWSER) return;
-  localStorage.removeItem(TOKEN_KEY);
-}
-
 /* ---------------- Axios Instance ---------------- */
 const API_ORIGIN = resolveApiOrigin();
 const BASE_URL = `${stripTrailingSlash(API_ORIGIN)}/api`;
@@ -85,25 +72,19 @@ const api = axios.create({
 });
 
 /* ---------------- Dev Logging ---------------- */
-(function logBaseUrl() {
-  try {
-    const isDevBrowser =
-      IS_BROWSER &&
+try {
+  const isDev =
+    (IS_BROWSER &&
       (window.location.hostname === "localhost" ||
         window.location.hostname === "127.0.0.1" ||
         window.location.port === "3000" ||
-        window.location.port === "5173");
+        window.location.port === "5173")) ||
+    (!IS_BROWSER && process.env.NODE_ENV === "development");
 
-    const isDevNode = !IS_BROWSER && process?.env?.NODE_ENV === "development";
-
-    if (isDevBrowser || isDevNode) {
-      // eslint-disable-next-line no-console
-      console.log(`[BotAPI] baseURL: ${BASE_URL}`);
-    }
-  } catch {
-    // ignore
-  }
-})();
+  if (isDev) console.log(`[BotAPI] baseURL: ${BASE_URL}`);
+} catch {
+  // ignore
+}
 
 /* ---------------- Token Injection ---------------- */
 api.interceptors.request.use((config) => {
@@ -119,76 +100,34 @@ async function tryApi(fn) {
     return res.data;
   } catch (err) {
     const status = err?.response?.status;
-
     const apiMsg =
       err?.response?.data?.message ||
       err?.response?.data?.error ||
-      err?.response?.data?.detail ||
-      err?.response?.data?.msg;
-
+      err?.response?.data?.detail;
     const msg = apiMsg || err?.message || "Network or API error";
-
-    // eslint-disable-next-line no-console
     console.error("[BotAPI] Error:", status, msg);
-
     const e = new Error(msg);
     e.status = status;
-    e.data = err?.response?.data;
     throw e;
   }
 }
 
-/* ---------------- Raw Helpers (for any endpoint) ---------------- */
-async function rawGet(path, config = {}) {
-  // path can be "/me" or "/api/..." — normalize
-  const p = String(path || "");
-  const normalized = p.startsWith("/api/") ? p.replace("/api", "") : p; // api already has /api baseURL
-  return tryApi(() => api.get(normalized, config));
-}
-
-async function rawPost(path, body = {}, config = {}) {
-  const p = String(path || "");
-  const normalized = p.startsWith("/api/") ? p.replace("/api", "") : p;
-  return tryApi(() => api.post(normalized, body, config));
-}
-
-async function rawPut(path, body = {}, config = {}) {
-  const p = String(path || "");
-  const normalized = p.startsWith("/api/") ? p.replace("/api", "") : p;
-  return tryApi(() => api.put(normalized, body, config));
-}
-
-async function rawDelete(path, config = {}) {
-  const p = String(path || "");
-  const normalized = p.startsWith("/api/") ? p.replace("/api", "") : p;
-  return tryApi(() => api.delete(normalized, config));
-}
-
 /* ---------------- Central API Routes ---------------- */
 export const BotAPI = {
-  // expose underlying axios client (so dashboards can call BotAPI.client.get(...))
   client: api,
-
-  // core error wrapper (sometimes useful)
   tryApi,
-
-  // generic helpers
-  rawGet,
-  rawPost,
-  rawPut,
-  rawDelete,
 
   /* Health */
   health: () => tryApi(() => api.get("/health")),
 
-  /* Signup */
-  signup: (payload) => tryApi(() => api.post("/signup", payload)),
+  /* Auth */
+  signup: async (payload) => {
+    const data = await tryApi(() => api.post("/signup", payload));
+    const t = data?.token || data?.access_token || data?.auth_token || data?.jwt || "";
+    if (t) setAuthToken(t);
+    return data;
+  },
 
-  /* Me endpoints */
-  me: () => tryApi(() => api.get("/me")),
-  activationStatus: () => tryApi(() => api.get("/me/activation-status")),
-
-  /* Auth (optional) */
   login: async (payload) => {
     const data = await tryApi(() => api.post("/login", payload));
     const t = data?.token || data?.access_token || data?.auth_token || data?.jwt || "";
@@ -196,29 +135,36 @@ export const BotAPI = {
     return data;
   },
 
-  activate: async (token) => {
-    const data = await tryApi(() => api.post("/activate", { token }));
-    const t = data?.token || data?.access_token || data?.auth_token || data?.jwt || "";
-    if (t) setAuthToken(t);
-    return data;
-  },
+  me: () => tryApi(() => api.get("/me")),
+  activationStatus: () => tryApi(() => api.get("/me/activation-status")),
 
-  logout: async () => {
-    // If you have a backend logout endpoint, call it; otherwise just clear token.
-    try {
-      await tryApi(() => api.post("/logout"));
-    } catch {
-      // ignore
-    }
-    clearAuthToken();
-    return { success: true };
-  },
+  /* Integrations */
+  connectWallet: (payload) => tryApi(() => api.post("/integrations/wallet", payload)),
+  connectOkx: (payload) => tryApi(() => api.post("/integrations/okx", payload)),
+  connectAlpaca: (payload) => tryApi(() => api.post("/integrations/alpaca", payload)),
 
-  /* ---------------- OPTIONAL: Analytics (Dashboard) ----------------
-     If your backend route exists, this works immediately.
-     If not, it fails gracefully where used via safeCall().
-  ------------------------------------------------------------------ */
+  /* Trading */
+  tradingEnable: (enabled) => tryApi(() => api.post("/trading/enable", { enabled: !!enabled })),
+  botStart: (payload = {}) => tryApi(() => api.post("/bot/start", payload)),
+
+  /* Analytics */
   analyticsPnlSeries: (payload) => tryApi(() => api.post("/analytics/pnl/series", payload)),
+  analyticsWinLoss: (payload) => tryApi(() => api.post("/analytics/winloss", payload)),
+  analyticsFeesSeries: (payload) => tryApi(() => api.post("/analytics/fees/series", payload)),
+
+  /* Billing */
+  billingSetupIntent: (payload = {}) => tryApi(() => api.post("/billing/setup-intent", payload)),
+  billingSetDefaultPaymentMethod: (payload) =>
+    tryApi(() => api.post("/billing/set-default-payment-method", payload)),
+  billingCardOnFileStatus: (payload = {}) =>
+    tryApi(() => api.post("/billing/card-on-file/status", payload)),
+  billingFeeHistory: (payload = {}) => tryApi(() => api.post("/billing/fee-history", payload)),
+  billingCalculateFee: (payload) => tryApi(() => api.post("/billing/calculate-fee", payload)),
+  billingChargeFee: (payload) => tryApi(() => api.post("/billing/charge-fee", payload)),
+
+  /* Raw helpers */
+  rawGet: async (path) => (await api.get(path)).data,
+  rawPost: async (path, body = {}) => (await api.post(path, body)).data,
 };
 
 export default BotAPI;
