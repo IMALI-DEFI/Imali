@@ -3,6 +3,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 
+// ✅ Wallet + contracts (MetaMask popup happens when signer is requested)
+import {
+  getContractInstance,
+  getSigner,
+  POLYGON_MAINNET,
+} from "../getContractInstance";
+
 /* =========================
    API BASE RESOLVER
 ========================= */
@@ -56,7 +63,7 @@ function Row({ label, ok, grace, action, note }) {
     <div className="flex items-center justify-between gap-4">
       <div>
         <div className="font-semibold">{label}</div>
-        {note && <div className="text-xs text-white/50">{note}</div>}
+        {note && <div className="text-xs text-white/60">{note}</div>}
       </div>
       <div className="flex items-center gap-3">
         <Status ok={ok} grace={grace} />
@@ -118,6 +125,12 @@ export default function Activation() {
   const [alpacaSecret, setAlpacaSecret] = useState("");
   const [alpacaMode, setAlpacaMode] = useState("paper"); // paper | live
 
+  // MetaMask availability
+  const hasMetaMask = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return !!window.ethereum;
+  }, []);
+
   /* =========================
      LOAD / REFRESH
   ========================= */
@@ -136,7 +149,10 @@ export default function Activation() {
       return;
     }
 
-    const [meRes, statusRes] = await Promise.all([api.get("/me"), api.get("/me/activation-status")]);
+    const [meRes, statusRes] = await Promise.all([
+      api.get("/me"),
+      api.get("/me/activation-status"),
+    ]);
 
     setMe(meRes.data?.user || null);
 
@@ -208,7 +224,7 @@ export default function Activation() {
   const apiConnected = !!status?.api_connected;
   const botExecuted = !!status?.bot_executed || !!status?.has_trades;
 
-  // Integrations (these keys may or may not exist yet depending on your backend)
+  // Integrations (keys may or may not exist yet depending on backend)
   const walletConnected =
     !!status?.wallet_connected ||
     (Array.isArray(me?.wallet_addresses) && me.wallet_addresses.length > 0) ||
@@ -238,23 +254,39 @@ export default function Activation() {
   const goDashboard = () => navigate("/member-dashboard");
   const goAdmin = () => navigate("/admin");
 
+  // ✅ MetaMask connect via getContractInstance (opens MetaMask)
   const connectWallet = async () => {
     setError("");
     setBusy(true);
-    try {
-      if (!window.ethereum) throw new Error("MetaMask not detected. Install MetaMask first.");
 
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      const address = accounts?.[0];
+    try {
+      if (typeof window === "undefined" || !window.ethereum) {
+        throw new Error("MetaMask is not installed. Install it to continue.");
+      }
+
+      // This will:
+      // - request accounts (MetaMask popup)
+      // - optionally switch network to Polygon
+      await getContractInstance("IMALI", POLYGON_MAINNET, {
+        withSigner: true,
+        autoSwitch: true,
+      });
+
+      const signer = await getSigner(POLYGON_MAINNET);
+      const address = await signer.getAddress();
+
       if (!address) throw new Error("No wallet selected.");
 
-      // ✅ Save to backend (you need to add this endpoint on backend)
-      // Suggested endpoint: POST /api/integrations/wallet  { wallet: "0x..." }
-      await api.post("/integrations/wallet", { wallet: address });
+      // Save wallet to backend
+      await api.post("/integrations/wallet", { wallet: address, chain: POLYGON_MAINNET });
 
       await refresh();
     } catch (e) {
-      setError(e?.response?.data?.message || e?.message || "Wallet connect failed.");
+      const msg =
+        e?.response?.data?.message ||
+        e?.message ||
+        "Wallet connection failed.";
+      setError(msg);
     } finally {
       setBusy(false);
     }
@@ -264,8 +296,7 @@ export default function Activation() {
     setError("");
     setBusy(true);
     try {
-      // ✅ You need a backend endpoint for this.
-      // Suggested endpoint: POST /api/trading/enable { enabled: true }
+      // Suggested backend: POST /api/trading/enable { enabled: true }
       await api.post("/trading/enable", { enabled: true });
       await refresh();
     } catch (e) {
@@ -279,8 +310,7 @@ export default function Activation() {
     setError("");
     setBusy(true);
     try {
-      // ✅ You need a backend endpoint for this.
-      // Suggested endpoint: POST /api/bot/start  (or /api/bots/start)
+      // Suggested backend: POST /api/bot/start
       await api.post("/bot/start", { mode: "live" });
       await refresh();
     } catch (e) {
@@ -295,11 +325,9 @@ export default function Activation() {
     setBusy(true);
     try {
       if (!okxKey.trim() || !okxSecret.trim() || !okxPass.trim()) {
-        throw new Error("Please enter OKX API Key, Secret, and Passphrase.");
+        throw new Error("Enter OKX Key, Secret, and Passphrase.");
       }
 
-      // ✅ You need a backend endpoint for this.
-      // Suggested endpoint: POST /api/integrations/okx
       await api.post("/integrations/okx", {
         api_key: okxKey.trim(),
         api_secret: okxSecret.trim(),
@@ -325,11 +353,9 @@ export default function Activation() {
     setBusy(true);
     try {
       if (!alpacaKey.trim() || !alpacaSecret.trim()) {
-        throw new Error("Please enter Alpaca API Key and Secret.");
+        throw new Error("Enter Alpaca Key and Secret.");
       }
 
-      // ✅ You need a backend endpoint for this.
-      // Suggested endpoint: POST /api/integrations/alpaca
       await api.post("/integrations/alpaca", {
         api_key: alpacaKey.trim(),
         api_secret: alpacaSecret.trim(),
@@ -354,7 +380,7 @@ export default function Activation() {
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Loading activation…
+        Loading…
       </div>
     );
   }
@@ -378,13 +404,26 @@ export default function Activation() {
       <div className="max-w-4xl mx-auto">
         {/* HEADER */}
         <div className="mb-6">
-          <h1 className="text-3xl font-bold">Account Activation</h1>
-          <p className="text-white/70">
-            Connect billing + wallet + exchanges to unlock your dashboard and automation.
-          </p>
+          <h1 className="text-3xl font-bold">Activation</h1>
+          <p className="text-white/70">Connect what you need. Then you’ll go to your dashboard.</p>
 
           {owner && <div className="mt-2 text-xs text-emerald-300">👑 Owner override active</div>}
           <div className="mt-2 text-xs text-white/40">API: {API_BASE}</div>
+
+          {!hasMetaMask && !owner && (
+            <div className="mt-3 text-sm text-amber-200">
+              MetaMask not installed.{" "}
+              <a
+                href="https://metamask.io/download/"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                Install MetaMask
+              </a>{" "}
+              and refresh.
+            </div>
+          )}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -392,7 +431,7 @@ export default function Activation() {
               className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10"
               disabled={busy}
             >
-              {busy ? "Working…" : "Refresh Status"}
+              {busy ? "Working…" : "Refresh"}
             </button>
           </div>
         </div>
@@ -418,15 +457,11 @@ export default function Activation() {
                   className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
                   disabled={busy}
                 >
-                  {inBillingGrace ? "Retry Billing" : "Add Card"}
+                  {inBillingGrace ? "Retry" : "Add Card"}
                 </button>
               ) : null
             }
-            note={
-              tier === "starter"
-                ? "Starter: 30% fee on profits over 3% (card on file required)"
-                : "Paid tier: 5% fee on profits over 3%"
-            }
+            note={tier === "starter" ? "Starter needs a card on file." : "Paid tier active."}
           />
 
           {/* Wallet */}
@@ -438,13 +473,14 @@ export default function Activation() {
                 <button
                   onClick={connectWallet}
                   className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
-                  disabled={busy}
+                  disabled={busy || !hasMetaMask}
+                  title={!hasMetaMask ? "Install MetaMask first" : ""}
                 >
-                  Connect Wallet
+                  {busy ? "Connecting…" : "Connect"}
                 </button>
               ) : null
             }
-            note="Connect your wallet so IMALI can track on-chain activity and eligibility."
+            note="Connect MetaMask to enable on-chain features."
           />
 
           {/* OKX */}
@@ -458,11 +494,11 @@ export default function Activation() {
                   className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
                   disabled={busy}
                 >
-                  Connect OKX
+                  Connect
                 </button>
               ) : null
             }
-            note="Optional for automated OKX trading. Keys are saved on the server (not in the browser)."
+            note="Optional."
           />
 
           {/* Alpaca */}
@@ -476,11 +512,11 @@ export default function Activation() {
                   className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
                   disabled={busy}
                 >
-                  Connect Alpaca
+                  Connect
                 </button>
               ) : null
             }
-            note="Optional for automated stock trading. Keys are saved on the server (not in the browser)."
+            note="Optional."
           />
 
           {/* Trading Enabled */}
@@ -494,11 +530,11 @@ export default function Activation() {
                   className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 font-semibold"
                   disabled={busy}
                 >
-                  Enable Trading
+                  Enable
                 </button>
               ) : null
             }
-            note={tradingEnabled ? "Execution enabled" : "Execution disabled until enabled"}
+            note={tradingEnabled ? "Enabled" : "Disabled"}
           />
 
           {/* Bot Activity */}
@@ -512,33 +548,26 @@ export default function Activation() {
                   className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 font-semibold"
                   disabled={busy}
                 >
-                  Start Bot
+                  Start
                 </button>
               ) : null
             }
-            note={
-              botExecuted
-                ? "Bot activity detected"
-                : apiConnected
-                ? "API connected — start bot to generate activity"
-                : "No bot activity recorded yet"
-            }
+            note={botExecuted ? "Detected" : apiConnected ? "API connected" : "Not started"}
           />
         </div>
 
         {/* MODE */}
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
           {activationComplete ? (
-            <div className="text-emerald-300 font-semibold">✅ Live trading enabled</div>
+            <div className="text-emerald-300 font-semibold">✅ Complete — redirecting…</div>
           ) : readOnlyMode ? (
-            <div className="text-amber-300 font-semibold">👀 Read-only mode — execution disabled</div>
+            <div className="text-amber-300 font-semibold">👀 Read-only</div>
           ) : (
-            <div className="text-white/60">🔒 Locked — complete required steps</div>
+            <div className="text-white/70">🔒 Finish required steps</div>
           )}
 
-          <div className="mt-2 text-xs text-white/50">
-            Required to unlock dashboard: Billing + Trading Enabled. (Wallet/OKX/Alpaca are optional
-            based on your plan.)
+          <div className="mt-2 text-xs text-white/60">
+            Required for dashboard: Payment + Trading Enabled.
           </div>
         </div>
 
@@ -563,18 +592,21 @@ export default function Activation() {
               onClick={goAdmin}
               className="px-6 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 font-semibold"
             >
-              Open Admin Panel
+              Admin Panel
             </button>
           )}
 
-          <Link to="/pricing" className="px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 font-semibold">
-            View Pricing
+          <Link
+            to="/pricing"
+            className="px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 font-semibold"
+          >
+            Pricing
           </Link>
         </div>
 
         {/* DEBUG */}
         <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <summary className="cursor-pointer text-sm text-white/70">Debug status payload</summary>
+          <summary className="cursor-pointer text-sm text-white/70">Debug</summary>
           <pre className="mt-3 text-xs whitespace-pre-wrap text-white/70 overflow-auto">
             {JSON.stringify(
               {
@@ -608,9 +640,7 @@ export default function Activation() {
       {/* OKX MODAL */}
       <Modal open={showOkx} title="Connect OKX" onClose={() => (!busy ? setShowOkx(false) : null)}>
         <div className="space-y-3">
-          <div className="text-sm text-white/70">
-            Your keys are sent to your server and should be stored securely (recommended: encrypted at rest).
-          </div>
+          <div className="text-sm text-white/70">Paste your OKX keys. (Stored on server.)</div>
 
           <label className="block text-xs text-white/60">Mode</label>
           <select
@@ -658,18 +688,20 @@ export default function Activation() {
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
               disabled={busy}
             >
-              {busy ? "Saving…" : "Save OKX Keys"}
+              {busy ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
       </Modal>
 
       {/* ALPACA MODAL */}
-      <Modal open={showAlpaca} title="Connect Alpaca" onClose={() => (!busy ? setShowAlpaca(false) : null)}>
+      <Modal
+        open={showAlpaca}
+        title="Connect Alpaca"
+        onClose={() => (!busy ? setShowAlpaca(false) : null)}
+      >
         <div className="space-y-3">
-          <div className="text-sm text-white/70">
-            Alpaca keys enable automated stock trading. Keys should never be stored in the browser.
-          </div>
+          <div className="text-sm text-white/70">Paste your Alpaca keys. (Stored on server.)</div>
 
           <label className="block text-xs text-white/60">Mode</label>
           <select
@@ -710,7 +742,7 @@ export default function Activation() {
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
               disabled={busy}
             >
-              {busy ? "Saving…" : "Save Alpaca Keys"}
+              {busy ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
