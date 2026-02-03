@@ -1,6 +1,6 @@
 // src/App.js
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, Link } from "react-router-dom";
 
 // Layout
 import Header from "./components/Header";
@@ -43,6 +43,49 @@ import FundingGuide from "./pages/FundingGuide.jsx";
 import SupportedChains from "./pages/SupportedChains.jsx";
 import MetaMaskGuide from "./pages/MetaMaskGuide.jsx";
 
+/* ---------------- Route Paths (single source of truth) ---------------- */
+const PATHS = {
+  // Public marketing
+  home: "/",
+  about: "/about-us",
+  how: "/how-it-works",
+  pricing: "/pricing",
+  support: "/support",
+  privacy: "/privacy-policy",
+  terms: "/terms-of-service",
+
+  // Demo
+  demo: "/trade-demo",
+
+  // Onboarding
+  signup: "/signup",
+  signupActivation: "/signup-activation",
+  activation: "/activation",
+
+  // Billing
+  billing: "/billing",
+  billingSuccess: "/billing/success",
+  billingCancel: "/billing/cancel",
+  upgrade: "/upgrade",
+
+  // Guides
+  fundingGuide: "/funding-guide",
+  supportedChains: "/supported-chains",
+  metamaskGuide: "/wallet-metamask", // canonical
+  metamaskGuideAlias: "/metamask-guide", // alias to match Activation.jsx links
+
+  // Utilities
+  referral: "/referral",
+  strategySelector: "/strategy-selector",
+
+  // Protected member routes (canonical)
+  dashboard: "/dashboard",
+  admin: "/admin",
+
+  // Aliases (important)
+  memberDashboardAlias: "/member-dashboard",
+};
+
 /* ---------------- Simple 404 ---------------- */
 function NotFound() {
   return (
@@ -54,16 +97,25 @@ function NotFound() {
         <p className="text-gray-500 mb-4">
           The page you’re looking for doesn’t exist.
         </p>
-        <a
-          href="/"
+        <Link
+          to={PATHS.home}
           className="text-imali-green underline hover:text-imali-dark"
         >
           Go home
-        </a>
+        </Link>
       </div>
     </div>
   );
 }
+
+/**
+ * Optional helper:
+ * If you later want redirects like /login?next=/dashboard, you can use this pattern.
+ * (Kept here as a placeholder for your deep-link wizard flow.)
+ */
+// function RedirectTo({ to }) {
+//   return <Navigate to={to} replace />;
+// }
 
 export default function App() {
   return (
@@ -73,82 +125,96 @@ export default function App() {
       <main className="min-h-screen pt-16 bg-gradient-to-b from-gray-50 to-imali-light">
         <Routes>
           {/* ================= PUBLIC MARKETING ================= */}
-          <Route path="/" element={<Home />} />
-          <Route path="/home" element={<Navigate to="/" replace />} />
-          <Route path="/about-us" element={<AboutUs />} />
-          <Route path="/how-it-works" element={<HowItWorks />} />
-          <Route path="/pricing" element={<Pricing />} />
-          <Route path="/support" element={<Support />} />
-          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-          <Route path="/terms-of-service" element={<TermsOfService />} />
+          <Route path={PATHS.home} element={<Home />} />
+          <Route path="/home" element={<Navigate to={PATHS.home} replace />} />
+          <Route path={PATHS.about} element={<AboutUs />} />
+          <Route path={PATHS.how} element={<HowItWorks />} />
+          <Route path={PATHS.pricing} element={<Pricing />} />
+          <Route path={PATHS.support} element={<Support />} />
+          <Route path={PATHS.privacy} element={<PrivacyPolicy />} />
+          <Route path={PATHS.terms} element={<TermsOfService />} />
 
           {/* ================= DEMO (NO LOGIN) ================= */}
-          <Route path="/trade-demo" element={<TradeDemo />} />
-          <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
-          <Route path="/demo/*" element={<Navigate to="/trade-demo" replace />} />
+          <Route path={PATHS.demo} element={<TradeDemo />} />
+          <Route path="/demo" element={<Navigate to={PATHS.demo} replace />} />
+          <Route path="/demo/*" element={<Navigate to={PATHS.demo} replace />} />
 
           {/* ================= SIGNUP / ONBOARDING ================= */}
-          <Route path="/signup" element={<SignupForm />} />
-
-          {/* Free tier + post-signup */}
-          <Route path="/signup-activation" element={<SignupActivation />} />
+          <Route path={PATHS.signup} element={<SignupForm />} />
+          <Route path={PATHS.signupActivation} element={<SignupActivation />} />
           <Route
             path="/onboarding"
-            element={<Navigate to="/signup-activation" replace />}
+            element={<Navigate to={PATHS.signupActivation} replace />}
           />
 
           {/* ================= BILLING ================= */}
-          <Route path="/billing" element={<Billing />} />
-          <Route path="/billing/success" element={<BillingSuccess />} />
-          <Route path="/billing/cancel" element={<BillingCancel />} />
-          <Route path="/upgrade" element={<Upgrade />} />
+          <Route path={PATHS.billing} element={<Billing />} />
+          <Route path={PATHS.billingSuccess} element={<BillingSuccess />} />
+          <Route path={PATHS.billingCancel} element={<BillingCancel />} />
+          <Route path={PATHS.upgrade} element={<Upgrade />} />
 
           {/* Stripe success → activation */}
-          <Route path="/activation" element={<Activation />} />
+          <Route path={PATHS.activation} element={<Activation />} />
 
           {/* ================= GUIDES ================= */}
-          <Route path="/funding-guide" element={<FundingGuide />} />
-          <Route path="/supported-chains" element={<SupportedChains />} />
-          <Route path="/wallet-metamask" element={<MetaMaskGuide />} />
+          <Route path={PATHS.fundingGuide} element={<FundingGuide />} />
+          <Route path={PATHS.supportedChains} element={<SupportedChains />} />
 
-          {/* Aliases (do not break existing links) */}
+          {/* Canonical MetaMask guide + alias to match Activation.jsx */}
+          <Route path={PATHS.metamaskGuide} element={<MetaMaskGuide />} />
           <Route
-            path="/how-to/fund-okx"
-            element={<Navigate to="/funding-guide" replace />}
+            path={PATHS.metamaskGuideAlias}
+            element={<Navigate to={PATHS.metamaskGuide} replace />}
           />
+
+          {/* Keep older MetaMask guide URL too */}
           <Route
             path="/how-to/wallet-metamask"
-            element={<Navigate to="/wallet-metamask" replace />}
+            element={<Navigate to={PATHS.metamaskGuide} replace />}
+          />
+
+          {/* Other aliases (do not break existing links) */}
+          <Route
+            path="/how-to/fund-okx"
+            element={<Navigate to={PATHS.fundingGuide} replace />}
           />
           <Route
             path="/FundingGuide"
-            element={<Navigate to="/funding-guide" replace />}
+            element={<Navigate to={PATHS.fundingGuide} replace />}
           />
 
           {/* ================= UTILITIES ================= */}
-          <Route path="/referral" element={<ReferralSystem />} />
-          <Route path="/strategy-selector" element={<StrategySelector />} />
+          <Route path={PATHS.referral} element={<ReferralSystem />} />
+          <Route path={PATHS.strategySelector} element={<StrategySelector />} />
 
           {/* ================= PROTECTED (MEMBER) ================= */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard" element={<MemberDashboard />} />
-            <Route path="/admin" element={<AdminPanel forceOwner />} />
+            {/* Canonical */}
+            <Route path={PATHS.dashboard} element={<MemberDashboard />} />
+
+            {/* ✅ Alias: Activation.jsx redirects here sometimes */}
+            <Route
+              path={PATHS.memberDashboardAlias}
+              element={<Navigate to={PATHS.dashboard} replace />}
+            />
+
+            <Route path={PATHS.admin} element={<AdminPanel forceOwner />} />
           </Route>
 
-          {/* ================= TEST ROUTES ================= */}
+          {/* ================= TEST ROUTES (OPTIONAL) ================= */}
           <Route path="/test/dashboard" element={<MemberDashboard />} />
           <Route path="/test/admin" element={<AdminPanel />} />
 
-          {/* ================= LEGACY ALIASES ================= */}
+          {/* ================= LEGACY DASHBOARD ALIASES ================= */}
           <Route
             path="/MemberDashboard"
-            element={<Navigate to="/dashboard" replace />}
+            element={<Navigate to={PATHS.dashboard} replace />}
           />
           <Route
             path="/memberdashboard"
-            element={<Navigate to="/dashboard" replace />}
+            element={<Navigate to={PATHS.dashboard} replace />}
           />
-          <Route path="/member" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/member" element={<Navigate to={PATHS.dashboard} replace />} />
 
           {/* ================= 404 ================= */}
           <Route path="*" element={<NotFound />} />
