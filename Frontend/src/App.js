@@ -2,20 +2,20 @@
 import React from "react";
 import { Routes, Route, Navigate, Link } from "react-router-dom";
 
-// Layout
+/* ================= LAYOUT ================= */
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 
-// Guards
+/* ================= ROUTE GUARDS ================= */
 import ProtectedRoute from "./components/routing/ProtectedRoute";
 
-// Core Features
+/* ================= CORE FEATURES ================= */
 import StrategySelector from "./components/StrategySelector";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel.jsx";
 import ReferralSystem from "./components/ReferralSystem";
 
-// Marketing Pages
+/* ================= MARKETING ================= */
 import Home from "./pages/Home.jsx";
 import AboutUs from "./pages/AboutUs.jsx";
 import HowItWorks from "./pages/HowItWorks.jsx";
@@ -24,28 +24,30 @@ import Support from "./pages/Support.jsx";
 import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
 import TermsOfService from "./pages/TermsOfService.jsx";
 
-// Onboarding / Auth
+/* ================= ONBOARDING / AUTH ================= */
 import SignupForm from "./pages/SignupForm.jsx";
 import SignupActivation from "./pages/SignupActivation.jsx";
 import Activation from "./pages/Activation.jsx";
 
-// Billing
+/* ================= BILLING ================= */
 import Billing from "./pages/Billing.jsx";
 import BillingSuccess from "./pages/BillingSuccess.jsx";
 import BillingCancel from "./pages/BillingCancel.jsx";
 import Upgrade from "./pages/Upgrade.jsx";
 
-// Trading / Demo
+/* ================= TRADING / DEMO ================= */
 import TradeDemo from "./pages/TradeDemo.jsx";
 
-// Guides
+/* ================= GUIDES ================= */
 import FundingGuide from "./pages/FundingGuide.jsx";
 import SupportedChains from "./pages/SupportedChains.jsx";
 import MetaMaskGuide from "./pages/MetaMaskGuide.jsx";
 
-/* ---------------- Route Paths (single source of truth) ---------------- */
-const PATHS = {
-  // Public marketing
+/* ====================================================
+   ROUTE PATHS — SINGLE SOURCE OF TRUTH
+==================================================== */
+export const PATHS = {
+  /* Public */
   home: "/",
   about: "/about-us",
   how: "/how-it-works",
@@ -54,42 +56,42 @@ const PATHS = {
   privacy: "/privacy-policy",
   terms: "/terms-of-service",
 
-  // Demo
+  /* Demo */
   demo: "/trade-demo",
 
-  // Onboarding
+  /* Onboarding */
   signup: "/signup",
   signupActivation: "/signup-activation",
   activation: "/activation",
 
-  // Billing
+  /* Billing */
   billing: "/billing",
   billingSuccess: "/billing/success",
   billingCancel: "/billing/cancel",
   upgrade: "/upgrade",
 
-  // Guides
+  /* Guides */
   fundingGuide: "/funding-guide",
   supportedChains: "/supported-chains",
-  metamaskGuide: "/wallet-metamask", // canonical
-  metamaskGuideAlias: "/metamask-guide", // alias to match Activation.jsx links
+  metamaskGuide: "/wallet-metamask",
+  metamaskGuideAlias: "/metamask-guide",
 
-  // Utilities
+  /* Utilities */
   referral: "/referral",
   strategySelector: "/strategy-selector",
 
-  // Protected member routes (canonical)
+  /* Protected */
   dashboard: "/dashboard",
   admin: "/admin",
 
-  // Aliases (important)
+  /* Aliases */
   memberDashboardAlias: "/member-dashboard",
 };
 
-/* ---------------- Simple 404 ---------------- */
+/* ================= SIMPLE 404 ================= */
 function NotFound() {
   return (
-    <div className="min-h-[40vh] flex items-center justify-center text-center p-8">
+    <div className="min-h-[50vh] flex items-center justify-center text-center p-8">
       <div>
         <h1 className="text-3xl font-bold mb-2 text-imali-green">
           Page not found
@@ -108,15 +110,9 @@ function NotFound() {
   );
 }
 
-/**
- * Optional helper:
- * If you later want redirects like /login?next=/dashboard, you can use this pattern.
- * (Kept here as a placeholder for your deep-link wizard flow.)
- */
-// function RedirectTo({ to }) {
-//   return <Navigate to={to} replace />;
-// }
-
+/* ====================================================
+   APP ROOT
+==================================================== */
 export default function App() {
   return (
     <>
@@ -153,27 +149,26 @@ export default function App() {
           <Route path={PATHS.billingCancel} element={<BillingCancel />} />
           <Route path={PATHS.upgrade} element={<Upgrade />} />
 
-          {/* Stripe success → activation */}
+          {/* Stripe success always lands here */}
           <Route path={PATHS.activation} element={<Activation />} />
 
           {/* ================= GUIDES ================= */}
           <Route path={PATHS.fundingGuide} element={<FundingGuide />} />
           <Route path={PATHS.supportedChains} element={<SupportedChains />} />
 
-          {/* Canonical MetaMask guide + alias to match Activation.jsx */}
           <Route path={PATHS.metamaskGuide} element={<MetaMaskGuide />} />
           <Route
             path={PATHS.metamaskGuideAlias}
             element={<Navigate to={PATHS.metamaskGuide} replace />}
           />
 
-          {/* Keep older MetaMask guide URL too */}
+          {/* Legacy MetaMask URLs */}
           <Route
             path="/how-to/wallet-metamask"
             element={<Navigate to={PATHS.metamaskGuide} replace />}
           />
 
-          {/* Other aliases (do not break existing links) */}
+          {/* Legacy funding URLs */}
           <Route
             path="/how-to/fund-okx"
             element={<Navigate to={PATHS.fundingGuide} replace />}
@@ -189,19 +184,21 @@ export default function App() {
 
           {/* ================= PROTECTED (MEMBER) ================= */}
           <Route element={<ProtectedRoute />}>
-            {/* Canonical */}
             <Route path={PATHS.dashboard} element={<MemberDashboard />} />
 
-            {/* ✅ Alias: Activation.jsx redirects here sometimes */}
+            {/* Alias support */}
             <Route
               path={PATHS.memberDashboardAlias}
               element={<Navigate to={PATHS.dashboard} replace />}
             />
 
-            <Route path={PATHS.admin} element={<AdminPanel forceOwner />} />
+            <Route
+              path={PATHS.admin}
+              element={<AdminPanel forceOwner />}
+            />
           </Route>
 
-          {/* ================= TEST ROUTES (OPTIONAL) ================= */}
+          {/* ================= TEST ROUTES (SAFE) ================= */}
           <Route path="/test/dashboard" element={<MemberDashboard />} />
           <Route path="/test/admin" element={<AdminPanel />} />
 
@@ -214,7 +211,10 @@ export default function App() {
             path="/memberdashboard"
             element={<Navigate to={PATHS.dashboard} replace />}
           />
-          <Route path="/member" element={<Navigate to={PATHS.dashboard} replace />} />
+          <Route
+            path="/member"
+            element={<Navigate to={PATHS.dashboard} replace />}
+          />
 
           {/* ================= 404 ================= */}
           <Route path="*" element={<NotFound />} />
