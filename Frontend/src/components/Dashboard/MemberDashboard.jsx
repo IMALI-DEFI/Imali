@@ -6,7 +6,7 @@ import "react-tabs/style/react-tabs.css";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { getUserData } from "../../utils/firebase.js";
-import { useEvmWallet, short } from "../../getContractInstance";
+import { useWallet } from "../../getContractInstance";
 
 /* -------- Modules (safe loaded) -------- */
 import * as ImaliBalanceNS from "./ImaliBalance.jsx";
