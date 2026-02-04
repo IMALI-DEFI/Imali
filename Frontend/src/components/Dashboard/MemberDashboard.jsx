@@ -13,7 +13,7 @@ import { BotAPI } from "../../utils/BotAPI";
 
 // Firebase + wallet utils (existing in your project)
 import { getUserData } from "../../utils/firebase.js";
-import { useEvmWallet, short } from "../../getContractInstance";
+import { useWallet, short } from "../../getContractInstance";
 
 // Keep your Trade Demo + modules
 import * as ImaliBalanceNS from "./ImaliBalance.jsx";
