@@ -1,9 +1,26 @@
+// src/components/routing/ProtectedRoute.jsx
 import React from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 
-export default function ProtectedRoute({ children }) {
-  const tier = localStorage.getItem("imali_tier") || "Starter";
-  const allowed = ["Pro", "Elite", "pro", "elite"].includes(tier);
-  if (!allowed) return <Navigate to="/signup" replace />;
-  return children;
+const TOKEN_KEY = "imali_token";
+
+export default function ProtectedRoute() {
+  const location = useLocation();
+
+  let token = "";
+  try {
+    token = localStorage.getItem(TOKEN_KEY) || "";
+  } catch {}
+
+  if (!token) {
+    return (
+      <Navigate
+        to="/signup"
+        replace
+        state={{ from: location.pathname }}
+      />
+    );
+  }
+
+  return <Outlet />;
 }
