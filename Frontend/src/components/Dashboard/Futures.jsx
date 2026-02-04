@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import useAuth from "../hooks/useAuth";          // your auth hook
-import api from "../utils/api";                  // axios wrapper
+import useAuth from "../../hooks/useAuth";          // your auth hook
+import api from "../../utils/api";                  // axios wrapper
 import TierLock from "../components/TierLock";   // optional helper
 
 export default function Futures() {
