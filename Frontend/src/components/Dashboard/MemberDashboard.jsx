@@ -1,12 +1,13 @@
 // src/components/Dashboard/MemberDashboard.jsx
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { getUserData } from "../../utils/firebase.js";
-import { useWallet } from "../../getContractInstance";
+import { getUserData } from "../../utils/firebase";
+import { useWallet } from "../../context/WalletContext";
+import { short } from "../../getContractInstance";
 
 /* -------- Modules (safe loaded) -------- */
 import * as ImaliBalanceNS from "./ImaliBalance.jsx";
@@ -17,15 +18,15 @@ import * as LPLotteryNS from "./LPLottery";
 import * as NFTPreviewNS from "./NFTPreview.jsx";
 import * as TierStatusNS from "./TierStatus.jsx";
 import * as RecentTradesTableNS from "./RecentTradesTable.jsx";
-import * as ReferralSystemNS from "../ReferralSystem.js";
+import * as ReferralSystemNS from "../ReferralSystem.jsx";
 import * as TradeDemoNS from "../../pages/TradeDemo.jsx";
-import * as FuturesNS from "./Futures.jsx"; // 🔥 NEW
+import * as FuturesNS from "./Futures.jsx";
 
 /* -------- Safe pick -------- */
 const pick = (ns, name) =>
   (ns && (ns.default || ns[name])) ||
   (() => (
-    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+    <div className="p-4 border border-red-500/30 bg-red-500/10 text-red-200">
       Missing component: <b>{name}</b>
     </div>
   ));
@@ -42,24 +43,17 @@ const ReferralSystem = pick(ReferralSystemNS, "ReferralSystem");
 const TradeDemo = pick(TradeDemoNS, "TradeDemo");
 const Futures = pick(FuturesNS, "Futures");
 
-/* -------- Tier helpers -------- */
 const ORDER = ["starter", "pro", "elite", "bundle"];
 const tierAtLeast = (t, need) =>
   ORDER.indexOf(t) >= ORDER.indexOf(need);
 
-/* -------- Lock Panel -------- */
 function Locked({ need, onUpgrade }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
-      <div className="text-lg font-bold mb-2">
-        🔒 Locked for {need.toUpperCase()}
-      </div>
-      <p className="text-sm text-white/70 mb-4">
-        You’re <b>1 feature away</b> from unlocking this.
-      </p>
+    <div className="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
+      <div className="font-bold mb-2">🔒 {need.toUpperCase()} Required</div>
       <button
         onClick={onUpgrade}
-        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold"
+        className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500"
       >
         Upgrade
       </button>
@@ -67,28 +61,22 @@ function Locked({ need, onUpgrade }) {
   );
 }
 
-/* -------- Main -------- */
 export default function MemberDashboard() {
   const nav = useNavigate();
   const { pathname } = useLocation();
-  const { account, chainId, connect, disconnect } = useEvmWallet();
+  const { account, chainId, connectWallet, disconnectWallet } = useWallet();
 
   const [user, setUser] = useState(null);
-  const [recentTrades, setRecentTrades] = useState([]);
-  const [activeTab, setActiveTab] = useState(0);
+  const [trades, setTrades] = useState([]);
+  const [tab, setTab] = useState(0);
 
-  /* Load profile */
   useEffect(() => {
     if (!account) return;
     getUserData(account).then(setUser).catch(() => {});
   }, [account, pathname]);
 
-  /* Load trades */
   useEffect(() => {
-    axios
-      .get("/api/sniper/trades")
-      .then((r) => setRecentTrades(r.data || []))
-      .catch(() => {});
+    axios.get("/api/sniper/trades").then(r => setTrades(r.data || [])).catch(() => {});
   }, []);
 
   const tier = (user?.tier || "starter").toLowerCase();
@@ -96,90 +84,50 @@ export default function MemberDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white">
       <div className="max-w-7xl mx-auto px-6 py-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-extrabold">🚀 Member Dashboard</h1>
+
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold">🚀 Member Dashboard</h1>
 
           {account ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs rounded-full bg-emerald-600/30 border border-emerald-400/30 px-2 py-1">
+            <div className="flex gap-2 items-center">
+              <span className="text-xs bg-emerald-600/30 px-2 py-1 rounded">
                 {short(account)} • {chainId}
               </span>
-              <button
-                onClick={disconnect}
-                className="text-xs px-3 py-2 rounded-lg border border-white/20 hover:bg-white/10"
-              >
-                Disconnect
-              </button>
+              <button onClick={disconnectWallet} className="btn">Disconnect</button>
             </div>
           ) : (
-            <button
-              onClick={connect}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500"
-            >
+            <button onClick={connectWallet} className="btn bg-emerald-600">
               Connect Wallet
             </button>
           )}
         </div>
 
-        {/* Status */}
         <TierStatus />
 
-        <Tabs selectedIndex={activeTab} onSelect={setActiveTab}>
+        <Tabs selectedIndex={tab} onSelect={setTab}>
           <TabList>
             <Tab>Overview</Tab>
             <Tab>Extras</Tab>
-            <Tab>Futures</Tab> {/* 🔥 NEW */}
+            <Tab>Futures</Tab>
           </TabList>
 
-          {/* OVERVIEW */}
           <TabPanel>
             <TradeDemo />
-            <RecentTradesTable rows={recentTrades} />
+            <RecentTradesTable rows={trades} />
           </TabPanel>
 
-          {/* EXTRAS */}
           <TabPanel>
-            <div className="grid gap-4">
-              <ImaliBalance />
-
-              {tierAtLeast(tier, "pro") ? (
-                <Staking />
-              ) : (
-                <Locked need="pro" onUpgrade={() => nav("/pricing")} />
-              )}
-
-              {tierAtLeast(tier, "elite") ? (
-                <YieldFarming />
-              ) : (
-                <Locked need="elite" onUpgrade={() => nav("/pricing")} />
-              )}
-
-              {tierAtLeast(tier, "elite") ? (
-                <Lending />
-              ) : (
-                <Locked need="elite" onUpgrade={() => nav("/pricing")} />
-              )}
-
-              {tierAtLeast(tier, "bundle") ? (
-                <LPLottery />
-              ) : (
-                <Locked need="bundle" onUpgrade={() => nav("/pricing")} />
-              )}
-
-              <NFTPreview />
-
-              <ReferralSystem />
-            </div>
+            <ImaliBalance />
+            {tierAtLeast(tier, "pro") ? <Staking /> : <Locked need="pro" onUpgrade={() => nav("/pricing")} />}
+            {tierAtLeast(tier, "elite") ? <YieldFarming /> : <Locked need="elite" onUpgrade={() => nav("/pricing")} />}
+            {tierAtLeast(tier, "elite") ? <Lending /> : <Locked need="elite" onUpgrade={() => nav("/pricing")} />}
+            {tierAtLeast(tier, "bundle") ? <LPLottery /> : <Locked need="bundle" onUpgrade={() => nav("/pricing")} />}
+            <NFTPreview />
+            <ReferralSystem />
           </TabPanel>
 
-          {/* FUTURES */}
           <TabPanel>
-            {tierAtLeast(tier, "elite") ? (
-              <Futures />
-            ) : (
-              <Locked need="elite" onUpgrade={() => nav("/pricing")} />
-            )}
+            {tierAtLeast(tier, "elite") ? <Futures /> : <Locked need="elite" onUpgrade={() => nav("/pricing")} />}
           </TabPanel>
         </Tabs>
       </div>
