@@ -257,16 +257,11 @@ export default function Activation() {
 
   /* =========================
      DERIVED FLAGS (tier-based)
-     - No “Pick Your Path” here.
-     - Path/upgrades happen in dashboard.
-     - Steps are always: 1) Payment 2) OKX 3) Alpaca
-     - MetaMask is required only for Elite.
   ========================= */
   const owner = useMemo(() => isOwner(me), [me]);
 
   const tier = useMemo(() => {
     const t = lower(me?.tier_active || me?.tier || "starter");
-    // normalize common values
     if (t.includes("elite")) return "elite";
     if (t.includes("pro")) return "pro";
     if (t.includes("starter")) return "starter";
@@ -323,7 +318,10 @@ export default function Activation() {
     if (activationComplete) return;
     if (!billingComplete && !owner) return setWizardStep(1);
     if (requiresOkx && !okxConnected && !owner) return setWizardStep(2);
-    if ((requiresAlpaca && !alpacaConnected && !owner) || (requiresWallet && !walletConnected && !owner))
+    if (
+      (requiresAlpaca && !alpacaConnected && !owner) ||
+      (requiresWallet && !walletConnected && !owner)
+    )
       return setWizardStep(3);
     setWizardStep(3);
   }, [
@@ -429,16 +427,12 @@ export default function Activation() {
 
   /* =========================
      GAMIFICATION / PROGRESS
-     Steps are fixed:
-       1) Payment
-       2) OKX
-       3) Alpaca (and MetaMask inside for Elite)
   ========================= */
   const steps = useMemo(() => {
     return [
-      { key: "billing", label: "billing", done: owner || billingComplete, xp: 80 },
-      { key: "okx", label: "okx", done: owner || okxReqComplete, xp: 120 },
-      { key: "alpaca", label: "alpaca", done: owner || alpacaReqComplete, xp: 120 },
+      { key: "billing", done: owner || billingComplete, xp: 80 },
+      { key: "okx", done: owner || okxReqComplete, xp: 120 },
+      { key: "alpaca", done: owner || alpacaReqComplete, xp: 120 },
     ];
   }, [owner, billingComplete, okxReqComplete, alpacaReqComplete]);
 
@@ -731,7 +725,7 @@ export default function Activation() {
                 </div>
               )}
 
-              {/* MetaMask requirement is Elite-only (per your rules) */}
+              {/* MetaMask requirement is Elite-only */}
               {requiresWallet && (
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -753,9 +747,7 @@ export default function Activation() {
                           Connected: <span className="font-semibold">{walletAddr}</span>
                         </div>
                       ) : (
-                        <div className="mt-2 text-sm text-white/70">
-                          Click connect, approve the popup, done.
-                        </div>
+                        <div className="mt-2 text-sm text-white/70">Click connect, approve the popup, done.</div>
                       )}
                     </div>
 
@@ -881,9 +873,7 @@ export default function Activation() {
             <a className="underline font-semibold" href={EXTERNAL.okxApi} target="_blank" rel="noreferrer">
               OKX API Page
             </a>
-            <div className="mt-1 text-xs text-white/50">
-              Tip: create keys with the permissions you need (start minimal).
-            </div>
+            <div className="mt-1 text-xs text-white/50">Tip: create keys with the permissions you need (start minimal).</div>
           </div>
 
           <label className="block text-xs text-white/60">Mode</label>
@@ -946,9 +936,7 @@ export default function Activation() {
             <a className="underline font-semibold" href={EXTERNAL.alpacaPaperDashboard} target="_blank" rel="noreferrer">
               Alpaca Dashboard (Paper)
             </a>
-            <div className="mt-1 text-xs text-white/50">
-              Tip: if you want live keys, switch Alpaca to live first.
-            </div>
+            <div className="mt-1 text-xs text-white/50">Tip: if you want live keys, switch Alpaca to live first.</div>
           </div>
 
           <label className="block text-xs text-white/60">Mode</label>
