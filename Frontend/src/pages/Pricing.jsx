@@ -2,158 +2,175 @@ import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 
-// Tier art
+// NFT images
 import StarterNFT from "../assets/images/nfts/nft-starter.png";
 import ProNFT from "../assets/images/nfts/nft-pro.png";
 import EliteNFT from "../assets/images/nfts/nft-elite.png";
+import BundleNFT from "../assets/images/nfts/nft-bundle.png";
 
-/* ---------------- Prices ---------------- */
-const PRICE = {
-  starter: "$0",
-  pro: "$19 / month",
-  elite: "$49 / month",
+/* ---------------- Helpers ---------------- */
+const price = (n) => (n === 0 ? "Free" : `$${n}/mo`);
+
+const PRICES = {
+  starter: 0,
+  pro: 19,
+  elite: 49,
+  bundle: 199,
 };
 
-/* ---------------- Helper ---------------- */
-const hasBalance = (balance) => {
-  try {
-    return Number(balance) > 50; // soft heuristic
-  } catch {
-    return false;
-  }
-};
-
+/* ---------------- Component ---------------- */
 export default function Pricing() {
-  const { account, balance } = useWallet();
+  // 🔐 Wallet-safe access (NO CRASH)
+  const wallet = useWallet?.() ?? {};
+  const account = wallet?.account ?? null;
+  const balance = Number(wallet?.balance ?? 0);
 
-  /* ---------------- Recommendation Logic ---------------- */
+  /* ---------------- Recommendation Logic ----------------
+     Simple + novice-friendly:
+     - No wallet → Starter
+     - Wallet < $150 → Pro
+     - Wallet >= $150 → Elite
+     - Power users → Bundle
+  -------------------------------------------------------- */
   const recommended = useMemo(() => {
     if (!account) return "starter";
-    if (account && !hasBalance(balance)) return "pro";
-    if (account && hasBalance(balance)) return "elite";
-    return "starter";
+    if (balance >= 1000) return "bundle";
+    if (balance >= 150) return "elite";
+    return "pro";
   }, [account, balance]);
 
   const plans = [
     {
+      id: "starter",
       name: "Starter",
-      slug: "starter",
-      price: PRICE.starter,
-      image: StarterNFT,
-      blurb: "Learn how it works.",
-      bullets: [
-        "Demo mode",
-        "See example crypto trades",
-        "No wallet needed",
+      price: price(PRICES.starter),
+      img: StarterNFT,
+      desc: "Best place to start. Fully guided crypto trading.",
+      perks: [
+        "Automatic crypto trading",
+        "Beginner-safe strategies",
+        "Only pay when you profit",
+        "Cancel anytime",
       ],
-      fees: ["No monthly cost"],
+      fees: "30% of profits (only if you’re up)",
     },
     {
+      id: "pro",
       name: "Pro",
-      slug: "pro",
-      price: PRICE.pro,
-      image: ProNFT,
-      blurb: "Trade new crypto with your wallet.",
-      bullets: [
-        "New crypto (DeFi)",
-        "Auto trade or alerts",
-        "Staking access",
-      ],
-      fees: [
-        "5% fee only on profits",
-        "No profit = no fee",
+      price: price(PRICES.pro),
+      img: ProNFT,
+      desc: "More control with better signals.",
+      perks: [
+        "Auto or alert-only mode",
+        "Lower performance fees",
+        "Faster trade execution",
         "Cancel anytime",
       ],
+      fees: "5% of profits (only if you’re up)",
     },
     {
+      id: "elite",
       name: "Elite",
-      slug: "elite",
-      price: PRICE.elite,
-      image: EliteNFT,
-      blurb: "Advanced tools + futures.",
-      bullets: [
-        "Everything in Pro",
-        "Futures tools",
-        "Higher limits",
-      ],
-      fees: [
-        "5% fee on profits",
-        "Futures fees apply when used",
+      price: price(PRICES.elite),
+      img: EliteNFT,
+      desc: "Advanced crypto + futures trading.",
+      perks: [
+        "New crypto opportunities",
+        "Futures trading access",
+        "Priority execution",
         "Cancel anytime",
       ],
+      fees: "5% of profits (only if you’re up)",
+    },
+    {
+      id: "bundle",
+      name: "Bundle",
+      price: price(PRICES.bundle),
+      img: BundleNFT,
+      desc: "Everything unlocked for power users.",
+      perks: [
+        "All trading features",
+        "Fastest signals",
+        "Priority support",
+        "Cancel anytime",
+      ],
+      fees: "Lowest possible fees",
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <div className="max-w-5xl mx-auto px-4 py-12">
-        {/* Header */}
-        <h1 className="text-3xl font-extrabold text-center mb-2">
-          Pricing
-        </h1>
-        <p className="text-center text-white/70 mb-8">
-          Start free. Upgrade when ready.
-        </p>
+    <div className="min-h-screen bg-gray-950 text-white px-4 py-12">
+      <div className="max-w-6xl mx-auto">
+        {/* HEADER */}
+        <div className="text-center mb-10">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">
+            Simple Pricing
+          </h1>
+          <p className="text-gray-400 text-sm md:text-base">
+            Start small. Upgrade anytime. No long-term contracts.
+          </p>
+        </div>
 
-        {/* Plans */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* WALLET BANNER */}
+        {!account && (
+          <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 text-sm text-blue-200 text-center">
+            🔐 Connect your wallet to see a recommended plan
+          </div>
+        )}
+
+        {/* PLANS */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {plans.map((plan) => {
-            const isRecommended = recommended === plan.slug;
+            const isRecommended = plan.id === recommended;
 
             return (
               <div
-                key={plan.slug}
-                className={`relative rounded-xl border p-5 flex flex-col ${
-                  isRecommended
-                    ? "border-emerald-400 bg-emerald-500/10"
-                    : "border-white/10 bg-white/5"
-                }`}
+                key={plan.id}
+                className={`relative rounded-2xl border p-5 flex flex-col bg-gray-900/50
+                  ${
+                    isRecommended
+                      ? "border-emerald-400 shadow-lg"
+                      : "border-gray-800"
+                  }`}
               >
-                {/* Recommended badge */}
                 {isRecommended && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-bold px-3 py-1 rounded-full bg-emerald-500 text-black">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-black text-xs font-bold px-3 py-1 rounded-full">
                     Recommended
                   </div>
                 )}
 
                 <img
-                  src={plan.image}
+                  src={plan.img}
                   alt={plan.name}
-                  className="rounded-lg mb-4 ring-1 ring-white/10"
+                  className="rounded-xl mb-4"
+                  loading="lazy"
                 />
 
                 <h2 className="text-xl font-bold mb-1">{plan.name}</h2>
-                <p className="text-sm text-white/70 mb-3">{plan.blurb}</p>
+                <p className="text-gray-400 text-sm mb-3">{plan.desc}</p>
 
-                <div className="text-2xl font-extrabold mb-4">
+                <div className="text-3xl font-extrabold mb-4">
                   {plan.price}
                 </div>
 
-                {/* Bullets */}
-                <ul className="space-y-2 text-sm mb-4">
-                  {plan.bullets.map((b, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-emerald-400">•</span>
-                      <span>{b}</span>
-                    </li>
+                <ul className="text-sm text-gray-300 space-y-2 mb-4">
+                  {plan.perks.map((p, i) => (
+                    <li key={i}>✔ {p}</li>
                   ))}
                 </ul>
 
-                {/* Fees */}
-                <div className="text-xs text-white/60 mb-5 space-y-1">
-                  {plan.fees.map((f, i) => (
-                    <div key={i}>• {f}</div>
-                  ))}
+                <div className="text-xs text-gray-400 mb-4">
+                  Fees: {plan.fees}
                 </div>
 
-                {/* CTA */}
                 <Link
-                  to={`/signup?tier=${plan.slug}`}
-                  className={`mt-auto w-full py-2.5 rounded-lg text-center font-semibold ${
-                    isRecommended
-                      ? "bg-emerald-600 hover:bg-emerald-500"
-                      : "bg-white/10 hover:bg-white/20"
-                  }`}
+                  to={`/signup?tier=${plan.id}`}
+                  className={`mt-auto w-full text-center py-3 rounded-xl font-semibold transition
+                    ${
+                      isRecommended
+                        ? "bg-emerald-600 hover:bg-emerald-700"
+                        : "bg-gray-800 hover:bg-gray-700"
+                    }`}
                 >
                   Choose {plan.name}
                 </Link>
@@ -162,11 +179,11 @@ export default function Pricing() {
           })}
         </div>
 
-        {/* Footer */}
-        <div className="mt-10 text-xs text-white/60 text-center space-y-1">
-          <div>• Fees only apply when you profit</div>
-          <div>• You control your wallet</div>
-          <div>• Cancel anytime</div>
+        {/* FOOTER NOTES */}
+        <div className="mt-10 text-xs text-gray-500 space-y-2 max-w-3xl mx-auto">
+          <p>• You only pay performance fees when you make money.</p>
+          <p>• Cancel anytime from your dashboard.</p>
+          <p>• Trading involves risk. Never trade money you can’t afford to lose.</p>
         </div>
       </div>
     </div>
