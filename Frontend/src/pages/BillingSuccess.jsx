@@ -1,80 +1,62 @@
-// src/pages/BillingSuccess.jsx
-import React, { useEffect, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
+
+/**
+ * BillingSuccess
+ * -----------------
+ * Purpose:
+ * - Confirm billing completion
+ * - Send user to Activation flow
+ *
+ * IMPORTANT:
+ * - Do NOT rely on query params
+ * - Do NOT rely on localStorage for tier/strategy
+ * - Activation page pulls everything from backend
+ */
 
 export default function BillingSuccess() {
   const navigate = useNavigate();
 
-  // Pull last selected plan / strategy safely
-  const { plan, strategy } = useMemo(() => {
-    let p = "starter";
-    let s = "ai_weighted";
-
-    try {
-      p = localStorage.getItem("imali_plan") || p;
-      s = localStorage.getItem("imali_strategy") || s;
-    } catch {
-      // ignore storage issues
-    }
-
-    return { plan: p, strategy: s };
-  }, []);
-
-  const activationLink = `/activation?tier=${encodeURIComponent(
-    plan
-  )}&strategy=${encodeURIComponent(strategy)}`;
-
-  // Optional auto-redirect safety (prevents dead-end tab)
+  /* ---------------- Hard redirect safety ---------------- */
   useEffect(() => {
     const timer = setTimeout(() => {
-      navigate(activationLink, { replace: true });
-    }, 15000); // 15s grace
+      navigate("/activation", { replace: true });
+    }, 6000); // 6s grace (mobile-friendly)
 
     return () => clearTimeout(timer);
-  }, [activationLink, navigate]);
+  }, [navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-emerald-50 to-white px-6">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+    <div className="min-h-screen flex items-center justify-center bg-gray-950 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-gray-900 border border-gray-800 p-6 text-center">
+
         {/* Icon */}
-        <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center">
-          <span className="text-3xl">✅</span>
+        <div className="mx-auto mb-4 h-14 w-14 rounded-full bg-emerald-500/15 flex items-center justify-center">
+          <span className="text-2xl">✅</span>
         </div>
 
         {/* Title */}
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Billing Complete
+        <h1 className="text-xl font-bold text-white mb-2">
+          Payment Method Saved
         </h1>
 
         {/* Message */}
-        <p className="text-gray-600 mb-6">
-          Your payment method was saved successfully.
+        <p className="text-sm text-gray-400 mb-5 leading-relaxed">
+          Your billing setup is complete.
           <br />
-          One last step to finish setup.
+          Next, we’ll finish activating your account.
         </p>
 
-        {/* Primary CTA */}
+        {/* CTA */}
         <Link
-          to={activationLink}
-          className="block w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-3 font-semibold transition"
+          to="/activation"
+          className="block w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white py-3 font-semibold transition"
         >
           Continue Setup
         </Link>
 
-        {/* Info */}
-        <div className="mt-5 text-xs text-gray-500 space-y-1">
-          <div>
-            <span className="font-semibold">Plan:</span>{" "}
-            <span className="capitalize">{plan}</span>
-          </div>
-          <div>
-            <span className="font-semibold">Strategy:</span>{" "}
-            <span className="capitalize">{strategy.replace("_", " ")}</span>
-          </div>
-        </div>
-
-        {/* Footer hint */}
-        <p className="mt-6 text-xs text-gray-400">
+        {/* Hint */}
+        <p className="mt-4 text-xs text-gray-500">
           You’ll be redirected automatically if you don’t continue.
         </p>
       </div>
