@@ -18,7 +18,7 @@ import * as LPLotteryNS from "./LPLottery";
 import * as NFTPreviewNS from "./NFTPreview.jsx";
 import * as TierStatusNS from "./TierStatus.jsx";
 import * as RecentTradesTableNS from "./RecentTradesTable.jsx";
-import * as ReferralSystemNS from "./ReferralSystem.jsx";
+import * as ReferralSystemNS from "./ReferralSystem.js";
 import * as TradeDemoNS from "../../pages/TradeDemo.jsx";
 import * as FuturesNS from "./Futures.jsx";
 
