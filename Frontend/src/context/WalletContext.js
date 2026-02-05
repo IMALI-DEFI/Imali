@@ -1,116 +1,134 @@
-// src/context/WalletContext.js
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ethers } from 'ethers';
+// src/context/WalletContext.jsx
+import React, { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import { BrowserProvider } from "ethers";
 
-const WalletContext = createContext();
+/* =========================
+   Context
+========================= */
+export const WalletContext = createContext(null);
 
-export const useWallet = () => useContext(WalletContext);
-
-export const WalletProvider = ({ children }) => {
+/* =========================
+   Provider
+========================= */
+export function WalletProvider({ children }) {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
-  const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(false);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [provider, setProvider] = useState(null);
+  const [connecting, setConnecting] = useState(false);
 
-  // Check if MetaMask is installed
+  /* ---------- Init provider ---------- */
   useEffect(() => {
-    const checkMetaMask = () => {
-      if (window.ethereum && window.ethereum.isMetaMask) {
-        setIsMetaMaskInstalled(true);
-        setError(null);
-        return true;
-      } else {
-        setIsMetaMaskInstalled(false);
-        setError("Please install MetaMask to use this application");
-        return false;
+    if (typeof window === "undefined" || !window.ethereum) return;
+
+    const p = new BrowserProvider(window.ethereum);
+    setProvider(p);
+
+    // preload if already connected
+    window.ethereum
+      .request({ method: "eth_accounts" })
+      .then((accounts) => {
+        if (accounts?.[0]) setAccount(accounts[0]);
+      })
+      .catch(() => {});
+  }, []);
+
+  /* ---------- Chain + account listeners ---------- */
+  useEffect(() => {
+    if (!window.ethereum?.on) return;
+
+    const onAccounts = (accounts) => {
+      setAccount(accounts?.[0] || null);
+    };
+
+    const onChain = (hexId) => {
+      try {
+        setChainId(parseInt(hexId, 16));
+      } catch {
+        setChainId(null);
       }
     };
 
-    checkMetaMask();
+    window.ethereum.on("accountsChanged", onAccounts);
+    window.ethereum.on("chainChanged", onChain);
 
-    // Listen for MetaMask installation
-    const checkInterval = setInterval(checkMetaMask, 3000);
-    return () => clearInterval(checkInterval);
+    return () => {
+      window.ethereum.removeListener("accountsChanged", onAccounts);
+      window.ethereum.removeListener("chainChanged", onChain);
+    };
   }, []);
 
-  const connectWallet = async () => {
-    setLoading(true);
-    setError(null);
+  /* ---------- Actions ---------- */
+  const connectWallet = useCallback(async () => {
+    if (!window.ethereum) {
+      throw new Error("MetaMask not installed");
+    }
+
+    if (connecting) return;
+    setConnecting(true);
 
     try {
-      if (!window.ethereum) {
-        throw new Error("MetaMask is not installed");
-      }
-
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const accounts = await provider.send("eth_requestAccounts", []);
-      const network = await provider.getNetwork();
-
-      setAccount(accounts[0]);
-      setChainId(network.chainId);
-      
-      // Setup listeners
-      window.ethereum.on('accountsChanged', (accounts) => {
-        setAccount(accounts[0] || null);
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
       });
 
-      window.ethereum.on('chainChanged', (chainId) => {
-        setChainId(parseInt(chainId, 16));
-        window.location.reload();
+      setAccount(accounts?.[0] || null);
+
+      const hexId = await window.ethereum.request({
+        method: "eth_chainId",
       });
 
-      setError(null);
-    } catch (err) {
-      console.error("Wallet connection error:", err);
-      setError(err.message);
-      setAccount(null);
-      setChainId(null);
+      setChainId(parseInt(hexId, 16));
     } finally {
-      setLoading(false);
+      setConnecting(false);
     }
-  };
+  }, [connecting]);
 
-  const disconnectWallet = () => {
+  const disconnectWallet = useCallback(() => {
+    // MetaMask cannot truly disconnect programmatically
     setAccount(null);
     setChainId(null);
-    setError(null);
-  };
-
-  // Auto-connect if previously connected
-  useEffect(() => {
-    const checkConnection = async () => {
-      if (window.ethereum) {
-        try {
-          const provider = new ethers.providers.Web3Provider(window.ethereum);
-          const accounts = await provider.listAccounts();
-          if (accounts.length > 0) {
-            const network = await provider.getNetwork();
-            setAccount(accounts[0]);
-            setChainId(network.chainId);
-          }
-        } catch (err) {
-          console.error("Auto-connect error:", err);
-        }
-      }
-    };
-
-    checkConnection();
   }, []);
 
+  /* ---------- Value ---------- */
+  const value = useMemo(
+    () => ({
+      account,
+      chainId,
+      provider,
+      connecting,
+      connectWallet,
+      disconnectWallet,
+    }),
+    [account, chainId, provider, connecting, connectWallet, disconnectWallet]
+  );
+
   return (
-    <WalletContext.Provider
-      value={{
-        account,
-        chainId,
-        isMetaMaskInstalled,
-        error,
-        loading,
-        connectWallet,
-        disconnectWallet
-      }}
-    >
+    <WalletContext.Provider value={value}>
       {children}
     </WalletContext.Provider>
   );
-};
+}
+
+/* =========================
+   SAFE HOOK (CRITICAL FIX)
+========================= */
+export function useWallet() {
+  const ctx = React.useContext(WalletContext);
+
+  // 🚨 THIS IS THE FIX 🚨
+  // Never return undefined — EVER
+  if (!ctx) {
+    return {
+      account: null,
+      chainId: null,
+      provider: null,
+      connecting: false,
+      connectWallet: async () => {
+        throw new Error("WalletProvider not mounted");
+      },
+      disconnectWallet: () => {},
+    };
+  }
+
+  return ctx;
+}
