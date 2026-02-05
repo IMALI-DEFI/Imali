@@ -4,6 +4,9 @@ import App from "./App";
 import { BrowserRouter } from "react-router-dom";
 import { WalletProvider } from "./context/WalletContext";
 
+// ✅ THIS IS REQUIRED FOR TAILWIND
+import "./index.css";
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
