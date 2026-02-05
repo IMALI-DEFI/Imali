@@ -1,203 +1,190 @@
+// src/pages/Billing.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { loadStripe } from "@stripe/stripe-js";
-import {
-  Elements,
-  PaymentElement,
-  useStripe,
-  useElements,
-} from "@stripe/react-stripe-js";
-
-/* ------------------------------------------------------------------ */
-/* Config */
-/* ------------------------------------------------------------------ */
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 
 const TOKEN_KEY = "imali_token";
+const API_BASE = process.env.REACT_APP_API_BASE || "https://api.imali-defi.com";
+const STRIPE_PUBLISHABLE_KEY = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || "";
 
-// IMPORTANT: use ONE base consistently
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL ||
-  process.env.REACT_APP_API_BASE ||
-  "https://api.imali-defi.com";
-
-// Stripe publishable key (test or live)
-const STRIPE_PUBLISHABLE_KEY =
-  process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || "";
-
-// Create Stripe promise ONCE
-const stripePromise = STRIPE_PUBLISHABLE_KEY
-  ? loadStripe(STRIPE_PUBLISHABLE_KEY)
-  : null;
-
-// Axios instance
+// Axios (Bearer token)
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
   headers: { "Content-Type": "application/json" },
 });
 
-// Attach auth token
 api.interceptors.request.use((cfg) => {
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  const t = localStorage.getItem(TOKEN_KEY);
+  if (t) cfg.headers.Authorization = `Bearer ${t}`;
   return cfg;
 });
 
-/* ------------------------------------------------------------------ */
-/* Helpers */
-/* ------------------------------------------------------------------ */
-
-function isValidStripeSecret(secret) {
-  return (
-    typeof secret === "string" &&
-    (secret.startsWith("seti_") || secret.startsWith("pi_")) &&
-    secret.includes("_secret_")
-  );
+// Validate Stripe client secret format (SetupIntent)
+function isValidSetupIntentSecret(secret) {
+  if (!secret || typeof secret !== "string") return false;
+  // SetupIntent secrets: seti_..._secret_...
+  return secret.startsWith("seti_") && secret.includes("_secret_") && secret.length > 20;
 }
 
-/* ------------------------------------------------------------------ */
-/* Inner Form */
-/* ------------------------------------------------------------------ */
-
-function BillingInner() {
+function BillingInner({ customerId }) {
   const stripe = useStripe();
   const elements = useElements();
-  const navigate = useNavigate();
+  const nav = useNavigate();
 
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [err, setErr] = useState("");
 
-  const submit = async () => {
+  const handleSubmit = async () => {
+    setErr("");
     if (!stripe || !elements) return;
 
     setBusy(true);
-    setError("");
-
     try {
-      const { error } = await stripe.confirmSetup({
+      const { error, setupIntent } = await stripe.confirmSetup({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/activation`,
+          return_url: `${window.location.origin}/billing`,
         },
+        // avoids unnecessary full redirects; still redirects if required (3DS)
+        redirect: "if_required",
       });
 
       if (error) throw error;
-    } catch (err) {
-      console.error("Stripe confirmSetup error:", err);
-      setError(err?.message || "Failed to save payment method.");
+
+      // If confirmSetup completed without redirect, we can set default PM now
+      const pmId = setupIntent?.payment_method;
+      if (customerId && pmId) {
+        try {
+          await api.post("/billing/set-default-payment-method", {
+            customer_id: customerId,
+            payment_method_id: pmId,
+          });
+        } catch {
+          // non-fatal: card may still be saved, default set can fail quietly
+        }
+      }
+
+      nav("/activation", { replace: true });
+    } catch (e) {
+      setErr(e?.message || "Failed to save card.");
       setBusy(false);
     }
   };
 
   return (
-    <>
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-          {error}
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+      {err && (
+        <div className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+          {err}
         </div>
       )}
 
       <PaymentElement />
 
       <button
-        onClick={submit}
+        onClick={handleSubmit}
         disabled={busy || !stripe || !elements}
-        className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-black hover:bg-emerald-500 disabled:opacity-60"
+        className="mt-4 w-full rounded-xl border border-white/10 bg-white/10 px-4 py-3 font-semibold hover:bg-white/15 disabled:opacity-60"
       >
         {busy ? "Saving…" : "Save Card"}
       </button>
 
-      <Link
-        to="/activation"
-        className="mt-4 block text-center text-xs text-slate-400 underline"
-      >
-        Skip for now
+      <Link to="/activation" className="mt-3 block text-center text-xs text-white/70 underline hover:text-white">
+        Continue without billing
       </Link>
-    </>
+    </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Page */
-/* ------------------------------------------------------------------ */
-
 export default function Billing() {
+  const nav = useNavigate();
   const [params] = useSearchParams();
-  const navigate = useNavigate();
 
-  const [clientSecret, setClientSecret] = useState("");
   const [loading, setLoading] = useState(true);
-  const [fatalError, setFatalError] = useState("");
+  const [fatal, setFatal] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [customerId, setCustomerId] = useState("");
 
-  /* -------------------------------------------------------------- */
-  /* Guard: must be logged in */
-  /* -------------------------------------------------------------- */
+  // Create Stripe promise once
+  const stripePromise = useMemo(() => {
+    if (!STRIPE_PUBLISHABLE_KEY) return null;
+    return loadStripe(STRIPE_PUBLISHABLE_KEY);
+  }, []);
+
+  // If Stripe redirected back (3DS), finalize with setup_intent_client_secret
+  useEffect(() => {
+    const returnedSecret = params.get("setup_intent_client_secret");
+    if (returnedSecret && isValidSetupIntentSecret(returnedSecret)) {
+      setClientSecret(returnedSecret);
+      setLoading(false);
+    }
+  }, [params]);
+
+  // Normal flow: request SetupIntent from your backend
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
-      navigate("/signup", { replace: true });
+      nav("/signup", { replace: true });
+      return;
     }
-  }, [navigate]);
 
-  /* -------------------------------------------------------------- */
-  /* Load SetupIntent */
-  /* -------------------------------------------------------------- */
-  useEffect(() => {
-    let mounted = true;
+    // If we already have a valid secret (from redirect handler), skip creating a new one
+    if (clientSecret) return;
 
-    async function loadSetupIntent() {
+    let alive = true;
+
+    (async () => {
+      setLoading(true);
+      setFatal("");
+
       try {
-        setLoading(true);
-        setFatalError("");
+        const tier = params.get("tier") || undefined;
+        const strategy = params.get("strategy") || undefined;
 
-        const res = await api.post("/billing/setup-intent", {
-          tier: params.get("tier"),
-          strategy: params.get("strategy"),
-        });
+        const r = await api.post("/billing/setup-intent", { tier, strategy });
 
-        const secret = res?.data?.client_secret;
+        const secret = r?.data?.client_secret;
+        const custId = r?.data?.customer_id || "";
 
-        console.log("[Billing] API_BASE:", API_BASE);
-        console.log("[Billing] client_secret:", secret);
-
-        if (!isValidStripeSecret(secret)) {
-          throw new Error(
-            "Invalid Stripe client secret returned from API."
-          );
+        if (!isValidSetupIntentSecret(secret)) {
+          // This is the exact bug you’re seeing (pi_demo_secret / wrong value)
+          throw new Error("Invalid Stripe client secret returned from API.");
         }
 
-        if (mounted) setClientSecret(secret);
-      } catch (err) {
-        console.error("Failed to load billing setup:", err);
-
-        if (mounted) {
-          setFatalError(
-            err?.response?.data?.message ||
-              err?.message ||
-              "Billing is currently unavailable."
-          );
-        }
+        if (!alive) return;
+        setClientSecret(secret);
+        setCustomerId(custId);
+      } catch (e) {
+        if (!alive) return;
+        setFatal(e?.message || "Billing unavailable.");
       } finally {
-        if (mounted) setLoading(false);
+        if (alive) setLoading(false);
       }
-    }
+    })();
 
-    loadSetupIntent();
     return () => {
-      mounted = false;
+      alive = false;
     };
-  }, [params]);
-
-  /* -------------------------------------------------------------- */
-  /* Render states */
-  /* -------------------------------------------------------------- */
+  }, [nav, params, clientSecret]);
 
   if (!STRIPE_PUBLISHABLE_KEY) {
     return (
       <div className="min-h-screen bg-black text-white p-6">
-        <div className="mx-auto max-w-md rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-          Stripe is not configured (missing publishable key).
+        <div className="mx-auto max-w-md">
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
+            Missing Stripe publishable key (REACT_APP_STRIPE_PUBLISHABLE_KEY).
+          </div>
         </div>
+      </div>
+    );
+  }
+
+  if (!stripePromise) {
+    return (
+      <div className="min-h-screen bg-black text-white p-6">
+        <div className="mx-auto max-w-md">Stripe failed to initialize.</div>
       </div>
     );
   }
@@ -205,20 +192,20 @@ export default function Billing() {
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white p-6">
-        <div className="mx-auto max-w-md text-center text-slate-300">
-          Loading billing…
+        <div className="mx-auto max-w-md">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">Loading billing…</div>
         </div>
       </div>
     );
   }
 
-  if (fatalError) {
+  if (fatal || !clientSecret) {
     return (
       <div className="min-h-screen bg-black text-white p-6">
-        <div className="mx-auto max-w-md rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          {fatalError}
-          <div className="mt-4 text-center">
-            <Link to="/activation" className="underline">
+        <div className="mx-auto max-w-md">
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
+            <div className="font-semibold text-red-200">{fatal || "Billing unavailable."}</div>
+            <Link to="/activation" className="mt-2 inline-block text-sm underline text-white/80 hover:text-white">
               Continue without billing
             </Link>
           </div>
@@ -227,20 +214,21 @@ export default function Billing() {
     );
   }
 
-  /* -------------------------------------------------------------- */
-  /* Happy path */
-  /* -------------------------------------------------------------- */
+  const elementsOptions = {
+    clientSecret,
+    appearance: { theme: "night" },
+  };
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="mx-auto max-w-md">
-        <h1 className="mb-4 text-xl font-bold">Billing Setup</h1>
+        <div className="mb-4">
+          <h1 className="text-xl font-extrabold tracking-tight">Billing Setup</h1>
+          <p className="text-sm text-white/70">Add a card for performance fees (Starter tier).</p>
+        </div>
 
-        <Elements
-          stripe={stripePromise}
-          options={{ clientSecret }}
-        >
-          <BillingInner />
+        <Elements stripe={stripePromise} options={elementsOptions}>
+          <BillingInner customerId={customerId} />
         </Elements>
       </div>
     </div>
