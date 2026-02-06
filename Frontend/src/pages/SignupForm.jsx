@@ -19,13 +19,39 @@ const API_BASE =
     ? "http://localhost:8001"
     : "https://api.imali-defi.com");
 
-/** Must match BotAPI.js */
 const TOKEN_KEY = "imali_token";
 
+/* =========================
+   TOKEN HELPERS (FIX)
+========================= */
+function normalizeToken(token) {
+  if (!token) return "";
+  return token.startsWith("jwt:") ? token.slice(4) : token;
+}
+
+function saveToken(token) {
+  const raw = normalizeToken(String(token).trim());
+  if (!raw) return false;
+  localStorage.setItem(TOKEN_KEY, raw);
+  return true;
+}
+
+/* =========================
+   AXIOS INSTANCE (FIX)
+========================= */
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
   timeout: 15000,
   headers: { "Content-Type": "application/json" },
+});
+
+// Attach token automatically to ALL requests
+api.interceptors.request.use((config) => {
+  const stored = localStorage.getItem(TOKEN_KEY);
+  if (stored) {
+    config.headers.Authorization = `Bearer ${stored}`;
+  }
+  return config;
 });
 
 /* =========================
@@ -44,58 +70,52 @@ const TIERS = {
     label: "Starter",
     fee: "30% on profits over 3%",
     monthly: "No monthly fee",
-    description: "Auto-trading only",
   },
   pro: {
     img: ProNFT,
     label: "Pro",
     fee: "5% on profits over 3%",
     monthly: "$19/month",
-    description: "Manual + Auto trading",
   },
   elite: {
     img: EliteNFT,
     label: "Elite",
     fee: "5% on profits over 3%",
     monthly: "$49/month",
-    description: "All features + DEX",
   },
   stock: {
     img: StockNFT,
     label: "Stocks",
     fee: "5% on profits over 3%",
     monthly: "$99/month",
-    description: "Stock trading focus",
   },
   bundle: {
     img: BundleNFT,
     label: "Bundle",
     fee: "5% on profits over 3%",
     monthly: "$199/month",
-    description: "Complete package",
   },
 };
 
 function fireConfetti(container) {
   if (!container) return;
-  const EMOJI = ["🎉", "✨", "🚀", "💎"];
-  for (let i = 0; i < 18; i++) {
+  ["🎉", "✨", "🚀", "💎"].forEach((emoji) => {
     const span = document.createElement("span");
-    span.textContent = EMOJI[Math.floor(Math.random() * EMOJI.length)];
+    span.textContent = emoji;
     span.style.position = "fixed";
     span.style.left = Math.random() * 100 + "vw";
     span.style.top = "-5vh";
-    span.style.fontSize = "20px";
+    span.style.fontSize = "22px";
     span.style.transition = "transform 1s ease, opacity 1s ease";
     container.appendChild(span);
 
     requestAnimationFrame(() => {
-      span.style.transform = `translateY(120vh)`;
+      span.style.transform = "translateY(120vh)";
       span.style.opacity = "0";
     });
 
     setTimeout(() => span.remove(), 1200);
-  }
+  });
 }
 
 function pickFromQuery(value, allowed) {
@@ -103,17 +123,9 @@ function pickFromQuery(value, allowed) {
   return allowed.includes(v) ? v : null;
 }
 
-function saveToken(token) {
-  const t = String(token || "").trim();
-  if (!t) return false;
-  try {
-    localStorage.setItem(TOKEN_KEY, t);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
+/* =========================
+   COMPONENT
+========================= */
 export default function SignupForm() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -123,11 +135,9 @@ export default function SignupForm() {
   const [password, setPassword] = useState("");
   const [tier, setTier] = useState("starter");
   const [strategy, setStrategy] = useState("ai_weighted");
-
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // Pull query params (tier/strategy)
   useEffect(() => {
     const t = pickFromQuery(params.get("tier"), Object.keys(TIERS));
     const s = pickFromQuery(
@@ -143,8 +153,6 @@ export default function SignupForm() {
     [email]
   );
 
-  const activeTier = TIERS[tier];
-
   const submit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -156,49 +164,35 @@ export default function SignupForm() {
       if (!emailValid) throw new Error("Enter a valid email");
       if (password.length < 8) throw new Error("Password must be at least 8 characters");
 
-      const execution_mode = tier === "starter" ? "auto" : "manual";
-
-      // Create user
       const res = await api.post("/signup", {
         email: email.trim(),
         password,
         tier,
         strategy,
-        execution_mode,
+        execution_mode: tier === "starter" ? "auto" : "manual",
       });
 
-      // Expect a token from backend (or nested)
-      const data = res?.data || {};
       const token =
-        data?.token ||
-        data?.access_token ||
-        data?.auth_token ||
-        data?.jwt ||
-        data?.user?.token ||
+        res?.data?.token ||
+        res?.data?.access_token ||
+        res?.data?.jwt ||
         "";
 
-      // If backend didn't return token, you WILL get /me 401 later.
       if (!saveToken(token)) {
-        throw new Error(
-          "Signup succeeded but no auth token was returned. Update backend /api/signup to return { token } (or access_token)."
-        );
+        throw new Error("Signup succeeded but token was missing or invalid.");
       }
 
       fireConfetti(confettiRef.current);
 
-      // Go billing (Billing should also use the same token key)
       setTimeout(() => {
-        navigate(
-          `/billing?tier=${encodeURIComponent(tier)}&strategy=${encodeURIComponent(strategy)}`
-        );
-      }, 350);
+        navigate(`/billing?tier=${tier}&strategy=${strategy}`);
+      }, 400);
     } catch (e) {
       setErr(
-        e?.response?.data?.detail ||
-          e?.response?.data?.message ||
-          e?.response?.data?.error ||
-          e?.message ||
-          "Signup failed"
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        e?.message ||
+        "Signup failed"
       );
     } finally {
       setLoading(false);
@@ -206,10 +200,7 @@ export default function SignupForm() {
   };
 
   return (
-    <div
-      ref={confettiRef}
-      className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white"
-    >
+    <div ref={confettiRef} className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
       <div className="max-w-4xl mx-auto px-6 py-12">
         <h1 className="text-4xl font-extrabold text-center mb-2">
           Create your IMALI account
@@ -218,8 +209,6 @@ export default function SignupForm() {
         <p className="text-center text-gray-300 mb-6">
           Signup → Billing → Activation → Trade
         </p>
-
-        <div className="text-center text-xs text-white/40 mb-4">API: {API_BASE}</div>
 
         {err && (
           <div className="mb-4 rounded bg-red-500/10 border border-red-500/30 p-3 text-red-200">
@@ -231,26 +220,11 @@ export default function SignupForm() {
           onSubmit={submit}
           className="rounded-2xl bg-white/5 border border-white/10 p-6 space-y-4"
         >
-          <div className="flex items-center gap-3">
-            <img
-              src={activeTier?.img}
-              alt={activeTier?.label}
-              className="w-12 h-12 rounded-xl object-cover"
-            />
-            <div>
-              <div className="font-semibold">{activeTier?.label}</div>
-              <div className="text-xs text-white/50">
-                {activeTier?.monthly} · {activeTier?.fee}
-              </div>
-            </div>
-          </div>
-
           <input
             className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
           />
 
           <input
@@ -259,32 +233,7 @@ export default function SignupForm() {
             placeholder="Password (8+ chars)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
           />
-
-          <select
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
-            value={strategy}
-            onChange={(e) => setStrategy(e.target.value)}
-          >
-            {STRATEGIES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
-            value={tier}
-            onChange={(e) => setTier(e.target.value)}
-          >
-            {Object.entries(TIERS).map(([k, t]) => (
-              <option key={k} value={k}>
-                {t.label} — {t.monthly}
-              </option>
-            ))}
-          </select>
 
           <button
             disabled={loading || !emailValid}
@@ -293,15 +242,8 @@ export default function SignupForm() {
             {loading ? "Creating Account…" : "Continue to Billing"}
           </button>
 
-          <div className="text-xs text-center text-white/60">
-            Billing setup is required for performance-fee collection.
-          </div>
-
           <div className="text-xs text-center text-white/40">
-            Already have an account?{" "}
-            <Link to="/login" className="underline">
-              Log in
-            </Link>
+            Already have an account? <Link to="/login" className="underline">Log in</Link>
           </div>
         </form>
       </div>
