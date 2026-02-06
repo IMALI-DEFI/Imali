@@ -1,18 +1,23 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
-/* ---------------- Environment Helpers ---------------- */
+/* ======================================================
+   Environment Helpers
+====================================================== */
 const IS_BROWSER = typeof window !== "undefined";
+const TOKEN_KEY = "imali_token";
 
 function getEnv(key, fallback = "") {
-  if (typeof process !== "undefined" && process.env && process.env[key] !== undefined) {
+  if (typeof process !== "undefined" && process.env?.[key] !== undefined) {
     return process.env[key] || fallback;
   }
+
   if (IS_BROWSER) {
-    if (window.__ENV && window.__ENV[key] !== undefined) return window.__ENV[key];
+    if (window.__ENV?.[key] !== undefined) return window.__ENV[key];
     if (window[key] !== undefined) return window[key];
     if (window.process?.env?.[key]) return window.process.env[key];
   }
+
   return fallback;
 }
 
@@ -20,149 +25,214 @@ function stripTrailingSlash(s) {
   return String(s || "").replace(/\/+$/, "");
 }
 
+/* ======================================================
+   API Origin Resolver (single source of truth)
+====================================================== */
 function resolveApiOrigin() {
   const raw =
     getEnv("API_BASE_URL") ||
     getEnv("VITE_API_BASE_URL") ||
     getEnv("REACT_APP_API_BASE_URL") ||
+    getEnv("REACT_APP_API_BASE") ||
     "";
 
   if (raw) {
     const cleaned = stripTrailingSlash(raw);
-    if (cleaned.endsWith("/api")) return cleaned.slice(0, -4);
-    return cleaned;
+    return cleaned.endsWith("/api") ? cleaned.slice(0, -4) : cleaned;
   }
 
   if (IS_BROWSER) {
     const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") return "http://localhost:8001";
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://localhost:8001";
+    }
     return "https://api.imali-defi.com";
   }
 
   return "http://localhost:8001";
 }
 
-/* ---------------- Token Storage ---------------- */
-const TOKEN_KEY = "imali_token";
+/* ======================================================
+   Token Normalization (CRITICAL FIX)
+====================================================== */
+function normalizeJwt(token) {
+  if (!token) return "";
+  return token.startsWith("jwt:") ? token.slice(4) : token;
+}
 
 export function setAuthToken(token) {
-  const t = (token || "").trim();
   if (!IS_BROWSER) return;
 
-  if (!t) {
+  const clean = normalizeJwt(String(token || "").trim());
+  if (!clean) {
     localStorage.removeItem(TOKEN_KEY);
     return;
   }
-  localStorage.setItem(TOKEN_KEY, t);
+
+  localStorage.setItem(TOKEN_KEY, clean);
 }
 
 export function getAuthToken() {
   if (!IS_BROWSER) return "";
-  return localStorage.getItem(TOKEN_KEY) || "";
+  return normalizeJwt(localStorage.getItem(TOKEN_KEY) || "");
 }
 
-/* ---------------- Axios Instance ---------------- */
+export function clearAuthToken() {
+  if (!IS_BROWSER) return;
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/* ======================================================
+   Axios Instance
+====================================================== */
 const API_ORIGIN = resolveApiOrigin();
 const BASE_URL = `${stripTrailingSlash(API_ORIGIN)}/api`;
 
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 20000,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-/* ---------------- Dev Logging ---------------- */
+/* ======================================================
+   Dev Logging
+====================================================== */
 try {
   const isDev =
     (IS_BROWSER &&
-      (window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1" ||
-        window.location.port === "3000" ||
-        window.location.port === "5173")) ||
+      ["localhost", "127.0.0.1"].includes(window.location.hostname)) ||
     (!IS_BROWSER && process.env.NODE_ENV === "development");
 
-  if (isDev) console.log(`[BotAPI] baseURL: ${BASE_URL}`);
+  if (isDev) {
+    console.log("[BotAPI] API Origin:", API_ORIGIN);
+    console.log("[BotAPI] Base URL:", BASE_URL);
+  }
 } catch {
-  // ignore
+  /* noop */
 }
 
-/* ---------------- Token Injection ---------------- */
-api.interceptors.request.use((config) => {
-  const token = getAuthToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+/* ======================================================
+   Auth Injection (FIXED)
+====================================================== */
+api.interceptors.request.use(
+  (config) => {
+    const token = getAuthToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-/* ---------------- Error Wrapper ---------------- */
+/* ======================================================
+   Unified Error Wrapper
+====================================================== */
 async function tryApi(fn) {
   try {
     const res = await fn();
     return res.data;
   } catch (err) {
     const status = err?.response?.status;
-    const apiMsg =
+    const message =
       err?.response?.data?.message ||
       err?.response?.data?.error ||
-      err?.response?.data?.detail;
-    const msg = apiMsg || err?.message || "Network or API error";
-    console.error("[BotAPI] Error:", status, msg);
-    const e = new Error(msg);
+      err?.response?.data?.detail ||
+      err?.message ||
+      "API request failed";
+
+    console.error("[BotAPI]", status, message);
+
+    const e = new Error(message);
     e.status = status;
+
+    if (status === 401 || status === 403) {
+      clearAuthToken();
+    }
+
     throw e;
   }
 }
 
-/* ---------------- Central API Routes ---------------- */
+/* ======================================================
+   Centralized API Interface
+====================================================== */
 export const BotAPI = {
   client: api,
   tryApi,
 
-  /* Health */
+  /* ---------------- Health ---------------- */
   health: () => tryApi(() => api.get("/health")),
 
-  /* Auth */
+  /* ---------------- Auth ---------------- */
   signup: async (payload) => {
     const data = await tryApi(() => api.post("/signup", payload));
-    const t = data?.token || data?.access_token || data?.auth_token || data?.jwt || "";
-    if (t) setAuthToken(t);
+    if (data?.token) setAuthToken(data.token);
     return data;
   },
 
   login: async (payload) => {
     const data = await tryApi(() => api.post("/login", payload));
-    const t = data?.token || data?.access_token || data?.auth_token || data?.jwt || "";
-    if (t) setAuthToken(t);
+    if (data?.token) setAuthToken(data.token);
     return data;
+  },
+
+  logout: () => {
+    clearAuthToken();
   },
 
   me: () => tryApi(() => api.get("/me")),
   activationStatus: () => tryApi(() => api.get("/me/activation-status")),
 
-  /* Integrations */
-  connectWallet: (payload) => tryApi(() => api.post("/integrations/wallet", payload)),
-  connectOkx: (payload) => tryApi(() => api.post("/integrations/okx", payload)),
-  connectAlpaca: (payload) => tryApi(() => api.post("/integrations/alpaca", payload)),
+  /* ---------------- Integrations ---------------- */
+  connectWallet: (payload) =>
+    tryApi(() => api.post("/integrations/wallet", payload)),
 
-  /* Trading */
-  tradingEnable: (enabled) => tryApi(() => api.post("/trading/enable", { enabled: !!enabled })),
-  botStart: (payload = {}) => tryApi(() => api.post("/bot/start", payload)),
+  connectOkx: (payload) =>
+    tryApi(() => api.post("/integrations/okx", payload)),
 
-  /* Analytics */
-  analyticsPnlSeries: (payload) => tryApi(() => api.post("/analytics/pnl/series", payload)),
-  analyticsWinLoss: (payload) => tryApi(() => api.post("/analytics/winloss", payload)),
-  analyticsFeesSeries: (payload) => tryApi(() => api.post("/analytics/fees/series", payload)),
+  connectAlpaca: (payload) =>
+    tryApi(() => api.post("/integrations/alpaca", payload)),
 
-  /* Billing */
-  billingSetupIntent: (payload = {}) => tryApi(() => api.post("/billing/setup-intent", payload)),
+  /* ---------------- Trading ---------------- */
+  tradingEnable: (enabled) =>
+    tryApi(() => api.post("/trading/enable", { enabled: !!enabled })),
+
+  botStart: (payload = {}) =>
+    tryApi(() => api.post("/bot/start", payload)),
+
+  /* ---------------- Analytics ---------------- */
+  analyticsPnlSeries: (payload) =>
+    tryApi(() => api.post("/analytics/pnl/series", payload)),
+
+  analyticsWinLoss: (payload) =>
+    tryApi(() => api.post("/analytics/winloss", payload)),
+
+  analyticsFeesSeries: (payload) =>
+    tryApi(() => api.post("/analytics/fees/series", payload)),
+
+  /* ---------------- Billing ---------------- */
+  billingSetupIntent: (payload = {}) =>
+    tryApi(() => api.post("/billing/setup-intent", payload)),
+
   billingSetDefaultPaymentMethod: (payload) =>
     tryApi(() => api.post("/billing/set-default-payment-method", payload)),
+
   billingCardOnFileStatus: (payload = {}) =>
     tryApi(() => api.post("/billing/card-on-file/status", payload)),
-  billingFeeHistory: (payload = {}) => tryApi(() => api.post("/billing/fee-history", payload)),
-  billingCalculateFee: (payload) => tryApi(() => api.post("/billing/calculate-fee", payload)),
-  billingChargeFee: (payload) => tryApi(() => api.post("/billing/charge-fee", payload)),
 
-  /* Raw helpers */
+  billingFeeHistory: (payload = {}) =>
+    tryApi(() => api.post("/billing/fee-history", payload)),
+
+  billingCalculateFee: (payload) =>
+    tryApi(() => api.post("/billing/calculate-fee", payload)),
+
+  billingChargeFee: (payload) =>
+    tryApi(() => api.post("/billing/charge-fee", payload)),
+
+  /* ---------------- Raw Helpers ---------------- */
   rawGet: async (path) => (await api.get(path)).data,
   rawPost: async (path, body = {}) => (await api.post(path, body)).data,
 };
