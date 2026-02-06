@@ -1,10 +1,6 @@
-// src/pages/Activation.jsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-
-// If you use these helpers elsewhere, keep them. If not, you can remove wallet section.
-import { getContractInstance, getSigner, POLYGON_MAINNET } from "../getContractInstance";
+import { useNavigate, Link } from "react-router-dom";
 
 /* ======================================================
    CONFIG
@@ -12,818 +8,894 @@ import { getContractInstance, getSigner, POLYGON_MAINNET } from "../getContractI
 
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL ||
-  process.env.REACT_APP_API_BASE ||
-  (typeof window !== "undefined" && window.location.hostname === "localhost"
+  (window.location.hostname === "localhost"
     ? "http://localhost:8001"
     : "https://api.imali-defi.com");
 
-const API = String(API_BASE).replace(/\/+$/, "");
 const TOKEN_KEY = "imali_token";
-
-// Persisted progress key
-const PROGRESS_KEY = "imali_activation_progress_v2";
-
-/**
- * Stripe webhook guard
- * - If true, we ONLY treat billing as complete when webhook is confirmed.
- * - If false, any "has_card_on_file" etc can pass.
- *
- * For production: keep TRUE.
- * For debugging: you can temporarily set to false.
- */
-const REQUIRE_WEBHOOK_CONFIRMATION = true;
-
-// “billing still processing” grace window (optional UI)
-const BILLING_GRACE_MS = 24 * 60 * 60 * 1000;
-
-const EXTERNAL = {
-  metamaskDownload: "https://metamask.io/download/",
-  okxApi: "https://www.okx.com/account/my-api",
-  alpacaPaperDashboard: "https://app.alpaca.markets/paper/dashboard/overview",
-};
 
 /* ======================================================
    API CLIENT
 ====================================================== */
 
 const api = axios.create({
-  baseURL: `${API}/api`,
-  timeout: 20000,
-  headers: { "Content-Type": "application/json" },
+  baseURL: `${API_BASE}/api`,
+  timeout: 30000,
 });
 
 api.interceptors.request.use((cfg) => {
-  try {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) cfg.headers.Authorization = `Bearer ${token}`;
-  } catch {}
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) cfg.headers.Authorization = `Bearer ${token}`;
   return cfg;
 });
 
+// Add response interceptor for better error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  }
+);
+
 /* ======================================================
-   SMALL HELPERS
+   UI COMPONENTS
 ====================================================== */
 
-const lower = (v) => String(v || "").trim().toLowerCase();
-const now = () => Date.now();
-
-function safeNextPath(nextRaw) {
-  if (!nextRaw) return "";
-  try {
-    const s = String(nextRaw);
-    if (!s.startsWith("/")) return "";
-    if (s.startsWith("//")) return "";
-    return s;
-  } catch {
-    return "";
-  }
+function Step({ 
+  title, 
+  done, 
+  required, 
+  loading, 
+  actionLabel,
+  onAction,
+  children 
+}) {
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4 transition-all hover:border-gray-700">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
+            done ? "bg-emerald-500/20 border border-emerald-500/30" : 
+            loading ? "bg-blue-500/20 border border-blue-500/30" : 
+            "bg-gray-800 border border-gray-700"
+          }`}>
+            {done ? (
+              <span className="text-emerald-400 text-sm">✓</span>
+            ) : loading ? (
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent"></div>
+            ) : (
+              <span className="text-gray-400 text-sm">●</span>
+            )}
+          </div>
+          <div>
+            <div className="font-semibold text-white flex items-center gap-2">
+              {title}
+              {required && !done && (
+                <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full">Required</span>
+              )}
+            </div>
+            {!done && actionLabel && (
+              <button
+                onClick={onAction}
+                disabled={loading}
+                className="text-sm mt-1 text-blue-400 hover:text-blue-300 underline disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLabel} →
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="text-sm">
+          {done ? (
+            <span className="text-emerald-400 font-medium">Complete</span>
+          ) : loading ? (
+            <span className="text-blue-400">Updating...</span>
+          ) : (
+            <span className="text-amber-400">Pending</span>
+          )}
+        </div>
+      </div>
+      <div className="text-sm text-gray-400 pl-11">{children}</div>
+    </div>
+  );
 }
 
 function ProgressBar({ pct }) {
   return (
-    <div className="h-2 rounded-full bg-white/10 overflow-hidden border border-white/10">
-      <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
-
-function Step({ title, done, children, right }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="min-w-0">
-          <div className="font-semibold text-white break-words">{title}</div>
-        </div>
-        <div className="shrink-0 text-xs">
-          {done ? (
-            <span className="text-emerald-300">✔ Complete</span>
-          ) : (
-            <span className="text-amber-300">Pending</span>
-          )}
-          {right ? <div className="mt-2">{right}</div> : null}
-        </div>
+    <div className="relative">
+      <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
       </div>
-      <div className="text-sm text-white/70">{children}</div>
-    </div>
-  );
-}
-
-function Modal({ open, title, children, onClose, busy }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70" onClick={() => (!busy ? onClose() : null)} />
-      <div className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-gray-950 p-5">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="text-lg font-bold text-white break-words">{title}</div>
-          <button
-            onClick={() => (!busy ? onClose() : null)}
-            className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
-            disabled={busy}
-          >
-            ✕
-          </button>
-        </div>
-        {children}
+      <div className="absolute -top-2 right-0 text-xs text-gray-400">
+        {pct}%
       </div>
     </div>
   );
 }
 
 /* ======================================================
-   MAIN
+   MODAL COMPONENTS FOR API INPUTS
+====================================================== */
+
+function OkxModal({ isOpen, onClose, onSubmit }) {
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({
+    api_key: "",
+    api_secret: "",
+    passphrase: "",
+    mode: "paper"
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await onSubmit(form);
+      onClose();
+    } catch (error) {
+      console.error("OKX connection failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-md w-full p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Connect OKX</h3>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">API Key</label>
+            <input
+              type="password"
+              value={form.api_key}
+              onChange={(e) => setForm({...form, api_key: e.target.value})}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="Enter API Key"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">API Secret</label>
+            <input
+              type="password"
+              value={form.api_secret}
+              onChange={(e) => setForm({...form, api_secret: e.target.value})}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="Enter API Secret"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Passphrase</label>
+            <input
+              type="password"
+              value={form.passphrase}
+              onChange={(e) => setForm({...form, passphrase: e.target.value})}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="Enter Passphrase"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Trading Mode</label>
+            <select
+              value={form.mode}
+              onChange={(e) => setForm({...form, mode: e.target.value})}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+            >
+              <option value="paper">Paper Trading</option>
+              <option value="live">Live Trading</option>
+            </select>
+          </div>
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm disabled:opacity-50"
+            >
+              {loading ? "Connecting..." : "Connect OKX"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AlpacaModal({ isOpen, onClose, onSubmit }) {
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({
+    api_key: "",
+    api_secret: "",
+    mode: "paper"
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await onSubmit(form);
+      onClose();
+    } catch (error) {
+      console.error("Alpaca connection failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-md w-full p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Connect Alpaca</h3>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">API Key</label>
+            <input
+              type="password"
+              value={form.api_key}
+              onChange={(e) => setForm({...form, api_key: e.target.value})}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="Enter API Key"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">API Secret</label>
+            <input
+              type="password"
+              value={form.api_secret}
+              onChange={(e) => setForm({...form, api_secret: e.target.value})}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="Enter API Secret"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Trading Mode</label>
+            <select
+              value={form.mode}
+              onChange={(e) => setForm({...form, mode: e.target.value})}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+            >
+              <option value="paper">Paper Trading</option>
+              <option value="live">Live Trading</option>
+            </select>
+          </div>
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm disabled:opacity-50"
+            >
+              {loading ? "Connecting..." : "Connect Alpaca"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function WalletModal({ isOpen, onClose, onSubmit }) {
+  const [loading, setLoading] = useState(false);
+  const [wallet, setWallet] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!wallet.trim()) return;
+    
+    setLoading(true);
+    try {
+      await onSubmit(wallet);
+      onClose();
+    } catch (error) {
+      console.error("Wallet connection failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-md w-full p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Connect Wallet</h3>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Wallet Address</label>
+            <input
+              type="text"
+              value={wallet}
+              onChange={(e) => setWallet(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm font-mono"
+              placeholder="0x..."
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Enter your Ethereum wallet address (0x...)
+            </p>
+          </div>
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !wallet.trim()}
+              className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm disabled:opacity-50"
+            >
+              {loading ? "Connecting..." : "Connect Wallet"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ======================================================
+   MAIN COMPONENT
 ====================================================== */
 
 export default function Activation() {
-  const nav = useNavigate();
-  const loc = useLocation();
-  const confettiRef = useRef(null);
+  const navigate = useNavigate();
 
+  // State
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-
+  const [refreshing, setRefreshing] = useState(false);
   const [me, setMe] = useState(null);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
+  
+  // Modal states
+  const [showOkxModal, setShowOkxModal] = useState(false);
+  const [showAlpacaModal, setShowAlpacaModal] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [updatingStep, setUpdatingStep] = useState(null);
 
-  // Modals
-  const [showOkx, setShowOkx] = useState(false);
-  const [showAlpaca, setShowAlpaca] = useState(false);
-
-  // OKX inputs
-  const [okxKey, setOkxKey] = useState("");
-  const [okxSecret, setOkxSecret] = useState("");
-  const [okxPass, setOkxPass] = useState("");
-  const [okxMode, setOkxMode] = useState("paper");
-
-  // Alpaca inputs
-  const [alpacaKey, setAlpacaKey] = useState("");
-  const [alpacaSecret, setAlpacaSecret] = useState("");
-  const [alpacaMode, setAlpacaMode] = useState("paper");
-
-  // Wallet
-  const [walletAddr, setWalletAddr] = useState("");
-
-  // Next destination after completion (supports /activation?next=/dashboard)
-  const nextParam = useMemo(() => {
-    const qs = new URLSearchParams(loc.search);
-    return safeNextPath(qs.get("next"));
-  }, [loc.search]);
-
-  const hasMetaMask = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return !!window.ethereum;
-  }, []);
-
-  /* ---------------- HARD AUTH GUARD ---------------- */
+  /* ---------------- AUTH GUARD ---------------- */
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) nav("/login", { replace: true });
-  }, [nav]);
-
-  /* ---------------- LOAD / REFRESH ---------------- */
-  const refresh = useCallback(async () => {
-    setError("");
-    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
-      setMe(null);
-      setStatus(null);
-      return;
+      navigate("/login", { replace: true });
     }
+  }, [navigate]);
 
-    const [meRes, statusRes] = await Promise.all([api.get("/me"), api.get("/me/activation-status")]);
+  /* ---------------- LOAD ACTIVATION DATA ---------------- */
+  const loadActivationData = async () => {
+    try {
+      const [meRes, statusRes] = await Promise.all([
+        api.get("/me"),
+        api.get("/me/activation-status"),
+      ]);
 
-    const user = meRes.data?.user || null;
-    const st = statusRes.data?.status ?? statusRes.data ?? null;
-
-    setMe(user);
-    setStatus(st);
-
-    // Wallet display priority
-    const backendWallet =
-      (Array.isArray(user?.wallet_addresses) && user.wallet_addresses[0]) ||
-      (Array.isArray(user?.wallets) && user.wallets[0]) ||
-      st?.wallet_address ||
-      "";
-
-    if (backendWallet) setWalletAddr(backendWallet);
-  }, []);
+      setMe(meRes.data?.user || null);
+      setStatus(statusRes.data || null);
+      setError("");
+    } catch (e) {
+      console.error("Failed to load activation data:", e);
+      setError(
+        e?.response?.data?.message ||
+        "Unable to load activation status. Please try again."
+      );
+      if (e.response?.status === 401) {
+        localStorage.removeItem(TOKEN_KEY);
+        navigate("/login", { replace: true });
+      }
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      try {
-        setLoading(true);
-        await refresh();
-      } catch (e) {
-        const msg =
-          e?.response?.data?.message ||
-          e?.response?.data?.error ||
-          e?.message ||
-          "Unable to load activation status.";
-        if (mounted) setError(msg);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [refresh]);
 
-  // Live update on wallet changes
-  useEffect(() => {
-    if (!window.ethereum?.on) return;
-    const onAccounts = (accounts) => {
-      const addr = accounts?.[0] || "";
-      if (addr) setWalletAddr(addr);
-    };
-    window.ethereum.on("accountsChanged", onAccounts);
-    return () => window.ethereum.removeListener?.("accountsChanged", onAccounts);
+    (async () => {
+      if (mounted) setLoading(true);
+      await loadActivationData();
+      if (mounted) setLoading(false);
+    })();
+
+    return () => { mounted = false; };
   }, []);
 
-  /* ======================================================
-     DERIVED FLAGS
-  ====================================================== */
+  /* ---------------- API ACTIONS ---------------- */
+  
+  const handleOkxConnect = async (credentials) => {
+    setUpdatingStep("okx");
+    try {
+      await api.post("/integrations/okx", credentials);
+      await loadActivationData();
+    } finally {
+      setUpdatingStep(null);
+    }
+  };
 
+  const handleAlpacaConnect = async (credentials) => {
+    setUpdatingStep("alpaca");
+    try {
+      await api.post("/integrations/alpaca", credentials);
+      await loadActivationData();
+    } finally {
+      setUpdatingStep(null);
+    }
+  };
+
+  const handleWalletConnect = async (walletAddress) => {
+    setUpdatingStep("wallet");
+    try {
+      await api.post("/integrations/wallet", { wallet: walletAddress });
+      await loadActivationData();
+    } finally {
+      setUpdatingStep(null);
+    }
+  };
+
+  const handleEnableTrading = async () => {
+    setUpdatingStep("trading");
+    try {
+      await api.post("/trading/enable", { enabled: true });
+      await loadActivationData();
+    } finally {
+      setUpdatingStep(null);
+    }
+  };
+
+  const handleStartBot = async () => {
+    setUpdatingStep("bot");
+    try {
+      await api.post("/bot/start");
+      await loadActivationData();
+    } finally {
+      setUpdatingStep(null);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadActivationData();
+    setRefreshing(false);
+  };
+
+  /* ---------------- DERIVED STATE ---------------- */
+  
   const tier = useMemo(() => {
-    const t = lower(me?.tier_active || me?.tier || "starter");
+    const t = String(me?.tier || "starter").toLowerCase();
     if (t.includes("elite")) return "elite";
     if (t.includes("pro")) return "pro";
     return "starter";
   }, [me]);
 
-  const requiresOkx = tier === "pro" || tier === "elite";
-  const requiresAlpaca = tier === "elite";
-  const requiresWallet = tier === "elite";
+  const billingConfirmed = !!status?.billing_complete || 
+                          !!status?.stripe_confirmed || 
+                          !!status?.has_card_on_file;
+  
+  const okxReady = tier === "starter" ? true : !!status?.okx_connected;
+  const alpacaReady = tier !== "elite" ? true : !!status?.alpaca_connected;
+  const walletReady = tier !== "elite" ? true : !!status?.wallet_connected;
+  const tradingEnabled = !!status?.trading_enabled;
+  const botExecuted = !!status?.bot_executed;
 
-  // Billing flags (webhook-guarded)
-  const billingSignals =
-    !!status?.billing_complete ||
-    !!status?.has_card_on_file ||
-    !!status?.payment_confirmed ||
-    !!status?.paid;
+  const activationComplete = billingConfirmed && okxReady && alpacaReady && walletReady;
 
-  const webhookConfirmed =
-    !!status?.stripe_webhook_confirmed || !!status?.stripe_confirmed || !!status?.webhook_confirmed;
+  // Calculate progress
+  const steps = [billingConfirmed, okxReady, alpacaReady, walletReady];
+  const completedSteps = steps.filter(Boolean).length;
+  const progressPct = Math.round((completedSteps / steps.length) * 100);
 
-  const billingComplete = REQUIRE_WEBHOOK_CONFIRMATION ? webhookConfirmed : billingSignals;
-
-  // Optional “processing” grace
-  const rawBillingStarted = status?.billing_started_at ?? status?.billingStartedAt ?? null;
-  const billingStartedAtMs =
-    typeof rawBillingStarted === "number"
-      ? rawBillingStarted < 2_000_000_000
-        ? rawBillingStarted * 1000
-        : rawBillingStarted
-      : typeof rawBillingStarted === "string"
-      ? Date.parse(rawBillingStarted) || null
-      : null;
-
-  const inBillingGrace =
-    !billingComplete && !!billingStartedAtMs && now() - billingStartedAtMs < BILLING_GRACE_MS;
-
-  // Integrations
-  const okxConnected = !!status?.okx_connected || !!status?.okxConfigured;
-  const alpacaConnected = !!status?.alpaca_connected || !!status?.alpacaConfigured;
-
-  const walletConnected =
-    !!status?.wallet_connected ||
-    (Array.isArray(me?.wallet_addresses) && me.wallet_addresses.length > 0) ||
-    (Array.isArray(me?.wallets) && me.wallets.length > 0) ||
-    !!walletAddr;
-
-  const okxReady = !requiresOkx ? true : okxConnected;
-  const alpacaReady = !requiresAlpaca ? true : alpacaConnected;
-  const walletReady = !requiresWallet ? true : walletConnected;
-
-  const activationComplete = billingComplete && okxReady && alpacaReady && walletReady;
-
-  // “Incomplete → demo-only dashboard”
-  const demoOnly = !activationComplete;
-
-  /* ======================================================
-     PROGRESS (PERSIST ACROSS REFRESH)
-  ====================================================== */
-
-  const stepFlags = useMemo(
-    () => ({
-      billing: billingComplete,
-      okx: okxReady,
-      alpaca: alpacaReady,
-      wallet: walletReady,
-    }),
-    [billingComplete, okxReady, alpacaReady, walletReady]
-  );
-
-  const progressPct = useMemo(() => {
-    const vals = Object.values(stepFlags);
-    const done = vals.filter(Boolean).length;
-    return Math.round((done / vals.length) * 100);
-  }, [stepFlags]);
-
+  // Save progress to localStorage
   useEffect(() => {
-    try {
+    if (me?.id) {
       localStorage.setItem(
-        PROGRESS_KEY,
+        `imali_activation_${me.id}`,
         JSON.stringify({
           progressPct,
-          stepFlags,
           activationComplete,
-          updatedAt: Date.now(),
+          lastUpdated: Date.now()
         })
       );
-    } catch {}
-  }, [progressPct, stepFlags, activationComplete]);
-
-  const persisted = useMemo(() => {
-    try {
-      const raw = localStorage.getItem(PROGRESS_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
     }
-  }, []);
+  }, [me, progressPct, activationComplete]);
 
-  /* ======================================================
-     AUTO-REDIRECT (ONLY WHEN COMPLETE)
-  ====================================================== */
-
+  /* ---------------- AUTO REDIRECT ---------------- */
   useEffect(() => {
-    if (!loading && activationComplete) {
-      const dest = nextParam || "/dashboard";
-      nav(dest, { replace: true });
+    if (!loading && activationComplete && tradingEnabled) {
+      const timer = setTimeout(() => {
+        navigate("/dashboard", { replace: true });
+      }, 2000);
+      return () => clearTimeout(timer);
     }
-  }, [loading, activationComplete, nextParam, nav]);
+  }, [loading, activationComplete, tradingEnabled, navigate]);
 
-  /* ======================================================
-     ACTIONS
-  ====================================================== */
-
-  const goBilling = () => nav("/billing");
-  const goDemoDashboard = () => nav("/dashboard?mode=demo", { replace: false });
-
-  const connectWallet = async () => {
-    setError("");
-    setBusy(true);
-    try {
-      if (!window.ethereum) throw new Error("MetaMask is not installed.");
-
-      // Ensure chain + signer
-      await getContractInstance("IMALI", POLYGON_MAINNET, { withSigner: true, autoSwitch: true });
-      const signer = await getSigner(POLYGON_MAINNET);
-      const address = await signer.getAddress();
-      setWalletAddr(address);
-
-      await api.post("/integrations/wallet", { wallet: address, chain: POLYGON_MAINNET });
-      await refresh();
-    } catch (e) {
-      setError(e?.response?.data?.message || e?.message || "Wallet connection failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveOkx = async () => {
-    setError("");
-    setBusy(true);
-    try {
-      if (!okxKey.trim() || !okxSecret.trim() || !okxPass.trim()) {
-        throw new Error("Enter OKX Key, Secret, and Passphrase.");
-      }
-
-      await api.post("/integrations/okx", {
-        api_key: okxKey.trim(),
-        api_secret: okxSecret.trim(),
-        passphrase: okxPass.trim(),
-        mode: okxMode,
-      });
-
-      setShowOkx(false);
-      setOkxKey("");
-      setOkxSecret("");
-      setOkxPass("");
-      await refresh();
-    } catch (e) {
-      setError(e?.response?.data?.message || e?.message || "Failed to save OKX keys.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveAlpaca = async () => {
-    setError("");
-    setBusy(true);
-    try {
-      if (!alpacaKey.trim() || !alpacaSecret.trim()) {
-        throw new Error("Enter Alpaca Key and Secret.");
-      }
-
-      await api.post("/integrations/alpaca", {
-        api_key: alpacaKey.trim(),
-        api_secret: alpacaSecret.trim(),
-        mode: alpacaMode,
-      });
-
-      setShowAlpaca(false);
-      setAlpacaKey("");
-      setAlpacaSecret("");
-      await refresh();
-    } catch (e) {
-      setError(e?.response?.data?.message || e?.message || "Failed to save Alpaca keys.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  /* ======================================================
-     RENDER
-  ====================================================== */
-
+  /* ---------------- RENDER LOADING ---------------- */
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-        Loading setup…
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 to-black flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="h-12 w-12 mx-auto animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+          <p className="text-gray-400">Loading your setup...</p>
+        </div>
       </div>
     );
   }
 
+  /* ---------------- RENDER ERROR ---------------- */
   if (!me) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center gap-3 p-6 text-center">
-        <div>{error || "Session expired."}</div>
-        <Link to="/login" className="underline">
-          Log in again
-        </Link>
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 to-black flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-md space-y-4">
+          <div className="text-red-400 text-4xl">⚠️</div>
+          <h2 className="text-xl font-semibold text-white">Session Expired</h2>
+          <p className="text-gray-400">{error || "Your session has expired. Please log in again."}</p>
+          <div className="pt-4 space-y-3">
+            <Link 
+              to="/login" 
+              className="block w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium"
+            >
+              Log In Again
+            </Link>
+            <Link 
+              to="/" 
+              className="block w-full py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-medium"
+            >
+              Return Home
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
-  const showMetaMaskWarning = requiresWallet && !walletConnected && !hasMetaMask;
-
+  /* ---------------- RENDER MAIN UI ---------------- */
   return (
-    <div ref={confettiRef} className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white p-6">
-      <div className="max-w-3xl mx-auto space-y-5">
-        {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-extrabold">🚀 Account Setup</h1>
-          <p className="text-white/75">
-            Finish these steps to enable <span className="font-semibold">live trading</span>.
-          </p>
+    <>
+      {/* Modals */}
+      <OkxModal 
+        isOpen={showOkxModal}
+        onClose={() => setShowOkxModal(false)}
+        onSubmit={handleOkxConnect}
+      />
+      
+      <AlpacaModal 
+        isOpen={showAlpacaModal}
+        onClose={() => setShowAlpacaModal(false)}
+        onSubmit={handleAlpacaConnect}
+      />
+      
+      <WalletModal 
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        onSubmit={handleWalletConnect}
+      />
 
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10">Plan: {tier.toUpperCase()}</span>
-            <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10">Progress: {progressPct}%</span>
-            {persisted?.updatedAt ? (
-              <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10">
-                Saved ✔
-              </span>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <ProgressBar pct={progressPct} />
-            <div className="text-xs text-white/60">
-              {billingComplete
-                ? "Billing confirmed."
-                : inBillingGrace
-                ? "Billing is still processing (Stripe webhook pending)."
-                : REQUIRE_WEBHOOK_CONFIRMATION
-                ? "Waiting for Stripe webhook confirmation."
-                : "Billing not complete yet."}
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => refresh().catch(() => {})}
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10"
-              disabled={busy}
-            >
-              {busy ? "Working…" : "Refresh"}
-            </button>
-
-            {demoOnly && (
-              <button
-                onClick={goDemoDashboard}
-                className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/30"
-                disabled={busy}
-              >
-                Go to demo dashboard
-              </button>
-            )}
-          </div>
-
-          {error ? (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200 text-sm">
-              {error}
-            </div>
-          ) : null}
-        </div>
-
-        {/* Step 1: Billing */}
-        <Step
-          title="1) Add payment method"
-          done={billingComplete}
-          right={
-            !billingComplete ? (
-              <button
-                onClick={goBilling}
-                className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white"
-                disabled={busy}
-              >
-                Go to billing
-              </button>
-            ) : null
-          }
-        >
-          {REQUIRE_WEBHOOK_CONFIRMATION ? (
-            <div className="space-y-2">
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 to-black text-white">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          
+          {/* Header */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-6">
               <div>
-                This step completes when Stripe sends a <span className="font-semibold">webhook confirmation</span>.
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                  Account Activation
+                </h1>
+                <p className="text-gray-400 mt-2">
+                  Complete these steps to unlock full trading capabilities
+                </p>
               </div>
-              {!billingComplete ? (
-                <div className="text-white/60 text-xs">
-                  If you just finished checkout, hit <span className="font-semibold">Refresh</span> in ~10–30 seconds.
+              
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-medium disabled:opacity-50"
+                >
+                  {refreshing ? "Refreshing..." : "Refresh Status"}
+                </button>
+                <Link 
+                  to="/dashboard" 
+                  className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-medium"
+                >
+                  Dashboard
+                </Link>
+              </div>
+            </div>
+
+            {/* User Info Card */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      tier === "elite" ? "bg-purple-500/20 text-purple-300" :
+                      tier === "pro" ? "bg-blue-500/20 text-blue-300" :
+                      "bg-emerald-500/20 text-emerald-300"
+                    }`}>
+                      {tier.toUpperCase()} Plan
+                    </div>
+                    <div className="text-gray-300">{me.email}</div>
+                  </div>
+                  <div className="text-sm text-gray-500 mt-1">
+                    User ID: {me.id?.substring(0, 8)}...
+                  </div>
                 </div>
-              ) : null}
-            </div>
-          ) : (
-            <div>Billing is required to run automation safely.</div>
-          )}
-        </Step>
-
-        {/* MetaMask warning */}
-        {showMetaMaskWarning && (
-          <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 text-amber-100 text-sm">
-            <div className="font-semibold">MetaMask not installed.</div>
-            <div className="mt-1">
-              Install here:{" "}
-              <a className="underline font-semibold" href={EXTERNAL.metamaskDownload} target="_blank" rel="noreferrer">
-                MetaMask Download
-              </a>
+                <div className="text-right">
+                  <div className="text-2xl font-bold">{progressPct}%</div>
+                  <div className="text-sm text-gray-400">Complete</div>
+                </div>
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="mt-4">
+                <ProgressBar pct={progressPct} />
+                <div className="flex justify-between text-xs text-gray-500 mt-2">
+                  <span>Step 1 of 4</span>
+                  <span>{completedSteps}/4 completed</span>
+                </div>
+              </div>
             </div>
           </div>
-        )}
 
-        {/* Step 2: OKX */}
-        <Step
-          title="2) Connect OKX (crypto trading)"
-          done={okxReady}
-          right={
-            requiresOkx && !okxConnected ? (
-              <button
-                onClick={() => setShowOkx(true)}
-                className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500"
-                disabled={busy}
-              >
-                Add keys
-              </button>
-            ) : null
-          }
-        >
-          {requiresOkx ? (
-            <div className="space-y-2">
-              <div>Required for <span className="font-semibold">Pro</span> and <span className="font-semibold">Elite</span>.</div>
-              <div className="text-xs text-white/60">
-                Create keys here:{" "}
-                <a className="underline" href={EXTERNAL.okxApi} target="_blank" rel="noreferrer">
-                  OKX API Page
-                </a>
-              </div>
-              {okxConnected ? <div className="text-emerald-200 text-sm">Connected ✅</div> : null}
-            </div>
-          ) : (
-            <div className="text-white/70">Not required for Starter. You can connect later.</div>
-          )}
-        </Step>
-
-        {/* Step 3: Alpaca */}
-        <Step
-          title="3) Connect Alpaca (stocks trading)"
-          done={alpacaReady}
-          right={
-            requiresAlpaca && !alpacaConnected ? (
-              <button
-                onClick={() => setShowAlpaca(true)}
-                className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500"
-                disabled={busy}
-              >
-                Add keys
-              </button>
-            ) : null
-          }
-        >
-          {requiresAlpaca ? (
-            <div className="space-y-2">
-              <div>Required for <span className="font-semibold">Elite</span>.</div>
-              <div className="text-xs text-white/60">
-                Get keys here:{" "}
-                <a className="underline" href={EXTERNAL.alpacaPaperDashboard} target="_blank" rel="noreferrer">
-                  Alpaca Dashboard (Paper)
-                </a>
-              </div>
-              {alpacaConnected ? <div className="text-emerald-200 text-sm">Connected ✅</div> : null}
-            </div>
-          ) : (
-            <div className="text-white/70">Not required for Starter/Pro. You can connect later.</div>
-          )}
-        </Step>
-
-        {/* Step 4: Wallet */}
-        <Step
-          title="4) Connect wallet (MetaMask)"
-          done={walletReady}
-          right={
-            requiresWallet && !walletConnected ? (
-              <button
-                onClick={connectWallet}
-                className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500"
-                disabled={busy || !hasMetaMask}
-                title={!hasMetaMask ? "Install MetaMask first" : "Connect wallet"}
-              >
-                {busy ? "Connecting…" : "Connect"}
-              </button>
-            ) : null
-          }
-        >
-          {requiresWallet ? (
-            <div className="space-y-2">
-              <div>Required for <span className="font-semibold">Elite</span>.</div>
-              {walletConnected ? (
-                <div className="text-emerald-200 text-sm break-words">Connected ✅ {walletAddr}</div>
+          {/* Steps Grid */}
+          <div className="grid gap-4">
+            {/* Step 1: Billing */}
+            <Step
+              title="Payment Method"
+              done={billingConfirmed}
+              required={tier === "starter"}
+              loading={updatingStep === "billing"}
+              actionLabel={billingConfirmed ? "" : "Add Payment"}
+              onAction={() => navigate("/billing")}
+            >
+              {billingConfirmed ? (
+                <div className="space-y-2">
+                  <p>✅ Payment method confirmed</p>
+                  {status?.stripe_customer_id && (
+                    <p className="text-xs text-gray-500">
+                      Customer ID: {status.stripe_customer_id.substring(0, 10)}...
+                    </p>
+                  )}
+                </div>
               ) : (
-                <div className="text-white/70">Click connect and approve the MetaMask popup.</div>
+                <div className="space-y-2">
+                  <p>Required for Starter plan to charge performance fees</p>
+                  <div className="text-xs text-gray-500">
+                    No subscription needed — card saved for future fee charges only
+                  </div>
+                </div>
               )}
-            </div>
-          ) : (
-            <div className="text-white/70">Not required for Starter/Pro.</div>
-          )}
-        </Step>
+            </Step>
 
-        {/* Bottom status */}
-        {activationComplete ? (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-200">
-            ✅ Setup complete — sending you to the dashboard…
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100">
-            <div className="font-semibold">Demo mode active</div>
-            <div className="text-sm text-amber-100/90 mt-1">
-              Live trading unlocks automatically when setup is complete. Until then, the dashboard should run in demo-only mode.
-            </div>
-          </div>
-        )}
+            {/* Step 2: OKX */}
+            <Step
+              title="OKX Exchange"
+              done={okxReady}
+              required={tier === "pro" || tier === "elite"}
+              loading={updatingStep === "okx"}
+              actionLabel={okxReady ? "" : "Connect OKX"}
+              onAction={() => setShowOkxModal(true)}
+            >
+              {okxReady ? (
+                <div className="space-y-2">
+                  <p>✅ OKX connected</p>
+                  {status?.okx_mode && (
+                    <p className="text-xs text-gray-500">
+                      Mode: {status.okx_mode}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p>{tier === "starter" 
+                    ? "Optional for Starter plan" 
+                    : "Required for Pro/Elite crypto trading"}</p>
+                  {tier !== "starter" && (
+                    <div className="text-xs text-gray-500">
+                      Connect your OKX API keys for automated crypto trading
+                    </div>
+                  )}
+                </div>
+              )}
+            </Step>
 
-        <div className="text-xs text-white/50 text-center pt-2">
-          Trading involves risk. Never trade money you can’t afford to lose.
-        </div>
+            {/* Step 3: Alpaca */}
+            <Step
+              title="Alpaca Markets"
+              done={alpacaReady}
+              required={tier === "elite"}
+              loading={updatingStep === "alpaca"}
+              actionLabel={alpacaReady ? "" : "Connect Alpaca"}
+              onAction={() => setShowAlpacaModal(true)}
+            >
+              {alpacaReady ? (
+                <div className="space-y-2">
+                  <p>✅ Alpaca connected</p>
+                  {status?.alpaca_mode && (
+                    <p className="text-xs text-gray-500">
+                      Mode: {status.alpaca_mode}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p>{tier !== "elite" 
+                    ? "Optional for Starter/Pro plans" 
+                    : "Required for Elite stock trading"}</p>
+                  {tier === "elite" && (
+                    <div className="text-xs text-gray-500">
+                      Connect your Alpaca API keys for automated stock trading
+                    </div>
+                  )}
+                </div>
+              )}
+            </Step>
 
-        {/* Debug (optional) */}
-        <details className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <summary className="cursor-pointer text-sm text-white/70">Debug</summary>
-          <pre className="mt-3 text-xs whitespace-pre-wrap text-white/70 overflow-auto">
-            {JSON.stringify(
-              {
-                tier,
-                status,
-                guards: { REQUIRE_WEBHOOK_CONFIRMATION },
-                derived: {
-                  billingSignals,
-                  webhookConfirmed,
-                  billingComplete,
-                  okxConnected,
-                  alpacaConnected,
-                  walletConnected,
-                  activationComplete,
-                  demoOnly,
-                  nextParam,
-                },
-                progress: { progressPct, stepFlags },
-              },
-              null,
-              2
+            {/* Step 4: Wallet */}
+            <Step
+              title="Wallet Connection"
+              done={walletReady}
+              required={tier === "elite"}
+              loading={updatingStep === "wallet"}
+              actionLabel={walletReady ? "" : "Connect Wallet"}
+              onAction={() => setShowWalletModal(true)}
+            >
+              {walletReady ? (
+                <div className="space-y-2">
+                  <p>✅ Wallet connected</p>
+                  {me?.wallets?.length > 0 && (
+                    <p className="text-xs text-gray-500">
+                      {me.wallets.length} wallet(s) connected
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p>{tier !== "elite" 
+                    ? "Optional for Starter/Pro plans" 
+                    : "Required for Elite DeFi trading"}</p>
+                  {tier === "elite" && (
+                    <div className="text-xs text-gray-500">
+                      Connect your wallet for on-chain DeFi trading
+                    </div>
+                  )}
+                </div>
+              )}
+            </Step>
+
+            {/* Additional Controls */}
+            {activationComplete && (
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {!tradingEnabled && (
+                  <button
+                    onClick={handleEnableTrading}
+                    disabled={updatingStep === "trading"}
+                    className="w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 font-medium disabled:opacity-50"
+                  >
+                    {updatingStep === "trading" ? "Enabling..." : "Enable Live Trading"}
+                  </button>
+                )}
+                
+                {tradingEnabled && !botExecuted && (
+                  <button
+                    onClick={handleStartBot}
+                    disabled={updatingStep === "bot"}
+                    className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 font-medium disabled:opacity-50"
+                  >
+                    {updatingStep === "bot" ? "Starting..." : "Start Trading Bot"}
+                  </button>
+                )}
+                
+                {tradingEnabled && (
+                  <button
+                    onClick={() => navigate("/dashboard")}
+                    className="w-full py-4 rounded-xl bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 font-medium"
+                  >
+                    Go to Trading Dashboard
+                  </button>
+                )}
+              </div>
             )}
-          </pre>
-        </details>
+
+            {/* Status Messages */}
+            {activationComplete && tradingEnabled ? (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
+                <div className="text-emerald-400 text-4xl mb-3">🎉</div>
+                <h3 className="text-xl font-semibold text-emerald-300 mb-2">
+                  Activation Complete!
+                </h3>
+                <p className="text-emerald-200">
+                  Your account is fully activated. Redirecting to dashboard...
+                </p>
+                <div className="mt-4">
+                  <div className="inline-block h-1 w-12 bg-emerald-400 animate-pulse"></div>
+                </div>
+              </div>
+            ) : activationComplete && !tradingEnabled ? (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-6">
+                <h3 className="text-lg font-semibold text-amber-300 mb-2">
+                  Ready for Live Trading
+                </h3>
+                <p className="text-amber-200">
+                  All requirements are met! Enable live trading to start.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-6">
+                <h3 className="text-lg font-semibold text-blue-300 mb-2">
+                  Demo Mode Active
+                </h3>
+                <p className="text-blue-200">
+                  Complete all required steps above to unlock live trading features.
+                  You can still explore the dashboard in demo mode.
+                </p>
+                <button
+                  onClick={() => navigate("/dashboard")}
+                  className="mt-4 px-6 py-2 rounded-lg bg-blue-600/30 hover:bg-blue-600/40 text-blue-300 font-medium border border-blue-500/30"
+                >
+                  Explore Demo Dashboard
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="mt-12 pt-8 border-t border-gray-800">
+            <div className="text-center text-sm text-gray-500">
+              <p className="mb-2">Need help? Contact support@imali-defi.com</p>
+              <p className="text-xs">
+                Trading involves risk. Never trade money you can't afford to lose.
+                Past performance is not indicative of future results.
+              </p>
+              <div className="flex items-center justify-center gap-4 mt-4 text-xs">
+                <span>API: {API_BASE}</span>
+                <span>•</span>
+                <span>User: {me.email}</span>
+                <span>•</span>
+                <span>Last updated: {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-
-      {/* OKX MODAL */}
-      <Modal open={showOkx} title="Add OKX API Keys" onClose={() => setShowOkx(false)} busy={busy}>
-        <div className="space-y-3">
-          <div className="text-sm text-white/70">
-            Create keys here:{" "}
-            <a className="underline font-semibold" href={EXTERNAL.okxApi} target="_blank" rel="noreferrer">
-              OKX API Page
-            </a>
-          </div>
-
-          <label className="block text-xs text-white/60">Mode</label>
-          <select
-            className="w-full rounded-xl bg-black/30 border border-white/10 p-3"
-            value={okxMode}
-            onChange={(e) => setOkxMode(e.target.value)}
-            disabled={busy}
-          >
-            <option value="paper">Paper</option>
-            <option value="live">Live</option>
-          </select>
-
-          <input
-            className="w-full rounded-xl bg-black/30 border border-white/10 p-3"
-            placeholder="OKX API Key"
-            value={okxKey}
-            onChange={(e) => setOkxKey(e.target.value)}
-            disabled={busy}
-          />
-          <input
-            className="w-full rounded-xl bg-black/30 border border-white/10 p-3"
-            placeholder="OKX API Secret"
-            value={okxSecret}
-            onChange={(e) => setOkxSecret(e.target.value)}
-            disabled={busy}
-          />
-          <input
-            className="w-full rounded-xl bg-black/30 border border-white/10 p-3"
-            placeholder="OKX Passphrase"
-            value={okxPass}
-            onChange={(e) => setOkxPass(e.target.value)}
-            disabled={busy}
-          />
-
-          <div className="flex gap-2 justify-end pt-2">
-            <button
-              onClick={() => setShowOkx(false)}
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10"
-              disabled={busy}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={saveOkx}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
-              disabled={busy}
-            >
-              {busy ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ALPACA MODAL */}
-      <Modal open={showAlpaca} title="Add Alpaca API Keys" onClose={() => setShowAlpaca(false)} busy={busy}>
-        <div className="space-y-3">
-          <div className="text-sm text-white/70">
-            Get keys here:{" "}
-            <a className="underline font-semibold" href={EXTERNAL.alpacaPaperDashboard} target="_blank" rel="noreferrer">
-              Alpaca Dashboard (Paper)
-            </a>
-          </div>
-
-          <label className="block text-xs text-white/60">Mode</label>
-          <select
-            className="w-full rounded-xl bg-black/30 border border-white/10 p-3"
-            value={alpacaMode}
-            onChange={(e) => setAlpacaMode(e.target.value)}
-            disabled={busy}
-          >
-            <option value="paper">Paper</option>
-            <option value="live">Live</option>
-          </select>
-
-          <input
-            className="w-full rounded-xl bg-black/30 border border-white/10 p-3"
-            placeholder="Alpaca API Key"
-            value={alpacaKey}
-            onChange={(e) => setAlpacaKey(e.target.value)}
-            disabled={busy}
-          />
-          <input
-            className="w-full rounded-xl bg-black/30 border border-white/10 p-3"
-            placeholder="Alpaca API Secret"
-            value={alpacaSecret}
-            onChange={(e) => setAlpacaSecret(e.target.value)}
-            disabled={busy}
-          />
-
-          <div className="flex gap-2 justify-end pt-2">
-            <button
-              onClick={() => setShowAlpaca(false)}
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10"
-              disabled={busy}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={saveAlpaca}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
-              disabled={busy}
-            >
-              {busy ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </div>
-      </Modal>
-    </div>
+    </>
   );
 }
