@@ -35,7 +35,6 @@ api.interceptors.response.use(
   (error) => {
     if (error?.response?.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
-      // keep it simple; your router will handle
       window.location.href = "/login";
     }
     return Promise.reject(error);
@@ -403,7 +402,7 @@ export default function Activation() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [me, setMe] = useState(null);
-  const [status, setStatus] = useState(null); // this will be the inner "status" object
+  const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
 
   const [showOkxModal, setShowOkxModal] = useState(false);
@@ -425,11 +424,8 @@ export default function Activation() {
     ]);
 
     setMe(meRes.data?.user || null);
-
-    // IMPORTANT: backend returns { success: true, status: {...} }
     const statusObj = statusRes.data?.status || null;
     setStatus(statusObj);
-
     setError("");
   };
 
@@ -509,42 +505,87 @@ export default function Activation() {
   }, [me, status]);
 
   const billingConfirmed = !!status?.billing_complete || !!status?.has_card_on_file;
-
   const okxConnected = !!status?.okx_connected;
   const alpacaConnected = !!status?.alpaca_connected;
   const walletConnected = !!status?.wallet_connected;
-
   const tradingEnabled = !!status?.trading_enabled;
   const botExecuted = !!status?.bot_executed;
 
-  // Best: trust backend completion flag if provided
-  const activationComplete = status?.complete != null
-    ? !!status.complete
-    : (() => {
-        // fallback rule (matches what your backend status implies):
-        const hasAnyIntegration = okxConnected || alpacaConnected || walletConnected;
-        return billingConfirmed && tradingEnabled && hasAnyIntegration;
-      })();
+  // Use backend's activation_complete flag directly
+  const activationComplete = !!status?.activation_complete;
 
-  // Which steps are REQUIRED per tier (UI only)
-  const requiredOkx = tier === "pro" || tier === "elite";
-  const requiredAlpaca = tier === "elite";
-  const requiredWallet = tier === "elite";
+  // ✅ CORRECTED: Tier-specific requirements matching backend
+  const getTierRequirements = () => {
+    switch (tier) {
+      case "starter":
+        return {
+          okxRequired: true,     // Starter needs OKX
+          alpacaRequired: true,  // Starter needs Alpaca  
+          walletRequired: false, // Starter doesn't need wallet
+          description: "Requires Alpaca & OKX (both)",
+        };
+      case "elite":
+        return {
+          okxRequired: false,    // Elite doesn't need OKX
+          alpacaRequired: false, // Elite doesn't need Alpaca
+          walletRequired: true,  // Elite needs wallet
+          description: "Requires wallet connection",
+        };
+      case "pro":
+        return {
+          okxRequired: false,    // Pro doesn't need specific integrations
+          alpacaRequired: false, // Pro doesn't need specific integrations
+          walletRequired: false, // Pro doesn't need specific integrations
+          description: "Requires any integration",
+        };
+      default:
+        return {
+          okxRequired: false,
+          alpacaRequired: false,
+          walletRequired: false,
+          description: "Check requirements",
+        };
+    }
+  };
 
-  // Progress uses required steps only (feels correct to users)
-  const stepStates = [
+  const tierReqs = getTierRequirements();
+
+  // For Pro tier, they need at least one integration
+  const proTierMet = tier === "pro" && (okxConnected || alpacaConnected || walletConnected);
+
+  // Check if tier-specific requirements are met
+  const tierRequirementsMet = tier === "starter" 
+    ? (okxConnected && alpacaConnected)
+    : tier === "elite"
+    ? walletConnected
+    : tier === "pro"
+    ? proTierMet
+    : false;
+
+  // Required steps for progress calculation
+  const requiredSteps = [
     { key: "billing", done: billingConfirmed, required: true },
-    { key: "okx", done: okxConnected, required: requiredOkx },
-    { key: "alpaca", done: alpacaConnected, required: requiredAlpaca },
-    { key: "wallet", done: walletConnected, required: requiredWallet },
+    { key: "okx", done: okxConnected, required: tierReqs.okxRequired },
+    { key: "alpaca", done: alpacaConnected, required: tierReqs.alpacaRequired },
+    { key: "wallet", done: walletConnected, required: tierReqs.walletRequired },
     { key: "trading", done: tradingEnabled, required: true },
   ];
 
-  const requiredSteps = stepStates.filter((s) => s.required);
-  const completedRequired = requiredSteps.filter((s) => s.done).length;
-  const progressPct = requiredSteps.length
-    ? Math.round((completedRequired / requiredSteps.length) * 100)
+  const requiredStepsOnly = requiredSteps.filter((s) => s.required);
+  const completedRequired = requiredStepsOnly.filter((s) => s.done).length;
+  const progressPct = requiredStepsOnly.length
+    ? Math.round((completedRequired / requiredStepsOnly.length) * 100)
     : 100;
+
+  // For Pro tier, we need special progress calculation
+  const proProgressPct = tier === "pro"
+    ? billingConfirmed && tradingEnabled && proTierMet ? 100 : 
+      billingConfirmed && tradingEnabled ? 67 : 
+      billingConfirmed ? 33 : 0
+    : progressPct;
+
+  // Final display progress
+  const displayProgressPct = tier === "pro" ? proProgressPct : progressPct;
 
   // persist minimal progress
   useEffect(() => {
@@ -552,17 +593,17 @@ export default function Activation() {
     localStorage.setItem(
       `imali_activation_${me.id}`,
       JSON.stringify({
-        progressPct,
+        progressPct: displayProgressPct,
         activationComplete,
         lastUpdated: Date.now(),
       })
     );
-  }, [me, progressPct, activationComplete]);
+  }, [me, displayProgressPct, activationComplete]);
 
   /* ---------------- AUTO REDIRECT ---------------- */
   useEffect(() => {
     if (loading) return;
-    // Redirect when backend says activation complete AND trading enabled (live is on)
+    // Redirect when backend says activation complete AND trading enabled
     if (activationComplete && tradingEnabled) {
       const t = setTimeout(() => navigate("/dashboard", { replace: true }), 1200);
       return () => clearTimeout(t);
@@ -685,18 +726,26 @@ export default function Activation() {
                   <div className="text-sm text-gray-500 mt-1">
                     User ID: {me.id?.substring(0, 8)}...
                   </div>
+                  <div className="text-xs text-gray-400 mt-2">
+                    {tierReqs.description}
+                  </div>
                 </div>
 
                 <div className="text-right">
-                  <div className="text-2xl font-bold">{progressPct}%</div>
+                  <div className="text-2xl font-bold">{displayProgressPct}%</div>
                   <div className="text-sm text-gray-400">Required Complete</div>
                 </div>
               </div>
 
               <div className="mt-4">
-                <ProgressBar pct={progressPct} />
+                <ProgressBar pct={displayProgressPct} />
                 <div className="flex justify-between text-xs text-gray-500 mt-2">
-                  <span>{completedRequired}/{requiredSteps.length} required steps done</span>
+                  <span>
+                    {tier === "pro" 
+                      ? `${tierRequirementsMet ? "Requirements met" : "Complete billing + trading + any integration"}`
+                      : `${completedRequired}/${requiredStepsOnly.length} required steps done`
+                    }
+                  </span>
                   <span>API: {API_BASE}</span>
                 </div>
               </div>
@@ -733,11 +782,11 @@ export default function Activation() {
               )}
             </Step>
 
-            {/* OKX */}
+            {/* OKX - For Starter (required) and optional for others */}
             <Step
               title="OKX Exchange"
               done={okxConnected}
-              required={requiredOkx}
+              required={tierReqs.okxRequired}
               loading={updatingStep === "okx"}
               actionLabel={okxConnected ? "" : "Connect OKX"}
               onAction={() => setShowOkxModal(true)}
@@ -752,8 +801,8 @@ export default function Activation() {
               ) : (
                 <div className="space-y-2">
                   <p>
-                    {requiredOkx
-                      ? "Required for Pro/Elite crypto trading."
+                    {tierReqs.okxRequired
+                      ? "Required for Starter crypto trading."
                       : "Optional on your current plan."}
                   </p>
                   <div className="text-xs text-gray-500">
@@ -763,11 +812,11 @@ export default function Activation() {
               )}
             </Step>
 
-            {/* Alpaca */}
+            {/* Alpaca - For Starter (required) and optional for others */}
             <Step
               title="Alpaca Markets"
               done={alpacaConnected}
-              required={requiredAlpaca}
+              required={tierReqs.alpacaRequired}
               loading={updatingStep === "alpaca"}
               actionLabel={alpacaConnected ? "" : "Connect Alpaca"}
               onAction={() => setShowAlpacaModal(true)}
@@ -782,8 +831,8 @@ export default function Activation() {
               ) : (
                 <div className="space-y-2">
                   <p>
-                    {requiredAlpaca
-                      ? "Required for Elite stock trading."
+                    {tierReqs.alpacaRequired
+                      ? "Required for Starter stock trading."
                       : "Optional on your current plan."}
                   </p>
                   <div className="text-xs text-gray-500">
@@ -793,11 +842,11 @@ export default function Activation() {
               )}
             </Step>
 
-            {/* Wallet */}
+            {/* Wallet - For Elite (required) and optional for others */}
             <Step
               title="Wallet Connection"
               done={walletConnected}
-              required={requiredWallet}
+              required={tierReqs.walletRequired}
               loading={updatingStep === "wallet"}
               actionLabel={walletConnected ? "" : "Connect Wallet"}
               onAction={() => setShowWalletModal(true)}
@@ -814,7 +863,7 @@ export default function Activation() {
               ) : (
                 <div className="space-y-2">
                   <p>
-                    {requiredWallet
+                    {tierReqs.walletRequired
                       ? "Required for Elite DeFi trading."
                       : "Optional on your current plan."}
                   </p>
@@ -838,12 +887,12 @@ export default function Activation() {
                 <div className="space-y-2">
                   <p>✅ Trading enabled</p>
                   <p className="text-xs text-gray-500">
-                    You can start the bot whenever you’re ready.
+                    You can start the bot whenever you're ready.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p>Turn on trading after you’ve connected what you need.</p>
+                  <p>Turn on trading after you've connected what you need.</p>
                   <p className="text-xs text-gray-500">
                     You can keep using demo mode until then.
                   </p>
@@ -887,7 +936,11 @@ export default function Activation() {
                   Setup In Progress
                 </h3>
                 <p className="text-blue-200">
-                  Complete the required steps above to unlock full live trading.
+                  {!tierRequirementsMet 
+                    ? `Complete ${tierReqs.description} to unlock full live trading.` 
+                    : "Complete all required steps above to unlock full live trading."}
+                </p>
+                <p className="text-sm text-blue-300/80 mt-2">
                   You can still explore in demo mode.
                 </p>
                 <button
