@@ -14,10 +14,13 @@ export default function Signup() {
     setLoading(true);
 
     try {
+      // 1️⃣ Create account (BotAPI stores token automatically)
       await BotAPI.signup(form);
-      nav("/activation", { replace: true });
+
+      // 2️⃣ Go to Billing FIRST
+      nav("/billing", { replace: true });
     } catch (e) {
-      setErr(e.message);
+      setErr(e.message || "Signup failed");
     } finally {
       setLoading(false);
     }
@@ -51,9 +54,9 @@ export default function Signup() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3 bg-blue-600 rounded-xl font-semibold"
+          className="w-full py-3 bg-blue-600 rounded-xl font-semibold disabled:opacity-50"
         >
-          {loading ? "Creating…" : "Sign Up"}
+          {loading ? "Creating…" : "Continue to Billing"}
         </button>
 
         <p className="text-sm text-center">
