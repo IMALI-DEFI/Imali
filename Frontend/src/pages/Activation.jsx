@@ -1,60 +1,6 @@
-// src/pages/Activation.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
-
-/* ======================================================
-   CONFIG
-====================================================== */
-
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL ||
-  (typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "http://localhost:8001"
-    : "https://api.imali-defi.com");
-
-const TOKEN_KEY = "imali_token";
-
-/* ======================================================
-   TOKEN HELPERS (🔥 FIX)
-====================================================== */
-
-function getAuthToken() {
-  const raw = localStorage.getItem(TOKEN_KEY);
-  if (!raw) return null;
-  return raw.startsWith("jwt:") ? raw.slice(4) : raw;
-}
-
-/* ======================================================
-   API CLIENT
-====================================================== */
-
-const api = axios.create({
-  baseURL: `${API_BASE}/api`,
-  timeout: 30000,
-  headers: { "Content-Type": "application/json" },
-});
-
-// Attach token correctly
-api.interceptors.request.use((cfg) => {
-  const token = getAuthToken();
-  if (token) {
-    cfg.headers.Authorization = `Bearer ${token}`;
-  }
-  return cfg;
-});
-
-// Global 401 handler
-api.interceptors.response.use(
-  (res) => res,
-  (error) => {
-    if (error?.response?.status === 401) {
-      localStorage.removeItem(TOKEN_KEY);
-      window.location.href = "/login";
-    }
-    return Promise.reject(error);
-  }
-);
+import { BotAPI } from "../utils/BotAPI";
 
 /* ======================================================
    UI HELPERS
@@ -139,34 +85,23 @@ export default function Activation() {
   const [updating, setUpdating] = useState(null);
   const [error, setError] = useState("");
 
-  /* ---------------- AUTH GUARD ---------------- */
-  useEffect(() => {
-    if (!getAuthToken()) {
-      navigate("/login", { replace: true });
-    }
-  }, [navigate]);
-
-  /* ---------------- LOAD DATA ---------------- */
+  /* ---------------- LOAD ---------------- */
   const load = async () => {
-    const [meRes, statusRes] = await Promise.all([
-      api.get("/me"),
-      api.get("/me/activation-status"),
+    const [user, activation] = await Promise.all([
+      BotAPI.me(),
+      BotAPI.activationStatus(),
     ]);
 
-    setMe(meRes.data?.user || null);
-    setStatus(statusRes.data?.status || null);
+    setMe(user?.user || user || null);
+    setStatus(activation?.status || activation || null);
   };
 
   useEffect(() => {
     (async () => {
       try {
-        setLoading(true);
         await load();
       } catch (e) {
-        setError(
-          e?.response?.data?.message ||
-            "Failed to load activation data."
-        );
+        setError(e.message || "Failed to load activation state.");
       } finally {
         setLoading(false);
       }
@@ -179,13 +114,14 @@ export default function Activation() {
     try {
       await fn();
       await load();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setUpdating(null);
     }
   };
 
   /* ---------------- DERIVED ---------------- */
-
   const tier = String(me?.tier || "starter").toLowerCase();
 
   const billing = !!status?.billing_complete || !!status?.has_card_on_file;
@@ -195,13 +131,6 @@ export default function Activation() {
   const trading = !!status?.trading_enabled;
   const activationComplete = !!status?.activation_complete;
 
-  const required =
-    tier === "starter"
-      ? billing && okx && alpaca && trading
-      : tier === "elite"
-      ? billing && wallet && trading
-      : billing && trading && (okx || alpaca || wallet);
-
   const progress = Math.round(
     ([
       billing,
@@ -209,21 +138,18 @@ export default function Activation() {
       tier === "starter" ? okx : true,
       tier === "starter" ? alpaca : true,
       tier === "elite" ? wallet : true,
-    ].filter(Boolean).length /
-      5) *
-      100
+    ].filter(Boolean).length / 5) * 100
   );
 
   /* ---------------- AUTO REDIRECT ---------------- */
   useEffect(() => {
     if (!loading && activationComplete && trading) {
-      const t = setTimeout(() => navigate("/dashboard"), 1200);
+      const t = setTimeout(() => navigate("/dashboard", { replace: true }), 1200);
       return () => clearTimeout(t);
     }
   }, [loading, activationComplete, trading, navigate]);
 
   /* ---------------- RENDER ---------------- */
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">
@@ -268,7 +194,7 @@ export default function Activation() {
           required={tier === "starter"}
           loading={updating === "okx"}
           actionLabel={!okx ? "Connect OKX" : ""}
-          onAction={() => run("okx", () => api.post("/integrations/okx"))}
+          onAction={() => run("okx", () => BotAPI.connectOkx({}))}
         />
 
         <Step
@@ -277,7 +203,7 @@ export default function Activation() {
           required={tier === "starter"}
           loading={updating === "alpaca"}
           actionLabel={!alpaca ? "Connect Alpaca" : ""}
-          onAction={() => run("alpaca", () => api.post("/integrations/alpaca"))}
+          onAction={() => run("alpaca", () => BotAPI.connectAlpaca({}))}
         />
 
         <Step
@@ -286,7 +212,7 @@ export default function Activation() {
           required={tier === "elite"}
           loading={updating === "wallet"}
           actionLabel={!wallet ? "Connect Wallet" : ""}
-          onAction={() => run("wallet", () => api.post("/integrations/wallet"))}
+          onAction={() => run("wallet", () => BotAPI.connectWallet({}))}
         />
 
         <Step
@@ -295,13 +221,11 @@ export default function Activation() {
           required
           loading={updating === "trading"}
           actionLabel={!trading ? "Enable trading" : ""}
-          onAction={() =>
-            run("trading", () => api.post("/trading/enable", { enabled: true }))
-          }
+          onAction={() => run("trading", () => BotAPI.tradingEnable(true))}
         />
       </div>
 
-      {required && (
+      {activationComplete && trading && (
         <div className="mt-8 p-6 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center">
           <h2 className="text-xl text-emerald-400 font-semibold mb-2">
             🎉 Activation Complete
