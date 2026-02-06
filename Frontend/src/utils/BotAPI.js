@@ -44,37 +44,33 @@ function resolveApiOrigin() {
   if (IS_BROWSER) {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") {
-      return "http://localhost:8001";
+      return "http://localhost:8080"; // Changed from 8001 to 8080 to match backend
     }
     return "https://api.imali-defi.com";
   }
 
-  return "http://localhost:8001";
+  return "http://localhost:8080"; // Changed from 8001 to 8080
 }
 
 /* ======================================================
-   Token Normalization (CRITICAL FIX)
+   Token Management (FIXED - DO NOT STRIP PREFIX)
 ====================================================== */
-function normalizeJwt(token) {
-  if (!token) return "";
-  return token.startsWith("jwt:") ? token.slice(4) : token;
-}
-
 export function setAuthToken(token) {
   if (!IS_BROWSER) return;
-
-  const clean = normalizeJwt(String(token || "").trim());
+  
+  const clean = String(token || "").trim();
   if (!clean) {
     localStorage.removeItem(TOKEN_KEY);
     return;
   }
-
+  
   localStorage.setItem(TOKEN_KEY, clean);
 }
 
 export function getAuthToken() {
   if (!IS_BROWSER) return "";
-  return normalizeJwt(localStorage.getItem(TOKEN_KEY) || "");
+  const token = localStorage.getItem(TOKEN_KEY) || "";
+  return String(token).trim();
 }
 
 export function clearAuthToken() {
@@ -128,6 +124,23 @@ api.interceptors.request.use(
 );
 
 /* ======================================================
+   Response Interceptor - Auto logout on 401
+====================================================== */
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      clearAuthToken();
+      // Redirect to login if in browser
+      if (IS_BROWSER && window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+/* ======================================================
    Unified Error Wrapper
 ====================================================== */
 async function tryApi(fn) {
@@ -143,14 +156,15 @@ async function tryApi(fn) {
       err?.message ||
       "API request failed";
 
-    console.error("[BotAPI]", status, message);
+    console.error("[BotAPI Error]", {
+      status,
+      message,
+      url: err?.config?.url,
+      method: err?.config?.method
+    });
 
     const e = new Error(message);
     e.status = status;
-
-    if (status === 401 || status === 403) {
-      clearAuthToken();
-    }
 
     throw e;
   }
@@ -162,76 +176,104 @@ async function tryApi(fn) {
 export const BotAPI = {
   client: api,
   tryApi,
-
-  /* ---------------- Health ---------------- */
+  
+  /* ---------------- Health & System ---------------- */
   health: () => tryApi(() => api.get("/health")),
-
+  systemInfo: () => tryApi(() => api.get("/system/info")),
+  
   /* ---------------- Auth ---------------- */
   signup: async (payload) => {
     const data = await tryApi(() => api.post("/signup", payload));
     if (data?.token) setAuthToken(data.token);
     return data;
   },
-
+  
   login: async (payload) => {
-    const data = await tryApi(() => api.post("/login", payload));
+    const data = await tryApi(() => api.post("/auth/login", payload));
     if (data?.token) setAuthToken(data.token);
     return data;
   },
-
+  
+  walletAuth: async (payload) => {
+    const data = await tryApi(() => api.post("/auth/wallet", payload));
+    if (data?.token) setAuthToken(data.token);
+    return data;
+  },
+  
   logout: () => {
     clearAuthToken();
   },
-
+  
+  /* ---------------- User ---------------- */
   me: () => tryApi(() => api.get("/me")),
   activationStatus: () => tryApi(() => api.get("/me/activation-status")),
-
+  permissions: () => tryApi(() => api.get("/me/permissions")),
+  
+  /* ---------------- Promo ---------------- */
+  promoStatus: () => tryApi(() => api.get("/promo/status")),
+  promoClaim: (payload) => tryApi(() => api.post("/promo/claim", payload)),
+  promoMe: () => tryApi(() => api.get("/promo/me")),
+  
   /* ---------------- Integrations ---------------- */
-  connectWallet: (payload) =>
+  connectWallet: (payload) => 
     tryApi(() => api.post("/integrations/wallet", payload)),
-
-  connectOkx: (payload) =>
+  
+  connectOkx: (payload) => 
     tryApi(() => api.post("/integrations/okx", payload)),
-
-  connectAlpaca: (payload) =>
+  
+  connectAlpaca: (payload) => 
     tryApi(() => api.post("/integrations/alpaca", payload)),
-
+  
+  integrationStatus: () => tryApi(() => api.get("/integrations/status")),
+  
   /* ---------------- Trading ---------------- */
-  tradingEnable: (enabled) =>
+  tradingEnable: (enabled) => 
     tryApi(() => api.post("/trading/enable", { enabled: !!enabled })),
-
-  botStart: (payload = {}) =>
+  
+  tradingStatus: () => tryApi(() => api.get("/trading/status")),
+  
+  botStart: (payload = {}) => 
     tryApi(() => api.post("/bot/start", payload)),
-
+  
+  /* ---------------- Sniper Trades ---------------- */
+  sniperTrades: () => tryApi(() => api.get("/sniper/trades")),
+  
   /* ---------------- Analytics ---------------- */
-  analyticsPnlSeries: (payload) =>
+  analyticsPnlSeries: (payload) => 
     tryApi(() => api.post("/analytics/pnl/series", payload)),
-
-  analyticsWinLoss: (payload) =>
+  
+  analyticsWinLoss: (payload) => 
     tryApi(() => api.post("/analytics/winloss", payload)),
-
-  analyticsFeesSeries: (payload) =>
+  
+  analyticsFeesSeries: (payload) => 
     tryApi(() => api.post("/analytics/fees/series", payload)),
-
+  
   /* ---------------- Billing ---------------- */
-  billingSetupIntent: (payload = {}) =>
+  billingSetupIntent: (payload = {}) => 
     tryApi(() => api.post("/billing/setup-intent", payload)),
-
-  billingSetDefaultPaymentMethod: (payload) =>
-    tryApi(() => api.post("/billing/set-default-payment-method", payload)),
-
-  billingCardOnFileStatus: (payload = {}) =>
-    tryApi(() => api.post("/billing/card-on-file/status", payload)),
-
-  billingFeeHistory: (payload = {}) =>
-    tryApi(() => api.post("/billing/fee-history", payload)),
-
-  billingCalculateFee: (payload) =>
+  
+  billingCardStatus: (payload = {}) => 
+    tryApi(() => api.get("/billing/card-status", { params: payload })),
+  
+  billingSetDefaultPaymentMethod: (payload) => 
+    tryApi(() => api.post("/billing/set-default-payment", payload)),
+  
+  billingCalculateFee: (payload) => 
     tryApi(() => api.post("/billing/calculate-fee", payload)),
-
-  billingChargeFee: (payload) =>
+  
+  billingChargeFee: (payload) => 
     tryApi(() => api.post("/billing/charge-fee", payload)),
-
+  
+  billingFeeHistory: () => tryApi(() => api.get("/billing/fee-history")),
+  
+  /* ---------------- Admin ---------------- */
+  adminCheck: () => tryApi(() => api.get("/admin/check")),
+  adminUsers: () => tryApi(() => api.get("/admin/users")),
+  adminUpdateUserTier: (payload) => 
+    tryApi(() => api.post("/admin/user/update-tier", payload)),
+  adminProcessPendingFees: (payload = {}) => 
+    tryApi(() => api.post("/admin/process-pending-fees", payload)),
+  
   /* ---------------- Raw Helpers ---------------- */
   rawGet: async (path) => (await api.get(path)).data,
   rawPost: async (path, body = {}) => (await api.post(path, body)).data,
