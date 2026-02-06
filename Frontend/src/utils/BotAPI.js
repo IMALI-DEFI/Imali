@@ -44,16 +44,16 @@ function resolveApiOrigin() {
   if (IS_BROWSER) {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") {
-      return "http://localhost:8080"; // Changed from 8001 to 8080 to match backend
+      return "http://localhost:8080";
     }
     return "https://api.imali-defi.com";
   }
 
-  return "http://localhost:8080"; // Changed from 8001 to 8080
+  return "http://localhost:8080";
 }
 
 /* ======================================================
-   Token Management (FIXED - DO NOT STRIP PREFIX)
+   Token Management
 ====================================================== */
 export function setAuthToken(token) {
   if (!IS_BROWSER) return;
@@ -76,6 +76,10 @@ export function getAuthToken() {
 export function clearAuthToken() {
   if (!IS_BROWSER) return;
   localStorage.removeItem(TOKEN_KEY);
+}
+
+export function isLoggedIn() {
+  return !!getAuthToken();
 }
 
 /* ======================================================
@@ -104,13 +108,14 @@ try {
   if (isDev) {
     console.log("[BotAPI] API Origin:", API_ORIGIN);
     console.log("[BotAPI] Base URL:", BASE_URL);
+    console.log("[BotAPI] Current Token:", getAuthToken() ? "YES (length: " + getAuthToken().length + ")" : "NO");
   }
 } catch {
   /* noop */
 }
 
 /* ======================================================
-   Auth Injection (FIXED)
+   Auth Injection
 ====================================================== */
 api.interceptors.request.use(
   (config) => {
@@ -127,15 +132,28 @@ api.interceptors.request.use(
    Response Interceptor - Auto logout on 401
 ====================================================== */
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful responses in dev
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[API] ${response.config.method?.toUpperCase()} ${response.config.url}:`, response.status, response.data);
+    }
+    return response;
+  },
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const url = error.config?.url;
+    const method = error.config?.method;
+    
+    console.error(`[API Error] ${method?.toUpperCase()} ${url}:`, status, error.response?.data);
+    
+    if (status === 401) {
       clearAuthToken();
       // Redirect to login if in browser
       if (IS_BROWSER && window.location.pathname !== "/login") {
         window.location.href = "/login";
       }
     }
+    
     return Promise.reject(error);
   }
 );
@@ -156,16 +174,12 @@ async function tryApi(fn) {
       err?.message ||
       "API request failed";
 
-    console.error("[BotAPI Error]", {
-      status,
-      message,
-      url: err?.config?.url,
-      method: err?.config?.method
-    });
-
+    // Create enriched error object
     const e = new Error(message);
     e.status = status;
-
+    e.data = err?.response?.data;
+    e.url = err?.config?.url;
+    
     throw e;
   }
 }
@@ -176,42 +190,74 @@ async function tryApi(fn) {
 export const BotAPI = {
   client: api,
   tryApi,
+  isLoggedIn,
   
   /* ---------------- Health & System ---------------- */
   health: () => tryApi(() => api.get("/health")),
   systemInfo: () => tryApi(() => api.get("/system/info")),
   
   /* ---------------- Auth ---------------- */
+  // FIXED: Signup endpoint is /api/auth/signup, not /api/signup
   signup: async (payload) => {
-    const data = await tryApi(() => api.post("/signup", payload));
-    if (data?.token) setAuthToken(data.token);
+    console.log("[BotAPI] Signup payload:", payload);
+    const data = await tryApi(() => api.post("/auth/signup", payload));
+    console.log("[BotAPI] Signup response:", data);
+    
+    // Handle different response formats
+    const token = data.token || data.data?.token;
+    if (token) {
+      setAuthToken(token);
+      console.log("[BotAPI] Token set:", token.substring(0, 30) + "...");
+    } else {
+      console.warn("[BotAPI] No token in signup response:", data);
+    }
+    
     return data;
   },
   
+  // FIXED: Login endpoint is /api/auth/login
   login: async (payload) => {
+    console.log("[BotAPI] Login attempt:", payload.email);
     const data = await tryApi(() => api.post("/auth/login", payload));
-    if (data?.token) setAuthToken(data.token);
+    console.log("[BotAPI] Login response:", data);
+    
+    const token = data.token || data.data?.token;
+    if (token) {
+      setAuthToken(token);
+      console.log("[BotAPI] Token set for login");
+    }
+    
     return data;
   },
   
+  // FIXED: Wallet auth endpoint
   walletAuth: async (payload) => {
     const data = await tryApi(() => api.post("/auth/wallet", payload));
-    if (data?.token) setAuthToken(data.token);
+    const token = data.token || data.data?.token;
+    if (token) setAuthToken(token);
     return data;
   },
   
   logout: () => {
+    console.log("[BotAPI] Logging out");
     clearAuthToken();
   },
   
   /* ---------------- User ---------------- */
-  me: () => tryApi(() => api.get("/me")),
+  me: () => {
+    console.log("[BotAPI] Getting user profile");
+    return tryApi(() => api.get("/me"));
+  },
+  
   activationStatus: () => tryApi(() => api.get("/me/activation-status")),
   permissions: () => tryApi(() => api.get("/me/permissions")),
   
   /* ---------------- Promo ---------------- */
   promoStatus: () => tryApi(() => api.get("/promo/status")),
-  promoClaim: (payload) => tryApi(() => api.post("/promo/claim", payload)),
+  promoClaim: (payload) => {
+    console.log("[BotAPI] Claiming promo:", payload.email);
+    return tryApi(() => api.post("/promo/claim", payload));
+  },
   promoMe: () => tryApi(() => api.get("/promo/me")),
   
   /* ---------------- Integrations ---------------- */
@@ -274,9 +320,13 @@ export const BotAPI = {
   adminProcessPendingFees: (payload = {}) => 
     tryApi(() => api.post("/admin/process-pending-fees", payload)),
   
-  /* ---------------- Raw Helpers ---------------- */
-  rawGet: async (path) => (await api.get(path)).data,
-  rawPost: async (path, body = {}) => (await api.post(path, body)).data,
+  /* ---------------- Token Helpers ---------------- */
+  getToken: getAuthToken,
+  setToken: setAuthToken,
+  clearToken: clearAuthToken,
+  
+  /* ---------------- Test Endpoints ---------------- */
+  testConnection: () => tryApi(() => api.get("/health")),
 };
 
 export default BotAPI;
