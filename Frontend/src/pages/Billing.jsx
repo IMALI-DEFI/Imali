@@ -3,11 +3,17 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { loadStripe } from "@stripe/stripe-js";
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
 
 /* =========================
-   CONFIG (match Activation.jsx)
+   CONFIG
 ========================= */
+
 const TOKEN_KEY = "imali_token";
 
 const API_ORIGIN =
@@ -17,17 +23,27 @@ const API_ORIGIN =
     ? "http://localhost:8001"
     : "https://api.imali-defi.com");
 
-const API_BASE = String(API_ORIGIN).replace(/\/+$/, "");
+const API_BASE = API_ORIGIN.replace(/\/+$/, "");
 
-// Stripe publishable key (front-end only) — must match test vs live mode
 const STRIPE_PUBLISHABLE_KEY =
   process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY ||
   process.env.REACT_APP_STRIPE_PUB_KEY ||
   "";
 
 /* =========================
-   Axios (Bearer token)
+   TOKEN HELPER (🔥 FIX)
 ========================= */
+
+function getAuthToken() {
+  const raw = localStorage.getItem(TOKEN_KEY);
+  if (!raw) return null;
+  return raw.startsWith("jwt:") ? raw.slice(4) : raw;
+}
+
+/* =========================
+   AXIOS CLIENT
+========================= */
+
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
   timeout: 20000,
@@ -35,47 +51,58 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((cfg) => {
-  try {
-    const t = localStorage.getItem(TOKEN_KEY);
-    if (t) cfg.headers.Authorization = `Bearer ${t}`;
-  } catch {}
+  const token = getAuthToken();
+  if (token) cfg.headers.Authorization = `Bearer ${token}`;
   return cfg;
 });
 
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err?.response?.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = "/login";
+    }
+    return Promise.reject(err);
+  }
+);
+
 /* =========================
-   Helpers
+   HELPERS
 ========================= */
+
 function isValidSetupIntentSecret(secret) {
-  if (!secret || typeof secret !== "string") return false;
-  // SetupIntent client secrets look like: seti_..._secret_...
-  return secret.startsWith("seti_") && secret.includes("_secret_") && secret.length > 30;
+  return (
+    typeof secret === "string" &&
+    secret.startsWith("seti_") &&
+    secret.includes("_secret_")
+  );
 }
 
-function modeFromKey(pk) {
-  // pk_test_... or pk_live_...
-  if (!pk) return "unknown";
+function stripeModeFromKey(pk) {
   if (pk.startsWith("pk_test_")) return "test";
   if (pk.startsWith("pk_live_")) return "live";
   return "unknown";
 }
 
+/* =========================
+   INNER STRIPE FORM
+========================= */
+
 function BillingInner({ customerId, returnUrl }) {
   const stripe = useStripe();
   const elements = useElements();
-  const nav = useNavigate();
+  const navigate = useNavigate();
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  const handleSubmit = async () => {
-    setErr("");
-
-    if (!stripe || !elements) {
-      setErr("Stripe not ready. Please refresh the page.");
-      return;
-    }
+  const submit = async () => {
+    if (!stripe || !elements) return;
 
     setBusy(true);
+    setErr("");
+
     try {
       const { error, setupIntent } = await stripe.confirmSetup({
         elements,
@@ -85,74 +112,67 @@ function BillingInner({ customerId, returnUrl }) {
 
       if (error) throw error;
 
-      // If completed without redirect, mark default PM (optional)
-      const pmId = setupIntent?.payment_method;
-      if (customerId && pmId) {
+      const pm = setupIntent?.payment_method;
+      if (customerId && pm) {
         try {
           await api.post("/billing/set-default-payment-method", {
             customer_id: customerId,
-            payment_method_id: pmId,
+            payment_method_id: pm,
           });
         } catch {
-          // non-fatal
+          /* non-fatal */
         }
       }
 
-      nav("/activation", { replace: true });
+      navigate("/activation", { replace: true });
     } catch (e) {
-      setErr(e?.message || "Failed to save card. Please try again.");
+      setErr(e?.message || "Failed to save card");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold">Add Payment Method</h2>
-        <p className="text-sm text-white/70 mt-1">
-          Your card may be charged only when applicable fees are due.
-        </p>
-      </div>
+    <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
+      <h2 className="text-lg font-semibold mb-2">Add Payment Method</h2>
+      <p className="text-sm text-white/70 mb-4">
+        You’ll only be charged when fees apply.
+      </p>
 
-      {err ? (
-        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-          <div className="font-medium">Error</div>
-          <div className="mt-1">{err}</div>
+      {err && (
+        <div className="mb-3 rounded bg-red-500/10 border border-red-500/30 p-3 text-sm text-red-200">
+          {err}
         </div>
-      ) : null}
+      )}
 
-      <div className="mb-4">
-        <PaymentElement
-          options={{
-            layout: "tabs",
-            wallets: { applePay: "auto", googlePay: "auto" },
-          }}
-        />
-      </div>
+      <PaymentElement />
 
-      <div className="space-y-3">
+      <div className="mt-4 space-y-3">
         <button
-          onClick={handleSubmit}
-          disabled={busy || !stripe || !elements}
-          className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={busy || !stripe}
+          onClick={submit}
+          className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold disabled:opacity-50"
         >
-          {busy ? "Processing…" : "Save Card"}
+          {busy ? "Saving…" : "Save Card"}
         </button>
 
         <Link
           to="/activation"
-          className="block text-center text-sm text-white/70 underline hover:text-white"
+          className="block text-center text-sm underline text-white/60"
         >
-          Continue without adding card
+          Skip for now
         </Link>
       </div>
     </div>
   );
 }
 
+/* =========================
+   MAIN
+========================= */
+
 export default function Billing() {
-  const nav = useNavigate();
+  const navigate = useNavigate();
   const [params] = useSearchParams();
 
   const [loading, setLoading] = useState(true);
@@ -160,87 +180,56 @@ export default function Billing() {
   const [clientSecret, setClientSecret] = useState("");
   const [customerId, setCustomerId] = useState("");
 
-  const stripePromise = useMemo(() => {
-    if (!STRIPE_PUBLISHABLE_KEY) return null;
-    try {
-      return loadStripe(STRIPE_PUBLISHABLE_KEY);
-    } catch {
-      return null;
-    }
-  }, []);
+  const stripePromise = useMemo(
+    () => (STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null),
+    []
+  );
 
-  // Helps avoid “wrong key mode” confusion
-  const stripeMode = useMemo(() => modeFromKey(STRIPE_PUBLISHABLE_KEY), []);
+  const stripeMode = stripeModeFromKey(STRIPE_PUBLISHABLE_KEY);
 
-  // Return URL for 3DS redirect
   const returnUrl = useMemo(() => {
-    const url = new URL(window.location.href);
-    url.pathname = "/billing";
-    // keep query params if you want
-    return url.toString();
+    const u = new URL(window.location.href);
+    u.pathname = "/billing";
+    return u.toString();
   }, []);
 
-  // Stripe redirect back (3DS)
+  /* ---------------- AUTH ---------------- */
   useEffect(() => {
-    const returnedSecret = params.get("setup_intent_client_secret");
-    if (returnedSecret && isValidSetupIntentSecret(returnedSecret)) {
-      setClientSecret(returnedSecret);
-      setLoading(false);
-    }
-  }, [params]);
+    if (!getAuthToken()) navigate("/signup", { replace: true });
+  }, [navigate]);
 
-  // Fetch SetupIntent from backend
+  /* ---------------- LOAD SETUP INTENT ---------------- */
   useEffect(() => {
-    // auth check
-    let token = "";
-    try {
-      token = localStorage.getItem(TOKEN_KEY) || "";
-    } catch {}
-    if (!token) {
-      nav("/signup", { replace: true });
-      return;
-    }
-
-    // already have valid secret
-    if (clientSecret && isValidSetupIntentSecret(clientSecret)) return;
-
     let mounted = true;
 
     (async () => {
-      setLoading(true);
-      setFatal("");
-
       try {
-        const tier = params.get("tier") || undefined;
-        const strategy = params.get("strategy") || undefined;
+        setLoading(true);
+        setFatal("");
 
-        const res = await api.post("/billing/setup-intent", { tier, strategy });
+        const tier = params.get("tier");
+        const strategy = params.get("strategy");
 
-        const secret = res?.data?.client_secret;
-        const custId = res?.data?.customer_id || "";
+        const res = await api.post("/billing/setup-intent", {
+          tier,
+          strategy,
+        });
 
         if (!mounted) return;
 
+        const secret = res?.data?.client_secret;
         if (!isValidSetupIntentSecret(secret)) {
-          // This is the most common “stripe key” confusion:
-          // backend returns PaymentIntent (pi_) or empty string
-          const got = String(secret || "");
-          throw new Error(
-            got.startsWith("pi_")
-              ? "Server returned a PaymentIntent secret (pi_...). Billing page requires a SetupIntent (seti_...). Update backend /billing/setup-intent to create a SetupIntent."
-              : "Invalid Stripe client secret from server. Please retry."
-          );
+          throw new Error("Invalid Stripe SetupIntent from server");
         }
 
         setClientSecret(secret);
-        setCustomerId(custId);
+        setCustomerId(res?.data?.customer_id || "");
       } catch (e) {
-        const msg =
+        setFatal(
           e?.response?.data?.message ||
-          e?.response?.data?.error ||
-          e?.message ||
-          "Unable to load billing. Please try again.";
-        if (mounted) setFatal(msg);
+            e?.message ||
+            "Unable to load billing"
+        );
       } finally {
         if (mounted) setLoading(false);
       }
@@ -249,124 +238,36 @@ export default function Billing() {
     return () => {
       mounted = false;
     };
-  }, [nav, params, clientSecret]);
+  }, [params]);
 
   /* =========================
      UI STATES
 ========================= */
-  if (!STRIPE_PUBLISHABLE_KEY) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full">
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
-            <div className="font-semibold text-red-200 mb-2">Configuration Error</div>
-            <p className="text-sm text-red-100/80">
-              Missing Stripe publishable key (REACT_APP_STRIPE_PUBLISHABLE_KEY).
-            </p>
-            <p className="text-xs text-red-100/60 mt-2">
-              Mode detected: <span className="font-semibold">{stripeMode}</span>
-            </p>
-            <Link to="/" className="mt-3 inline-block text-sm underline text-white/80 hover:text-white">
-              Return to home
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (!stripePromise) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full">
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
-            <div className="font-semibold text-red-200 mb-2">Stripe Error</div>
-            <p className="text-sm text-red-100/80">
-              Failed to initialize Stripe. Confirm your publishable key is valid.
-            </p>
-            <p className="text-xs text-red-100/60 mt-2">
-              Key starts with: <span className="font-semibold">{STRIPE_PUBLISHABLE_KEY.slice(0, 8)}…</span>
-            </p>
-          </div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center text-white bg-black">
+        Stripe key missing or invalid
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <div className="flex items-center justify-center space-x-3">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              <span>Loading billing form...</span>
-            </div>
-            <div className="mt-3 text-xs text-white/50 break-words">
-              API: {API_BASE}
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center text-white bg-black">
+        Loading billing…
       </div>
     );
   }
 
   if (fatal) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full">
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
-            <div className="font-semibold text-red-200 mb-2">Error</div>
-            <p className="text-sm text-red-100/80 mb-4">{fatal}</p>
-            <div className="text-xs text-white/60 break-words">
-              API: {API_BASE}
-              <br />
-              Stripe mode: {stripeMode}
-            </div>
-            <div className="mt-4 space-y-2">
-              <button
-                onClick={() => window.location.reload()}
-                className="w-full px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm font-medium"
-              >
-                Retry
-              </button>
-              <Link
-                to="/activation"
-                className="block w-full text-center px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm font-medium"
-              >
-                Continue without billing
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!clientSecret || !isValidSetupIntentSecret(clientSecret)) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full">
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
-            <div className="font-semibold text-red-200 mb-2">Invalid Setup</div>
-            <p className="text-sm text-red-100/80">
-              Unable to initialize payment form. Please retry.
-            </p>
-            <div className="mt-4 space-y-2">
-              <button
-                onClick={() => window.location.reload()}
-                className="w-full px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm font-medium"
-              >
-                Retry
-              </button>
-              <Link
-                to="/activation"
-                className="block w-full text-center px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm font-medium"
-              >
-                Skip billing setup
-              </Link>
-            </div>
-          </div>
+      <div className="min-h-screen flex items-center justify-center text-white bg-black">
+        <div className="max-w-md text-center">
+          <p className="text-red-400 mb-4">{fatal}</p>
+          <Link to="/activation" className="underline">
+            Continue without billing
+          </Link>
         </div>
       </div>
     );
@@ -374,45 +275,20 @@ export default function Billing() {
 
   const elementsOptions = {
     clientSecret,
-    appearance: {
-      theme: "night",
-      variables: {
-        colorPrimary: "#3b82f6",
-        colorBackground: "#111827",
-        colorText: "#f3f4f6",
-        colorDanger: "#ef4444",
-        fontFamily: "Inter, system-ui, sans-serif",
-        spacingUnit: "4px",
-        borderRadius: "12px",
-      },
-    },
+    appearance: { theme: "night" },
   };
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 md:p-6">
+    <div className="min-h-screen bg-black text-white p-4">
       <div className="max-w-md mx-auto">
-        <div className="mb-6">
-          <Link to="/" className="inline-flex items-center text-sm text-white/70 hover:text-white mb-4">
-            ← Back to home
-          </Link>
-          <h1 className="text-2xl font-bold">Billing Setup</h1>
-          <p className="text-gray-400 mt-2">
-            Add a payment method to your account. You’ll only be charged when applicable fees are due.
-          </p>
-
-          <div className="mt-2 text-xs text-white/50 break-words">
-            API: {API_BASE} • Stripe: {stripeMode}
-          </div>
-        </div>
+        <h1 className="text-2xl font-bold mb-2">Billing Setup</h1>
+        <p className="text-sm text-white/60 mb-4">
+          Stripe ({stripeMode})
+        </p>
 
         <Elements stripe={stripePromise} options={elementsOptions}>
           <BillingInner customerId={customerId} returnUrl={returnUrl} />
         </Elements>
-
-        <div className="mt-6 text-xs text-gray-500 text-center">
-          <p>Powered by Stripe. Your payment information is encrypted and secure.</p>
-          <p className="mt-1">Need help? Contact support@imali-defi.com</p>
-        </div>
       </div>
     </div>
   );
