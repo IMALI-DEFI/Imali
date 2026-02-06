@@ -1,71 +1,16 @@
-// src/pages/Login.jsx
-import React, { useMemo, useState } from "react";
-import axios from "axios";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { BotAPI } from "../utils/BotAPI";
 
-/* ---------------- API base resolver (match your app) ---------------- */
-const API_ORIGIN =
-  process.env.REACT_APP_API_BASE_URL ||
-  process.env.REACT_APP_API_BASE ||
-  (typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "http://localhost:8001"
-    : "https://api.imali-defi.com");
-
-const API_BASE = String(API_ORIGIN).replace(/\/+$/, "");
-
-/** Must match BotAPI.js */
-const TOKEN_KEY = "imali_token";
-
-/* ---------------- axios client ---------------- */
-const api = axios.create({
-  baseURL: `${API_BASE}/api`,
-  timeout: 15000,
-  headers: { "Content-Type": "application/json" },
-  withCredentials: true, // ok whether you use cookies or bearer tokens
-});
-
-// Inject token automatically (if present)
-api.interceptors.request.use((cfg) => {
-  try {
-    const t = localStorage.getItem(TOKEN_KEY);
-    if (t) cfg.headers.Authorization = `Bearer ${t}`;
-  } catch {
-    // ignore
-  }
-  return cfg;
-});
-
-function saveTokenFromResponse(data) {
-  const token =
-    data?.token ||
-    data?.access_token ||
-    data?.auth_token ||
-    data?.jwt ||
-    data?.data?.token ||
-    "";
-
-  if (!token) return false;
-
-  try {
-    localStorage.setItem(TOKEN_KEY, String(token).trim());
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function normalizeStatusPayload(resData) {
-  // backend may return: { status: {...} } or { success: true, status: {...} } or { ...statusFields }
-  const s = resData?.status || resData?.data?.status || resData;
-  return s && typeof s === "object" ? s : null;
-}
-
-function pickDashboardRoute(status) {
-  // Your app might register the route as /MemberDashboard, /member-dashboard, /dashboard, etc.
-  // Prefer the canonical one you used earlier: "/MemberDashboard"
-  // If you later change it, update this ONE place.
-  return "/MemberDashboard";
-}
+/**
+ * Login
+ * --------------------------------------------------
+ * Rules:
+ * - ALL auth goes through BotAPI
+ * - Token storage handled centrally (BotAPI)
+ * - Activation page decides readiness
+ * - Login ONLY decides: dashboard vs activation
+ */
 
 export default function Login() {
   const navigate = useNavigate();
@@ -76,8 +21,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const emailTrimmed = useMemo(() => email.trim(), [email]);
-
   const submit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -86,79 +29,43 @@ export default function Login() {
     setError("");
 
     try {
-      // 1) Login
-      // Your backend MUST implement POST /api/login for this to succeed.
-      const loginRes = await api.post("/login", {
-        email: emailTrimmed,
+      /* ---------------- Login ---------------- */
+      await BotAPI.login({
+        email: email.trim(),
         password,
       });
 
-      const ok =
-        loginRes.data?.ok === true ||
-        loginRes.data?.success === true ||
-        !!loginRes.data?.user ||
-        !!loginRes.data?.token ||
-        !!loginRes.data?.access_token;
-
-      if (!ok) {
-        throw new Error(
-          loginRes.data?.message || loginRes.data?.error || "Login failed"
-        );
-      }
-
-      // Store email (optional)
+      /* ---------------- Activation truth ---------------- */
+      let status = null;
       try {
-        localStorage.setItem("IMALI_EMAIL", emailTrimmed);
-      } catch {}
-
-      // Store token if backend provided one
-      // (If your backend uses cookies instead, this just won’t store anything.)
-      saveTokenFromResponse(loginRes.data);
-
-      // 2) Activation truth
-      // IMPORTANT: In your backend file, /api/me/activation-status is POST (not GET).
-      const statusRes = await api.post("/me/activation-status", {});
-      const status = normalizeStatusPayload(statusRes.data);
-
-      if (!status) {
-        navigate("/activation", { replace: true });
-        return;
+        status = await BotAPI.activationStatus();
+      } catch {
+        // non-fatal — activation page will re-check
       }
 
-      // 3) Route based on activation state (align to your Activation.jsx fields)
-      const billingComplete = !!status.billing_complete;
-      const tradingEnabled = !!status.trading_enabled;
+      const billingComplete = !!status?.billing_complete;
+      const tradingEnabled = !!status?.trading_enabled;
       const activationComplete =
-        status.activation_complete === true ||
-        status.complete === true ||
-        status.stripe_webhook_confirmed === true ||
+        status?.activation_complete === true ||
         (billingComplete && tradingEnabled);
 
+      /* ---------------- Route ---------------- */
       if (activationComplete) {
-        navigate(pickDashboardRoute(status), { replace: true });
-        return;
-      }
-
-      navigate("/activation", { replace: true });
-    } catch (err) {
-      console.error("Login error:", err);
-
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Login failed.";
-
-      // If /api/login doesn't exist, call it out clearly:
-      if (err?.response?.status === 404 || String(msg).toLowerCase().includes("404")) {
-        setError(
-          "Backend route POST /api/login was not found. Add /api/login on the server or remove this Login page and use your wallet/google auth flow."
-        );
-      } else if (err?.response?.status === 401) {
-        setError("Invalid email or password.");
+        navigate("/MemberDashboard", { replace: true });
       } else {
-        setError(msg);
+        navigate("/activation", { replace: true });
+      }
+    } catch (err) {
+      console.error("[login] failed:", err);
+
+      if (err?.status === 401) {
+        setError("Invalid email or password.");
+      } else if (err?.status === 404) {
+        setError(
+          "Login endpoint not found on server. Ensure POST /api/login exists."
+        );
+      } else {
+        setError(err?.message || "Login failed.");
       }
     } finally {
       setLoading(false);
@@ -172,13 +79,9 @@ export default function Login() {
           Log in to IMALI
         </h1>
 
-        <p className="text-sm text-center text-white/70 mb-4">
+        <p className="text-sm text-center text-white/70 mb-6">
           Resume setup or continue trading
         </p>
-
-        <div className="text-center text-xs text-white/40 mb-5">
-          API: {API_BASE}
-        </div>
 
         {error && (
           <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-2 text-sm">
@@ -210,13 +113,13 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 disabled:opacity-60 disabled:cursor-not-allowed font-bold transition"
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 disabled:opacity-60 font-bold transition"
           >
             {loading ? "Signing in…" : "Log in"}
           </button>
         </form>
 
-        <div className="mt-5 text-center text-sm text-white/60">
+        <div className="mt-6 text-center text-sm text-white/60">
           Don’t have an account?{" "}
           <Link to="/signup" className="text-emerald-300 hover:underline">
             Create one
