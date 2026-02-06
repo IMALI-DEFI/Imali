@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
+// src/components/Dashboard/MemberDashboard.jsx
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
@@ -37,6 +38,46 @@ const ReferralSystem = pick(ReferralSystemNS, "ReferralSystem");
 const TradeDemo = pick(TradeDemoNS, "TradeDemo");
 const Futures = pick(FuturesNS, "Futures");
 
+/* ---------------- API ---------------- */
+const API_BASE =
+  process.env.REACT_APP_API_BASE ||
+  (typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:8001"
+    : "https://api.imali-defi.com");
+
+const TOKEN_KEY = "imali_token";
+
+function getRawToken() {
+  try {
+    const t = localStorage.getItem(TOKEN_KEY) || "";
+    return t.startsWith("jwt:") ? t.slice(4) : t;
+  } catch {
+    return "";
+  }
+}
+
+const api = axios.create({
+  baseURL: `${API_BASE}/api`,
+  timeout: 20000,
+});
+
+api.interceptors.request.use((cfg) => {
+  const token = getRawToken();
+  if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  return cfg;
+});
+
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err?.response?.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = "/login";
+    }
+    return Promise.reject(err);
+  }
+);
+
 /* ---------------- Tier Helpers ---------------- */
 const ORDER = ["starter", "pro", "elite", "bundle"];
 const tierAtLeast = (t, need) =>
@@ -49,8 +90,6 @@ export default function MemberDashboard() {
   const wallet = useWallet?.() ?? {};
   const { account, connectWallet, disconnectWallet } = wallet;
 
-  const token = localStorage.getItem("imali_token");
-
   /* ---------------- State ---------------- */
   const [user, setUser] = useState(null);
   const [trades, setTrades] = useState([]);
@@ -62,38 +101,39 @@ export default function MemberDashboard() {
 
   /* ---------------- Auth Guard ---------------- */
   useEffect(() => {
-    if (!token) nav("/login", { replace: true });
-  }, [token, nav]);
+    if (!getRawToken()) nav("/login", { replace: true });
+  }, [nav]);
 
   /* ---------------- Load User ---------------- */
   useEffect(() => {
-    if (!token) return;
+    let mounted = true;
 
     (async () => {
       try {
-        const res = await axios.get("/api/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await api.get("/me");
+        if (!mounted) return;
+
         setUser(res.data?.user || null);
         setTradingEnabled(res.data?.user?.tradingEnabled !== false);
-      } catch {
+      } catch (e) {
+        if (!mounted) return;
         setError("Session expired. Please log in again.");
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     })();
-  }, [token]);
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   /* ---------------- Load Trades ---------------- */
   useEffect(() => {
-    if (!token) return;
-    axios
-      .get("/api/sniper/trades", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then(r => setTrades(r.data || []))
+    api.get("/sniper/trades")
+      .then((r) => setTrades(r.data || []))
       .catch(() => {});
-  }, [token]);
+  }, []);
 
   const tier = (user?.tier || "starter").toLowerCase();
 
@@ -105,11 +145,7 @@ export default function MemberDashboard() {
 
     try {
       setStopping(true);
-      await axios.post(
-        "/api/trading/enable",
-        { enabled: false },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.post("/trading/enable", { enabled: false });
       setTradingEnabled(false);
       alert("Trading has been stopped.");
     } catch {
@@ -121,7 +157,7 @@ export default function MemberDashboard() {
 
   /* ---------------- Loading / Error ---------------- */
   if (loading) {
-    return <div className="min-h-screen bg-gray-950 p-6">Loading…</div>;
+    return <div className="min-h-screen bg-gray-950 p-6 text-white">Loading…</div>;
   }
 
   if (error) {
@@ -145,59 +181,43 @@ export default function MemberDashboard() {
     <div className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-7xl mx-auto px-4 py-5 space-y-5">
 
-        {/* HEADER */}
-        <div className="space-y-2">
-          <h1 className="text-2xl font-bold">🚀 Dashboard</h1>
+        <h1 className="text-2xl font-bold">🚀 Dashboard</h1>
 
-          {/* Trading Status */}
-          <div
-            className={`rounded-xl p-4 text-sm font-semibold ${
-              tradingEnabled
-                ? "bg-emerald-600/10 border border-emerald-500/40 text-emerald-300"
-                : "bg-red-600/10 border border-red-500/40 text-red-300"
-            }`}
-          >
-            {tradingEnabled
-              ? "🟢 Trading is ACTIVE"
-              : "⛔ Trading is STOPPED"}
-          </div>
-
-          {/* STOP BUTTON (BIG + CLEAR) */}
-          {tradingEnabled && (
-            <button
-              onClick={stopTrading}
-              disabled={stopping}
-              className="w-full py-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-lg shadow-lg"
-            >
-              ⛔ STOP ALL TRADING
-            </button>
-          )}
-
-          {/* Wallet */}
-          {account ? (
-            <div className="flex items-center justify-between text-xs bg-gray-900 p-3 rounded-lg border border-gray-800">
-              <span>{short(account)}</span>
-              <button
-                onClick={disconnectWallet}
-                className="text-gray-400"
-              >
-                Disconnect Wallet
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={connectWallet}
-              className="px-4 py-2 rounded-lg bg-blue-600"
-            >
-              Connect Wallet
-            </button>
-          )}
+        <div
+          className={`rounded-xl p-4 text-sm font-semibold ${
+            tradingEnabled
+              ? "bg-emerald-600/10 border border-emerald-500/40 text-emerald-300"
+              : "bg-red-600/10 border border-red-500/40 text-red-300"
+          }`}
+        >
+          {tradingEnabled ? "🟢 Trading is ACTIVE" : "⛔ Trading is STOPPED"}
         </div>
 
-        {/* Tier */}
+        {tradingEnabled && (
+          <button
+            onClick={stopTrading}
+            disabled={stopping}
+            className="w-full py-4 rounded-xl bg-red-600 hover:bg-red-500 font-bold"
+          >
+            ⛔ STOP ALL TRADING
+          </button>
+        )}
+
+        {account ? (
+          <div className="flex items-center justify-between text-xs bg-gray-900 p-3 rounded-lg border border-gray-800">
+            <span>{short(account)}</span>
+            <button onClick={disconnectWallet} className="text-gray-400">
+              Disconnect Wallet
+            </button>
+          </div>
+        ) : (
+          <button onClick={connectWallet} className="px-4 py-2 rounded-lg bg-blue-600">
+            Connect Wallet
+          </button>
+        )}
+
         <TierStatus />
 
-        {/* Tabs */}
         <div className="bg-gray-900/60 rounded-xl border border-gray-800">
           <Tabs selectedIndex={tab} onSelect={setTab}>
             <TabList className="flex border-b border-gray-800">
@@ -222,31 +242,14 @@ export default function MemberDashboard() {
 
             <TabPanel className="p-4 space-y-4">
               <ImaliBalance />
-
-              {tierAtLeast(tier, "pro") ? (
-                <Staking />
-              ) : (
-                <div className="text-sm text-gray-400">Upgrade to Pro for staking</div>
-              )}
-
-              {tierAtLeast(tier, "elite") ? (
-                <YieldFarming />
-              ) : (
-                <div className="text-sm text-gray-400">Elite required for farming</div>
-              )}
-
+              {tierAtLeast(tier, "pro") ? <Staking /> : <div className="text-sm text-gray-400">Upgrade to Pro for staking</div>}
+              {tierAtLeast(tier, "elite") ? <YieldFarming /> : <div className="text-sm text-gray-400">Elite required for farming</div>}
               <NFTPreview />
               <ReferralSystem />
             </TabPanel>
 
             <TabPanel className="p-4">
-              {tierAtLeast(tier, "elite") ? (
-                <Futures />
-              ) : (
-                <div className="text-sm text-gray-400">
-                  Elite required for futures trading
-                </div>
-              )}
+              {tierAtLeast(tier, "elite") ? <Futures /> : <div className="text-sm text-gray-400">Elite required</div>}
             </TabPanel>
           </Tabs>
         </div>
