@@ -1,131 +1,121 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { BotAPI } from "../utils/BotAPI";
 
-/**
- * Login
- * --------------------------------------------------
- * Rules:
- * - ALL auth goes through BotAPI
- * - Token storage handled centrally (BotAPI)
- * - Activation page decides readiness
- * - Login ONLY decides: dashboard vs activation
- */
-
 export default function Login() {
-  const navigate = useNavigate();
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
+  const nav = useNavigate();
+  const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
-    if (loading) return;
-
-    setLoading(true);
     setError("");
+    
+    if (!form.email || !form.password) {
+      setError("Email and password are required");
+      return;
+    }
+    
+    setLoading(true);
 
     try {
-      /* ---------------- Login ---------------- */
-      await BotAPI.login({
-        email: email.trim(),
-        password,
-      });
-
-      /* ---------------- Activation truth ---------------- */
-      let status = null;
-      try {
-        status = await BotAPI.activationStatus();
-      } catch {
-        // non-fatal — activation page will re-check
-      }
-
-      const billingComplete = !!status?.billing_complete;
-      const tradingEnabled = !!status?.trading_enabled;
-      const activationComplete =
-        status?.activation_complete === true ||
-        (billingComplete && tradingEnabled);
-
-      /* ---------------- Route ---------------- */
-      if (activationComplete) {
-        navigate("/MemberDashboard", { replace: true });
+      const result = await BotAPI.login(form);
+      
+      if (result?.token) {
+        console.log("Login successful, token saved");
+        // Check activation status first
+        try {
+          const status = await BotAPI.activationStatus();
+          if (status?.status?.activation_complete && status?.status?.trading_enabled) {
+            nav("/dashboard", { replace: true });
+          } else {
+            nav("/activation", { replace: true });
+          }
+        } catch (statusErr) {
+          // If activation check fails, go to activation page
+          nav("/activation", { replace: true });
+        }
       } else {
-        navigate("/activation", { replace: true });
+        setError("No token received from server");
       }
     } catch (err) {
-      console.error("[login] failed:", err);
-
-      if (err?.status === 401) {
-        setError("Invalid email or password.");
-      } else if (err?.status === 404) {
-        setError(
-          "Login endpoint not found on server. Ensure POST /api/login exists."
-        );
-      } else {
-        setError(err?.message || "Login failed.");
-      }
+      console.error("Login error:", err);
+      setError(err.message || "Login failed. Please check your credentials.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white flex items-center justify-center">
-      <div className="w-full max-w-md p-6 rounded-2xl bg-white/5 border border-white/10">
-        <h1 className="text-3xl font-extrabold text-center mb-2">
-          Log in to IMALI
-        </h1>
-
-        <p className="text-sm text-center text-white/70 mb-6">
-          Resume setup or continue trading
-        </p>
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6 text-white">
+      <form onSubmit={submit} className="w-full max-w-md space-y-6 p-8 bg-gray-900 rounded-2xl shadow-2xl">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
+          <p className="text-gray-400">Sign in to your IMALI account</p>
+        </div>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-2 text-sm">
-            {error}
+          <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
+            <p className="text-red-400 text-sm">{error}</p>
           </div>
         )}
 
-        <form onSubmit={submit} className="space-y-4">
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none"
-            required
-            autoComplete="email"
-          />
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Email Address
+            </label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              required
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              className="w-full p-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
 
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none"
-            required
-            autoComplete="current-password"
-          />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 disabled:opacity-60 font-bold transition"
-          >
-            {loading ? "Signing in…" : "Log in"}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-white/60">
-          Don’t have an account?{" "}
-          <Link to="/signup" className="text-emerald-300 hover:underline">
-            Create one
-          </Link>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Password
+            </label>
+            <input
+              type="password"
+              placeholder="Enter your password"
+              required
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              className="w-full p-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
         </div>
-      </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl font-semibold text-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? (
+            <span className="flex items-center justify-center">
+              <svg className="animate-spin h-5 w-5 mr-3 text-white" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              Signing in...
+            </span>
+          ) : (
+            "Sign In"
+          )}
+        </button>
+
+        <p className="text-center text-gray-400 text-sm">
+          Don't have an account?{" "}
+          <Link to="/signup" className="text-blue-400 hover:text-blue-300 underline">
+            Sign up
+          </Link>
+        </p>
+      </form>
     </div>
   );
 }
