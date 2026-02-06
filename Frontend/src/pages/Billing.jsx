@@ -6,7 +6,7 @@ import { BotAPI } from "../utils/BotAPI";
 
 const STRIPE_KEY = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || "";
 
-function BillingInner({ clientSecret, customerId }) {
+function BillingInner({ customerId }) {
   const stripe = useStripe();
   const elements = useElements();
   const nav = useNavigate();
@@ -68,10 +68,21 @@ export default function Billing() {
     []
   );
 
+  // 🔐 Auth guard
+  useEffect(() => {
+    const token = localStorage.getItem("imali_token");
+    if (!token) nav("/signup", { replace: true });
+  }, [nav]);
+
   useEffect(() => {
     (async () => {
       try {
         const data = await BotAPI.billingSetupIntent();
+
+        if (!data?.client_secret?.startsWith("seti_")) {
+          throw new Error("Invalid Stripe SetupIntent returned by server");
+        }
+
         setClientSecret(data.client_secret);
         setCustomerId(data.customer_id || "");
       } catch (e) {
@@ -86,18 +97,25 @@ export default function Billing() {
   if (fatal) return <div className="p-6 text-red-400">{fatal}</div>;
   if (!stripePromise) return <div className="p-6">Stripe not configured</div>;
 
+  const billingRequired = true;
+
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="max-w-md mx-auto">
         <h1 className="text-2xl font-bold mb-4">Billing</h1>
 
         <Elements stripe={stripePromise} options={{ clientSecret }}>
-          <BillingInner clientSecret={clientSecret} customerId={customerId} />
+          <BillingInner customerId={customerId} />
         </Elements>
 
-        <Link to="/activation" className="block mt-4 text-sm underline text-center">
-          Skip billing
-        </Link>
+        {!billingRequired && (
+          <Link
+            to="/activation"
+            className="block mt-4 text-sm underline text-center"
+          >
+            Skip billing
+          </Link>
+        )}
       </div>
     </div>
   );
