@@ -1,7 +1,7 @@
 // src/pages/Login.jsx
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { BotAPI } from "../../utils/BotAPI";
+import BotAPI from "../utils/BotAPI";
 
 export default function Login() {
   const navigate = useNavigate();
