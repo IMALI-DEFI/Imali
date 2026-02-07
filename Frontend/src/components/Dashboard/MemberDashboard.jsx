@@ -17,7 +17,7 @@ import NFTPreview from "./NFTPreview";
 import TierStatus from "./TierStatus";
 import RecentTradesTable from "./RecentTradesTable";
 import ReferralSystem from "./ReferralSystem";
-import TradeDemo from "../TradeDemo"; // Adjusted path
+import TradeDemo from "./TradeDemo"; // Adjusted path
 import Futures from "./Futures";
 
 /* Tier helpers */
