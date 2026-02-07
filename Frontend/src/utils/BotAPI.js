@@ -108,14 +108,7 @@ try {
   if (isDev) {
     console.log("[BotAPI] API Origin:", API_ORIGIN);
     console.log("[BotAPI] Base URL:", BASE_URL);
-    console.log("[BotAPI] Available Endpoints:");
-    console.log("  - POST /signup");
-    console.log("  - POST /auth/login");
-    console.log("  - POST /auth/wallet");
-    console.log("  - GET /me");
-    console.log("  - GET /promo/status");
-    console.log("  - POST /promo/claim");
-    console.log("  - GET /health");
+    console.log("[BotAPI] Current Token:", getAuthToken() ? "YES" : "NO");
   }
 } catch {
   /* noop */
@@ -132,7 +125,7 @@ api.interceptors.request.use(
     }
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`);
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
     }
     
     return config;
@@ -146,7 +139,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => {
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[API] ${response.config.method?.toUpperCase()} ${response.config.url}: ${response.status}`);
+      console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}: ${response.status}`);
     }
     return response;
   },
@@ -203,7 +196,7 @@ async function tryApi(fn) {
 }
 
 /* ======================================================
-   Centralized API Interface - FIXED ENDPOINTS
+   Centralized API Interface - UPDATED ENDPOINTS
 ====================================================== */
 export const BotAPI = {
   client: api,
@@ -215,23 +208,24 @@ export const BotAPI = {
   systemInfo: () => tryApi(() => api.get("/system/info")),
   
   /* ---------------- Auth ---------------- */
-  // FIXED: Using /signup instead of /auth/signup
+  // FIXED: Using /signup endpoint (NOT /auth/signup)
   signup: async (payload) => {
     console.log("[BotAPI] Signup to /signup endpoint");
     const data = await tryApi(() => api.post("/signup", payload));
     
-    // Check for token in various response formats
+    // Check for token in response
     const token = data.token || data.data?.token;
     if (token) {
       setAuthToken(token);
       console.log("[BotAPI] Token saved successfully");
     } else {
-      console.warn("[BotAPI] No token in signup response:", data);
+      console.warn("[BotAPI] No token in signup response");
     }
     
     return data;
   },
   
+  // Login endpoint is correct: /auth/login
   login: async (payload) => {
     console.log("[BotAPI] Login to /auth/login endpoint");
     const data = await tryApi(() => api.post("/auth/login", payload));
@@ -245,6 +239,7 @@ export const BotAPI = {
     return data;
   },
   
+  // Wallet auth endpoint is correct: /auth/wallet
   walletAuth: async (payload) => {
     console.log("[BotAPI] Wallet auth to /auth/wallet endpoint");
     const data = await tryApi(() => api.post("/auth/wallet", payload));
@@ -270,16 +265,8 @@ export const BotAPI = {
   permissions: () => tryApi(() => api.get("/me/permissions")),
   
   /* ---------------- Promo ---------------- */
-  promoStatus: () => {
-    console.log("[BotAPI] Getting promo status");
-    return tryApi(() => api.get("/promo/status"));
-  },
-  
-  promoClaim: (payload) => {
-    console.log("[BotAPI] Claiming promo");
-    return tryApi(() => api.post("/promo/claim", payload));
-  },
-  
+  promoStatus: () => tryApi(() => api.get("/promo/status")),
+  promoClaim: (payload) => tryApi(() => api.post("/promo/claim", payload)),
   promoMe: () => tryApi(() => api.get("/promo/me")),
   
   /* ---------------- Integrations ---------------- */
@@ -346,53 +333,6 @@ export const BotAPI = {
   getToken: getAuthToken,
   setToken: setAuthToken,
   clearToken: clearAuthToken,
-  
-  /* ---------------- Test Connection ---------------- */
-  testConnection: async () => {
-    try {
-      console.log("[BotAPI] Testing connection to /health");
-      const health = await tryApi(() => api.get("/health"));
-      console.log("[BotAPI] Health check successful:", health);
-      return health;
-    } catch (error) {
-      console.error("[BotAPI] Health check failed:", error);
-      throw error;
-    }
-  },
-  
-  /* ---------------- Endpoint Discovery ---------------- */
-  listEndpoints: async () => {
-    // Try common endpoints to see what's available
-    const endpoints = [];
-    
-    const testEndpoint = async (path, method = 'GET') => {
-      try {
-        if (method === 'GET') {
-          await api.head(path, { timeout: 5000 });
-          return true;
-        }
-        return false;
-      } catch (error) {
-        return error.response?.status !== 404;
-      }
-    };
-    
-    const commonEndpoints = [
-      '/health',
-      '/signup',
-      '/auth/login',
-      '/auth/wallet',
-      '/me',
-      '/promo/status'
-    ];
-    
-    for (const endpoint of commonEndpoints) {
-      const available = await testEndpoint(endpoint);
-      endpoints.push({ endpoint, available });
-    }
-    
-    return endpoints;
-  }
 };
 
 export default BotAPI;
