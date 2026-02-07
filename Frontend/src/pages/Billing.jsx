@@ -27,6 +27,7 @@ function BillingInner({ customerId, clientSecret }) {
         confirmParams: {
           return_url: `${window.location.origin}/billing-success`,
         },
+        redirect: "if_required",
       });
 
       if (stripeError) {
@@ -43,6 +44,7 @@ function BillingInner({ customerId, clientSecret }) {
             customer_id: customerId,
             payment_method_id: setupIntent.payment_method,
           });
+          console.log("Default payment method set successfully");
         } catch (err) {
           console.warn("Failed to set default payment method:", err);
           // Don't fail the whole process if this fails
@@ -51,6 +53,16 @@ function BillingInner({ customerId, clientSecret }) {
 
       // Check if the setup intent succeeded
       if (setupIntent?.status === "succeeded") {
+        console.log("Setup intent succeeded, redirecting...");
+        nav("/billing-success", { replace: true });
+      } else if (setupIntent?.status === "requires_payment_method") {
+        setError("Please add a payment method");
+      } else if (setupIntent?.status === "requires_action") {
+        // Handle 3D Secure authentication
+        const { error: confirmError } = await stripe.confirmCardSetup(clientSecret);
+        if (confirmError) {
+          throw confirmError;
+        }
         nav("/billing-success", { replace: true });
       } else {
         setError(`Setup not completed. Status: ${setupIntent?.status}`);
@@ -130,6 +142,7 @@ export default function Billing() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [userTier, setUserTier] = useState("starter");
+  const [userEmail, setUserEmail] = useState("");
 
   const stripePromise = useMemo(
     () => (STRIPE_KEY ? loadStripe(STRIPE_KEY) : null),
@@ -138,8 +151,9 @@ export default function Billing() {
 
   // Auth guard
   useEffect(() => {
-    const token = localStorage.getItem("imali_token");
+    const token = BotAPI.getToken();
     if (!token) {
+      console.log("No token found, redirecting to signup");
       nav("/signup", { replace: true });
     }
   }, [nav]);
@@ -147,31 +161,80 @@ export default function Billing() {
   useEffect(() => {
     (async () => {
       try {
-        // First, get user info to check tier
-        const userData = await BotAPI.me();
-        setUserTier(userData?.user?.tier || "starter");
+        console.log("Loading billing setup...");
         
-        // Then get setup intent
-        const data = await BotAPI.billingSetupIntent();
+        // First, get user info to check tier
+        console.log("Fetching user data...");
+        const userData = await BotAPI.me();
+        console.log("User data:", userData);
+        
+        setUserTier(userData?.user?.tier || "starter");
+        setUserEmail(userData?.user?.email || "");
+        
+        // Check if user already has a card on file
+        console.log("Checking card status...");
+        try {
+          const cardStatus = await BotAPI.billingCardStatus();
+          console.log("Card status:", cardStatus);
+          
+          if (cardStatus?.has_card) {
+            console.log("User already has a card on file");
+            // User already has card, redirect to activation
+            nav("/activation", { replace: true });
+            return;
+          }
+        } catch (cardErr) {
+          console.log("Card status check failed, continuing:", cardErr.message);
+        }
+        
+        // Create setup intent
+        console.log("Creating setup intent...");
+        const data = await BotAPI.billingSetupIntent({
+          email: userEmail,
+          tier: userTier
+        });
+        console.log("Setup intent response:", data);
         
         if (!data?.client_secret) {
           throw new Error("No client secret returned from server");
         }
         
-        if (!data.client_secret.startsWith("seti_")) {
-          console.warn("Client secret doesn't start with 'seti_':", data.client_secret);
+        // Validate client secret format
+        const secret = data.client_secret;
+        if (!secret.startsWith("seti_") && !secret.startsWith("secret_")) {
+          console.warn("Client secret doesn't have expected prefix:", secret.substring(0, 20) + "...");
+        } else {
+          console.log("Client secret format looks OK");
         }
 
-        setClientSecret(data.client_secret);
-        setCustomerId(data.customer_id || "");
+        setClientSecret(secret);
+        setCustomerId(data.customer_id || data.customer || "");
+        console.log("Setup intent loaded successfully");
+        
       } catch (err) {
         console.error("Failed to load billing setup:", err);
-        setError(err.message || "Failed to load billing information");
+        
+        let errorMessage = err.message || "Failed to load billing information";
+        
+        // Handle specific errors
+        if (err.status === 404) {
+          errorMessage = "Billing endpoint not found. Please contact support.";
+        } else if (err.status === 401) {
+          errorMessage = "Session expired. Please log in again.";
+          BotAPI.logout();
+          setTimeout(() => nav("/login"), 2000);
+        } else if (err.status === 403) {
+          errorMessage = "You don't have permission to access billing.";
+        } else if (err.status === 500) {
+          errorMessage = "Server error. Please try again later.";
+        }
+        
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [nav, userEmail, userTier]);
 
   if (loading) {
     return (
@@ -179,6 +242,7 @@ export default function Billing() {
         <div className="text-center">
           <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
           <p>Loading billing information...</p>
+          <p className="text-sm text-gray-500 mt-2">This may take a moment</p>
         </div>
       </div>
     );
@@ -190,13 +254,21 @@ export default function Billing() {
         <div className="max-w-md mx-auto">
           <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-xl">
             <h2 className="text-xl font-bold text-red-400 mb-2">Error</h2>
-            <p className="text-red-300">{error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-4 px-4 py-2 bg-red-500 hover:bg-red-600 rounded-lg font-medium"
-            >
-              Try Again
-            </button>
+            <p className="text-red-300 mb-4">{error}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 rounded-lg font-medium transition-colors"
+              >
+                Try Again
+              </button>
+              <Link
+                to="/activation"
+                className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg font-medium text-center transition-colors"
+              >
+                Back to Activation
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -209,9 +281,36 @@ export default function Billing() {
         <div className="max-w-md mx-auto">
           <div className="p-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
             <h2 className="text-xl font-bold text-yellow-400 mb-2">Stripe Not Configured</h2>
-            <p className="text-yellow-300">
-              Stripe is not properly configured. Please contact support.
+            <p className="text-yellow-300 mb-4">
+              Stripe publishable key is missing. Please check your environment configuration.
             </p>
+            <Link
+              to="/activation"
+              className="inline-block px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg font-medium transition-colors"
+            >
+              Back to Activation
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!clientSecret) {
+    return (
+      <div className="min-h-screen bg-black text-white p-6">
+        <div className="max-w-md mx-auto">
+          <div className="p-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+            <h2 className="text-xl font-bold text-yellow-400 mb-2">Setup Required</h2>
+            <p className="text-yellow-300 mb-4">
+              Unable to load payment form. Please try refreshing the page.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 rounded-lg font-medium transition-colors"
+            >
+              Refresh Page
+            </button>
           </div>
         </div>
       </div>
@@ -226,6 +325,9 @@ export default function Billing() {
           <p className="text-gray-400">
             Complete your billing setup to activate your {userTier} account
           </p>
+          {userEmail && (
+            <p className="text-sm text-gray-500 mt-1">Account: {userEmail}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -316,6 +418,31 @@ export default function Billing() {
             >
               Back to Activation
             </Link>
+            
+            {/* Debug info for development */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+                <details>
+                  <summary className="cursor-pointer text-sm text-gray-400">Debug Info</summary>
+                  <div className="mt-2 text-xs text-gray-500">
+                    <p>Client Secret: {clientSecret?.substring(0, 30)}...</p>
+                    <p>Customer ID: {customerId || "None"}</p>
+                    <p>User Tier: {userTier}</p>
+                    <button 
+                      onClick={() => console.log({
+                        clientSecret: clientSecret?.substring(0, 50),
+                        customerId,
+                        userTier,
+                        userEmail
+                      })}
+                      className="mt-2 text-xs text-blue-400"
+                    >
+                      Log Details
+                    </button>
+                  </div>
+                </details>
+              </div>
+            )}
           </div>
         </div>
       </div>
