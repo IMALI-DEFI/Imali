@@ -1,13 +1,15 @@
+// src/pages/dashboard/MemberDashboard.js
 import React, { useEffect, useState } from "react";
 import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
 import { useNavigate } from "react-router-dom";
 
-import { BotAPI } from "../../utils/BotAPI";
+// Import BotAPI correctly - adjust path as needed
+import BotAPI from "../../utils/BotAPI"; // or import { BotAPI } from "../../utils/BotAPI";
 import { useWallet } from "../../context/WalletContext";
 import { short } from "../../getContractInstance";
 
-/* Feature modules - Ensure these components exist in your project */
+/* Feature modules - Ensure these components exist */
 import ImaliBalance from "./ImaliBalance";
 import Staking from "./Staking";
 import YieldFarming from "./YieldFarming";
@@ -15,7 +17,7 @@ import NFTPreview from "./NFTPreview";
 import TierStatus from "./TierStatus";
 import RecentTradesTable from "./RecentTradesTable";
 import ReferralSystem from "./ReferralSystem";
-import TradeDemo from "../../pages/TradeDemo";
+import TradeDemo from "../TradeDemo"; // Adjusted path
 import Futures from "./Futures";
 
 /* Tier helpers */
@@ -544,7 +546,7 @@ export default function MemberDashboard() {
               Settings
             </button>
             <button 
-              onClick={() => BotAPI.logout() && nav("/login")}
+              onClick={() => { BotAPI.logout(); nav("/login"); }}
               className="text-red-400 hover:text-red-300"
             >
               Logout
