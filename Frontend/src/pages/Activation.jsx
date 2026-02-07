@@ -903,4 +903,67 @@ export default function Activation() {
                   <div className="grid grid-cols-3 gap-4 mt-4">
                     <div className={`p-2 rounded ${billing ? 'bg-emerald-500/20' : 'bg-gray-800'}`}>
                       <div className="text-xs text-gray-500">Billing</div>
-                      <div className
+                      <div className={billing ? 'text-emerald-400' : 'text-gray-400'}>{billing ? '✓' : '✗'}</div>
+                    </div>
+                    <div className={`p-2 rounded ${okx ? 'bg-emerald-500/20' : 'bg-gray-800'}`}>
+                      <div className="text-xs text-gray-500">OKX</div>
+                      <div className={okx ? 'text-emerald-400' : 'text-gray-400'}>{okx ? '✓' : '✗'}</div>
+                    </div>
+                    <div className={`p-2 rounded ${alpaca ? 'bg-emerald-500/20' : 'bg-gray-800'}`}>
+                      <div className="text-xs text-gray-500">Alpaca</div>
+                      <div className={alpaca ? 'text-emerald-400' : 'text-gray-400'}>{alpaca ? '✓' : '✗'}</div>
+                    </div>
+                    <div className={`p-2 rounded ${wallet ? 'bg-emerald-500/20' : 'bg-gray-800'}`}>
+                      <div className="text-xs text-gray-500">Wallet</div>
+                      <div className={wallet ? 'text-emerald-400' : 'text-gray-400'}>{wallet ? '✓' : '✗'}</div>
+                    </div>
+                    <div className={`p-2 rounded ${trading ? 'bg-emerald-500/20' : 'bg-gray-800'}`}>
+                      <div className="text-xs text-gray-500">Trading</div>
+                      <div className={trading ? 'text-emerald-400' : 'text-gray-400'}>{trading ? '✓' : '✗'}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={load}
+                    className="mt-4 text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded"
+                  >
+                    Refresh Data
+                  </button>
+                </div>
+              </details>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modals */}
+      <OkxModal
+        isOpen={showOkxModal}
+        onClose={() => setShowOkxModal(false)}
+        onConnect={handleConnectOkx}
+      />
+      
+      <AlpacaModal
+        isOpen={showAlpacaModal}
+        onClose={() => setShowAlpacaModal(false)}
+        onConnect={handleConnectAlpaca}
+      />
+      
+      <WalletModal
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        onConnect={handleConnectWallet}
+      />
+
+      {/* Animation styles */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
+    </>
+  );
+}
