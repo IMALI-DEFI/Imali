@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { BotAPI } from "../utils/BotAPI";
 
@@ -12,34 +12,184 @@ export default function Signup() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [debug, setDebug] = useState("");
+
+  // Check if already logged in
+  useEffect(() => {
+    if (BotAPI.isLoggedIn()) {
+      console.log("Already logged in, redirecting to dashboard");
+      nav("/dashboard", { replace: true });
+    }
+  }, [nav]);
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    setDebug("");
     
     if (!form.email || !form.password) {
       setError("Email and password are required");
       return;
     }
     
+    if (form.password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+    
     setLoading(true);
+    console.log("Starting signup process...");
 
     try {
-      // Create account - BotAPI stores token automatically
-      const result = await BotAPI.signup(form);
-      
-      if (result?.token) {
-        console.log("Signup successful, token saved");
-        // Go to Billing first
-        nav("/billing", { replace: true });
-      } else {
-        setError("No token received from server");
+      // Step 1: Test if API is reachable
+      setDebug("Testing API connection...");
+      try {
+        const health = await BotAPI.health();
+        console.log("API health check:", health);
+        setDebug(prev => prev + " ✓ API Connected\n");
+      } catch (healthErr) {
+        console.error("API connection failed:", healthErr);
+        setError(`Cannot connect to server: ${healthErr.message}`);
+        setDebug(prev => prev + ` ✗ API Connection failed: ${healthErr.message}\n`);
+        return;
       }
+
+      // Step 2: Attempt signup
+      setDebug(prev => prev + "Attempting signup...\n");
+      console.log("Signup payload:", { 
+        email: form.email, 
+        tier: form.tier,
+        strategy: form.strategy 
+      });
+      
+      const result = await BotAPI.signup(form);
+      console.log("Signup response:", result);
+      
+      // Step 3: Check if token was received
+      const token = BotAPI.getToken();
+      console.log("Token after signup:", token ? "YES" : "NO");
+      
+      if (token) {
+        setDebug(prev => prev + "Token received ✓\n");
+        
+        // Step 4: Verify token works by getting user profile
+        setDebug(prev => prev + "Verifying token...\n");
+        try {
+          const user = await BotAPI.me();
+          console.log("User verified:", user);
+          setDebug(prev => prev + `User verified: ${user?.user?.email} ✓\n`);
+          
+          // Step 5: Auto-claim promo (silently)
+          try {
+            const promoStatus = await BotAPI.promoStatus();
+            if (promoStatus.active || promoStatus.available) {
+              try {
+                await BotAPI.promoClaim({ email: form.email, tier: form.tier });
+                console.log("Promo auto-claimed");
+                setDebug(prev => prev + "Promo auto-claimed ✓\n");
+              } catch (promoErr) {
+                console.log("Could not auto-claim promo:", promoErr.message);
+              }
+            }
+          } catch (promoErr) {
+            // Ignore promo errors
+          }
+          
+          // Step 6: Redirect to billing
+          setDebug(prev => prev + "Redirecting to billing...\n");
+          console.log("Signup successful, redirecting to billing");
+          
+          setTimeout(() => {
+            nav("/billing", { 
+              replace: true,
+              state: { justSignedUp: true }
+            });
+          }, 500);
+          
+        } catch (userErr) {
+          console.error("Token verification failed:", userErr);
+          setDebug(prev => prev + `Token verification failed: ${userErr.message}\n`);
+          setError("Account created but login failed. Please try logging in.");
+          
+          // Clear invalid token
+          BotAPI.logout();
+          
+          setTimeout(() => {
+            nav("/login", { 
+              state: { 
+                email: form.email,
+                message: "Account created! Please log in."
+              }
+            });
+          }, 2000);
+        }
+      } else {
+        // No token in response
+        console.warn("No token in response");
+        setDebug(prev => prev + "No token in response\n");
+        
+        // Check if account was created anyway
+        if (result.success || result.ok) {
+          setDebug(prev => prev + "Account created (no token)\n");
+          setError("Account created! Redirecting to login...");
+          
+          setTimeout(() => {
+            nav("/login", { 
+              state: { 
+                email: form.email,
+                message: "Account created! Please log in."
+              }
+            });
+          }, 1500);
+        } else {
+          setError(result.message || "Signup failed - no token received");
+          setDebug(prev => prev + `Response: ${JSON.stringify(result, null, 2)}\n`);
+        }
+      }
+      
     } catch (err) {
-      console.error("Signup error:", err);
-      setError(err.message || "Signup failed. Please try again.");
+      console.error("Signup error details:", err);
+      
+      let errorMessage = err.message || "Signup failed. Please try again.";
+      
+      // Handle specific error cases
+      if (err.status === 404) {
+        errorMessage = `Endpoint not found: ${err.url}. The signup endpoint may be misconfigured.`;
+        setDebug(prev => prev + `404 Error: ${err.url}\n`);
+      } else if (err.status === 409 || err.message.includes("already exists")) {
+        errorMessage = "An account with this email already exists. Please log in instead.";
+        setTimeout(() => {
+          nav("/login", { state: { email: form.email } });
+        }, 2000);
+      } else if (err.status === 400) {
+        if (err.message.includes("email")) {
+          errorMessage = "Please enter a valid email address";
+        } else if (err.message.includes("password")) {
+          errorMessage = "Password must be at least 8 characters";
+        }
+      } else if (err.status === 500) {
+        errorMessage = "Server error. Please try again later.";
+      }
+      
+      setError(errorMessage);
+      setDebug(prev => prev + `Error: ${err.message}\nStatus: ${err.status}\n`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Quick test function for debugging
+  const testEndpoint = async () => {
+    try {
+      console.log("Testing /signup endpoint...");
+      const response = await fetch(`${BotAPI.client.defaults.baseURL}/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({email: 'test@test.com', password: 'test1234', tier: 'starter'})
+      });
+      console.log("Test response:", response.status, await response.json());
+    } catch (err) {
+      console.error("Test error:", err);
     }
   };
 
@@ -134,6 +284,25 @@ export default function Signup() {
         <div className="text-xs text-gray-500 text-center pt-4 border-t border-gray-800">
           By signing up, you agree to our Terms of Service and Privacy Policy
         </div>
+
+        {/* Debug info - remove in production */}
+        {process.env.NODE_ENV === 'development' && debug && (
+          <div className="mt-4 p-4 bg-gray-800 rounded-lg">
+            <details>
+              <summary className="cursor-pointer text-sm text-gray-400 mb-2">Debug Info</summary>
+              <pre className="text-xs mt-2 text-gray-300 whitespace-pre-wrap overflow-auto max-h-40">
+                {debug}
+              </pre>
+            </details>
+            <button 
+              type="button"
+              onClick={testEndpoint}
+              className="mt-2 text-xs text-blue-400 hover:text-blue-300"
+            >
+              Test Endpoint
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );
