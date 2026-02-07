@@ -125,7 +125,7 @@ api.interceptors.request.use(
     }
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, config.data || '');
     }
     
     return config;
@@ -147,10 +147,9 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const url = error.config?.url;
     const method = error.config?.method;
+    const data = error.response?.data;
     
-    if (process.env.NODE_ENV === 'development') {
-      console.error(`[API Error] ${method?.toUpperCase()} ${url}: ${status}`, error.response?.data);
-    }
+    console.error(`[API Error] ${method?.toUpperCase()} ${url}: ${status}`, data);
     
     if (status === 401) {
       clearAuthToken();
@@ -164,7 +163,7 @@ api.interceptors.response.use(
 );
 
 /* ======================================================
-   Error Wrapper
+   Error Wrapper with Better Error Messages
 ====================================================== */
 async function tryApi(fn) {
   try {
@@ -172,52 +171,78 @@ async function tryApi(fn) {
     return res.data;
   } catch (err) {
     const status = err?.response?.status;
-    const message =
-      err?.response?.data?.message ||
-      err?.response?.data?.error ||
-      err?.response?.data?.detail ||
-      err?.message ||
-      "API request failed";
-
+    const data = err?.response?.data;
+    
+    // Build user-friendly error message
+    let message = "Request failed";
+    
+    if (data?.message) {
+      message = data.message;
+    } else if (data?.error) {
+      message = data.error;
+    } else if (data?.detail) {
+      message = data.detail;
+    } else if (err?.message) {
+      message = err.message;
+    }
+    
+    // Add status-specific messages
+    if (status === 404) {
+      message = `Endpoint not found: ${err.config?.url}`;
+    } else if (status === 500) {
+      message = "Server error. Please try again later.";
+    } else if (status === 400) {
+      if (message.includes("email")) {
+        message = "Invalid email address";
+      } else if (message.includes("password")) {
+        message = "Invalid password";
+      }
+    } else if (status === 409) {
+      message = "Account already exists";
+    }
+    
     console.error("[BotAPI Error]", {
       status,
       message,
       url: err?.config?.url,
       method: err?.config?.method,
-      data: err?.response?.data
+      data: data
     });
 
     const e = new Error(message);
     e.status = status;
-    e.data = err?.response?.data;
+    e.data = data;
+    e.url = err?.config?.url;
     
     throw e;
   }
 }
 
 /* ======================================================
-   Centralized API Interface - UPDATED ENDPOINTS
+   Centralized API Interface - CORRECTED ENDPOINTS
 ====================================================== */
 export const BotAPI = {
   client: api,
   tryApi,
   isLoggedIn,
+  getToken: getAuthToken,
+  setToken: setAuthToken,
+  clearToken: clearAuthToken,
   
   /* ---------------- Health & System ---------------- */
   health: () => tryApi(() => api.get("/health")),
   systemInfo: () => tryApi(() => api.get("/system/info")),
   
-  /* ---------------- Auth ---------------- */
-  // FIXED: Using /signup endpoint (NOT /auth/signup)
+  /* ---------------- Authentication ---------------- */
   signup: async (payload) => {
-    console.log("[BotAPI] Signup to /signup endpoint");
-    const data = await tryApi(() => api.post("/signup", payload));
+    console.log("[BotAPI] Signup request:", { email: payload.email, tier: payload.tier });
+    const data = await tryApi(() => api.post("/auth/signup", payload));
     
-    // Check for token in response
+    // Handle token in response
     const token = data.token || data.data?.token;
     if (token) {
       setAuthToken(token);
-      console.log("[BotAPI] Token saved successfully");
+      console.log("[BotAPI] Token saved");
     } else {
       console.warn("[BotAPI] No token in signup response");
     }
@@ -225,9 +250,8 @@ export const BotAPI = {
     return data;
   },
   
-  // Login endpoint is correct: /auth/login
   login: async (payload) => {
-    console.log("[BotAPI] Login to /auth/login endpoint");
+    console.log("[BotAPI] Login request:", { email: payload.email });
     const data = await tryApi(() => api.post("/auth/login", payload));
     
     const token = data.token || data.data?.token;
@@ -239,9 +263,8 @@ export const BotAPI = {
     return data;
   },
   
-  // Wallet auth endpoint is correct: /auth/wallet
   walletAuth: async (payload) => {
-    console.log("[BotAPI] Wallet auth to /auth/wallet endpoint");
+    console.log("[BotAPI] Wallet auth request:", { wallet: payload.wallet });
     const data = await tryApi(() => api.post("/auth/wallet", payload));
     
     const token = data.token || data.data?.token;
@@ -255,42 +278,65 @@ export const BotAPI = {
     clearAuthToken();
   },
   
-  /* ---------------- User ---------------- */
+  /* ---------------- User Profile ---------------- */
   me: () => {
-    console.log("[BotAPI] Getting user profile from /me");
+    console.log("[BotAPI] Getting user profile");
     return tryApi(() => api.get("/me"));
   },
   
-  activationStatus: () => tryApi(() => api.get("/me/activation-status")),
+  activationStatus: () => {
+    console.log("[BotAPI] Getting activation status");
+    return tryApi(() => api.get("/me/activation-status"));
+  },
+  
   permissions: () => tryApi(() => api.get("/me/permissions")),
   
-  /* ---------------- Promo ---------------- */
-  promoStatus: () => tryApi(() => api.get("/promo/status")),
-  promoClaim: (payload) => tryApi(() => api.post("/promo/claim", payload)),
+  /* ---------------- Promo System ---------------- */
+  promoStatus: () => {
+    console.log("[BotAPI] Getting promo status");
+    return tryApi(() => api.get("/promo/status"));
+  },
+  
+  promoClaim: (payload) => {
+    console.log("[BotAPI] Claiming promo:", { email: payload.email });
+    return tryApi(() => api.post("/promo/claim", payload));
+  },
+  
   promoMe: () => tryApi(() => api.get("/promo/me")),
   
   /* ---------------- Integrations ---------------- */
-  connectWallet: (payload) => 
-    tryApi(() => api.post("/integrations/wallet", payload)),
+  connectWallet: (payload) => {
+    console.log("[BotAPI] Connecting wallet:", { wallet: payload.wallet });
+    return tryApi(() => api.post("/integrations/wallet", payload));
+  },
   
-  connectOkx: (payload) => 
-    tryApi(() => api.post("/integrations/okx", payload)),
+  connectOkx: (payload) => {
+    console.log("[BotAPI] Connecting OKX");
+    return tryApi(() => api.post("/integrations/okx", payload));
+  },
   
-  connectAlpaca: (payload) => 
-    tryApi(() => api.post("/integrations/alpaca", payload)),
+  connectAlpaca: (payload) => {
+    console.log("[BotAPI] Connecting Alpaca");
+    return tryApi(() => api.post("/integrations/alpaca", payload));
+  },
   
   integrationStatus: () => tryApi(() => api.get("/integrations/status")),
   
-  /* ---------------- Trading ---------------- */
-  tradingEnable: (enabled) => 
-    tryApi(() => api.post("/trading/enable", { enabled: !!enabled })),
+  /* ---------------- Trading Control ---------------- */
+  tradingEnable: (enabled) => {
+    console.log(`[BotAPI] ${enabled ? "Enabling" : "Disabling"} trading`);
+    return tryApi(() => api.post("/trading/enable", { enabled: !!enabled }));
+  },
   
   tradingStatus: () => tryApi(() => api.get("/trading/status")),
   
-  botStart: (payload = {}) => 
-    tryApi(() => api.post("/bot/start", payload)),
+  /* ---------------- Bot Control ---------------- */
+  botStart: (payload = {}) => {
+    console.log("[BotAPI] Starting bot:", payload);
+    return tryApi(() => api.post("/bot/start", payload));
+  },
   
-  /* ---------------- Sniper Trades ---------------- */
+  /* ---------------- Trade History ---------------- */
   sniperTrades: () => tryApi(() => api.get("/sniper/trades")),
   
   /* ---------------- Analytics ---------------- */
@@ -303,15 +349,21 @@ export const BotAPI = {
   analyticsFeesSeries: (payload) => 
     tryApi(() => api.post("/analytics/fees/series", payload)),
   
-  /* ---------------- Billing ---------------- */
-  billingSetupIntent: (payload = {}) => 
-    tryApi(() => api.post("/billing/setup-intent", payload)),
+  /* ---------------- Billing & Payments ---------------- */
+  billingSetupIntent: (payload = {}) => {
+    console.log("[BotAPI] Creating setup intent");
+    return tryApi(() => api.post("/billing/setup-intent", payload));
+  },
   
-  billingCardStatus: (payload = {}) => 
-    tryApi(() => api.get("/billing/card-status", { params: payload })),
+  billingCardStatus: (payload = {}) => {
+    console.log("[BotAPI] Getting card status");
+    return tryApi(() => api.get("/billing/card-status", { params: payload }));
+  },
   
-  billingSetDefaultPaymentMethod: (payload) => 
-    tryApi(() => api.post("/billing/set-default-payment", payload)),
+  billingSetDefaultPaymentMethod: (payload) => {
+    console.log("[BotAPI] Setting default payment method");
+    return tryApi(() => api.post("/billing/set-default-payment", payload));
+  },
   
   billingCalculateFee: (payload) => 
     tryApi(() => api.post("/billing/calculate-fee", payload)),
@@ -321,18 +373,49 @@ export const BotAPI = {
   
   billingFeeHistory: () => tryApi(() => api.get("/billing/fee-history")),
   
-  /* ---------------- Admin ---------------- */
+  /* ---------------- Admin Endpoints ---------------- */
   adminCheck: () => tryApi(() => api.get("/admin/check")),
-  adminUsers: () => tryApi(() => api.get("/admin/users")),
-  adminUpdateUserTier: (payload) => 
-    tryApi(() => api.post("/admin/user/update-tier", payload)),
-  adminProcessPendingFees: (payload = {}) => 
-    tryApi(() => api.post("/admin/process-pending-fees", payload)),
   
-  /* ---------------- Token Helpers ---------------- */
-  getToken: getAuthToken,
-  setToken: setAuthToken,
-  clearToken: clearAuthToken,
+  adminUsers: () => {
+    console.log("[BotAPI] Getting all users (admin)");
+    return tryApi(() => api.get("/admin/users"));
+  },
+  
+  adminUpdateUserTier: (payload) => {
+    console.log("[BotAPI] Updating user tier:", payload);
+    return tryApi(() => api.post("/admin/user/update-tier", payload));
+  },
+  
+  adminProcessPendingFees: (payload = {}) => {
+    console.log("[BotAPI] Processing pending fees");
+    return tryApi(() => api.post("/admin/process-pending-fees", payload));
+  },
+  
+  /* ---------------- Test & Debug ---------------- */
+  testConnection: async () => {
+    try {
+      console.log("[BotAPI] Testing connection...");
+      const result = await tryApi(() => api.get("/health"));
+      console.log("[BotAPI] Connection test successful:", result);
+      return result;
+    } catch (error) {
+      console.error("[BotAPI] Connection test failed:", error);
+      throw error;
+    }
+  },
+  
+  /* ---------------- Webhook Testing ---------------- */
+  // Note: These would be used by the bot service, not the frontend
+  // Included for completeness
+  submitBotWebhook: async (payload, signature) => {
+    const headers = signature ? { "X-Bot-Signature": signature } : {};
+    return tryApi(() => api.post("/bot/webhook", payload, { headers }));
+  },
+  
+  submitStripeWebhook: async (payload, signature) => {
+    const headers = signature ? { "Stripe-Signature": signature } : {};
+    return tryApi(() => api.post("/stripe/webhook", payload, { headers }));
+  }
 };
 
 export default BotAPI;
