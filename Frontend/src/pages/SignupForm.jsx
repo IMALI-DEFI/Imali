@@ -7,12 +7,14 @@ export default function Signup() {
   const [form, setForm] = useState({ 
     email: "", 
     password: "",
+    confirmPassword: "",
     tier: "starter",
-    strategy: "ai_weighted"
+    strategy: "ai_weighted",
+    acceptTerms: false
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [debug, setDebug] = useState("");
+  const [success, setSuccess] = useState("");
 
   // Check if already logged in
   useEffect(() => {
@@ -22,96 +24,93 @@ export default function Signup() {
     }
   }, [nav]);
 
-  const submit = async (e) => {
-    e.preventDefault();
+  const validateForm = () => {
     setError("");
-    setDebug("");
-    
-    if (!form.email || !form.password) {
-      setError("Email and password are required");
-      return;
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!form.email || !emailRegex.test(form.email)) {
+      setError("Please enter a valid email address");
+      return false;
     }
-    
-    if (form.password.length < 8) {
+
+    // Password validation
+    if (!form.password || form.password.length < 8) {
       setError("Password must be at least 8 characters");
+      return false;
+    }
+
+    if (form.password !== form.confirmPassword) {
+      setError("Passwords do not match");
+      return false;
+    }
+
+    // Terms acceptance
+    if (!form.acceptTerms) {
+      setError("You must accept the Terms of Service and Privacy Policy");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
       return;
     }
-    
+
     setLoading(true);
-    console.log("Starting signup process...");
+    setError("");
+    setSuccess("");
 
     try {
-      // Step 1: Test if API is reachable
-      setDebug("Testing API connection...");
-      try {
-        const health = await BotAPI.health();
-        console.log("API health check:", health);
-        setDebug(prev => prev + " ✓ API Connected\n");
-      } catch (healthErr) {
-        console.error("API connection failed:", healthErr);
-        setError(`Cannot connect to server: ${healthErr.message}`);
-        setDebug(prev => prev + ` ✗ API Connection failed: ${healthErr.message}\n`);
-        return;
-      }
-
-      // Step 2: Attempt signup
-      setDebug(prev => prev + "Attempting signup...\n");
-      console.log("Signup payload:", { 
-        email: form.email, 
+      console.log("Attempting signup with:", { email: form.email, tier: form.tier });
+      
+      const result = await BotAPI.signup({
+        email: form.email,
+        password: form.password,
         tier: form.tier,
-        strategy: form.strategy 
+        strategy: form.strategy
       });
-      
-      const result = await BotAPI.signup(form);
+
       console.log("Signup response:", result);
-      
-      // Step 3: Check if token was received
+
+      // Check if we got a token
       const token = BotAPI.getToken();
-      console.log("Token after signup:", token ? "YES" : "NO");
-      
       if (token) {
-        setDebug(prev => prev + "Token received ✓\n");
+        console.log("Token received, verifying account...");
         
-        // Step 4: Verify token works by getting user profile
-        setDebug(prev => prev + "Verifying token...\n");
+        // Verify token by getting user profile
         try {
           const user = await BotAPI.me();
-          console.log("User verified:", user);
-          setDebug(prev => prev + `User verified: ${user?.user?.email} ✓\n`);
+          console.log("User verified:", user?.user?.email);
           
-          // Step 5: Auto-claim promo (silently)
+          setSuccess("Account created successfully! Redirecting...");
+          
+          // Auto-claim promo if available
           try {
             const promoStatus = await BotAPI.promoStatus();
             if (promoStatus.active || promoStatus.available) {
-              try {
-                await BotAPI.promoClaim({ email: form.email, tier: form.tier });
-                console.log("Promo auto-claimed");
-                setDebug(prev => prev + "Promo auto-claimed ✓\n");
-              } catch (promoErr) {
-                console.log("Could not auto-claim promo:", promoErr.message);
-              }
+              await BotAPI.promoClaim({ email: form.email, tier: form.tier });
+              console.log("Promo auto-claimed");
             }
           } catch (promoErr) {
-            // Ignore promo errors
+            console.log("Could not auto-claim promo:", promoErr.message);
           }
-          
-          // Step 6: Redirect to billing
-          setDebug(prev => prev + "Redirecting to billing...\n");
-          console.log("Signup successful, redirecting to billing");
-          
+
+          // Redirect to billing setup
           setTimeout(() => {
             nav("/billing", { 
               replace: true,
               state: { justSignedUp: true }
             });
-          }, 500);
-          
+          }, 1500);
+
         } catch (userErr) {
           console.error("Token verification failed:", userErr);
-          setDebug(prev => prev + `Token verification failed: ${userErr.message}\n`);
           setError("Account created but login failed. Please try logging in.");
-          
-          // Clear invalid token
           BotAPI.logout();
           
           setTimeout(() => {
@@ -124,14 +123,9 @@ export default function Signup() {
           }, 2000);
         }
       } else {
-        // No token in response
-        console.warn("No token in response");
-        setDebug(prev => prev + "No token in response\n");
-        
-        // Check if account was created anyway
+        // No token but maybe account was created
         if (result.success || result.ok) {
-          setDebug(prev => prev + "Account created (no token)\n");
-          setError("Account created! Redirecting to login...");
+          setSuccess("Account created! Redirecting to login...");
           
           setTimeout(() => {
             nav("/login", { 
@@ -142,20 +136,17 @@ export default function Signup() {
             });
           }, 1500);
         } else {
-          setError(result.message || "Signup failed - no token received");
-          setDebug(prev => prev + `Response: ${JSON.stringify(result, null, 2)}\n`);
+          setError(result.message || "Signup failed. Please try again.");
         }
       }
       
     } catch (err) {
-      console.error("Signup error details:", err);
+      console.error("Signup error:", err);
       
       let errorMessage = err.message || "Signup failed. Please try again.";
       
-      // Handle specific error cases
       if (err.status === 404) {
-        errorMessage = `Endpoint not found: ${err.url}. The signup endpoint may be misconfigured.`;
-        setDebug(prev => prev + `404 Error: ${err.url}\n`);
+        errorMessage = "Signup service is currently unavailable. Please try again later.";
       } else if (err.status === 409 || err.message.includes("already exists")) {
         errorMessage = "An account with this email already exists. Please log in instead.";
         setTimeout(() => {
@@ -172,138 +163,288 @@ export default function Signup() {
       }
       
       setError(errorMessage);
-      setDebug(prev => prev + `Error: ${err.message}\nStatus: ${err.status}\n`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Quick test function for debugging
-  const testEndpoint = async () => {
-    try {
-      console.log("Testing /signup endpoint...");
-      const response = await fetch(`${BotAPI.client.defaults.baseURL}/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({email: 'test@test.com', password: 'test1234', tier: 'starter'})
-      });
-      console.log("Test response:", response.status, await response.json());
-    } catch (err) {
-      console.error("Test error:", err);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6 text-white">
-      <form onSubmit={submit} className="w-full max-w-md space-y-6 p-8 bg-gray-900 rounded-2xl shadow-2xl">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold mb-2">Create Account</h1>
-          <p className="text-gray-400">Start your IMALI trading journey</p>
-        </div>
-
-        {error && (
-          <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-            <p className="text-red-400 text-sm">{error}</p>
-          </div>
-        )}
-
-        <div className="space-y-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 flex items-center justify-center p-4">
+      <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center gap-12">
+        
+        {/* Left Side - Information */}
+        <div className="w-full lg:w-1/2 space-y-8">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Email Address
-            </label>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full p-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Password
-            </label>
-            <input
-              type="password"
-              placeholder="Minimum 8 characters"
-              required
-              minLength={8}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="w-full p-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none"
-            />
-            <p className="text-xs text-gray-500 mt-2">
-              Must be at least 8 characters long
+            <h1 className="text-4xl lg:text-5xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Start Your Trading Journey
+            </h1>
+            <p className="text-gray-400 mt-4 text-lg">
+              Join thousands of traders using AI-powered strategies to maximize their profits.
             </p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Trading Tier
-            </label>
-            <select
-              value={form.tier}
-              onChange={(e) => setForm({ ...form, tier: e.target.value })}
-              className="w-full p-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none"
-            >
-              <option value="starter">Starter (30% fee over 3% threshold)</option>
-              <option value="pro">Pro (5% flat fee)</option>
-              <option value="elite">Elite (5% flat fee)</option>
-            </select>
+          <div className="space-y-6">
+            <div className="flex items-start gap-4 p-4 bg-gray-900/50 rounded-xl border border-gray-800">
+              <div className="h-10 w-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-blue-400">🤖</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">AI-Powered Trading</h3>
+                <p className="text-gray-400 text-sm mt-1">
+                  Advanced algorithms analyze market data 24/7 to find the best trading opportunities.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4 p-4 bg-gray-900/50 rounded-xl border border-gray-800">
+              <div className="h-10 w-10 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-green-400">⚡</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">Automated Execution</h3>
+                <p className="text-gray-400 text-sm mt-1">
+                  Execute trades instantly based on your strategy. No manual intervention required.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4 p-4 bg-gray-900/50 rounded-xl border border-gray-800">
+              <div className="h-10 w-10 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-purple-400">🔒</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">Secure & Reliable</h3>
+                <p className="text-gray-400 text-sm mt-1">
+                  Bank-level security with encrypted connections and secure API key management.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-gray-400 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+              <span>50,000+ Active Traders</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-blue-500"></div>
+              <span>99.9% Uptime</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-purple-500"></div>
+              <span>24/7 Support</span>
+            </div>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl font-semibold text-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? (
-            <span className="flex items-center justify-center">
-              <svg className="animate-spin h-5 w-5 mr-3 text-white" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              Creating Account...
-            </span>
-          ) : (
-            "Continue to Billing"
-          )}
-        </button>
+        {/* Right Side - Signup Form */}
+        <div className="w-full lg:w-1/2">
+          <div className="bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-800 p-8 shadow-2xl">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-white">Create Your Account</h2>
+              <p className="text-gray-400 mt-2">Get started in less than 2 minutes</p>
+            </div>
 
-        <p className="text-center text-gray-400 text-sm">
-          Already have an account?{" "}
-          <Link to="/login" className="text-blue-400 hover:text-blue-300 underline">
-            Log in
-          </Link>
-        </p>
-        
-        <div className="text-xs text-gray-500 text-center pt-4 border-t border-gray-800">
-          By signing up, you agree to our Terms of Service and Privacy Policy
-        </div>
+            {error && (
+              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl animate-fadeIn">
+                <div className="flex items-center gap-3">
+                  <div className="text-red-400">⚠️</div>
+                  <p className="text-red-400 text-sm">{error}</p>
+                </div>
+              </div>
+            )}
 
-        {/* Debug info - remove in production */}
-        {process.env.NODE_ENV === 'development' && debug && (
-          <div className="mt-4 p-4 bg-gray-800 rounded-lg">
-            <details>
-              <summary className="cursor-pointer text-sm text-gray-400 mb-2">Debug Info</summary>
-              <pre className="text-xs mt-2 text-gray-300 whitespace-pre-wrap overflow-auto max-h-40">
-                {debug}
-              </pre>
-            </details>
-            <button 
-              type="button"
-              onClick={testEndpoint}
-              className="mt-2 text-xs text-blue-400 hover:text-blue-300"
-            >
-              Test Endpoint
-            </button>
+            {success && (
+              <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl animate-fadeIn">
+                <div className="flex items-center gap-3">
+                  <div className="text-emerald-400">✓</div>
+                  <p className="text-emerald-400 text-sm">{success}</p>
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  placeholder="your.email@example.com"
+                  required
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full p-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    required
+                    minLength={8}
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    className="w-full p-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
+                    disabled={loading}
+                  />
+                  <p className="text-xs text-gray-500 mt-2">Minimum 8 characters</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    required
+                    value={form.confirmPassword}
+                    onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                    className="w-full p-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Select Your Tier
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { id: "starter", label: "Starter", fee: "30% over 3%", price: "Free" },
+                    { id: "pro", label: "Pro", fee: "5% flat", price: "$99/mo" },
+                    { id: "elite", label: "Elite", fee: "5% flat", price: "$299/mo" }
+                  ].map((tierOption) => (
+                    <div
+                      key={tierOption.id}
+                      onClick={() => !loading && setForm({ ...form, tier: tierOption.id })}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        form.tier === tierOption.id
+                          ? "border-blue-500 bg-blue-500/10"
+                          : "border-gray-700 bg-gray-800 hover:border-gray-600"
+                      } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-white">{tierOption.label}</span>
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          form.tier === tierOption.id 
+                            ? "bg-blue-500 text-white" 
+                            : "bg-gray-700 text-gray-300"
+                        }`}>
+                          {tierOption.price}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-400">Fee: {tierOption.fee}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Trading Strategy
+                </label>
+                <select
+                  value={form.strategy}
+                  onChange={(e) => setForm({ ...form, strategy: e.target.value })}
+                  className="w-full p-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
+                  disabled={loading}
+                >
+                  <option value="ai_weighted">AI Weighted (Recommended)</option>
+                  <option value="momentum">Momentum Trading</option>
+                  <option value="mean_reversion">Mean Reversion</option>
+                  <option value="arbitrage">Arbitrage</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-2">
+                  {form.strategy === "ai_weighted" && "AI analyzes multiple factors for optimal trades"}
+                  {form.strategy === "momentum" && "Follows strong price movements in either direction"}
+                  {form.strategy === "mean_reversion" && "Trades based on price returning to average"}
+                  {form.strategy === "arbitrage" && "Exploits price differences across exchanges"}
+                </p>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="terms"
+                  checked={form.acceptTerms}
+                  onChange={(e) => setForm({ ...form, acceptTerms: e.target.checked })}
+                  className="mt-1 h-4 w-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                  disabled={loading}
+                />
+                <label htmlFor="terms" className="text-sm text-gray-400">
+                  I agree to the{" "}
+                  <Link to="/terms" className="text-blue-400 hover:text-blue-300 underline">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link to="/privacy" className="text-blue-400 hover:text-blue-300 underline">
+                    Privacy Policy
+                  </Link>
+                  . I understand that trading involves risk and past performance does not guarantee future results.
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin h-5 w-5 mr-3 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Creating Account...
+                  </span>
+                ) : (
+                  "Create Account & Continue to Billing"
+                )}
+              </button>
+
+              <div className="text-center pt-4 border-t border-gray-800">
+                <p className="text-gray-400">
+                  Already have an account?{" "}
+                  <Link to="/login" className="text-blue-400 hover:text-blue-300 font-medium underline">
+                    Log in here
+                  </Link>
+                </p>
+              </div>
+            </form>
+
+            <div className="mt-8 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">Limited Time Offer</span>
+                <span className="text-emerald-400 font-semibold">First 50 users: 5% fee for 90 days</span>
+              </div>
+              <div className="h-2 bg-gray-700 rounded-full mt-2 overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-green-500" style={{ width: '65%' }}></div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">35/50 spots claimed</p>
+            </div>
           </div>
-        )}
-      </form>
+        </div>
+      </div>
+
+      {/* Add some CSS for animations */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 }
