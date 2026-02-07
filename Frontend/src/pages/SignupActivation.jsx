@@ -1,310 +1,94 @@
-// src/pages/SignupForm.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+// src/pages/SignupActivation.jsx
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import BotAPI from "../utils/BotAPI";
 
-// Art
-import StarterNFT from "../assets/images/nfts/nft-starter.png";
-import ProNFT from "../assets/images/nfts/nft-pro.png";
-import EliteNFT from "../assets/images/nfts/nft-elite.png";
-import StockNFT from "../assets/images/nfts/nft-stock.png";
-import BundleNFT from "../assets/images/nfts/nft-bundle.png";
-
-/* =========================
-   API BASE RESOLVER (CRA)
-========================= */
-const API_BASE =
-  process.env.REACT_APP_API_BASE ||
-  (typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "http://localhost:8001"
-    : "https://api.imali-defi.com");
-
-/** Must match BotAPI.js */
-const TOKEN_KEY = "imali_token";
-
-const api = axios.create({
-  baseURL: `${API_BASE}/api`,
-  timeout: 15000,
-  headers: { "Content-Type": "application/json" },
-});
-
-/* =========================
-   CONSTANTS
-========================= */
-const STRATEGIES = [
-  { value: "momentum", label: "Growth" },
-  { value: "mean_reversion", label: "Conservative" },
-  { value: "ai_weighted", label: "Balanced" },
-  { value: "volume_spike", label: "Aggressive" },
-];
-
-const TIERS = {
-  starter: {
-    img: StarterNFT,
-    label: "Starter",
-    fee: "30% on profits over 3%",
-    monthly: "No monthly fee",
-    description: "Auto-trading only",
-  },
-  pro: {
-    img: ProNFT,
-    label: "Pro",
-    fee: "5% on profits over 3%",
-    monthly: "$19/month",
-    description: "Manual + Auto trading",
-  },
-  elite: {
-    img: EliteNFT,
-    label: "Elite",
-    fee: "5% on profits over 3%",
-    monthly: "$49/month",
-    description: "All features + DEX",
-  },
-  stock: {
-    img: StockNFT,
-    label: "Stocks",
-    fee: "5% on profits over 3%",
-    monthly: "$99/month",
-    description: "Stock trading focus",
-  },
-  bundle: {
-    img: BundleNFT,
-    label: "Bundle",
-    fee: "5% on profits over 3%",
-    monthly: "$199/month",
-    description: "Complete package",
-  },
-};
-
-function fireConfetti(container) {
-  if (!container) return;
-  const EMOJI = ["🎉", "✨", "🚀", "💎"];
-  for (let i = 0; i < 18; i++) {
-    const span = document.createElement("span");
-    span.textContent = EMOJI[Math.floor(Math.random() * EMOJI.length)];
-    span.style.position = "fixed";
-    span.style.left = Math.random() * 100 + "vw";
-    span.style.top = "-5vh";
-    span.style.fontSize = "20px";
-    span.style.transition = "transform 1s ease, opacity 1s ease";
-    container.appendChild(span);
-
-    requestAnimationFrame(() => {
-      span.style.transform = `translateY(120vh)`;
-      span.style.opacity = "0";
-    });
-
-    setTimeout(() => span.remove(), 1200);
-  }
-}
-
-function pickFromQuery(value, allowed) {
-  const v = (value || "").toLowerCase();
-  return allowed.includes(v) ? v : null;
-}
-
-function saveToken(token) {
-  const t = String(token || "").trim();
-  if (!t) return false;
-  try {
-    localStorage.setItem(TOKEN_KEY, t);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export default function SignupForm() {
-  const [params] = useSearchParams();
-  const navigate = useNavigate();
-  const confettiRef = useRef(null);
+export default function SignupActivation() {
+  const nav = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [tier, setTier] = useState("starter");
-  const [strategy, setStrategy] = useState("ai_weighted");
-
+  const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
 
-  // Pull query params (tier/strategy)
-  useEffect(() => {
-    const t = pickFromQuery(params.get("tier"), Object.keys(TIERS));
-    const s = pickFromQuery(
-      params.get("strategy"),
-      STRATEGIES.map((x) => x.value)
-    );
-    if (t) setTier(t);
-    if (s) setStrategy(s);
-  }, [params]);
-
-  const emailValid = useMemo(
-    () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
-    [email]
-  );
-
-  const activeTier = TIERS[tier];
-
-  const submit = async (e) => {
+  const signup = async (e) => {
     e.preventDefault();
     if (loading) return;
 
-    setErr("");
     setLoading(true);
+    setMsg("Creating your account...");
 
     try {
-      if (!emailValid) throw new Error("Enter a valid email");
-      if (password.length < 8) throw new Error("Password must be at least 8 characters");
+      await BotAPI.signup({ email, password });
+      setMsg("Signup successful. Redirecting to login…");
 
-      const execution_mode = tier === "starter" ? "auto" : "manual";
-
-      // Create user
-      const res = await api.post("/signup", {
-        email: email.trim(),
-        password,
-        tier,
-        strategy,
-        execution_mode,
-      });
-
-      // Expect a token from backend (or nested)
-      const data = res?.data || {};
-      const token =
-        data?.token ||
-        data?.access_token ||
-        data?.auth_token ||
-        data?.jwt ||
-        data?.user?.token ||
-        "";
-
-      // If backend didn't return token, you WILL get /me 401 later.
-      if (!saveToken(token)) {
-        throw new Error(
-          "Signup succeeded but no auth token was returned. Update backend /api/signup to return { token } (or access_token)."
-        );
-      }
-
-      fireConfetti(confettiRef.current);
-
-      // Go billing (Billing should also use the same token key)
       setTimeout(() => {
-        navigate(
-          `/billing?tier=${encodeURIComponent(tier)}&strategy=${encodeURIComponent(strategy)}`
-        );
-      }, 350);
-    } catch (e) {
-      setErr(
-        e?.response?.data?.detail ||
-          e?.response?.data?.message ||
-          e?.response?.data?.error ||
-          e?.message ||
-          "Signup failed"
-      );
+        nav("/login", { replace: true });
+      }, 1500);
+    } catch (err) {
+      setMsg(err?.message || "Signup failed");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div
-      ref={confettiRef}
-      className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white"
-    >
-      <div className="max-w-4xl mx-auto px-6 py-12">
-        <h1 className="text-4xl font-extrabold text-center mb-2">
-          Create your IMALI account
-        </h1>
+    <div className="grid md:grid-cols-2 gap-8">
+      {/* Signup */}
+      <form onSubmit={signup} className="card space-y-3">
+        <h2 className="font-bold text-xl">Sign up</h2>
 
-        <p className="text-center text-gray-300 mb-6">
-          Signup → Billing → Activation → Trade
-        </p>
+        <input
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          className="border rounded-xl px-3 py-2 w-full"
+        />
 
-        <div className="text-center text-xs text-white/40 mb-4">API: {API_BASE}</div>
+        <input
+          required
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          className="border rounded-xl px-3 py-2 w-full"
+        />
 
-        {err && (
-          <div className="mb-4 rounded bg-red-500/10 border border-red-500/30 p-3 text-red-200">
-            {err}
-          </div>
-        )}
-
-        <form
-          onSubmit={submit}
-          className="rounded-2xl bg-white/5 border border-white/10 p-6 space-y-4"
+        <button
+          className="btn btn-primary"
+          type="submit"
+          disabled={loading}
         >
-          <div className="flex items-center gap-3">
-            <img
-              src={activeTier?.img}
-              alt={activeTier?.label}
-              className="w-12 h-12 rounded-xl object-cover"
-            />
-            <div>
-              <div className="font-semibold">{activeTier?.label}</div>
-              <div className="text-xs text-white/50">
-                {activeTier?.monthly} · {activeTier?.fee}
-              </div>
-            </div>
-          </div>
+          {loading ? "Signing up…" : "Create account"}
+        </button>
+      </form>
 
-          <input
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-          />
+      {/* Activation info (no fake API calls) */}
+      <div className="card space-y-3">
+        <h2 className="font-bold text-xl">Account Activation</h2>
+        <p className="text-slate-600 text-sm">
+          Activation happens automatically after you:
+        </p>
+        <ul className="list-disc pl-5 text-sm text-slate-600">
+          <li>Create an account</li>
+          <li>Add billing details</li>
+          <li>Complete setup</li>
+        </ul>
 
-          <input
-            type="password"
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
-            placeholder="Password (8+ chars)"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-          />
-
-          <select
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
-            value={strategy}
-            onChange={(e) => setStrategy(e.target.value)}
-          >
-            {STRATEGIES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
-            value={tier}
-            onChange={(e) => setTier(e.target.value)}
-          >
-            {Object.entries(TIERS).map(([k, t]) => (
-              <option key={k} value={k}>
-                {t.label} — {t.monthly}
-              </option>
-            ))}
-          </select>
-
-          <button
-            disabled={loading || !emailValid}
-            className="w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-700 font-bold disabled:opacity-60"
-          >
-            {loading ? "Creating Account…" : "Continue to Billing"}
-          </button>
-
-          <div className="text-xs text-center text-white/60">
-            Billing setup is required for performance-fee collection.
-          </div>
-
-          <div className="text-xs text-center text-white/40">
-            Already have an account?{" "}
-            <Link to="/login" className="underline">
-              Log in
-            </Link>
-          </div>
-        </form>
+        <button
+          onClick={() => nav("/login")}
+          className="btn btn-secondary"
+        >
+          Go to login
+        </button>
       </div>
+
+      {msg && (
+        <div className="col-span-2 text-slate-600">
+          {msg}
+        </div>
+      )}
     </div>
   );
 }
