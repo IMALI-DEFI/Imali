@@ -1,7 +1,7 @@
 // src/pages/SignupActivation.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import BotAPI from "../utils/BotAPI";
+import BotAPI from "../../utils/BotAPI";
 
 export default function SignupActivation() {
   const nav = useNavigate();
