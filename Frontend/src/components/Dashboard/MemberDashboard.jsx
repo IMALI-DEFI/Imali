@@ -4,7 +4,7 @@ import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
 import { useNavigate } from "react-router-dom";
 
-import BotAPI from "../../utils/BotAPI";
+import { BotAPI } from "../../utils/BotAPI";
 import { useWallet } from "../../context/WalletContext";
 import { short } from "../../getContractInstance";
 
