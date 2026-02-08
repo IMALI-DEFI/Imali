@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { BotAPI } from "../utils/BotAPI";
+import BotAPI from "../utils/BotAPI";
 
 export default function Signup() {
   const nav = useNavigate();
