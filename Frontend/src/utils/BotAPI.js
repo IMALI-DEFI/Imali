@@ -1,52 +1,43 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
-const IS_BROWSER = typeof window !== "undefined";
 const TOKEN_KEY = "imali_token";
+const IS_BROWSER = typeof window !== "undefined";
 
-/* =========================
-   Token helpers (PUBLIC)
-========================= */
-export function getToken() {
-  if (!IS_BROWSER) return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
+/* ---------------- Token helpers ---------------- */
 
-export function setToken(token) {
-  if (!IS_BROWSER) return;
-  if (!token) return;
-  localStorage.setItem(TOKEN_KEY, token);
-}
+export const getToken = () =>
+  IS_BROWSER ? localStorage.getItem(TOKEN_KEY) : null;
 
-export function clearToken() {
-  if (!IS_BROWSER) return;
-  localStorage.removeItem(TOKEN_KEY);
-}
+export const setToken = (token) => {
+  if (IS_BROWSER && token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+};
 
-export function isLoggedIn() {
-  return !!getToken();
-}
+export const clearToken = () => {
+  if (IS_BROWSER) {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+};
 
-/* =========================
-   API base
-========================= */
-function resolveApiBase() {
-  return (
-    process.env.REACT_APP_API_BASE_URL ||
-    process.env.VITE_API_BASE_URL ||
-    "https://api.imali-defi.com"
-  );
-}
+export const isLoggedIn = () => !!getToken();
+
+/* ---------------- API base ---------------- */
+
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL ||
+  process.env.REACT_APP_API_BASE ||
+  "https://api.imali-defi.com";
 
 const api = axios.create({
-  baseURL: `${resolveApiBase()}/api`,
-  timeout: 30000,
+  baseURL: `${API_BASE}/api`,
   headers: { "Content-Type": "application/json" },
+  timeout: 30000,
 });
 
-/* =========================
-   Interceptors
-========================= */
+/* ---------------- Interceptors ---------------- */
+
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -60,8 +51,15 @@ api.interceptors.response.use(
   (err) => {
     const status = err?.response?.status;
 
-    if (status === 401 && IS_BROWSER) {
-      console.warn("[BotAPI] Unauthorized, clearing token");
+    console.error(
+      "[BotAPI]",
+      err?.config?.method?.toUpperCase(),
+      err?.config?.url,
+      status
+    );
+
+    // ⚠️ only force logout if already logged in
+    if (status === 401 && isLoggedIn()) {
       clearToken();
     }
 
@@ -69,50 +67,58 @@ api.interceptors.response.use(
   }
 );
 
-/* =========================
-   Helper
-========================= */
-async function unwrap(promise) {
+/* ---------------- Wrapper ---------------- */
+
+const wrap = async (fn) => {
   try {
-    const res = await promise;
+    const res = await fn();
     return res.data;
   } catch (err) {
     const e = new Error(
       err?.response?.data?.message ||
-      err?.response?.data?.error ||
-      "Request failed"
+        err?.response?.data?.error ||
+        "Request failed"
     );
     e.status = err?.response?.status;
     throw e;
   }
-}
+};
 
-/* =========================
-   Public API
-========================= */
+/* ---------------- Public API ---------------- */
+
 const BotAPI = {
-  // token helpers (IMPORTANT)
+  // token helpers (THIS FIXES YOUR ERROR)
   getToken,
   setToken,
   clearToken,
   isLoggedIn,
 
   // auth
-  signup: (p) => unwrap(api.post("/signup", p)),
+  signup: (p) => wrap(() => api.post("/signup", p)),
   login: async (p) => {
-    const data = await unwrap(api.post("/auth/login", p));
+    const data = await wrap(() => api.post("/auth/login", p));
     if (data?.token) setToken(data.token);
     return data;
   },
-
   logout: () => clearToken(),
 
   // user
-  me: () => unwrap(api.get("/me")),
-  activationStatus: () => unwrap(api.get("/me/activation-status")),
+  me: () => wrap(() => api.get("/me")),
+  activationStatus: () => wrap(() => api.get("/me/activation-status")),
 
   // billing
-  billingSetupIntent: () => unwrap(api.post("/billing/setup-intent")),
+  billingSetupIntent: (p) =>
+    wrap(() => api.post("/billing/setup-intent", p)),
+
+  // trading
+  tradingEnable: (enabled) =>
+    wrap(() => api.post("/trading/enable", { enabled })),
+
+  // bot
+  botStart: (p = {}) => wrap(() => api.post("/bot/start", p)),
+
+  // trades
+  sniperTrades: () => wrap(() => api.get("/sniper/trades")),
 };
 
 export default BotAPI;
