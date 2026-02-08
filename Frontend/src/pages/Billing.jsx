@@ -7,7 +7,7 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
-import  BotAPI from "../utils/BotAPI";
+import { BotAPI } from "../utils/BotAPI";
 
 /* -------------------------------------------------- */
 /* Stripe setup (MUST be module-level) */
