@@ -1,34 +1,32 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
-/* ======================================================
+/* =======================
    Constants
-====================================================== */
+======================= */
 const IS_BROWSER = typeof window !== "undefined";
 const TOKEN_KEY = "imali_token";
 
-/* ======================================================
-   API Base Resolver (single source of truth)
-   - Uses env if present, otherwise localhost, otherwise prod
-====================================================== */
-function stripTrailingSlash(s) {
-  return String(s || "").replace(/\/+$/, "");
+/* =======================
+   Base URL
+======================= */
+function stripSlash(s = "") {
+  return String(s).replace(/\/+$/, "");
 }
 
 function resolveApiBase() {
   const env =
-    (typeof process !== "undefined" && process.env && (
-      process.env.REACT_APP_API_BASE_URL ||
-      process.env.REACT_APP_API_BASE ||
-      process.env.VITE_API_BASE_URL
-    )) || "";
+    process.env.REACT_APP_API_BASE_URL ||
+    process.env.REACT_APP_API_BASE ||
+    process.env.VITE_API_BASE_URL ||
+    "";
 
-  if (env) return stripTrailingSlash(env);
+  if (env) return stripSlash(env);
 
   if (IS_BROWSER) {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") {
-      // ✅ match your local backend port
+      // set this to whatever your local Flask port is
       return "http://localhost:8001";
     }
   }
@@ -37,76 +35,76 @@ function resolveApiBase() {
 }
 
 const API_BASE = resolveApiBase();
-const API_ROOT = `${stripTrailingSlash(API_BASE)}/api`;
+const API_ROOT = `${API_BASE}/api`;
 
-/* ======================================================
-   Token Helpers
-====================================================== */
-function safeGetToken() {
+/* =======================
+   Token helpers
+======================= */
+export function getToken() {
   if (!IS_BROWSER) return "";
-  try {
-    return String(localStorage.getItem(TOKEN_KEY) || "").trim();
-  } catch {
-    return "";
-  }
+  return String(localStorage.getItem(TOKEN_KEY) || "").trim();
 }
 
-function safeSetToken(token) {
+export function setToken(token) {
   if (!IS_BROWSER) return;
-  try {
-    const clean = String(token || "").trim();
-    if (!clean) localStorage.removeItem(TOKEN_KEY);
-    else localStorage.setItem(TOKEN_KEY, clean);
-  } catch {
-    /* noop */
-  }
+  const t = String(token || "").trim();
+  if (!t) localStorage.removeItem(TOKEN_KEY);
+  else localStorage.setItem(TOKEN_KEY, t);
 }
 
-function safeClearToken() {
+export function clearToken() {
   if (!IS_BROWSER) return;
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    /* noop */
-  }
+  localStorage.removeItem(TOKEN_KEY);
 }
 
-/* ======================================================
-   Axios Instance
-====================================================== */
+export function isLoggedIn() {
+  return !!getToken();
+}
+
+/* =======================
+   Axios instance
+======================= */
 const api = axios.create({
   baseURL: API_ROOT,
   timeout: 30000,
   headers: { "Content-Type": "application/json" },
 });
 
-/* ======================================================
-   Interceptors
-   - Adds Bearer token
-   - Clears token on 401
-   - NO forced redirects (prevents surprise blank pages)
-====================================================== */
+/* Attach auth token */
 api.interceptors.request.use((config) => {
-  const token = safeGetToken();
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  const token = getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
+/* Only clear token on 401 — no hard redirects */
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     const status = err?.response?.status;
-    if (status === 401) safeClearToken();
+    if (status === 401) clearToken();
     return Promise.reject(err);
   }
 );
 
-/* ======================================================
-   Error Normalizer
-====================================================== */
+/* =======================
+   Helpers
+======================= */
+function unwrap(resData) {
+  // Supports: { data: {...} }, { ok: true, data: {...} }, or raw {...}
+  if (resData && typeof resData === "object") {
+    if (resData.data && typeof resData.data === "object") return resData.data;
+  }
+  return resData;
+}
+
+function extractToken(resData) {
+  const top = resData?.token;
+  const inner = resData?.data?.token;
+  const unwrapped = unwrap(resData)?.token;
+  return top || inner || unwrapped || "";
+}
+
 async function request(fn) {
   try {
     const res = await fn();
@@ -129,52 +127,50 @@ async function request(fn) {
   }
 }
 
-/* ======================================================
+/* =======================
    Public API
-====================================================== */
-export const BotAPI = {
-  // meta
+======================= */
+const BotAPI = {
   api,
-  API_BASE,
-  API_ROOT,
 
-  // token helpers (exposed)
-  getToken: safeGetToken,
-  setToken: safeSetToken,
-  clearToken: safeClearToken,
-  isLoggedIn: () => !!safeGetToken(),
+  // token helpers
+  isLoggedIn,
+  getToken,
+  setToken,
+  clearToken,
+
+  // meta
+  apiBase: API_BASE,
+  apiRoot: API_ROOT,
 
   // health
   health: () => request(() => api.get("/health")),
 
   // auth
   signup: async (payload) => {
-    const data = await request(() => api.post("/signup", payload));
-    // expect { token } or { data: { token } } depending on backend
-    const token = data?.token || data?.data?.token;
-    if (token) safeSetToken(token);
-    return data;
+    const resData = await request(() => api.post("/signup", payload));
+    const token = extractToken(resData);
+    if (token) setToken(token);
+    return resData;
   },
 
-  // IMPORTANT: choose the endpoint your backend actually exposes.
-  // If your api_main.py route is /api/login, keep this as "/login".
   login: async (payload) => {
-    const data = await request(() => api.post("/login", payload));
-    const token = data?.token || data?.data?.token;
-    if (token) safeSetToken(token);
-    return data;
+    // ✅ matches your backend: /api/auth/login
+    const resData = await request(() => api.post("/auth/login", payload));
+    const token = extractToken(resData);
+    if (token) setToken(token);
+    return resData;
   },
 
-  // optional alias if some older UI still calls /auth/login
-  loginAuth: async (payload) => {
-    const data = await request(() => api.post("/auth/login", payload));
-    const token = data?.token || data?.data?.token;
-    if (token) safeSetToken(token);
-    return data;
+  walletAuth: async (payload) => {
+    const resData = await request(() => api.post("/auth/wallet", payload));
+    const token = extractToken(resData);
+    if (token) setToken(token);
+    return resData;
   },
 
   logout: async () => {
-    safeClearToken();
+    clearToken();
     return true;
   },
 
@@ -182,21 +178,24 @@ export const BotAPI = {
   me: () => request(() => api.get("/me")),
   activationStatus: () => request(() => api.get("/me/activation-status")),
 
+  // promo (if you use them elsewhere)
+  promoStatus: () => request(() => api.get("/promo/status")),
+  promoClaim: (p) => request(() => api.post("/promo/claim", p)),
+  promoMe: () => request(() => api.get("/promo/me")),
+
   // billing
-  billingSetupIntent: (p = {}) => request(() => api.post("/billing/setup-intent", p)),
-  billingCardStatus: (p = {}) => request(() => api.get("/billing/card-status", { params: p })),
+  billingSetupIntent: (p = {}) =>
+    request(() => api.post("/billing/setup-intent", p)),
+  billingCardStatus: () => request(() => api.get("/billing/card-status")),
 
-  // trading
-  tradingEnable: (enabled) => request(() => api.post("/trading/enable", { enabled: !!enabled })),
+  // trading/bot
+  tradingEnable: (enabled) =>
+    request(() => api.post("/trading/enable", { enabled: !!enabled })),
   tradingStatus: () => request(() => api.get("/trading/status")),
-
-  // bot
   botStart: (p = {}) => request(() => api.post("/bot/start", p)),
 
-  // trades
+  // trades/analytics
   sniperTrades: () => request(() => api.get("/sniper/trades")),
-
-  // analytics
   analyticsPnlSeries: (p) => request(() => api.post("/analytics/pnl/series", p)),
   analyticsWinLoss: (p) => request(() => api.post("/analytics/winloss", p)),
   analyticsFeesSeries: (p) => request(() => api.post("/analytics/fees/series", p)),
