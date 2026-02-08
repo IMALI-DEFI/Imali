@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import BotAPI from "../utils/BotAPI";
+import { BotAPI } from "../utils/BotAPI";
 
 export default function Signup() {
   const nav = useNavigate();
@@ -15,17 +15,34 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [debugInfo, setDebugInfo] = useState("");
 
   // Check if already logged in
   useEffect(() => {
+    const token = BotAPI.getToken();
+    console.log("Initial token check:", token ? "YES" : "NO");
+    
     if (BotAPI.isLoggedIn()) {
-      console.log("Already logged in, redirecting to dashboard");
-      nav("/dashboard", { replace: true });
+      console.log("Already logged in, checking if token is valid...");
+      // Test the token first
+      testTokenAndRedirect();
     }
   }, [nav]);
 
+  const testTokenAndRedirect = async () => {
+    try {
+      const user = await BotAPI.me();
+      console.log("Token is valid, user:", user?.user?.email);
+      nav("/dashboard", { replace: true });
+    } catch (err) {
+      console.log("Token is invalid, clearing it");
+      BotAPI.clearToken();
+    }
+  };
+
   const validateForm = () => {
     setError("");
+    setDebugInfo("");
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -64,10 +81,13 @@ export default function Signup() {
     setLoading(true);
     setError("");
     setSuccess("");
+    setDebugInfo("Starting signup process...\n");
 
     try {
-      console.log("Attempting signup with:", { email: form.email, tier: form.tier });
+      console.log("🔐 Attempting signup with:", { email: form.email, tier: form.tier });
+      setDebugInfo(prev => prev + "Sending signup request...\n");
       
+      // Step 1: Signup
       const result = await BotAPI.signup({
         email: form.email,
         password: form.password,
@@ -75,56 +95,144 @@ export default function Signup() {
         strategy: form.strategy
       });
 
-      console.log("Signup response:", result);
-
-      // Check if we got a token
-      const token = BotAPI.getToken();
+      console.log("🔐 Signup response:", result);
+      setDebugInfo(prev => prev + `Signup response received\n`);
+      
+      // Check for token in response
+      let token = null;
+      
+      // Try multiple possible token locations
+      if (result.token) {
+        token = result.token;
+        console.log("🔐 Token found at result.token");
+      } else if (result.data?.token) {
+        token = result.data.token;
+        console.log("🔐 Token found at result.data.token");
+      } else if (result.access_token) {
+        token = result.access_token;
+        console.log("🔐 Token found at result.access_token");
+      } else if (result.accessToken) {
+        token = result.accessToken;
+        console.log("🔐 Token found at result.accessToken");
+      }
+      
       if (token) {
-        console.log("Token received, verifying account...");
+        console.log("🔐 Token received:", token.substring(0, 30) + "...");
+        setDebugInfo(prev => prev + `Token received (${token.length} chars)\n`);
         
-        // Verify token by getting user profile
-        try {
-          const user = await BotAPI.me();
-          console.log("User verified:", user?.user?.email);
+        // Manually set the token
+        BotAPI.setToken(token);
+        console.log("🔐 Token set in storage");
+        
+        // Verify token was saved
+        const savedToken = BotAPI.getToken();
+        console.log("🔐 Token verified in storage:", savedToken ? "YES" : "NO");
+        
+        if (savedToken) {
+          setDebugInfo(prev => prev + "Token saved successfully\n");
           
-          setSuccess("Account created successfully! Redirecting...");
+          // Wait a moment for token to be fully processed
+          await new Promise(resolve => setTimeout(resolve, 500));
           
-          // Auto-claim promo if available
+          // Step 2: Test the token with a simple API call
           try {
-            const promoStatus = await BotAPI.promoStatus();
-            if (promoStatus.active || promoStatus.available) {
-              await BotAPI.promoClaim({ email: form.email, tier: form.tier });
-              console.log("Promo auto-claimed");
-            }
-          } catch (promoErr) {
-            console.log("Could not auto-claim promo:", promoErr.message);
-          }
-
-          // Redirect to billing setup
-          setTimeout(() => {
-            nav("/billing", { 
-              replace: true,
-              state: { justSignedUp: true }
-            });
-          }, 1500);
-
-        } catch (userErr) {
-          console.error("Token verification failed:", userErr);
-          setError("Account created but login failed. Please try logging in.");
-          BotAPI.logout();
-          
-          setTimeout(() => {
-            nav("/login", { 
-              state: { 
-                email: form.email,
-                message: "Account created! Please log in."
+            setDebugInfo(prev => prev + "Testing token with /me endpoint...\n");
+            
+            // Add a custom header or param to avoid caching issues
+            const user = await BotAPI.me();
+            console.log("✅ Token test successful:", user?.user?.email || user?.email);
+            setDebugInfo(prev => prev + `Token test successful! User: ${user?.user?.email || user?.email}\n`);
+            
+            // Success! Account is created and token is valid
+            setSuccess("Account created successfully! Redirecting to billing...");
+            
+            // Step 3: Try to claim promo (optional)
+            try {
+              const promoStatus = await BotAPI.promoStatus();
+              if (promoStatus.active || promoStatus.available) {
+                await BotAPI.promoClaim({ email: form.email, tier: form.tier });
+                console.log("Promo auto-claimed");
+                setDebugInfo(prev => prev + "Promo auto-claimed\n");
               }
-            });
-          }, 2000);
+            } catch (promoErr) {
+              console.log("Could not auto-claim promo:", promoErr.message);
+              // Not critical
+            }
+            
+            // Step 4: Redirect to billing
+            setTimeout(() => {
+              console.log("Redirecting to billing...");
+              nav("/billing", { 
+                replace: true,
+                state: { 
+                  justSignedUp: true,
+                  email: form.email 
+                }
+              });
+            }, 1000);
+            
+          } catch (userErr) {
+            console.error("❌ Token test failed:", userErr);
+            setDebugInfo(prev => prev + `Token test failed: ${userErr.message}\n`);
+            
+            // Try one more time with a different approach
+            try {
+              console.log("🔄 Retrying token test...");
+              setDebugInfo(prev => prev + "Retrying token test...\n");
+              
+              // Force a fresh token check
+              const freshToken = localStorage.getItem("imali_token");
+              console.log("Fresh token from localStorage:", freshToken?.substring(0, 30) + "...");
+              
+              if (freshToken) {
+                // Try the health endpoint first (doesn't require auth)
+                await BotAPI.health();
+                console.log("✅ Health check passed");
+                
+                // Now try me endpoint again
+                const retryUser = await BotAPI.me();
+                console.log("✅ Retry successful:", retryUser?.user?.email);
+                
+                setSuccess("Account verified! Redirecting...");
+                setTimeout(() => {
+                  nav("/billing", { replace: true });
+                }, 1000);
+              } else {
+                throw new Error("Token not found in localStorage");
+              }
+              
+            } catch (retryErr) {
+              console.error("❌ Retry also failed:", retryErr);
+              setDebugInfo(prev => prev + `Retry failed: ${retryErr.message}\n`);
+              
+              // Account was created but token isn't working
+              setError("Account created but login failed. Please try logging in.");
+              
+              // Clear any invalid token
+              BotAPI.clearToken();
+              
+              setTimeout(() => {
+                nav("/login", { 
+                  state: { 
+                    email: form.email,
+                    message: "Account created! Please log in."
+                  }
+                });
+              }, 2000);
+            }
+          }
+        } else {
+          setDebugInfo(prev => prev + "Token not saved properly\n");
+          throw new Error("Token not saved");
         }
       } else {
-        // No token but maybe account was created
-        if (result.success || result.ok) {
+        // No token in response
+        console.warn("⚠️ No token in response");
+        setDebugInfo(prev => prev + "No token found in response\n");
+        
+        // Check if account was created anyway
+        if (result.success || result.ok || result.user_id) {
+          setDebugInfo(prev => prev + "Account created (no token)\n");
           setSuccess("Account created! Redirecting to login...");
           
           setTimeout(() => {
@@ -136,12 +244,14 @@ export default function Signup() {
             });
           }, 1500);
         } else {
-          setError(result.message || "Signup failed. Please try again.");
+          setError(result.message || "Signup failed - no token received");
+          setDebugInfo(prev => prev + `Response: ${JSON.stringify(result, null, 2)}\n`);
         }
       }
       
     } catch (err) {
-      console.error("Signup error:", err);
+      console.error("❌ Signup error:", err);
+      setDebugInfo(prev => prev + `Error: ${err.message}\n`);
       
       let errorMessage = err.message || "Signup failed. Please try again.";
       
@@ -166,6 +276,23 @@ export default function Signup() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Debug function
+  const checkTokenStatus = () => {
+    const token = BotAPI.getToken();
+    console.log("=== TOKEN STATUS ===");
+    console.log("Token exists:", token ? "YES" : "NO");
+    console.log("Token length:", token?.length || 0);
+    console.log("Token preview:", token?.substring(0, 30) + "...");
+    console.log("localStorage token:", localStorage.getItem("imali_token"));
+    
+    setDebugInfo(prev => prev + 
+      `Token check:\n` +
+      `Exists: ${token ? "YES" : "NO"}\n` +
+      `Length: ${token?.length || 0}\n` +
+      `Preview: ${token?.substring(0, 30) || "N/A"}...\n`
+    );
   };
 
   return (
@@ -249,7 +376,10 @@ export default function Signup() {
               <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl animate-fadeIn">
                 <div className="flex items-center gap-3">
                   <div className="text-red-400">⚠️</div>
-                  <p className="text-red-400 text-sm">{error}</p>
+                  <div>
+                    <p className="text-red-400 font-medium">Signup Error</p>
+                    <p className="text-red-300 text-sm mt-1">{error}</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -258,7 +388,10 @@ export default function Signup() {
               <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl animate-fadeIn">
                 <div className="flex items-center gap-3">
                   <div className="text-emerald-400">✓</div>
-                  <p className="text-emerald-400 text-sm">{success}</p>
+                  <div>
+                    <p className="text-emerald-400 font-medium">Success!</p>
+                    <p className="text-emerald-300 text-sm mt-1">{success}</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -396,7 +529,7 @@ export default function Signup() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                className="w-full py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-lg"
               >
                 {loading ? (
                   <span className="flex items-center justify-center">
@@ -431,6 +564,37 @@ export default function Signup() {
               </div>
               <p className="text-xs text-gray-500 mt-2">35/50 spots claimed</p>
             </div>
+            
+            {/* Debug Panel - Remove in production */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mt-6 p-4 bg-gray-800/30 rounded-xl border border-gray-700">
+                <details>
+                  <summary className="cursor-pointer text-sm text-gray-400 mb-2">Debug Info</summary>
+                  <div className="space-y-3">
+                    <pre className="text-xs mt-2 text-gray-300 whitespace-pre-wrap overflow-auto max-h-40">
+                      {debugInfo}
+                    </pre>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={checkTokenStatus}
+                        className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded"
+                      >
+                        Check Token
+                      </button>
+                      <button
+                        onClick={() => {
+                          BotAPI.clearToken();
+                          setDebugInfo(prev => prev + "Token cleared\n");
+                        }}
+                        className="px-3 py-1 text-xs bg-red-700 hover:bg-red-600 rounded"
+                      >
+                        Clear Token
+                      </button>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            )}
           </div>
         </div>
       </div>
