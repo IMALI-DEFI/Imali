@@ -1,37 +1,70 @@
+// src/utils/BotAPI.js
 import axios from "axios";
 
+/* ======================================================
+   Constants
+====================================================== */
 const IS_BROWSER = typeof window !== "undefined";
 const TOKEN_KEY = "imali_token";
 
-/* ---------------- Token helpers ---------------- */
-const getToken = () =>
-  IS_BROWSER ? localStorage.getItem(TOKEN_KEY) : null;
+/* ======================================================
+   API Base
+====================================================== */
+function resolveApiBase() {
+  const env =
+    process.env.REACT_APP_API_BASE_URL ||
+    process.env.REACT_APP_API_BASE ||
+    process.env.VITE_API_BASE_URL ||
+    "";
 
-const setToken = (t) => {
+  if (env) return env.replace(/\/+$/, "");
+
+  if (IS_BROWSER) {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://localhost:8080";
+    }
+    return "https://api.imali-defi.com";
+  }
+
+  return "http://localhost:8080";
+}
+
+const API_BASE = resolveApiBase();
+const API_ROOT = `${API_BASE}/api`;
+
+/* ======================================================
+   Token helpers (⚠️ KEEP THESE NAMES)
+====================================================== */
+function getToken() {
+  if (!IS_BROWSER) return "";
+  return localStorage.getItem(TOKEN_KEY) || "";
+}
+
+function setToken(token) {
   if (!IS_BROWSER) return;
-  if (!t) localStorage.removeItem(TOKEN_KEY);
-  else localStorage.setItem(TOKEN_KEY, t);
-};
+  if (!token) localStorage.removeItem(TOKEN_KEY);
+  else localStorage.setItem(TOKEN_KEY, token);
+}
 
-const clearToken = () => {
-  if (IS_BROWSER) localStorage.removeItem(TOKEN_KEY);
-};
+function clearToken() {
+  if (!IS_BROWSER) return;
+  localStorage.removeItem(TOKEN_KEY);
+}
 
-/* ---------------- API base ---------------- */
-const API_ORIGIN =
-  process.env.REACT_APP_API_BASE_URL ||
-  process.env.VITE_API_BASE_URL ||
-  (IS_BROWSER && window.location.hostname === "localhost"
-    ? "http://localhost:8080"
-    : "https://api.imali-defi.com");
+function isLoggedIn() {
+  return !!getToken();
+}
 
+/* ======================================================
+   Axios instance
+====================================================== */
 const api = axios.create({
-  baseURL: `${API_ORIGIN.replace(/\/+$/, "")}/api`,
+  baseURL: API_ROOT,
   timeout: 30000,
   headers: { "Content-Type": "application/json" },
 });
 
-/* ---------------- Request interceptor ---------------- */
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -40,15 +73,27 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-/* ---------------- Response interceptor ---------------- */
-/* ⚠️ DO NOT REDIRECT HERE */
 api.interceptors.response.use(
   (res) => res,
-  (err) => Promise.reject(err)
+  (err) => {
+    const status = err?.response?.status;
+
+    if (
+      status === 401 &&
+      IS_BROWSER &&
+      !window.location.pathname.startsWith("/login")
+    ) {
+      clearToken();
+    }
+
+    return Promise.reject(err);
+  }
 );
 
-/* ---------------- Error wrapper ---------------- */
-async function call(fn) {
+/* ======================================================
+   Error wrapper
+====================================================== */
+async function request(fn) {
   try {
     const res = await fn();
     return res.data;
@@ -56,59 +101,84 @@ async function call(fn) {
     const status = err?.response?.status;
     const data = err?.response?.data;
 
-    const e = new Error(
+    const message =
       data?.message ||
       data?.detail ||
       data?.error ||
-      "Request failed"
-    );
+      err?.message ||
+      "Request failed";
 
+    const e = new Error(message);
     e.status = status;
     e.data = data;
     throw e;
   }
 }
 
-/* ---------------- Public API ---------------- */
+/* ======================================================
+   Public API (⚠️ STABLE SHAPE)
+====================================================== */
 const BotAPI = {
+  api,
+
+  // auth helpers (EXPECTED BY APP)
+  getToken,
+  setToken,
+  clearToken,
+  isLoggedIn,
+
+  logout: () => {
+    clearToken();
+    return Promise.resolve();
+  },
+
+  /* Health */
+  health: () => request(() => api.get("/health")),
+
   /* Auth */
   signup: async (p) => {
-    const d = await call(() => api.post("/signup", p));
-    if (d?.token) setToken(d.token);
-    return d;
+    const data = await request(() => api.post("/signup", p));
+    if (data?.token) setToken(data.token);
+    return data;
   },
 
   login: async (p) => {
-    const d = await call(() => api.post("/auth/login", p));
-    if (d?.token) setToken(d.token);
-    return d;
+    const data = await request(() => api.post("/auth/login", p));
+    if (data?.token) setToken(data.token);
+    return data;
   },
 
-  logout: () => clearToken(),
-  isLoggedIn: () => !!getToken(),
+  walletAuth: async (p) => {
+    const data = await request(() => api.post("/auth/wallet", p));
+    if (data?.token) setToken(data.token);
+    return data;
+  },
 
   /* User */
-  me: () => call(() => api.get("/me")),
-  activationStatus: () => call(() => api.get("/me/activation-status")),
+  me: () => request(() => api.get("/me")),
+  activationStatus: () =>
+    request(() => api.get("/me/activation-status")),
 
   /* Billing */
-  billingSetupIntent: (p) =>
-    call(() => api.post("/billing/setup-intent", p)),
-
+  billingSetupIntent: (p = {}) =>
+    request(() => api.post("/billing/setup-intent", p)),
   billingCardStatus: () =>
-    call(() => api.get("/billing/card-status")),
+    request(() => api.get("/billing/card-status")),
 
   /* Trading */
   tradingEnable: (enabled) =>
-    call(() => api.post("/trading/enable", { enabled })),
+    request(() => api.post("/trading/enable", { enabled: !!enabled })),
+  tradingStatus: () =>
+    request(() => api.get("/trading/status")),
 
   /* Bot */
   botStart: (p = {}) =>
-    call(() => api.post("/bot/start", p)),
+    request(() => api.post("/bot/start", p)),
 
   /* Trades */
   sniperTrades: () =>
-    call(() => api.get("/sniper/trades")),
+    request(() => api.get("/sniper/trades")),
 };
 
 export default BotAPI;
+export { BotAPI };
