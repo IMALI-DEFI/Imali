@@ -1,7 +1,7 @@
 // src/pages/Activation.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { BotAPI } from "../utils/BotAPI";
+import BotAPI from "../utils/BotAPI";
 
 /* ======================================================
    TAILWIND-SAFE STATUS MAPS
