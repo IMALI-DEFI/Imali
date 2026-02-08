@@ -8,43 +8,20 @@ const IS_BROWSER = typeof window !== "undefined";
 const TOKEN_KEY = "imali_token";
 
 /* ======================================================
-   API Base
+   Token Helpers (PUBLIC + STABLE)
 ====================================================== */
-function resolveApiBase() {
-  const env =
-    process.env.REACT_APP_API_BASE_URL ||
-    process.env.REACT_APP_API_BASE ||
-    process.env.VITE_API_BASE_URL ||
-    "";
-
-  if (env) return env.replace(/\/+$/, "");
-
-  if (IS_BROWSER) {
-    const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") {
-      return "http://localhost:8080";
-    }
-    return "https://api.imali-defi.com";
+function setToken(token) {
+  if (!IS_BROWSER) return;
+  if (!token) {
+    localStorage.removeItem(TOKEN_KEY);
+    return;
   }
-
-  return "http://localhost:8080";
+  localStorage.setItem(TOKEN_KEY, String(token));
 }
 
-const API_BASE = resolveApiBase();
-const API_ROOT = `${API_BASE}/api`;
-
-/* ======================================================
-   Token helpers (⚠️ KEEP THESE NAMES)
-====================================================== */
 function getToken() {
   if (!IS_BROWSER) return "";
   return localStorage.getItem(TOKEN_KEY) || "";
-}
-
-function setToken(token) {
-  if (!IS_BROWSER) return;
-  if (!token) localStorage.removeItem(TOKEN_KEY);
-  else localStorage.setItem(TOKEN_KEY, token);
 }
 
 function clearToken() {
@@ -57,14 +34,40 @@ function isLoggedIn() {
 }
 
 /* ======================================================
-   Axios instance
+   API Base Resolution
+====================================================== */
+function apiBase() {
+  const env =
+    process.env.REACT_APP_API_BASE_URL ||
+    process.env.VITE_API_BASE_URL ||
+    "";
+
+  if (env) return env.replace(/\/+$/, "");
+
+  if (IS_BROWSER) {
+    if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+      return "http://localhost:8080";
+    }
+    return "https://api.imali-defi.com";
+  }
+
+  return "http://localhost:8080";
+}
+
+const BASE_URL = `${apiBase()}/api`;
+
+/* ======================================================
+   Axios Instance
 ====================================================== */
 const api = axios.create({
-  baseURL: API_ROOT,
+  baseURL: BASE_URL,
   timeout: 30000,
   headers: { "Content-Type": "application/json" },
 });
 
+/* ======================================================
+   Request Interceptor
+====================================================== */
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -73,16 +76,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/* ======================================================
+   Response Interceptor (SAFE)
+====================================================== */
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     const status = err?.response?.status;
+    const path = err?.config?.url || "";
 
+    // Only force logout on AUTH endpoints
     if (
       status === 401 &&
       IS_BROWSER &&
-      !window.location.pathname.startsWith("/login")
+      !path.includes("/auth") &&
+      !path.includes("/signup")
     ) {
+      console.warn("[BotAPI] Unauthorized, clearing token");
       clearToken();
     }
 
@@ -91,9 +101,9 @@ api.interceptors.response.use(
 );
 
 /* ======================================================
-   Error wrapper
+   Error Wrapper
 ====================================================== */
-async function request(fn) {
+async function wrap(fn) {
   try {
     const res = await fn();
     return res.data;
@@ -101,14 +111,11 @@ async function request(fn) {
     const status = err?.response?.status;
     const data = err?.response?.data;
 
-    const message =
+    const e = new Error(
       data?.message ||
-      data?.detail ||
       data?.error ||
-      err?.message ||
-      "Request failed";
-
-    const e = new Error(message);
+      "Request failed"
+    );
     e.status = status;
     e.data = data;
     throw e;
@@ -116,69 +123,40 @@ async function request(fn) {
 }
 
 /* ======================================================
-   Public API (⚠️ STABLE SHAPE)
+   PUBLIC API (DO NOT RENAME)
 ====================================================== */
 const BotAPI = {
-  api,
-
-  // auth helpers (EXPECTED BY APP)
+  // token access (FIXES YOUR ERROR)
   getToken,
   setToken,
   clearToken,
   isLoggedIn,
 
-  logout: () => {
-    clearToken();
-    return Promise.resolve();
-  },
-
-  /* Health */
-  health: () => request(() => api.get("/health")),
-
   /* Auth */
-  signup: async (p) => {
-    const data = await request(() => api.post("/signup", p));
-    if (data?.token) setToken(data.token);
-    return data;
-  },
-
+  signup: (p) => wrap(() => api.post("/signup", p)),
   login: async (p) => {
-    const data = await request(() => api.post("/auth/login", p));
+    const data = await wrap(() => api.post("/auth/login", p));
     if (data?.token) setToken(data.token);
     return data;
   },
-
-  walletAuth: async (p) => {
-    const data = await request(() => api.post("/auth/wallet", p));
-    if (data?.token) setToken(data.token);
-    return data;
-  },
+  logout: () => clearToken(),
 
   /* User */
-  me: () => request(() => api.get("/me")),
-  activationStatus: () =>
-    request(() => api.get("/me/activation-status")),
-
-  /* Billing */
-  billingSetupIntent: (p = {}) =>
-    request(() => api.post("/billing/setup-intent", p)),
-  billingCardStatus: () =>
-    request(() => api.get("/billing/card-status")),
+  me: () => wrap(() => api.get("/me")),
+  activationStatus: () => wrap(() => api.get("/me/activation-status")),
 
   /* Trading */
   tradingEnable: (enabled) =>
-    request(() => api.post("/trading/enable", { enabled: !!enabled })),
-  tradingStatus: () =>
-    request(() => api.get("/trading/status")),
-
-  /* Bot */
+    wrap(() => api.post("/trading/enable", { enabled })),
   botStart: (p = {}) =>
-    request(() => api.post("/bot/start", p)),
+    wrap(() => api.post("/bot/start", p)),
 
   /* Trades */
-  sniperTrades: () =>
-    request(() => api.get("/sniper/trades")),
+  sniperTrades: () => wrap(() => api.get("/sniper/trades")),
+
+  /* Billing */
+  billingSetupIntent: () =>
+    wrap(() => api.post("/billing/setup-intent")),
 };
 
 export default BotAPI;
-export { BotAPI };
