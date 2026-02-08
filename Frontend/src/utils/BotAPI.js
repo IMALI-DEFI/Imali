@@ -1,111 +1,54 @@
-// src/utils/BotAPI.js
 import axios from "axios";
 
-/* ======================================================
-   Constants
-====================================================== */
 const IS_BROWSER = typeof window !== "undefined";
 const TOKEN_KEY = "imali_token";
 
-/* ======================================================
-   Env helpers
-====================================================== */
-function getEnv(key, fallback = "") {
-  try {
-    if (typeof process !== "undefined" && process.env?.[key] !== undefined) {
-      return process.env[key] || fallback;
-    }
-    if (IS_BROWSER) {
-      if (window.__ENV?.[key] !== undefined) return window.__ENV[key];
-      if (window.process?.env?.[key]) return window.process.env[key];
-    }
-  } catch {}
-  return fallback;
-}
+/* ---------------- Token helpers ---------------- */
+const getToken = () =>
+  IS_BROWSER ? localStorage.getItem(TOKEN_KEY) : null;
 
-const strip = (s) => String(s || "").replace(/\/+$/, "");
-
-/* ======================================================
-   API base resolver
-====================================================== */
-function resolveApiOrigin() {
-  const raw =
-    getEnv("REACT_APP_API_BASE_URL") ||
-    getEnv("REACT_APP_API_BASE") ||
-    getEnv("VITE_API_BASE_URL") ||
-    "";
-
-  if (raw) {
-    const clean = strip(raw);
-    return clean.endsWith("/api") ? clean.slice(0, -4) : clean;
-  }
-
-  if (IS_BROWSER) {
-    const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") {
-      return "http://localhost:8080";
-    }
-    return "https://api.imali-defi.com";
-  }
-
-  return "http://localhost:8080";
-}
-
-const API_ORIGIN = resolveApiOrigin();
-const API_BASE = `${strip(API_ORIGIN)}/api`;
-
-/* ======================================================
-   Token helpers
-====================================================== */
-export function getAuthToken() {
-  if (!IS_BROWSER) return "";
-  return localStorage.getItem(TOKEN_KEY) || "";
-}
-
-export function setAuthToken(token) {
+const setToken = (t) => {
   if (!IS_BROWSER) return;
-  if (!token) localStorage.removeItem(TOKEN_KEY);
-  else localStorage.setItem(TOKEN_KEY, token);
-}
+  if (!t) localStorage.removeItem(TOKEN_KEY);
+  else localStorage.setItem(TOKEN_KEY, t);
+};
 
-export function clearAuthToken() {
-  if (!IS_BROWSER) return;
-  localStorage.removeItem(TOKEN_KEY);
-}
+const clearToken = () => {
+  if (IS_BROWSER) localStorage.removeItem(TOKEN_KEY);
+};
 
-export const isLoggedIn = () => !!getAuthToken();
+/* ---------------- API base ---------------- */
+const API_ORIGIN =
+  process.env.REACT_APP_API_BASE_URL ||
+  process.env.VITE_API_BASE_URL ||
+  (IS_BROWSER && window.location.hostname === "localhost"
+    ? "http://localhost:8080"
+    : "https://api.imali-defi.com");
 
-/* ======================================================
-   Axios instance
-====================================================== */
 const api = axios.create({
-  baseURL: API_BASE,
+  baseURL: `${API_ORIGIN.replace(/\/+$/, "")}/api`,
   timeout: 30000,
   headers: { "Content-Type": "application/json" },
 });
 
+/* ---------------- Request interceptor ---------------- */
 api.interceptors.request.use((config) => {
-  const token = getAuthToken();
+  const token = getToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-/**
- * ❗ IMPORTANT:
- * Do NOT redirect on 401 here.
- * Pages decide what to do with auth failures.
- */
+/* ---------------- Response interceptor ---------------- */
+/* ⚠️ DO NOT REDIRECT HERE */
 api.interceptors.response.use(
   (res) => res,
   (err) => Promise.reject(err)
 );
 
-/* ======================================================
-   Error wrapper
-====================================================== */
-async function request(fn) {
+/* ---------------- Error wrapper ---------------- */
+async function call(fn) {
   try {
     const res = await fn();
     return res.data;
@@ -113,73 +56,59 @@ async function request(fn) {
     const status = err?.response?.status;
     const data = err?.response?.data;
 
-    let message =
+    const e = new Error(
       data?.message ||
-      data?.error ||
       data?.detail ||
-      err?.message ||
-      "Request failed";
+      data?.error ||
+      "Request failed"
+    );
 
-    const e = new Error(message);
     e.status = status;
     e.data = data;
     throw e;
   }
 }
 
-/* ======================================================
-   Public API
-====================================================== */
+/* ---------------- Public API ---------------- */
 const BotAPI = {
-  api,
-
-  /* auth */
-  isLoggedIn,
-  getToken: getAuthToken,
-  setToken: setAuthToken,
-  clearToken: clearAuthToken,
-
-  signup: async (payload) => {
-    const data = await request(() => api.post("/signup", payload));
-    if (data?.token) setAuthToken(data.token);
-    return data;
+  /* Auth */
+  signup: async (p) => {
+    const d = await call(() => api.post("/signup", p));
+    if (d?.token) setToken(d.token);
+    return d;
   },
 
-  login: async (payload) => {
-    const data = await request(() => api.post("/auth/login", payload));
-    if (data?.token) setAuthToken(data.token);
-    return data;
+  login: async (p) => {
+    const d = await call(() => api.post("/auth/login", p));
+    if (d?.token) setToken(d.token);
+    return d;
   },
 
-  walletAuth: async (payload) => {
-    const data = await request(() => api.post("/auth/wallet", payload));
-    if (data?.token) setAuthToken(data.token);
-    return data;
-  },
+  logout: () => clearToken(),
+  isLoggedIn: () => !!getToken(),
 
-  logout: () => clearAuthToken(),
+  /* User */
+  me: () => call(() => api.get("/me")),
+  activationStatus: () => call(() => api.get("/me/activation-status")),
 
-  /* user */
-  me: () => request(() => api.get("/me")),
-  activationStatus: () => request(() => api.get("/me/activation-status")),
+  /* Billing */
+  billingSetupIntent: (p) =>
+    call(() => api.post("/billing/setup-intent", p)),
 
-  /* billing */
-  billingSetupIntent: (p = {}) =>
-    request(() => api.post("/billing/setup-intent", p)),
   billingCardStatus: () =>
-    request(() => api.get("/billing/card-status")),
+    call(() => api.get("/billing/card-status")),
 
-  /* trading */
+  /* Trading */
   tradingEnable: (enabled) =>
-    request(() => api.post("/trading/enable", { enabled: !!enabled })),
-  tradingStatus: () => request(() => api.get("/trading/status")),
+    call(() => api.post("/trading/enable", { enabled })),
 
-  /* bot */
-  botStart: (p = {}) => request(() => api.post("/bot/start", p)),
+  /* Bot */
+  botStart: (p = {}) =>
+    call(() => api.post("/bot/start", p)),
 
-  /* trades */
-  sniperTrades: () => request(() => api.get("/sniper/trades")),
+  /* Trades */
+  sniperTrades: () =>
+    call(() => api.get("/sniper/trades")),
 };
 
 export default BotAPI;
-export { BotAPI };
