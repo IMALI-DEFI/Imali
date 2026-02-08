@@ -102,7 +102,7 @@ export default function Billing() {
 
   /* Auth guard */
   useEffect(() => {
-    if (!BotAPI.getToken()) {
+    if (!BotAPI.isLoggedIn()) {
       navigate("/signup", { replace: true });
     }
   }, [navigate]);
