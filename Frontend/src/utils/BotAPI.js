@@ -4,8 +4,9 @@ import axios from "axios";
 const TOKEN_KEY = "imali_token";
 const IS_BROWSER = typeof window !== "undefined";
 
-/* ---------------- Token helpers ---------------- */
-
+/* ======================================================
+   Token helpers (EXPLICIT + SAFE)
+====================================================== */
 export const getToken = () =>
   IS_BROWSER ? localStorage.getItem(TOKEN_KEY) : null;
 
@@ -23,21 +24,23 @@ export const clearToken = () => {
 
 export const isLoggedIn = () => !!getToken();
 
-/* ---------------- API base ---------------- */
-
+/* ======================================================
+   API base (prod-safe)
+====================================================== */
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL ||
   process.env.REACT_APP_API_BASE ||
   "https://api.imali-defi.com";
 
 const api = axios.create({
-  baseURL: `${API_BASE}/api`,
+  baseURL: `${API_BASE.replace(/\/$/, "")}/api`,
   headers: { "Content-Type": "application/json" },
   timeout: 30000,
 });
 
-/* ---------------- Interceptors ---------------- */
-
+/* ======================================================
+   Request interceptor (JWT attach)
+====================================================== */
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -46,6 +49,9 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/* ======================================================
+   Response interceptor (NO redirect loops)
+====================================================== */
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -58,7 +64,7 @@ api.interceptors.response.use(
       status
     );
 
-    // ⚠️ only force logout if already logged in
+    // Only clear token if we *had one*
     if (status === 401 && isLoggedIn()) {
       clearToken();
     }
@@ -67,8 +73,9 @@ api.interceptors.response.use(
   }
 );
 
-/* ---------------- Wrapper ---------------- */
-
+/* ======================================================
+   Error wrapper
+====================================================== */
 const wrap = async (fn) => {
   try {
     const res = await fn();
@@ -84,40 +91,43 @@ const wrap = async (fn) => {
   }
 };
 
-/* ---------------- Public API ---------------- */
-
+/* ======================================================
+   Public API (DEFAULT EXPORT)
+====================================================== */
 const BotAPI = {
-  // token helpers (THIS FIXES YOUR ERROR)
+  /* token helpers (THIS FIXES XE.getToken) */
   getToken,
   setToken,
   clearToken,
   isLoggedIn,
 
-  // auth
+  /* auth */
   signup: (p) => wrap(() => api.post("/signup", p)),
+
   login: async (p) => {
     const data = await wrap(() => api.post("/auth/login", p));
     if (data?.token) setToken(data.token);
     return data;
   },
+
   logout: () => clearToken(),
 
-  // user
+  /* user */
   me: () => wrap(() => api.get("/me")),
   activationStatus: () => wrap(() => api.get("/me/activation-status")),
 
-  // billing
+  /* billing */
   billingSetupIntent: (p) =>
     wrap(() => api.post("/billing/setup-intent", p)),
 
-  // trading
+  /* trading */
   tradingEnable: (enabled) =>
     wrap(() => api.post("/trading/enable", { enabled })),
 
-  // bot
+  /* bot */
   botStart: (p = {}) => wrap(() => api.post("/bot/start", p)),
 
-  // trades
+  /* trades */
   sniperTrades: () => wrap(() => api.get("/sniper/trades")),
 };
 
