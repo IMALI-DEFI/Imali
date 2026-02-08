@@ -1,10 +1,10 @@
 // src/pages/Signup.jsx
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
 
 export default function Signup() {
-  const nav = useNavigate();
+  const navigate = useNavigate();
 
   const [form, setForm] = useState({
     email: "",
@@ -20,22 +20,25 @@ export default function Signup() {
   const [success, setSuccess] = useState("");
 
   /* --------------------------------------------------
-     Redirect if already logged in
+     Redirect if already authenticated
   -------------------------------------------------- */
   useEffect(() => {
     if (BotAPI.isLoggedIn()) {
-      nav("/dashboard", { replace: true });
+      navigate("/members", { replace: true });
     }
-  }, [nav]);
+  }, [navigate]);
 
   /* --------------------------------------------------
      Validation
   -------------------------------------------------- */
   const validate = () => {
     if (!form.email) return "Email is required";
-    if (form.password.length < 8) return "Password must be at least 8 characters";
-    if (form.password !== form.confirmPassword) return "Passwords do not match";
-    if (!form.acceptTerms) return "You must accept the Terms and Privacy Policy";
+    if (form.password.length < 8)
+      return "Password must be at least 8 characters";
+    if (form.password !== form.confirmPassword)
+      return "Passwords do not match";
+    if (!form.acceptTerms)
+      return "You must accept the Terms and Privacy Policy";
     return null;
   };
 
@@ -59,32 +62,32 @@ export default function Signup() {
     try {
       // 1️⃣ Create account
       await BotAPI.signup({
-        email: form.email,
+        email: form.email.trim(),
         password: form.password,
         tier: form.tier,
         strategy: form.strategy,
       });
 
-      setSuccess("Account created! Logging you in…");
+      setSuccess("Account created. Signing you in…");
 
-      // 2️⃣ Log in (this stores token)
+      // 2️⃣ Log in (stores token internally)
       await BotAPI.login({
-        email: form.email,
+        email: form.email.trim(),
         password: form.password,
       });
 
-      // 3️⃣ Go to billing
-      setTimeout(() => {
-        nav("/billing", {
-          replace: true,
-          state: { justSignedUp: true },
-        });
-      }, 800);
+      // 3️⃣ Route to billing / activation
+      navigate("/billing", {
+        replace: true,
+        state: { justSignedUp: true },
+      });
     } catch (err) {
-      if (err.status === 409) {
+      console.error("Signup error:", err);
+
+      if (err?.status === 409) {
         setError("An account with this email already exists.");
       } else {
-        setError(err.message || "Signup failed. Please try again.");
+        setError(err?.message || "Signup failed. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -97,8 +100,12 @@ export default function Signup() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950 px-4">
       <div className="w-full max-w-lg bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-xl">
-        <h1 className="text-3xl font-bold text-white mb-2">Create your account</h1>
-        <p className="text-gray-400 mb-6">Start trading with AI in minutes</p>
+        <h1 className="text-3xl font-bold text-white mb-2">
+          Create your account
+        </h1>
+        <p className="text-gray-400 mb-6">
+          Start trading with AI in minutes
+        </p>
 
         {error && (
           <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
@@ -118,7 +125,9 @@ export default function Signup() {
             placeholder="Email"
             required
             value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, email: e.target.value }))
+            }
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
             disabled={loading}
           />
@@ -128,7 +137,9 @@ export default function Signup() {
             placeholder="Password (min 8 chars)"
             required
             value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, password: e.target.value }))
+            }
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
             disabled={loading}
           />
@@ -139,7 +150,7 @@ export default function Signup() {
             required
             value={form.confirmPassword}
             onChange={(e) =>
-              setForm({ ...form, confirmPassword: e.target.value })
+              setForm((f) => ({ ...f, confirmPassword: e.target.value }))
             }
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
             disabled={loading}
@@ -147,10 +158,14 @@ export default function Signup() {
 
           <select
             value={form.strategy}
-            onChange={(e) => setForm({ ...form, strategy: e.target.value })}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, strategy: e.target.value }))
+            }
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
           >
-            <option value="ai_weighted">AI Weighted (Recommended)</option>
+            <option value="ai_weighted">
+              AI Weighted (Recommended)
+            </option>
             <option value="momentum">Momentum</option>
             <option value="mean_reversion">Mean Reversion</option>
           </select>
@@ -160,7 +175,7 @@ export default function Signup() {
               type="checkbox"
               checked={form.acceptTerms}
               onChange={(e) =>
-                setForm({ ...form, acceptTerms: e.target.checked })
+                setForm((f) => ({ ...f, acceptTerms: e.target.checked }))
               }
               className="mt-1"
             />
