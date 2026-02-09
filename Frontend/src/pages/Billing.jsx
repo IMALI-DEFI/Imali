@@ -23,7 +23,7 @@ function BillingInner({ clientSecret }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  console.log("[BillingInner] Mounted – clientSecret present:", !!clientSecret);
+  console.log("[BillingInner] Mounted – clientSecret:", !!clientSecret);
 
   const submit = async () => {
     if (!stripe || !elements) {
@@ -44,7 +44,7 @@ function BillingInner({ clientSecret }) {
 
       if (error) throw error;
 
-      console.log("[BillingInner] Setup successful – navigating to activation");
+      console.log("[BillingInner] Setup successful → navigating to /activation");
       navigate("/activation", { replace: true });
     } catch (err) {
       console.error("[BillingInner] Setup failed:", err);
@@ -96,7 +96,7 @@ export default function Billing() {
       console.log("[Billing] Auth check → isLoggedIn:", hasToken);
 
       if (!hasToken) {
-        console.log("[Billing] No token – redirecting to login immediately");
+        console.log("[Billing] No token found – redirecting to login immediately");
         navigate("/login", { replace: true });
         setLoading(false);
         return;
@@ -143,7 +143,7 @@ export default function Billing() {
         if (err.status === 401) {
           console.warn("[Billing] 401 on protected endpoint → possible expired/invalid token");
           // Do NOT clear token automatically here – it causes loop
-          // BotAPI.clearToken();  // ← commented to prevent clearing on every failure
+          // BotAPI.clearToken(); // ← commented to prevent clearing on every failure
           msg = "Your session may have expired. Please log in again.";
           navigate("/login", { replace: true });
         } else if (err.message) {
@@ -167,7 +167,7 @@ export default function Billing() {
     };
   }, [navigate, location.state]);
 
-  // ── Render ────────────────────────────────────────────────
+  // ── Render logic ────────────────────────────────────────────────
   if (!stripePromise) {
     return <div className="min-h-screen bg-black text-white p-6">Stripe not configured.</div>;
   }
