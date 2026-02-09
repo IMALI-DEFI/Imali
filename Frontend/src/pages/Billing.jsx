@@ -1,3 +1,4 @@
+// src/pages/Billing.jsx
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { loadStripe } from "@stripe/stripe-js";
@@ -9,22 +10,12 @@ import {
 } from "@stripe/react-stripe-js";
 import BotAPI from "../utils/BotAPI";
 
-/* -------------------------------------------------- */
-/* Stripe setup (MUST be module-level) */
-/* -------------------------------------------------- */
-
+/* Stripe setup */
 const STRIPE_KEY = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY;
-
-if (!STRIPE_KEY) {
-  console.error("❌ Missing REACT_APP_STRIPE_PUBLISHABLE_KEY");
-}
-
+if (!STRIPE_KEY) console.error("❌ Missing REACT_APP_STRIPE_PUBLISHABLE_KEY");
 const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
 
-/* -------------------------------------------------- */
-/* Inner payment form */
-/* -------------------------------------------------- */
-
+/* Inner form */
 function BillingInner({ clientSecret }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -35,21 +26,17 @@ function BillingInner({ clientSecret }) {
 
   const submit = async () => {
     if (!stripe || !elements) return;
-
     setBusy(true);
     setError("");
 
     try {
       const { error } = await stripe.confirmSetup({
         elements,
-        confirmParams: {
-          return_url: `${window.location.origin}/activation`,
-        },
+        confirmParams: { return_url: `${window.location.origin}/activation` },
         redirect: "if_required",
       });
 
       if (error) throw error;
-
       navigate("/activation", { replace: true });
     } catch (err) {
       console.error("Stripe error:", err);
@@ -77,122 +64,115 @@ function BillingInner({ clientSecret }) {
         {busy ? "Saving…" : "Save Payment Method"}
       </button>
 
-      <Link
-        to="/activation"
-        className="block text-center text-xs text-slate-400 underline"
-      >
+      <Link to="/activation" className="block text-center text-xs text-slate-400 underline">
         Skip for now
       </Link>
     </div>
   );
 }
 
-/* -------------------------------------------------- */
-/* Page */
-/* -------------------------------------------------- */
-
+/* Main page */
 export default function Billing() {
   const navigate = useNavigate();
   const location = useLocation();
 
   const [clientSecret, setClientSecret] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
   const [user, setUser] = useState(null);
 
-  /* Auth guard */
   useEffect(() => {
-    if (!BotAPI.isLoggedIn()) {
-      navigate("/signup", { replace: true });
-    }
-  }, [navigate]);
+    let isMounted = true;
 
-  /* Load billing setup */
-  useEffect(() => {
-    let mounted = true;
+    const initialize = async () => {
+      // 1. Auth guard first
+      if (!BotAPI.isLoggedIn()) {
+        console.log("[Billing] No token → redirect to signup");
+        if (isMounted) navigate("/signup", { replace: true });
+        return;
+      }
 
-    async function load() {
       try {
         setLoading(true);
-        setError("");
+        setErrorMsg("");
 
-        const me = await BotAPI.me();
-        const userData = me?.user || me;
-        setUser(userData);
+        // 2. Get user (protected call)
+        const meData = await BotAPI.me();
+        const userData = meData?.user || meData;
+        if (isMounted) setUser(userData);
 
+        if (!userData?.email) {
+          throw new Error("No email in user profile");
+        }
+
+        // 3. Setup intent (also protected)
         const setup = await BotAPI.billingSetupIntent({
-          email: userData.email,
-          tier: userData.tier,
+          email: userData.email.trim(),
+          tier: userData.tier || "starter",
         });
 
         if (!setup?.client_secret) {
           throw new Error("Missing Stripe client_secret");
         }
 
-        if (mounted) setClientSecret(setup.client_secret);
+        if (isMounted) setClientSecret(setup.client_secret);
       } catch (err) {
-        console.error("Billing load error:", err);
-        setError(
-          err?.message ||
-            "Billing is currently unavailable. Please try again."
-        );
+        console.error("[Billing] Init failed:", err);
+
+        let msg = "Unable to load billing setup. Please try again.";
+
+        if (err.status === 401) {
+          BotAPI.clearToken();
+          msg = "Session expired. Please log in again.";
+          navigate("/login", { replace: true });
+        } else if (err.message) {
+          msg = err.message;
+        }
+
+        if (isMounted) setErrorMsg(msg);
       } finally {
-        if (mounted) setLoading(false);
+        if (isMounted) setLoading(false);
       }
-    }
-
-    load();
-    return () => {
-      mounted = false;
     };
-  }, [location.state]);
 
-  /* -------------------------------------------------- */
-  /* Render states */
-  /* -------------------------------------------------- */
+    initialize();
 
+    return () => { isMounted = false; };
+  }, [navigate, location.state]); // location.state kept for justSignedUp flag if needed
+
+  // ── Render ────────────────────────────────────────
   if (!stripePromise) {
-    return (
-      <div className="min-h-screen bg-black text-white p-6">
-        Stripe is not configured.
-      </div>
-    );
+    return <div className="min-h-screen bg-black text-white p-6">Stripe not configured.</div>;
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white p-6 text-center">
-        Loading billing…
-      </div>
-    );
+    return <div className="min-h-screen bg-black text-white p-6 text-center">Loading billing setup…</div>;
   }
 
-  if (error) {
+  if (errorMsg) {
     return (
-      <div className="min-h-screen bg-black text-white p-6">
-        <div className="mx-auto max-w-md rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-          {error}
-          <div className="mt-4 text-center">
-            <Link to="/activation" className="underline">
-              Continue without billing
-            </Link>
-          </div>
+      <div className="min-h-screen bg-black text-white p-6 flex items-center justify-center">
+        <div className="max-w-md rounded-xl border border-red-500/30 bg-red-950/30 p-8 text-center">
+          <div className="text-red-400 mb-6">{errorMsg}</div>
+          <Link
+            to="/activation"
+            className="inline-block rounded-xl bg-slate-700 px-6 py-3 text-white hover:bg-slate-600"
+          >
+            Continue without billing
+          </Link>
         </div>
       </div>
     );
   }
 
-  if (!clientSecret) {
-    return null;
-  }
+  if (!clientSecret) return null;
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="mx-auto max-w-md space-y-6">
-        <h1 className="text-xl font-bold">
-          Billing Setup ({user?.tier})
+        <h1 className="text-2xl font-bold">
+          Billing Setup {user?.tier ? `(${user.tier})` : ""}
         </h1>
-
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <BillingInner clientSecret={clientSecret} />
         </Elements>
