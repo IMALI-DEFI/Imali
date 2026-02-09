@@ -10,7 +10,9 @@ import {
 import BotAPI from "../utils/BotAPI";
 
 const STRIPE_KEY = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY;
-if (!STRIPE_KEY) console.error("❌ Missing REACT_APP_STRIPE_PUBLISHABLE_KEY");
+if (!STRIPE_KEY) {
+  console.error("❌ Missing REACT_APP_STRIPE_PUBLISHABLE_KEY");
+}
 const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
 
 function BillingInner({ clientSecret }) {
@@ -32,6 +34,7 @@ function BillingInner({ clientSecret }) {
         confirmParams: { return_url: `${window.location.origin}/activation` },
         redirect: "if_required",
       });
+
       if (error) throw error;
       navigate("/activation", { replace: true });
     } catch (err) {
@@ -76,65 +79,88 @@ export default function Billing() {
   useEffect(() => {
     let isMounted = true;
 
-    const init = async () => {
-      // Step 1: Synchronous auth check – NO protected calls if not logged in
+    const initialize = () => {
+      // 1. Immediate synchronous check – stop everything if not authenticated
       if (!BotAPI.isLoggedIn()) {
-        console.log("[Billing] No token found → redirecting to login");
-        if (isMounted) navigate("/login", { replace: true }); // or /signup if preferred
+        console.log("[Billing] No valid token → redirecting to login");
+        navigate("/login", { replace: true });
         setLoading(false);
         return;
       }
 
-      // Step 2: Only now run protected calls
-      try {
-        setLoading(true);
-        setErrorMsg("");
+      // 2. Only proceed if we believe we are authenticated
+      const loadProtectedData = async () => {
+        try {
+          setLoading(true);
+          setErrorMsg("");
 
-        const meData = await BotAPI.me();
-        const userData = meData?.user || meData;
-        if (isMounted) setUser(userData);
+          // Protected call #1
+          const meResponse = await BotAPI.me();
+          const userData = meResponse?.user || meResponse;
 
-        if (!userData?.email) throw new Error("No email in profile");
+          if (!userData?.email) {
+            throw new Error("No email found in user profile");
+          }
 
-        const setup = await BotAPI.billingSetupIntent({
-          email: userData.email.trim(),
-          tier: userData.tier || "starter",
-        });
+          if (isMounted) setUser(userData);
 
-        if (!setup?.client_secret) throw new Error("Missing client_secret");
+          // Protected call #2
+          const setupResponse = await BotAPI.billingSetupIntent({
+            email: userData.email.trim(),
+            tier: userData.tier || "starter",
+          });
 
-        if (isMounted) setClientSecret(setup.client_secret);
-      } catch (err) {
-        console.error("[Billing] Init failed:", err);
+          if (!setupResponse?.client_secret) {
+            throw new Error("No client_secret returned from server");
+          }
 
-        let msg = "Unable to load billing setup. Please try again.";
+          if (isMounted) setClientSecret(setupResponse.client_secret);
+        } catch (err) {
+          console.error("[Billing] Protected request failed:", err);
 
-        if (err.status === 401) {
-          console.warn("[Billing] 401 → clearing token and redirecting to login");
-          BotAPI.clearToken();
-          msg = "Session expired. Please log in again.";
-          if (isMounted) navigate("/login", { replace: true });
-        } else if (err.message) {
-          msg = err.message;
+          let message = "Unable to load billing setup. Please try again.";
+
+          // Handle auth failure specifically
+          if (err.status === 401) {
+            console.warn("[Billing] 401 detected → clearing token and redirecting");
+            BotAPI.clearToken();
+            message = "Your session has expired. Please log in again.";
+            navigate("/login", { replace: true });
+          } else if (err.message) {
+            message = err.message;
+          }
+
+          if (isMounted) setErrorMsg(message);
+        } finally {
+          if (isMounted) setLoading(false);
         }
+      };
 
-        if (isMounted) setErrorMsg(msg);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+      loadProtectedData();
     };
 
-    init();
+    initialize();
 
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [navigate, location.state]);
 
+  // ── Render logic ────────────────────────────────────────────────
   if (!stripePromise) {
-    return <div className="min-h-screen bg-black text-white p-6">Stripe not configured.</div>;
+    return (
+      <div className="min-h-screen bg-black text-white p-6 flex items-center justify-center">
+        Stripe is not configured (missing publishable key).
+      </div>
+    );
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-black text-white p-6 text-center">Loading billing setup…</div>;
+    return (
+      <div className="min-h-screen bg-black text-white p-6 flex items-center justify-center">
+        Loading billing setup…
+      </div>
+    );
   }
 
   if (errorMsg) {
@@ -144,7 +170,7 @@ export default function Billing() {
           <div className="text-red-400 mb-6">{errorMsg}</div>
           <Link
             to="/login"
-            className="inline-block rounded-xl bg-slate-700 px-6 py-3 text-white hover:bg-slate-600"
+            className="inline-block rounded-xl bg-slate-700 px-6 py-3 text-white hover:bg-slate-600 transition-colors"
           >
             Log in to continue
           </Link>
@@ -153,12 +179,16 @@ export default function Billing() {
     );
   }
 
-  if (!clientSecret) return null;
+  if (!clientSecret) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="mx-auto max-w-md space-y-6">
-        <h1 className="text-2xl font-bold">Billing Setup {user?.tier ? `(${user.tier})` : ""}</h1>
+        <h1 className="text-2xl font-bold">
+          Billing Setup {user?.tier ? `(${user.tier})` : ""}
+        </h1>
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <BillingInner clientSecret={clientSecret} />
         </Elements>
