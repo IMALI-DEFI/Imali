@@ -10,7 +10,7 @@ import Footer from "./components/Footer";
 import ProtectedRoute from "./components/routing/ProtectedRoute";
 
 /* ===== Core ===== */
-import MemberDashboard from "./pages/dashboard/MemberDashboard";
+import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel";
 
 /* ===== Auth / Onboarding ===== */
