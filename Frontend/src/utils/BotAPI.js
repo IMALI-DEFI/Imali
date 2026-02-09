@@ -4,159 +4,113 @@ import axios from "axios";
 const TOKEN_KEY = "imali_token";
 const IS_BROWSER = typeof window !== "undefined";
 
-// ────────────────────────────────────────────────
-// Token Helpers
-// ────────────────────────────────────────────────
-export const getToken = () => {
-  if (!IS_BROWSER) return null;
-  return localStorage.getItem(TOKEN_KEY);
-};
+/* ---------------- Token helpers ---------------- */
+export const getToken = () => (IS_BROWSER ? localStorage.getItem(TOKEN_KEY) : null);
 
 export const setToken = (token) => {
-  if (!IS_BROWSER || !token) return;
-  localStorage.setItem(TOKEN_KEY, token);
-  console.debug("[BotAPI] Token stored (length:", token.length, ")");
+  if (!IS_BROWSER) return;
+  const clean = String(token || "").trim();
+  if (!clean) return;
+  localStorage.setItem(TOKEN_KEY, clean);
 };
 
 export const clearToken = () => {
-  if (!IS_BROWSER) return;
-  localStorage.removeItem(TOKEN_KEY);
-  console.debug("[BotAPI] Token cleared");
+  if (IS_BROWSER) localStorage.removeItem(TOKEN_KEY);
 };
 
-export const isLoggedIn = () => {
-  const hasToken = !!getToken();
-  if (!hasToken) {
-    console.debug("[BotAPI] isLoggedIn → false (no token)");
-  }
-  return hasToken;
-};
+export const isLoggedIn = () => !!getToken();
 
-// ────────────────────────────────────────────────
-// Axios Instance Setup
-// ────────────────────────────────────────────────
+/* ---------------- API base ---------------- */
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL ||
   process.env.REACT_APP_API_BASE ||
   "https://api.imali-defi.com";
 
 const api = axios.create({
-  baseURL: `${API_BASE.replace(/\/$/, "")}/api`,
+  baseURL: `${String(API_BASE).replace(/\/$/, "")}/api`,
   headers: { "Content-Type": "application/json" },
   timeout: 30000,
 });
 
-// ────────────────────────────────────────────────
-// Request Interceptor – Attach token + debug
-// ────────────────────────────────────────────────
-api.interceptors.request.use(
-  (config) => {
-    const token = getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-      console.debug(`[BotAPI] → Attached Bearer token to ${config.method.toUpperCase()} ${config.url}`);
-    } else {
-      console.debug(`[BotAPI] → No token for ${config.method.toUpperCase()} ${config.url} (public or unauthenticated call?)`);
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+/* ---------------- Token extractor ---------------- */
+function extractToken(payload) {
+  if (!payload) return "";
+  return (
+    payload.token ||
+    payload.access_token ||
+    payload.accessToken ||
+    payload?.data?.token ||
+    payload?.data?.access_token ||
+    payload?.data?.accessToken ||
+    ""
+  );
+}
 
-// ────────────────────────────────────────────────
-// Response Interceptor – Handle 401 cleanly
-// ────────────────────────────────────────────────
+/* ---------------- Interceptors ---------------- */
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const status = error?.response?.status;
-    const method = error?.config?.method?.toUpperCase();
-    const url = error?.config?.url;
-
-    console.error("[BotAPI] Request failed", { method, url, status });
-
+  (res) => res,
+  (err) => {
+    const status = err?.response?.status;
     if (status === 401 && isLoggedIn()) {
-      console.warn("[BotAPI] 401 → clearing potentially invalid/expired token");
       clearToken();
     }
-
-    return Promise.reject(error);
+    return Promise.reject(err);
   }
 );
 
-// ────────────────────────────────────────────────
-// Response Wrapper – Consistent error shape
-// ────────────────────────────────────────────────
-const wrap = async (requestFn) => {
+/* ---------------- Wrapper ---------------- */
+const wrap = async (fn) => {
   try {
-    const res = await requestFn();
+    const res = await fn();
     return res.data;
   } catch (err) {
-    const message =
+    const e = new Error(
       err?.response?.data?.message ||
-      err?.response?.data?.error ||
-      err.message ||
-      "Request failed";
-
-    const wrappedError = new Error(message);
-    wrappedError.status = err?.response?.status;
-    wrappedError.data = err?.response?.data;
-
-    console.error("[BotAPI] Wrapped error:", wrappedError.message, wrappedError.status);
-    throw wrappedError;
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        err?.message ||
+        "Request failed"
+    );
+    e.status = err?.response?.status;
+    e.data = err?.response?.data;
+    throw e;
   }
 };
 
-// ────────────────────────────────────────────────
-// Public API
-// ────────────────────────────────────────────────
+/* ---------------- Public API ---------------- */
 const BotAPI = {
-  // Token utilities (keep exported)
   getToken,
   setToken,
   clearToken,
   isLoggedIn,
 
-  // Auth
-  signup: (payload) => wrap(() => api.post("/signup", payload)),
-
-  login: async (credentials) => {
-    console.debug("[BotAPI] login called with email:", credentials?.email || "—");
-
-    const data = await wrap(() => api.post("/auth/login", credentials));
-
-    console.debug("[BotAPI] login response shape:", Object.keys(data));
-
-    if (data?.token) {
-      setToken(data.token);
-      console.log("[BotAPI] login → token stored successfully");
-    } else {
-      console.warn(
-        "[BotAPI] login → 200 OK but no 'token' field in response:",
-        data
-      );
-    }
-
+  signup: async (p) => {
+    const data = await wrap(() => api.post("/signup", p));
+    const t = extractToken(data);
+    if (t) setToken(t);
     return data;
   },
 
-  logout: () => {
-    clearToken();
-    console.log("[BotAPI] logout → token cleared");
+  login: async (p) => {
+    const data = await wrap(() => api.post("/auth/login", p));
+    const t = extractToken(data);
+    if (t) setToken(t);
+    return data;
   },
 
-  // User
+  logout: () => clearToken(),
+
   me: () => wrap(() => api.get("/me")),
   activationStatus: () => wrap(() => api.get("/me/activation-status")),
-
-  // Billing
-  billingSetupIntent: (payload) => wrap(() => api.post("/billing/setup-intent", payload)),
-
-  // Trading & Bot
-  tradingEnable: (enabled) => wrap(() => api.post("/trading/enable", { enabled })),
-  botStart: (payload = {}) => wrap(() => api.post("/bot/start", payload)),
-
-  // Trades
+  billingSetupIntent: (p) => wrap(() => api.post("/billing/setup-intent", p)),
+  tradingEnable: (enabled) => wrap(() => api.post("/trading/enable", { enabled: !!enabled })),
+  botStart: (p = {}) => wrap(() => api.post("/bot/start", p)),
   sniperTrades: () => wrap(() => api.get("/sniper/trades")),
 };
 
