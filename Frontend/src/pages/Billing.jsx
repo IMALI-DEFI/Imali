@@ -1,4 +1,3 @@
-// src/pages/Billing.jsx
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { loadStripe } from "@stripe/stripe-js";
@@ -10,12 +9,10 @@ import {
 } from "@stripe/react-stripe-js";
 import BotAPI from "../utils/BotAPI";
 
-/* Stripe setup */
 const STRIPE_KEY = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY;
 if (!STRIPE_KEY) console.error("❌ Missing REACT_APP_STRIPE_PUBLISHABLE_KEY");
 const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
 
-/* Inner form */
 function BillingInner({ clientSecret }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -35,7 +32,6 @@ function BillingInner({ clientSecret }) {
         confirmParams: { return_url: `${window.location.origin}/activation` },
         redirect: "if_required",
       });
-
       if (error) throw error;
       navigate("/activation", { replace: true });
     } catch (err) {
@@ -53,9 +49,7 @@ function BillingInner({ clientSecret }) {
           {error}
         </div>
       )}
-
       <PaymentElement />
-
       <button
         onClick={submit}
         disabled={!stripe || busy}
@@ -63,7 +57,6 @@ function BillingInner({ clientSecret }) {
       >
         {busy ? "Saving…" : "Save Payment Method"}
       </button>
-
       <Link to="/activation" className="block text-center text-xs text-slate-400 underline">
         Skip for now
       </Link>
@@ -71,7 +64,6 @@ function BillingInner({ clientSecret }) {
   );
 }
 
-/* Main page */
 export default function Billing() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -84,10 +76,10 @@ export default function Billing() {
   useEffect(() => {
     let isMounted = true;
 
-    const initialize = async () => {
-      // 1. Auth guard first
+    const initBilling = async () => {
+      // Guard: must be logged in FIRST
       if (!BotAPI.isLoggedIn()) {
-        console.log("[Billing] No token → redirect to signup");
+        console.log("[Billing] Not logged in → redirecting to signup");
         if (isMounted) navigate("/signup", { replace: true });
         return;
       }
@@ -96,30 +88,25 @@ export default function Billing() {
         setLoading(true);
         setErrorMsg("");
 
-        // 2. Get user (protected call)
+        // Now safe to call protected endpoints
         const meData = await BotAPI.me();
         const userData = meData?.user || meData;
         if (isMounted) setUser(userData);
 
-        if (!userData?.email) {
-          throw new Error("No email in user profile");
-        }
+        if (!userData?.email) throw new Error("No email in profile");
 
-        // 3. Setup intent (also protected)
         const setup = await BotAPI.billingSetupIntent({
           email: userData.email.trim(),
           tier: userData.tier || "starter",
         });
 
-        if (!setup?.client_secret) {
-          throw new Error("Missing Stripe client_secret");
-        }
+        if (!setup?.client_secret) throw new Error("Missing client_secret");
 
         if (isMounted) setClientSecret(setup.client_secret);
       } catch (err) {
-        console.error("[Billing] Init failed:", err);
+        console.error("[Billing] Load failed:", err);
 
-        let msg = "Unable to load billing setup. Please try again.";
+        let msg = "Unable to load billing. Please try again.";
 
         if (err.status === 401) {
           BotAPI.clearToken();
@@ -135,19 +122,14 @@ export default function Billing() {
       }
     };
 
-    initialize();
+    initBilling();
 
     return () => { isMounted = false; };
-  }, [navigate, location.state]); // location.state kept for justSignedUp flag if needed
+  }, [navigate, location.state]);
 
-  // ── Render ────────────────────────────────────────
-  if (!stripePromise) {
-    return <div className="min-h-screen bg-black text-white p-6">Stripe not configured.</div>;
-  }
+  if (!stripePromise) return <div className="min-h-screen bg-black text-white p-6">Stripe not configured.</div>;
 
-  if (loading) {
-    return <div className="min-h-screen bg-black text-white p-6 text-center">Loading billing setup…</div>;
-  }
+  if (loading) return <div className="min-h-screen bg-black text-white p-6 text-center">Loading billing setup…</div>;
 
   if (errorMsg) {
     return (
@@ -170,9 +152,7 @@ export default function Billing() {
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="mx-auto max-w-md space-y-6">
-        <h1 className="text-2xl font-bold">
-          Billing Setup {user?.tier ? `(${user.tier})` : ""}
-        </h1>
+        <h1 className="text-2xl font-bold">Billing Setup {user?.tier ? `(${user.tier})` : ""}</h1>
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <BillingInner clientSecret={clientSecret} />
         </Elements>
