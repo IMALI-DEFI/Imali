@@ -76,19 +76,20 @@ export default function Billing() {
   useEffect(() => {
     let isMounted = true;
 
-    const initBilling = async () => {
-      // Guard: must be logged in FIRST
+    const init = async () => {
+      // Step 1: Synchronous auth check – NO protected calls if not logged in
       if (!BotAPI.isLoggedIn()) {
-        console.log("[Billing] Not logged in → redirecting to signup");
-        if (isMounted) navigate("/signup", { replace: true });
+        console.log("[Billing] No token found → redirecting to login");
+        if (isMounted) navigate("/login", { replace: true }); // or /signup if preferred
+        setLoading(false);
         return;
       }
 
+      // Step 2: Only now run protected calls
       try {
         setLoading(true);
         setErrorMsg("");
 
-        // Now safe to call protected endpoints
         const meData = await BotAPI.me();
         const userData = meData?.user || meData;
         if (isMounted) setUser(userData);
@@ -104,14 +105,15 @@ export default function Billing() {
 
         if (isMounted) setClientSecret(setup.client_secret);
       } catch (err) {
-        console.error("[Billing] Load failed:", err);
+        console.error("[Billing] Init failed:", err);
 
-        let msg = "Unable to load billing. Please try again.";
+        let msg = "Unable to load billing setup. Please try again.";
 
         if (err.status === 401) {
+          console.warn("[Billing] 401 → clearing token and redirecting to login");
           BotAPI.clearToken();
           msg = "Session expired. Please log in again.";
-          navigate("/login", { replace: true });
+          if (isMounted) navigate("/login", { replace: true });
         } else if (err.message) {
           msg = err.message;
         }
@@ -122,14 +124,18 @@ export default function Billing() {
       }
     };
 
-    initBilling();
+    init();
 
     return () => { isMounted = false; };
   }, [navigate, location.state]);
 
-  if (!stripePromise) return <div className="min-h-screen bg-black text-white p-6">Stripe not configured.</div>;
+  if (!stripePromise) {
+    return <div className="min-h-screen bg-black text-white p-6">Stripe not configured.</div>;
+  }
 
-  if (loading) return <div className="min-h-screen bg-black text-white p-6 text-center">Loading billing setup…</div>;
+  if (loading) {
+    return <div className="min-h-screen bg-black text-white p-6 text-center">Loading billing setup…</div>;
+  }
 
   if (errorMsg) {
     return (
@@ -137,10 +143,10 @@ export default function Billing() {
         <div className="max-w-md rounded-xl border border-red-500/30 bg-red-950/30 p-8 text-center">
           <div className="text-red-400 mb-6">{errorMsg}</div>
           <Link
-            to="/activation"
+            to="/login"
             className="inline-block rounded-xl bg-slate-700 px-6 py-3 text-white hover:bg-slate-600"
           >
-            Continue without billing
+            Log in to continue
           </Link>
         </div>
       </div>
