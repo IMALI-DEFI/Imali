@@ -14,7 +14,7 @@ import MemberDashboard from "./pages/dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel";
 
 /* ===== Auth / Onboarding ===== */
-import Signup from "./pages/Signup";
+import Signup from "./pages/Signupfrom";
 import Login from "./pages/Login";
 import Activation from "./pages/Activation";
 import Billing from "./pages/Billing";
