@@ -23,8 +23,15 @@ function BillingInner({ clientSecret }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  console.log("[BillingInner] Mounted – clientSecret present:", !!clientSecret);
+
   const submit = async () => {
-    if (!stripe || !elements) return;
+    if (!stripe || !elements) {
+      console.warn("[BillingInner] Stripe/Elements not ready");
+      return;
+    }
+
+    console.log("[BillingInner] Starting payment setup");
     setBusy(true);
     setError("");
 
@@ -36,9 +43,11 @@ function BillingInner({ clientSecret }) {
       });
 
       if (error) throw error;
+
+      console.log("[BillingInner] Setup successful – navigating to activation");
       navigate("/activation", { replace: true });
     } catch (err) {
-      console.error("Stripe error:", err);
+      console.error("[BillingInner] Setup failed:", err);
       setError(err?.message || "Failed to save payment method.");
     } finally {
       setBusy(false);
@@ -79,44 +88,63 @@ export default function Billing() {
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Synchronous guard – stop everything if not authenticated
-    if (!BotAPI.isLoggedIn()) {
-      console.log("[Billing] No token → immediate redirect to login");
-      navigate("/login", { replace: true });
-      setLoading(false);
-      return;
-    }
+    console.log("[Billing] Component mounted – checking auth state");
 
-    // 2. Only run protected code if guard passes
-    const loadData = async () => {
+    const init = async () => {
+      // 1. Synchronous guard – block everything if not logged in
+      const hasToken = BotAPI.isLoggedIn();
+      console.log("[Billing] Auth check → isLoggedIn:", hasToken);
+
+      if (!hasToken) {
+        console.log("[Billing] No token – redirecting to login immediately");
+        navigate("/login", { replace: true });
+        setLoading(false);
+        return;
+      }
+
+      console.log("[Billing] User appears authenticated – proceeding with protected calls");
+
       try {
         setLoading(true);
         setErrorMsg("");
 
-        // Protected calls – now safe
+        // Protected call 1: /me
+        console.log("[Billing] Fetching user profile (/me)");
         const meData = await BotAPI.me();
+        console.log("[Billing] /me response received:", meData);
+
         const userData = meData?.user || meData;
         if (isMounted) setUser(userData);
 
-        if (!userData?.email) throw new Error("No email in profile");
+        if (!userData?.email) {
+          throw new Error("No email found in user profile");
+        }
 
+        // Protected call 2: setup intent
+        console.log("[Billing] Creating setup intent for email:", userData.email);
         const setup = await BotAPI.billingSetupIntent({
           email: userData.email.trim(),
           tier: userData.tier || "starter",
         });
 
-        if (!setup?.client_secret) throw new Error("Missing client_secret");
+        console.log("[Billing] Setup intent response:", setup);
+
+        if (!setup?.client_secret) {
+          throw new Error("Missing Stripe client_secret");
+        }
 
         if (isMounted) setClientSecret(setup.client_secret);
+        console.log("[Billing] Client secret set successfully");
       } catch (err) {
-        console.error("[Billing] Load failed:", err);
+        console.error("[Billing] Initialization failed:", err);
 
         let msg = "Unable to load billing setup. Please try again.";
 
         if (err.status === 401) {
-          console.warn("[Billing] 401 → clearing token + redirecting");
-          BotAPI.clearToken();
-          msg = "Session expired. Please log in again.";
+          console.warn("[Billing] 401 on protected endpoint → possible expired/invalid token");
+          // Do NOT clear token automatically here – it causes loop
+          // BotAPI.clearToken();  // ← commented to prevent clearing on every failure
+          msg = "Your session may have expired. Please log in again.";
           navigate("/login", { replace: true });
         } else if (err.message) {
           msg = err.message;
@@ -124,17 +152,22 @@ export default function Billing() {
 
         if (isMounted) setErrorMsg(msg);
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          console.log("[Billing] Loading state finished");
+          setLoading(false);
+        }
       }
     };
 
-    loadData();
+    init();
 
     return () => {
       isMounted = false;
+      console.log("[Billing] Component unmounting");
     };
   }, [navigate, location.state]);
 
+  // ── Render ────────────────────────────────────────────────
   if (!stripePromise) {
     return <div className="min-h-screen bg-black text-white p-6">Stripe not configured.</div>;
   }
@@ -159,7 +192,10 @@ export default function Billing() {
     );
   }
 
-  if (!clientSecret) return null;
+  if (!clientSecret) {
+    console.warn("[Billing] No clientSecret – rendering nothing");
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
