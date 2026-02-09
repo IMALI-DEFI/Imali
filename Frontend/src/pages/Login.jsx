@@ -19,54 +19,30 @@ export default function Login() {
     setError("");
 
     try {
-      // 1️⃣ Authenticate (correct endpoint + token handling)
       await BotAPI.login({
         email: email.trim(),
         password,
       });
 
-      // Optional: store email for UI convenience
       localStorage.setItem("IMALI_EMAIL", email.trim());
 
-      // 2️⃣ Ask backend for activation truth
-      const statusRes = await BotAPI.activationStatus();
-      const status = statusRes?.status || statusRes;
+      const act = await BotAPI.activationStatus();
+      const status = act?.status || act || {};
 
-      if (!status) {
-        throw new Error("Unable to verify account status");
-      }
-
-      /**
-       * Backend source of truth:
-       * status = {
-       *   stripe_active: boolean,
-       *   api_connected: boolean,
-       *   bot_selected: boolean,
-       *   complete: boolean
-       * }
-       */
-
-      // 3️⃣ Route based on activation state
-      if (status.complete) {
-        navigate("/members", { replace: true });
+      if (status.complete || status.activation_complete) {
+        navigate("/dashboard", { replace: true });
         return;
       }
 
-      if (status.stripe_active && !status.api_connected) {
+      if (status.stripe_active) {
         navigate("/activation", { replace: true });
         return;
       }
 
-      // Not paid yet → back to signup
       navigate("/signup", { replace: true });
     } catch (err) {
       console.error("Login error:", err);
-
-      let msg = "Login failed.";
-      if (err?.message) msg = err.message;
-      if (err?.data?.detail) msg = err.data.detail;
-
-      setError(msg);
+      setError(err?.message || "Login failed");
     } finally {
       setLoading(false);
     }
@@ -79,10 +55,6 @@ export default function Login() {
           Log in to IMALI
         </h1>
 
-        <p className="text-sm text-center text-white/70 mb-6">
-          Resume setup or continue trading
-        </p>
-
         {error && (
           <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-2 text-sm">
             {error}
@@ -92,26 +64,26 @@ export default function Login() {
         <form onSubmit={submit} className="space-y-4">
           <input
             type="email"
+            required
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none"
-            required
+            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
           />
 
           <input
             type="password"
+            required
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none"
-            required
+            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
           />
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 disabled:opacity-60 disabled:cursor-not-allowed font-bold transition"
+            className="w-full py-3 rounded-xl bg-indigo-600 font-bold"
           >
             {loading ? "Signing in…" : "Log in"}
           </button>
@@ -119,7 +91,7 @@ export default function Login() {
 
         <div className="mt-5 text-center text-sm text-white/60">
           Don’t have an account?{" "}
-          <Link to="/signup" className="text-emerald-300 hover:underline">
+          <Link to="/signup" className="text-emerald-300 underline">
             Create one
           </Link>
         </div>
