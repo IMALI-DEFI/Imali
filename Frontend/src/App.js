@@ -29,7 +29,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 
 /* ===== Auth Context & Utilities ===== */
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { getToken, clearToken } from "./utils/authUtils";
 
 /* ===== Loading Component ===== */
