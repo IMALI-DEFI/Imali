@@ -1,3 +1,4 @@
+// src/utils/BotAPI.js
 import axios from "axios";
 
 /* =====================================================
@@ -25,7 +26,9 @@ export const setToken = (token) => {
 };
 
 export const clearToken = () => {
-  localStorage.removeItem(TOKEN_KEY);
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {}
 };
 
 export const isLoggedIn = () => !!getToken();
@@ -40,7 +43,7 @@ const api = axios.create({
 });
 
 /* =====================================================
-   REQUEST INTERCEPTOR
+   AUTH HEADER
 ===================================================== */
 api.interceptors.request.use((config) => {
   const token = getToken();
@@ -71,10 +74,25 @@ const unwrap = async (fn) => {
 };
 
 /* =====================================================
-   BOT API (AUTH + DASHBOARD SAFE)
+   BOT API (AUTH + APP)
 ===================================================== */
 const BotAPI = {
-  /* ---------- Auth ---------- */
+  /* ---------- Signup ---------- */
+  signup: async (payload) => {
+    const data = await unwrap(() =>
+      api.post("/signup", payload)
+    );
+
+    const token =
+      data?.token ||
+      data?.access_token ||
+      data?.jwt;
+
+    if (token) setToken(token);
+    return data;
+  },
+
+  /* ---------- Login ---------- */
   login: async (payload) => {
     const data = await unwrap(() =>
       api.post("/auth/login", payload)
@@ -89,13 +107,10 @@ const BotAPI = {
     return data;
   },
 
-  logout: () => {
-    clearToken();
-  },
+  logout: () => clearToken(),
 
   /* ---------- User ---------- */
-  me: () =>
-    unwrap(() => api.get("/me")),
+  me: () => unwrap(() => api.get("/me")),
 
   activationStatus: () =>
     unwrap(() => api.get("/me/activation-status")),
