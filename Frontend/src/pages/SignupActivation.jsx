@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
-
+import { useAuth } from '../contexts/AuthContext';
 export default function SignupActivation() {
   const nav = useNavigate();
 
