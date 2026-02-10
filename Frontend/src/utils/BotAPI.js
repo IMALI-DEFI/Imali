@@ -5,28 +5,15 @@ import axios from "axios";
    CONFIG
 ===================================================== */
 const TOKEN_KEY = "imali_token";
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
 /* =====================================================
    TOKEN HELPERS
 ===================================================== */
 export const getToken = () => {
   try {
-    const token = localStorage.getItem(TOKEN_KEY);
-    // Check if token exists and is not expired (basic check)
-    if (!token) return null;
-    
-    // For JWT tokens, check if they start with jwt: or wallet:
-    if (token.startsWith("jwt:") || token.startsWith("wallet:") || token.startsWith("google:")) {
-      return token;
-    }
-    
-    // If it's a raw JWT, wrap it
-    if (token.includes(".") && token.split(".").length === 3) {
-      return `jwt:${token}`;
-    }
-    
-    return token;
+    return localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
   }
@@ -34,45 +21,26 @@ export const getToken = () => {
 
 export const setToken = (token) => {
   if (!token || typeof token !== "string") return;
-  
-  // Ensure token is properly formatted
-  let formattedToken = token;
-  if (!token.startsWith("jwt:") && !token.startsWith("wallet:") && !token.startsWith("google:")) {
-    if (token.includes(".") && token.split(".").length === 3) {
-      formattedToken = `jwt:${token}`;
-    }
-  }
-  
-  localStorage.setItem(TOKEN_KEY, formattedToken);
+  localStorage.setItem(TOKEN_KEY, token);
 };
 
 export const clearToken = () => {
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch {}
+  localStorage.removeItem(TOKEN_KEY);
 };
 
-export const isLoggedIn = () => {
-  const token = getToken();
-  if (!token) return false;
-  
-  // Simple check - in production, you should decode and check expiry
-  return true;
-};
+export const isLoggedIn = () => !!getToken();
 
 /* =====================================================
    AXIOS INSTANCE
 ===================================================== */
 const api = axios.create({
   baseURL: `${API_BASE.replace(/\/$/, "")}/api`,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: { "Content-Type": "application/json" },
   timeout: 30000,
 });
 
 /* =====================================================
-   REQUEST INTERCEPTOR - Add Auth Header
+   REQUEST INTERCEPTOR
 ===================================================== */
 api.interceptors.request.use((config) => {
   const token = getToken();
@@ -83,17 +51,30 @@ api.interceptors.request.use((config) => {
 });
 
 /* =====================================================
-   RESPONSE INTERCEPTOR - Handle Auth Errors
+   RESPONSE INTERCEPTOR (SAFE)
 ===================================================== */
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Clear token and redirect to login on 401
+  (res) => res,
+  (err) => {
+    const status = err?.response?.status;
+    const path = window.location.pathname;
+
+    // 🚫 DO NOT auto-logout during signup / billing / activation
+    const safeRoutes = [
+      "/signup",
+      "/login",
+      "/billing",
+      "/activation",
+    ];
+
+    const isSafe = safeRoutes.some((r) => path.startsWith(r));
+
+    if (status === 401 && !isSafe) {
       clearToken();
       window.location.href = "/login";
     }
-    return Promise.reject(error);
+
+    return Promise.reject(err);
   }
 );
 
@@ -102,67 +83,36 @@ api.interceptors.response.use(
 ===================================================== */
 const unwrap = async (fn) => {
   try {
-    const response = await fn();
-    return response.data;
+    const res = await fn();
+    return res.data;
   } catch (err) {
-    const error = new Error(
+    const e = new Error(
       err?.response?.data?.message ||
       err?.response?.data?.detail ||
       err?.message ||
       "Request failed"
     );
-    error.status = err?.response?.status;
-    error.data = err?.response?.data;
-    
-    // Log for debugging
-    console.error("API Error:", {
-      status: error.status,
-      message: error.message,
-      data: error.data
-    });
-    
-    throw error;
+    e.status = err?.response?.status;
+    throw e;
   }
 };
 
 /* =====================================================
-   BOT API (AUTH + APP)
+   BOT API
 ===================================================== */
 const BotAPI = {
-  /* ---------- Health Check ---------- */
-  health: () => unwrap(() => api.get("/health")),
+  /* ---------- Auth ---------- */
+  signup: (payload) =>
+    unwrap(() => api.post("/signup", payload)),
 
-  /* ---------- Signup ---------- */
-  signup: async (payload) => {
-    const data = await unwrap(() => api.post("/signup", payload));
-    
-    if (data.token) {
-      setToken(data.token);
-    }
-    return data;
-  },
-
-  /* ---------- Login ---------- */
   login: async (payload) => {
-    const data = await unwrap(() => api.post("/auth/login", payload));
-    
-    if (data.token) {
-      setToken(data.token);
-    }
+    const data = await unwrap(() =>
+      api.post("/auth/login", payload)
+    );
+    if (data?.token) setToken(data.token);
     return data;
   },
 
-  /* ---------- Wallet Auth ---------- */
-  walletAuth: async (payload) => {
-    const data = await unwrap(() => api.post("/auth/wallet", payload));
-    
-    if (data.token) {
-      setToken(data.token);
-    }
-    return data;
-  },
-
-  /* ---------- Logout ---------- */
   logout: () => {
     clearToken();
     window.location.href = "/login";
@@ -170,53 +120,26 @@ const BotAPI = {
 
   /* ---------- User ---------- */
   me: () => unwrap(() => api.get("/me")),
-
-  activationStatus: () => unwrap(() => api.get("/me/activation-status")),
-
-  permissions: () => unwrap(() => api.get("/me/permissions")),
-
-  /* ---------- Promo ---------- */
-  promoStatus: () => unwrap(() => api.get("/promo/status")),
-  
-  claimPromo: (payload) => unwrap(() => api.post("/promo/claim", payload)),
-  
-  myPromoStatus: () => unwrap(() => api.get("/promo/me")),
+  activationStatus: () =>
+    unwrap(() => api.get("/me/activation-status")),
 
   /* ---------- Billing ---------- */
-  billingSetupIntent: (payload) => unwrap(() => api.post("/billing/setup-intent", payload)),
-  
-  cardStatus: (payload) => unwrap(() => api.get("/billing/card-status", { params: payload })),
-
-  calculateFee: (payload) => unwrap(() => api.post("/billing/calculate-fee", payload)),
-
-  feeHistory: () => unwrap(() => api.get("/billing/fee-history")),
+  billingSetupIntent: (payload) =>
+    unwrap(() => api.post("/billing/setup-intent", payload)),
 
   /* ---------- Trading ---------- */
-  tradingEnable: (enabled) => unwrap(() => api.post("/trading/enable", { enabled: !!enabled })),
+  tradingEnable: (enabled) =>
+    unwrap(() =>
+      api.post("/trading/enable", { enabled: !!enabled })
+    ),
 
-  tradingStatus: () => unwrap(() => api.get("/trading/status")),
+  botStart: (payload = {}) =>
+    unwrap(() => api.post("/bot/start", payload)),
 
-  botStart: (payload = {}) => unwrap(() => api.post("/bot/start", payload)),
+  sniperTrades: () =>
+    unwrap(() => api.get("/sniper/trades")),
 
-  sniperTrades: () => unwrap(() => api.get("/sniper/trades")),
-
-  /* ---------- Integrations ---------- */
-  connectWallet: (payload) => unwrap(() => api.post("/integrations/wallet", payload)),
-  
-  connectOKX: (payload) => unwrap(() => api.post("/integrations/okx", payload)),
-  
-  connectAlpaca: (payload) => unwrap(() => api.post("/integrations/alpaca", payload)),
-  
-  integrationStatus: () => unwrap(() => api.get("/integrations/status")),
-
-  /* ---------- Analytics ---------- */
-  pnlSeries: (payload) => unwrap(() => api.post("/analytics/pnl/series", payload)),
-  
-  winLossStats: (payload) => unwrap(() => api.post("/analytics/winloss", payload)),
-  
-  feeSeries: (payload) => unwrap(() => api.post("/analytics/fees/series", payload)),
-
-  /* ---------- Token helpers ---------- */
+  /* ---------- Helpers ---------- */
   getToken,
   setToken,
   clearToken,
