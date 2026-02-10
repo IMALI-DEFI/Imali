@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../context/AuthContext';
 /* ======================================================
    TAILWIND-SAFE STATUS MAPS
 ====================================================== */
