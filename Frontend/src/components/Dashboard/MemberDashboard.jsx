@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
 import { useWallet } from "../../context/WalletContext";
 import { short } from "../../getContractInstance";
-
+import { useAuth } from '../../contexts/AuthContext';
 /* Feature modules */
 import ImaliBalance from "./ImaliBalance";
 import Staking from "./Staking";
