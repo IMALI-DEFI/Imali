@@ -1,16 +1,16 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
-/* =====================================================
+/* ===============================
    CONFIG
-===================================================== */
+================================ */
 const TOKEN_KEY = "imali_token";
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
-/* =====================================================
+/* ===============================
    TOKEN HELPERS
-===================================================== */
+================================ */
 export const getToken = () => {
   try {
     return localStorage.getItem(TOKEN_KEY);
@@ -20,8 +20,9 @@ export const getToken = () => {
 };
 
 export const setToken = (token) => {
-  if (!token || typeof token !== "string") return;
-  localStorage.setItem(TOKEN_KEY, token);
+  if (typeof token === "string" && token.length > 10) {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
 };
 
 export const clearToken = () => {
@@ -30,18 +31,18 @@ export const clearToken = () => {
 
 export const isLoggedIn = () => !!getToken();
 
-/* =====================================================
+/* ===============================
    AXIOS INSTANCE
-===================================================== */
+================================ */
 const api = axios.create({
   baseURL: `${API_BASE.replace(/\/$/, "")}/api`,
   headers: { "Content-Type": "application/json" },
   timeout: 30000,
 });
 
-/* =====================================================
-   REQUEST INTERCEPTOR
-===================================================== */
+/* ===============================
+   AUTH HEADER
+================================ */
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -50,37 +51,9 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-/* =====================================================
-   RESPONSE INTERCEPTOR (SAFE)
-===================================================== */
-api.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    const status = err?.response?.status;
-    const path = window.location.pathname;
-
-    // 🚫 DO NOT auto-logout during signup / billing / activation
-    const safeRoutes = [
-      "/signup",
-      "/login",
-      "/billing",
-      "/activation",
-    ];
-
-    const isSafe = safeRoutes.some((r) => path.startsWith(r));
-
-    if (status === 401 && !isSafe) {
-      clearToken();
-      window.location.href = "/login";
-    }
-
-    return Promise.reject(err);
-  }
-);
-
-/* =====================================================
-   RESPONSE NORMALIZER
-===================================================== */
+/* ===============================
+   ERROR UNWRAPPER
+================================ */
 const unwrap = async (fn) => {
   try {
     const res = await fn();
@@ -97,9 +70,9 @@ const unwrap = async (fn) => {
   }
 };
 
-/* =====================================================
+/* ===============================
    BOT API
-===================================================== */
+================================ */
 const BotAPI = {
   /* ---------- Auth ---------- */
   signup: (payload) =>
