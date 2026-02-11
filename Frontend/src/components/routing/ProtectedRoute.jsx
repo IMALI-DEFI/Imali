@@ -1,47 +1,22 @@
-// src/components/routing/ProtectedRoute.jsx
-import React, { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
 import BotAPI from "../../utils/BotAPI";
 
 export default function ProtectedRoute() {
   const location = useLocation();
-  const [state, setState] = useState({
-    loading: true,
-    allowed: false,
-  });
+  const [status, setStatus] = useState("loading");
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = BotAPI.getToken();
-
-      if (!token) {
-        setState({ loading: false, allowed: false });
-        return;
-      }
-
-      try {
-        await BotAPI.me();
-        setState({ loading: false, allowed: true });
-      } catch {
-        BotAPI.clearToken();
-        setState({ loading: false, allowed: false });
-      }
-    };
-
-    checkAuth();
+    BotAPI.me()
+      .then(() => setStatus("ok"))
+      .catch(() => setStatus("fail"));
   }, []);
 
-  if (state.loading) {
-    return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <p className="text-gray-400 animate-pulse">
-          Verifying session…
-        </p>
-      </div>
-    );
+  if (status === "loading") {
+    return <div className="p-8 text-center">Checking session…</div>;
   }
 
-  if (!state.allowed) {
+  if (status === "fail") {
     return (
       <Navigate
         to="/login"
