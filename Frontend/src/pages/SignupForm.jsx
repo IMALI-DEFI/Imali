@@ -20,9 +20,12 @@ export default function Signup() {
 
   const validate = () => {
     if (!form.email.trim()) return "Email is required";
-    if (form.password.length < 8) return "Password must be at least 8 characters";
-    if (form.password !== form.confirmPassword) return "Passwords do not match";
-    if (!form.acceptTerms) return "You must accept the Terms and Privacy Policy";
+    if (form.password.length < 8)
+      return "Password must be at least 8 characters";
+    if (form.password !== form.confirmPassword)
+      return "Passwords do not match";
+    if (!form.acceptTerms)
+      return "You must accept the Terms and Privacy Policy";
     return null;
   };
 
@@ -40,47 +43,45 @@ export default function Signup() {
     setError("");
 
     try {
-      console.log("[Signup] Creating account for:", form.email.trim());
+      const email = form.email.trim().toLowerCase();
+
+      console.log("[Signup] Creating account for:", email);
 
       // 1️⃣ Create account
       await BotAPI.signup({
-        email: form.email.trim(),
+        email,
         password: form.password,
         tier: form.tier,
         strategy: form.strategy,
       });
 
-      console.log("[Signup] Account created");
-
-      // 2️⃣ Login
+      // 2️⃣ Login immediately
       const loginData = await BotAPI.login({
-        email: form.email.trim(),
+        email,
         password: form.password,
       });
 
-      console.log("[Signup] Login response:", loginData);
-
-      // 3️⃣ Force store token directly
       if (!loginData?.token) {
-        throw new Error("No token received from server.");
+        throw new Error("Login succeeded but no token returned.");
       }
 
+      // 3️⃣ Hard set token
       localStorage.setItem("imali_token", loginData.token);
 
-      console.log("[Signup] Token saved to localStorage");
-
-      // 4️⃣ Confirm token exists before redirect
+      // 4️⃣ Verify token actually stored
       const stored = localStorage.getItem("imali_token");
       if (!stored) {
-        throw new Error("Token failed to persist in localStorage.");
+        throw new Error("Authentication token failed to persist.");
       }
 
-      // 5️⃣ Redirect
+      console.log("[Signup] Token stored successfully");
+
+      // 5️⃣ Redirect to billing
       navigate("/billing", { replace: true });
 
     } catch (err) {
       console.error("[Signup] Error:", err);
-      setError(err.message || "Signup failed.");
+      setError(err.message || "Signup failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -92,6 +93,9 @@ export default function Signup() {
         <h1 className="text-3xl font-bold text-white mb-2">
           Create your account
         </h1>
+        <p className="text-gray-400 mb-6">
+          Start trading with AI in minutes
+        </p>
 
         {error && (
           <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
@@ -103,6 +107,7 @@ export default function Signup() {
           <input
             type="email"
             required
+            autoComplete="email"
             placeholder="Email"
             value={form.email}
             onChange={(e) =>
@@ -114,6 +119,7 @@ export default function Signup() {
           <input
             type="password"
             required
+            autoComplete="new-password"
             placeholder="Password"
             value={form.password}
             onChange={(e) =>
@@ -125,6 +131,7 @@ export default function Signup() {
           <input
             type="password"
             required
+            autoComplete="new-password"
             placeholder="Confirm password"
             value={form.confirmPassword}
             onChange={(e) =>
@@ -133,12 +140,52 @@ export default function Signup() {
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
           />
 
+          <select
+            value={form.strategy}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, strategy: e.target.value }))
+            }
+            className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
+          >
+            <option value="ai_weighted">
+              AI Weighted (Recommended)
+            </option>
+            <option value="momentum">Momentum</option>
+            <option value="mean_reversion">
+              Mean Reversion
+            </option>
+          </select>
+
+          <label className="flex items-start gap-3 text-sm text-gray-400">
+            <input
+              type="checkbox"
+              checked={form.acceptTerms}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  acceptTerms: e.target.checked,
+                }))
+              }
+              className="mt-1"
+            />
+            <span>
+              I agree to the{" "}
+              <Link to="/terms" className="text-blue-400 underline">
+                Terms
+              </Link>{" "}
+              and{" "}
+              <Link to="/privacy" className="text-blue-400 underline">
+                Privacy Policy
+              </Link>
+            </span>
+          </label>
+
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold"
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold disabled:opacity-50"
           >
-            {loading ? "Creating..." : "Create account & continue"}
+            {loading ? "Creating account…" : "Create account & continue"}
           </button>
         </form>
 
