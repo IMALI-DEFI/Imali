@@ -1,85 +1,40 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
-/* ================= CONFIG ================= */
 const TOKEN_KEY = "imali_token";
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
-/* ================= TOKEN HELPERS ================= */
-export const getToken = () => {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
-};
-
-export const setToken = (token) => {
-  if (!token || typeof token !== "string") return;
-  localStorage.setItem(TOKEN_KEY, token); // ✅ RAW JWT ONLY
-};
-
-export const clearToken = () => {
-  localStorage.removeItem(TOKEN_KEY);
-};
-
+/* ================= TOKEN ================= */
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
+export const setToken = (token) => token && localStorage.setItem(TOKEN_KEY, token);
+export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 export const isLoggedIn = () => !!getToken();
 
 /* ================= AXIOS ================= */
 const api = axios.create({
-  baseURL: `${API_BASE.replace(/\/$/, "")}/api`,
+  baseURL: `${API_BASE}/api`,
   headers: { "Content-Type": "application/json" },
-  timeout: 30000,
 });
 
-/* ================= REQUEST AUTH ================= */
+/* Attach RAW JWT only */
 api.interceptors.request.use((config) => {
   const token = getToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`; // ✅ NO PREFIX
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-/* ================= RESPONSE SAFETY ================= */
+/* DO NOT auto-logout during onboarding */
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    const status = err?.response?.status;
-    const path = window.location.pathname;
-
-    // 🚫 Do NOT auto-logout during onboarding
-    const safeRoutes = ["/signup", "/login", "/billing", "/activation"];
-    const isSafe = safeRoutes.some((r) => path.startsWith(r));
-
-    if (status === 401 && !isSafe) {
-      clearToken();
-      window.location.href = "/login";
-    }
-
-    return Promise.reject(err);
-  }
+  (err) => Promise.reject(err)
 );
 
-/* ================= HELPER ================= */
+/* ================= API ================= */
 const unwrap = async (fn) => {
-  try {
-    const res = await fn();
-    return res.data;
-  } catch (err) {
-    const e = new Error(
-      err?.response?.data?.message ||
-      err?.response?.data?.detail ||
-      err?.message ||
-      "Request failed"
-    );
-    e.status = err?.response?.status;
-    throw e;
-  }
+  const res = await fn();
+  return res.data;
 };
 
-/* ================= API ================= */
 const BotAPI = {
   signup: (payload) => unwrap(() => api.post("/signup", payload)),
 
@@ -89,24 +44,9 @@ const BotAPI = {
     return data;
   },
 
-  logout: () => {
-    clearToken();
-    window.location.href = "/login";
-  },
-
   me: () => unwrap(() => api.get("/me")),
-
-  activationStatus: () =>
-    unwrap(() => api.get("/me/activation-status")),
-
-  billingSetupIntent: (payload) =>
-    unwrap(() => api.post("/billing/setup-intent", payload)),
-
-  botStart: (payload = {}) =>
-    unwrap(() => api.post("/bot/start", payload)),
-
-  sniperTrades: () =>
-    unwrap(() => api.get("/sniper/trades")),
+  activationStatus: () => unwrap(() => api.get("/me/activation-status")),
+  billingSetupIntent: (p) => unwrap(() => api.post("/billing/setup-intent", p)),
 
   getToken,
   setToken,
