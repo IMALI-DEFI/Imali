@@ -1,15 +1,18 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
-const API_BASE = "https://api.imali-defi.com";
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL ||
+  "https://api.imali-defi.com";
 
 const TOKEN_KEY = "IMALI_TOKEN";
 
 const api = axios.create({
   baseURL: API_BASE,
+  timeout: 30000,
 });
 
-// Automatically attach token to every request
+// Attach token automatically
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY);
 
@@ -19,6 +22,18 @@ api.interceptors.request.use((config) => {
 
   return config;
 });
+
+// Optional: auto-clear token on 401
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      console.warn("Unauthorized → clearing token");
+      localStorage.removeItem(TOKEN_KEY);
+    }
+    return Promise.reject(error);
+  }
+);
 
 const BotAPI = {
   // ===== Token helpers =====
@@ -49,7 +64,7 @@ const BotAPI = {
     const res = await api.post("/api/auth/login", data);
 
     if (res.data?.token) {
-      localStorage.setItem(TOKEN_KEY, res.data.token);
+      this.setToken(res.data.token);
     }
 
     return res.data;
