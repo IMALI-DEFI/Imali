@@ -163,4 +163,4 @@ export default function App() {
       <AppContent />
     </AuthProvider>
   );
-} these are the correct pages
+} 
