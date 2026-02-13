@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
-import { useAuth } from '../context/AuthContext';
+
 export default function SignupActivation() {
   const nav = useNavigate();
 
@@ -19,14 +19,32 @@ export default function SignupActivation() {
     setMsg("Creating your account...");
 
     try {
-      await BotAPI.signup({ email, password });
-      setMsg("Signup successful. Redirecting to login…");
+      const cleanEmail = email.trim().toLowerCase();
+
+      // 1️⃣ Create account
+      await BotAPI.signup({
+        email: cleanEmail,
+        password,
+      });
+
+      // 2️⃣ Auto-login (this sets token internally)
+      await BotAPI.login({
+        email: cleanEmail,
+        password,
+      });
+
+      setMsg("Account created. Redirecting to billing...");
 
       setTimeout(() => {
-        nav("/login", { replace: true });
-      }, 1500);
+        nav("/billing", { replace: true });
+      }, 800);
+
     } catch (err) {
-      setMsg(err?.message || "Signup failed");
+      setMsg(
+        err?.response?.data?.message ||
+        err?.message ||
+        "Signup failed"
+      );
     } finally {
       setLoading(false);
     }
@@ -34,12 +52,14 @@ export default function SignupActivation() {
 
   return (
     <div className="grid md:grid-cols-2 gap-8">
-      {/* Signup */}
+      
+      {/* Signup Form */}
       <form onSubmit={signup} className="card space-y-3">
-        <h2 className="font-bold text-xl">Sign up</h2>
+        <h2 className="font-bold text-xl">Create Your Account</h2>
 
         <input
           required
+          type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email"
@@ -60,32 +80,34 @@ export default function SignupActivation() {
           type="submit"
           disabled={loading}
         >
-          {loading ? "Signing up…" : "Create account"}
+          {loading ? "Creating account…" : "Create account"}
         </button>
       </form>
 
-      {/* Activation info (no fake API calls) */}
+      {/* Activation Info */}
       <div className="card space-y-3">
-        <h2 className="font-bold text-xl">Account Activation</h2>
+        <h2 className="font-bold text-xl">How Activation Works</h2>
+
         <p className="text-slate-600 text-sm">
-          Activation happens automatically after you:
+          After signup you will:
         </p>
+
         <ul className="list-disc pl-5 text-sm text-slate-600">
-          <li>Create an account</li>
           <li>Add billing details</li>
-          <li>Complete setup</li>
+          <li>Connect required integrations</li>
+          <li>Enable trading</li>
         </ul>
 
         <button
           onClick={() => nav("/login")}
           className="btn btn-secondary"
         >
-          Go to login
+          Already have an account? Log in
         </button>
       </div>
 
       {msg && (
-        <div className="col-span-2 text-slate-600">
+        <div className="col-span-2 text-slate-600 text-sm">
           {msg}
         </div>
       )}
