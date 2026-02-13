@@ -1,25 +1,26 @@
+
 // src/App.js
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
 
-/* Layout */
+/* ===== Layout ===== */
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 
-/* Guards */
+/* ===== Guards ===== */
 import ProtectedRoute from "./components/routing/ProtectedRoute";
 
-/* Core */
+/* ===== Core ===== */
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel";
 
-/* Auth / Onboarding */
-import Signup from "./pages/Signup";
+/* ===== Auth / Onboarding ===== */
+import Signup from "./pages/SignupForm";
 import Login from "./pages/Login";
 import Activation from "./pages/Activation";
 import Billing from "./pages/Billing";
 
-/* Marketing */
+/* ===== Marketing ===== */
 import Home from "./pages/Home";
 import AboutUs from "./pages/AboutUs";
 import HowItWorks from "./pages/HowItWorks";
@@ -28,142 +29,118 @@ import Support from "./pages/Support";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 
-/* Auth */
+/* ===== Auth Context & Utilities ===== */
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { getToken, clearToken } from "./utils/authUtils";
 
-/* ============================================= */
-/* Onboarding Gate                               */
-/* ============================================= */
-
-function OnboardingRoute({ children }) {
-  const { user } = useAuth();
-  const location = useLocation();
-
-  if (!user) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
-
-  return children;
-}
-
-/* ============================================= */
-/* Dashboard Gate (activation required)         */
-/* ============================================= */
-
-function ActivatedRoute({ children }) {
-  const { user } = useAuth();
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // If activation incomplete, send back to activation
-  if (!user.activation_complete) {
-    return <Navigate to="/activation" replace />;
-  }
-
-  return children;
-}
-
-/* ============================================= */
-/* Main App Content                              */
-/* ============================================= */
-
-function AppContent() {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-black">
-        <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full" />
+/* ===== Loading Component ===== */
+function LoadingSpinner() {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-black z-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <p className="text-gray-400">Loading...</p>
       </div>
-    );
+    </div>
+  );
+}
+
+/* ===== Main App with Auth ===== */
+function AppContent() {
+  const location = useLocation();
+  const { user, loading, checkAuth } = useAuth();
+  
+  // Check auth status on route change
+  useEffect(() => {
+    const token = getToken();
+    if (token && !user && !loading) {
+      checkAuth();
+    }
+  }, [location.pathname, user, loading, checkAuth]);
+
+  // Show loading spinner while checking auth
+  if (loading && location.pathname !== "/" && location.pathname !== "/login" && location.pathname !== "/signup") {
+    return <LoadingSpinner />;
   }
 
   return (
     <>
       <Header />
-
+      
       <main className="min-h-screen pt-16 bg-black text-white">
         <Routes>
-          {/* ===== Public Marketing ===== */}
+          {/* ===== Public Routes ===== */}
           <Route path="/" element={<Home />} />
+          <Route path="/home" element={<Navigate to="/" replace />} />
+          
           <Route path="/about-us" element={<AboutUs />} />
           <Route path="/how-it-works" element={<HowItWorks />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/support" element={<Support />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
-
-          {/* ===== Signup (always public) ===== */}
-          <Route path="/signup" element={<Signup />} />
-
-          {/* ===== Login (returning users only) ===== */}
-          <Route
-            path="/login"
+          
+          {/* ===== Auth Routes (redirect if already logged in) ===== */}
+          <Route 
+            path="/signup" 
             element={
-              user ? <Navigate to="/dashboard" replace /> : <Login />
-            }
+              user ? <Navigate to="/dashboard" replace state={{ from: location }} /> : <Signup />
+            } 
           />
-
-          {/* ===== Billing (step 1 after signup) ===== */}
-          <Route
-            path="/billing"
+          <Route 
+            path="/login" 
             element={
-              <OnboardingRoute>
-                <Billing />
-              </OnboardingRoute>
-            }
+              user ? <Navigate to="/dashboard" replace state={{ from: location }} /> : <Login />
+            } 
           />
-
-          {/* ===== Activation (step 2) ===== */}
-          <Route
-            path="/activation"
+          
+          {/* ===== Protected Billing/Activation ===== */}
+          <Route 
+            path="/billing" 
             element={
-              <OnboardingRoute>
-                <Activation />
-              </OnboardingRoute>
-            }
+              user ? <Billing /> : <Navigate to="/login" replace state={{ from: location }} />
+            } 
           />
-
-          {/* ===== Dashboard (final step only after activation) ===== */}
-          <Route
-            path="/dashboard"
+          <Route 
+            path="/activation" 
             element={
-              <ActivatedRoute>
-                <MemberDashboard />
-              </ActivatedRoute>
-            }
+              user ? <Activation /> : <Navigate to="/login" replace state={{ from: location }} />
+            } 
           />
-
-          {/* ===== Admin ===== */}
-          <Route
-            path="/admin"
-            element={
-              <ActivatedRoute>
-                <AdminPanel forceOwner />
-              </ActivatedRoute>
-            }
-          />
-
-          {/* ===== Aliases ===== */}
+          
+          {/* ===== Protected Routes with Auth Guard ===== */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<MemberDashboard />} />
+            <Route path="/admin" element={<AdminPanel forceOwner />} />
+          </Route>
+          
+          {/* ===== Aliases (legacy-safe) ===== */}
+          <Route path="/member" element={<Navigate to="/dashboard" replace />} />
           <Route path="/members" element={<Navigate to="/dashboard" replace />} />
-
+          <Route path="/MemberDashboard" element={<Navigate to="/dashboard" replace />} />
+          
           {/* ===== 404 ===== */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
-
+      
       <Footer />
     </>
   );
 }
 
-/* ============================================= */
-/* 404                                           */
-/* ============================================= */
-
+/* ===== Simple 404 ===== */
 function NotFound() {
+  const location = useLocation();
+  
+  // Clear invalid token if we hit 404 on auth-protected route
+  useEffect(() => {
+    const protectedPaths = ['/dashboard', '/admin', '/billing', '/activation'];
+    if (protectedPaths.some(path => location.pathname.startsWith(path))) {
+      clearToken();
+    }
+  }, [location.pathname]);
+  
   return (
     <div className="min-h-[60vh] flex items-center justify-center text-center px-6">
       <div>
@@ -179,14 +156,11 @@ function NotFound() {
   );
 }
 
-/* ============================================= */
-/* App Wrapper                                   */
-/* ============================================= */
-
+/* ===== Main App Export ===== */
 export default function App() {
   return (
     <AuthProvider>
       <AppContent />
     </AuthProvider>
   );
-}
+} these are the correct pages
