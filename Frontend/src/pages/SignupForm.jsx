@@ -19,13 +19,13 @@ export default function Signup() {
   const [error, setError] = useState("");
 
   const validate = () => {
-    if (!form.email.trim()) return "Email is required";
+    if (!form.email.trim()) return "Email is required.";
     if (form.password.length < 8)
-      return "Password must be at least 8 characters";
+      return "Password must be at least 8 characters.";
     if (form.password !== form.confirmPassword)
-      return "Passwords do not match";
+      return "Passwords do not match.";
     if (!form.acceptTerms)
-      return "You must accept the Terms and Privacy Policy";
+      return "You must accept the Terms and Privacy Policy.";
     return null;
   };
 
@@ -45,8 +45,6 @@ export default function Signup() {
     try {
       const email = form.email.trim().toLowerCase();
 
-      console.log("[Signup] Creating account for:", email);
-
       // 1️⃣ Create account
       await BotAPI.signup({
         email,
@@ -55,33 +53,27 @@ export default function Signup() {
         strategy: form.strategy,
       });
 
-      // 2️⃣ Login immediately
-      const loginData = await BotAPI.login({
+      // 2️⃣ Automatically log in
+      await BotAPI.login({
         email,
         password: form.password,
       });
 
-      if (!loginData?.token) {
-        throw new Error("Login succeeded but no token returned.");
-      }
-
-      // 3️⃣ Hard set token
-      localStorage.setItem("imali_token", loginData.token);
-
-      // 4️⃣ Verify token actually stored
-      const stored = localStorage.getItem("imali_token");
-      if (!stored) {
-        throw new Error("Authentication token failed to persist.");
-      }
-
-      console.log("[Signup] Token stored successfully");
-
-      // 5️⃣ Redirect to billing
+      // 3️⃣ Always go to billing (onboarding step 1)
       navigate("/billing", { replace: true });
 
     } catch (err) {
       console.error("[Signup] Error:", err);
-      setError(err.message || "Signup failed. Please try again.");
+
+      if (err.response?.status === 409) {
+        setError("An account with this email already exists.");
+      } else if (err.response?.status === 400) {
+        setError("Invalid signup information.");
+      } else if (err.code === "ERR_NETWORK") {
+        setError("Network error. Please try again.");
+      } else {
+        setError("Signup failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -104,6 +96,7 @@ export default function Signup() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
+
           <input
             type="email"
             required
@@ -147,13 +140,9 @@ export default function Signup() {
             }
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
           >
-            <option value="ai_weighted">
-              AI Weighted (Recommended)
-            </option>
+            <option value="ai_weighted">AI Weighted (Recommended)</option>
             <option value="momentum">Momentum</option>
-            <option value="mean_reversion">
-              Mean Reversion
-            </option>
+            <option value="mean_reversion">Mean Reversion</option>
           </select>
 
           <label className="flex items-start gap-3 text-sm text-gray-400">
@@ -187,6 +176,7 @@ export default function Signup() {
           >
             {loading ? "Creating account…" : "Create account & continue"}
           </button>
+
         </form>
 
         <p className="mt-6 text-center text-gray-400 text-sm">
