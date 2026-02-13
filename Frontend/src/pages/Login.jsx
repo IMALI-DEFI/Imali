@@ -2,7 +2,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
-import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -20,72 +19,24 @@ export default function Login() {
     setError("");
 
     try {
-      // Step 1: Login and get token
-      const loginResponse = await BotAPI.login({
-        email: email.trim(),
+      const normalizedEmail = email.trim().toLowerCase();
+
+      await BotAPI.login({
+        email: normalizedEmail,
         password,
       });
 
-      console.log('Login successful, token set:', BotAPI.getToken() ? 'Yes' : 'No');
-      localStorage.setItem("IMALI_EMAIL", email.trim());
+      localStorage.setItem("IMALI_EMAIL", normalizedEmail);
 
-      // Step 2: Wait a moment for token to propagate and session to establish
-      // This is crucial - give the backend a moment to process the login
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // 🔥 Always go to activation after login
+      navigate("/activation", { replace: true });
 
-      // Step 3: Verify the token works by fetching user data first
-      // This is more reliable than jumping straight to activation status
-      let userData;
-      try {
-        userData = await BotAPI.me();
-        console.log('User data fetched successfully:', userData);
-      } catch (meError) {
-        console.error('Failed to fetch user data, retrying...', meError);
-        
-        // Retry once with a longer delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        userData = await BotAPI.me();
-      }
-
-      // Step 4: Now check activation status
-      let status;
-      try {
-        const act = await BotAPI.activationStatus();
-        status = act?.status || act || {};
-        console.log('Activation status:', status);
-      } catch (statusError) {
-        console.error('Failed to fetch activation status:', statusError);
-        // Default to incomplete if we can't fetch status
-        status = { complete: false, activation_complete: false, stripe_active: false };
-      }
-
-      // Step 5: Navigate based on status
-      if (status.complete || status.activation_complete) {
-        navigate("/dashboard", { replace: true });
-        return;
-      }
-
-      if (status.stripe_active) {
-        navigate("/activation", { replace: true });
-        return;
-      }
-
-      // If no activation status or incomplete, go to signup/onboarding
-      navigate("/signup", { replace: true });
     } catch (err) {
-      console.error("Login error:", err);
-      
-      // Handle specific error cases
       if (err.response?.status === 401) {
-        setError("Invalid email or password");
-      } else if (err.code === 'ERR_NETWORK') {
-        setError("Network error. Please check your connection.");
+        setError("Invalid email or password.");
       } else {
-        setError(err?.response?.data?.message || err?.message || "Login failed");
+        setError("Login failed. Please try again.");
       }
-      
-      // Clear any invalid token
-      BotAPI.clearToken();
     } finally {
       setLoading(false);
     }
@@ -136,7 +87,10 @@ export default function Login() {
 
         <div className="mt-5 text-center text-sm text-white/60">
           Don’t have an account?{" "}
-          <Link to="/signup" className="text-emerald-300 underline hover:text-emerald-200">
+          <Link
+            to="/signup"
+            className="text-emerald-300 underline hover:text-emerald-200"
+          >
             Create one
           </Link>
         </div>
