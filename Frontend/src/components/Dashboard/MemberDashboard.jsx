@@ -1,13 +1,10 @@
 // src/pages/dashboard/MemberDashboard.js
 import React, { useEffect, useState } from "react";
-import { Tabs, TabList, Tab, TabPanel } from "react-tabs";
-import "react-tabs/style/react-tabs.css";
 import { useNavigate } from "react-router-dom";
-
+import { api } from "../../utils/BotAPI";
 import BotAPI from "../../utils/BotAPI";
 import { useWallet } from "../../context/WalletContext";
-import { short } from "../../getContractInstance";
-import { useAuth } from '../../context/AuthContext';
+
 /* Feature modules */
 import ImaliBalance from "./ImaliBalance";
 import Staking from "./Staking";
@@ -26,36 +23,28 @@ const tierAtLeast = (t, need) => ORDER.indexOf(t) >= ORDER.indexOf(need);
 export default function MemberDashboard() {
   const nav = useNavigate();
   const wallet = useWallet?.() ?? {};
-  const { account, connectWallet, disconnectWallet } = wallet;
+  const { account } = wallet;
 
   const [user, setUser] = useState(null);
   const [trades, setTrades] = useState([]);
-  const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tradingEnabled, setTradingEnabled] = useState(false);
-  const [stopping, setStopping] = useState(false);
   const [activationStatus, setActivationStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
 
-  /* ---------------- Load User + Activation (FIXED) ---------------- */
+  /* =========================
+     INITIAL LOAD
+  ========================= */
   useEffect(() => {
     let mounted = true;
 
-    (async () => {
+    const initialize = async () => {
       try {
-        // ✅ FIX 1: do NOT call /me without a token
-        if (!BotAPI.getToken()) {
-          throw new Error("No auth token");
-        }
-
         const me = await BotAPI.me();
         if (!mounted) return;
 
         const userObj = me?.user || me;
-        if (!userObj) {
-          throw new Error("Invalid user response");
-        }
-
         setUser(userObj);
 
         const act = await BotAPI.activationStatus();
@@ -65,65 +54,59 @@ export default function MemberDashboard() {
         setActivationStatus(status);
         setTradingEnabled(Boolean(status.trading_enabled));
       } catch (err) {
-        console.error("Dashboard init error:", err);
-        setError("Session expired. Please log in again.");
-        setTimeout(() => nav("/login", { replace: true }), 1200);
+        // 401 already handled globally
+        setError("Unable to load dashboard.");
       } finally {
         if (mounted) setLoading(false);
       }
-    })();
+    };
+
+    initialize();
 
     return () => {
       mounted = false;
     };
-  }, [nav]);
+  }, []);
 
-  /* ---------------- Load Trades ---------------- */
+  /* =========================
+     LOAD TRADES
+  ========================= */
   useEffect(() => {
     if (!user) return;
 
-    (async () => {
+    const loadTrades = async () => {
       try {
-        const data = await BotAPI.sniperTrades();
-        setTrades(Array.isArray(data?.trades) ? data.trades : []);
-      } catch (err) {
-        console.warn("Trades unavailable:", err);
+        const res = await api.get("/api/sniper/trades");
+        setTrades(Array.isArray(res.data?.trades) ? res.data.trades : []);
+      } catch {
+        // Trades not critical — fail silently
       }
-    })();
+    };
+
+    loadTrades();
   }, [user]);
 
-  /* ---------------- Trading Controls ---------------- */
-  const stopTrading = async () => {
-    if (!window.confirm("Stop ALL trading immediately?")) return;
+  /* =========================
+     TRADING CONTROLS
+  ========================= */
 
-    try {
-      setStopping(true);
-      await BotAPI.tradingEnable(false);
-      setTradingEnabled(false);
-
-      const act = await BotAPI.activationStatus();
-      setActivationStatus(act?.status || act || {});
-      alert("Trading stopped.");
-    } catch (err) {
-      alert(err?.message || "Failed to stop trading.");
-    } finally {
-      setStopping(false);
-    }
+  const refreshActivation = async () => {
+    const act = await BotAPI.activationStatus();
+    const status = act?.status || act || {};
+    setActivationStatus(status);
+    setTradingEnabled(Boolean(status.trading_enabled));
   };
 
-  const startTrading = async () => {
+  const toggleTrading = async (enabled) => {
     try {
-      setStopping(true);
-      await BotAPI.tradingEnable(true);
-      setTradingEnabled(true);
-
-      const act = await BotAPI.activationStatus();
-      setActivationStatus(act?.status || act || {});
-      alert("Trading enabled.");
+      setBusy(true);
+      await api.post("/api/trading/enable", { enabled });
+      await refreshActivation();
+      alert(enabled ? "Trading enabled." : "Trading disabled.");
     } catch (err) {
-      alert(err?.message || "Failed to enable trading.");
+      alert("Failed to update trading.");
     } finally {
-      setStopping(false);
+      setBusy(false);
     }
   };
 
@@ -131,23 +114,20 @@ export default function MemberDashboard() {
     if (!window.confirm("Start the trading bot?")) return;
 
     try {
-      setStopping(true);
-      const res = await BotAPI.botStart({ mode: "live" });
-      alert(res?.started ? "Bot started." : "Bot may not have started.");
-    } catch (err) {
-      alert(err?.message || "Failed to start bot.");
+      setBusy(true);
+      const res = await api.post("/api/bot/start", { mode: "live" });
+      alert(res.data?.started ? "Bot started." : "Bot may not have started.");
+    } catch {
+      alert("Failed to start bot.");
     } finally {
-      setStopping(false);
+      setBusy(false);
     }
   };
 
-  const tier = (user?.tier || "starter").toLowerCase();
-  const email = user?.email || "";
-  const isActivationComplete = Boolean(
-    activationStatus?.activation_complete
-  );
+  /* =========================
+     STATES
+  ========================= */
 
-  /* ---------------- States ---------------- */
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -172,12 +152,70 @@ export default function MemberDashboard() {
     );
   }
 
-  /* ---------------- Render (UNCHANGED) ---------------- */
+  const tier = (user?.tier || "starter").toLowerCase();
+  const email = user?.email || "";
+  const isActivationComplete = Boolean(
+    activationStatus?.activation_complete
+  );
+
+  /* =========================
+     RENDER
+  ========================= */
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-7xl mx-auto p-6 space-y-8">
-        {/* header, controls, tabs, footer unchanged */}
-        {/* intentionally omitted here for brevity */}
+
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">Welcome, {email}</h1>
+            <p className="text-gray-400 text-sm">
+              Tier: {tier.toUpperCase()}
+            </p>
+          </div>
+
+          <div className="space-x-3">
+            {tradingEnabled ? (
+              <button
+                onClick={() => toggleTrading(false)}
+                disabled={busy}
+                className="px-4 py-2 bg-red-600 rounded-lg"
+              >
+                Stop Trading
+              </button>
+            ) : (
+              <button
+                onClick={() => toggleTrading(true)}
+                disabled={busy}
+                className="px-4 py-2 bg-emerald-600 rounded-lg"
+              >
+                Enable Trading
+              </button>
+            )}
+
+            <button
+              onClick={startBot}
+              disabled={busy}
+              className="px-4 py-2 bg-blue-600 rounded-lg"
+            >
+              Start Bot
+            </button>
+          </div>
+        </div>
+
+        {/* Feature Modules */}
+        <ImaliBalance />
+        <TierStatus />
+        <RecentTradesTable trades={trades} />
+        <ReferralSystem />
+
+        {tierAtLeast(tier, "pro") && <Staking />}
+        {tierAtLeast(tier, "elite") && <YieldFarming />}
+        {tierAtLeast(tier, "elite") && <Futures />}
+        <NFTPreview />
+        <TradeDemo />
+
       </div>
     </div>
   );
