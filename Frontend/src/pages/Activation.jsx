@@ -1,10 +1,10 @@
 // src/pages/Activation.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import BotAPI from "../utils/BotAPI";
-import { useAuth } from '../context/AuthContext';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import BotAPI, { api } from "../utils/BotAPI";
+
 /* ======================================================
-   TAILWIND-SAFE STATUS MAPS
+   STATUS STYLES
 ====================================================== */
 
 const STATUS_STYLES = {
@@ -14,28 +14,16 @@ const STATUS_STYLES = {
     badge: "bg-emerald-500/20 text-emerald-400",
     icon: "✓",
   },
-  active: {
-    ring: "border-blue-500/30 bg-blue-500/20",
-    text: "text-blue-400",
-    badge: "bg-blue-500/20 text-blue-400",
-    icon: "⟳",
-  },
   pending: {
     ring: "border-gray-700 bg-gray-800/50",
     text: "text-gray-400",
     badge: "bg-gray-800 text-gray-400",
     icon: "○",
   },
-  error: {
-    ring: "border-red-500/30 bg-red-500/20",
-    text: "text-red-400",
-    badge: "bg-red-500/20 text-red-400",
-    icon: "!",
-  },
 };
 
 /* ======================================================
-   UI COMPONENTS
+   STEP COMPONENT
 ====================================================== */
 
 function StatusStep({
@@ -45,13 +33,12 @@ function StatusStep({
   status = "pending",
   actionLabel,
   onAction,
-  disabled,
 }) {
-  const s = STATUS_STYLES[status];
+  const s = STATUS_STYLES[status] || STATUS_STYLES.pending;
 
   return (
-    <div className="relative pl-14 py-4 group">
-      <div className="absolute left-[27px] top-0 bottom-0 w-0.5 bg-gray-800 group-last:hidden" />
+    <div className="relative pl-14 py-4">
+      <div className="absolute left-[27px] top-0 bottom-0 w-0.5 bg-gray-800" />
 
       <div
         className={`absolute left-0 h-14 w-14 rounded-full border-2 ${s.ring} flex items-center justify-center`}
@@ -65,13 +52,7 @@ function StatusStep({
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-white text-lg">{title}</h3>
           <span className={`text-sm px-3 py-1 rounded-full ${s.badge}`}>
-            {status === "complete"
-              ? "Complete"
-              : status === "active"
-              ? "In Progress"
-              : status === "error"
-              ? "Error"
-              : "Pending"}
+            {status === "complete" ? "Complete" : "Pending"}
           </span>
         </div>
 
@@ -80,12 +61,7 @@ function StatusStep({
         {actionLabel && status !== "complete" && (
           <button
             onClick={onAction}
-            disabled={disabled}
-            className={`mt-2 px-4 py-2 rounded-lg font-medium transition ${
-              disabled
-                ? "opacity-50 cursor-not-allowed"
-                : "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-            }`}
+            className="mt-2 px-4 py-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition"
           >
             {actionLabel}
           </button>
@@ -96,60 +72,86 @@ function StatusStep({
 }
 
 /* ======================================================
-   MAIN COMPONENT
+   MAIN
 ====================================================== */
 
 export default function Activation() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
-  const [me, setMe] = useState(null);
+  const [user, setUser] = useState(null);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
-  const [showOkx, setShowOkx] = useState(false);
-  const [showAlpaca, setShowAlpaca] = useState(false);
-  const [showWallet, setShowWallet] = useState(false);
+  /* =========================
+     LOAD USER + STATUS
+  ========================= */
+  useEffect(() => {
+    let mounted = true;
 
-  /* ---------------- LOAD ---------------- */
-  const load = async () => {
-    try {
-      const userRes = await BotAPI.me();
-      const actRes = await BotAPI.activationStatus();
+    const load = async () => {
+      try {
+        const me = await BotAPI.me();
+        if (!mounted) return;
 
-      setMe(userRes?.user || userRes);
-      setStatus(actRes?.status || actRes);
-    } catch (err) {
-      if (err.status === 401) {
-        BotAPI.logout();
-        navigate("/login");
-      } else {
-        setError(err.message || "Failed to load activation");
+        const userObj = me?.user || me;
+        setUser(userObj);
+
+        const act = await BotAPI.activationStatus();
+        if (!mounted) return;
+
+        const activation = act?.status || act || {};
+        setStatus(activation);
+
+        // 🔥 HARD ROUTING LOGIC
+
+        // If billing not complete → force billing
+        if (!activation.billing_complete) {
+          navigate("/billing", { replace: true });
+          return;
+        }
+
+        // If fully activated → go to dashboard
+        if (activation.activation_complete) {
+          navigate("/dashboard", { replace: true });
+          return;
+        }
+
+      } catch (err) {
+        // 401 already handled globally by interceptor
+        setError("Unable to load activation status.");
+      } finally {
+        if (mounted) setLoading(false);
       }
+    };
+
+    load();
+
+    return () => {
+      mounted = false;
+    };
+  }, [navigate]);
+
+  /* =========================
+     TOGGLES
+  ========================= */
+
+  const toggleTrading = async () => {
+    try {
+      await api.post("/api/trading/enable", {
+        enabled: !status?.trading_enabled,
+      });
+
+      const updated = await BotAPI.activationStatus();
+      setStatus(updated?.status || updated || {});
+    } catch {
+      setError("Failed to update trading.");
     }
   };
 
-  useEffect(() => {
-    load().finally(() => setLoading(false));
-  }, []);
-
-  /* ---------------- DERIVED ---------------- */
-  const tier = (me?.tier || "starter").toLowerCase();
-
-  const billing = !!status?.billing_complete;
-  const okx = !!status?.okx_connected;
-  const alpaca = !!status?.alpaca_connected;
-  const wallet = !!status?.wallet_connected;
-  const trading = !!status?.trading_enabled;
-  const complete = !!status?.activation_complete;
-
-  /* ---------------- AUTO REDIRECT ---------------- */
-  useEffect(() => {
-    if (!loading && complete && trading) {
-      setTimeout(() => navigate("/members", { replace: true }), 1200);
-    }
-  }, [loading, complete, trading]);
+  /* =========================
+     STATES
+  ========================= */
 
   if (loading) {
     return (
@@ -159,19 +161,24 @@ export default function Activation() {
     );
   }
 
-  if (!me) {
+  if (!user || !status) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-white">
-        <Link to="/login" className="text-blue-400 underline">
-          Session expired — log in again
-        </Link>
+        Session expired.
       </div>
     );
   }
 
+  const billing = !!status.billing_complete;
+  const connections =
+    !!status.okx_connected ||
+    !!status.alpaca_connected ||
+    !!status.wallet_connected;
+  const trading = !!status.trading_enabled;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 text-white p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
 
         {error && (
           <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
@@ -179,18 +186,13 @@ export default function Activation() {
           </div>
         )}
 
-        {success && (
-          <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
-            {success}
-          </div>
-        )}
+        <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6 space-y-4">
 
-        <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6">
           <StatusStep
             number={1}
             title="Billing"
             description="Add a payment method"
-            status={billing ? "complete" : "active"}
+            status={billing ? "complete" : "pending"}
             actionLabel="Go to Billing"
             onAction={() => navigate("/billing")}
           />
@@ -199,24 +201,9 @@ export default function Activation() {
             number={2}
             title="Connections"
             description="Connect exchanges or wallet"
-            status={
-              tier === "starter"
-                ? okx && alpaca
-                  ? "complete"
-                  : "pending"
-                : tier === "elite"
-                ? wallet
-                  ? "complete"
-                  : "pending"
-                : okx || alpaca || wallet
-                ? "complete"
-                : "pending"
-            }
+            status={connections ? "complete" : "pending"}
             actionLabel="Connect"
-            onAction={() => {
-              if (tier === "elite") setShowWallet(true);
-              else setShowOkx(true);
-            }}
+            onAction={() => navigate("/connections")}
           />
 
           <StatusStep
@@ -225,10 +212,9 @@ export default function Activation() {
             description="Start automated trading"
             status={trading ? "complete" : "pending"}
             actionLabel={trading ? "Disable" : "Enable"}
-            onAction={() =>
-              BotAPI.tradingEnable(!trading).then(load)
-            }
+            onAction={toggleTrading}
           />
+
         </div>
       </div>
     </div>
