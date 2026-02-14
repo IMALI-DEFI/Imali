@@ -13,6 +13,9 @@ import ProtectedRoute from "./components/routing/ProtectedRoute";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel";
 
+/* Demo */
+import TradeDemo from "./pages/TradeDemo";
+
 /* Auth / Onboarding */
 import Signup from "./pages/SignupForm";
 import Login from "./pages/Login";
@@ -32,8 +35,6 @@ import TermsOfService from "./pages/TermsOfService";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
 /* ============================================= */
-/* Loading Spinner                               */
-/* ============================================= */
 
 function LoadingSpinner() {
   return (
@@ -42,10 +43,6 @@ function LoadingSpinner() {
     </div>
   );
 }
-
-/* ============================================= */
-/* Onboarding Gate                               */
-/* ============================================= */
 
 function OnboardingRoute({ children }) {
   const { user } = useAuth();
@@ -58,34 +55,19 @@ function OnboardingRoute({ children }) {
   return children;
 }
 
-/* ============================================= */
-/* Activation Gate                               */
-/* ============================================= */
-
 function ActivatedRoute({ children }) {
   const { user } = useAuth();
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (!user.activation_complete) {
-    return <Navigate to="/activation" replace />;
-  }
+  if (!user) return <Navigate to="/login" replace />;
+  if (!user.activation_complete) return <Navigate to="/activation" replace />;
 
   return children;
 }
 
-/* ============================================= */
-/* App Content                                   */
-/* ============================================= */
-
 function AppContent() {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+  if (loading) return <LoadingSpinner />;
 
   return (
     <>
@@ -102,10 +84,13 @@ function AppContent() {
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
 
+          {/* ===== PUBLIC DEMO (no auth) ===== */}
+          <Route path="/demo" element={<TradeDemo />} />
+
           {/* ===== Signup ===== */}
           <Route path="/signup" element={<Signup />} />
 
-          {/* ===== Login (only if not logged in) ===== */}
+          {/* ===== Login ===== */}
           <Route
             path="/login"
             element={user ? <Navigate to="/dashboard" replace /> : <Login />}
@@ -151,10 +136,10 @@ function AppContent() {
             }
           />
 
-          {/* ===== Aliases ===== */}
+          {/* Aliases */}
           <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
-          {/* ===== 404 ===== */}
+          {/* 404 */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
@@ -163,10 +148,6 @@ function AppContent() {
     </>
   );
 }
-
-/* ============================================= */
-/* 404                                           */
-/* ============================================= */
 
 function NotFound() {
   return (
@@ -183,10 +164,6 @@ function NotFound() {
     </div>
   );
 }
-
-/* ============================================= */
-/* App Wrapper                                   */
-/* ============================================= */
 
 export default function App() {
   return (
