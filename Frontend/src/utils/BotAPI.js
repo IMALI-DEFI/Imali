@@ -6,7 +6,10 @@ const API_BASE =
 
 const TOKEN_KEY = "imali_token";
 
-// Single axios instance for entire app
+/* =========================
+   AXIOS INSTANCE
+========================= */
+
 const api = axios.create({
   baseURL: API_BASE,
 });
@@ -24,7 +27,7 @@ const getStoredToken = () => {
 };
 
 const setStoredToken = (token) => {
-  if (!token || typeof token !== "string") return;
+  if (!token) return;
   localStorage.setItem(TOKEN_KEY, token);
   api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 };
@@ -36,7 +39,6 @@ const clearStoredToken = () => {
 
 /* =========================
    REQUEST INTERCEPTOR
-   (Attach JWT)
 ========================= */
 
 api.interceptors.request.use((config) => {
@@ -49,16 +51,14 @@ api.interceptors.request.use((config) => {
 
 /* =========================
    RESPONSE INTERCEPTOR
-   (Handle 401 globally)
 ========================= */
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
-
-    // Ignore login/signup endpoints
     const url = error.config?.url || "";
+
     const isAuthEndpoint =
       url.includes("/api/auth/login") || url.includes("/api/signup");
 
@@ -82,7 +82,8 @@ api.interceptors.response.use(
 ========================= */
 
 const BotAPI = {
-  // ===== Token helpers =====
+  /* ========= TOKEN ========= */
+
   setToken(token) {
     setStoredToken(token);
   },
@@ -99,24 +100,22 @@ const BotAPI = {
     return !!getStoredToken();
   },
 
-  // ===== Auth =====
+  /* ========= AUTH ========= */
+
   async signup(data) {
     const res = await api.post("/api/signup", data);
     return res.data;
   },
 
   async login(data) {
-    // Clear old token first
     clearStoredToken();
-
     const res = await api.post("/api/auth/login", data);
 
-    if (res.data?.token) {
-      setStoredToken(res.data.token);
-    } else {
+    if (!res.data?.token) {
       throw new Error("Login failed: no token returned");
     }
 
+    setStoredToken(res.data.token);
     return res.data;
   },
 
@@ -130,9 +129,36 @@ const BotAPI = {
     return res.data;
   },
 
-  // ===== Billing (reuse same axios instance) =====
+  /* ========= BILLING ========= */
+
   async createSetupIntent(payload) {
     const res = await api.post("/api/billing/setup-intent", payload);
+    return res.data;
+  },
+
+  /* ========= INTEGRATIONS ========= */
+
+  async connectOKX(payload) {
+    const res = await api.post("/api/integrations/okx", payload);
+    return res.data;
+  },
+
+  async connectAlpaca(payload) {
+    const res = await api.post("/api/integrations/alpaca", payload);
+    return res.data;
+  },
+
+  async connectWallet(payload) {
+    const res = await api.post("/api/integrations/wallet", payload);
+    return res.data;
+  },
+
+  /* ========= TRADING ========= */
+
+  async toggleTrading(enabled) {
+    const res = await api.post("/api/trading/enable", {
+      enabled,
+    });
     return res.data;
   },
 };
