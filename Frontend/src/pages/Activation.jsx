@@ -7,7 +7,10 @@ import BotAPI from "../utils/BotAPI";
    SIMPLE STATUS HELPERS
 ====================================================== */
 
-const statusLabel = (value) => (value ? "Complete" : "Pending");
+const statusLabel = (value) => {
+  if (value) return "Complete";
+  return "Pending";
+};
 
 const StatusPill = ({ value }) => (
   <span
@@ -34,16 +37,19 @@ const Section = ({ title, description, right, children }) => (
   </div>
 );
 
-const Input = ({ ...props }) => (
+// FIXED: Added autocomplete attributes
+const Input = ({ type = "text", autoComplete, ...props }) => (
   <input
     {...props}
-    className="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white"
+    type={type}
+    autoComplete={autoComplete || "off"}
+    className="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white placeholder:text-gray-500"
   />
 );
 
 const Button = ({ children, variant = "primary", ...props }) => {
   const base =
-    "px-4 py-2 rounded-lg font-medium transition disabled:opacity-50";
+    "px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed";
 
   const style =
     variant === "primary"
@@ -73,8 +79,20 @@ export default function Activation() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const [okx, setOkx] = useState({ key: "", secret: "", passphrase: "", mode: "paper" });
-  const [alpaca, setAlpaca] = useState({ key: "", secret: "", mode: "paper" });
+  // Form fields
+  const [okx, setOkx] = useState({ 
+    apiKey: "", 
+    apiSecret: "", 
+    passphrase: "", 
+    mode: "paper" 
+  });
+  
+  const [alpaca, setAlpaca] = useState({ 
+    apiKey: "", 
+    apiSecret: "", 
+    mode: "paper" 
+  });
+  
   const [wallet, setWallet] = useState("");
 
   const tier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user]);
@@ -96,25 +114,27 @@ export default function Activation() {
 
   const canEnableTrading = billingComplete && connectionsComplete;
 
-  // ✅ NEW: Activation Complete Logic
-  const activationComplete =
-    billingComplete &&
-    connectionsComplete &&
-    tradingEnabled;
-
   /* ======================================================
      LOAD DATA
   ====================================================== */
 
   const load = async () => {
     try {
+      setError("");
+      
       const me = await BotAPI.me();
       const activation = await BotAPI.activationStatus();
 
       setUser(me?.user || me);
       setStatus(activation?.status || activation);
     } catch (e) {
-      setError("Session expired. Please login again.");
+      console.error("Load error:", e);
+      if (e.response?.status === 401) {
+        setError("Session expired. Please login again.");
+        setTimeout(() => navigate("/login"), 2000);
+      } else {
+        setError("Failed to load activation data.");
+      }
     } finally {
       setLoading(false);
     }
@@ -123,17 +143,6 @@ export default function Activation() {
   useEffect(() => {
     load();
   }, []);
-
-  // ✅ NEW: Auto Redirect When Activation Complete
-  useEffect(() => {
-    if (activationComplete) {
-      const timer = setTimeout(() => {
-        navigate("/memberdashboard", { replace: true });
-      }, 1200);
-
-      return () => clearTimeout(timer);
-    }
-  }, [activationComplete, navigate]);
 
   /* ======================================================
      CONNECT FUNCTIONS
@@ -145,19 +154,41 @@ export default function Activation() {
     setSuccess("");
     setBusy("okx");
 
+    // Validate
+    if (!okx.apiKey || !okx.apiSecret || !okx.passphrase) {
+      setError("All OKX fields are required.");
+      setBusy("");
+      return;
+    }
+
     try {
-      await BotAPI.connectOKX({
-        api_key: okx.key,
-        api_secret: okx.secret,
-        passphrase: okx.passphrase,
-        mode: okx.mode,
+      // FIXED: Using correct API endpoint with proper parameter names
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"}/api/integrations/okx`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${BotAPI.getToken()}`
+        },
+        body: JSON.stringify({
+          api_key: okx.apiKey.trim(),
+          api_secret: okx.apiSecret.trim(),
+          passphrase: okx.passphrase.trim(),
+          mode: okx.mode
+        })
       });
 
-      setSuccess("OKX connected.");
-      setOkx({ key: "", secret: "", passphrase: "", mode: "paper" });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+
+      setSuccess("✅ OKX connected successfully.");
+      setOkx({ apiKey: "", apiSecret: "", passphrase: "", mode: "paper" });
       await load();
     } catch (e) {
-      setError(e.response?.data?.message || "OKX connection failed.");
+      console.error("OKX connection error:", e);
+      setError(e.message || "OKX connection failed. Please check your API keys.");
     } finally {
       setBusy("");
     }
@@ -169,18 +200,39 @@ export default function Activation() {
     setSuccess("");
     setBusy("alpaca");
 
+    // Validate
+    if (!alpaca.apiKey || !alpaca.apiSecret) {
+      setError("Both Alpaca API Key and Secret are required.");
+      setBusy("");
+      return;
+    }
+
     try {
-      await BotAPI.connectAlpaca({
-        api_key: alpaca.key,
-        api_secret: alpaca.secret,
-        mode: alpaca.mode,
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"}/api/integrations/alpaca`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${BotAPI.getToken()}`
+        },
+        body: JSON.stringify({
+          api_key: alpaca.apiKey.trim(),
+          api_secret: alpaca.apiSecret.trim(),
+          mode: alpaca.mode
+        })
       });
 
-      setSuccess("Alpaca connected.");
-      setAlpaca({ key: "", secret: "", mode: "paper" });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+
+      setSuccess("✅ Alpaca connected successfully.");
+      setAlpaca({ apiKey: "", apiSecret: "", mode: "paper" });
       await load();
     } catch (e) {
-      setError(e.response?.data?.message || "Alpaca connection failed.");
+      console.error("Alpaca connection error:", e);
+      setError(e.message || "Alpaca connection failed. Please check your API keys.");
     } finally {
       setBusy("");
     }
@@ -192,13 +244,44 @@ export default function Activation() {
     setSuccess("");
     setBusy("wallet");
 
+    // Validate
+    if (!wallet.trim()) {
+      setError("Wallet address is required.");
+      setBusy("");
+      return;
+    }
+
+    if (!wallet.startsWith("0x") || wallet.length !== 42) {
+      setError("Invalid wallet address. Must be 42 characters starting with 0x.");
+      setBusy("");
+      return;
+    }
+
     try {
-      await BotAPI.connectWallet({ address: wallet });
-      setSuccess("Wallet connected.");
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"}/api/integrations/wallet`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${BotAPI.getToken()}`
+        },
+        body: JSON.stringify({
+          wallet: wallet.trim(),
+          address: wallet.trim()
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+
+      setSuccess("✅ Wallet connected successfully.");
       setWallet("");
       await load();
     } catch (e) {
-      setError(e.response?.data?.message || "Wallet connection failed.");
+      console.error("Wallet connection error:", e);
+      setError(e.message || "Wallet connection failed.");
     } finally {
       setBusy("");
     }
@@ -209,12 +292,33 @@ export default function Activation() {
     setSuccess("");
     setBusy("trading");
 
+    if (!canEnableTrading && !tradingEnabled) {
+      setError("Complete billing and connections first.");
+      setBusy("");
+      return;
+    }
+
     try {
-      await BotAPI.toggleTrading(!tradingEnabled);
-      setSuccess(tradingEnabled ? "Trading disabled." : "Trading enabled.");
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"}/api/trading/enable`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${BotAPI.getToken()}`
+        },
+        body: JSON.stringify({ enabled: !tradingEnabled })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+
+      setSuccess(tradingEnabled ? "Trading disabled." : "✅ Trading enabled.");
       await load();
     } catch (e) {
-      setError("Failed to update trading.");
+      console.error("Trading toggle error:", e);
+      setError("Failed to update trading. Please try again.");
     } finally {
       setBusy("");
     }
@@ -227,7 +331,10 @@ export default function Activation() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-white">
-        Loading activation…
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading activation…</p>
+        </div>
       </div>
     );
   }
@@ -236,92 +343,253 @@ export default function Activation() {
     <div className="min-h-screen bg-black text-white p-6">
       <div className="max-w-4xl mx-auto space-y-6">
 
-        {error && <div className="bg-red-500/20 p-3 rounded">{error}</div>}
-        {success && <div className="bg-emerald-500/20 p-3 rounded">{success}</div>}
+        {/* Messages */}
+        {error && (
+          <div className="bg-red-500/20 border border-red-500/30 p-4 rounded-lg text-red-200">
+            ⚠️ {error}
+          </div>
+        )}
+        
+        {success && (
+          <div className="bg-emerald-500/20 border border-emerald-500/30 p-4 rounded-lg text-emerald-200">
+            ✅ {success}
+          </div>
+        )}
 
-        <h1 className="text-2xl font-bold">
-          Activation ({tier.toUpperCase()})
-        </h1>
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Activation</h1>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">Tier:</span>
+            <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">
+              {tier.toUpperCase()}
+            </span>
+          </div>
+        </div>
 
+        {/* BILLING */}
         <Section
           title="1. Billing"
-          description="Billing must be complete."
+          description="Payment method must be on file."
           right={<StatusPill value={billingComplete} />}
         >
           {!billingComplete && (
             <Button onClick={() => navigate("/billing")}>
-              Go to Billing
+              Add Payment Method
             </Button>
           )}
         </Section>
 
+        {/* CONNECTIONS */}
         <Section
           title="2. Connections"
-          description="Connect required services."
+          description="Connect required services for your tier."
           right={<StatusPill value={connectionsComplete} />}
         >
+          <div className="space-y-6">
+            {/* OKX */}
+            {needsOkx && !okxConnected && (
+              <form onSubmit={connectOKX} className="space-y-3 border-t border-white/10 pt-4">
+                <h3 className="font-semibold text-blue-300">OKX Exchange</h3>
+                
+                <div className="grid gap-3">
+                  <Input 
+                    placeholder="API Key"
+                    value={okx.apiKey}
+                    onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })}
+                    disabled={busy === "okx"}
+                    autoComplete="off"
+                  />
+                  
+                  <Input 
+                    placeholder="API Secret"
+                    type="password"
+                    value={okx.apiSecret}
+                    onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })}
+                    disabled={busy === "okx"}
+                    autoComplete="new-password"
+                  />
+                  
+                  <Input 
+                    placeholder="Passphrase"
+                    type="password"
+                    value={okx.passphrase}
+                    onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })}
+                    disabled={busy === "okx"}
+                    autoComplete="new-password"
+                  />
 
-          {needsOkx && !okxConnected && (
-            <form onSubmit={connectOKX} className="space-y-3">
-              <h3 className="font-semibold">OKX</h3>
-              <Input placeholder="API Key"
-                value={okx.key}
-                onChange={(e) => setOkx({ ...okx, key: e.target.value })} />
-              <Input placeholder="Secret" type="password"
-                value={okx.secret}
-                onChange={(e) => setOkx({ ...okx, secret: e.target.value })} />
-              <Input placeholder="Passphrase" type="password"
-                value={okx.passphrase}
-                onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })} />
-              <Button type="submit" disabled={busy === "okx"}>
-                Connect OKX
-              </Button>
-            </form>
-          )}
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="okxMode"
+                        value="paper"
+                        checked={okx.mode === "paper"}
+                        onChange={(e) => setOkx({ ...okx, mode: e.target.value })}
+                        className="text-emerald-500"
+                      />
+                      <span className="text-sm">Paper Trading</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="okxMode"
+                        value="live"
+                        checked={okx.mode === "live"}
+                        onChange={(e) => setOkx({ ...okx, mode: e.target.value })}
+                        className="text-emerald-500"
+                      />
+                      <span className="text-sm">Live Trading</span>
+                    </label>
+                  </div>
 
-          {needsAlpaca && !alpacaConnected && (
-            <form onSubmit={connectAlpaca} className="space-y-3">
-              <h3 className="font-semibold">Alpaca</h3>
-              <Input placeholder="API Key"
-                value={alpaca.key}
-                onChange={(e) => setAlpaca({ ...alpaca, key: e.target.value })} />
-              <Input placeholder="Secret" type="password"
-                value={alpaca.secret}
-                onChange={(e) => setAlpaca({ ...alpaca, secret: e.target.value })} />
-              <Button type="submit" disabled={busy === "alpaca"}>
-                Connect Alpaca
-              </Button>
-            </form>
-          )}
+                  <Button 
+                    type="submit" 
+                    disabled={busy === "okx" || !okx.apiKey || !okx.apiSecret || !okx.passphrase}
+                    variant="success"
+                  >
+                    {busy === "okx" ? "Connecting..." : "Connect OKX"}
+                  </Button>
+                </div>
+              </form>
+            )}
 
-          {needsWallet && !walletConnected && (
-            <form onSubmit={connectWallet} className="space-y-3">
-              <h3 className="font-semibold">Wallet</h3>
-              <Input
-                placeholder="0x..."
-                value={wallet}
-                onChange={(e) => setWallet(e.target.value)}
-              />
-              <Button type="submit" disabled={busy === "wallet"}>
-                Connect Wallet
-              </Button>
-            </form>
-          )}
+            {/* Alpaca */}
+            {needsAlpaca && !alpacaConnected && (
+              <form onSubmit={connectAlpaca} className="space-y-3 border-t border-white/10 pt-4">
+                <h3 className="font-semibold text-emerald-300">Alpaca</h3>
+                
+                <div className="grid gap-3">
+                  <Input 
+                    placeholder="API Key"
+                    value={alpaca.apiKey}
+                    onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })}
+                    disabled={busy === "alpaca"}
+                    autoComplete="off"
+                  />
+                  
+                  <Input 
+                    placeholder="Secret Key"
+                    type="password"
+                    value={alpaca.apiSecret}
+                    onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })}
+                    disabled={busy === "alpaca"}
+                    autoComplete="new-password"
+                  />
+
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="alpacaMode"
+                        value="paper"
+                        checked={alpaca.mode === "paper"}
+                        onChange={(e) => setAlpaca({ ...alpaca, mode: e.target.value })}
+                        className="text-emerald-500"
+                      />
+                      <span className="text-sm">Paper Trading</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="alpacaMode"
+                        value="live"
+                        checked={alpaca.mode === "live"}
+                        onChange={(e) => setAlpaca({ ...alpaca, mode: e.target.value })}
+                        className="text-emerald-500"
+                      />
+                      <span className="text-sm">Live Trading</span>
+                    </label>
+                  </div>
+
+                  <Button 
+                    type="submit" 
+                    disabled={busy === "alpaca" || !alpaca.apiKey || !alpaca.apiSecret}
+                    variant="success"
+                  >
+                    {busy === "alpaca" ? "Connecting..." : "Connect Alpaca"}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {/* Wallet */}
+            {needsWallet && !walletConnected && (
+              <form onSubmit={connectWallet} className="space-y-3 border-t border-white/10 pt-4">
+                <h3 className="font-semibold text-purple-300">Wallet</h3>
+                
+                <div className="grid gap-3">
+                  <Input
+                    placeholder="0x..."
+                    value={wallet}
+                    onChange={(e) => setWallet(e.target.value)}
+                    disabled={busy === "wallet"}
+                    autoComplete="off"
+                  />
+
+                  <Button 
+                    type="submit" 
+                    disabled={busy === "wallet" || !wallet}
+                    variant="success"
+                  >
+                    {busy === "wallet" ? "Connecting..." : "Connect Wallet"}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {/* Already Connected Message */}
+            {needsOkx && okxConnected && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm">
+                ✅ OKX connected in {status?.okx_mode || "paper"} mode
+              </div>
+            )}
+
+            {needsAlpaca && alpacaConnected && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm">
+                ✅ Alpaca connected in {status?.alpaca_mode || "paper"} mode
+              </div>
+            )}
+
+            {needsWallet && walletConnected && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm">
+                ✅ Wallet connected
+              </div>
+            )}
+          </div>
         </Section>
 
+        {/* TRADING */}
         <Section
           title="3. Enable Trading"
-          description="Turn trading on when ready."
+          description="Turn trading on when all connections are complete."
           right={<StatusPill value={tradingEnabled} />}
         >
-          <Button
-            variant="success"
-            disabled={!canEnableTrading || busy === "trading"}
-            onClick={toggleTrading}
-          >
-            {tradingEnabled ? "Disable Trading" : "Enable Trading"}
-          </Button>
+          <div className="space-y-3">
+            {!canEnableTrading && !tradingEnabled && (
+              <p className="text-sm text-yellow-500/80">
+                ⚠️ Complete billing and required connections first
+              </p>
+            )}
+            
+            <Button
+              variant="success"
+              disabled={!canEnableTrading && !tradingEnabled || busy === "trading"}
+              onClick={toggleTrading}
+            >
+              {busy === "trading" ? "Updating..." : 
+               tradingEnabled ? "Disable Trading" : "Enable Trading"}
+            </Button>
+          </div>
         </Section>
+
+        {/* Navigation */}
+        <div className="flex gap-3 pt-4">
+          <Button onClick={() => navigate("/dashboard")}>
+            Back to Dashboard
+          </Button>
+        </div>
 
       </div>
     </div>
