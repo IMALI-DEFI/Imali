@@ -7,10 +7,7 @@ import BotAPI from "../utils/BotAPI";
    SIMPLE STATUS HELPERS
 ====================================================== */
 
-const statusLabel = (value) => {
-  if (value) return "Complete";
-  return "Pending";
-};
+const statusLabel = (value) => (value ? "Complete" : "Pending");
 
 const StatusPill = ({ value }) => (
   <span
@@ -76,7 +73,6 @@ export default function Activation() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Form fields
   const [okx, setOkx] = useState({ key: "", secret: "", passphrase: "", mode: "paper" });
   const [alpaca, setAlpaca] = useState({ key: "", secret: "", mode: "paper" });
   const [wallet, setWallet] = useState("");
@@ -100,6 +96,12 @@ export default function Activation() {
 
   const canEnableTrading = billingComplete && connectionsComplete;
 
+  // ✅ NEW: Activation Complete Logic
+  const activationComplete =
+    billingComplete &&
+    connectionsComplete &&
+    tradingEnabled;
+
   /* ======================================================
      LOAD DATA
   ====================================================== */
@@ -121,6 +123,17 @@ export default function Activation() {
   useEffect(() => {
     load();
   }, []);
+
+  // ✅ NEW: Auto Redirect When Activation Complete
+  useEffect(() => {
+    if (activationComplete) {
+      const timer = setTimeout(() => {
+        navigate("/memberdashboard", { replace: true });
+      }, 1200);
+
+      return () => clearTimeout(timer);
+    }
+  }, [activationComplete, navigate]);
 
   /* ======================================================
      CONNECT FUNCTIONS
@@ -230,7 +243,6 @@ export default function Activation() {
           Activation ({tier.toUpperCase()})
         </h1>
 
-        {/* BILLING */}
         <Section
           title="1. Billing"
           description="Billing must be complete."
@@ -243,7 +255,6 @@ export default function Activation() {
           )}
         </Section>
 
-        {/* CONNECTIONS */}
         <Section
           title="2. Connections"
           description="Connect required services."
@@ -253,7 +264,8 @@ export default function Activation() {
           {needsOkx && !okxConnected && (
             <form onSubmit={connectOKX} className="space-y-3">
               <h3 className="font-semibold">OKX</h3>
-              <Input placeholder="API Key" value={okx.key}
+              <Input placeholder="API Key"
+                value={okx.key}
                 onChange={(e) => setOkx({ ...okx, key: e.target.value })} />
               <Input placeholder="Secret" type="password"
                 value={okx.secret}
@@ -297,7 +309,6 @@ export default function Activation() {
           )}
         </Section>
 
-        {/* TRADING */}
         <Section
           title="3. Enable Trading"
           description="Turn trading on when ready."
