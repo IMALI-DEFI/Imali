@@ -1,7 +1,7 @@
 // src/pages/Activation.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import BotAPI, { api } from "../utils/BotAPI";
+import BotAPI from "../utils/BotAPI";
 
 /* ======================================================
    STATUS STYLES
@@ -136,6 +136,30 @@ function TextInput({ value, onChange, placeholder, disabled, type = "text" }) {
   );
 }
 
+// FIXED: Password inputs are now inside forms
+function PasswordInput({ value, onChange, placeholder, disabled, showPassword, onToggleShow }) {
+  return (
+    <div className="flex gap-2">
+      <input
+        type={showPassword ? "text" : "password"}
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-white placeholder:text-gray-600 disabled:opacity-60"
+      />
+      <ActionButton
+        variant="secondary"
+        disabled={disabled}
+        onClick={onToggleShow}
+        type="button"
+      >
+        {showPassword ? "Hide" : "Show"}
+      </ActionButton>
+    </div>
+  );
+}
+
 async function safePaste(setter) {
   try {
     const text = await navigator.clipboard.readText();
@@ -171,7 +195,7 @@ export default function Activation() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
-  const [busyKey, setBusyKey] = useState(""); // okx_test, okx_save, alpaca_test, alpaca_save, wallet, trading
+  const [busyKey, setBusyKey] = useState(""); // okx_save, alpaca_save, wallet, trading
   const [user, setUser] = useState(null);
   const [status, setStatus] = useState(null);
 
@@ -189,18 +213,20 @@ export default function Activation() {
   const [okxPassphrase, setOkxPassphrase] = useState("");
   const [okxShowSecret, setOkxShowSecret] = useState(false);
   const [okxShowPass, setOkxShowPass] = useState(false);
+  const [okxMode, setOkxMode] = useState("paper"); // paper or live
 
   // Alpaca fields
   const [alpacaKey, setAlpacaKey] = useState("");
   const [alpacaSecret, setAlpacaSecret] = useState("");
   const [alpacaShowSecret, setAlpacaShowSecret] = useState(false);
+  const [alpacaMode, setAlpacaMode] = useState("paper"); // paper or live
 
   // Wallet
   const [walletAddress, setWalletAddress] = useState("");
 
   const tier = useMemo(() => String(user?.tier || "starter").toLowerCase(), [user]);
 
-  // Requirements by tier (edit to match your exact business rules)
+  // Requirements by tier
   const needsOkx = tier === "starter" || tier === "pro" || tier === "bundle";
   const needsAlpaca = tier === "starter" || tier === "bundle";
   const needsWallet = tier === "elite" || tier === "bundle";
@@ -287,40 +313,15 @@ export default function Activation() {
   const validateWallet = () => {
     const a = walletAddress.trim();
     if (!a) return "Wallet address is required.";
-    if (!a.startsWith("0x") || a.length < 20) return "Wallet address looks invalid.";
+    if (!a.startsWith("0x") || a.length < 42) return "Wallet address looks invalid (should start with 0x and be 42 chars).";
     return "";
   };
 
   /* =========================
-     CONNECT: OKX
+     CONNECT: OKX (FIXED - removed /test endpoint)
   ========================= */
-  const testOkx = async () => {
-    clearBanners();
-    const msg = validateOkx();
-    if (msg) return setBannerError(msg);
-
-    try {
-      setBusyKey("okx_test");
-
-      // Preferred: call a test endpoint
-      await api.post("/api/integrations/okx/test", {
-        apiKey: okxKey.trim(),
-        apiSecret: okxSecret.trim(),
-        passphrase: okxPassphrase.trim(),
-      });
-
-      setBannerOk("OKX test succeeded. You can safely save this connection.");
-    } catch (e) {
-      // Fallback (if no /test exists): you can instead call save and treat success as test.
-      // await api.post("/api/integrations/okx", {...})
-
-      setBannerError(e?.response?.data?.message || e?.message || "OKX test failed. Double-check your API keys.");
-    } finally {
-      setBusyKey("");
-    }
-  };
-
-  const saveOkx = async () => {
+  const saveOkx = async (e) => {
+    e.preventDefault(); // Important for form submission
     clearBanners();
     const msg = validateOkx();
     if (msg) return setBannerError(msg);
@@ -328,49 +329,36 @@ export default function Activation() {
     try {
       setBusyKey("okx_save");
 
-      await api.post("/api/integrations/okx", {
+      const response = await BotAPI.connectOKX({
         apiKey: okxKey.trim(),
         apiSecret: okxSecret.trim(),
         passphrase: okxPassphrase.trim(),
+        mode: okxMode,
       });
 
-      setBannerOk("OKX connected successfully.");
-      // Clear secrets after save
-      setOkxSecret("");
-      setOkxPassphrase("");
-      await reload();
+      if (response?.connected) {
+        setBannerOk("✅ OKX connected successfully.");
+        // Clear secrets after save
+        setOkxKey("");
+        setOkxSecret("");
+        setOkxPassphrase("");
+        await reload();
+      } else {
+        throw new Error("Connection failed");
+      }
     } catch (e) {
-      setBannerError(e?.response?.data?.message || e?.message || "Failed to connect OKX.");
+      console.error("OKX connection error:", e);
+      setBannerError(e?.response?.data?.message || e?.message || "Failed to connect OKX. Please check your API keys.");
     } finally {
       setBusyKey("");
     }
   };
 
   /* =========================
-     CONNECT: ALPACA
+     CONNECT: ALPACA (FIXED - removed /test endpoint)
   ========================= */
-  const testAlpaca = async () => {
-    clearBanners();
-    const msg = validateAlpaca();
-    if (msg) return setBannerError(msg);
-
-    try {
-      setBusyKey("alpaca_test");
-
-      await api.post("/api/integrations/alpaca/test", {
-        apiKey: alpacaKey.trim(),
-        apiSecret: alpacaSecret.trim(),
-      });
-
-      setBannerOk("Alpaca test succeeded. You can safely save this connection.");
-    } catch (e) {
-      setBannerError(e?.response?.data?.message || e?.message || "Alpaca test failed. Double-check your keys.");
-    } finally {
-      setBusyKey("");
-    }
-  };
-
-  const saveAlpaca = async () => {
+  const saveAlpaca = async (e) => {
+    e.preventDefault(); // Important for form submission
     clearBanners();
     const msg = validateAlpaca();
     if (msg) return setBannerError(msg);
@@ -378,16 +366,23 @@ export default function Activation() {
     try {
       setBusyKey("alpaca_save");
 
-      await api.post("/api/integrations/alpaca", {
+      const response = await BotAPI.connectAlpaca({
         apiKey: alpacaKey.trim(),
         apiSecret: alpacaSecret.trim(),
+        mode: alpacaMode,
       });
 
-      setBannerOk("Alpaca connected successfully.");
-      setAlpacaSecret("");
-      await reload();
+      if (response?.connected) {
+        setBannerOk("✅ Alpaca connected successfully.");
+        setAlpacaKey("");
+        setAlpacaSecret("");
+        await reload();
+      } else {
+        throw new Error("Connection failed");
+      }
     } catch (e) {
-      setBannerError(e?.response?.data?.message || e?.message || "Failed to connect Alpaca.");
+      console.error("Alpaca connection error:", e);
+      setBannerError(e?.response?.data?.message || e?.message || "Failed to connect Alpaca. Please check your API keys.");
     } finally {
       setBusyKey("");
     }
@@ -396,17 +391,25 @@ export default function Activation() {
   /* =========================
      CONNECT: WALLET
   ========================= */
-  const saveWallet = async () => {
+  const saveWallet = async (e) => {
+    e.preventDefault(); // Important for form submission
     clearBanners();
     const msg = validateWallet();
     if (msg) return setBannerError(msg);
 
     try {
       setBusyKey("wallet");
-      await api.post("/api/integrations/wallet", { address: walletAddress.trim() });
-      setBannerOk("Wallet connected successfully.");
-      await reload();
+      const response = await BotAPI.connectWallet({ address: walletAddress.trim() });
+      
+      if (response?.connected) {
+        setBannerOk("✅ Wallet connected successfully.");
+        setWalletAddress("");
+        await reload();
+      } else {
+        throw new Error("Connection failed");
+      }
     } catch (e) {
+      console.error("Wallet connection error:", e);
       setBannerError(e?.response?.data?.message || e?.message || "Failed to connect wallet.");
     } finally {
       setBusyKey("");
@@ -426,10 +429,16 @@ export default function Activation() {
 
     try {
       setBusyKey("trading");
-      await api.post("/api/trading/enable", { enabled: !tradingEnabled });
-      setBannerOk(!tradingEnabled ? "Trading enabled." : "Trading disabled.");
-      await reload();
+      const response = await BotAPI.enableTrading(!tradingEnabled);
+      
+      if (response?.enabled !== undefined) {
+        setBannerOk(!tradingEnabled ? "✅ Trading enabled." : "Trading disabled.");
+        await reload();
+      } else {
+        throw new Error("Failed to update trading");
+      }
     } catch (e) {
+      console.error("Trading toggle error:", e);
       setBannerError(e?.response?.data?.message || e?.message || "Failed to update trading.");
     } finally {
       setBusyKey("");
@@ -442,7 +451,10 @@ export default function Activation() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-white">
-        Loading activation…
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
+          <div>Loading activation…</div>
+        </div>
       </div>
     );
   }
@@ -450,7 +462,12 @@ export default function Activation() {
   if (!user || !status) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-white">
-        Session expired.
+        <div className="text-center">
+          <div className="text-red-400 mb-4">Session expired.</div>
+          <ActionButton onClick={() => navigate("/login")}>
+            Go to Login
+          </ActionButton>
+        </div>
       </div>
     );
   }
@@ -462,8 +479,8 @@ export default function Activation() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 text-white p-6">
       <div className="max-w-5xl mx-auto space-y-6">
-        {bannerError ? <Banner type="error">{bannerError}</Banner> : null}
-        {bannerOk ? <Banner type="ok">{bannerOk}</Banner> : null}
+        {bannerError && <Banner type="error">{bannerError}</Banner>}
+        {bannerOk && <Banner type="ok">{bannerOk}</Banner>}
 
         <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6 space-y-6">
           <div className="flex items-start justify-between gap-4">
@@ -498,7 +515,7 @@ export default function Activation() {
           <Step
             number={2}
             title="Connections"
-            description="Connect only what your tier requires. This page is your one-stop setup."
+            description="Connect only what your tier requires."
             status={step2}
           >
             <div className="ml-0 mt-3 space-y-4">
@@ -510,12 +527,9 @@ export default function Activation() {
                   {needsWallet && <li>Wallet (address)</li>}
                   {!needsOkx && !needsAlpaca && !needsWallet && <li>No connections required.</li>}
                 </ul>
-                <div className="text-xs text-white/60 mt-2">
-                  Your keys are sent securely to your API and should be stored encrypted server-side.
-                </div>
               </Banner>
 
-              {/* OKX ACCORDION */}
+              {/* OKX ACCORDION - FIXED: Now with form */}
               {needsOkx && (
                 <Accordion
                   title="Connect OKX"
@@ -531,115 +545,114 @@ export default function Activation() {
                     <Banner type="info">
                       <div className="font-semibold mb-1">Where do I find OKX API keys?</div>
                       <div className="text-sm text-white/80">
-                        OKX → Profile → API → Create API Key. Enable the permissions you need (trading). Copy:
-                        <span className="text-white font-semibold"> API Key</span>,
-                        <span className="text-white font-semibold"> Secret</span>,
-                        <span className="text-white font-semibold"> Passphrase</span>.
+                        OKX → Profile → API → Create API Key. Enable trading permissions.
                       </div>
                     </Banner>
 
                     {!okxConnected ? (
-                      <div className="grid md:grid-cols-3 gap-3">
-                        <div className="space-y-2">
-                          <FieldRow label="OKX API Key" hint="Paste from OKX dashboard">
-                            <div className="flex gap-2">
-                              <TextInput
-                                value={okxKey}
-                                onChange={setOkxKey}
-                                placeholder="OKX API Key"
-                                disabled={busyKey.startsWith("okx")}
-                              />
-                              <ActionButton
-                                variant="secondary"
-                                disabled={busyKey.startsWith("okx")}
-                                onClick={() => safePaste(setOkxKey)}
-                              >
-                                Paste
-                              </ActionButton>
-                            </div>
-                          </FieldRow>
+                      <form onSubmit={saveOkx} className="space-y-4">
+                        {/* Mode selection */}
+                        <div className="flex gap-4 mb-4">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="okxMode"
+                              value="paper"
+                              checked={okxMode === "paper"}
+                              onChange={(e) => setOkxMode(e.target.value)}
+                              className="text-emerald-500"
+                            />
+                            <span>Paper Trading (Demo)</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="okxMode"
+                              value="live"
+                              checked={okxMode === "live"}
+                              onChange={(e) => setOkxMode(e.target.value)}
+                              className="text-emerald-500"
+                            />
+                            <span>Live Trading</span>
+                          </label>
                         </div>
 
-                        <div className="space-y-2">
-                          <FieldRow label="OKX API Secret" hint="Keep this private">
-                            <div className="flex gap-2">
-                              <TextInput
-                                type={okxShowSecret ? "text" : "password"}
-                                value={okxSecret}
-                                onChange={setOkxSecret}
-                                placeholder="OKX Secret"
-                                disabled={busyKey.startsWith("okx")}
-                              />
-                              <ActionButton
-                                variant="secondary"
-                                disabled={busyKey.startsWith("okx")}
-                                onClick={() => setOkxShowSecret((v) => !v)}
-                              >
-                                {okxShowSecret ? "Hide" : "Show"}
-                              </ActionButton>
-                            </div>
-                            <div className="mt-2">
-                              <ActionButton
-                                variant="secondary"
-                                disabled={busyKey.startsWith("okx")}
-                                onClick={() => safePaste(setOkxSecret)}
-                              >
-                                Paste Secret
-                              </ActionButton>
-                            </div>
-                          </FieldRow>
-                        </div>
+                        <FieldRow label="OKX API Key" hint="Paste from OKX dashboard">
+                          <div className="flex gap-2">
+                            <TextInput
+                              value={okxKey}
+                              onChange={setOkxKey}
+                              placeholder="OKX API Key"
+                              disabled={busyKey === "okx_save"}
+                            />
+                            <ActionButton
+                              variant="secondary"
+                              disabled={busyKey === "okx_save"}
+                              onClick={() => safePaste(setOkxKey)}
+                              type="button"
+                            >
+                              Paste
+                            </ActionButton>
+                          </div>
+                        </FieldRow>
 
-                        <div className="space-y-2">
-                          <FieldRow label="OKX Passphrase" hint="The passphrase you created">
-                            <div className="flex gap-2">
-                              <TextInput
-                                type={okxShowPass ? "text" : "password"}
-                                value={okxPassphrase}
-                                onChange={setOkxPassphrase}
-                                placeholder="OKX Passphrase"
-                                disabled={busyKey.startsWith("okx")}
-                              />
-                              <ActionButton
-                                variant="secondary"
-                                disabled={busyKey.startsWith("okx")}
-                                onClick={() => setOkxShowPass((v) => !v)}
-                              >
-                                {okxShowPass ? "Hide" : "Show"}
-                              </ActionButton>
-                            </div>
-                          </FieldRow>
+                        <FieldRow label="OKX API Secret" hint="Keep this private">
+                          <PasswordInput
+                            value={okxSecret}
+                            onChange={setOkxSecret}
+                            placeholder="OKX Secret"
+                            disabled={busyKey === "okx_save"}
+                            showPassword={okxShowSecret}
+                            onToggleShow={() => setOkxShowSecret(!okxShowSecret)}
+                          />
+                          <div className="mt-2">
+                            <ActionButton
+                              variant="secondary"
+                              disabled={busyKey === "okx_save"}
+                              onClick={() => safePaste(setOkxSecret)}
+                              type="button"
+                            >
+                              Paste Secret
+                            </ActionButton>
+                          </div>
+                        </FieldRow>
+
+                        <FieldRow label="OKX Passphrase" hint="The passphrase you created">
+                          <PasswordInput
+                            value={okxPassphrase}
+                            onChange={setOkxPassphrase}
+                            placeholder="OKX Passphrase"
+                            disabled={busyKey === "okx_save"}
+                            showPassword={okxShowPass}
+                            onToggleShow={() => setOkxShowPass(!okxShowPass)}
+                          />
+                        </FieldRow>
+
+                        <div className="flex gap-2">
+                          <ActionButton
+                            variant="emerald"
+                            type="submit"
+                            disabled={busyKey !== "" || !okxKey || !okxSecret || !okxPassphrase}
+                          >
+                            {busyKey === "okx_save" ? "Connecting…" : "Connect OKX"}
+                          </ActionButton>
                         </div>
-                      </div>
+                      </form>
                     ) : (
-                      <Banner type="ok">OKX is already connected for your account.</Banner>
+                      <Banner type="ok">
+                        <div className="flex items-center justify-between">
+                          <span>OKX is connected in {status?.okx_mode || "paper"} mode.</span>
+                          <span className="text-xs bg-emerald-500/20 px-2 py-1 rounded">
+                            {status?.okx_mode || "paper"}
+                          </span>
+                        </div>
+                      </Banner>
                     )}
-
-                    <div className="flex flex-wrap gap-2">
-                      <ActionButton
-                        onClick={testOkx}
-                        disabled={okxConnected || busyKey !== "" || !okxKey || !okxSecret || !okxPassphrase}
-                      >
-                        {busyKey === "okx_test" ? "Testing…" : "Test OKX"}
-                      </ActionButton>
-
-                      <ActionButton
-                        variant="emerald"
-                        onClick={saveOkx}
-                        disabled={okxConnected || busyKey !== "" || !okxKey || !okxSecret || !okxPassphrase}
-                      >
-                        {busyKey === "okx_save" ? "Saving…" : "Save OKX Connection"}
-                      </ActionButton>
-                    </div>
-
-                    <div className="text-xs text-gray-400">
-                      If you don’t have test endpoints, we can remove “Test” and save directly.
-                    </div>
                   </div>
                 </Accordion>
               )}
 
-              {/* ALPACA ACCORDION */}
+              {/* ALPACA ACCORDION - FIXED: Now with form */}
               {needsAlpaca && (
                 <Accordion
                   title="Connect Alpaca"
@@ -655,90 +668,103 @@ export default function Activation() {
                     <Banner type="info">
                       <div className="font-semibold mb-1">Where do I find Alpaca keys?</div>
                       <div className="text-sm text-white/80">
-                        Alpaca Dashboard → API Keys. Copy your
-                        <span className="text-white font-semibold"> Key ID</span> and
-                        <span className="text-white font-semibold"> Secret Key</span>.
+                        Alpaca Dashboard → API Keys. Copy your Key ID and Secret Key.
                       </div>
                     </Banner>
 
                     {!alpacaConnected ? (
-                      <div className="grid md:grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <FieldRow label="Alpaca API Key" hint="Key ID">
-                            <div className="flex gap-2">
-                              <TextInput
-                                value={alpacaKey}
-                                onChange={setAlpacaKey}
-                                placeholder="Alpaca API Key"
-                                disabled={busyKey.startsWith("alpaca")}
-                              />
-                              <ActionButton
-                                variant="secondary"
-                                disabled={busyKey.startsWith("alpaca")}
-                                onClick={() => safePaste(setAlpacaKey)}
-                              >
-                                Paste
-                              </ActionButton>
-                            </div>
-                          </FieldRow>
+                      <form onSubmit={saveAlpaca} className="space-y-4">
+                        {/* Mode selection */}
+                        <div className="flex gap-4 mb-4">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="alpacaMode"
+                              value="paper"
+                              checked={alpacaMode === "paper"}
+                              onChange={(e) => setAlpacaMode(e.target.value)}
+                              className="text-emerald-500"
+                            />
+                            <span>Paper Trading</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="alpacaMode"
+                              value="live"
+                              checked={alpacaMode === "live"}
+                              onChange={(e) => setAlpacaMode(e.target.value)}
+                              className="text-emerald-500"
+                            />
+                            <span>Live Trading</span>
+                          </label>
                         </div>
 
-                        <div className="space-y-2">
-                          <FieldRow label="Alpaca API Secret" hint="Keep this private">
-                            <div className="flex gap-2">
-                              <TextInput
-                                type={alpacaShowSecret ? "text" : "password"}
-                                value={alpacaSecret}
-                                onChange={setAlpacaSecret}
-                                placeholder="Alpaca Secret"
-                                disabled={busyKey.startsWith("alpaca")}
-                              />
-                              <ActionButton
-                                variant="secondary"
-                                disabled={busyKey.startsWith("alpaca")}
-                                onClick={() => setAlpacaShowSecret((v) => !v)}
-                              >
-                                {alpacaShowSecret ? "Hide" : "Show"}
-                              </ActionButton>
-                            </div>
+                        <FieldRow label="Alpaca API Key" hint="Key ID">
+                          <div className="flex gap-2">
+                            <TextInput
+                              value={alpacaKey}
+                              onChange={setAlpacaKey}
+                              placeholder="Alpaca API Key"
+                              disabled={busyKey === "alpaca_save"}
+                            />
+                            <ActionButton
+                              variant="secondary"
+                              disabled={busyKey === "alpaca_save"}
+                              onClick={() => safePaste(setAlpacaKey)}
+                              type="button"
+                            >
+                              Paste
+                            </ActionButton>
+                          </div>
+                        </FieldRow>
 
-                            <div className="mt-2">
-                              <ActionButton
-                                variant="secondary"
-                                disabled={busyKey.startsWith("alpaca")}
-                                onClick={() => safePaste(setAlpacaSecret)}
-                              >
-                                Paste Secret
-                              </ActionButton>
-                            </div>
-                          </FieldRow>
+                        <FieldRow label="Alpaca API Secret" hint="Keep this private">
+                          <PasswordInput
+                            value={alpacaSecret}
+                            onChange={setAlpacaSecret}
+                            placeholder="Alpaca Secret"
+                            disabled={busyKey === "alpaca_save"}
+                            showPassword={alpacaShowSecret}
+                            onToggleShow={() => setAlpacaShowSecret(!alpacaShowSecret)}
+                          />
+                          <div className="mt-2">
+                            <ActionButton
+                              variant="secondary"
+                              disabled={busyKey === "alpaca_save"}
+                              onClick={() => safePaste(setAlpacaSecret)}
+                              type="button"
+                            >
+                              Paste Secret
+                            </ActionButton>
+                          </div>
+                        </FieldRow>
+
+                        <div className="flex gap-2">
+                          <ActionButton
+                            variant="emerald"
+                            type="submit"
+                            disabled={busyKey !== "" || !alpacaKey || !alpacaSecret}
+                          >
+                            {busyKey === "alpaca_save" ? "Connecting…" : "Connect Alpaca"}
+                          </ActionButton>
                         </div>
-                      </div>
+                      </form>
                     ) : (
-                      <Banner type="ok">Alpaca is already connected for your account.</Banner>
+                      <Banner type="ok">
+                        <div className="flex items-center justify-between">
+                          <span>Alpaca is connected in {status?.alpaca_mode || "paper"} mode.</span>
+                          <span className="text-xs bg-emerald-500/20 px-2 py-1 rounded">
+                            {status?.alpaca_mode || "paper"}
+                          </span>
+                        </div>
+                      </Banner>
                     )}
-
-                    <div className="flex flex-wrap gap-2">
-                      <ActionButton
-                        onClick={testAlpaca}
-                        disabled={alpacaConnected || busyKey !== "" || !alpacaKey || !alpacaSecret}
-                      >
-                        {busyKey === "alpaca_test" ? "Testing…" : "Test Alpaca"}
-                      </ActionButton>
-
-                      <ActionButton
-                        variant="emerald"
-                        onClick={saveAlpaca}
-                        disabled={alpacaConnected || busyKey !== "" || !alpacaKey || !alpacaSecret}
-                      >
-                        {busyKey === "alpaca_save" ? "Saving…" : "Save Alpaca Connection"}
-                      </ActionButton>
-                    </div>
                   </div>
                 </Accordion>
               )}
 
-              {/* WALLET ACCORDION */}
+              {/* WALLET ACCORDION - FIXED: Now with form */}
               {needsWallet && (
                 <Accordion
                   title="Connect Wallet"
@@ -752,11 +778,11 @@ export default function Activation() {
                 >
                   <div className="space-y-3">
                     {!walletConnected ? (
-                      <>
+                      <form onSubmit={saveWallet} className="space-y-3">
                         <Banner type="info">
-                          <div className="font-semibold mb-1">Wallet connection (simple mode)</div>
+                          <div className="font-semibold mb-1">Wallet connection</div>
                           <div className="text-sm text-white/80">
-                            Paste your wallet address. (We can upgrade to WalletConnect later.)
+                            Paste your wallet address (0x...).
                           </div>
                         </Banner>
 
@@ -771,6 +797,7 @@ export default function Activation() {
                             variant="secondary"
                             disabled={busyKey === "wallet"}
                             onClick={() => safePaste(setWalletAddress)}
+                            type="button"
                           >
                             Paste
                           </ActionButton>
@@ -778,12 +805,12 @@ export default function Activation() {
 
                         <ActionButton
                           variant="emerald"
-                          onClick={saveWallet}
+                          type="submit"
                           disabled={busyKey !== "" || !walletAddress}
                         >
-                          {busyKey === "wallet" ? "Saving…" : "Save Wallet"}
+                          {busyKey === "wallet" ? "Connecting…" : "Connect Wallet"}
                         </ActionButton>
-                      </>
+                      </form>
                     ) : (
                       <Banner type="ok">Wallet is already connected.</Banner>
                     )}
@@ -817,8 +844,9 @@ export default function Activation() {
           {/* Final message */}
           <div className="ml-14 pt-2">
             {activationComplete ? (
-              <div className="text-emerald-300 text-sm">
-                Activation complete — sending you to your dashboard…
+              <div className="text-emerald-300 text-sm flex items-center gap-2">
+                <span>✓</span>
+                <span>Activation complete — sending you to your dashboard…</span>
               </div>
             ) : (
               <div className="text-gray-400 text-sm">
