@@ -1,16 +1,13 @@
 // src/pages/Activation.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
 
 /* ======================================================
-   SIMPLE STATUS HELPERS
+   SIMPLE STATUS HELPERS (demo-style tone)
 ====================================================== */
 
-const statusLabel = (value) => {
-  if (value) return "Complete";
-  return "Pending";
-};
+const statusLabel = (value) => (value ? "Complete" : "Pending");
 
 const StatusPill = ({ value }) => (
   <span
@@ -79,20 +76,23 @@ export default function Activation() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // avoid state updates after unmount
+  const mountedRef = useRef(true);
+
   // Form fields
-  const [okx, setOkx] = useState({ 
-    apiKey: "", 
-    apiSecret: "", 
-    passphrase: "", 
-    mode: "paper" 
+  const [okx, setOkx] = useState({
+    apiKey: "",
+    apiSecret: "",
+    passphrase: "",
+    mode: "paper",
   });
-  
-  const [alpaca, setAlpaca] = useState({ 
-    apiKey: "", 
-    apiSecret: "", 
-    mode: "paper" 
+
+  const [alpaca, setAlpaca] = useState({
+    apiKey: "",
+    apiSecret: "",
+    mode: "paper",
   });
-  
+
   const [wallet, setWallet] = useState("");
 
   const tier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user]);
@@ -115,33 +115,86 @@ export default function Activation() {
   const canEnableTrading = billingComplete && connectionsComplete;
 
   /* ======================================================
+     REDIRECT LOGIC (the missing piece)
+  ====================================================== */
+
+  const isActivationComplete = (st) => {
+    // prefer explicit flag when present
+    if (st && typeof st.activation_complete !== "undefined") {
+      return Boolean(st.activation_complete);
+    }
+    // fallback: if the product treats "ready" as billing + trading enabled
+    return Boolean(st?.billing_complete && st?.trading_enabled);
+  };
+
+  const applyStatusAndMaybeRedirect = async (nextStatus) => {
+    if (!mountedRef.current) return false;
+
+    const st = nextStatus?.status || nextStatus || {};
+    setStatus(st);
+
+    if (isActivationComplete(st)) {
+      navigate("/dashboard", { replace: true });
+      return true;
+    }
+
+    return false;
+  };
+
+  const syncAndRedirectIfReady = async () => {
+    const activation = await BotAPI.activationStatus();
+    return applyStatusAndMaybeRedirect(activation);
+  };
+
+  const pollForCompletion = async ({ tries = 6, delayMs = 900 } = {}) => {
+    for (let i = 0; i < tries; i++) {
+      const done = await syncAndRedirectIfReady();
+      if (done) return true;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    return false;
+  };
+
+  /* ======================================================
      LOAD DATA
   ====================================================== */
 
   const load = async () => {
     try {
       setError("");
-      
+
       const me = await BotAPI.me();
       const activation = await BotAPI.activationStatus();
 
+      if (!mountedRef.current) return;
+
       setUser(me?.user || me);
-      setStatus(activation?.status || activation);
+
+      // ✅ setStatus + auto redirect if complete
+      await applyStatusAndMaybeRedirect(activation);
     } catch (e) {
       console.error("Load error:", e);
+
+      if (!mountedRef.current) return;
+
       if (e.response?.status === 401) {
-        setError("Session expired. Please login again.");
-        setTimeout(() => navigate("/login"), 2000);
+        setError("Session expired. Please log in again.");
+        setTimeout(() => navigate("/login"), 500);
       } else {
-        setError("Failed to load activation data.");
+        setError("Couldn’t load activation. Please refresh and try again.");
       }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     load();
+    return () => {
+      mountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ======================================================
@@ -154,41 +207,43 @@ export default function Activation() {
     setSuccess("");
     setBusy("okx");
 
-    // Validate
     if (!okx.apiKey || !okx.apiSecret || !okx.passphrase) {
-      setError("All OKX fields are required.");
+      setError("Please fill in all OKX fields.");
       setBusy("");
       return;
     }
 
     try {
-      // FIXED: Using correct API endpoint with proper parameter names
-      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"}/api/integrations/okx`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${BotAPI.getToken()}`
-        },
-        body: JSON.stringify({
-          api_key: okx.apiKey.trim(),
-          api_secret: okx.apiSecret.trim(),
-          passphrase: okx.passphrase.trim(),
-          mode: okx.mode
-        })
-      });
+      const response = await fetch(
+        `${
+          process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"
+        }/api/integrations/okx`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${BotAPI.getToken()}`,
+          },
+          body: JSON.stringify({
+            api_key: okx.apiKey.trim(),
+            api_secret: okx.apiSecret.trim(),
+            passphrase: okx.passphrase.trim(),
+            mode: okx.mode,
+          }),
+        }
+      );
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
 
-      if (!response.ok) {
-        throw new Error(data.message || `HTTP ${response.status}`);
-      }
-
-      setSuccess("✅ OKX connected successfully.");
+      setSuccess("✅ OKX connected.");
       setOkx({ apiKey: "", apiSecret: "", passphrase: "", mode: "paper" });
-      await load();
-    } catch (e) {
-      console.error("OKX connection error:", e);
-      setError(e.message || "OKX connection failed. Please check your API keys.");
+
+      // ✅ refresh + auto redirect if ready
+      await syncAndRedirectIfReady();
+    } catch (err) {
+      console.error("OKX connection error:", err);
+      setError(err?.message || "OKX connection failed. Double-check your keys.");
     } finally {
       setBusy("");
     }
@@ -200,39 +255,42 @@ export default function Activation() {
     setSuccess("");
     setBusy("alpaca");
 
-    // Validate
     if (!alpaca.apiKey || !alpaca.apiSecret) {
-      setError("Both Alpaca API Key and Secret are required.");
+      setError("Please fill in both Alpaca fields.");
       setBusy("");
       return;
     }
 
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"}/api/integrations/alpaca`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${BotAPI.getToken()}`
-        },
-        body: JSON.stringify({
-          api_key: alpaca.apiKey.trim(),
-          api_secret: alpaca.apiSecret.trim(),
-          mode: alpaca.mode
-        })
-      });
+      const response = await fetch(
+        `${
+          process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"
+        }/api/integrations/alpaca`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${BotAPI.getToken()}`,
+          },
+          body: JSON.stringify({
+            api_key: alpaca.apiKey.trim(),
+            api_secret: alpaca.apiSecret.trim(),
+            mode: alpaca.mode,
+          }),
+        }
+      );
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
 
-      if (!response.ok) {
-        throw new Error(data.message || `HTTP ${response.status}`);
-      }
-
-      setSuccess("✅ Alpaca connected successfully.");
+      setSuccess("✅ Alpaca connected.");
       setAlpaca({ apiKey: "", apiSecret: "", mode: "paper" });
-      await load();
-    } catch (e) {
-      console.error("Alpaca connection error:", e);
-      setError(e.message || "Alpaca connection failed. Please check your API keys.");
+
+      // ✅ refresh + auto redirect if ready
+      await syncAndRedirectIfReady();
+    } catch (err) {
+      console.error("Alpaca connection error:", err);
+      setError(err?.message || "Alpaca connection failed. Double-check your keys.");
     } finally {
       setBusy("");
     }
@@ -244,44 +302,48 @@ export default function Activation() {
     setSuccess("");
     setBusy("wallet");
 
-    // Validate
-    if (!wallet.trim()) {
+    const addr = wallet.trim();
+
+    if (!addr) {
       setError("Wallet address is required.");
       setBusy("");
       return;
     }
-
-    if (!wallet.startsWith("0x") || wallet.length !== 42) {
-      setError("Invalid wallet address. Must be 42 characters starting with 0x.");
+    if (!addr.startsWith("0x") || addr.length !== 42) {
+      setError("Wallet address must be 42 characters and start with 0x.");
       setBusy("");
       return;
     }
 
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"}/api/integrations/wallet`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${BotAPI.getToken()}`
-        },
-        body: JSON.stringify({
-          wallet: wallet.trim(),
-          address: wallet.trim()
-        })
-      });
+      const response = await fetch(
+        `${
+          process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"
+        }/api/integrations/wallet`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${BotAPI.getToken()}`,
+          },
+          body: JSON.stringify({
+            wallet: addr,
+            address: addr,
+          }),
+        }
+      );
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
 
-      if (!response.ok) {
-        throw new Error(data.message || `HTTP ${response.status}`);
-      }
-
-      setSuccess("✅ Wallet connected successfully.");
+      setSuccess("✅ Wallet connected.");
       setWallet("");
-      await load();
-    } catch (e) {
-      console.error("Wallet connection error:", e);
-      setError(e.message || "Wallet connection failed.");
+
+      // ✅ refresh + auto redirect if ready
+      await syncAndRedirectIfReady();
+    } catch (err) {
+      console.error("Wallet connection error:", err);
+      setError(err?.message || "Wallet connection failed.");
     } finally {
       setBusy("");
     }
@@ -293,32 +355,41 @@ export default function Activation() {
     setBusy("trading");
 
     if (!canEnableTrading && !tradingEnabled) {
-      setError("Complete billing and connections first.");
+      setError("Finish billing + required connections first.");
       setBusy("");
       return;
     }
 
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"}/api/trading/enable`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${BotAPI.getToken()}`
-        },
-        body: JSON.stringify({ enabled: !tradingEnabled })
-      });
+      const response = await fetch(
+        `${
+          process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"
+        }/api/trading/enable`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${BotAPI.getToken()}`,
+          },
+          body: JSON.stringify({ enabled: !tradingEnabled }),
+        }
+      );
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
 
-      if (!response.ok) {
-        throw new Error(data.message || `HTTP ${response.status}`);
+      setSuccess(tradingEnabled ? "Trading turned off." : "✅ Trading turned on.");
+
+      // ✅ refresh immediately
+      await syncAndRedirectIfReady();
+
+      // ✅ some backends finalize activation async—poll briefly
+      if (!tradingEnabled) {
+        await pollForCompletion({ tries: 6, delayMs: 900 });
       }
-
-      setSuccess(tradingEnabled ? "Trading disabled." : "✅ Trading enabled.");
-      await load();
-    } catch (e) {
-      console.error("Trading toggle error:", e);
-      setError("Failed to update trading. Please try again.");
+    } catch (err) {
+      console.error("Trading toggle error:", err);
+      setError(err?.message || "Couldn’t update trading. Please try again.");
     } finally {
       setBusy("");
     }
@@ -332,7 +403,7 @@ export default function Activation() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-white">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4" />
           <p className="text-gray-400">Loading activation…</p>
         </div>
       </div>
@@ -342,14 +413,13 @@ export default function Activation() {
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="max-w-4xl mx-auto space-y-6">
-
         {/* Messages */}
         {error && (
           <div className="bg-red-500/20 border border-red-500/30 p-4 rounded-lg text-red-200">
             ⚠️ {error}
           </div>
         )}
-        
+
         {success && (
           <div className="bg-emerald-500/20 border border-emerald-500/30 p-4 rounded-lg text-emerald-200">
             ✅ {success}
@@ -357,8 +427,14 @@ export default function Activation() {
         )}
 
         {/* Header */}
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Activation</h1>
+        <div className="flex justify-between items-center gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">Activation</h1>
+            <p className="text-sm text-gray-400">
+              Quick setup. When you’re done, we’ll send you to your dashboard automatically.
+            </p>
+          </div>
+
           <div className="flex items-center gap-2">
             <span className="text-gray-400">Tier:</span>
             <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">
@@ -369,52 +445,59 @@ export default function Activation() {
 
         {/* BILLING */}
         <Section
-          title="1. Billing"
-          description="Payment method must be on file."
+          title="1) Billing"
+          description="Add a payment method to unlock activation."
           right={<StatusPill value={billingComplete} />}
         >
-          {!billingComplete && (
-            <Button onClick={() => navigate("/billing")}>
-              Add Payment Method
-            </Button>
+          {!billingComplete ? (
+            <Button onClick={() => navigate("/billing")}>Add Payment Method</Button>
+          ) : (
+            <div className="text-sm text-emerald-200">✅ Billing is set.</div>
           )}
         </Section>
 
         {/* CONNECTIONS */}
         <Section
-          title="2. Connections"
-          description="Connect required services for your tier."
+          title="2) Connections"
+          description="Connect what your tier needs."
           right={<StatusPill value={connectionsComplete} />}
         >
           <div className="space-y-6">
             {/* OKX */}
             {needsOkx && !okxConnected && (
-              <form onSubmit={connectOKX} className="space-y-3 border-t border-white/10 pt-4">
+              <form
+                onSubmit={connectOKX}
+                className="space-y-3 border-t border-white/10 pt-4"
+              >
                 <h3 className="font-semibold text-blue-300">OKX Exchange</h3>
-                
+
                 <div className="grid gap-3">
-                  <Input 
+                  <Input
                     placeholder="API Key"
                     value={okx.apiKey}
                     onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })}
                     disabled={busy === "okx"}
                     autoComplete="off"
                   />
-                  
-                  <Input 
+
+                  <Input
                     placeholder="API Secret"
                     type="password"
                     value={okx.apiSecret}
-                    onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })}
+                    onChange={(e) =>
+                      setOkx({ ...okx, apiSecret: e.target.value })
+                    }
                     disabled={busy === "okx"}
                     autoComplete="new-password"
                   />
-                  
-                  <Input 
+
+                  <Input
                     placeholder="Passphrase"
                     type="password"
                     value={okx.passphrase}
-                    onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })}
+                    onChange={(e) =>
+                      setOkx({ ...okx, passphrase: e.target.value })
+                    }
                     disabled={busy === "okx"}
                     autoComplete="new-password"
                   />
@@ -426,27 +509,37 @@ export default function Activation() {
                         name="okxMode"
                         value="paper"
                         checked={okx.mode === "paper"}
-                        onChange={(e) => setOkx({ ...okx, mode: e.target.value })}
+                        onChange={(e) =>
+                          setOkx({ ...okx, mode: e.target.value })
+                        }
                         className="text-emerald-500"
                       />
                       <span className="text-sm">Paper Trading</span>
                     </label>
+
                     <label className="flex items-center gap-2">
                       <input
                         type="radio"
                         name="okxMode"
                         value="live"
                         checked={okx.mode === "live"}
-                        onChange={(e) => setOkx({ ...okx, mode: e.target.value })}
+                        onChange={(e) =>
+                          setOkx({ ...okx, mode: e.target.value })
+                        }
                         className="text-emerald-500"
                       />
                       <span className="text-sm">Live Trading</span>
                     </label>
                   </div>
 
-                  <Button 
-                    type="submit" 
-                    disabled={busy === "okx" || !okx.apiKey || !okx.apiSecret || !okx.passphrase}
+                  <Button
+                    type="submit"
+                    disabled={
+                      busy === "okx" ||
+                      !okx.apiKey ||
+                      !okx.apiSecret ||
+                      !okx.passphrase
+                    }
                     variant="success"
                   >
                     {busy === "okx" ? "Connecting..." : "Connect OKX"}
@@ -457,23 +550,30 @@ export default function Activation() {
 
             {/* Alpaca */}
             {needsAlpaca && !alpacaConnected && (
-              <form onSubmit={connectAlpaca} className="space-y-3 border-t border-white/10 pt-4">
+              <form
+                onSubmit={connectAlpaca}
+                className="space-y-3 border-t border-white/10 pt-4"
+              >
                 <h3 className="font-semibold text-emerald-300">Alpaca</h3>
-                
+
                 <div className="grid gap-3">
-                  <Input 
+                  <Input
                     placeholder="API Key"
                     value={alpaca.apiKey}
-                    onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })}
+                    onChange={(e) =>
+                      setAlpaca({ ...alpaca, apiKey: e.target.value })
+                    }
                     disabled={busy === "alpaca"}
                     autoComplete="off"
                   />
-                  
-                  <Input 
+
+                  <Input
                     placeholder="Secret Key"
                     type="password"
                     value={alpaca.apiSecret}
-                    onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })}
+                    onChange={(e) =>
+                      setAlpaca({ ...alpaca, apiSecret: e.target.value })
+                    }
                     disabled={busy === "alpaca"}
                     autoComplete="new-password"
                   />
@@ -485,26 +585,31 @@ export default function Activation() {
                         name="alpacaMode"
                         value="paper"
                         checked={alpaca.mode === "paper"}
-                        onChange={(e) => setAlpaca({ ...alpaca, mode: e.target.value })}
+                        onChange={(e) =>
+                          setAlpaca({ ...alpaca, mode: e.target.value })
+                        }
                         className="text-emerald-500"
                       />
                       <span className="text-sm">Paper Trading</span>
                     </label>
+
                     <label className="flex items-center gap-2">
                       <input
                         type="radio"
                         name="alpacaMode"
                         value="live"
                         checked={alpaca.mode === "live"}
-                        onChange={(e) => setAlpaca({ ...alpaca, mode: e.target.value })}
+                        onChange={(e) =>
+                          setAlpaca({ ...alpaca, mode: e.target.value })
+                        }
                         className="text-emerald-500"
                       />
                       <span className="text-sm">Live Trading</span>
                     </label>
                   </div>
 
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     disabled={busy === "alpaca" || !alpaca.apiKey || !alpaca.apiSecret}
                     variant="success"
                   >
@@ -516,9 +621,12 @@ export default function Activation() {
 
             {/* Wallet */}
             {needsWallet && !walletConnected && (
-              <form onSubmit={connectWallet} className="space-y-3 border-t border-white/10 pt-4">
+              <form
+                onSubmit={connectWallet}
+                className="space-y-3 border-t border-white/10 pt-4"
+              >
                 <h3 className="font-semibold text-purple-300">Wallet</h3>
-                
+
                 <div className="grid gap-3">
                   <Input
                     placeholder="0x..."
@@ -528,8 +636,8 @@ export default function Activation() {
                     autoComplete="off"
                   />
 
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     disabled={busy === "wallet" || !wallet}
                     variant="success"
                   >
@@ -539,16 +647,16 @@ export default function Activation() {
               </form>
             )}
 
-            {/* Already Connected Message */}
+            {/* Already Connected */}
             {needsOkx && okxConnected && (
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm">
-                ✅ OKX connected in {status?.okx_mode || "paper"} mode
+                ✅ OKX connected ({status?.okx_mode || "paper"} mode)
               </div>
             )}
 
             {needsAlpaca && alpacaConnected && (
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm">
-                ✅ Alpaca connected in {status?.alpaca_mode || "paper"} mode
+                ✅ Alpaca connected ({status?.alpaca_mode || "paper"} mode)
               </div>
             )}
 
@@ -562,35 +670,44 @@ export default function Activation() {
 
         {/* TRADING */}
         <Section
-          title="3. Enable Trading"
-          description="Turn trading on when all connections are complete."
+          title="3) Enable Trading"
+          description="When you’re ready, turn trading on."
           right={<StatusPill value={tradingEnabled} />}
         >
           <div className="space-y-3">
             {!canEnableTrading && !tradingEnabled && (
               <p className="text-sm text-yellow-500/80">
-                ⚠️ Complete billing and required connections first
+                ⚠️ Finish billing + required connections first.
               </p>
             )}
-            
+
             <Button
               variant="success"
-              disabled={!canEnableTrading && !tradingEnabled || busy === "trading"}
+              disabled={((!canEnableTrading && !tradingEnabled) || busy === "trading")}
               onClick={toggleTrading}
             >
-              {busy === "trading" ? "Updating..." : 
-               tradingEnabled ? "Disable Trading" : "Enable Trading"}
+              {busy === "trading"
+                ? "Updating..."
+                : tradingEnabled
+                ? "Disable Trading"
+                : "Enable Trading"}
             </Button>
+
+            <p className="text-xs text-gray-500">
+              Tip: If activation completes, you’ll be sent to your dashboard automatically.
+            </p>
           </div>
         </Section>
 
-        {/* Navigation */}
-        <div className="flex gap-3 pt-4">
-          <Button onClick={() => navigate("/dashboard")}>
-            Back to Dashboard
+        {/* Manual escape hatch */}
+        <div className="flex gap-3 pt-2">
+          <Button variant="secondary" onClick={() => navigate("/dashboard")}>
+            Go to Dashboard
+          </Button>
+          <Button variant="secondary" onClick={syncAndRedirectIfReady} disabled={!!busy}>
+            Refresh Status
           </Button>
         </div>
-
       </div>
     </div>
   );
