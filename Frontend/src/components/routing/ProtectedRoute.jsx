@@ -1,41 +1,33 @@
-// src/components/routing/ProtectedRoute.jsx
-import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+// In your router configuration
+import ProtectedRoute from "./components/routing/ProtectedRoute";
 
-export default function ProtectedRoute({ requireActivation = false }) {
-  const location = useLocation();
-  const { user, loading } = useAuth();
-
-  // Wait for auth to finish checking
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  // Not logged in
-  if (!user) {
-    return (
-      <Navigate
-        to="/login"
-        replace
-        state={{ from: location }}
-      />
-    );
-  }
-
-  // Optional: enforce activation complete
-  if (requireActivation && !user.activation_complete) {
-    return (
-      <Navigate
-        to="/activation"
-        replace
-        state={{ from: location }}
-      />
-    );
-  }
-
-  return <Outlet />;
-}
+const router = createBrowserRouter([
+  {
+    element: <Root />,
+    children: [
+      // Public routes
+      { path: "/login", element: <Login /> },
+      { path: "/signup", element: <Signup /> },
+      { path: "/pricing", element: <Pricing /> },
+      { path: "/trade-demo", element: <TradeDemo /> },
+      
+      // Protected routes (just need to be logged in)
+      {
+        element: <ProtectedRoute />,
+        children: [
+          { path: "/billing", element: <Billing /> },
+          { path: "/activation", element: <Activation /> },
+        ],
+      },
+      
+      // Dashboard - requires activation (let dashboard handle redirects)
+      {
+        element: <ProtectedRoute />,
+        children: [
+          { path: "/dashboard", element: <MemberDashboard /> },
+          { path: "/settings", element: <Settings /> },
+        ],
+      },
+    ],
+  },
+]);
