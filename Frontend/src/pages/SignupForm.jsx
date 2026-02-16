@@ -20,13 +20,35 @@ export default function Signup() {
 
   const validate = () => {
     if (!form.email.trim()) return "Email is required.";
-    if (form.password.length < 8)
-      return "Password must be at least 8 characters.";
-    if (form.password !== form.confirmPassword)
-      return "Passwords do not match.";
-    if (!form.acceptTerms)
-      return "You must accept the Terms and Privacy Policy.";
+    if (form.password.length < 8) return "Password must be at least 8 characters.";
+    if (form.password !== form.confirmPassword) return "Passwords do not match.";
+    if (!form.acceptTerms) return "You must accept the Terms and Privacy Policy.";
     return null;
+  };
+
+  const routeAfterAuth = async () => {
+    // Decide best next page based on real backend flags
+    try {
+      const act = await BotAPI.activationStatus();
+      const status = act?.status || act || {};
+
+      if (!status.billing_complete) {
+        navigate("/billing", { replace: true });
+        return;
+      }
+
+      // If billing complete but setup not finished, go to activation
+      if (!status.activation_complete) {
+        navigate("/activation", { replace: true });
+        return;
+      }
+
+      // Fully ready
+      navigate("/dashboard", { replace: true });
+    } catch {
+      // If activation status fails, a safe default is billing (first onboarding step)
+      navigate("/billing", { replace: true });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -42,37 +64,46 @@ export default function Signup() {
     setLoading(true);
     setError("");
 
-    try {
-      const email = form.email.trim().toLowerCase();
+    const email = form.email.trim().toLowerCase();
+    const password = form.password;
 
-      // 1️⃣ Create account
+    try {
+      // Make sure no stale token causes weird redirects
+      BotAPI.clearToken?.();
+
+      // 1) Create account
       await BotAPI.signup({
         email,
-        password: form.password,
+        password,
         tier: form.tier,
         strategy: form.strategy,
       });
 
-      // 2️⃣ Automatically log in
-      await BotAPI.login({
-        email,
-        password: form.password,
-      });
+      // 2) Auto-login (this must store token)
+      await BotAPI.login({ email, password });
 
-      // 3️⃣ Always go to billing (onboarding step 1)
-      navigate("/billing", { replace: true });
+      // 3) Confirm token works BEFORE routing (prevents “go to login until refresh”)
+      await BotAPI.me();
 
+      // 4) Route based on onboarding status (billing → activation → dashboard)
+      await routeAfterAuth();
     } catch (err) {
       console.error("[Signup] Error:", err);
 
-      if (err.response?.status === 409) {
-        setError("An account with this email already exists.");
-      } else if (err.response?.status === 400) {
+      const status = err?.response?.status;
+
+      if (status === 409) {
+        // Account exists → send to login with email prefilled (better UX than “dead end”)
+        navigate(`/login?email=${encodeURIComponent(email)}`, { replace: true });
+        return;
+      }
+
+      if (status === 400) {
         setError("Invalid signup information.");
-      } else if (err.code === "ERR_NETWORK") {
+      } else if (err?.code === "ERR_NETWORK") {
         setError("Network error. Please try again.");
       } else {
-        setError("Signup failed. Please try again.");
+        setError(err?.response?.data?.message || "Signup failed. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -82,12 +113,8 @@ export default function Signup() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950 px-4">
       <div className="w-full max-w-lg bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-xl">
-        <h1 className="text-3xl font-bold text-white mb-2">
-          Create your account
-        </h1>
-        <p className="text-gray-400 mb-6">
-          Start trading with AI in minutes
-        </p>
+        <h1 className="text-3xl font-bold text-white mb-2">Create your account</h1>
+        <p className="text-gray-400 mb-6">Start trading with AI in minutes</p>
 
         {error && (
           <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
@@ -96,16 +123,13 @@ export default function Signup() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-
           <input
             type="email"
             required
             autoComplete="email"
             placeholder="Email"
             value={form.email}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, email: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
           />
 
@@ -115,9 +139,7 @@ export default function Signup() {
             autoComplete="new-password"
             placeholder="Password"
             value={form.password}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, password: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
           />
 
@@ -127,17 +149,13 @@ export default function Signup() {
             autoComplete="new-password"
             placeholder="Confirm password"
             value={form.confirmPassword}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, confirmPassword: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))}
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
           />
 
           <select
             value={form.strategy}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, strategy: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, strategy: e.target.value }))}
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
           >
             <option value="ai_weighted">AI Weighted (Recommended)</option>
@@ -149,12 +167,7 @@ export default function Signup() {
             <input
               type="checkbox"
               checked={form.acceptTerms}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  acceptTerms: e.target.checked,
-                }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, acceptTerms: e.target.checked }))}
               className="mt-1"
             />
             <span>
@@ -176,7 +189,6 @@ export default function Signup() {
           >
             {loading ? "Creating account…" : "Create account & continue"}
           </button>
-
         </form>
 
         <p className="mt-6 text-center text-gray-400 text-sm">
