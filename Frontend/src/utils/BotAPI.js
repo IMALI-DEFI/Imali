@@ -1,8 +1,7 @@
+// src/utils/BotAPI.js
 import axios from "axios";
 
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
-
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const TOKEN_KEY = "imali_token";
 
 /* =========================
@@ -46,7 +45,6 @@ const getStoredToken = () => safeGet(TOKEN_KEY);
 
 const setStoredToken = (token) => {
   if (!token || typeof token !== "string") return;
-
   safeSet(TOKEN_KEY, token);
   api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 };
@@ -63,11 +61,9 @@ const clearStoredToken = () => {
 api.interceptors.request.use(
   (config) => {
     const token = getStoredToken();
-
     if (token && typeof token === "string") {
       config.headers.Authorization = `Bearer ${token}`;
     }
-
     return config;
   },
   (error) => Promise.reject(error)
@@ -104,6 +100,15 @@ api.interceptors.response.use(
     const url = error?.config?.url || "";
     const path = getPath();
 
+    // Handle 429 specifically
+    if (status === 429) {
+      console.warn("Rate limited - slowing down requests");
+      // Add a small delay before rejecting
+      return new Promise((resolve, reject) => {
+        setTimeout(() => reject(error), 1000);
+      });
+    }
+
     const isAuthEndpoint =
       url.includes("/api/auth/login") ||
       url.includes("/api/signup");
@@ -117,10 +122,8 @@ api.interceptors.response.use(
 
       if (!isWhitelisted && !redirecting) {
         redirecting = true;
-
         const next = encodeURIComponent(path);
         window.location.href = `/login?next=${next}`;
-
         setTimeout(() => {
           redirecting = false;
         }, 4000);
@@ -155,14 +158,12 @@ const getErrMessage = (err, fallback = "Request failed") => {
 
 const BotAPI = {
   /* TOKEN */
-
   setToken: setStoredToken,
   getToken: getStoredToken,
   clearToken: clearStoredToken,
   isLoggedIn: () => !!getStoredToken(),
 
   /* AUTH */
-
   async signup(payload) {
     const res = await api.post("/api/signup", payload);
     return unwrap(res);
@@ -170,16 +171,12 @@ const BotAPI = {
 
   async login(payload) {
     clearStoredToken();
-
     const res = await api.post("/api/auth/login", payload);
     const data = unwrap(res);
-
     if (!data?.token) {
       throw new Error("Login failed: no token returned");
     }
-
     setStoredToken(data.token);
-
     return data;
   },
 
@@ -188,13 +185,7 @@ const BotAPI = {
     return unwrap(res);
   },
 
-  async activationStatus() {
-    const res = await api.get("/api/me/activation-status");
-    return unwrap(res);
-  },
-
   /* BILLING */
-
   async createSetupIntent(payload) {
     const res = await api.post("/api/billing/setup-intent", payload);
     return unwrap(res);
@@ -206,7 +197,6 @@ const BotAPI = {
   },
 
   /* INTEGRATIONS */
-
   async connectOKX(payload) {
     const res = await api.post("/api/integrations/okx", payload);
     return unwrap(res);
@@ -223,14 +213,12 @@ const BotAPI = {
   },
 
   /* TRADING */
-
   async toggleTrading(enabled) {
     const res = await api.post("/api/trading/enable", { enabled });
     return unwrap(res);
   },
 
   /* BOT */
-
   async startBot(payload = { mode: "paper" }) {
     const res = await api.post("/api/bot/start", payload);
     return unwrap(res);
@@ -242,7 +230,6 @@ const BotAPI = {
   },
 
   /* UTIL */
-
   errMessage(err, fallback) {
     return getErrMessage(err, fallback);
   },
