@@ -1,12 +1,11 @@
 // src/pages/Signup.jsx
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import BotAPI from "../utils/BotAPI";
 import { useAuth } from "../context/AuthContext";
 
 export default function Signup() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { signup, login } = useAuth();
 
   const [form, setForm] = useState({
     email: "",
@@ -24,6 +23,8 @@ export default function Signup() {
     if (!form.email.trim()) return "Email is required.";
     if (form.password.length < 8)
       return "Password must be at least 8 characters.";
+    if (form.password.length > 72)
+      return "Password must be 72 characters or less.";
     if (form.password !== form.confirmPassword)
       return "Passwords do not match.";
     if (!form.acceptTerms)
@@ -48,18 +49,26 @@ export default function Signup() {
       const email = form.email.trim().toLowerCase();
 
       // 1️⃣ Create account
-      await BotAPI.signup({
+      const signupResult = await signup({
         email,
         password: form.password,
         tier: form.tier,
         strategy: form.strategy,
       });
 
-      // 2️⃣ Log in via AuthContext
+      if (!signupResult.success) {
+        setError(signupResult.error);
+        setLoading(false);
+        return;
+      }
+
+      // 2️⃣ Log in
       const loginResult = await login(email, form.password);
       
       if (!loginResult.success) {
-        throw new Error(loginResult.error);
+        setError(loginResult.error);
+        setLoading(false);
+        return;
       }
 
       // 3️⃣ Store email for billing page
@@ -78,13 +87,18 @@ export default function Signup() {
 
     } catch (err) {
       console.error("[Signup] Error:", err);
-
+      
+      // Handle different error types
       if (err.response?.status === 409) {
         setError("An account with this email already exists.");
       } else if (err.response?.status === 400) {
-        setError("Invalid signup information.");
-      } else if (err.code === "ERR_NETWORK") {
-        setError("Network error. Please try again.");
+        setError(err.response?.data?.message || "Invalid signup information.");
+      } else if (err.response?.status === 429) {
+        setError("Too many attempts. Please try again later.");
+      } else if (err.response?.status === 503) {
+        setError("Service temporarily unavailable. Please try again.");
+      } else if (err.message === 'Network Error') {
+        setError("Unable to connect to server. Please check your connection.");
       } else {
         setError(err.message || "Signup failed. Please try again.");
       }
@@ -93,7 +107,6 @@ export default function Signup() {
     }
   };
 
-  // Return your existing JSX - unchanged
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950 px-4">
       <div className="w-full max-w-lg bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-xl">
@@ -111,7 +124,6 @@ export default function Signup() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Your existing form fields - unchanged */}
           <input
             type="email"
             required
@@ -122,6 +134,7 @@ export default function Signup() {
               setForm((f) => ({ ...f, email: e.target.value }))
             }
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
+            disabled={loading}
           />
 
           <input
@@ -134,6 +147,7 @@ export default function Signup() {
               setForm((f) => ({ ...f, password: e.target.value }))
             }
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
+            disabled={loading}
           />
 
           <input
@@ -146,6 +160,7 @@ export default function Signup() {
               setForm((f) => ({ ...f, confirmPassword: e.target.value }))
             }
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
+            disabled={loading}
           />
 
           <select
@@ -154,6 +169,7 @@ export default function Signup() {
               setForm((f) => ({ ...f, strategy: e.target.value }))
             }
             className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
+            disabled={loading}
           >
             <option value="ai_weighted">AI Weighted (Recommended)</option>
             <option value="momentum">Momentum</option>
@@ -171,6 +187,7 @@ export default function Signup() {
                 }))
               }
               className="mt-1"
+              disabled={loading}
             />
             <span>
               I agree to the{" "}
@@ -187,7 +204,7 @@ export default function Signup() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold disabled:opacity-50"
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Creating account…" : "Create account & continue"}
           </button>
