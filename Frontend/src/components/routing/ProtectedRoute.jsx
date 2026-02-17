@@ -6,37 +6,51 @@ import BotAPI from "../../utils/BotAPI";
 
 export default function ProtectedRoute({ requireActivation = false }) {
   const location = useLocation();
-  const { user, loading } = useAuth();
+  const { user, loading, initialized } = useAuth();
   const [checking, setChecking] = useState(true);
   const [redirectTo, setRedirectTo] = useState(null);
 
   useEffect(() => {
+    let mounted = true;
+    let timeoutId;
+
     const checkAccess = async () => {
       // Wait for auth to load
-      if (loading) return;
+      if (loading || !initialized) return;
 
       // Not logged in
       if (!user) {
-        setRedirectTo("/login");
-        setChecking(false);
+        if (mounted) {
+          setRedirectTo("/login");
+          setChecking(false);
+        }
         return;
       }
 
       // If activation not required, allow access
       if (!requireActivation) {
-        setChecking(false);
+        if (mounted) {
+          setChecking(false);
+        }
         return;
       }
 
-      // Check activation status
       try {
-        const act = await BotAPI.activationStatus();
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Activation check timeout')), 10000);
+        });
+
+        const actPromise = BotAPI.activationStatus();
+        const act = await Promise.race([actPromise, timeoutPromise]);
+        
+        clearTimeout(timeoutId);
+        
         const status = act?.status || act || {};
 
         // Check billing first
         if (!status.billing_complete) {
-          setRedirectTo("/billing");
-          setChecking(false);
+          if (mounted) setRedirectTo("/billing");
           return;
         }
 
@@ -60,26 +74,36 @@ export default function ProtectedRoute({ requireActivation = false }) {
         const tradingEnabled = !!status.trading_enabled;
         const activationComplete = status.billing_complete && connectionsComplete && tradingEnabled;
 
-        // If not fully activated, send to activation
         if (!activationComplete) {
-          setRedirectTo("/activation");
+          if (mounted) setRedirectTo("/activation");
         }
       } catch (error) {
         console.error("Failed to check activation:", error);
-        // On error, let the page handle it
+        // On timeout or error, still allow access to activation page
+        if (mounted && error.message?.includes('timeout')) {
+          setRedirectTo("/activation");
+        }
       } finally {
-        setChecking(false);
+        if (mounted) setChecking(false);
       }
     };
 
     checkAccess();
-  }, [user, loading, requireActivation]);
+
+    return () => {
+      mounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [user, loading, initialized, requireActivation, location.pathname]);
 
   // Show loading spinner while checking
-  if (loading || checking) {
+  if (loading || !initialized || checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
+        <div className="text-center">
+          <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-400">Checking authentication...</p>
+        </div>
       </div>
     );
   }
