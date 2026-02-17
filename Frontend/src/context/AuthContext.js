@@ -1,72 +1,71 @@
 // src/context/AuthContext.js
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import BotAPI from '../utils/BotAPI';
+import React, {
+  createContext,
+  useState,
+  useContext,
+  useEffect,
+  useCallback,
+  useMemo
+} from "react";
+import BotAPI from "../utils/BotAPI";
 
 const AuthContext = createContext({});
-
 export const useAuth = () => useContext(AuthContext);
 
-// Simple retry function with exponential backoff
-const retry = async (fn, retries = 3, delay = 1000) => {
+/* -------------------------------------------------------
+   Retry Helper (Safe + Controlled)
+-------------------------------------------------------- */
+const retry = async (fn, retries = 2, delay = 800) => {
   try {
     return await fn();
-  } catch (error) {
-    // Only retry on 429 or network errors
-    if (retries > 0 && (error.response?.status === 429 || error.code === 'ERR_NETWORK')) {
-      console.log(`Rate limited, retrying in ${delay}ms... (${retries} retries left)`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+  } catch (err) {
+    if (
+      retries > 0 &&
+      (err.response?.status === 429 || err.code === "ERR_NETWORK")
+    ) {
+      await new Promise((r) => setTimeout(r, delay));
       return retry(fn, retries - 1, delay * 2);
     }
-    throw error;
+    throw err;
   }
 };
 
+/* =======================================================
+   AUTH PROVIDER
+======================================================= */
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [activation, setActivation] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
 
-  // Load user and activation data in one go with retry logic
+  /* -------------------------------------------------------
+     Load User + Activation Together (Single Source)
+  -------------------------------------------------------- */
   const loadUserData = useCallback(async () => {
     if (!BotAPI.isLoggedIn()) {
       setUser(null);
       setActivation(null);
       setLoading(false);
-      setInitialized(true);
       return;
     }
 
     try {
-      // Get user data with retry
-      const userData = await retry(async () => {
-        const data = await BotAPI.me();
-        if (!data) throw new Error('No user data');
-        return data;
-      }, 3, 1000);
-      
-      // Try to get activation data (but don't fail if it's not available)
-      let activationData = null;
-      try {
-        const actResponse = await retry(async () => {
-          const data = await BotAPI.activationStatus();
-          return data?.status || data;
-        }, 2, 1500);
-        activationData = actResponse;
-      } catch (actErr) {
-        console.warn('Could not load activation data:', actErr);
-      }
+      setLoading(true);
 
-      setUser(userData);
-      setActivation(activationData);
-    } catch (error) {
-      console.error('Failed to load user data:', error);
+      const userData = await retry(() => BotAPI.me());
+      const activationData = await retry(() =>
+        BotAPI.activationStatus()
+      );
+
+      setUser(userData?.user || userData || null);
+      setActivation(activationData?.status || activationData || null);
+    } catch (err) {
+      console.error("Auth load failed:", err);
       BotAPI.clearToken();
       setUser(null);
       setActivation(null);
     } finally {
       setLoading(false);
-      setInitialized(true);
     }
   }, []);
 
@@ -74,122 +73,100 @@ export const AuthProvider = ({ children }) => {
     loadUserData();
   }, [loadUserData]);
 
-  // Compute activation status from user + activation data
-  const activationComplete = useCallback(() => {
+  /* -------------------------------------------------------
+     Activation Completion Logic (Pure + Safe)
+  -------------------------------------------------------- */
+  const activationComplete = useMemo(() => {
     if (!user || !activation) return false;
-    
-    const tier = (user.tier || 'starter').toLowerCase();
-    
-    // Check billing
+
+    const tier = (user.tier || "starter").toLowerCase();
+
     if (!activation.billing_complete) return false;
-    
-    // Check connections based on tier
-    const needsOkx = ['starter', 'pro', 'bundle'].includes(tier);
-    const needsAlpaca = ['starter', 'bundle'].includes(tier);
-    const needsWallet = ['elite', 'stock', 'bundle'].includes(tier);
-    
-    const okxConnected = !!activation.okx_connected;
-    const alpacaConnected = !!activation.alpaca_connected;
-    const walletConnected = !!activation.wallet_connected;
-    
-    const connectionsComplete = 
-      (!needsOkx || okxConnected) &&
-      (!needsAlpaca || alpacaConnected) &&
-      (!needsWallet || walletConnected);
-    
-    // Check trading enabled
-    if (!activation.trading_enabled) return false;
-    
-    return activation.billing_complete && connectionsComplete && activation.trading_enabled;
+
+    const needsOkx = ["starter", "pro", "bundle"].includes(tier);
+    const needsAlpaca = ["starter", "bundle"].includes(tier);
+    const needsWallet = ["elite", "stock", "bundle"].includes(tier);
+
+    const okxOk = !needsOkx || activation.okx_connected;
+    const alpacaOk = !needsAlpaca || activation.alpaca_connected;
+    const walletOk = !needsWallet || activation.wallet_connected;
+
+    return okxOk && alpacaOk && walletOk && activation.trading_enabled;
   }, [user, activation]);
 
+  /* -------------------------------------------------------
+     Login
+  -------------------------------------------------------- */
   const login = async (email, password) => {
     try {
-      const response = await BotAPI.login({ email, password });
-      
-      if (!response) {
-        throw new Error('No response from server');
-      }
-
-      // Load user data immediately after login
+      const res = await BotAPI.login({ email, password });
       await loadUserData();
-      
-      return { success: true, data: response };
-    } catch (error) {
-      console.error('Login error:', error);
-      
-      let errorMessage = 'Login failed';
-      if (error.response?.status === 401) {
-        errorMessage = 'Invalid email or password';
-      } else if (error.response?.status === 429) {
-        errorMessage = 'Too many attempts. Please wait a moment.';
-      } else if (error.response?.status === 503) {
-        errorMessage = 'Service temporarily unavailable.';
-      } else if (error.message === 'Network Error') {
-        errorMessage = 'Unable to connect to server.';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      return { success: false, error: errorMessage };
+      return { success: true, data: res };
+    } catch (err) {
+      return {
+        success: false,
+        error:
+          err.response?.data?.message ||
+          err.message ||
+          "Login failed"
+      };
     }
   };
 
-  const signup = async (userData) => {
+  /* -------------------------------------------------------
+     Signup
+  -------------------------------------------------------- */
+  const signup = async (data) => {
     try {
-      const response = await BotAPI.signup(userData);
-      
-      if (!response) {
-        throw new Error('No response from server');
-      }
-      
-      return { success: true, data: response };
-    } catch (error) {
-      console.error('Signup error:', error);
-      
-      let errorMessage = 'Signup failed';
-      if (error.response?.status === 409) {
-        errorMessage = 'Email already exists';
-      } else if (error.response?.status === 400) {
-        errorMessage = error.response?.data?.message || 'Invalid signup information';
-      } else if (error.response?.status === 429) {
-        errorMessage = 'Too many attempts. Please wait a moment.';
-      } else if (error.response?.status === 503) {
-        errorMessage = 'Service temporarily unavailable.';
-      } else if (error.message === 'Network Error') {
-        errorMessage = 'Unable to connect to server.';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      return { success: false, error: errorMessage };
+      const res = await BotAPI.signup(data);
+      return { success: true, data: res };
+    } catch (err) {
+      return {
+        success: false,
+        error:
+          err.response?.data?.message ||
+          err.message ||
+          "Signup failed"
+      };
     }
   };
 
+  /* -------------------------------------------------------
+     Logout
+  -------------------------------------------------------- */
   const logout = () => {
     BotAPI.clearToken();
     setUser(null);
     setActivation(null);
   };
 
+  /* -------------------------------------------------------
+     Soft Refresh (Safe for toggles)
+  -------------------------------------------------------- */
   const refreshUser = async () => {
     await loadUserData();
-    return user;
   };
 
+  /* -------------------------------------------------------
+     Context Value
+  -------------------------------------------------------- */
   const value = {
     user,
     activation,
+    setActivation, // safe update hook
     loading,
-    initialized,
-    activationComplete: activationComplete(),
+    activationComplete,
     login,
     signup,
     logout,
     refreshUser,
     isAuthenticated: !!user,
-    hasToken: () => BotAPI.isLoggedIn()
+    hasToken: BotAPI.isLoggedIn
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
