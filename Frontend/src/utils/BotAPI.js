@@ -5,17 +5,26 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.c
 const TOKEN_KEY = "imali_token";
 
 /* =========================
-   AXIOS INSTANCE
+   AXIOS INSTANCE WITH SAFE HEADER HANDLING
 ========================= */
 
+// Create axios instance with safe defaults
 const api = axios.create({
   baseURL: API_BASE,
   timeout: 30000,
-  headers: { 
+  headers: {
     "Content-Type": "application/json",
     "Accept": "application/json"
   },
-  withCredentials: false
+  withCredentials: false,
+  // Transform response to handle potential undefined values
+  transformResponse: [(data) => {
+    try {
+      return data ? JSON.parse(data) : {};
+    } catch {
+      return data || {};
+    }
+  }]
 });
 
 /* =========================
@@ -103,15 +112,22 @@ const processQueue = async () => {
         await new Promise(r => setTimeout(r, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
       }
       
+      // Ensure all headers are strings
+      const safeHeaders = {};
+      if (config.headers) {
+        Object.keys(config.headers).forEach(key => {
+          const value = config.headers[key];
+          if (value !== undefined && value !== null) {
+            safeHeaders[key] = String(value);
+          }
+        });
+      }
+      
       const response = await axios({
         ...config,
         baseURL: API_BASE,
         timeout: 30000,
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          ...(config.headers || {})
-        }
+        headers: safeHeaders
       });
       
       lastRequestTime = Date.now();
@@ -132,16 +148,26 @@ api.interceptors.request.use(
   (config) => {
     const token = getStoredToken();
 
+    // Start with base headers
     const headers = {
       "Content-Type": "application/json",
       "Accept": "application/json"
     };
 
-    if (token) {
+    // Add Authorization if token exists (ensure it's a string)
+    if (token && typeof token === 'string') {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
+    // Replace config headers with safe headers (all values are strings)
     config.headers = headers;
+
+    // Log for debugging (remove in production)
+    console.log('Request config:', {
+      url: config.url,
+      method: config.method,
+      headers: config.headers
+    });
 
     return new Promise((resolve, reject) => {
       requestQueue.push({ config, resolve, reject });
@@ -158,8 +184,22 @@ api.interceptors.request.use(
 let redirecting = false;
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful response (remove in production)
+    console.log('Response:', {
+      url: response.config.url,
+      status: response.status,
+      hasData: !!response.data
+    });
+    return response;
+  },
   (error) => {
+    console.error('Response error:', {
+      url: error?.config?.url,
+      status: error?.response?.status,
+      message: error.message
+    });
+
     const status = error?.response?.status;
     const url = error?.config?.url || "";
     const path = getPath();
@@ -211,16 +251,26 @@ api.interceptors.response.use(
 const unwrap = (res) => {
   // Safely unwrap response data
   if (!res) return null;
-  return res.data || res;
+  
+  // Handle different response structures
+  if (res.data && typeof res.data === 'object') {
+    return res.data;
+  }
+  
+  return res.data || res || null;
 };
 
 const getErrMessage = (err, fallback = "Request failed") => {
-  const msg =
-    err?.response?.data?.message ||
-    err?.response?.data?.error ||
-    err?.message;
-
-  return msg || fallback;
+  try {
+    const msg =
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      err?.message;
+  
+    return msg || fallback;
+  } catch {
+    return fallback;
+  }
 };
 
 const BotAPI = {
@@ -267,6 +317,7 @@ const BotAPI = {
 
       setStoredToken(data.token);
 
+      // Warm auth with delay
       setTimeout(async () => {
         try {
           await api.get("/api/me");
@@ -286,8 +337,21 @@ const BotAPI = {
     try {
       const res = await api.get("/api/me");
       const data = unwrap(res);
-      // Handle both { user: {...} } and direct user object
-      return data?.user || data || null;
+      
+      // Handle different response structures
+      if (!data) return null;
+      
+      // Check for user object in response
+      if (data.user && typeof data.user === 'object') {
+        return data.user;
+      }
+      
+      // Otherwise return the data itself if it looks like a user
+      if (data.id || data.email) {
+        return data;
+      }
+      
+      return null;
     } catch (error) {
       console.error('Me API error:', error);
       throw error;
@@ -298,8 +362,21 @@ const BotAPI = {
     try {
       const res = await api.get("/api/me/activation-status");
       const data = unwrap(res);
-      // Handle both { status: {...} } and direct status object
-      return data?.status || data || null;
+      
+      // Handle different response structures
+      if (!data) return null;
+      
+      // Check for status object in response
+      if (data.status && typeof data.status === 'object') {
+        return data.status;
+      }
+      
+      // If data has activation-related fields, return it directly
+      if (data.billing_complete !== undefined || data.activation_complete !== undefined) {
+        return data;
+      }
+      
+      return data || null;
     } catch (error) {
       console.error('Activation status API error:', error);
       throw error;
@@ -309,144 +386,91 @@ const BotAPI = {
   /* ========= BILLING ========= */
 
   async createSetupIntent(payload) {
-    const res = await api.post("/api/billing/setup-intent", payload);
-    return unwrap(res);
+    try {
+      const res = await api.post("/api/billing/setup-intent", payload);
+      return unwrap(res);
+    } catch (error) {
+      console.error('Create setup intent error:', error);
+      throw error;
+    }
   },
 
   async getCardStatus() {
-    const res = await api.get("/api/billing/card-status");
-    return unwrap(res);
-  },
-
-  async setDefaultPaymentMethod(payload) {
-    const res = await api.post("/api/billing/set-default-payment", payload);
-    return unwrap(res);
-  },
-
-  async calculateFee(payload) {
-    const res = await api.post("/api/billing/calculate-fee", payload);
-    return unwrap(res);
-  },
-
-  async chargeFee(payload) {
-    const res = await api.post("/api/billing/charge-fee", payload);
-    return unwrap(res);
-  },
-
-  async getFeeHistory() {
-    const res = await api.get("/api/billing/fee-history");
-    return unwrap(res);
+    try {
+      const res = await api.get("/api/billing/card-status");
+      return unwrap(res);
+    } catch (error) {
+      console.error('Get card status error:', error);
+      throw error;
+    }
   },
 
   /* ========= INTEGRATIONS ========= */
 
   async connectOKX(payload) {
-    const res = await api.post("/api/integrations/okx", payload);
-    return unwrap(res);
+    try {
+      const res = await api.post("/api/integrations/okx", payload);
+      return unwrap(res);
+    } catch (error) {
+      console.error('Connect OKX error:', error);
+      throw error;
+    }
   },
 
   async connectAlpaca(payload) {
-    const res = await api.post("/api/integrations/alpaca", payload);
-    return unwrap(res);
+    try {
+      const res = await api.post("/api/integrations/alpaca", payload);
+      return unwrap(res);
+    } catch (error) {
+      console.error('Connect Alpaca error:', error);
+      throw error;
+    }
   },
 
   async connectWallet(payload) {
-    const res = await api.post("/api/integrations/wallet", payload);
-    return unwrap(res);
-  },
-
-  async getIntegrationStatus() {
-    const res = await api.get("/api/integrations/status");
-    return unwrap(res);
+    try {
+      const res = await api.post("/api/integrations/wallet", payload);
+      return unwrap(res);
+    } catch (error) {
+      console.error('Connect wallet error:', error);
+      throw error;
+    }
   },
 
   /* ========= TRADING ========= */
 
   async toggleTrading(enabled) {
-    const res = await api.post("/api/trading/enable", { enabled });
-    return unwrap(res);
-  },
-
-  async getTradingStatus() {
-    const res = await api.get("/api/trading/status");
-    return unwrap(res);
+    try {
+      const res = await api.post("/api/trading/enable", { enabled });
+      return unwrap(res);
+    } catch (error) {
+      console.error('Toggle trading error:', error);
+      throw error;
+    }
   },
 
   /* ========= BOT CONTROL ========= */
 
   async startBot(payload = { mode: "paper" }) {
-    const res = await api.post("/api/bot/start", payload);
-    return unwrap(res);
+    try {
+      const res = await api.post("/api/bot/start", payload);
+      return unwrap(res);
+    } catch (error) {
+      console.error('Start bot error:', error);
+      throw error;
+    }
   },
 
   /* ========= TRADES ========= */
 
   async getTrades() {
-    const res = await api.get("/api/sniper/trades");
-    return unwrap(res);
-  },
-
-  /* ========= ANALYTICS ========= */
-
-  async getPnLSeries(payload) {
-    const res = await api.post("/api/analytics/pnl/series", payload);
-    return unwrap(res);
-  },
-
-  async getWinLossStats(payload) {
-    const res = await api.post("/api/analytics/winloss", payload);
-    return unwrap(res);
-  },
-
-  async getFeeSeries(payload) {
-    const res = await api.post("/api/analytics/fees/series", payload);
-    return unwrap(res);
-  },
-
-  /* ========= PROMO ========= */
-
-  async getPromoStatus() {
-    const res = await api.get("/api/promo/status");
-    return unwrap(res);
-  },
-
-  async claimPromo(payload) {
-    const res = await api.post("/api/promo/claim", payload);
-    return unwrap(res);
-  },
-
-  async getMyPromoStatus() {
-    const res = await api.get("/api/promo/me");
-    return unwrap(res);
-  },
-
-  /* ========= ADMIN ========= */
-
-  async adminCheck() {
-    const res = await api.get("/api/admin/check");
-    return unwrap(res);
-  },
-
-  async adminGetUsers() {
-    const res = await api.get("/api/admin/users");
-    return unwrap(res);
-  },
-
-  async adminUpdateUserTier(payload) {
-    const res = await api.post("/api/admin/user/update-tier", payload);
-    return unwrap(res);
-  },
-
-  async adminProcessPendingFees(payload) {
-    const res = await api.post("/api/admin/process-pending-fees", payload);
-    return unwrap(res);
-  },
-
-  /* ========= SYSTEM ========= */
-
-  async healthCheck() {
-    const res = await api.get("/api/health");
-    return unwrap(res);
+    try {
+      const res = await api.get("/api/sniper/trades");
+      return unwrap(res);
+    } catch (error) {
+      console.error('Get trades error:', error);
+      throw error;
+    }
   },
 
   /* ========= UTIL ========= */
