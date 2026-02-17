@@ -19,9 +19,9 @@ export const AuthProvider = ({ children }) => {
         try {
           const response = await BotAPI.me();
           if (mounted) {
+            // Backend returns { user: {...} } structure
             const userData = response.user || response;
             setUser(userData);
-            console.log('Auth initialized for:', userData?.email);
           }
         } catch (error) {
           console.error('Auth initialization failed:', error);
@@ -53,14 +53,12 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await BotAPI.login({ email, password });
       
-      // Immediately fetch user data
-      const meResponse = await BotAPI.me();
-      const userData = meResponse.user || meResponse;
+      // Backend returns { token, user, promo_eligibility } structure
+      if (response.user) {
+        setUser(response.user);
+      }
       
-      setUser(userData);
-      console.log('Login successful:', userData?.email);
-      
-      return { success: true, data: userData };
+      return { success: true, data: response };
     } catch (error) {
       console.error('Login error:', error);
       
@@ -82,7 +80,6 @@ export const AuthProvider = ({ children }) => {
   const signup = async (userData) => {
     try {
       const response = await BotAPI.signup(userData);
-      console.log('Signup successful:', userData.email);
       return { success: true, data: response };
     } catch (error) {
       console.error('Signup error:', error);
@@ -105,7 +102,6 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     BotAPI.clearToken();
     setUser(null);
-    console.log('Logged out');
   };
 
   const refreshUser = async () => {
