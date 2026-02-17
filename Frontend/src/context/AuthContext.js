@@ -5,7 +5,7 @@ import React, {
   useContext,
   useEffect,
   useCallback,
-  useMemo
+  useMemo,
 } from "react";
 import BotAPI from "../utils/BotAPI";
 
@@ -39,7 +39,62 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   /* -------------------------------------------------------
-     Load User + Activation Together (Single Source)
+     Refresh ONLY activation (lightweight, no user refetch)
+     — Used after connect/toggle actions on the Activation page
+  -------------------------------------------------------- */
+  const refreshActivation = useCallback(async () => {
+    if (!BotAPI.isLoggedIn()) return null;
+
+    try {
+      const raw = await retry(() => BotAPI.activationStatus());
+      const fresh = raw?.status ?? raw ?? null;
+
+      console.log("[AuthContext] refreshActivation →", fresh);
+
+      // Functional update: avoids stale closure issues
+      setActivation((prev) => {
+        const prevJSON = JSON.stringify(prev);
+        const freshJSON = JSON.stringify(fresh);
+        // Skip no-op updates so downstream memos don't re-fire
+        if (prevJSON === freshJSON) return prev;
+        return fresh;
+      });
+
+      return fresh;
+    } catch (err) {
+      console.error("[AuthContext] refreshActivation failed:", err);
+      return null;
+    }
+  }, []);
+
+  /* -------------------------------------------------------
+     Refresh ONLY user profile (lightweight, no activation)
+  -------------------------------------------------------- */
+  const refreshProfile = useCallback(async () => {
+    if (!BotAPI.isLoggedIn()) return null;
+
+    try {
+      const raw = await retry(() => BotAPI.me());
+      const fresh = raw?.user ?? raw ?? null;
+
+      console.log("[AuthContext] refreshProfile →", fresh);
+
+      setUser((prev) => {
+        const prevJSON = JSON.stringify(prev);
+        const freshJSON = JSON.stringify(fresh);
+        if (prevJSON === freshJSON) return prev;
+        return fresh;
+      });
+
+      return fresh;
+    } catch (err) {
+      console.error("[AuthContext] refreshProfile failed:", err);
+      return null;
+    }
+  }, []);
+
+  /* -------------------------------------------------------
+     Load User + Activation Together (Full Refresh)
   -------------------------------------------------------- */
   const loadUserData = useCallback(async () => {
     if (!BotAPI.isLoggedIn()) {
@@ -52,15 +107,24 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
 
-      const userData = await retry(() => BotAPI.me());
-      const activationData = await retry(() =>
-        BotAPI.activationStatus()
-      );
+      // Fetch both in parallel for speed
+      const [userRaw, activationRaw] = await Promise.all([
+        retry(() => BotAPI.me()),
+        retry(() => BotAPI.activationStatus()),
+      ]);
 
-      setUser(userData?.user || userData || null);
-      setActivation(activationData?.status || activationData || null);
+      const userData = userRaw?.user ?? userRaw ?? null;
+      const activationData = activationRaw?.status ?? activationRaw ?? null;
+
+      console.log("[AuthContext] loadUserData →", {
+        user: userData,
+        activation: activationData,
+      });
+
+      setUser(userData);
+      setActivation(activationData);
     } catch (err) {
-      console.error("Auth load failed:", err);
+      console.error("[AuthContext] loadUserData failed:", err);
       BotAPI.clearToken();
       setUser(null);
       setActivation(null);
@@ -69,12 +133,25 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  /* -------------------------------------------------------
+     Initial Load
+  -------------------------------------------------------- */
   useEffect(() => {
     loadUserData();
   }, [loadUserData]);
 
   /* -------------------------------------------------------
-     Activation Completion Logic (Pure + Safe)
+     refreshUser — backwards-compatible alias
+     Components that already call refreshUser() keep working.
+     Now fetches both user + activation in parallel.
+  -------------------------------------------------------- */
+  const refreshUser = useCallback(async () => {
+    console.log("[AuthContext] refreshUser called (full reload)");
+    await loadUserData();
+  }, [loadUserData]);
+
+  /* -------------------------------------------------------
+     Activation Completion Logic (Pure + Memoized)
   -------------------------------------------------------- */
   const activationComplete = useMemo(() => {
     if (!user || !activation) return false;
@@ -87,11 +164,23 @@ export const AuthProvider = ({ children }) => {
     const needsAlpaca = ["starter", "bundle"].includes(tier);
     const needsWallet = ["elite", "stock", "bundle"].includes(tier);
 
-    const okxOk = !needsOkx || activation.okx_connected;
-    const alpacaOk = !needsAlpaca || activation.alpaca_connected;
-    const walletOk = !needsWallet || activation.wallet_connected;
+    const okxOk = !needsOkx || !!activation.okx_connected;
+    const alpacaOk = !needsAlpaca || !!activation.alpaca_connected;
+    const walletOk = !needsWallet || !!activation.wallet_connected;
+    const tradingOk = !!activation.trading_enabled;
 
-    return okxOk && alpacaOk && walletOk && activation.trading_enabled;
+    const complete = okxOk && alpacaOk && walletOk && tradingOk;
+
+    console.log("[AuthContext] activationComplete →", complete, {
+      tier,
+      billing: !!activation.billing_complete,
+      okx: `need=${needsOkx} have=${!!activation.okx_connected}`,
+      alpaca: `need=${needsAlpaca} have=${!!activation.alpaca_connected}`,
+      wallet: `need=${needsWallet} have=${!!activation.wallet_connected}`,
+      trading: tradingOk,
+    });
+
+    return complete;
   }, [user, activation]);
 
   /* -------------------------------------------------------
@@ -100,6 +189,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const res = await BotAPI.login({ email, password });
+      // Full load after login so both user + activation are fresh
       await loadUserData();
       return { success: true, data: res };
     } catch (err) {
@@ -108,7 +198,7 @@ export const AuthProvider = ({ children }) => {
         error:
           err.response?.data?.message ||
           err.message ||
-          "Login failed"
+          "Login failed",
       };
     }
   };
@@ -126,7 +216,7 @@ export const AuthProvider = ({ children }) => {
         error:
           err.response?.data?.message ||
           err.message ||
-          "Signup failed"
+          "Signup failed",
       };
     }
   };
@@ -141,28 +231,42 @@ export const AuthProvider = ({ children }) => {
   };
 
   /* -------------------------------------------------------
-     Soft Refresh (Safe for toggles)
-  -------------------------------------------------------- */
-  const refreshUser = async () => {
-    await loadUserData();
-  };
-
-  /* -------------------------------------------------------
      Context Value
   -------------------------------------------------------- */
-  const value = {
-    user,
-    activation,
-    setActivation, // safe update hook
-    loading,
-    activationComplete,
-    login,
-    signup,
-    logout,
-    refreshUser,
-    isAuthenticated: !!user,
-    hasToken: BotAPI.isLoggedIn
-  };
+  const value = useMemo(
+    () => ({
+      // State
+      user,
+      activation,
+      loading,
+      activationComplete,
+      isAuthenticated: !!user,
+      hasToken: BotAPI.isLoggedIn,
+
+      // Setters (for edge-case manual updates)
+      setUser,
+      setActivation,
+
+      // Actions
+      login,
+      signup,
+      logout,
+
+      // Refresh functions
+      refreshUser,            // full reload (user + activation)
+      refreshActivation,      // activation only (fast)
+      refreshProfile,         // user profile only (fast)
+    }),
+    [
+      user,
+      activation,
+      loading,
+      activationComplete,
+      refreshUser,
+      refreshActivation,
+      refreshProfile,
+    ]
+  );
 
   return (
     <AuthContext.Provider value={value}>
