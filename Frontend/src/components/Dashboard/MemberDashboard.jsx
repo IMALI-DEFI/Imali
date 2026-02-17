@@ -1,5 +1,5 @@
 // src/pages/dashboard/MemberDashboard.js
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../utils/BotAPI";
@@ -431,7 +431,8 @@ const SetupBanner = ({ billingComplete, connectionsComplete, tradingEnabled, onC
 /* ===================== MAIN COMPONENT ===================== */
 export default function MemberDashboard() {
   const nav = useNavigate();
-  const { user: authUser, activation, setActivation } = useAuth(); // Add setActivation to context
+  const { user: authUser, activation, setActivation } = useAuth();
+  const navigationInProgress = useRef(false);
   
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -527,7 +528,7 @@ export default function MemberDashboard() {
       setBusy(true);
       await BotAPI.toggleTrading(enabled);
 
-      // Fetch ONLY activation status, not full user
+      // Fetch ONLY activation status
       const actResponse = await BotAPI.activationStatus();
       const newActivation = actResponse?.status || actResponse;
       
@@ -590,12 +591,47 @@ export default function MemberDashboard() {
   };
 
   const handleSetupCTA = () => {
+    if (navigationInProgress.current) return;
+    navigationInProgress.current = true;
+    
     if (!billingComplete) {
       nav("/billing");
     } else {
       nav("/activation");
     }
+    
+    // Reset after navigation
+    setTimeout(() => {
+      navigationInProgress.current = false;
+    }, 1000);
   };
+
+  /* ===================== CHECK ACTIVATION REDIRECT ===================== */
+  useEffect(() => {
+    // Don't redirect if we're already navigating
+    if (navigationInProgress.current) return;
+    
+    // Wait for data to load
+    if (loading) return;
+    
+    // No user - handled by ProtectedRoute
+    if (!authUser) return;
+    
+    // Check if we need to redirect
+    if (!billingComplete) {
+      navigationInProgress.current = true;
+      nav("/billing", { replace: true });
+      setTimeout(() => {
+        navigationInProgress.current = false;
+      }, 1000);
+    } else if (!activationComplete) {
+      navigationInProgress.current = true;
+      nav("/activation", { replace: true });
+      setTimeout(() => {
+        navigationInProgress.current = false;
+      }, 1000);
+    }
+  }, [loading, authUser, billingComplete, activationComplete, nav]);
 
   /* ===================== STATES ===================== */
   if (loading) {
@@ -615,7 +651,15 @@ export default function MemberDashboard() {
         <div className="text-center">
           <p className="text-white/60 mb-4">Please log in to view your dashboard</p>
           <button
-            onClick={() => nav("/login")}
+            onClick={() => {
+              if (!navigationInProgress.current) {
+                navigationInProgress.current = true;
+                nav("/login");
+                setTimeout(() => {
+                  navigationInProgress.current = false;
+                }, 1000);
+              }
+            }}
             className="px-6 py-2 bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
           >
             Go to Login
