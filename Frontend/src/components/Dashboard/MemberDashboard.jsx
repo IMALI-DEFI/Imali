@@ -1,6 +1,7 @@
 // src/pages/dashboard/MemberDashboard.js
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { api } from "../../utils/BotAPI";
 import BotAPI from "../../utils/BotAPI";
 
@@ -110,7 +111,6 @@ const FuturesPositions = ({ tier, isActive }) => {
       try {
         const res = await api.get("/api/futures/positions");
         
-        // If endpoint returns 404, disable future polling
         if (res.status === 404) {
           if (isMounted) setEndpointExists(false);
           return;
@@ -120,11 +120,9 @@ const FuturesPositions = ({ tier, isActive }) => {
           setPositions(res.data?.positions || []);
         }
       } catch (err) {
-        // Check if it's a 404
         if (err.response?.status === 404) {
           if (isMounted) setEndpointExists(false);
         }
-        // Silent fail for other errors
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -143,7 +141,7 @@ const FuturesPositions = ({ tier, isActive }) => {
   }, [tier, isActive, endpointExists]);
 
   if (!tierAtLeast(tier, "elite") || !isActive) return null;
-  if (!endpointExists) return null; // Silently hide if endpoint not available
+  if (!endpointExists) return null;
   if (loading) return <div className="bg-white/5 rounded-xl p-4 animate-pulse h-24" />;
 
   const totalPnL = positions.reduce((sum, p) => sum + (p.pnl || 0), 0);
@@ -213,13 +211,11 @@ const ExchangePnLBreakdown = ({ trades, status, tier }) => {
     return result;
   }, [trades]);
 
-  // Only show exchanges based on tier
   const showOKX = tierAtLeast(tier, "starter");
   const showAlpaca = tierAtLeast(tier, "starter");
   const showDEX = tierAtLeast(tier, "stock");
   const showFutures = tierAtLeast(tier, "elite");
 
-  // Determine connection status
   const okxConnected = !!status?.okx_connected;
   const alpacaConnected = !!status?.alpaca_connected;
   const dexConnected = tierAtLeast(tier, "stock") && !!status?.wallet_connected;
@@ -435,28 +431,24 @@ const SetupBanner = ({ billingComplete, connectionsComplete, tradingEnabled, onC
 /* ===================== MAIN COMPONENT ===================== */
 export default function MemberDashboard() {
   const nav = useNavigate();
-  const [redirecting, setRedirecting] = useState(false);
-
-  const [user, setUser] = useState(null);
+  const { user: authUser, activation, refreshUser } = useAuth();
+  
   const [trades, setTrades] = useState([]);
-  const [activationStatus, setActivationStatus] = useState(null);
-
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
 
   /* ===================== TIER + ACTIVATION COMPUTATION ===================== */
   const normalizedTier = useMemo(() => {
-    return normalizeTier(user?.tier);
-  }, [user?.tier]);
+    return normalizeTier(authUser?.tier);
+  }, [authUser?.tier]);
 
-  const billingComplete = !!activationStatus?.billing_complete;
-  const okxConnected = !!activationStatus?.okx_connected;
-  const alpacaConnected = !!activationStatus?.alpaca_connected;
-  const walletConnected = !!activationStatus?.wallet_connected;
-  const tradingEnabled = !!activationStatus?.trading_enabled;
+  const billingComplete = !!activation?.billing_complete;
+  const okxConnected = !!activation?.okx_connected;
+  const alpacaConnected = !!activation?.alpaca_connected;
+  const walletConnected = !!activation?.wallet_connected;
+  const tradingEnabled = !!activation?.trading_enabled;
 
-  // Determine required connections based on tier
   const needsOkx = ["starter", "pro", "bundle"].includes(normalizedTier);
   const needsAlpaca = ["starter", "bundle"].includes(normalizedTier);
   const needsWallet = ["elite", "stock", "bundle"].includes(normalizedTier);
@@ -470,56 +462,30 @@ export default function MemberDashboard() {
 
   const activationComplete = billingComplete && connectionsComplete && tradingEnabled;
 
-  /* ===================== LOAD USER + STATUS ===================== */
-  const loadDashboard = useCallback(async () => {
+  /* ===================== LOAD TRADES ===================== */
+  const loadTrades = useCallback(async () => {
+    if (!activationComplete) {
+      setTrades([]);
+      setLoading(false);
+      return;
+    }
+
     try {
-      const me = await BotAPI.me();
-      const userObj = me?.user || me;
-      setUser(userObj);
-
-      const act = await BotAPI.activationStatus();
-      const status = act?.status || act || {};
-      setActivationStatus(status);
-
       const res = await api.get("/api/sniper/trades");
       setTrades(Array.isArray(res.data?.trades) ? res.data.trades : []);
     } catch (err) {
-      setBanner({
-        type: "error",
-        message: "Unable to load dashboard. Please refresh.",
-      });
+      console.warn("Failed to load trades:", err);
+      setTrades([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activationComplete]);
 
   useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
+    loadTrades();
+  }, [loadTrades]);
 
-  /* ===================== ONBOARDING REDIRECTS (FIX #2) ===================== */
-  useEffect(() => {
-    if (loading || redirecting) return;
-
-    // Don't redirect if we don't have the data yet
-    if (!user || !activationStatus) return;
-
-    // Check billing first
-    if (!billingComplete) {
-      setRedirecting(true);
-      nav("/billing", { replace: true });
-      return;
-    }
-
-    // Then check connections + trading
-    if (!activationComplete) {
-      setRedirecting(true);
-      nav("/activation", { replace: true });
-      return;
-    }
-  }, [loading, user, activationStatus, billingComplete, activationComplete, nav, redirecting]);
-
-  /* Auto refresh trades (safe interval) - only if activated */
+  /* Auto refresh trades - only if activated */
   useEffect(() => {
     if (!activationComplete) return;
 
@@ -559,20 +525,24 @@ export default function MemberDashboard() {
   const toggleTrading = async (enabled) => {
     try {
       setBusy(true);
-      await api.post("/api/trading/enable", { enabled });
+      await BotAPI.toggleTrading(enabled);
 
       setBanner({
         type: "success",
-        message: enabled
-          ? "Trading has been enabled."
-          : "Trading has been disabled.",
+        message: enabled ? "Trading enabled" : "Trading disabled",
       });
 
-      await loadDashboard();
-    } catch {
+      // Refresh user data to get updated trading status
+      await refreshUser();
+      
+      // Reload trades if enabling
+      if (enabled) {
+        await loadTrades();
+      }
+    } catch (err) {
       setBanner({
         type: "error",
-        message: "Unable to update trading status.",
+        message: err?.response?.data?.message || "Failed to update trading",
       });
     } finally {
       setBusy(false);
@@ -580,28 +550,24 @@ export default function MemberDashboard() {
   };
 
   const startBot = async () => {
-    // FIX #7: Guard bot start
     if (!activationComplete) {
       setBanner({
         type: "error",
-        message: "Complete activation before starting the bot.",
+        message: "Complete setup before starting the bot",
       });
       return;
     }
 
     try {
       setBusy(true);
-      // Determine mode from connected exchanges
-      const mode = activationStatus?.alpaca_mode === 'live' || activationStatus?.okx_mode === 'live' 
-        ? "live" 
-        : "paper";
+      const mode = activation?.alpaca_mode === 'live' || activation?.okx_mode === 'live' ? "live" : "paper";
       
-      const res = await api.post("/api/bot/start", { mode });
+      const res = await BotAPI.startBot({ mode });
 
-      if (res.data?.started) {
+      if (res?.started) {
         setBanner({
           type: "success",
-          message: `Bot started in ${mode} mode.`,
+          message: `Bot started in ${mode} mode`,
         });
       } else {
         throw new Error();
@@ -609,7 +575,7 @@ export default function MemberDashboard() {
     } catch {
       setBanner({
         type: "error",
-        message: "Bot failed to start.",
+        message: "Bot failed to start",
       });
     } finally {
       setBusy(false);
@@ -636,9 +602,20 @@ export default function MemberDashboard() {
     );
   }
 
-  // FIX #1: Don't redirect during render - handled in useEffect
-  if (!user) {
-    return null; // Will be caught by useEffect
+  if (!authUser) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+        <div className="text-center">
+          <p className="text-white/60 mb-4">Please log in to view your dashboard</p>
+          <button
+            onClick={() => nav("/login")}
+            className="px-6 py-2 bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
   }
 
   /* ===================== RENDER ===================== */
@@ -651,15 +628,15 @@ export default function MemberDashboard() {
           <div
             className={`p-4 rounded-xl border ${
               banner.type === "error"
-                ? "bg-red-600/10 border-red-500/40"
-                : "bg-emerald-600/10 border-emerald-500/40"
+                ? "bg-red-600/10 border-red-500/40 text-red-200"
+                : "bg-emerald-600/10 border-emerald-500/40 text-emerald-200"
             }`}
           >
             {banner.message}
           </div>
         )}
 
-        {/* Setup Banner - FIX #9 */}
+        {/* Setup Banner */}
         <SetupBanner
           billingComplete={billingComplete}
           connectionsComplete={connectionsComplete}
@@ -671,7 +648,7 @@ export default function MemberDashboard() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold">
-              Welcome, {user.email}
+              Welcome, {authUser.email}
             </h1>
             <div className="text-sm text-white/60">
               Membership: {normalizedTier.toUpperCase()}
@@ -679,9 +656,8 @@ export default function MemberDashboard() {
                 <span className="ml-2 text-emerald-400">✓ Active</span>
               )}
             </div>
-            {/* Exchange Connection Status */}
             <ExchangeStatus 
-              status={activationStatus} 
+              status={activation} 
               tier={normalizedTier}
               activationComplete={activationComplete}
             />
@@ -691,19 +667,19 @@ export default function MemberDashboard() {
             <button
               onClick={() => toggleTrading(!tradingEnabled)}
               disabled={busy || !activationComplete}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title={!activationComplete ? "Complete setup first" : ""}
             >
-              {tradingEnabled ? "Disable Trading" : "Enable Trading"}
+              {busy ? "Updating..." : (tradingEnabled ? "Disable Trading" : "Enable Trading")}
             </button>
 
             <button
               onClick={startBot}
               disabled={!tradingEnabled || busy || !activationComplete}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title={!activationComplete ? "Complete setup first" : !tradingEnabled ? "Enable trading first" : ""}
             >
-              Start Bot
+              {busy ? "Starting..." : "Start Bot"}
             </button>
           </div>
         </div>
@@ -712,7 +688,7 @@ export default function MemberDashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Stat label="Account Value" value={`$${(1000 + totalPnL).toFixed(2)}`} />
           <Stat 
-            label="Today’s Gain/Loss" 
+            label="Today’s P&L" 
             value={`$${totalPnL.toFixed(2)}`}
             trend={totalPnL >= 0 ? 'up' : 'down'}
           />
@@ -724,31 +700,28 @@ export default function MemberDashboard() {
         {activationComplete && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* OKX Card */}
               {tierAtLeast(normalizedTier, "starter") && (
                 <ExchangeCard
                   name="OKX"
                   icon="🔷"
                   color="blue"
                   connected={okxConnected}
-                  mode={activationStatus?.okx_mode}
+                  mode={activation?.okx_mode}
                   trades={trades.filter(t => normalizeExchange(t.exchange) === 'OKX')}
                 />
               )}
 
-              {/* Alpaca Card */}
               {tierAtLeast(normalizedTier, "starter") && (
                 <ExchangeCard
                   name="Alpaca"
                   icon="📈"
                   color="emerald"
                   connected={alpacaConnected}
-                  mode={activationStatus?.alpaca_mode}
+                  mode={activation?.alpaca_mode}
                   trades={trades.filter(t => normalizeExchange(t.exchange) === 'ALPACA')}
                 />
               )}
 
-              {/* DEX Card - Stock tier and above */}
               {tierAtLeast(normalizedTier, "stock") && (
                 <ExchangeCard
                   name="DEX"
@@ -760,7 +733,6 @@ export default function MemberDashboard() {
                 />
               )}
 
-              {/* Futures Card - Elite tier and above */}
               {tierAtLeast(normalizedTier, "elite") && (
                 <ExchangeCard
                   name="Futures"
@@ -773,27 +745,23 @@ export default function MemberDashboard() {
               )}
             </div>
 
-            {/* Per-Exchange P&L Breakdown */}
             <div className="bg-white/5 rounded-xl p-4">
               <h2 className="text-lg font-semibold mb-3">Exchange Performance</h2>
               <ExchangePnLBreakdown 
                 trades={trades} 
-                status={activationStatus}
+                status={activation}
                 tier={normalizedTier}
               />
             </div>
 
-            {/* Futures Positions (Elite+) */}
             <FuturesPositions 
               tier={normalizedTier} 
               isActive={activationComplete}
             />
 
-            {/* Core Modules - Only show when activated */}
             <ImaliBalance />
             <TierStatus />
             
-            {/* Enhanced Trades Table with Exchange Indicators */}
             <RecentTradesTable 
               trades={trades} 
               showExchange={true}
@@ -802,7 +770,6 @@ export default function MemberDashboard() {
             
             <ReferralSystem />
 
-            {/* Tier-Gated Modules */}
             {tierAtLeast(normalizedTier, "pro") && <Staking />}
             {tierAtLeast(normalizedTier, "elite") && <YieldFarming />}
             {tierAtLeast(normalizedTier, "elite") && <Futures />}
@@ -815,7 +782,13 @@ export default function MemberDashboard() {
         {/* Minimal view when not activated */}
         {!activationComplete && (
           <div className="text-center py-12 text-white/40">
-            <p className="text-lg">Complete setup to see your trading dashboard</p>
+            <p className="text-lg mb-4">Complete setup to see your trading dashboard</p>
+            <button
+              onClick={handleSetupCTA}
+              className="px-6 py-2 bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Complete Setup
+            </button>
           </div>
         )}
       </div>
