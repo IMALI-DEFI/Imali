@@ -17,11 +17,13 @@ export const AuthProvider = ({ children }) => {
     const initAuth = async () => {
       if (BotAPI.isLoggedIn()) {
         try {
-          const response = await BotAPI.me();
-          if (mounted) {
-            // Backend returns { user: {...} } structure
-            const userData = response.user || response;
+          const userData = await BotAPI.me();
+          if (mounted && userData) {
             setUser(userData);
+          } else if (mounted) {
+            // If no user data but token exists, clear token
+            BotAPI.clearToken();
+            setUser(null);
           }
         } catch (error) {
           console.error('Auth initialization failed:', error);
@@ -53,9 +55,15 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await BotAPI.login({ email, password });
       
-      // Backend returns { token, user, promo_eligibility } structure
-      if (response.user) {
-        setUser(response.user);
+      if (!response) {
+        throw new Error('No response from server');
+      }
+
+      // Get user data after login
+      const userData = await BotAPI.me();
+      
+      if (userData) {
+        setUser(userData);
       }
       
       return { success: true, data: response };
@@ -69,6 +77,8 @@ export const AuthProvider = ({ children }) => {
         errorMessage = 'Too many attempts. Please try again later.';
       } else if (error.response?.status === 503) {
         errorMessage = 'Service temporarily unavailable. Please try again.';
+      } else if (error.message === 'Network Error') {
+        errorMessage = 'Unable to connect to server. Please check your connection.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -80,6 +90,11 @@ export const AuthProvider = ({ children }) => {
   const signup = async (userData) => {
     try {
       const response = await BotAPI.signup(userData);
+      
+      if (!response) {
+        throw new Error('No response from server');
+      }
+      
       return { success: true, data: response };
     } catch (error) {
       console.error('Signup error:', error);
@@ -91,6 +106,10 @@ export const AuthProvider = ({ children }) => {
         errorMessage = error.response?.data?.message || 'Invalid signup information';
       } else if (error.response?.status === 429) {
         errorMessage = 'Too many attempts. Please try again later.';
+      } else if (error.response?.status === 503) {
+        errorMessage = 'Service temporarily unavailable. Please try again.';
+      } else if (error.message === 'Network Error') {
+        errorMessage = 'Unable to connect to server. Please check your connection.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -107,13 +126,13 @@ export const AuthProvider = ({ children }) => {
   const refreshUser = async () => {
     if (BotAPI.isLoggedIn()) {
       try {
-        const response = await BotAPI.me();
-        const userData = response.user || response;
-        setUser(userData);
-        return userData;
+        const userData = await BotAPI.me();
+        if (userData) {
+          setUser(userData);
+          return userData;
+        }
       } catch (error) {
         console.error('Refresh user failed:', error);
-        return null;
       }
     }
     return null;
