@@ -100,13 +100,10 @@ api.interceptors.response.use(
     const url = error?.config?.url || "";
     const path = getPath();
 
-    // Handle 429 specifically
+    // Handle 429 specifically - just pass it through for retry logic
     if (status === 429) {
-      console.warn("Rate limited - slowing down requests");
-      // Add a small delay before rejecting
-      return new Promise((resolve, reject) => {
-        setTimeout(() => reject(error), 1000);
-      });
+      console.warn(`Rate limited on ${url}`);
+      return Promise.reject(error);
     }
 
     const isAuthEndpoint =
@@ -182,6 +179,11 @@ const BotAPI = {
 
   async me() {
     const res = await api.get("/api/me");
+    return unwrap(res);
+  },
+
+  async activationStatus() {
+    const res = await api.get("/api/me/activation-status");
     return unwrap(res);
   },
 
