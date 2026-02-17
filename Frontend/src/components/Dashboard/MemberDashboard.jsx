@@ -606,33 +606,6 @@ export default function MemberDashboard() {
     }, 1000);
   };
 
-  /* ===================== CHECK ACTIVATION REDIRECT ===================== */
-  useEffect(() => {
-    // Don't redirect if we're already navigating
-    if (navigationInProgress.current) return;
-    
-    // Wait for data to load
-    if (loading) return;
-    
-    // No user - handled by ProtectedRoute
-    if (!authUser) return;
-    
-    // Check if we need to redirect
-    if (!billingComplete) {
-      navigationInProgress.current = true;
-      nav("/billing", { replace: true });
-      setTimeout(() => {
-        navigationInProgress.current = false;
-      }, 1000);
-    } else if (!activationComplete) {
-      navigationInProgress.current = true;
-      nav("/activation", { replace: true });
-      setTimeout(() => {
-        navigationInProgress.current = false;
-      }, 1000);
-    }
-  }, [loading, authUser, billingComplete, activationComplete, nav]);
-
   /* ===================== STATES ===================== */
   if (loading) {
     return (
