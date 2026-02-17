@@ -9,6 +9,7 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import BotAPI from "../utils/BotAPI";
+import { useAuth } from "../context/AuthContext";
 
 const stripePromise = loadStripe(
   process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY
@@ -18,6 +19,7 @@ function BillingInner() {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -40,9 +42,21 @@ function BillingInner() {
         throw stripeError;
       }
 
-      // Success - go to activation
+      // SUCCESS - Payment method saved
+      
+      // Wait for webhook to process (1.5 seconds is usually enough)
+      // This gives Stripe time to send webhook and backend time to update
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Force refresh user data from backend
+      // This will update billing_complete in activation state
+      await refreshUser();
+
+      // Now navigate to activation with fresh data
       navigate("/activation", { replace: true });
+
     } catch (err) {
+      console.error("Payment setup error:", err);
       setError(err.message || "Failed to save payment method");
     } finally {
       setBusy(false);
@@ -62,10 +76,16 @@ function BillingInner() {
       <button
         onClick={handleSubmit}
         disabled={busy || !stripe || !elements}
-        className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:opacity-50"
+        className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {busy ? "Saving…" : "Save Payment Method"}
+        {busy ? "Processing…" : "Save Payment Method"}
       </button>
+
+      {busy && (
+        <p className="text-xs text-center text-gray-400 mt-2">
+          Please wait while we confirm your payment method...
+        </p>
+      )}
     </div>
   );
 }
@@ -73,9 +93,10 @@ function BillingInner() {
 export default function Billing() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, refreshUser } = useAuth();
 
   const email =
-    location.state?.email || localStorage.getItem("IMALI_EMAIL");
+    location.state?.email || localStorage.getItem("IMALI_EMAIL") || user?.email;
   const tier = location.state?.tier || "starter";
 
   const [clientSecret, setClientSecret] = useState("");
@@ -85,7 +106,7 @@ export default function Billing() {
   useEffect(() => {
     const initializeBilling = async () => {
       try {
-        // 🔥 FIX: Check if we're already logged in via token
+        // Check if we're already logged in via token
         const token = BotAPI.getToken();
         
         // If no token and no email, go to signup
@@ -94,17 +115,18 @@ export default function Billing() {
           return;
         }
 
-        // If we have token but no email in state, try to get it from user data
+        // If we have token but no email, try to get it from user
         let userEmail = email;
         if (!userEmail && token) {
           try {
-            const me = await BotAPI.me();
-            userEmail = me?.user?.email || me?.email;
+            // Use refreshUser to get latest user data
+            const userData = await refreshUser();
+            userEmail = userData?.email;
             if (userEmail) {
               localStorage.setItem("IMALI_EMAIL", userEmail);
             }
           } catch (e) {
-            // Ignore - will redirect if needed
+            console.warn("Could not fetch user email:", e);
           }
         }
 
@@ -126,12 +148,12 @@ export default function Billing() {
 
         setClientSecret(res.client_secret);
       } catch (err) {
-        // 🔥 FIX: Only redirect to login on 401 if we're not in onboarding flow
+        console.error("Billing initialization error:", err);
+        
+        // Handle specific errors
         if (err.response?.status === 401) {
-          // Check if this is an auth error during onboarding
           const isOnboarding = window.location.pathname.includes("/billing");
           if (isOnboarding) {
-            // During onboarding, just show error - don't redirect
             setError("Session expired. Please try signing up again.");
           } else {
             navigate("/login", {
@@ -142,14 +164,20 @@ export default function Billing() {
           return;
         }
 
-        setError(err.message || "Failed to initialize billing");
+        if (err.response?.status === 429) {
+          setError("Too many requests. Please wait a moment and try again.");
+        } else if (err.response?.status === 503) {
+          setError("Service temporarily unavailable. Please try again later.");
+        } else {
+          setError(err.message || "Failed to initialize billing");
+        }
       } finally {
         setLoading(false);
       }
     };
 
     initializeBilling();
-  }, [email, tier, navigate]);
+  }, [email, tier, navigate, refreshUser]);
 
   if (loading) {
     return (
