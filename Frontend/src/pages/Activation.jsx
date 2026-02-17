@@ -34,7 +34,6 @@ const Section = ({ title, description, right, children }) => (
   </div>
 );
 
-// FIXED: Added autocomplete attributes
 const Input = ({ type = "text", autoComplete, ...props }) => (
   <input
     {...props}
@@ -75,8 +74,8 @@ export default function Activation() {
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
 
-  // avoid state updates after unmount
   const mountedRef = useRef(true);
 
   // Form fields
@@ -115,52 +114,86 @@ export default function Activation() {
   const canEnableTrading = billingComplete && connectionsComplete;
 
   /* ======================================================
-     LOAD DATA
+     LOAD DATA WITH RATE LIMIT HANDLING
   ====================================================== */
 
-  const load = async () => {
+  const load = async (isRetry = false) => {
     try {
-      setError("");
+      if (!isRetry) {
+        setError("");
+      }
+      
+      setLoading(true);
 
       const me = await BotAPI.me();
-      const activation = await BotAPI.activationStatus();
-
       if (!mountedRef.current) return;
 
       setUser(me?.user || me);
-      setStatus(activation?.status || activation || {});
-      
-      // Auto-redirect if already activated
+
+      // Add small delay to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const activation = await BotAPI.activationStatus();
+      if (!mountedRef.current) return;
+
       const statusData = activation?.status || activation || {};
-      if (statusData.billing_complete && statusData.trading_enabled) {
-        // Check connections based on tier
-        const userTier = (me?.user?.tier || "starter").toLowerCase();
-        const needsOkx = ["starter", "pro", "bundle"].includes(userTier);
-        const needsAlpaca = ["starter", "bundle"].includes(userTier);
-        const needsWallet = ["elite", "bundle"].includes(userTier);
-        
-        const connectionsOk = 
-          (!needsOkx || statusData.okx_connected) &&
-          (!needsAlpaca || statusData.alpaca_connected) &&
-          (!needsWallet || statusData.wallet_connected);
-          
-        if (connectionsOk) {
-          navigate("/dashboard", { replace: true });
-        }
+      setStatus(statusData);
+      setRetryCount(0); // Reset retry count on success
+
+      // Auto-redirect if billing not complete
+      if (!statusData.billing_complete) {
+        navigate("/billing", { replace: true });
+        return;
       }
+
+      // Auto-redirect if fully activated
+      const userTier = (me?.user?.tier || "starter").toLowerCase();
+      const needsOkx = ["starter", "pro", "bundle"].includes(userTier);
+      const needsAlpaca = ["starter", "bundle"].includes(userTier);
+      const needsWallet = ["elite", "bundle"].includes(userTier);
+      
+      const connectionsOk = 
+        (!needsOkx || statusData.okx_connected) &&
+        (!needsAlpaca || statusData.alpaca_connected) &&
+        (!needsWallet || statusData.wallet_connected);
+        
+      if (statusData.billing_complete && statusData.trading_enabled && connectionsOk) {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
     } catch (e) {
       console.error("Load error:", e);
 
       if (!mountedRef.current) return;
 
-      if (e.response?.status === 401) {
+      // Handle rate limiting with retry
+      if (e.response?.status === 429) {
+        const maxRetries = 3;
+        if (retryCount < maxRetries) {
+          const waitTime = Math.pow(2, retryCount) * 2000; // 2, 4, 8 seconds
+          setError(`Rate limited. Retrying in ${waitTime/1000} seconds... (${retryCount + 1}/${maxRetries})`);
+          
+          setTimeout(() => {
+            if (mountedRef.current) {
+              setRetryCount(prev => prev + 1);
+              load(true);
+            }
+          }, waitTime);
+          return;
+        } else {
+          setError("Too many requests. Please wait a moment and refresh.");
+        }
+      } else if (e.response?.status === 401) {
         setError("Session expired. Please log in again.");
         setTimeout(() => navigate("/login"), 1500);
       } else {
         setError("Couldn't load activation. Please refresh and try again.");
       }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && !error.includes("Retrying")) {
+        setLoading(false);
+      }
     }
   };
 
@@ -170,11 +203,10 @@ export default function Activation() {
     return () => {
       mountedRef.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ======================================================
-     CONNECT FUNCTIONS
+     CONNECT FUNCTIONS (with rate limit handling)
   ====================================================== */
 
   const connectOKX = async (e) => {
@@ -215,11 +247,16 @@ export default function Activation() {
       setSuccess("✅ OKX connected.");
       setOkx({ apiKey: "", apiSecret: "", passphrase: "", mode: "paper" });
 
-      // Refresh data
+      // Wait before refreshing to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 1000));
       await load();
     } catch (err) {
       console.error("OKX connection error:", err);
-      setError(err?.message || "OKX connection failed. Double-check your keys.");
+      if (err.message?.includes("429")) {
+        setError("Rate limited. Please wait a moment and try again.");
+      } else {
+        setError(err?.message || "OKX connection failed. Double-check your keys.");
+      }
     } finally {
       setBusy("");
     }
@@ -262,11 +299,16 @@ export default function Activation() {
       setSuccess("✅ Alpaca connected.");
       setAlpaca({ apiKey: "", apiSecret: "", mode: "paper" });
 
-      // Refresh data
+      // Wait before refreshing to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 1000));
       await load();
     } catch (err) {
       console.error("Alpaca connection error:", err);
-      setError(err?.message || "Alpaca connection failed. Double-check your keys.");
+      if (err.message?.includes("429")) {
+        setError("Rate limited. Please wait a moment and try again.");
+      } else {
+        setError(err?.message || "Alpaca connection failed. Double-check your keys.");
+      }
     } finally {
       setBusy("");
     }
@@ -315,11 +357,16 @@ export default function Activation() {
       setSuccess("✅ Wallet connected.");
       setWallet("");
 
-      // Refresh data
+      // Wait before refreshing to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 1000));
       await load();
     } catch (err) {
       console.error("Wallet connection error:", err);
-      setError(err?.message || "Wallet connection failed.");
+      if (err.message?.includes("429")) {
+        setError("Rate limited. Please wait a moment and try again.");
+      } else {
+        setError(err?.message || "Wallet connection failed.");
+      }
     } finally {
       setBusy("");
     }
@@ -356,11 +403,16 @@ export default function Activation() {
 
       setSuccess(tradingEnabled ? "Trading turned off." : "✅ Trading turned on.");
 
-      // Refresh data
+      // Wait before refreshing to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 1000));
       await load();
     } catch (err) {
       console.error("Trading toggle error:", err);
-      setError(err?.message || "Couldn't update trading. Please try again.");
+      if (err.message?.includes("429")) {
+        setError("Rate limited. Please wait a moment and try again.");
+      } else {
+        setError(err?.message || "Couldn't update trading. Please try again.");
+      }
     } finally {
       setBusy("");
     }
@@ -370,21 +422,30 @@ export default function Activation() {
      UI STATES
   ====================================================== */
 
-  if (loading) {
+  if (loading && !status) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4" />
-          <p className="text-gray-400">Loading activation…</p>
+          <p className="text-gray-400">
+            {error || "Loading activation…"}
+          </p>
+          {error && error.includes("Rate limited") && (
+            <Button 
+              onClick={() => {
+                setRetryCount(0);
+                setError("");
+                load();
+              }} 
+              variant="primary"
+              className="mt-4"
+            >
+              Retry Now
+            </Button>
+          )}
         </div>
       </div>
     );
-  }
-
-  // If billing is not complete, they shouldn't be here
-  if (status && !billingComplete) {
-    navigate("/billing", { replace: true });
-    return null;
   }
 
   return (
@@ -393,7 +454,20 @@ export default function Activation() {
         {/* Messages */}
         {error && (
           <div className="bg-red-500/20 border border-red-500/30 p-4 rounded-lg text-red-200">
-            ⚠️ {error}
+            <p>⚠️ {error}</p>
+            {error.includes("Too many requests") && (
+              <Button 
+                onClick={() => {
+                  setRetryCount(0);
+                  setError("");
+                  load();
+                }} 
+                variant="primary"
+                className="mt-3"
+              >
+                Retry Now
+              </Button>
+            )}
           </div>
         )}
 
@@ -408,7 +482,7 @@ export default function Activation() {
           <div>
             <h1 className="text-2xl font-bold">Activation</h1>
             <p className="text-sm text-gray-400">
-              Quick setup. When you're done, we'll send you to your dashboard automatically.
+              Complete the steps below. When you're done, you'll be sent to your dashboard.
             </p>
           </div>
 
@@ -672,12 +746,12 @@ export default function Activation() {
           </div>
         </Section>
 
-        {/* Manual escape hatch */}
+        {/* Manual navigation */}
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" onClick={() => navigate("/dashboard")}>
             Go to Dashboard
           </Button>
-          <Button variant="secondary" onClick={load} disabled={!!busy}>
+          <Button variant="secondary" onClick={() => load()} disabled={!!busy}>
             Refresh Status
           </Button>
         </div>
