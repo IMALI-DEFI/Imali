@@ -30,6 +30,7 @@ import Pricing from "./pages/Pricing";
 import Support from "./pages/Support";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
+import FundingGuide from "./pages/FundingGuide";
 
 /* Auth */
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -83,6 +84,7 @@ function AppContent() {
           <Route path="/support" element={<Support />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
+          <Route path="/funding-guide" element={<FundingGuide />} />
 
           {/* ===== PUBLIC DEMO (no auth) ===== */}
           <Route path="/demo" element={<TradeDemo />} />
