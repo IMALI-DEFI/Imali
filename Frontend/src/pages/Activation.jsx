@@ -4,59 +4,82 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
-const statusLabel = (value) => (value ? "Complete" : "Pending");
-
-const StatusPill = ({ value }) => (
-  <span
-    className={`px-3 py-1 rounded-full text-sm ${
-      value
-        ? "bg-emerald-500/20 text-emerald-300"
-        : "bg-gray-800 text-gray-400"
-    }`}
-  >
-    {statusLabel(value)}
+// Simple status badges
+const StatusBadge = ({ done }) => (
+  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+    done 
+      ? "bg-green-500/20 text-green-300 border border-green-500/30" 
+      : "bg-gray-800 text-gray-400 border border-gray-700"
+  }`}>
+    {done ? "✓ DONE" : "⋯ PENDING"}
   </span>
 );
 
-const Section = ({ title, description, right, children }) => (
-  <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
-    <div className="flex justify-between items-start gap-4">
-      <div>
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
-        <p className="text-sm text-gray-400">{description}</p>
+// Section card
+const SectionCard = ({ number, title, description, status, children }) => (
+  <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+    <div className="flex items-start justify-between mb-4">
+      <div className="flex items-center gap-3">
+        <span className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500/20 text-blue-300 font-bold text-lg">
+          {number}
+        </span>
+        <div>
+          <h2 className="text-xl font-semibold text-white">{title}</h2>
+          <p className="text-sm text-gray-400">{description}</p>
+        </div>
       </div>
-      {right}
+      <StatusBadge done={status} />
     </div>
     {children}
   </div>
 );
 
-const Input = ({ type = "text", autoComplete, ...props }) => (
-  <input
-    {...props}
-    type={type}
-    autoComplete={autoComplete || "off"}
-    className="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white placeholder:text-gray-500"
-  />
+// Simple input
+const SimpleInput = ({ label, type = "text", value, onChange, placeholder, disabled }) => (
+  <div className="space-y-1">
+    <label className="text-sm text-gray-400">{label}</label>
+    <input
+      type={type}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      disabled={disabled}
+      className="w-full px-4 py-3 rounded-lg bg-black/40 border border-white/10 text-white placeholder:text-gray-600 focus:border-blue-500/50 focus:outline-none transition-colors"
+    />
+  </div>
 );
 
-const Button = ({ children, variant = "primary", ...props }) => {
-  const base =
-    "px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed";
-
-  const style =
-    variant === "primary"
-      ? "bg-blue-500/20 text-blue-200 hover:bg-blue-500/30"
-      : variant === "success"
-      ? "bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"
-      : "bg-gray-700/40 text-gray-200 hover:bg-gray-700/60";
-
+// Simple button
+const ActionButton = ({ onClick, disabled, loading, children, color = "blue" }) => {
+  const colors = {
+    blue: "bg-blue-600 hover:bg-blue-700",
+    green: "bg-green-600 hover:bg-green-700",
+    gray: "bg-gray-700 hover:bg-gray-600"
+  };
+  
   return (
-    <button {...props} className={`${base} ${style}`}>
-      {children}
+    <button
+      onClick={onClick}
+      disabled={disabled || loading}
+      className={`px-6 py-3 rounded-lg font-medium transition-all ${colors[color]} disabled:opacity-50 disabled:cursor-not-allowed text-white`}
+    >
+      {loading ? "Working..." : children}
     </button>
   );
 };
+
+// Help link
+const HelpLink = () => (
+  <a 
+    href="https://imali-defi.com/funding-guide" 
+    target="_blank" 
+    rel="noopener noreferrer"
+    className="inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+  >
+    <span>📘</span>
+    Need help? Read our funding guide
+  </a>
+);
 
 export default function Activation() {
   const navigate = useNavigate();
@@ -66,47 +89,47 @@ export default function Activation() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const [okx, setOkx] = useState({
-    apiKey: "",
-    apiSecret: "",
-    passphrase: "",
-    mode: "paper",
-  });
-
-  const [alpaca, setAlpaca] = useState({
-    apiKey: "",
-    apiSecret: "",
-    mode: "paper",
-  });
-
+  // Form fields
+  const [okx, setOkx] = useState({ apiKey: "", apiSecret: "", passphrase: "" });
+  const [alpaca, setAlpaca] = useState({ apiKey: "", apiSecret: "" });
   const [wallet, setWallet] = useState("");
 
+  // Get user tier
   const tier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user]);
 
-  const needsOkx = ["starter", "pro", "bundle"].includes(tier);
-  const needsAlpaca = ["starter", "bundle"].includes(tier);
-  const needsWallet = ["elite", "bundle"].includes(tier);
+  // What connections do we need?
+  const needs = {
+    okx: ["starter", "pro", "bundle"].includes(tier),
+    alpaca: ["starter", "bundle"].includes(tier),
+    wallet: ["elite", "bundle"].includes(tier)
+  };
 
-  const billingComplete = !!activation?.billing_complete;
-  const okxConnected = !!activation?.okx_connected;
-  const alpacaConnected = !!activation?.alpaca_connected;
-  const walletConnected = !!activation?.wallet_connected;
-  const tradingEnabled = !!activation?.trading_enabled;
+  // Current status from backend
+  const status = {
+    billing: !!activation?.billing_complete,
+    okx: !!activation?.okx_connected,
+    alpaca: !!activation?.alpaca_connected,
+    wallet: !!activation?.wallet_connected,
+    trading: !!activation?.trading_enabled
+  };
 
-  const connectionsComplete =
-    (!needsOkx || okxConnected) &&
-    (!needsAlpaca || alpacaConnected) &&
-    (!needsWallet || walletConnected);
+  // Are connections done?
+  const connectionsDone = 
+    (!needs.okx || status.okx) &&
+    (!needs.alpaca || status.alpaca) &&
+    (!needs.wallet || status.wallet);
 
-  const canEnableTrading = billingComplete && connectionsComplete;
+  // Can we enable trading?
+  const canEnableTrading = status.billing && connectionsDone;
 
-  // Redirect if fully activated
+  // Auto-redirect when fully activated
   useEffect(() => {
-    if (billingComplete && connectionsComplete && tradingEnabled) {
+    if (status.billing && connectionsDone && status.trading) {
       navigate("/dashboard", { replace: true });
     }
-  }, [billingComplete, connectionsComplete, tradingEnabled, navigate]);
+  }, [status.billing, connectionsDone, status.trading, navigate]);
 
+  // Connection functions
   const connectOKX = async (e) => {
     e.preventDefault();
     setError("");
@@ -114,7 +137,7 @@ export default function Activation() {
     setBusy("okx");
 
     if (!okx.apiKey || !okx.apiSecret || !okx.passphrase) {
-      setError("Please fill in all OKX fields.");
+      setError("Please fill in all OKX fields");
       setBusy("");
       return;
     }
@@ -124,15 +147,14 @@ export default function Activation() {
         api_key: okx.apiKey.trim(),
         api_secret: okx.apiSecret.trim(),
         passphrase: okx.passphrase.trim(),
-        mode: okx.mode,
+        mode: "live" // Always live mode for real trading
       });
 
-      setSuccess("✅ OKX connected.");
-      setOkx({ apiKey: "", apiSecret: "", passphrase: "", mode: "paper" });
+      setSuccess("✅ OKX connected successfully!");
+      setOkx({ apiKey: "", apiSecret: "", passphrase: "" });
       await refreshUser();
     } catch (err) {
-      console.error("OKX connection error:", err);
-      setError(err?.response?.data?.message || "OKX connection failed.");
+      setError(err?.response?.data?.message || "Failed to connect OKX. Check your keys.");
     } finally {
       setBusy("");
     }
@@ -145,7 +167,7 @@ export default function Activation() {
     setBusy("alpaca");
 
     if (!alpaca.apiKey || !alpaca.apiSecret) {
-      setError("Please fill in both Alpaca fields.");
+      setError("Please fill in both Alpaca fields");
       setBusy("");
       return;
     }
@@ -154,15 +176,14 @@ export default function Activation() {
       await BotAPI.connectAlpaca({
         api_key: alpaca.apiKey.trim(),
         api_secret: alpaca.apiSecret.trim(),
-        mode: alpaca.mode,
+        mode: "live" // Always live mode
       });
 
-      setSuccess("✅ Alpaca connected.");
-      setAlpaca({ apiKey: "", apiSecret: "", mode: "paper" });
+      setSuccess("✅ Alpaca connected successfully!");
+      setAlpaca({ apiKey: "", apiSecret: "" });
       await refreshUser();
     } catch (err) {
-      console.error("Alpaca connection error:", err);
-      setError(err?.response?.data?.message || "Alpaca connection failed.");
+      setError(err?.response?.data?.message || "Failed to connect Alpaca. Check your keys.");
     } finally {
       setBusy("");
     }
@@ -177,28 +198,24 @@ export default function Activation() {
     const addr = wallet.trim();
 
     if (!addr) {
-      setError("Wallet address is required.");
+      setError("Please enter your wallet address");
       setBusy("");
       return;
     }
+    
     if (!addr.startsWith("0x") || addr.length !== 42) {
-      setError("Wallet address must be 42 characters and start with 0x.");
+      setError("Wallet address must start with 0x and be 42 characters long");
       setBusy("");
       return;
     }
 
     try {
-      await BotAPI.connectWallet({
-        wallet: addr,
-        address: addr,
-      });
-
-      setSuccess("✅ Wallet connected.");
+      await BotAPI.connectWallet({ wallet: addr, address: addr });
+      setSuccess("✅ Wallet connected successfully!");
       setWallet("");
       await refreshUser();
     } catch (err) {
-      console.error("Wallet connection error:", err);
-      setError(err?.response?.data?.message || "Wallet connection failed.");
+      setError(err?.response?.data?.message || "Failed to connect wallet");
     } finally {
       setBusy("");
     }
@@ -209,243 +226,262 @@ export default function Activation() {
     setSuccess("");
     setBusy("trading");
 
-    if (!canEnableTrading && !tradingEnabled) {
-      setError("Finish billing + required connections first.");
+    if (!canEnableTrading && !status.trading) {
+      setError("Please finish billing and connections first");
       setBusy("");
       return;
     }
 
     try {
-      await BotAPI.toggleTrading(!tradingEnabled);
-      setSuccess(tradingEnabled ? "Trading turned off." : "✅ Trading turned on.");
+      await BotAPI.toggleTrading(!status.trading);
+      setSuccess(status.trading ? "Trading turned off" : "✅ Trading turned on!");
       await refreshUser();
     } catch (err) {
-      console.error("Trading toggle error:", err);
-      setError(err?.response?.data?.message || "Couldn't update trading.");
+      setError(err?.response?.data?.message || "Could not update trading");
     } finally {
       setBusy("");
     }
   };
 
   return (
-    <div className="min-h-screen bg-black text-white p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen bg-black text-white">
+      <div className="max-w-3xl mx-auto p-6">
+        
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Welcome to IMALI! 🚀</h1>
+          <p className="text-gray-400 mb-4">
+            Let's get your account ready to trade. Just 3 simple steps:
+          </p>
+          <HelpLink />
+        </div>
+
+        {/* Messages */}
         {error && (
-          <div className="bg-red-500/20 border border-red-500/30 p-4 rounded-lg text-red-200">
+          <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-200">
             ⚠️ {error}
           </div>
         )}
-
         {success && (
-          <div className="bg-emerald-500/20 border border-emerald-500/30 p-4 rounded-lg text-emerald-200">
+          <div className="mb-6 p-4 rounded-lg bg-green-500/10 border border-green-500/30 text-green-200">
             ✅ {success}
           </div>
         )}
 
-        <div className="flex justify-between items-center gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">Activation</h1>
-            <p className="text-sm text-gray-400">
-              Complete the steps below to start trading.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400">Tier:</span>
-            <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">
-              {tier.toUpperCase()}
-            </span>
-          </div>
-        </div>
-
-        <Section
-          title="1) Billing"
-          description="Add a payment method to unlock activation."
-          right={<StatusPill value={billingComplete} />}
+        {/* Step 1: Billing */}
+        <SectionCard 
+          number="1" 
+          title="Add Payment Method" 
+          description="We need a card on file to charge performance fees (30% on profits)"
+          status={status.billing}
         >
-          {!billingComplete ? (
-            <Button onClick={() => navigate("/billing")}>Add Payment Method</Button>
+          {!status.billing ? (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-400">
+                Your card will be securely saved with Stripe. We only charge when you make money.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <ActionButton onClick={() => navigate("/billing")} color="blue">
+                  Add Credit Card
+                </ActionButton>
+                <HelpLink />
+              </div>
+            </div>
           ) : (
-            <div className="text-sm text-emerald-200">✅ Billing is set.</div>
+            <div className="text-green-300">✅ Payment method saved</div>
           )}
-        </Section>
+        </SectionCard>
 
-        <Section
-          title="2) Connections"
-          description="Connect what your tier needs."
-          right={<StatusPill value={connectionsComplete} />}
+        {/* Step 2: Connect Accounts */}
+        <SectionCard 
+          number="2" 
+          title="Connect Your Accounts" 
+          description="Link the accounts you want to trade with"
+          status={connectionsDone}
         >
           <div className="space-y-6">
-            {needsOkx && !okxConnected && (
-              <form onSubmit={connectOKX} className="space-y-3 border-t border-white/10 pt-4">
-                <h3 className="font-semibold text-blue-300">OKX Exchange</h3>
-                <div className="grid gap-3">
-                  <Input
-                    placeholder="API Key"
-                    value={okx.apiKey}
-                    onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })}
-                    disabled={busy === "okx"}
-                  />
-                  <Input
-                    placeholder="API Secret"
-                    type="password"
-                    value={okx.apiSecret}
-                    onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })}
-                    disabled={busy === "okx"}
-                  />
-                  <Input
-                    placeholder="Passphrase"
-                    type="password"
-                    value={okx.passphrase}
-                    onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })}
-                    disabled={busy === "okx"}
-                  />
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="okxMode"
-                        value="paper"
-                        checked={okx.mode === "paper"}
-                        onChange={(e) => setOkx({ ...okx, mode: e.target.value })}
-                        className="text-emerald-500"
-                      />
-                      <span className="text-sm">Paper</span>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="okxMode"
-                        value="live"
-                        checked={okx.mode === "live"}
-                        onChange={(e) => setOkx({ ...okx, mode: e.target.value })}
-                        className="text-emerald-500"
-                      />
-                      <span className="text-sm">Live</span>
-                    </label>
-                  </div>
-                  <Button type="submit" disabled={busy === "okx"} variant="success">
-                    {busy === "okx" ? "Connecting..." : "Connect OKX"}
-                  </Button>
-                </div>
+            
+            {/* OKX */}
+            {needs.okx && !status.okx && (
+              <form onSubmit={connectOKX} className="space-y-4 border-t border-white/10 pt-6">
+                <h3 className="text-lg font-medium text-blue-300">🔷 OKX Exchange</h3>
+                <p className="text-sm text-gray-400">
+                  Get your API keys from OKX (enable trading, disable withdrawals)
+                </p>
+                
+                <SimpleInput
+                  label="API Key"
+                  value={okx.apiKey}
+                  onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })}
+                  placeholder="okx-..."
+                  disabled={busy === "okx"}
+                />
+                
+                <SimpleInput
+                  label="Secret Key"
+                  type="password"
+                  value={okx.apiSecret}
+                  onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })}
+                  placeholder="••••••••"
+                  disabled={busy === "okx"}
+                />
+                
+                <SimpleInput
+                  label="Passphrase"
+                  type="password"
+                  value={okx.passphrase}
+                  onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })}
+                  placeholder="your passphrase"
+                  disabled={busy === "okx"}
+                />
+                
+                <ActionButton 
+                  onClick={connectOKX} 
+                  disabled={busy === "okx"} 
+                  loading={busy === "okx"}
+                  color="blue"
+                >
+                  Connect OKX
+                </ActionButton>
               </form>
             )}
 
-            {needsAlpaca && !alpacaConnected && (
-              <form onSubmit={connectAlpaca} className="space-y-3 border-t border-white/10 pt-4">
-                <h3 className="font-semibold text-emerald-300">Alpaca</h3>
-                <div className="grid gap-3">
-                  <Input
-                    placeholder="API Key"
-                    value={alpaca.apiKey}
-                    onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })}
-                    disabled={busy === "alpaca"}
-                  />
-                  <Input
-                    placeholder="Secret Key"
-                    type="password"
-                    value={alpaca.apiSecret}
-                    onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })}
-                    disabled={busy === "alpaca"}
-                  />
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="alpacaMode"
-                        value="paper"
-                        checked={alpaca.mode === "paper"}
-                        onChange={(e) => setAlpaca({ ...alpaca, mode: e.target.value })}
-                        className="text-emerald-500"
-                      />
-                      <span className="text-sm">Paper</span>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="alpacaMode"
-                        value="live"
-                        checked={alpaca.mode === "live"}
-                        onChange={(e) => setAlpaca({ ...alpaca, mode: e.target.value })}
-                        className="text-emerald-500"
-                      />
-                      <span className="text-sm">Live</span>
-                    </label>
-                  </div>
-                  <Button type="submit" disabled={busy === "alpaca"} variant="success">
-                    {busy === "alpaca" ? "Connecting..." : "Connect Alpaca"}
-                  </Button>
-                </div>
+            {/* Alpaca */}
+            {needs.alpaca && !status.alpaca && (
+              <form onSubmit={connectAlpaca} className="space-y-4 border-t border-white/10 pt-6">
+                <h3 className="text-lg font-medium text-green-300">📈 Alpaca Trading</h3>
+                <p className="text-sm text-gray-400">
+                  Get your API keys from Alpaca (enable trading)
+                </p>
+                
+                <SimpleInput
+                  label="API Key"
+                  value={alpaca.apiKey}
+                  onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })}
+                  placeholder="AK..."
+                  disabled={busy === "alpaca"}
+                />
+                
+                <SimpleInput
+                  label="Secret Key"
+                  type="password"
+                  value={alpaca.apiSecret}
+                  onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })}
+                  placeholder="••••••••"
+                  disabled={busy === "alpaca"}
+                />
+                
+                <ActionButton 
+                  onClick={connectAlpaca} 
+                  disabled={busy === "alpaca"} 
+                  loading={busy === "alpaca"}
+                  color="green"
+                >
+                  Connect Alpaca
+                </ActionButton>
               </form>
             )}
 
-            {needsWallet && !walletConnected && (
-              <form onSubmit={connectWallet} className="space-y-3 border-t border-white/10 pt-4">
-                <h3 className="font-semibold text-purple-300">Wallet</h3>
-                <div className="grid gap-3">
-                  <Input
-                    placeholder="0x..."
-                    value={wallet}
-                    onChange={(e) => setWallet(e.target.value)}
-                    disabled={busy === "wallet"}
-                  />
-                  <Button type="submit" disabled={busy === "wallet"} variant="success">
-                    {busy === "wallet" ? "Connecting..." : "Connect Wallet"}
-                  </Button>
-                </div>
+            {/* Wallet */}
+            {needs.wallet && !status.wallet && (
+              <form onSubmit={connectWallet} className="space-y-4 border-t border-white/10 pt-6">
+                <h3 className="text-lg font-medium text-purple-300">🦄 Crypto Wallet</h3>
+                <p className="text-sm text-gray-400">
+                  Enter your Ethereum wallet address (starts with 0x)
+                </p>
+                
+                <SimpleInput
+                  label="Wallet Address"
+                  value={wallet}
+                  onChange={(e) => setWallet(e.target.value)}
+                  placeholder="0x..."
+                  disabled={busy === "wallet"}
+                />
+                
+                <ActionButton 
+                  onClick={connectWallet} 
+                  disabled={busy === "wallet"} 
+                  loading={busy === "wallet"}
+                  color="blue"
+                >
+                  Connect Wallet
+                </ActionButton>
               </form>
             )}
 
-            {needsOkx && okxConnected && (
-              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm">
-                ✅ OKX connected ({activation?.okx_mode || "paper"} mode)
+            {/* Show connected status */}
+            {needs.okx && status.okx && (
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                ✅ OKX connected
               </div>
             )}
-
-            {needsAlpaca && alpacaConnected && (
-              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm">
-                ✅ Alpaca connected ({activation?.alpaca_mode || "paper"} mode)
+            {needs.alpaca && status.alpaca && (
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                ✅ Alpaca connected
               </div>
             )}
-
-            {needsWallet && walletConnected && (
-              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm">
+            {needs.wallet && status.wallet && (
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
                 ✅ Wallet connected
               </div>
             )}
           </div>
-        </Section>
+        </SectionCard>
 
-        <Section
-          title="3) Enable Trading"
-          description="When you're ready, turn trading on."
-          right={<StatusPill value={tradingEnabled} />}
+        {/* Step 3: Start Trading */}
+        <SectionCard 
+          number="3" 
+          title="Start Trading" 
+          description="Turn on trading and let the bot work for you"
+          status={status.trading}
         >
-          <div className="space-y-3">
-            {!canEnableTrading && !tradingEnabled && (
-              <p className="text-sm text-yellow-500/80">
-                ⚠️ Finish billing + required connections first.
+          <div className="space-y-4">
+            {!canEnableTrading && !status.trading ? (
+              <p className="text-yellow-500/80 text-sm">
+                ⏳ Finish steps 1 and 2 first
               </p>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-400">
+                  When you're ready, flip the switch to start trading
+                </p>
+                <ActionButton 
+                  onClick={toggleTrading} 
+                  disabled={busy === "trading" || (!canEnableTrading && !status.trading)}
+                  loading={busy === "trading"}
+                  color={status.trading ? "gray" : "green"}
+                >
+                  {status.trading ? "Turn Trading OFF" : "Turn Trading ON"}
+                </ActionButton>
+              </div>
             )}
-
-            <Button
-              variant="success"
-              disabled={((!canEnableTrading && !tradingEnabled) || busy === "trading")}
-              onClick={toggleTrading}
-            >
-              {busy === "trading"
-                ? "Updating..."
-                : tradingEnabled
-                ? "Disable Trading"
-                : "Enable Trading"}
-            </Button>
           </div>
-        </Section>
+        </SectionCard>
 
-        <div className="flex gap-3 pt-2">
-          <Button variant="secondary" onClick={() => navigate("/dashboard")}>
-            Go to Dashboard
-          </Button>
+        {/* Quick Links */}
+        <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap gap-4 justify-center text-sm">
+          <a 
+            href="https://imali-defi.com/funding-guide" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-300"
+          >
+            📘 Funding Guide
+          </a>
+          <span className="text-gray-600">•</span>
+          <button 
+            onClick={() => navigate("/dashboard")}
+            className="text-gray-400 hover:text-white"
+          >
+            Skip to Dashboard
+          </button>
+          <span className="text-gray-600">•</span>
+          <a 
+            href="mailto:support@imali-defi.com"
+            className="text-gray-400 hover:text-white"
+          >
+            Need Help?
+          </a>
         </div>
       </div>
     </div>
