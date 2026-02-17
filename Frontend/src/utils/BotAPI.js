@@ -15,7 +15,6 @@ const api = axios.create({
     "Content-Type": "application/json",
     "Accept": "application/json"
   },
-  // Don't send any extra headers that might cause CORS issues
   withCredentials: false
 });
 
@@ -83,11 +82,11 @@ const AUTH_WHITELIST = [
   "/privacy",
 ];
 
-// Request queue to prevent rate limiting - matches backend rate limits
+// Request queue to prevent rate limiting
 let requestQueue = [];
 let isProcessing = false;
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 800; // 800ms between requests to stay under 60/hour
+const MIN_REQUEST_INTERVAL = 800;
 
 const processQueue = async () => {
   if (isProcessing || requestQueue.length === 0) return;
@@ -98,7 +97,6 @@ const processQueue = async () => {
     const { config, resolve, reject } = requestQueue.shift();
     
     try {
-      // Ensure minimum time between requests (respect backend rate limits)
       const now = Date.now();
       const timeSinceLastRequest = now - lastRequestTime;
       if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
@@ -109,7 +107,6 @@ const processQueue = async () => {
         ...config,
         baseURL: API_BASE,
         timeout: 30000,
-        // Don't send any extra headers
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
@@ -135,21 +132,17 @@ api.interceptors.request.use(
   (config) => {
     const token = getStoredToken();
 
-    // Start with clean headers - only include what backend allows
     const headers = {
       "Content-Type": "application/json",
       "Accept": "application/json"
     };
 
-    // Add Authorization if token exists
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    // Replace config headers with clean headers
     config.headers = headers;
 
-    // Return a promise that will be resolved by the queue
     return new Promise((resolve, reject) => {
       requestQueue.push({ config, resolve, reject });
       processQueue();
@@ -171,28 +164,21 @@ api.interceptors.response.use(
     const url = error?.config?.url || "";
     const path = getPath();
 
-    // Handle CORS errors
     if (error.message === 'Network Error' && !error.response) {
-      console.error('CORS or Network Error - Check backend CORS configuration');
-      return Promise.reject({
-        ...error,
-        message: 'Unable to connect to server. Please check your connection.'
-      });
+      console.error('Network Error - Check if backend is running');
+      return Promise.reject(error);
     }
 
-    // Handle rate limiting (429) - matches backend
     if (status === 429) {
       console.warn("Rate limited by API");
       return Promise.reject(error);
     }
 
-    // Handle service unavailable (503)
     if (status === 503) {
       console.error("Service unavailable");
       return Promise.reject(error);
     }
 
-    // Auth endpoints should not trigger global logout loops
     const isAuthEndpoint =
       url.includes("/api/auth/login") ||
       url.includes("/api/signup") ||
@@ -219,10 +205,14 @@ api.interceptors.response.use(
 );
 
 /* =========================
-   API METHODS
+   API METHODS - SAFE UNWRAPPING
 ========================= */
 
-const unwrap = (res) => res?.data;
+const unwrap = (res) => {
+  // Safely unwrap response data
+  if (!res) return null;
+  return res.data || res;
+};
 
 const getErrMessage = (err, fallback = "Request failed") => {
   const msg =
@@ -255,42 +245,65 @@ const BotAPI = {
   /* ========= AUTH ========= */
 
   async signup(payload) {
-    const res = await api.post("/api/signup", payload);
-    return unwrap(res);
+    try {
+      const res = await api.post("/api/signup", payload);
+      return unwrap(res);
+    } catch (error) {
+      console.error('Signup API error:', error);
+      throw error;
+    }
   },
 
   async login(payload) {
     clearStoredToken();
 
-    const res = await api.post("/api/auth/login", payload);
-    const data = unwrap(res);
+    try {
+      const res = await api.post("/api/auth/login", payload);
+      const data = unwrap(res);
 
-    if (!data?.token) {
-      throw new Error("Login failed: no token returned");
-    }
-
-    setStoredToken(data.token);
-
-    // Warm auth with delay to avoid rate limiting
-    setTimeout(async () => {
-      try {
-        await api.get("/api/me");
-      } catch {
-        // ignore
+      if (!data?.token) {
+        throw new Error("Login failed: no token returned");
       }
-    }, 1000);
 
-    return data;
+      setStoredToken(data.token);
+
+      setTimeout(async () => {
+        try {
+          await api.get("/api/me");
+        } catch {
+          // ignore
+        }
+      }, 1000);
+
+      return data;
+    } catch (error) {
+      console.error('Login API error:', error);
+      throw error;
+    }
   },
 
   async me() {
-    const res = await api.get("/api/me");
-    return unwrap(res);
+    try {
+      const res = await api.get("/api/me");
+      const data = unwrap(res);
+      // Handle both { user: {...} } and direct user object
+      return data?.user || data || null;
+    } catch (error) {
+      console.error('Me API error:', error);
+      throw error;
+    }
   },
 
   async activationStatus() {
-    const res = await api.get("/api/me/activation-status");
-    return unwrap(res);
+    try {
+      const res = await api.get("/api/me/activation-status");
+      const data = unwrap(res);
+      // Handle both { status: {...} } and direct status object
+      return data?.status || data || null;
+    } catch (error) {
+      console.error('Activation status API error:', error);
+      throw error;
+    }
   },
 
   /* ========= BILLING ========= */
