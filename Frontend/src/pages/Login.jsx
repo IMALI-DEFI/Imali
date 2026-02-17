@@ -1,15 +1,19 @@
 // src/pages/Login.jsx
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import BotAPI from "../utils/BotAPI";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const from = location.state?.from || "/activation";
 
   const submit = async (e) => {
     e.preventDefault();
@@ -21,22 +25,23 @@ export default function Login() {
     try {
       const normalizedEmail = email.trim().toLowerCase();
 
-      await BotAPI.login({
-        email: normalizedEmail,
-        password,
-      });
+      const result = await login(normalizedEmail, password);
+      
+      if (!result.success) {
+        setError(result.error);
+        setLoading(false);
+        return;
+      }
 
       localStorage.setItem("IMALI_EMAIL", normalizedEmail);
-
-      // 🔥 Always go to activation after login
+      
+      // AuthContext will handle loading user data
+      // Navigate to activation (ProtectedRoute will handle redirects)
       navigate("/activation", { replace: true });
 
     } catch (err) {
-      if (err.response?.status === 401) {
-        setError("Invalid email or password.");
-      } else {
-        setError("Login failed. Please try again.");
-      }
+      console.error("Login error:", err);
+      setError("Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -62,8 +67,9 @@ export default function Login() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
+            className="w-full p-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-gray-500"
             autoComplete="email"
+            disabled={loading}
           />
 
           <input
@@ -72,14 +78,15 @@ export default function Login() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10"
+            className="w-full p-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-gray-500"
             autoComplete="current-password"
+            disabled={loading}
           />
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-indigo-600 font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            className="w-full py-3 rounded-xl bg-indigo-600 font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Signing in…" : "Log in"}
           </button>
