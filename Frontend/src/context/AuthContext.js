@@ -6,13 +6,28 @@ const AuthContext = createContext({});
 
 export const useAuth = () => useContext(AuthContext);
 
+// Simple retry function with exponential backoff
+const retry = async (fn, retries = 3, delay = 1000) => {
+  try {
+    return await fn();
+  } catch (error) {
+    // Only retry on 429 or network errors
+    if (retries > 0 && (error.response?.status === 429 || error.code === 'ERR_NETWORK')) {
+      console.log(`Rate limited, retrying in ${delay}ms... (${retries} retries left)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return retry(fn, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [activation, setActivation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
-  // Load user and activation data in one go
+  // Load user and activation data in one go with retry logic
   const loadUserData = useCallback(async () => {
     if (!BotAPI.isLoggedIn()) {
       setUser(null);
@@ -23,18 +38,21 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      // Get user data
-      const userData = await BotAPI.me();
+      // Get user data with retry
+      const userData = await retry(async () => {
+        const data = await BotAPI.me();
+        if (!data) throw new Error('No user data');
+        return data;
+      }, 3, 1000);
       
-      if (!userData) {
-        throw new Error('No user data');
-      }
-
       // Try to get activation data (but don't fail if it's not available)
       let activationData = null;
       try {
-        const actResponse = await BotAPI.activationStatus();
-        activationData = actResponse?.status || actResponse;
+        const actResponse = await retry(async () => {
+          const data = await BotAPI.activationStatus();
+          return data?.status || data;
+        }, 2, 1500);
+        activationData = actResponse;
       } catch (actErr) {
         console.warn('Could not load activation data:', actErr);
       }
