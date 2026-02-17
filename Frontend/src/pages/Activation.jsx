@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
 
 /* ======================================================
-   SIMPLE STATUS HELPERS (demo-style tone)
+   SIMPLE STATUS HELPERS
 ====================================================== */
 
 const statusLabel = (value) => (value ? "Complete" : "Pending");
@@ -75,6 +75,7 @@ export default function Activation() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [retryCount, setRetryCount] = useState(0);
+  const [redirecting, setRedirecting] = useState(false);
 
   const mountedRef = useRef(true);
 
@@ -114,7 +115,7 @@ export default function Activation() {
   const canEnableTrading = billingComplete && connectionsComplete;
 
   /* ======================================================
-     LOAD DATA WITH RATE LIMIT HANDLING
+     LOAD DATA
   ====================================================== */
 
   const load = async (isRetry = false) => {
@@ -124,6 +125,12 @@ export default function Activation() {
       }
       
       setLoading(true);
+
+      // Check token first
+      if (!BotAPI.isLoggedIn()) {
+        navigate("/login", { replace: true });
+        return;
+      }
 
       const me = await BotAPI.me();
       if (!mountedRef.current) return;
@@ -138,13 +145,7 @@ export default function Activation() {
 
       const statusData = activation?.status || activation || {};
       setStatus(statusData);
-      setRetryCount(0); // Reset retry count on success
-
-      // Auto-redirect if billing not complete
-      if (!statusData.billing_complete) {
-        navigate("/billing", { replace: true });
-        return;
-      }
+      setRetryCount(0);
 
       // Auto-redirect if fully activated
       const userTier = (me?.user?.tier || "starter").toLowerCase();
@@ -158,7 +159,10 @@ export default function Activation() {
         (!needsWallet || statusData.wallet_connected);
         
       if (statusData.billing_complete && statusData.trading_enabled && connectionsOk) {
-        navigate("/dashboard", { replace: true });
+        if (!redirecting && mountedRef.current) {
+          setRedirecting(true);
+          navigate("/dashboard", { replace: true });
+        }
         return;
       }
 
@@ -171,7 +175,7 @@ export default function Activation() {
       if (e.response?.status === 429) {
         const maxRetries = 3;
         if (retryCount < maxRetries) {
-          const waitTime = Math.pow(2, retryCount) * 2000; // 2, 4, 8 seconds
+          const waitTime = Math.pow(2, retryCount) * 2000;
           setError(`Rate limited. Retrying in ${waitTime/1000} seconds... (${retryCount + 1}/${maxRetries})`);
           
           setTimeout(() => {
@@ -187,6 +191,8 @@ export default function Activation() {
       } else if (e.response?.status === 401) {
         setError("Session expired. Please log in again.");
         setTimeout(() => navigate("/login"), 1500);
+      } else if (e.response?.status === 503) {
+        setError("Service temporarily unavailable. Please try again later.");
       } else {
         setError("Couldn't load activation. Please refresh and try again.");
       }
@@ -206,7 +212,7 @@ export default function Activation() {
   }, []);
 
   /* ======================================================
-     CONNECT FUNCTIONS (with rate limit handling)
+     CONNECT FUNCTIONS
   ====================================================== */
 
   const connectOKX = async (e) => {
@@ -222,40 +228,25 @@ export default function Activation() {
     }
 
     try {
-      const response = await fetch(
-        `${
-          process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"
-        }/api/integrations/okx`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${BotAPI.getToken()}`,
-          },
-          body: JSON.stringify({
-            api_key: okx.apiKey.trim(),
-            api_secret: okx.apiSecret.trim(),
-            passphrase: okx.passphrase.trim(),
-            mode: okx.mode,
-          }),
-        }
-      );
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+      await BotAPI.connectOKX({
+        api_key: okx.apiKey.trim(),
+        api_secret: okx.apiSecret.trim(),
+        passphrase: okx.passphrase.trim(),
+        mode: okx.mode,
+      });
 
       setSuccess("✅ OKX connected.");
       setOkx({ apiKey: "", apiSecret: "", passphrase: "", mode: "paper" });
 
-      // Wait before refreshing to avoid rate limits
+      // Wait before refreshing
       await new Promise(resolve => setTimeout(resolve, 1000));
       await load();
     } catch (err) {
       console.error("OKX connection error:", err);
-      if (err.message?.includes("429")) {
+      if (err.response?.status === 429) {
         setError("Rate limited. Please wait a moment and try again.");
       } else {
-        setError(err?.message || "OKX connection failed. Double-check your keys.");
+        setError(err?.response?.data?.message || "OKX connection failed. Double-check your keys.");
       }
     } finally {
       setBusy("");
@@ -275,39 +266,23 @@ export default function Activation() {
     }
 
     try {
-      const response = await fetch(
-        `${
-          process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"
-        }/api/integrations/alpaca`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${BotAPI.getToken()}`,
-          },
-          body: JSON.stringify({
-            api_key: alpaca.apiKey.trim(),
-            api_secret: alpaca.apiSecret.trim(),
-            mode: alpaca.mode,
-          }),
-        }
-      );
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+      await BotAPI.connectAlpaca({
+        api_key: alpaca.apiKey.trim(),
+        api_secret: alpaca.apiSecret.trim(),
+        mode: alpaca.mode,
+      });
 
       setSuccess("✅ Alpaca connected.");
       setAlpaca({ apiKey: "", apiSecret: "", mode: "paper" });
 
-      // Wait before refreshing to avoid rate limits
       await new Promise(resolve => setTimeout(resolve, 1000));
       await load();
     } catch (err) {
       console.error("Alpaca connection error:", err);
-      if (err.message?.includes("429")) {
+      if (err.response?.status === 429) {
         setError("Rate limited. Please wait a moment and try again.");
       } else {
-        setError(err?.message || "Alpaca connection failed. Double-check your keys.");
+        setError(err?.response?.data?.message || "Alpaca connection failed. Double-check your keys.");
       }
     } finally {
       setBusy("");
@@ -334,38 +309,22 @@ export default function Activation() {
     }
 
     try {
-      const response = await fetch(
-        `${
-          process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"
-        }/api/integrations/wallet`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${BotAPI.getToken()}`,
-          },
-          body: JSON.stringify({
-            wallet: addr,
-            address: addr,
-          }),
-        }
-      );
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+      await BotAPI.connectWallet({
+        wallet: addr,
+        address: addr,
+      });
 
       setSuccess("✅ Wallet connected.");
       setWallet("");
 
-      // Wait before refreshing to avoid rate limits
       await new Promise(resolve => setTimeout(resolve, 1000));
       await load();
     } catch (err) {
       console.error("Wallet connection error:", err);
-      if (err.message?.includes("429")) {
+      if (err.response?.status === 429) {
         setError("Rate limited. Please wait a moment and try again.");
       } else {
-        setError(err?.message || "Wallet connection failed.");
+        setError(err?.response?.data?.message || "Wallet connection failed.");
       }
     } finally {
       setBusy("");
@@ -384,34 +343,18 @@ export default function Activation() {
     }
 
     try {
-      const response = await fetch(
-        `${
-          process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"
-        }/api/trading/enable`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${BotAPI.getToken()}`,
-          },
-          body: JSON.stringify({ enabled: !tradingEnabled }),
-        }
-      );
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+      await BotAPI.toggleTrading(!tradingEnabled);
 
       setSuccess(tradingEnabled ? "Trading turned off." : "✅ Trading turned on.");
 
-      // Wait before refreshing to avoid rate limits
       await new Promise(resolve => setTimeout(resolve, 1000));
       await load();
     } catch (err) {
       console.error("Trading toggle error:", err);
-      if (err.message?.includes("429")) {
+      if (err.response?.status === 429) {
         setError("Rate limited. Please wait a moment and try again.");
       } else {
-        setError(err?.message || "Couldn't update trading. Please try again.");
+        setError(err?.response?.data?.message || "Couldn't update trading. Please try again.");
       }
     } finally {
       setBusy("");
