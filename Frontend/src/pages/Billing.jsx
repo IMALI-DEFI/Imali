@@ -40,6 +40,7 @@ function BillingInner() {
         throw stripeError;
       }
 
+      // Success - go to activation
       navigate("/activation", { replace: true });
     } catch (err) {
       setError(err.message || "Failed to save payment method");
@@ -84,22 +85,38 @@ export default function Billing() {
   useEffect(() => {
     const initializeBilling = async () => {
       try {
-        // If no token, redirect
-        if (!BotAPI.isLoggedIn()) {
-          navigate("/login", {
-            replace: true,
-            state: { from: "/billing" },
-          });
-          return;
-        }
-
-        if (!email) {
+        // 🔥 FIX: Check if we're already logged in via token
+        const token = BotAPI.getToken();
+        
+        // If no token and no email, go to signup
+        if (!token && !email) {
           navigate("/signup", { replace: true });
           return;
         }
 
+        // If we have token but no email in state, try to get it from user data
+        let userEmail = email;
+        if (!userEmail && token) {
+          try {
+            const me = await BotAPI.me();
+            userEmail = me?.user?.email || me?.email;
+            if (userEmail) {
+              localStorage.setItem("IMALI_EMAIL", userEmail);
+            }
+          } catch (e) {
+            // Ignore - will redirect if needed
+          }
+        }
+
+        // If still no email, go to signup
+        if (!userEmail) {
+          navigate("/signup", { replace: true });
+          return;
+        }
+
+        // Create setup intent
         const res = await BotAPI.createSetupIntent({
-          email,
+          email: userEmail,
           tier,
         });
 
@@ -109,11 +126,19 @@ export default function Billing() {
 
         setClientSecret(res.client_secret);
       } catch (err) {
+        // 🔥 FIX: Only redirect to login on 401 if we're not in onboarding flow
         if (err.response?.status === 401) {
-          navigate("/login", {
-            replace: true,
-            state: { from: "/billing" },
-          });
+          // Check if this is an auth error during onboarding
+          const isOnboarding = window.location.pathname.includes("/billing");
+          if (isOnboarding) {
+            // During onboarding, just show error - don't redirect
+            setError("Session expired. Please try signing up again.");
+          } else {
+            navigate("/login", {
+              replace: true,
+              state: { from: "/billing" },
+            });
+          }
           return;
         }
 
@@ -129,8 +154,9 @@ export default function Billing() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white flex items-center justify-center">
-        <div className="text-center text-emerald-400">
-          Loading billing...
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-4"></div>
+          <div className="text-emerald-400">Loading billing...</div>
         </div>
       </div>
     );
@@ -144,12 +170,12 @@ export default function Billing() {
             {error}
           </div>
 
-          <Link
-            to="/activation"
-            className="inline-block bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+          <button
+            onClick={() => navigate("/signup")}
+            className="inline-block bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
           >
-            Continue
-          </Link>
+            Back to Signup
+          </button>
         </div>
       </div>
     );
