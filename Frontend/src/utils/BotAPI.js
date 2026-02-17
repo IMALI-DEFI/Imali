@@ -10,11 +10,13 @@ const TOKEN_KEY = "imali_token";
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 30000, // Increased timeout
+  timeout: 30000,
   headers: { 
     "Content-Type": "application/json",
     "Accept": "application/json"
   },
+  // Don't send any extra headers that might cause CORS issues
+  withCredentials: false
 });
 
 /* =========================
@@ -81,11 +83,11 @@ const AUTH_WHITELIST = [
   "/privacy",
 ];
 
-// Request queue to prevent rate limiting
+// Request queue to prevent rate limiting - matches backend rate limits
 let requestQueue = [];
 let isProcessing = false;
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 500; // 500ms between requests
+const MIN_REQUEST_INTERVAL = 800; // 800ms between requests to stay under 60/hour
 
 const processQueue = async () => {
   if (isProcessing || requestQueue.length === 0) return;
@@ -96,7 +98,7 @@ const processQueue = async () => {
     const { config, resolve, reject } = requestQueue.shift();
     
     try {
-      // Ensure minimum time between requests
+      // Ensure minimum time between requests (respect backend rate limits)
       const now = Date.now();
       const timeSinceLastRequest = now - lastRequestTime;
       if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
@@ -107,6 +109,12 @@ const processQueue = async () => {
         ...config,
         baseURL: API_BASE,
         timeout: 30000,
+        // Don't send any extra headers
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          ...(config.headers || {})
+        }
       });
       
       lastRequestTime = Date.now();
@@ -127,16 +135,19 @@ api.interceptors.request.use(
   (config) => {
     const token = getStoredToken();
 
-    config.headers = config.headers || {};
+    // Start with clean headers - only include what backend allows
+    const headers = {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    };
 
+    // Add Authorization if token exists
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      delete config.headers.Authorization;
+      headers["Authorization"] = `Bearer ${token}`;
     }
 
-    // Add request ID for tracking
-    config.headers['X-Request-ID'] = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Replace config headers with clean headers
+    config.headers = headers;
 
     // Return a promise that will be resolved by the queue
     return new Promise((resolve, reject) => {
@@ -160,7 +171,16 @@ api.interceptors.response.use(
     const url = error?.config?.url || "";
     const path = getPath();
 
-    // Handle rate limiting (429)
+    // Handle CORS errors
+    if (error.message === 'Network Error' && !error.response) {
+      console.error('CORS or Network Error - Check backend CORS configuration');
+      return Promise.reject({
+        ...error,
+        message: 'Unable to connect to server. Please check your connection.'
+      });
+    }
+
+    // Handle rate limiting (429) - matches backend
     if (status === 429) {
       console.warn("Rate limited by API");
       return Promise.reject(error);
@@ -188,7 +208,6 @@ api.interceptors.response.use(
         const next = encodeURIComponent(path);
         window.location.href = `/login?next=${next}`;
         
-        // Reset redirecting flag after navigation
         setTimeout(() => {
           redirecting = false;
         }, 5000);
@@ -281,6 +300,31 @@ const BotAPI = {
     return unwrap(res);
   },
 
+  async getCardStatus() {
+    const res = await api.get("/api/billing/card-status");
+    return unwrap(res);
+  },
+
+  async setDefaultPaymentMethod(payload) {
+    const res = await api.post("/api/billing/set-default-payment", payload);
+    return unwrap(res);
+  },
+
+  async calculateFee(payload) {
+    const res = await api.post("/api/billing/calculate-fee", payload);
+    return unwrap(res);
+  },
+
+  async chargeFee(payload) {
+    const res = await api.post("/api/billing/charge-fee", payload);
+    return unwrap(res);
+  },
+
+  async getFeeHistory() {
+    const res = await api.get("/api/billing/fee-history");
+    return unwrap(res);
+  },
+
   /* ========= INTEGRATIONS ========= */
 
   async connectOKX(payload) {
@@ -298,10 +342,20 @@ const BotAPI = {
     return unwrap(res);
   },
 
+  async getIntegrationStatus() {
+    const res = await api.get("/api/integrations/status");
+    return unwrap(res);
+  },
+
   /* ========= TRADING ========= */
 
   async toggleTrading(enabled) {
     const res = await api.post("/api/trading/enable", { enabled });
+    return unwrap(res);
+  },
+
+  async getTradingStatus() {
+    const res = await api.get("/api/trading/status");
     return unwrap(res);
   },
 
@@ -316,6 +370,69 @@ const BotAPI = {
 
   async getTrades() {
     const res = await api.get("/api/sniper/trades");
+    return unwrap(res);
+  },
+
+  /* ========= ANALYTICS ========= */
+
+  async getPnLSeries(payload) {
+    const res = await api.post("/api/analytics/pnl/series", payload);
+    return unwrap(res);
+  },
+
+  async getWinLossStats(payload) {
+    const res = await api.post("/api/analytics/winloss", payload);
+    return unwrap(res);
+  },
+
+  async getFeeSeries(payload) {
+    const res = await api.post("/api/analytics/fees/series", payload);
+    return unwrap(res);
+  },
+
+  /* ========= PROMO ========= */
+
+  async getPromoStatus() {
+    const res = await api.get("/api/promo/status");
+    return unwrap(res);
+  },
+
+  async claimPromo(payload) {
+    const res = await api.post("/api/promo/claim", payload);
+    return unwrap(res);
+  },
+
+  async getMyPromoStatus() {
+    const res = await api.get("/api/promo/me");
+    return unwrap(res);
+  },
+
+  /* ========= ADMIN ========= */
+
+  async adminCheck() {
+    const res = await api.get("/api/admin/check");
+    return unwrap(res);
+  },
+
+  async adminGetUsers() {
+    const res = await api.get("/api/admin/users");
+    return unwrap(res);
+  },
+
+  async adminUpdateUserTier(payload) {
+    const res = await api.post("/api/admin/user/update-tier", payload);
+    return unwrap(res);
+  },
+
+  async adminProcessPendingFees(payload) {
+    const res = await api.post("/api/admin/process-pending-fees", payload);
+    return unwrap(res);
+  },
+
+  /* ========= SYSTEM ========= */
+
+  async healthCheck() {
+    const res = await api.get("/api/health");
     return unwrap(res);
   },
 
