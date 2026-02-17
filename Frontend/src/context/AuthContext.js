@@ -1,5 +1,5 @@
 // src/context/AuthContext.js
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import BotAPI from '../utils/BotAPI';
 
 const AuthContext = createContext({});
@@ -8,48 +8,82 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [activation, setActivation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
-    
-    const initAuth = async () => {
-      if (BotAPI.isLoggedIn()) {
-        try {
-          const userData = await BotAPI.me();
-          if (mounted && userData) {
-            setUser(userData);
-          } else if (mounted) {
-            // If no user data but token exists, clear token
-            BotAPI.clearToken();
-            setUser(null);
-          }
-        } catch (error) {
-          console.error('Auth initialization failed:', error);
-          if (mounted) {
-            BotAPI.clearToken();
-            setUser(null);
-          }
-        }
-      } else {
-        if (mounted) {
-          setUser(null);
-        }
-      }
-      
-      if (mounted) {
-        setLoading(false);
-        setInitialized(true);
-      }
-    };
+  // Load user and activation data in one go
+  const loadUserData = useCallback(async () => {
+    if (!BotAPI.isLoggedIn()) {
+      setUser(null);
+      setActivation(null);
+      setLoading(false);
+      setInitialized(true);
+      return;
+    }
 
-    initAuth();
-    
-    return () => {
-      mounted = false;
-    };
+    try {
+      // Get user data
+      const userData = await BotAPI.me();
+      
+      if (!userData) {
+        throw new Error('No user data');
+      }
+
+      // Try to get activation data (but don't fail if it's not available)
+      let activationData = null;
+      try {
+        const actResponse = await BotAPI.activationStatus();
+        activationData = actResponse?.status || actResponse;
+      } catch (actErr) {
+        console.warn('Could not load activation data:', actErr);
+      }
+
+      setUser(userData);
+      setActivation(activationData);
+    } catch (error) {
+      console.error('Failed to load user data:', error);
+      BotAPI.clearToken();
+      setUser(null);
+      setActivation(null);
+    } finally {
+      setLoading(false);
+      setInitialized(true);
+    }
   }, []);
+
+  useEffect(() => {
+    loadUserData();
+  }, [loadUserData]);
+
+  // Compute activation status from user + activation data
+  const activationComplete = useCallback(() => {
+    if (!user || !activation) return false;
+    
+    const tier = (user.tier || 'starter').toLowerCase();
+    
+    // Check billing
+    if (!activation.billing_complete) return false;
+    
+    // Check connections based on tier
+    const needsOkx = ['starter', 'pro', 'bundle'].includes(tier);
+    const needsAlpaca = ['starter', 'bundle'].includes(tier);
+    const needsWallet = ['elite', 'stock', 'bundle'].includes(tier);
+    
+    const okxConnected = !!activation.okx_connected;
+    const alpacaConnected = !!activation.alpaca_connected;
+    const walletConnected = !!activation.wallet_connected;
+    
+    const connectionsComplete = 
+      (!needsOkx || okxConnected) &&
+      (!needsAlpaca || alpacaConnected) &&
+      (!needsWallet || walletConnected);
+    
+    // Check trading enabled
+    if (!activation.trading_enabled) return false;
+    
+    return activation.billing_complete && connectionsComplete && activation.trading_enabled;
+  }, [user, activation]);
 
   const login = async (email, password) => {
     try {
@@ -59,12 +93,8 @@ export const AuthProvider = ({ children }) => {
         throw new Error('No response from server');
       }
 
-      // Get user data after login
-      const userData = await BotAPI.me();
-      
-      if (userData) {
-        setUser(userData);
-      }
+      // Load user data immediately after login
+      await loadUserData();
       
       return { success: true, data: response };
     } catch (error) {
@@ -74,11 +104,11 @@ export const AuthProvider = ({ children }) => {
       if (error.response?.status === 401) {
         errorMessage = 'Invalid email or password';
       } else if (error.response?.status === 429) {
-        errorMessage = 'Too many attempts. Please try again later.';
+        errorMessage = 'Too many attempts. Please wait a moment.';
       } else if (error.response?.status === 503) {
-        errorMessage = 'Service temporarily unavailable. Please try again.';
+        errorMessage = 'Service temporarily unavailable.';
       } else if (error.message === 'Network Error') {
-        errorMessage = 'Unable to connect to server. Please check your connection.';
+        errorMessage = 'Unable to connect to server.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -105,11 +135,11 @@ export const AuthProvider = ({ children }) => {
       } else if (error.response?.status === 400) {
         errorMessage = error.response?.data?.message || 'Invalid signup information';
       } else if (error.response?.status === 429) {
-        errorMessage = 'Too many attempts. Please try again later.';
+        errorMessage = 'Too many attempts. Please wait a moment.';
       } else if (error.response?.status === 503) {
-        errorMessage = 'Service temporarily unavailable. Please try again.';
+        errorMessage = 'Service temporarily unavailable.';
       } else if (error.message === 'Network Error') {
-        errorMessage = 'Unable to connect to server. Please check your connection.';
+        errorMessage = 'Unable to connect to server.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -121,27 +151,20 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     BotAPI.clearToken();
     setUser(null);
+    setActivation(null);
   };
 
   const refreshUser = async () => {
-    if (BotAPI.isLoggedIn()) {
-      try {
-        const userData = await BotAPI.me();
-        if (userData) {
-          setUser(userData);
-          return userData;
-        }
-      } catch (error) {
-        console.error('Refresh user failed:', error);
-      }
-    }
-    return null;
+    await loadUserData();
+    return user;
   };
 
   const value = {
     user,
+    activation,
     loading,
     initialized,
+    activationComplete: activationComplete(),
     login,
     signup,
     logout,
