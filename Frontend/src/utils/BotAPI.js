@@ -68,7 +68,6 @@ const getPath = () => {
 };
 
 // Pages where a 401 can happen during onboarding and we should NOT force a redirect loop.
-// (Ex: right after login/signup while page is transitioning)
 const AUTH_WHITELIST = [
   "/login",
   "/signup",
@@ -79,6 +78,32 @@ const AUTH_WHITELIST = [
   "/privacy",
 ];
 
+// Simple request queue to prevent rate limiting
+let requestQueue = [];
+let isProcessing = false;
+
+const processQueue = async () => {
+  if (isProcessing || requestQueue.length === 0) return;
+  
+  isProcessing = true;
+  
+  while (requestQueue.length > 0) {
+    const { config, resolve, reject } = requestQueue.shift();
+    
+    try {
+      // Add delay between requests to avoid rate limiting
+      await new Promise(r => setTimeout(r, 800));
+      
+      const response = await axios(config);
+      resolve(response);
+    } catch (error) {
+      reject(error);
+    }
+  }
+  
+  isProcessing = false;
+};
+
 /* =========================
    REQUEST INTERCEPTOR
 ========================= */
@@ -87,25 +112,25 @@ api.interceptors.request.use(
   (config) => {
     const token = getStoredToken();
 
-    // Ensure headers object exists
     config.headers = config.headers || {};
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     } else {
-      // If no token, ensure we don't accidentally send an old default
       if (config.headers.Authorization) delete config.headers.Authorization;
     }
 
-    return config;
+    // Return a promise that will be resolved by the queue
+    return new Promise((resolve, reject) => {
+      requestQueue.push({ config, resolve, reject });
+      processQueue();
+    });
   },
   (err) => Promise.reject(err)
 );
 
 /* =========================
    RESPONSE INTERCEPTOR
-   - clears token on 401
-   - avoids redirect loops during onboarding
 ========================= */
 
 let redirecting = false;
@@ -117,6 +142,13 @@ api.interceptors.response.use(
     const url = error?.config?.url || "";
     const path = getPath();
 
+    // Handle rate limiting (429)
+    if (status === 429) {
+      console.warn("Rate limited by API");
+      // Don't clear token for rate limiting
+      return Promise.reject(error);
+    }
+
     // Auth endpoints should not trigger global logout loops
     const isAuthEndpoint =
       url.includes("/api/auth/login") ||
@@ -125,8 +157,6 @@ api.interceptors.response.use(
     if (status === 401 && !isAuthEndpoint) {
       clearStoredToken();
 
-      // If user is already on an allowed onboarding/public page, do not hard-redirect.
-      // Let the page handle it (or the user click login).
       const isWhitelisted = AUTH_WHITELIST.some((p) => path.startsWith(p));
       if (!isWhitelisted && !redirecting) {
         redirecting = true;
@@ -145,7 +175,6 @@ api.interceptors.response.use(
 
 const unwrap = (res) => res?.data;
 
-/** Normalize axios error messages */
 const getErrMessage = (err, fallback = "Request failed") => {
   const msg =
     err?.response?.data?.message ||
@@ -177,13 +206,11 @@ const BotAPI = {
   /* ========= AUTH ========= */
 
   async signup(payload) {
-    // payload: { email, password, tier, strategy, ... }
     const res = await api.post("/api/signup", payload);
     return unwrap(res);
   },
 
   async login(payload) {
-    // payload: { email, password }
     clearStoredToken();
 
     const res = await api.post("/api/auth/login", payload);
@@ -195,12 +222,14 @@ const BotAPI = {
 
     setStoredToken(data.token);
 
-    // Optional: warm auth to prevent immediate 401 loops on next page
-    try {
-      await api.get("/api/me");
-    } catch {
-      // ignore; next screen may handle it
-    }
+    // Warm auth with delay to avoid rate limiting
+    setTimeout(async () => {
+      try {
+        await api.get("/api/me");
+      } catch {
+        // ignore
+      }
+    }, 1000);
 
     return data;
   },
@@ -225,19 +254,16 @@ const BotAPI = {
   /* ========= INTEGRATIONS ========= */
 
   async connectOKX(payload) {
-    // payload: { api_key, api_secret, passphrase, mode }
     const res = await api.post("/api/integrations/okx", payload);
     return unwrap(res);
   },
 
   async connectAlpaca(payload) {
-    // payload: { api_key, api_secret, mode }
     const res = await api.post("/api/integrations/alpaca", payload);
     return unwrap(res);
   },
 
   async connectWallet(payload) {
-    // payload: { address } or { wallet }
     const res = await api.post("/api/integrations/wallet", payload);
     return unwrap(res);
   },
@@ -258,7 +284,6 @@ const BotAPI = {
 
   /* ========= UTIL ========= */
 
-  // Useful when you want a consistent error message in UI
   errMessage(err, fallback) {
     return getErrMessage(err, fallback);
   },
