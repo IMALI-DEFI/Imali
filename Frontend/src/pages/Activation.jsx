@@ -34,6 +34,7 @@ const Section = ({ title, description, right, children }) => (
   </div>
 );
 
+// FIXED: Added autocomplete attributes
 const Input = ({ type = "text", autoComplete, ...props }) => (
   <input
     {...props}
@@ -75,6 +76,7 @@ export default function Activation() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // avoid state updates after unmount
   const mountedRef = useRef(true);
 
   // Form fields
@@ -113,35 +115,6 @@ export default function Activation() {
   const canEnableTrading = billingComplete && connectionsComplete;
 
   /* ======================================================
-     FIXED REDIRECT LOGIC
-  ====================================================== */
-
-  // Check if user should be on this page
-  useEffect(() => {
-    const checkAccess = async () => {
-      try {
-        // If billing is not complete, send to billing
-        if (status && !billingComplete) {
-          navigate("/billing", { replace: true });
-          return;
-        }
-
-        // If already fully activated, send to dashboard
-        if (status && billingComplete && tradingEnabled && connectionsComplete) {
-          navigate("/dashboard", { replace: true });
-          return;
-        }
-      } catch (e) {
-        console.error("Access check error:", e);
-      }
-    };
-
-    if (status) {
-      checkAccess();
-    }
-  }, [status, billingComplete, tradingEnabled, connectionsComplete, navigate]);
-
-  /* ======================================================
      LOAD DATA
   ====================================================== */
 
@@ -156,6 +129,25 @@ export default function Activation() {
 
       setUser(me?.user || me);
       setStatus(activation?.status || activation || {});
+      
+      // Auto-redirect if already activated
+      const statusData = activation?.status || activation || {};
+      if (statusData.billing_complete && statusData.trading_enabled) {
+        // Check connections based on tier
+        const userTier = (me?.user?.tier || "starter").toLowerCase();
+        const needsOkx = ["starter", "pro", "bundle"].includes(userTier);
+        const needsAlpaca = ["starter", "bundle"].includes(userTier);
+        const needsWallet = ["elite", "bundle"].includes(userTier);
+        
+        const connectionsOk = 
+          (!needsOkx || statusData.okx_connected) &&
+          (!needsAlpaca || statusData.alpaca_connected) &&
+          (!needsWallet || statusData.wallet_connected);
+          
+        if (connectionsOk) {
+          navigate("/dashboard", { replace: true });
+        }
+      }
     } catch (e) {
       console.error("Load error:", e);
 
@@ -163,9 +155,9 @@ export default function Activation() {
 
       if (e.response?.status === 401) {
         setError("Session expired. Please log in again.");
-        setTimeout(() => navigate("/login"), 500);
+        setTimeout(() => navigate("/login"), 1500);
       } else {
-        setError("Couldn’t load activation. Please refresh and try again.");
+        setError("Couldn't load activation. Please refresh and try again.");
       }
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -178,10 +170,11 @@ export default function Activation() {
     return () => {
       mountedRef.current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ======================================================
-     CONNECT FUNCTIONS (unchanged)
+     CONNECT FUNCTIONS
   ====================================================== */
 
   const connectOKX = async (e) => {
@@ -222,9 +215,8 @@ export default function Activation() {
       setSuccess("✅ OKX connected.");
       setOkx({ apiKey: "", apiSecret: "", passphrase: "", mode: "paper" });
 
-      // Refresh status
-      const activation = await BotAPI.activationStatus();
-      setStatus(activation?.status || activation || {});
+      // Refresh data
+      await load();
     } catch (err) {
       console.error("OKX connection error:", err);
       setError(err?.message || "OKX connection failed. Double-check your keys.");
@@ -270,9 +262,8 @@ export default function Activation() {
       setSuccess("✅ Alpaca connected.");
       setAlpaca({ apiKey: "", apiSecret: "", mode: "paper" });
 
-      // Refresh status
-      const activation = await BotAPI.activationStatus();
-      setStatus(activation?.status || activation || {});
+      // Refresh data
+      await load();
     } catch (err) {
       console.error("Alpaca connection error:", err);
       setError(err?.message || "Alpaca connection failed. Double-check your keys.");
@@ -324,9 +315,8 @@ export default function Activation() {
       setSuccess("✅ Wallet connected.");
       setWallet("");
 
-      // Refresh status
-      const activation = await BotAPI.activationStatus();
-      setStatus(activation?.status || activation || {});
+      // Refresh data
+      await load();
     } catch (err) {
       console.error("Wallet connection error:", err);
       setError(err?.message || "Wallet connection failed.");
@@ -366,12 +356,11 @@ export default function Activation() {
 
       setSuccess(tradingEnabled ? "Trading turned off." : "✅ Trading turned on.");
 
-      // Refresh status
-      const activation = await BotAPI.activationStatus();
-      setStatus(activation?.status || activation || {});
+      // Refresh data
+      await load();
     } catch (err) {
       console.error("Trading toggle error:", err);
-      setError(err?.message || "Couldn’t update trading. Please try again.");
+      setError(err?.message || "Couldn't update trading. Please try again.");
     } finally {
       setBusy("");
     }
@@ -392,18 +381,10 @@ export default function Activation() {
     );
   }
 
-  // Don't render if we don't have status yet
-  if (!status) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black text-white">
-        <div className="text-center">
-          <p className="text-gray-400">Unable to load activation status</p>
-          <Button onClick={() => window.location.reload()} variant="primary" className="mt-4">
-            Refresh
-          </Button>
-        </div>
-      </div>
-    );
+  // If billing is not complete, they shouldn't be here
+  if (status && !billingComplete) {
+    navigate("/billing", { replace: true });
+    return null;
   }
 
   return (
@@ -427,7 +408,7 @@ export default function Activation() {
           <div>
             <h1 className="text-2xl font-bold">Activation</h1>
             <p className="text-sm text-gray-400">
-              Complete the steps below. When you're done, you'll be sent to your dashboard.
+              Quick setup. When you're done, we'll send you to your dashboard automatically.
             </p>
           </div>
 
@@ -667,7 +648,7 @@ export default function Activation() {
         {/* TRADING */}
         <Section
           title="3) Enable Trading"
-          description="When you’re ready, turn trading on."
+          description="When you're ready, turn trading on."
           right={<StatusPill value={tradingEnabled} />}
         >
           <div className="space-y-3">
@@ -691,7 +672,7 @@ export default function Activation() {
           </div>
         </Section>
 
-        {/* Manual navigation - keep but users will be auto-redirected */}
+        {/* Manual escape hatch */}
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" onClick={() => navigate("/dashboard")}>
             Go to Dashboard
