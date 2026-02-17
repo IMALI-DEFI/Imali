@@ -10,8 +10,11 @@ const TOKEN_KEY = "imali_token";
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 20000,
-  headers: { "Content-Type": "application/json" },
+  timeout: 30000, // Increased timeout
+  headers: { 
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  },
 });
 
 /* =========================
@@ -56,7 +59,7 @@ const clearStoredToken = () => {
 };
 
 /* =========================
-   ROUTE HELPERS (avoid redirect loops)
+   ROUTE HELPERS
 ========================= */
 
 const getPath = () => {
@@ -67,7 +70,7 @@ const getPath = () => {
   }
 };
 
-// Pages where a 401 can happen during onboarding and we should NOT force a redirect loop.
+// Pages where a 401 can happen during onboarding
 const AUTH_WHITELIST = [
   "/login",
   "/signup",
@@ -78,9 +81,11 @@ const AUTH_WHITELIST = [
   "/privacy",
 ];
 
-// Simple request queue to prevent rate limiting
+// Request queue to prevent rate limiting
 let requestQueue = [];
 let isProcessing = false;
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 500; // 500ms between requests
 
 const processQueue = async () => {
   if (isProcessing || requestQueue.length === 0) return;
@@ -91,10 +96,20 @@ const processQueue = async () => {
     const { config, resolve, reject } = requestQueue.shift();
     
     try {
-      // Add delay between requests to avoid rate limiting
-      await new Promise(r => setTimeout(r, 800));
+      // Ensure minimum time between requests
+      const now = Date.now();
+      const timeSinceLastRequest = now - lastRequestTime;
+      if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+        await new Promise(r => setTimeout(r, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
+      }
       
-      const response = await axios(config);
+      const response = await axios({
+        ...config,
+        baseURL: API_BASE,
+        timeout: 30000,
+      });
+      
+      lastRequestTime = Date.now();
       resolve(response);
     } catch (error) {
       reject(error);
@@ -117,8 +132,11 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     } else {
-      if (config.headers.Authorization) delete config.headers.Authorization;
+      delete config.headers.Authorization;
     }
+
+    // Add request ID for tracking
+    config.headers['X-Request-ID'] = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Return a promise that will be resolved by the queue
     return new Promise((resolve, reject) => {
@@ -145,14 +163,21 @@ api.interceptors.response.use(
     // Handle rate limiting (429)
     if (status === 429) {
       console.warn("Rate limited by API");
-      // Don't clear token for rate limiting
+      return Promise.reject(error);
+    }
+
+    // Handle service unavailable (503)
+    if (status === 503) {
+      console.error("Service unavailable");
       return Promise.reject(error);
     }
 
     // Auth endpoints should not trigger global logout loops
     const isAuthEndpoint =
       url.includes("/api/auth/login") ||
-      url.includes("/api/signup");
+      url.includes("/api/signup") ||
+      url.includes("/api/me") ||
+      url.includes("/api/me/activation-status");
 
     if (status === 401 && !isAuthEndpoint) {
       clearStoredToken();
@@ -162,6 +187,11 @@ api.interceptors.response.use(
         redirecting = true;
         const next = encodeURIComponent(path);
         window.location.href = `/login?next=${next}`;
+        
+        // Reset redirecting flag after navigation
+        setTimeout(() => {
+          redirecting = false;
+        }, 5000);
       }
     }
 
@@ -279,6 +309,13 @@ const BotAPI = {
 
   async startBot(payload = { mode: "paper" }) {
     const res = await api.post("/api/bot/start", payload);
+    return unwrap(res);
+  },
+
+  /* ========= TRADES ========= */
+
+  async getTrades() {
+    const res = await api.get("/api/sniper/trades");
     return unwrap(res);
   },
 
