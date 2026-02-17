@@ -1,5 +1,5 @@
 // src/pages/Activation.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
@@ -84,6 +84,7 @@ const HelpLink = () => (
 export default function Activation() {
   const navigate = useNavigate();
   const { user, activation, refreshUser } = useAuth();
+  const navigationInProgress = useRef(false);
   
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -122,10 +123,26 @@ export default function Activation() {
   // Can we enable trading?
   const canEnableTrading = status.billing && connectionsDone;
 
-  // Auto-redirect when fully activated
+  // Auto-redirect when fully activated - with navigation guard
   useEffect(() => {
+    // Don't redirect if we're already navigating
+    if (navigationInProgress.current) return;
+    
+    // Only redirect if fully activated
     if (status.billing && connectionsDone && status.trading) {
-      navigate("/dashboard", { replace: true });
+      // Set navigation flag to prevent multiple redirects
+      navigationInProgress.current = true;
+      
+      // Small delay to ensure state is stable
+      const timer = setTimeout(() => {
+        navigate("/dashboard", { replace: true });
+        // Reset flag after navigation (will be unmounted anyway, but for safety)
+        setTimeout(() => {
+          navigationInProgress.current = false;
+        }, 1000);
+      }, 100);
+      
+      return () => clearTimeout(timer);
     }
   }, [status.billing, connectionsDone, status.trading, navigate]);
 
@@ -241,6 +258,16 @@ export default function Activation() {
     } finally {
       setBusy("");
     }
+  };
+
+  // Manual navigation to dashboard with guard
+  const handleSkipToDashboard = () => {
+    if (navigationInProgress.current) return;
+    navigationInProgress.current = true;
+    navigate("/dashboard");
+    setTimeout(() => {
+      navigationInProgress.current = false;
+    }, 1000);
   };
 
   return (
@@ -470,7 +497,7 @@ export default function Activation() {
           </a>
           <span className="text-gray-600">•</span>
           <button 
-            onClick={() => navigate("/dashboard")}
+            onClick={handleSkipToDashboard}
             className="text-gray-400 hover:text-white"
           >
             Skip to Dashboard
