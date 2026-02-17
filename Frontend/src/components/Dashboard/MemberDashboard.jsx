@@ -431,7 +431,7 @@ const SetupBanner = ({ billingComplete, connectionsComplete, tradingEnabled, onC
 /* ===================== MAIN COMPONENT ===================== */
 export default function MemberDashboard() {
   const nav = useNavigate();
-  const { user: authUser, activation, refreshUser } = useAuth();
+  const { user: authUser, activation, setActivation } = useAuth(); // Add setActivation to context
   
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -527,19 +527,26 @@ export default function MemberDashboard() {
       setBusy(true);
       await BotAPI.toggleTrading(enabled);
 
+      // Fetch ONLY activation status, not full user
+      const actResponse = await BotAPI.activationStatus();
+      const newActivation = actResponse?.status || actResponse;
+      
+      // Update only activation in context
+      if (setActivation) {
+        setActivation(newActivation);
+      }
+
       setBanner({
         type: "success",
         message: enabled ? "Trading enabled" : "Trading disabled",
       });
-
-      // Refresh user data to get updated trading status
-      await refreshUser();
       
       // Reload trades if enabling
       if (enabled) {
         await loadTrades();
       }
     } catch (err) {
+      console.error("Toggle trading error:", err);
       setBanner({
         type: "error",
         message: err?.response?.data?.message || "Failed to update trading",
