@@ -75,6 +75,22 @@ function pickAllowed(v, allowed, fallback) {
   return allowed.includes(x) ? x : fallback;
 }
 
+function riskLabel(level) {
+  var labels = ["Low", "Medium", "High", "Extreme"];
+  return labels[(level || 2) - 1] || "Medium";
+}
+
+function riskLabelColor(level) {
+  if (level <= 1) return "text-emerald-400";
+  if (level <= 2) return "text-yellow-400";
+  if (level <= 3) return "text-orange-400";
+  return "text-red-400";
+}
+
+function riskShort(level) {
+  return level === 1 ? "Low" : level === 2 ? "Med" : level === 3 ? "High" : "X";
+}
+
 /* ===================== UI PRIMITIVES ===================== */
 function CardShell(props) {
   var title = props.title;
@@ -88,11 +104,7 @@ function CardShell(props) {
         <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
           <div className="flex items-center gap-2 min-w-0">
             {icon && <span className="text-base sm:text-lg">{icon}</span>}
-            {title && (
-              <h3 className="font-semibold text-sm sm:text-base truncate">
-                {title}
-              </h3>
-            )}
+            {title && <h3 className="font-semibold text-sm sm:text-base truncate">{title}</h3>}
           </div>
           {right && <div className="flex-shrink-0">{right}</div>}
         </div>
@@ -109,19 +121,13 @@ function CollapsibleCard(props) {
   var children = props.children;
   var defaultOpen = props.defaultOpen;
 
-  // Mobile-first collapsible using <details>
   return (
-    <details
-      className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden"
-      open={!!defaultOpen}
-    >
+    <details className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden" open={!!defaultOpen}>
       <summary className="list-none cursor-pointer select-none">
         <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
           <div className="flex items-center gap-2 min-w-0">
             {icon && <span className="text-base sm:text-lg">{icon}</span>}
-            <h3 className="font-semibold text-sm sm:text-base truncate">
-              {title}
-            </h3>
+            <h3 className="font-semibold text-sm sm:text-base truncate">{title}</h3>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {right}
@@ -170,9 +176,7 @@ function ProgressRing(props) {
           className="transition-all duration-700 ease-out"
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        {children}
-      </div>
+      <div className="absolute inset-0 flex items-center justify-center">{children}</div>
     </div>
   );
 }
@@ -184,18 +188,13 @@ function MiniBarChart(props) {
 
   if (!data.length) {
     return (
-      <div
-        className="flex items-center justify-center text-[11px] text-white/30"
-        style={{ height: height }}
-      >
+      <div className="flex items-center justify-center text-[11px] text-white/30" style={{ height: height }}>
         Press Start to see trades here 🤖
       </div>
     );
   }
 
-  var absValues = data.map(function (d) {
-    return Math.abs(d.value);
-  });
+  var absValues = data.map(function (d) { return Math.abs(d.value); });
   var max = Math.max.apply(null, absValues.concat([1]));
 
   return (
@@ -227,18 +226,13 @@ function EquityCurve(props) {
 
   if (data.length < 2) {
     return (
-      <div
-        className="flex items-center justify-center text-[11px] text-white/20"
-        style={{ height: height }}
-      >
+      <div className="flex items-center justify-center text-[11px] text-white/20" style={{ height: height }}>
         Equity curve appears after a few trades
       </div>
     );
   }
 
-  var values = data.map(function (d) {
-    return d.value;
-  });
+  var values = data.map(function (d) { return d.value; });
   var min = Math.min.apply(null, values);
   var max = Math.max.apply(null, values);
   var range = max - min || 1;
@@ -259,12 +253,7 @@ function EquityCurve(props) {
   var fillId = up ? "eqGradUp" : "eqGradDown";
 
   return (
-    <svg
-      viewBox={"0 0 " + w + " " + height}
-      className="w-full"
-      style={{ height: height }}
-      preserveAspectRatio="none"
-    >
+    <svg viewBox={"0 0 " + w + " " + height} className="w-full" style={{ height: height }} preserveAspectRatio="none">
       <defs>
         <linearGradient id="eqGradUp" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#10b981" stopOpacity="0.28" />
@@ -275,65 +264,23 @@ function EquityCurve(props) {
           <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon
-        points={"0," + height + " " + points + " " + w + "," + height}
-        fill={"url(#" + fillId + ")"}
-      />
-      <polyline
-        points={points}
-        fill="none"
-        stroke={strokeColor}
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
+      <polygon points={"0," + height + " " + points + " " + w + "," + height} fill={"url(#" + fillId + ")"} />
+      <polyline points={points} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinejoin="round" />
     </svg>
   );
 }
 
-/* ===================== RISK METER ===================== */
+/* ===================== RISK METER (BARS ONLY — FIX DUPLICATE TEXT) ===================== */
 function RiskMeter(props) {
   var level = props.level || 1;
-  var labels = ["Low", "Medium", "High", "Extreme"];
-  var label = labels[level - 1] || "Medium";
 
-  var labelColor = "text-yellow-400";
-  if (level <= 1) labelColor = "text-emerald-400";
-  else if (level <= 2) labelColor = "text-yellow-400";
-  else if (level <= 3) labelColor = "text-orange-400";
-  else labelColor = "text-red-400";
-
-  // FIX: no min-width on mobile; always wraps cleanly
   return (
-    <div className="w-full space-y-1">
-      <div className="flex items-center justify-between text-[10px] leading-none">
-        <span className="text-white/45">Risk</span>
-        <span className={"font-semibold " + labelColor}>{label}</span>
-      </div>
+    <div className="w-full">
       <div className="flex gap-1">
-        <div
-          className={
-            "flex-1 h-2 rounded-full transition-all duration-300 " +
-            (level >= 1 ? "bg-emerald-500" : "bg-white/10")
-          }
-        />
-        <div
-          className={
-            "flex-1 h-2 rounded-full transition-all duration-300 " +
-            (level >= 2 ? "bg-yellow-500" : "bg-white/10")
-          }
-        />
-        <div
-          className={
-            "flex-1 h-2 rounded-full transition-all duration-300 " +
-            (level >= 3 ? "bg-orange-500" : "bg-white/10")
-          }
-        />
-        <div
-          className={
-            "flex-1 h-2 rounded-full transition-all duration-300 " +
-            (level >= 4 ? "bg-red-500" : "bg-white/10")
-          }
-        />
+        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 1 ? "bg-emerald-500" : "bg-white/10")} />
+        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 2 ? "bg-yellow-500" : "bg-white/10")} />
+        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 3 ? "bg-orange-500" : "bg-white/10")} />
+        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 4 ? "bg-red-500" : "bg-white/10")} />
       </div>
     </div>
   );
@@ -354,38 +301,32 @@ function TradeFeed(props) {
 
   return (
     <div className="space-y-1 max-h-[320px] overflow-y-auto pr-1">
-      {trades
-        .slice(-30)
-        .reverse()
-        .map(function (t, i) {
-          var isLatest = i === 0;
-          var isWin = t.pnl >= 0;
-          var rowClass =
-            "flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm transition-all " +
-            (isLatest ? "bg-white/10 border border-white/10" : "bg-white/[0.03]");
-          var pnlClass =
-            "font-bold text-sm " + (isWin ? "text-emerald-400" : "text-red-400");
+      {trades.slice(-30).reverse().map(function (t, i) {
+        var isLatest = i === 0;
+        var isWin = t.pnl >= 0;
+        var rowClass =
+          "flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm transition-all " +
+          (isLatest ? "bg-white/10 border border-white/10" : "bg-white/[0.03]");
+        var pnlClass = "font-bold text-sm " + (isWin ? "text-emerald-400" : "text-red-400");
 
-          return (
-            <div key={t.id} className={rowClass}>
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <span className="text-base flex-shrink-0">{t.icon}</span>
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-2 min-w-0">
-                    <span className="font-semibold text-sm truncate">{t.symbol}</span>
-                    <span className="text-[11px] text-white/40 truncate">
-                      {t.exchange}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-white/35 truncate">
-                    {t.action} • {t.timestamp}
-                  </div>
+        return (
+          <div key={t.id} className={rowClass}>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="text-base flex-shrink-0">{t.icon}</span>
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <span className="font-semibold text-sm truncate">{t.symbol}</span>
+                  <span className="text-[11px] text-white/40 truncate">{t.exchange}</span>
+                </div>
+                <div className="text-[10px] text-white/35 truncate">
+                  {t.action} • {t.timestamp}
                 </div>
               </div>
-              <div className={"flex-shrink-0 " + pnlClass}>{formatUsd(t.pnl)}</div>
             </div>
-          );
-        })}
+            <div className={"flex-shrink-0 " + pnlClass}>{formatUsd(t.pnl)}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -413,16 +354,10 @@ function DemoExchangeCard(props) {
 
   var cardClass =
     "rounded-2xl p-3 border transition-all " +
-    (active
-      ? "bg-white/5 border-white/15 hover:border-white/25"
-      : "bg-white/[0.03] border-white/10 opacity-45");
+    (active ? "bg-white/5 border-white/15 hover:border-white/25" : "bg-white/[0.03] border-white/10 opacity-45");
 
-  var pnlClass =
-    "font-bold " + (pnl >= 0 ? "text-emerald-400" : "text-red-400");
-
-  var wrBarClass =
-    "h-full rounded-full transition-all duration-500 " +
-    (wrNum >= 50 ? "bg-emerald-500" : "bg-red-500");
+  var pnlClass = "font-bold " + (pnl >= 0 ? "text-emerald-400" : "text-red-400");
+  var wrBarClass = "h-full rounded-full transition-all duration-500 " + (wrNum >= 50 ? "bg-emerald-500" : "bg-red-500");
 
   return (
     <div className={cardClass}>
@@ -432,22 +367,13 @@ function DemoExchangeCard(props) {
           <div className="min-w-0">
             <div className="font-semibold text-sm truncate">{name}</div>
             <div className="text-[11px] leading-tight">
-              {active ? (
-                <span className="text-emerald-400">✅ Active</span>
-              ) : (
-                <span className="text-white/35">🔒 Upgrade</span>
-              )}
+              {active ? <span className="text-emerald-400">✅ Active</span> : <span className="text-white/35">🔒 Upgrade</span>}
             </div>
           </div>
         </div>
 
         {active && total > 0 && (
-          <ProgressRing
-            percent={wrNum}
-            size={34}
-            stroke={3}
-            color={wrNum >= 50 ? "#10b981" : "#ef4444"}
-          >
+          <ProgressRing percent={wrNum} size={34} stroke={3} color={wrNum >= 50 ? "#10b981" : "#ef4444"}>
             <span className="text-[9px] font-bold">{wr}%</span>
           </ProgressRing>
         )}
@@ -489,44 +415,38 @@ function DemoExchangeCard(props) {
 function LevelBadge(props) {
   var xp = props.xp || 0;
 
-  var level = useMemo(
-    function () {
-      for (var i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
-        if (xp >= LEVEL_THRESHOLDS[i].min) {
-          var next = LEVEL_THRESHOLDS[i + 1]
-            ? LEVEL_THRESHOLDS[i + 1].min
-            : LEVEL_THRESHOLDS[i].min * 1.5;
-          return {
-            name: LEVEL_THRESHOLDS[i].name,
-            colorClass: LEVEL_THRESHOLDS[i].colorClass,
-            min: LEVEL_THRESHOLDS[i].min,
-            xp: xp,
-            next: next,
-            index: i,
-          };
-        }
+  var level = useMemo(function () {
+    for (var i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+      if (xp >= LEVEL_THRESHOLDS[i].min) {
+        var next = LEVEL_THRESHOLDS[i + 1] ? LEVEL_THRESHOLDS[i + 1].min : LEVEL_THRESHOLDS[i].min * 1.5;
+        return {
+          name: LEVEL_THRESHOLDS[i].name,
+          colorClass: LEVEL_THRESHOLDS[i].colorClass,
+          min: LEVEL_THRESHOLDS[i].min,
+          xp: xp,
+          next: next,
+          index: i,
+        };
       }
-      return {
-        name: LEVEL_THRESHOLDS[0].name,
-        colorClass: LEVEL_THRESHOLDS[0].colorClass,
-        min: 0,
-        xp: xp,
-        next: 30,
-        index: 0,
-      };
-    },
-    [xp]
-  );
+    }
+    return { name: LEVEL_THRESHOLDS[0].name, colorClass: LEVEL_THRESHOLDS[0].colorClass, min: 0, xp: xp, next: 30, index: 0 };
+  }, [xp]);
 
   var progress = level.next > 0 ? (xp / level.next) * 100 : 0;
   var xpToNext = Math.max(0, Math.floor(level.next - xp));
   var isMax = level.index >= LEVEL_THRESHOLDS.length - 1;
 
   return (
-    <CardShell title="Your Trader Level" icon="🏅" right={<span className="text-[11px] text-white/45">XP: <b className="text-white">{Math.floor(xp)}</b></span>}>
-      <div className={"text-lg font-bold leading-tight " + level.colorClass}>
-        {level.name}
-      </div>
+    <CardShell
+      title="Your Trader Level"
+      icon="🏅"
+      right={
+        <span className="text-[11px] text-white/45">
+          XP: <b className="text-white">{Math.floor(xp)}</b>
+        </span>
+      }
+    >
+      <div className={"text-lg font-bold leading-tight " + level.colorClass}>{level.name}</div>
       <div className="w-full bg-white/10 rounded-full h-2 mt-2 overflow-hidden">
         <div
           className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-700"
@@ -534,8 +454,7 @@ function LevelBadge(props) {
         />
       </div>
       <p className="text-[11px] text-white/45 mt-1">
-        {Math.floor(xp)} / {Math.floor(level.next)} XP —{" "}
-        {isMax ? "Max level reached 🏆" : xpToNext + " XP to next level"}
+        {Math.floor(xp)} / {Math.floor(level.next)} XP — {isMax ? "Max level reached 🏆" : xpToNext + " XP to next level"}
       </p>
     </CardShell>
   );
@@ -558,10 +477,7 @@ function AchievementsPanel(props) {
             {unlocked.length}/{total}
           </span>
           <div className="w-16 bg-white/10 rounded-full h-2 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-              style={{ width: pct + "%" }}
-            />
+            <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: pct + "%" }} />
           </div>
         </div>
       }
@@ -578,12 +494,8 @@ function AchievementsPanel(props) {
           return (
             <div key={a.id} title={a.desc} className={tileClass}>
               <div className="text-2xl mb-1">{a.emoji}</div>
-              <div className="text-[10px] font-semibold text-white/85 leading-tight">
-                {a.label}
-              </div>
-              <div className="text-[9px] text-white/35 mt-1">
-                {isUnlocked ? "✅" : "🔒"}
-              </div>
+              <div className="text-[10px] font-semibold text-white/85 leading-tight">{a.label}</div>
+              <div className="text-[9px] text-white/35 mt-1">{isUnlocked ? "✅" : "🔒"}</div>
             </div>
           );
         })}
@@ -598,7 +510,6 @@ function StrategySelector(props) {
   var onChange = props.onChange;
   var disabled = props.disabled;
 
-  // FIX: mobile-first layout that prevents text overlap by using clear vertical stacking
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
       {STRATEGIES.map(function (s) {
@@ -610,30 +521,30 @@ function StrategySelector(props) {
             : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20") +
           (disabled ? " opacity-50 cursor-not-allowed" : "");
 
+        var rLabel = riskLabel(s.risk);
+        var rColor = riskLabelColor(s.risk);
+
         return (
           <button
             key={s.value}
-            onClick={function () {
-              onChange(s.value);
-            }}
+            onClick={function () { onChange(s.value); }}
             disabled={disabled}
             className={btnClass}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-2xl leading-none">{s.icon}</div>
-                <div className="mt-1 font-semibold text-[13px] sm:text-sm leading-tight truncate">
-                  {s.label}
-                </div>
+                <div className="mt-1 font-semibold text-[13px] sm:text-sm leading-tight truncate">{s.label}</div>
               </div>
+
+              {/* SINGLE source of risk text (no duplication) */}
               <div className="text-[10px] text-white/35 leading-tight text-right">
                 <div>Risk</div>
-                <div className="font-semibold">
-                  {s.risk === 1 ? "Low" : s.risk === 2 ? "Med" : s.risk === 3 ? "High" : "X"}
-                </div>
+                <div className={"font-semibold " + rColor}>{rLabel}</div>
               </div>
             </div>
 
+            {/* Bars only */}
             <div className="mt-2">
               <RiskMeter level={s.risk} />
             </div>
@@ -660,18 +571,10 @@ function PlanSelector(props) {
             : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20");
 
         return (
-          <button
-            key={p.value}
-            onClick={function () {
-              onChange(p.value);
-            }}
-            className={btnClass}
-          >
+          <button key={p.value} onClick={function () { onChange(p.value); }} className={btnClass}>
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-base">{p.icon}</span>
-              <span className="font-semibold text-[13px] sm:text-sm truncate">
-                {p.label}
-              </span>
+              <span className="font-semibold text-[13px] sm:text-sm truncate">{p.label}</span>
             </div>
           </button>
         );
@@ -702,9 +605,7 @@ function SessionStats(props) {
         <div className="flex justify-between gap-3">
           <span className="text-white/50">Wins / Losses</span>
           <span>
-            <span className="text-emerald-400 font-bold">{wins}</span>
-            {" / "}
-            <span className="text-red-400 font-bold">{losses}</span>
+            <span className="text-emerald-400 font-bold">{wins}</span> {" / "} <span className="text-red-400 font-bold">{losses}</span>
           </span>
         </div>
         <div className="flex justify-between gap-3">
@@ -739,9 +640,7 @@ function SessionStats(props) {
           </div>
           <div className="flex justify-between gap-3">
             <span className="text-white/50">Exchanges</span>
-            <span className="text-[11px] text-white/60 text-right leading-snug">
-              {currentPlan.exchanges.join(", ")}
-            </span>
+            <span className="text-[11px] text-white/60 text-right leading-snug">{currentPlan.exchanges.join(", ")}</span>
           </div>
         </div>
       </div>
@@ -819,236 +718,184 @@ export default function TradeDemo() {
   var setSpeed = stateSpeed[1];
 
   /* ── Derived ── */
-  var currentPlan = useMemo(
-    function () {
-      return PLANS.find(function (p) { return p.value === plan; }) || PLANS[0];
-    },
-    [plan]
-  );
+  var currentPlan = useMemo(function () {
+    return PLANS.find(function (p) { return p.value === plan; }) || PLANS[0];
+  }, [plan]);
 
-  var currentStrat = useMemo(
-    function () {
-      return STRATEGIES.find(function (s) { return s.value === strategy; }) || STRATEGIES[1];
-    },
-    [strategy]
-  );
+  var currentStrat = useMemo(function () {
+    return STRATEGIES.find(function (s) { return s.value === strategy; }) || STRATEGIES[1];
+  }, [strategy]);
 
-  var winRate = useMemo(
-    function () {
-      var t = wins + losses;
-      return t > 0 ? ((wins / t) * 100).toFixed(1) : "0.0";
-    },
-    [wins, losses]
-  );
+  var winRate = useMemo(function () {
+    var t = wins + losses;
+    return t > 0 ? ((wins / t) * 100).toFixed(1) : "0.0";
+  }, [wins, losses]);
 
-  var xp = useMemo(
-    function () {
-      var total = 0;
-      total += Math.min(wins + losses, 50) * 2;
-      var wr = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
-      total += Math.max(0, wr - 40) * 1.5;
-      total += Math.max(0, pnl) * 0.1;
-      total += currentWinStreak * 3;
-      total += dayStreak * 5;
-      if (plan !== "starter") total += 15;
-      return total;
-    },
-    [wins, losses, pnl, currentWinStreak, dayStreak, plan]
-  );
+  var xp = useMemo(function () {
+    var total = 0;
+    total += Math.min(wins + losses, 50) * 2;
+    var wr = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
+    total += Math.max(0, wr - 40) * 1.5;
+    total += Math.max(0, pnl) * 0.1;
+    total += currentWinStreak * 3;
+    total += dayStreak * 5;
+    if (plan !== "starter") total += 15;
+    return total;
+  }, [wins, losses, pnl, currentWinStreak, dayStreak, plan]);
 
-  var confidence = useMemo(
-    function () {
-      var t = wins + losses;
-      var s = 0;
-      if (t > 0) s += clamp((wins / t) * 40, 0, 40);
-      s += clamp(t * 1.2, 0, 30);
-      s += clamp(dayStreak * 5, 0, 20);
-      if (plan !== "starter") s += 10;
-      return clamp(Math.round(s), 0, 100);
-    },
-    [wins, losses, dayStreak, plan]
-  );
+  var confidence = useMemo(function () {
+    var t = wins + losses;
+    var s = 0;
+    if (t > 0) s += clamp((wins / t) * 40, 0, 40);
+    s += clamp(t * 1.2, 0, 30);
+    s += clamp(dayStreak * 5, 0, 20);
+    if (plan !== "starter") s += 10;
+    return clamp(Math.round(s), 0, 100);
+  }, [wins, losses, dayStreak, plan]);
 
-  var tradesByExchange = useMemo(
-    function () {
-      var r = { OKX: [], Alpaca: [], DEX: [], Futures: [] };
-      tradeLog.forEach(function (t) {
-        if (r[t.exchange]) r[t.exchange].push(t);
-      });
-      return r;
-    },
-    [tradeLog]
-  );
+  var tradesByExchange = useMemo(function () {
+    var r = { OKX: [], Alpaca: [], DEX: [], Futures: [] };
+    tradeLog.forEach(function (t) { if (r[t.exchange]) r[t.exchange].push(t); });
+    return r;
+  }, [tradeLog]);
 
-  var unlockedAchievements = useMemo(
-    function () {
-      var stats = {
-        totalTrades: wins + losses,
-        wins: wins,
-        losses: losses,
-        pnl: pnl,
-        currentWinStreak: currentWinStreak,
-        winRate: Number(winRate),
-        dayStreak: dayStreak,
-        plan: plan,
-        strategiesUsed: strategiesUsed.size,
-        confidence: confidence,
-      };
-      return ALL_ACHIEVEMENTS
-        .filter(function (a) { return a.check(stats); })
-        .map(function (a) { return a.id; });
-    },
-    [wins, losses, pnl, currentWinStreak, winRate, dayStreak, plan, strategiesUsed, confidence]
-  );
+  var unlockedAchievements = useMemo(function () {
+    var stats = {
+      totalTrades: wins + losses,
+      wins: wins,
+      losses: losses,
+      pnl: pnl,
+      currentWinStreak: currentWinStreak,
+      winRate: Number(winRate),
+      dayStreak: dayStreak,
+      plan: plan,
+      strategiesUsed: strategiesUsed.size,
+      confidence: confidence,
+    };
+    return ALL_ACHIEVEMENTS.filter(function (a) { return a.check(stats); }).map(function (a) { return a.id; });
+  }, [wins, losses, pnl, currentWinStreak, winRate, dayStreak, plan, strategiesUsed, confidence]);
 
-  var pnlChartData = useMemo(
-    function () {
-      return tradeLog.slice(-30).map(function (t, i) {
-        return { label: "#" + (i + 1), value: t.pnl };
-      });
-    },
-    [tradeLog]
-  );
+  var pnlChartData = useMemo(function () {
+    return tradeLog.slice(-30).map(function (t, i) { return { label: "#" + (i + 1), value: t.pnl }; });
+  }, [tradeLog]);
 
   /* ── Init from URL / localStorage ── */
-  useEffect(
-    function () {
-      var ap = PLANS.map(function (p) { return p.value; });
-      var as2 = STRATEGIES.map(function (s) { return s.value; });
+  useEffect(function () {
+    var ap = PLANS.map(function (p) { return p.value; });
+    var as2 = STRATEGIES.map(function (s) { return s.value; });
 
-      var pu = pickAllowed(params.get("plan") || params.get("tier"), ap, "");
-      var su = pickAllowed(params.get("strategy"), as2, "");
+    var pu = pickAllowed(params.get("plan") || params.get("tier"), ap, "");
+    var su = pickAllowed(params.get("strategy"), as2, "");
 
-      var ps = "";
-      var ss = "";
-      try {
-        ps = localStorage.getItem("imali_plan") || "";
-        ss = localStorage.getItem("imali_strategy") || "";
-      } catch (e) { /* ignore */ }
+    var ps = "";
+    var ss = "";
+    try {
+      ps = localStorage.getItem("imali_plan") || "";
+      ss = localStorage.getItem("imali_strategy") || "";
+    } catch (e) { /* ignore */ }
 
-      setPlan(pu || pickAllowed(ps, ap, "starter"));
-      setStrategy(su || pickAllowed(ss, as2, "ai_weighted"));
-    },
-    [params]
-  );
+    setPlan(pu || pickAllowed(ps, ap, "starter"));
+    setStrategy(su || pickAllowed(ss, as2, "ai_weighted"));
+  }, [params]);
 
   /* ── Persist ── */
-  useEffect(
-    function () {
-      try {
-        localStorage.setItem("imali_plan", plan);
-        localStorage.setItem("imali_strategy", strategy);
-      } catch (e) { /* ignore */ }
-    },
-    [plan, strategy]
-  );
+  useEffect(function () {
+    try {
+      localStorage.setItem("imali_plan", plan);
+      localStorage.setItem("imali_strategy", strategy);
+    } catch (e) { /* ignore */ }
+  }, [plan, strategy]);
 
   /* ── Track strategies used ── */
-  useEffect(
-    function () {
-      setStrategiesUsed(function (prev) {
-        return new Set([].concat(Array.from(prev), [strategy]));
-      });
-    },
-    [strategy]
-  );
+  useEffect(function () {
+    setStrategiesUsed(function (prev) {
+      return new Set([].concat(Array.from(prev), [strategy]));
+    });
+  }, [strategy]);
 
   /* ── Simulation tick ── */
-  useEffect(
-    function () {
-      if (!running) return;
+  useEffect(function () {
+    if (!running) return;
 
-      tickerRef.current = setInterval(function () {
-        var available = DEMO_TOKENS.filter(function (t) {
-          return currentPlan.exchanges.includes(t.exchange);
-        });
-        var token =
-          available[Math.floor(Math.random() * available.length)] || DEMO_TOKENS[0];
+    tickerRef.current = setInterval(function () {
+      var available = DEMO_TOKENS.filter(function (t) { return currentPlan.exchanges.includes(t.exchange); });
+      var token = available[Math.floor(Math.random() * available.length)] || DEMO_TOKENS[0];
 
-        var riskMult = 0.5 + currentStrat.risk * 0.4;
-        var winBias =
-          strategy === "mean_reversion"
-            ? 0.52
-            : strategy === "ai_weighted"
-            ? 0.55
-            : strategy === "momentum"
-            ? 0.5
-            : 0.48;
+      var riskMult = 0.5 + currentStrat.risk * 0.4;
+      var winBias =
+        strategy === "mean_reversion"
+          ? 0.52
+          : strategy === "ai_weighted"
+          ? 0.55
+          : strategy === "momentum"
+          ? 0.5
+          : 0.48;
 
-        var isWin = Math.random() < winBias;
-        var magnitude = (Math.random() * 20 + 5) * riskMult;
-        var delta = isWin ? magnitude : -magnitude * 0.7;
+      var isWin = Math.random() < winBias;
+      var magnitude = (Math.random() * 20 + 5) * riskMult;
+      var delta = isWin ? magnitude : -magnitude * 0.7;
 
-        var trade = {
-          id: Date.now() + Math.random(),
-          symbol: token.symbol,
-          icon: token.icon,
-          exchange: token.exchange,
-          action: isWin ? "Sold ↑" : "Stopped ↓",
-          pnl: Number(delta.toFixed(2)),
-          timestamp: new Date().toLocaleTimeString(),
-        };
+      var trade = {
+        id: Date.now() + Math.random(),
+        symbol: token.symbol,
+        icon: token.icon,
+        exchange: token.exchange,
+        action: isWin ? "Sold ↑" : "Stopped ↓",
+        pnl: Number(delta.toFixed(2)),
+        timestamp: new Date().toLocaleTimeString(),
+      };
 
-        setTradeLog(function (prev) {
-          return prev.slice(-100).concat([trade]);
-        });
-        setPnl(function (p) { return p + delta; });
-        setEquity(function (e) {
-          var next = e + delta;
-          setEquityHistory(function (h) {
-            return h.slice(-60).concat([{ value: next }]);
-          });
+      setTradeLog(function (prev) { return prev.slice(-100).concat([trade]); });
+      setPnl(function (p) { return p + delta; });
+      setEquity(function (e) {
+        var next = e + delta;
+        setEquityHistory(function (h) { return h.slice(-60).concat([{ value: next }]); });
+        return next;
+      });
+
+      if (isWin) {
+        setWins(function (w) { return w + 1; });
+        setCurrentWinStreak(function (s) {
+          var next = s + 1;
+          setBestWinStreak(function (b) { return Math.max(b, next); });
           return next;
         });
+      } else {
+        setLosses(function (l) { return l + 1; });
+        setCurrentWinStreak(0);
+      }
 
-        if (isWin) {
-          setWins(function (w) { return w + 1; });
-          setCurrentWinStreak(function (s) {
-            var next = s + 1;
-            setBestWinStreak(function (b) { return Math.max(b, next); });
-            return next;
-          });
-        } else {
-          setLosses(function (l) { return l + 1; });
-          setCurrentWinStreak(0);
+      var today = new Date().toDateString();
+      setLastTradeDay(function (prev) {
+        if (!prev || prev !== today) {
+          setDayStreak(function (s) { return s + 1; });
+          return today;
         }
+        return prev;
+      });
+    }, speed);
 
-        var today = new Date().toDateString();
-        setLastTradeDay(function (prev) {
-          if (!prev || prev !== today) {
-            setDayStreak(function (s) { return s + 1; });
-            return today;
-          }
-          return prev;
-        });
-      }, speed);
-
-      return function () {
-        clearInterval(tickerRef.current);
-        tickerRef.current = null;
-      };
-    },
-    [running, plan, strategy, speed, currentPlan, currentStrat]
-  );
+    return function () {
+      clearInterval(tickerRef.current);
+      tickerRef.current = null;
+    };
+  }, [running, plan, strategy, speed, currentPlan, currentStrat]);
 
   /* ── Reset ── */
-  var resetDemo = useCallback(
-    function () {
-      setRunning(false);
-      setEquity(1000);
-      setPnl(0);
-      setWins(0);
-      setLosses(0);
-      setDayStreak(0);
-      setLastTradeDay(null);
-      setTradeLog([]);
-      setEquityHistory([{ value: 1000 }]);
-      setCurrentWinStreak(0);
-      setBestWinStreak(0);
-      setStrategiesUsed(new Set([strategy]));
-    },
-    [strategy]
-  );
+  var resetDemo = useCallback(function () {
+    setRunning(false);
+    setEquity(1000);
+    setPnl(0);
+    setWins(0);
+    setLosses(0);
+    setDayStreak(0);
+    setLastTradeDay(null);
+    setTradeLog([]);
+    setEquityHistory([{ value: 1000 }]);
+    setCurrentWinStreak(0);
+    setBestWinStreak(0);
+    setStrategiesUsed(new Set([strategy]));
+  }, [strategy]);
 
   /* ===================== RENDER ===================== */
   var startBtnClass =
@@ -1076,16 +923,11 @@ export default function TradeDemo() {
                   DEMO
                 </span>
               </div>
-              <p className="text-[12px] sm:text-sm text-white/50 mt-1 leading-snug">
-                Practice with fake money — no risk.
-              </p>
+              <p className="text-[12px] sm:text-sm text-white/50 mt-1 leading-snug">Practice with fake money — no risk.</p>
             </div>
 
             <div className="flex gap-2 flex-shrink-0">
-              <button
-                onClick={function () { setRunning(function (r) { return !r; }); }}
-                className={startBtnClass}
-              >
+              <button onClick={function () { setRunning(function (r) { return !r; }); }} className={startBtnClass}>
                 {running ? "⏸ Stop" : "▶️ Start"}
               </button>
               <button
@@ -1108,23 +950,12 @@ export default function TradeDemo() {
           {running && (
             <div className="mt-3 flex flex-wrap items-center gap-2 bg-black/25 border border-white/10 rounded-2xl px-3 py-2">
               <span className="text-[11px] text-white/60">Speed:</span>
-              {[
-                { label: "🐌", ms: 5000 },
-                { label: "🚶", ms: 3000 },
-                { label: "🏃", ms: 1500 },
-                { label: "⚡", ms: 700 },
-              ].map(function (s) {
+              {[{ label: "🐌", ms: 5000 }, { label: "🚶", ms: 3000 }, { label: "🏃", ms: 1500 }, { label: "⚡", ms: 700 }].map(function (s) {
                 var cls =
                   "px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all border " +
-                  (speed === s.ms
-                    ? "bg-white/15 border-white/30"
-                    : "bg-white/5 border-white/10 hover:bg-white/10");
+                  (speed === s.ms ? "bg-white/15 border-white/30" : "bg-white/5 border-white/10 hover:bg-white/10");
                 return (
-                  <button
-                    key={s.ms}
-                    onClick={function () { setSpeed(s.ms); }}
-                    className={cls}
-                  >
+                  <button key={s.ms} onClick={function () { setSpeed(s.ms); }} className={cls}>
                     {s.label}
                   </button>
                 );
@@ -1138,12 +969,7 @@ export default function TradeDemo() {
         </div>
 
         {/* ── Collapsible Controls ── */}
-        <CollapsibleCard
-          title="Plan"
-          icon="💳"
-          defaultOpen={true}
-          right={<span className="text-[11px] text-white/45">(try all)</span>}
-        >
+        <CollapsibleCard title="Plan" icon="💳" defaultOpen={true} right={<span className="text-[11px] text-white/45">(try all)</span>}>
           <PlanSelector value={plan} onChange={setPlan} />
           <div className="mt-2 text-[11px] text-white/50 leading-snug">
             {currentPlan.icon} <b className="text-white">{currentPlan.label}</b>:{" "}
@@ -1155,30 +981,20 @@ export default function TradeDemo() {
           title="Strategy"
           icon="🧠"
           defaultOpen={true}
-          right={
-            running ? (
-              <span className="text-[11px] text-yellow-300/80">Stop to change</span>
-            ) : (
-              <span className="text-[11px] text-white/45">Pick one</span>
-            )
-          }
+          right={running ? <span className="text-[11px] text-yellow-300/80">Stop to change</span> : <span className="text-[11px] text-white/45">Pick one</span>}
         >
           <StrategySelector value={strategy} onChange={setStrategy} disabled={running} />
         </CollapsibleCard>
 
-        {/* ── Key Stats (mobile-first stacked cards) ── */}
+        {/* ── Key Stats ── */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
           <CardShell title="Equity" icon="💰">
-            <div className={"text-xl font-bold leading-tight " + equityColorClass}>
-              {formatUsdPlain(equity)}
-            </div>
+            <div className={"text-xl font-bold leading-tight " + equityColorClass}>{formatUsdPlain(equity)}</div>
             <div className="text-[11px] text-white/35 mt-1">Start $1k</div>
           </CardShell>
 
           <CardShell title="P&L" icon="📊">
-            <div className={"text-xl font-bold leading-tight " + pnlColorClass}>
-              {formatUsd(pnl)}
-            </div>
+            <div className={"text-xl font-bold leading-tight " + pnlColorClass}>{formatUsd(pnl)}</div>
             <div className="text-[11px] text-white/35 mt-1">{wins + losses} trades</div>
           </CardShell>
 
@@ -1194,11 +1010,7 @@ export default function TradeDemo() {
             <div className="text-[11px] text-white/35 mt-1">Best: {bestWinStreak}</div>
           </CardShell>
 
-          <CardShell
-            title="Confidence"
-            icon="🤖"
-            right={<span className="text-[11px] text-white/45">{confidence}%</span>}
-          >
+          <CardShell title="Confidence" icon="🤖" right={<span className="text-[11px] text-white/45">{confidence}%</span>}>
             <div className="flex items-center gap-2">
               <ProgressRing percent={confidence} size={42} stroke={3}>
                 <span className="text-[10px] font-bold">{confidence}%</span>
@@ -1210,17 +1022,12 @@ export default function TradeDemo() {
           </CardShell>
         </div>
 
-        {/* ── Level ── */}
         <LevelBadge xp={xp} />
 
-        {/* ── Charts (collapsible for mobile) ── */}
+        {/* ── Charts ── */}
         <CollapsibleCard title="Charts" icon="📈" defaultOpen={false} right={<span className="text-[11px] text-white/45">Equity + Results</span>}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <CardShell
-              title="Equity"
-              icon="📈"
-              right={<span className={"text-[12px] font-bold " + equityColorClass}>{formatUsdPlain(equity)}</span>}
-            >
+            <CardShell title="Equity" icon="📈" right={<span className={"text-[12px] font-bold " + equityColorClass}>{formatUsdPlain(equity)}</span>}>
               <EquityCurve data={equityHistory} height={110} />
             </CardShell>
 
@@ -1233,30 +1040,10 @@ export default function TradeDemo() {
         {/* ── Exchanges ── */}
         <CollapsibleCard title="Exchanges" icon="🔗" defaultOpen={false} right={<span className="text-[11px] text-white/45">per plan</span>}>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-            <DemoExchangeCard
-              name="OKX"
-              icon="🔷"
-              trades={tradesByExchange.OKX}
-              active={currentPlan.exchanges.includes("OKX")}
-            />
-            <DemoExchangeCard
-              name="Alpaca"
-              icon="📈"
-              trades={tradesByExchange.Alpaca}
-              active={currentPlan.exchanges.includes("Alpaca")}
-            />
-            <DemoExchangeCard
-              name="DEX"
-              icon="🦄"
-              trades={tradesByExchange.DEX}
-              active={currentPlan.exchanges.includes("DEX")}
-            />
-            <DemoExchangeCard
-              name="Futures"
-              icon="📊"
-              trades={tradesByExchange.Futures}
-              active={currentPlan.exchanges.includes("Futures")}
-            />
+            <DemoExchangeCard name="OKX" icon="🔷" trades={tradesByExchange.OKX} active={currentPlan.exchanges.includes("OKX")} />
+            <DemoExchangeCard name="Alpaca" icon="📈" trades={tradesByExchange.Alpaca} active={currentPlan.exchanges.includes("Alpaca")} />
+            <DemoExchangeCard name="DEX" icon="🦄" trades={tradesByExchange.DEX} active={currentPlan.exchanges.includes("DEX")} />
+            <DemoExchangeCard name="Futures" icon="📊" trades={tradesByExchange.Futures} active={currentPlan.exchanges.includes("Futures")} />
           </div>
         </CollapsibleCard>
 
@@ -1310,16 +1097,13 @@ export default function TradeDemo() {
           </div>
         </CollapsibleCard>
 
-        {/* ── Achievements ── */}
         <AchievementsPanel unlocked={unlockedAchievements} total={ALL_ACHIEVEMENTS.length} />
 
         {/* ── CTA ── */}
         <div className="bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-4 sm:p-7 text-center">
           <div className="text-4xl sm:text-5xl mb-2">🚀</div>
           <h2 className="text-lg sm:text-2xl font-bold mb-2">Ready for Real?</h2>
-          <p className="text-[12px] sm:text-sm text-white/60 max-w-lg mx-auto mb-4">
-            Everything works with real money too.
-          </p>
+          <p className="text-[12px] sm:text-sm text-white/60 max-w-lg mx-auto mb-4">Everything works with real money too.</p>
           <div className="flex flex-col xs:flex-row justify-center gap-2 sm:gap-4">
             <button
               onClick={function () { nav("/signup"); }}
@@ -1336,7 +1120,6 @@ export default function TradeDemo() {
           </div>
         </div>
 
-        {/* ── Footer Note ── */}
         <div className="text-center py-3">
           <p className="text-[10px] text-white/25">🎮 Demo simulator. No real money used.</p>
         </div>
