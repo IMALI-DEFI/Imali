@@ -42,7 +42,7 @@ const tierAtLeast = (userTier, requiredTier) =>
 
 const normalizeExchange = (exchange) => {
   if (!exchange) return "DEX";
-  const u = exchange.toUpperCase();
+  const u = String(exchange).toUpperCase();
   if (u.includes("OKX")) return "OKX";
   if (u.includes("ALPACA")) return "ALPACA";
   if (u.includes("DEX")) return "DEX";
@@ -77,8 +77,52 @@ const fetchWithRetry = async (url, retries = MAX_RETRIES, delay = RETRY_BASE_DEL
   }
 };
 
+/* ===================== UI PRIMITIVES ===================== */
+const Card = ({ className = "", children }) => (
+  <div className={`bg-white/5 border border-white/10 rounded-2xl ${className}`}>{children}</div>
+);
+
+const CardHeader = ({ icon, title, right, subtitle }) => (
+  <div className="flex items-start justify-between gap-3 p-3 sm:p-4">
+    <div className="flex items-start gap-2 min-w-0">
+      {icon ? <div className="text-lg sm:text-xl flex-shrink-0">{icon}</div> : null}
+      <div className="min-w-0">
+        <div className="font-semibold text-sm sm:text-base leading-tight truncate">{title}</div>
+        {subtitle ? <div className="text-[11px] sm:text-xs text-white/50 mt-1">{subtitle}</div> : null}
+      </div>
+    </div>
+    {right ? <div className="flex-shrink-0">{right}</div> : null}
+  </div>
+);
+
+const CollapsibleSection = ({ title, icon, subtitle, defaultOpen = true, right, children }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Card className="overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40"
+      >
+        <CardHeader
+          icon={icon}
+          title={title}
+          subtitle={subtitle}
+          right={
+            <div className="flex items-center gap-2">
+              {right}
+              <span className="text-white/40 text-sm">{open ? "▾" : "▸"}</span>
+            </div>
+          }
+        />
+      </button>
+      {open ? <div className="px-3 pb-3 sm:px-4 sm:pb-4">{children}</div> : null}
+    </Card>
+  );
+};
+
 /* ===================== PROGRESS RING ===================== */
-const ProgressRing = ({ percent, size = 80, stroke = 6, color = "#10b981", children }) => {
+const ProgressRing = ({ percent, size = 44, stroke = 3, color = "#10b981", children }) => {
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (Math.min(percent, 100) / 100) * circumference;
@@ -86,46 +130,45 @@ const ProgressRing = ({ percent, size = 80, stroke = 6, color = "#10b981", child
   return (
     <div className="relative inline-flex items-center justify-center">
       <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
         <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={stroke}
-        />
-        <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke={color} strokeWidth={stroke}
-          strokeDasharray={circumference} strokeDashoffset={offset}
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
           strokeLinecap="round"
-          className="transition-all duration-1000 ease-out"
+          className="transition-all duration-700 ease-out"
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        {children}
-      </div>
+      <div className="absolute inset-0 flex items-center justify-center">{children}</div>
     </div>
   );
 };
 
 /* ===================== MINI BAR CHART ===================== */
-const MiniBarChart = ({ data, height = 60 }) => {
-  if (!data.length) {
+const MiniBarChart = ({ data, height = 56 }) => {
+  if (!data || !data.length) {
     return (
-      <div className="flex items-end gap-1 justify-center" style={{ height }}>
-        <p className="text-xs text-white/30">No trades yet — start the bot! 🤖</p>
+      <div className="flex items-center justify-center text-xs text-white/30" style={{ height }}>
+        No trades yet — start the bot 🤖
       </div>
     );
   }
-
   const max = Math.max(...data.map((d) => Math.abs(d.value)), 1);
 
   return (
-    <div className="flex items-end gap-1" style={{ height }}>
-      {data.slice(-20).map((d, i) => {
-        const h = (Math.abs(d.value) / max) * height * 0.9;
+    <div className="flex items-end gap-[2px]" style={{ height }}>
+      {data.slice(-24).map((d, i) => {
+        const h = (Math.abs(d.value) / max) * height * 0.92;
         return (
           <div
             key={i}
             title={`${d.label}: ${formatMoney(d.value)}`}
-            className={`rounded-t flex-1 min-w-[4px] max-w-[16px] transition-all duration-300 cursor-pointer hover:opacity-80 ${
+            className={`rounded-t flex-1 min-w-[3px] max-w-[14px] transition-opacity hover:opacity-80 ${
               d.value >= 0 ? "bg-emerald-500" : "bg-red-500"
             }`}
             style={{ height: Math.max(h, 2) }}
@@ -136,24 +179,29 @@ const MiniBarChart = ({ data, height = 60 }) => {
   );
 };
 
-/* ===================== STAT CARD ===================== */
-const StatCard = ({ icon, label, value, subValue, trend, color = "white" }) => {
-  const valueColor = {
-    green: "text-emerald-400",
-    red: "text-red-400",
-    blue: "text-blue-400",
-    purple: "text-purple-400",
-    white: "text-white",
-  }[color] || "text-white";
+/* ===================== STAT CARD (COMPACT) ===================== */
+const StatCard = ({ icon, label, value, subValue, color = "white" }) => {
+  const valueColor =
+    color === "green"
+      ? "text-emerald-400"
+      : color === "red"
+      ? "text-red-400"
+      : color === "blue"
+      ? "text-blue-400"
+      : color === "purple"
+      ? "text-purple-400"
+      : "text-white";
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:border-white/20 transition-all">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-xl">{icon}</span>
-        <span className="text-xs text-white/50">{label}</span>
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4 overflow-hidden">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-base sm:text-lg flex-shrink-0">{icon}</span>
+          <span className="text-[11px] sm:text-xs text-white/50 truncate">{label}</span>
+        </div>
       </div>
-      <div className={`text-xl font-bold ${valueColor}`}>{value}</div>
-      {subValue && <div className="text-xs text-white/30 mt-1">{subValue}</div>}
+      <div className={`mt-2 text-base sm:text-xl font-bold leading-tight ${valueColor} truncate`}>{value}</div>
+      {subValue ? <div className="mt-1 text-[10px] sm:text-xs text-white/30 truncate">{subValue}</div> : null}
     </div>
   );
 };
@@ -166,156 +214,166 @@ const LevelBadge = ({ trades, winRate, pnl }) => {
     xp += Math.max(0, winRate - 40) * 1.5;
     xp += Math.max(0, pnl) * 0.1;
 
-    if (xp >= 200) return { name: "🏆 Legend", level: 5, color: "text-yellow-400", xp, next: 200 };
-    if (xp >= 120) return { name: "💎 Diamond", level: 4, color: "text-cyan-400", xp, next: 200 };
-    if (xp >= 70) return { name: "🥇 Gold", level: 3, color: "text-yellow-300", xp, next: 120 };
-    if (xp >= 30) return { name: "🥈 Silver", level: 2, color: "text-gray-300", xp, next: 70 };
-    return { name: "🥉 Bronze", level: 1, color: "text-amber-600", xp, next: 30 };
+    if (xp >= 200) return { name: "🏆 Legend", color: "text-yellow-400", xp, next: 200 };
+    if (xp >= 120) return { name: "💎 Diamond", color: "text-cyan-400", xp, next: 200 };
+    if (xp >= 70) return { name: "🥇 Gold", color: "text-yellow-300", xp, next: 120 };
+    if (xp >= 30) return { name: "🥈 Silver", color: "text-gray-200", xp, next: 70 };
+    return { name: "🥉 Bronze", color: "text-amber-600", xp, next: 30 };
   }, [trades, winRate, pnl]);
 
   const progress = (level.xp / level.next) * 100;
+  const toNext = Math.max(0, Math.ceil(level.next - level.xp));
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-      <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-2 mb-2">
-        <div>
-          <h3 className="text-xs sm:text-sm text-white/60">Trader Level</h3>
-          <span className={`text-base sm:text-lg font-bold ${level.color}`}>{level.name}</span>
+    <Card className="p-3 sm:p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] sm:text-xs text-white/55">Trader Level</div>
+          <div className={`text-base sm:text-lg font-bold leading-tight ${level.color} truncate`}>{level.name}</div>
         </div>
-        <div className="text-right">
+        <div className="text-right flex-shrink-0">
           <div className="text-[10px] text-white/40">XP</div>
           <div className="text-sm sm:text-base font-bold">{Math.floor(level.xp)}</div>
         </div>
       </div>
-      <div className="w-full bg-white/10 rounded-full h-2 sm:h-3 overflow-hidden">
+
+      <div className="mt-3 w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-1000"
+          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-700"
           style={{ width: `${Math.min(progress, 100)}%` }}
         />
       </div>
-      <p className="text-[10px] sm:text-xs text-white/40 mt-1">
-        {Math.floor(level.xp)} / {level.next} XP — {level.next - Math.floor(level.xp)} to next
-      </p>
-    </div>
+
+      <div className="mt-1 text-[10px] sm:text-xs text-white/40">
+        {Math.floor(level.xp)} / {level.next} XP — {toNext} to next
+      </div>
+    </Card>
   );
 };
 
-/* ===================== EXCHANGE CARD ===================== */
+/* ===================== EXCHANGE CARD (COMPACT) ===================== */
 const ExchangeCard = ({ name, connected, mode, trades, icon, color = "blue" }) => {
-  const pnl = trades.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
+  const pnl = (trades || []).reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
+
   const winRate = useMemo(() => {
-    if (!trades.length) return 0;
-    return ((trades.filter((t) => (t.pnl_usd || 0) > 0).length / trades.length) * 100).toFixed(1);
+    if (!trades || !trades.length) return "0.0";
+    const wins = trades.filter((t) => (t.pnl_usd || 0) > 0).length;
+    return ((wins / trades.length) * 100).toFixed(1);
   }, [trades]);
 
   const chartData = useMemo(
-    () => trades.slice(-15).map((t, i) => ({ label: `Trade ${i + 1}`, value: t.pnl_usd || 0 })),
+    () => (trades || []).slice(-15).map((t, i) => ({ label: `#${i + 1}`, value: t.pnl_usd || 0 })),
     [trades]
   );
 
-  const colorClasses = {
-    blue: "from-blue-600/20 to-blue-600/5 border-blue-500/20",
-    emerald: "from-emerald-600/20 to-emerald-600/5 border-emerald-500/20",
-    purple: "from-purple-600/20 to-purple-600/5 border-purple-500/20",
-    amber: "from-amber-600/20 to-amber-600/5 border-amber-500/20",
+  const colorMap = {
+    blue: "from-blue-600/15 to-blue-600/5 border-blue-500/25",
+    emerald: "from-emerald-600/15 to-emerald-600/5 border-emerald-500/25",
+    purple: "from-purple-600/15 to-purple-600/5 border-purple-500/25",
+    amber: "from-amber-600/15 to-amber-600/5 border-amber-500/25",
   };
 
   return (
-    <div className={`bg-gradient-to-br ${colorClasses[color]} border rounded-xl p-4 hover:border-white/30 transition-all`}>
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">{icon}</span>
-          <div>
-            <h3 className="font-semibold text-sm">{name}</h3>
+    <div className={`bg-gradient-to-br ${colorMap[color] || colorMap.blue} border rounded-2xl p-3 sm:p-4 overflow-hidden`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <span className="text-xl flex-shrink-0">{icon}</span>
+          <div className="min-w-0">
+            <div className="font-semibold text-sm truncate">{name}</div>
             {connected ? (
-              <span className={`text-xs px-2 py-0.5 rounded-full ${
-                mode === "live" ? "bg-emerald-500/20 text-emerald-300" : "bg-blue-500/20 text-blue-300"
-              }`}>
+              <span
+                className={`inline-flex mt-1 text-[10px] px-2 py-0.5 rounded-full ${
+                  mode === "live" ? "bg-emerald-500/20 text-emerald-300" : "bg-blue-500/20 text-blue-300"
+                }`}
+              >
                 {mode || "paper"}
               </span>
             ) : (
-              <span className="text-xs text-yellow-500">⚠️ Disconnected</span>
+              <span className="inline-flex mt-1 text-[10px] text-yellow-300">⚠️ Disconnected</span>
             )}
           </div>
         </div>
-        <ProgressRing
-          percent={Number(winRate)}
-          size={44}
-          stroke={3}
-          color={Number(winRate) >= 50 ? "#10b981" : "#ef4444"}
-        >
+
+        <ProgressRing percent={Number(winRate)} size={40} stroke={3} color={Number(winRate) >= 50 ? "#10b981" : "#ef4444"}>
           <span className="text-[10px] font-bold">{winRate}%</span>
         </ProgressRing>
       </div>
 
-      <MiniBarChart data={chartData} height={32} />
+      <div className="mt-3">
+        <MiniBarChart data={chartData} height={28} />
+      </div>
 
       <div className="grid grid-cols-2 gap-2 mt-3">
-        <div className="bg-black/30 rounded-lg p-2 text-center">
+        <div className="bg-black/30 rounded-xl p-2 text-center">
           <div className="text-[10px] text-white/40">Trades</div>
-          <div className="text-sm font-bold">{trades.length}</div>
+          <div className="text-sm font-bold">{(trades || []).length}</div>
         </div>
-        <div className="bg-black/30 rounded-lg p-2 text-center">
+        <div className="bg-black/30 rounded-xl p-2 text-center">
           <div className="text-[10px] text-white/40">P&L</div>
-          <div className={`text-sm font-bold ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-            {formatMoney(pnl)}
-          </div>
+          <div className={`text-sm font-bold ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatMoney(pnl)}</div>
         </div>
       </div>
     </div>
   );
 };
 
-/* ===================== UPGRADE CARD ===================== */
-const UpgradeCard = ({ name, icon, description, features, color, currentTier, requiredTier }) => {
+/* ===================== UPGRADE CARD (SAFE CLASSES) ===================== */
+const UpgradeCard = ({ name, icon, description, features, colorKey, currentTier, requiredTier }) => {
   const nav = useNavigate();
   const unlocked = tierAtLeast(currentTier, requiredTier);
-  const tierStyle = TIER_STYLES[requiredTier] || { color: "text-blue-400", bg: "bg-blue-500/20" };
+  const tierStyle = TIER_STYLES[requiredTier] || { color: "text-blue-400", bg: "bg-blue-500/20", border: "border-blue-500/30" };
+
+  const gradMap = {
+    blue: "from-blue-600/10 to-blue-600/5 border-blue-500/30",
+    purple: "from-purple-600/10 to-purple-600/5 border-purple-500/30",
+    emerald: "from-emerald-600/10 to-emerald-600/5 border-emerald-500/30",
+    amber: "from-amber-600/10 to-amber-600/5 border-amber-500/30",
+  };
+
+  const unlockedClass = `bg-gradient-to-br ${gradMap[colorKey] || gradMap.blue}`;
+  const lockedClass = "bg-white/5 border-white/10 opacity-80";
 
   return (
-    <div className={`rounded-xl p-4 border transition-all ${
-      unlocked
-        ? `bg-gradient-to-br from-${color}-600/10 to-${color}-600/5 border-${color}-500/30`
-        : "bg-white/5 border-white/10 opacity-70"
-    }`}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">{icon}</span>
-          <div>
-            <h3 className="font-semibold text-sm">{name}</h3>
-            <span className={`text-xs ${tierStyle.color}`}>
-              {unlocked ? "✓ Active" : `🔒 ${requiredTier}`}
-            </span>
+    <div className={`rounded-2xl p-3 sm:p-4 border transition-all overflow-hidden ${unlocked ? unlockedClass : lockedClass}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <span className="text-xl flex-shrink-0">{icon}</span>
+          <div className="min-w-0">
+            <div className="font-semibold text-sm truncate">{name}</div>
+            <div className={`text-[10px] mt-1 ${tierStyle.color}`}>{unlocked ? "✓ Active" : `🔒 ${requiredTier}`}</div>
           </div>
         </div>
-        {!unlocked && <span className={`text-[10px] px-2 py-1 rounded-full ${tierStyle.bg} ${tierStyle.color}`}>
-          {requiredTier}
-        </span>}
+        {!unlocked ? (
+          <span className={`text-[10px] px-2 py-1 rounded-full ${tierStyle.bg} ${tierStyle.color} border ${tierStyle.border}`}>
+            {requiredTier}
+          </span>
+        ) : null}
       </div>
 
-      <p className="text-xs text-white/50 mb-3">{description}</p>
+      <p className="text-[11px] sm:text-xs text-white/55 mt-2">{description}</p>
 
-      <ul className="space-y-1 mb-3">
-        {features.map((f, i) => (
-          <li key={i} className="text-xs text-white/40 flex items-center gap-1">
-            <span className="text-emerald-400">✓</span> {f}
+      <ul className="mt-3 space-y-1">
+        {(features || []).slice(0, 4).map((f, i) => (
+          <li key={i} className="text-[11px] sm:text-xs text-white/45 flex items-start gap-2">
+            <span className="text-emerald-400 mt-[2px]">✓</span>
+            <span className="min-w-0">{f}</span>
           </li>
         ))}
       </ul>
 
-      {!unlocked && (
+      {!unlocked ? (
         <button
           onClick={() => nav("/pricing")}
-          className="w-full py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-xs font-medium hover:opacity-90 transition-opacity"
+          className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-xs font-semibold hover:opacity-90 transition-opacity"
         >
           Upgrade →
         </button>
-      )}
+      ) : null}
     </div>
   );
 };
 
-/* ===================== TRADE FEED ===================== */
+/* ===================== TRADE FEED (COMPACT) ===================== */
 const TradeFeed = ({ trades }) => {
   if (!trades || !trades.length) {
     return (
@@ -327,34 +385,40 @@ const TradeFeed = ({ trades }) => {
   }
 
   return (
-    <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1">
-      {trades.slice(-20).reverse().map((t, i) => {
-        const isLatest = i === 0;
-        const isWin = (t.pnl_usd || 0) >= 0;
-        const rowClass = `flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all ${
-          isLatest ? "bg-white/10 border border-white/10" : "bg-white/[0.03]"
-        }`;
+    <div className="space-y-1 max-h-[320px] overflow-y-auto pr-1">
+      {trades
+        .slice(-20)
+        .reverse()
+        .map((t, i) => {
+          const isLatest = i === 0;
+          const isWin = (t.pnl_usd || 0) >= 0;
 
-        return (
-          <div key={t.id || i} className={rowClass}>
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="text-base flex-shrink-0">
-                {t.exchange === "OKX" ? "🔷" : t.exchange === "ALPACA" ? "📈" : "🦄"}
-              </span>
-              <div className="truncate">
-                <span className="font-medium text-sm">{t.symbol || "BTC"}</span>
-                <span className="text-xs text-white/40 ml-1 hidden xs:inline">{t.exchange}</span>
+          return (
+            <div
+              key={t.id || i}
+              className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm transition-all overflow-hidden ${
+                isLatest ? "bg-white/10 border border-white/10" : "bg-white/[0.03]"
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-base flex-shrink-0">
+                  {normalizeExchange(t.exchange) === "OKX" ? "🔷" : normalizeExchange(t.exchange) === "ALPACA" ? "📈" : "🦄"}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-semibold text-sm truncate">{t.symbol || "BTC"}</span>
+                    <span className="text-[10px] text-white/40 hidden xs:inline">{normalizeExchange(t.exchange)}</span>
+                  </div>
+                  <div className="text-[10px] text-white/35 truncate hidden sm:block">{t.action || "Trade"}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className={`text-sm font-bold ${isWin ? "text-emerald-400" : "text-red-400"}`}>{formatMoney(t.pnl_usd || 0)}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-xs text-white/40 hidden sm:inline">{t.action || "Trade"}</span>
-              <span className={`text-sm font-bold ${isWin ? "text-emerald-400" : "text-red-400"}`}>
-                {formatMoney(t.pnl_usd || 0)}
-              </span>
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
     </div>
   );
 };
@@ -369,30 +433,30 @@ const SetupBanner = ({ billing, connections, trading, onCTA }) => {
     { done: trading, label: "Enable", icon: "⚡" },
   ];
 
-  const currentStep = steps.findIndex(s => !s.done);
-  const stepText = !billing ? "Add payment"
-    : !connections ? "Connect exchanges"
-    : "Enable trading";
+  const currentStep = Math.max(0, steps.findIndex((s) => !s.done));
+  const stepText = !billing ? "Add payment" : !connections ? "Connect services" : "Enable trading";
 
   return (
-    <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-xl p-4 sm:p-5">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">🚀</span>
-          <div>
-            <p className="text-white font-medium text-sm sm:text-base">Complete your setup</p>
-            <p className="text-xs text-white/50 mt-1">Step {currentStep + 1}/3</p>
+    <Card className="p-3 sm:p-4 bg-gradient-to-r from-blue-600/15 to-purple-600/15 border-blue-500/25">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <span className="text-2xl sm:text-3xl flex-shrink-0">🚀</span>
+          <div className="min-w-0">
+            <p className="text-white font-semibold text-sm sm:text-base leading-tight">Complete your setup</p>
+            <p className="text-[11px] sm:text-xs text-white/50 mt-1">
+              Step {currentStep + 1}/3 — {steps[currentStep]?.label}
+            </p>
           </div>
         </div>
 
         <button
           onClick={onCTA}
-          className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-medium text-sm transition-colors"
+          className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-semibold text-sm transition-colors"
         >
           {stepText} →
         </button>
       </div>
-    </div>
+    </Card>
   );
 };
 
@@ -401,13 +465,7 @@ const SetupBanner = ({ billing, connections, trading, onCTA }) => {
 ===================================================================== */
 export default function MemberDashboard() {
   const nav = useNavigate();
-  const {
-    user: authUser,
-    activation,
-    activationComplete: ctxActivationComplete,
-    setActivation,
-    refreshActivation,
-  } = useAuth();
+  const { user: authUser, activation, setActivation, refreshActivation } = useAuth();
 
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -431,11 +489,7 @@ export default function MemberDashboard() {
     const needsOkx = ["starter", "pro", "bundle"].includes(normalizedTier);
     const needsAlpaca = ["starter", "bundle"].includes(normalizedTier);
     const needsWallet = ["elite", "stock", "bundle"].includes(normalizedTier);
-    return (
-      (!needsOkx || okxConnected) &&
-      (!needsAlpaca || alpacaConnected) &&
-      (!needsWallet || walletConnected)
-    );
+    return (!needsOkx || okxConnected) && (!needsAlpaca || alpacaConnected) && (!needsWallet || walletConnected);
   }, [normalizedTier, okxConnected, alpacaConnected, walletConnected]);
 
   const activationComplete = billingComplete && connectionsComplete && tradingEnabled;
@@ -454,16 +508,16 @@ export default function MemberDashboard() {
       const res = await fetchWithRetry("/api/sniper/trades");
       setTrades(Array.isArray(res.data?.trades) ? res.data.trades : []);
     } catch (err) {
-      if (err.response?.status !== 429) {
-        console.warn("[Dashboard] Failed to load trades:", err.message);
-      }
+      if (err.response?.status !== 429) console.warn("[Dashboard] Failed to load trades:", err.message);
     } finally {
       fetchInFlight.current = false;
       setLoading(false);
     }
   }, [activationComplete]);
 
-  useEffect(() => { loadTrades(); }, [loadTrades]);
+  useEffect(() => {
+    loadTrades();
+  }, [loadTrades]);
 
   useEffect(() => {
     if (!activationComplete) return;
@@ -476,14 +530,16 @@ export default function MemberDashboard() {
 
   /* ================ METRICS ================ */
   const totalPnL = useMemo(() => trades.reduce((s, t) => s + (t.pnl_usd || 0), 0), [trades]);
+
   const winRate = useMemo(() => {
-    if (!trades.length) return 0;
-    return ((trades.filter((t) => (t.pnl_usd || 0) > 0).length / trades.length) * 100).toFixed(1);
+    if (!trades.length) return "0.0";
+    const wins = trades.filter((t) => (t.pnl_usd || 0) > 0).length;
+    return ((wins / trades.length) * 100).toFixed(1);
   }, [trades]);
 
   const confidence = useMemo(() => {
     let s = 40;
-    if (winRate > 60) s += 20;
+    if (Number(winRate) > 60) s += 20;
     if (trades.length > 20) s += 15;
     if (activationComplete) s += 15;
     return Math.min(s, 100);
@@ -491,13 +547,13 @@ export default function MemberDashboard() {
 
   const todayTrades = useMemo(() => {
     const today = new Date().toDateString();
-    return trades.filter((t) => new Date(t.created_at || t.timestamp).toDateString() === today);
+    return trades.filter((t) => new Date(t.created_at || t.timestamp || Date.now()).toDateString() === today);
   }, [trades]);
 
   const todayPnL = useMemo(() => todayTrades.reduce((s, t) => s + (t.pnl_usd || 0), 0), [todayTrades]);
 
   const chartData = useMemo(
-    () => trades.slice(-20).map((t, i) => ({ label: `#${i + 1}`, value: t.pnl_usd || 0 })),
+    () => trades.slice(-24).map((t, i) => ({ label: `#${i + 1}`, value: t.pnl_usd || 0 })),
     [trades]
   );
 
@@ -506,22 +562,18 @@ export default function MemberDashboard() {
     try {
       setBusy(true);
       await BotAPI.toggleTrading(enabled);
+
       if (refreshActivation) {
         await refreshActivation();
       } else {
         const res = await BotAPI.activationStatus();
         if (setActivation) setActivation(res?.status ?? res);
       }
-      setBanner({
-        type: "success",
-        message: enabled ? "✅ Trading enabled!" : "Trading paused.",
-      });
+
+      setBanner({ type: "success", message: enabled ? "✅ Trading enabled!" : "⏸ Trading paused." });
       if (enabled) await loadTrades();
     } catch (err) {
-      setBanner({
-        type: "error",
-        message: err?.response?.data?.message || "Couldn't update trading status",
-      });
+      setBanner({ type: "error", message: err?.response?.data?.message || "Couldn't update trading status" });
     } finally {
       setBusy(false);
     }
@@ -538,7 +590,9 @@ export default function MemberDashboard() {
       const res = await BotAPI.startBot({ mode });
       if (res?.started) {
         setBanner({ type: "success", message: `🤖 Bot started in ${mode} mode!` });
-        setTimeout(loadTrades, 3000);
+        setTimeout(loadTrades, 2500);
+      } else {
+        setBanner({ type: "error", message: "Bot didn't start" });
       }
     } catch {
       setBanner({ type: "error", message: "Bot didn't start" });
@@ -552,10 +606,10 @@ export default function MemberDashboard() {
     else nav("/activation");
   };
 
-  /* ================ LOADING ================ */
+  /* ================ LOADING / AUTH ================ */
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white px-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4" />
           <p className="text-white/60">Loading your dashboard...</p>
@@ -569,7 +623,7 @@ export default function MemberDashboard() {
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white p-4">
         <div className="text-center">
           <p className="text-white/60 mb-4">Please log in to continue</p>
-          <button onClick={() => nav("/login")} className="px-6 py-2 bg-emerald-600 rounded-lg">
+          <button onClick={() => nav("/login")} className="px-6 py-2 bg-emerald-600 rounded-xl font-semibold">
             Go to Login
           </button>
         </div>
@@ -577,71 +631,76 @@ export default function MemberDashboard() {
     );
   }
 
+  const displayName = authUser.email?.split("@")[0] || "Trader";
+
   /* ================ RENDER ================ */
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-7xl mx-auto px-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
-
+      {/* tighter, mobile-first padding + spacing */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-3 sm:space-y-5">
         {/* Banner */}
-        {banner && (
-          <div className={`p-3 sm:p-4 rounded-xl border flex items-center justify-between text-sm ${
-            banner.type === "error"
-              ? "bg-red-600/10 border-red-500/40 text-red-200"
-              : "bg-emerald-600/10 border-emerald-500/40 text-emerald-200"
-          }`}>
-            <span>{banner.message}</span>
-            <button onClick={() => setBanner(null)} className="text-white/40 hover:text-white ml-4">✕</button>
+        {banner ? (
+          <div
+            className={`p-3 rounded-2xl border flex items-start justify-between gap-3 text-sm ${
+              banner.type === "error"
+                ? "bg-red-600/10 border-red-500/40 text-red-200"
+                : "bg-emerald-600/10 border-emerald-500/40 text-emerald-200"
+            }`}
+          >
+            <span className="min-w-0">{banner.message}</span>
+            <button onClick={() => setBanner(null)} className="text-white/50 hover:text-white flex-shrink-0">
+              ✕
+            </button>
           </div>
-        )}
+        ) : null}
 
-        <SetupBanner
-          billing={billingComplete}
-          connections={connectionsComplete}
-          trading={tradingEnabled}
-          onCTA={handleSetupCTA}
-        />
+        <SetupBanner billing={billingComplete} connections={connectionsComplete} trading={tradingEnabled} onCTA={handleSetupCTA} />
 
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold">👋 Hey there, {authUser.email?.split('@')[0] || 'Trader'}!</h1>
-              <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold ${tierStyle.bg} ${tierStyle.color} border ${tierStyle.border}`}>
-                {tierStyle.icon} {normalizedTier}
-              </span>
-              {activationComplete && (
-                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full text-[10px] border border-emerald-500/30">
-                  ✓ Active
+        {/* Header (no collisions) */}
+        <Card className="p-3 sm:p-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg sm:text-2xl font-bold leading-tight min-w-0 truncate">👋 Hey, {displayName}!</h1>
+                <span
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold ${tierStyle.bg} ${tierStyle.color} border ${tierStyle.border}`}
+                >
+                  <span>{tierStyle.icon}</span>
+                  <span className="capitalize">{normalizedTier}</span>
                 </span>
-              )}
+                {activationComplete ? (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
+                    ✓ Active
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-[11px] sm:text-sm text-white/55 mt-1">Your trading dashboard</p>
             </div>
-            <p className="text-xs sm:text-sm text-white/50 mt-1">Your trading dashboard</p>
-          </div>
 
-          <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-            <button
-              onClick={() => toggleTrading(!tradingEnabled)}
-              disabled={busy || !activationComplete}
-              className={`flex-1 lg:flex-none px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-50 ${
-                tradingEnabled
-                  ? "bg-red-600/80 hover:bg-red-600"
-                  : "bg-indigo-600 hover:bg-indigo-500"
-              }`}
-            >
-              {busy ? "..." : tradingEnabled ? "⏸ Pause" : "▶ Enable"}
-            </button>
-            <button
-              onClick={startBot}
-              disabled={!tradingEnabled || busy || !activationComplete}
-              className="flex-1 lg:flex-none px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-medium text-sm disabled:opacity-50"
-            >
-              {busy ? "..." : "🚀 Start"}
-            </button>
+            {/* actions: stack on mobile, no overlap */}
+            <div className="grid grid-cols-2 gap-2 w-full lg:w-auto">
+              <button
+                onClick={() => toggleTrading(!tradingEnabled)}
+                disabled={busy || !activationComplete}
+                className={`px-3 sm:px-5 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 ${
+                  tradingEnabled ? "bg-red-600/80 hover:bg-red-600" : "bg-indigo-600 hover:bg-indigo-500"
+                }`}
+              >
+                {busy ? "..." : tradingEnabled ? "⏸ Pause" : "▶ Enable"}
+              </button>
+              <button
+                onClick={startBot}
+                disabled={!tradingEnabled || busy || !activationComplete}
+                className="px-3 sm:px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm disabled:opacity-50"
+              >
+                {busy ? "..." : "🚀 Start"}
+              </button>
+            </div>
           </div>
-        </div>
+        </Card>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4">
+        {/* Stats: stacked cards + tighter spacing */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
           <StatCard icon="💰" label="Account" value={formatUsd(1000 + totalPnL)} subValue="Start $1k" />
           <StatCard icon="📈" label="Today" value={formatMoney(todayPnL)} color={todayPnL >= 0 ? "green" : "red"} />
           <StatCard icon="📊" label="Total" value={formatMoney(totalPnL)} color={totalPnL >= 0 ? "green" : "red"} />
@@ -649,27 +708,33 @@ export default function MemberDashboard() {
           <StatCard icon="🤖" label="Confidence" value={`${confidence}%`} />
         </div>
 
-        {/* Level + Chart Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Level + chart: collapsible + mobile-first */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
           <div className="lg:col-span-1">
             <LevelBadge trades={trades.length} winRate={Number(winRate)} pnl={totalPnL} />
           </div>
-          <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <h2 className="font-semibold text-sm">📊 Recent Results</h2>
-              <span className="text-[10px] text-white/40">{trades.length} total</span>
-            </div>
-            <MiniBarChart data={chartData} height={80} />
-          </div>
+
+          <CollapsibleSection
+            icon="📊"
+            title="Recent Results"
+            subtitle={`${trades.length} total trades`}
+            defaultOpen={true}
+          >
+            <MiniBarChart data={chartData} height={92} />
+          </CollapsibleSection>
         </div>
 
-        {/* Active Services */}
-        {activationComplete && (
+        {/* Activated content */}
+        {activationComplete ? (
           <>
-            <div>
-              <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">🔗 Your Services</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                {tierAtLeast(normalizedTier, "starter") && (
+            <CollapsibleSection
+              icon="🔗"
+              title="Your Services"
+              subtitle="Status by exchange"
+              defaultOpen={true}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                {tierAtLeast(normalizedTier, "starter") ? (
                   <ExchangeCard
                     name="OKX"
                     icon="🔷"
@@ -678,8 +743,9 @@ export default function MemberDashboard() {
                     mode={activation?.okx_mode}
                     trades={trades.filter((t) => normalizeExchange(t.exchange) === "OKX")}
                   />
-                )}
-                {tierAtLeast(normalizedTier, "starter") && (
+                ) : null}
+
+                {tierAtLeast(normalizedTier, "starter") ? (
                   <ExchangeCard
                     name="Alpaca"
                     icon="📈"
@@ -688,8 +754,9 @@ export default function MemberDashboard() {
                     mode={activation?.alpaca_mode}
                     trades={trades.filter((t) => normalizeExchange(t.exchange) === "ALPACA")}
                   />
-                )}
-                {tierAtLeast(normalizedTier, "stock") && (
+                ) : null}
+
+                {tierAtLeast(normalizedTier, "stock") ? (
                   <ExchangeCard
                     name="DEX"
                     icon="🦄"
@@ -698,8 +765,9 @@ export default function MemberDashboard() {
                     mode={walletConnected ? "active" : null}
                     trades={trades.filter((t) => normalizeExchange(t.exchange) === "DEX")}
                   />
-                )}
-                {tierAtLeast(normalizedTier, "elite") && (
+                ) : null}
+
+                {tierAtLeast(normalizedTier, "elite") ? (
                   <ExchangeCard
                     name="Futures"
                     icon="📊"
@@ -708,61 +776,58 @@ export default function MemberDashboard() {
                     mode="ready"
                     trades={trades.filter((t) => normalizeExchange(t.exchange) === "FUTURES")}
                   />
-                )}
+                ) : null}
               </div>
-            </div>
+            </CollapsibleSection>
 
-            {/* Trade Feed + Stats */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
-                <div className="flex items-center justify-between mb-2 sm:mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base sm:text-lg">📋</span>
-                    <h3 className="font-semibold text-sm">Live Trades</h3>
-                  </div>
-                  {tradingEnabled && (
-                    <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+              <CollapsibleSection
+                icon="📋"
+                title="Live Trades"
+                subtitle={tradingEnabled ? "Live feed" : "Paused"}
+                defaultOpen={true}
+                right={
+                  tradingEnabled ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-300">
                       <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
                       Live
                     </span>
-                  )}
-                </div>
+                  ) : null
+                }
+              >
                 <TradeFeed trades={trades} />
-              </div>
+              </CollapsibleSection>
 
-              <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
-                <h3 className="font-semibold text-sm mb-3">⚡ Quick Stats</h3>
+              <CollapsibleSection icon="⚡" title="Quick Stats" subtitle="Fast glance" defaultOpen={false}>
                 <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-3">
                     <span className="text-white/50">Best Streak</span>
                     <span className="font-bold">5 🔥</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-3">
                     <span className="text-white/50">Day Streak</span>
                     <span className="font-bold">3 📅</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-3">
                     <span className="text-white/50">Strategies</span>
                     <span className="font-bold">3/4 🧠</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-3">
                     <span className="text-white/50">Avg Trade</span>
                     <span className="font-bold">$125</span>
                   </div>
                 </div>
-              </div>
+              </CollapsibleSection>
             </div>
 
-            {/* Upgrades */}
-            <div>
-              <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">⚡ Upgrades</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <CollapsibleSection icon="⚡" title="Upgrades" subtitle="Unlock more modules" defaultOpen={false}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
                 <UpgradeCard
                   name="Staking"
                   icon="🥩"
                   description="Earn passive rewards"
                   features={["Daily rewards", "No lock-up"]}
-                  color="purple"
+                  colorKey="purple"
                   currentTier={normalizedTier}
                   requiredTier="pro"
                 />
@@ -771,7 +836,7 @@ export default function MemberDashboard() {
                   icon="🦄"
                   description="Trade on DEXes"
                   features={["Uniswap", "MEV protection"]}
-                  color="blue"
+                  colorKey="blue"
                   currentTier={normalizedTier}
                   requiredTier="stock"
                 />
@@ -780,7 +845,7 @@ export default function MemberDashboard() {
                   icon="🌾"
                   description="Liquidity pools"
                   features={["Top pools", "Auto-harvest"]}
-                  color="emerald"
+                  colorKey="emerald"
                   currentTier={normalizedTier}
                   requiredTier="elite"
                 />
@@ -789,43 +854,44 @@ export default function MemberDashboard() {
                   icon="📊"
                   description="Leverage trading"
                   features={["Up to 20x", "Auto stop"]}
-                  color="amber"
+                  colorKey="amber"
                   currentTier={normalizedTier}
                   requiredTier="elite"
                 />
               </div>
-            </div>
+            </CollapsibleSection>
 
-            {/* Feature Modules */}
-            <ImaliBalance />
-            <TierStatus />
-            <RecentTradesTable trades={trades} showExchange={true} tier={normalizedTier} />
-            <ReferralSystem />
+            {/* Feature modules: collapse by default to avoid long mobile scroll + collisions */}
+            <CollapsibleSection icon="🧩" title="Modules" subtitle="Balances, tiers, referrals, demo" defaultOpen={false}>
+              <div className="space-y-3">
+                <ImaliBalance />
+                <TierStatus />
+                <RecentTradesTable trades={trades} showExchange={true} tier={normalizedTier} />
+                <ReferralSystem />
 
-            {tierAtLeast(normalizedTier, "pro") && <Staking />}
-            {tierAtLeast(normalizedTier, "elite") && <YieldFarming />}
-            {tierAtLeast(normalizedTier, "elite") && <Futures />}
+                {tierAtLeast(normalizedTier, "pro") ? <Staking /> : null}
+                {tierAtLeast(normalizedTier, "elite") ? <YieldFarming /> : null}
+                {tierAtLeast(normalizedTier, "elite") ? <Futures /> : null}
 
-            <NFTPreview />
-            <TradeDemo />
+                <NFTPreview />
+                <TradeDemo />
+              </div>
+            </CollapsibleSection>
           </>
-        )}
-
-        {/* Not Activated */}
-        {!activationComplete && (
-          <div className="text-center py-12 bg-white/5 border border-white/10 rounded-xl">
-            <div className="text-4xl sm:text-6xl mb-4">🤖</div>
+        ) : (
+          <Card className="p-5 sm:p-8 text-center">
+            <div className="text-4xl sm:text-6xl mb-3">🤖</div>
             <h2 className="text-lg sm:text-xl font-bold mb-2">Almost ready!</h2>
-            <p className="text-xs sm:text-sm text-white/50 mb-4 max-w-md mx-auto px-4">
+            <p className="text-[11px] sm:text-sm text-white/55 mb-4 max-w-md mx-auto">
               Complete setup to unlock your dashboard.
             </p>
             <button
               onClick={handleSetupCTA}
-              className="px-6 sm:px-8 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-emerald-600 rounded-xl text-sm font-medium"
+              className="px-6 sm:px-8 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 text-sm font-semibold hover:opacity-95"
             >
               Finish Setup →
             </button>
-          </div>
+          </Card>
         )}
       </div>
     </div>
