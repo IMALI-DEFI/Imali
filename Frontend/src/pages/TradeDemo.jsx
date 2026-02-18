@@ -407,18 +407,18 @@ function TradeFeed(props) {
 
           return (
             <div key={t.id} className={rowClass}>
-              <div className="flex items-center gap-2">
-                <span className="text-base">{t.icon}</span>
-                <div>
-                  <span className="font-medium">{t.symbol}</span>
-                  <span className="text-xs text-white/40 ml-2">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-base flex-shrink-0">{t.icon}</span>
+                <div className="truncate">
+                  <span className="font-medium text-sm">{t.symbol}</span>
+                  <span className="text-xs text-white/40 ml-1 hidden xs:inline">
                     {t.exchange}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-white/40">{t.action}</span>
-                <span className={pnlClass}>{formatUsd(t.pnl)}</span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs text-white/40 hidden sm:inline">{t.action}</span>
+                <span className={pnlClass + " text-sm"}>{formatUsd(t.pnl)}</span>
               </div>
             </div>
           );
@@ -463,7 +463,7 @@ function DemoExchangeCard(props) {
 
   return (
     <div className={cardClass}>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <span className="text-2xl">{icon}</span>
           <div>
@@ -472,7 +472,7 @@ function DemoExchangeCard(props) {
               <span className="text-xs text-emerald-400">✅ Active</span>
             ) : (
               <span className="text-xs text-white/30">
-                🔒 Upgrade to unlock
+                🔒 Upgrade
               </span>
             )}
           </div>
@@ -480,25 +480,25 @@ function DemoExchangeCard(props) {
         {active && total > 0 && (
           <ProgressRing
             percent={wrNum}
-            size={40}
+            size={36}
             stroke={3}
             color={wrNum >= 50 ? "#10b981" : "#ef4444"}
           >
-            <span className="text-[10px] font-bold">{wr}%</span>
+            <span className="text-[9px] font-bold">{wr}%</span>
           </ProgressRing>
         )}
       </div>
 
-      {active && <MiniBarChart data={chartData} height={32} />}
+      {active && <MiniBarChart data={chartData} height={28} />}
 
       <div className="grid grid-cols-2 gap-2 mt-3">
         <div className="bg-black/30 rounded-lg p-2 text-center">
-          <div className="text-[10px] text-white/40">Trades</div>
+          <div className="text-[9px] text-white/40">Trades</div>
           <div className="font-bold text-sm">{total}</div>
         </div>
         <div className="bg-black/30 rounded-lg p-2 text-center">
-          <div className="text-[10px] text-white/40">P&amp;L</div>
-          <div className={pnlClass}>{formatUsd(pnl)}</div>
+          <div className="text-[9px] text-white/40">P&amp;L</div>
+          <div className={pnlClass + " text-sm"}>{formatUsd(pnl)}</div>
         </div>
       </div>
 
@@ -507,7 +507,7 @@ function DemoExchangeCard(props) {
           <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
             <div className={wrBarClass} style={{ width: wr + "%" }} />
           </div>
-          <div className="flex justify-between text-[10px] text-white/30 mt-1">
+          <div className="flex justify-between text-[9px] text-white/30 mt-1">
             <span>{wins}W</span>
             <span>{total - wins}L</span>
           </div>
@@ -556,25 +556,25 @@ function LevelBadge(props) {
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-2 mb-2">
         <div>
-          <h3 className="text-sm text-white/60">Your Trader Level</h3>
-          <span className={"text-xl font-bold " + level.colorClass}>
+          <h3 className="text-xs sm:text-sm text-white/60">Your Trader Level</h3>
+          <span className={"text-lg sm:text-xl font-bold " + level.colorClass}>
             {level.name}
           </span>
         </div>
         <div className="text-right">
-          <div className="text-xs text-white/40">XP</div>
-          <div className="text-lg font-bold">{Math.floor(xp)}</div>
+          <div className="text-[10px] text-white/40">XP</div>
+          <div className="text-base sm:text-lg font-bold">{Math.floor(xp)}</div>
         </div>
       </div>
-      <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
+      <div className="w-full bg-white/10 rounded-full h-2 sm:h-3 overflow-hidden">
         <div
           className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-700"
           style={{ width: Math.min(progress, 100) + "%" }}
         />
       </div>
-      <p className="text-xs text-white/40 mt-1">
+      <p className="text-[10px] sm:text-xs text-white/40 mt-1">
         {Math.floor(xp)} / {Math.floor(level.next)} XP —{" "}
         {isMax
           ? "Max level reached! 🏆"
@@ -592,16 +592,16 @@ function AchievementsPanel(props) {
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <span className="text-xl">🏆</span>
-          <h3 className="font-semibold">Achievements</h3>
+          <h3 className="font-semibold text-sm sm:text-base">Achievements</h3>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-white/40">
             {unlocked.length}/{total}
           </span>
-          <div className="w-20 bg-white/10 rounded-full h-2 overflow-hidden">
+          <div className="w-16 sm:w-20 bg-white/10 rounded-full h-2 overflow-hidden">
             <div
               className="h-full rounded-full bg-emerald-500 transition-all duration-500"
               style={{ width: pct + "%" }}
@@ -610,23 +610,23 @@ function AchievementsPanel(props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
         {ALL_ACHIEVEMENTS.map(function (a) {
           var isUnlocked = unlocked.includes(a.id);
           var tileClass =
-            "rounded-xl p-3 text-center transition-all border " +
+            "rounded-xl p-2 sm:p-3 text-center transition-all border " +
             (isUnlocked
               ? "bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-500/50"
               : "bg-black/20 border-white/5 opacity-40");
 
           return (
             <div key={a.id} title={a.desc} className={tileClass}>
-              <div className="text-2xl mb-1">{a.emoji}</div>
-              <div className="text-[11px] font-medium text-white/80 leading-tight">
+              <div className="text-xl sm:text-2xl mb-1">{a.emoji}</div>
+              <div className="text-[9px] sm:text-[11px] font-medium text-white/80 leading-tight">
                 {a.label}
               </div>
-              <div className="text-[9px] text-white/30 mt-1">
-                {isUnlocked ? "✅ Unlocked" : "🔒 " + a.desc}
+              <div className="text-[7px] sm:text-[9px] text-white/30 mt-1 hidden xs:block">
+                {isUnlocked ? "✅ Unlocked" : "🔒"}
               </div>
             </div>
           );
@@ -643,11 +643,11 @@ function StrategySelector(props) {
   var disabled = props.disabled;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
       {STRATEGIES.map(function (s) {
         var isActive = value === s.value;
         var btnClass =
-          "p-4 rounded-xl text-center transition-all border " +
+          "p-3 sm:p-4 rounded-xl text-center transition-all border " +
           (isActive
             ? "bg-white/10 border-white/30 shadow-lg shadow-white/5"
             : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20") +
@@ -662,8 +662,8 @@ function StrategySelector(props) {
             disabled={disabled}
             className={btnClass}
           >
-            <div className="text-3xl mb-1">{s.icon}</div>
-            <div className="text-sm font-semibold">{s.label}</div>
+            <div className="text-2xl sm:text-3xl mb-1">{s.icon}</div>
+            <div className="text-xs sm:text-sm font-semibold">{s.label}</div>
             <div className="mt-2">
               <RiskMeter level={s.risk} />
             </div>
@@ -680,11 +680,11 @@ function PlanSelector(props) {
   var onChange = props.onChange;
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
       {PLANS.map(function (p) {
         var isActive = value === p.value;
         var btnClass =
-          "px-4 py-2.5 rounded-xl text-sm font-medium transition-all border " +
+          "px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all border " +
           (isActive
             ? "bg-white/10 border-white/30 shadow-lg shadow-white/5"
             : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20");
@@ -698,7 +698,8 @@ function PlanSelector(props) {
             className={btnClass}
           >
             <span className="mr-1">{p.icon}</span>
-            {p.label}
+            <span className="hidden xs:inline">{p.label}</span>
+            <span className="xs:hidden">{p.label.substring(0, 3)}</span>
           </button>
         );
       })}
@@ -722,10 +723,10 @@ function SessionStats(props) {
     <div className="bg-white/5 border border-white/10 rounded-xl p-4">
       <div className="flex items-center gap-2 mb-4">
         <span className="text-lg">📊</span>
-        <h3 className="font-semibold">Session Stats</h3>
+        <h3 className="font-semibold text-sm sm:text-base">Session Stats</h3>
       </div>
 
-      <div className="space-y-3 text-sm">
+      <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm">
         <div className="flex justify-between">
           <span className="text-white/50">Total Trades</span>
           <span className="font-bold">{total}</span>
@@ -747,7 +748,7 @@ function SessionStats(props) {
           <span className="font-bold">{dayStreak} 📅</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-white/50">Strategies Tried</span>
+          <span className="text-white/50">Strategies</span>
           <span className="font-bold">{strategiesUsed}/4 🧠</span>
         </div>
         <div className="flex justify-between">
@@ -758,19 +759,19 @@ function SessionStats(props) {
         <div className="pt-3 mt-1 border-t border-white/10 space-y-2">
           <div className="flex justify-between">
             <span className="text-white/50">Plan</span>
-            <span>
-              {currentPlan.icon} {currentPlan.label}
+            <span className="text-xs sm:text-sm">
+              {currentPlan.icon} <span className="hidden xs:inline">{currentPlan.label}</span>
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-white/50">Strategy</span>
-            <span>
-              {currentStrat.icon} {currentStrat.label}
+            <span className="text-xs sm:text-sm">
+              {currentStrat.icon} <span className="hidden xs:inline">{currentStrat.label}</span>
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-white/50">Exchanges</span>
-            <span className="text-xs text-white/60">
+            <span className="text-[10px] sm:text-xs text-white/60 text-right">
               {currentPlan.exchanges.join(", ")}
             </span>
           </div>
@@ -1126,7 +1127,7 @@ export default function TradeDemo() {
 
   /* ===================== RENDER ===================== */
   var startBtnClass =
-    "px-6 py-3 rounded-xl font-bold transition-all hover:scale-[1.02] " +
+    "px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-bold transition-all hover:scale-[1.02] text-sm sm:text-base " +
     (running
       ? "bg-red-600 hover:bg-red-500"
       : "bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/20");
@@ -1139,22 +1140,22 @@ export default function TradeDemo() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+      <div className="max-w-7xl mx-auto px-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
         {/* ── Header ── */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">🎮 Trading Simulator</h1>
-              <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-xs font-bold border border-blue-500/30">
-                DEMO MODE
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-bold">🎮 Trading Sim</h1>
+              <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-500/20 text-blue-300 rounded-full text-[10px] sm:text-xs font-bold border border-blue-500/30">
+                DEMO
               </span>
             </div>
-            <p className="text-sm text-white/50 mt-1">
-              Practice with fake money — no risk, no signup needed!
+            <p className="text-xs sm:text-sm text-white/50 mt-1">
+              Practice with fake money — no risk!
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <button
               onClick={function () {
                 setRunning(function (r) {
@@ -1163,37 +1164,37 @@ export default function TradeDemo() {
               }}
               className={startBtnClass}
             >
-              {running ? "⏸ Stop Bot" : "▶️ Start Bot"}
+              {running ? "⏸ Stop" : "▶️ Start"}
             </button>
             <button
               onClick={resetDemo}
-              className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 font-medium transition-colors"
+              className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 font-medium text-sm sm:text-base transition-colors"
             >
-              🔄 Reset
+              🔄
             </button>
             <button
               onClick={function () {
                 nav("/signup");
               }}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02]"
+              className="px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold text-sm sm:text-base hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02]"
             >
-              🚀 Go Live
+              🚀 Live
             </button>
           </div>
         </div>
 
         {/* ── Speed Control ── */}
         {running && (
-          <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3 flex-wrap">
-            <span className="text-sm text-white/60">Bot Speed:</span>
+          <div className="flex flex-wrap items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 sm:px-4 py-2 sm:py-3">
+            <span className="text-xs sm:text-sm text-white/60">Speed:</span>
             {[
-              { label: "🐌 Slow", ms: 5000 },
-              { label: "🚶 Normal", ms: 3000 },
-              { label: "🏃 Fast", ms: 1500 },
-              { label: "⚡ Turbo", ms: 700 },
+              { label: "🐌", ms: 5000 },
+              { label: "🚶", ms: 3000 },
+              { label: "🏃", ms: 1500 },
+              { label: "⚡", ms: 700 },
             ].map(function (s) {
               var cls =
-                "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border " +
+                "px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-medium transition-all border " +
                 (speed === s.ms
                   ? "bg-white/15 border-white/30"
                   : "bg-white/5 border-white/10 hover:bg-white/10");
@@ -1209,35 +1210,34 @@ export default function TradeDemo() {
                 </button>
               );
             })}
-            <div className="ml-auto flex items-center gap-2 text-xs text-emerald-400">
-              <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-              Bot Running
+            <div className="ml-auto flex items-center gap-1 sm:gap-2 text-xs text-emerald-400">
+              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-emerald-400 rounded-full animate-pulse" />
+              <span className="hidden xs:inline">Running</span>
             </div>
           </div>
         )}
 
         {/* ── Plan Selector ── */}
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-lg">💳</span>
-            <h3 className="font-semibold">Choose Your Plan</h3>
-            <span className="text-xs text-white/40 ml-1">
-              (demo — try them all!)
+        <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
+          <div className="flex items-center gap-2 mb-2 sm:mb-3">
+            <span className="text-base sm:text-lg">💳</span>
+            <h3 className="font-semibold text-sm sm:text-base">Plan</h3>
+            <span className="text-[10px] sm:text-xs text-white/40 ml-1">
+              (try all!)
             </span>
           </div>
           <PlanSelector value={plan} onChange={setPlan} />
-          <p className="text-xs text-white/40 mt-3">
-            {currentPlan.icon} <b>{currentPlan.label}</b> includes:{" "}
-            {currentPlan.exchanges.join(", ")}
+          <p className="text-[10px] sm:text-xs text-white/40 mt-2 sm:mt-3 truncate">
+            {currentPlan.icon} <b className="text-xs sm:text-sm">{currentPlan.label}</b>: {currentPlan.exchanges.join(", ")}
           </p>
         </div>
 
         {/* ── Strategy Selector ── */}
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
             <div className="flex items-center gap-2">
-              <span className="text-lg">🧠</span>
-              <h3 className="font-semibold">Trading Strategy</h3>
+              <span className="text-base sm:text-lg">🧠</span>
+              <h3 className="font-semibold text-sm sm:text-base">Strategy</h3>
             </div>
           </div>
           <StrategySelector
@@ -1246,62 +1246,58 @@ export default function TradeDemo() {
             disabled={running}
           />
           {running && (
-            <p className="text-xs text-yellow-400/70 mt-3">
-              ⚠️ Stop the bot first to change strategy
+            <p className="text-[10px] sm:text-xs text-yellow-400/70 mt-2 sm:mt-3">
+              ⚠️ Stop bot to change strategy
             </p>
           )}
         </div>
 
         {/* ── Stats Row ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="rounded-xl bg-white/5 p-4 border border-white/10">
-            <div className="text-xs text-white/50">💰 Account</div>
-            <div className={"text-xl font-bold mt-1 " + equityColorClass}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
+          <div className="rounded-xl bg-white/5 p-3 sm:p-4 border border-white/10">
+            <div className="text-[10px] sm:text-xs text-white/50">💰</div>
+            <div className={"text-base sm:text-xl font-bold mt-1 " + equityColorClass}>
               {formatUsdPlain(equity)}
             </div>
-            <div className="text-xs text-white/30 mt-1">
-              Started at \$1,000
+            <div className="text-[8px] sm:text-xs text-white/30 mt-1">
+              Start $1k
             </div>
           </div>
 
-          <div className="rounded-xl bg-white/5 p-4 border border-white/10">
-            <div className="text-xs text-white/50">📊 Total P&amp;L</div>
-            <div className={"text-xl font-bold mt-1 " + pnlColorClass}>
+          <div className="rounded-xl bg-white/5 p-3 sm:p-4 border border-white/10">
+            <div className="text-[10px] sm:text-xs text-white/50">📊 P&L</div>
+            <div className={"text-base sm:text-xl font-bold mt-1 " + pnlColorClass}>
               {formatUsd(pnl)}
             </div>
-            <div className="text-xs text-white/30 mt-1">
+            <div className="text-[8px] sm:text-xs text-white/30 mt-1">
               {wins + losses} trades
             </div>
           </div>
 
-          <div className="rounded-xl bg-white/5 p-4 border border-white/10">
-            <div className="text-xs text-white/50">🎯 Win Rate</div>
-            <div className="text-xl font-bold mt-1">{winRate}%</div>
-            <div className="w-full bg-white/10 rounded-full h-1.5 mt-2 overflow-hidden">
+          <div className="rounded-xl bg-white/5 p-3 sm:p-4 border border-white/10">
+            <div className="text-[10px] sm:text-xs text-white/50">🎯 WR</div>
+            <div className="text-base sm:text-xl font-bold mt-1">{winRate}%</div>
+            <div className="w-full bg-white/10 rounded-full h-1 mt-2 overflow-hidden">
               <div className={wrBarClass} style={{ width: winRate + "%" }} />
             </div>
           </div>
 
-          <div className="rounded-xl bg-white/5 p-4 border border-white/10">
-            <div className="text-xs text-white/50">🔥 Win Streak</div>
-            <div className="text-xl font-bold mt-1">{currentWinStreak}</div>
-            <div className="text-xs text-white/30 mt-1">
+          <div className="rounded-xl bg-white/5 p-3 sm:p-4 border border-white/10">
+            <div className="text-[10px] sm:text-xs text-white/50">🔥 Streak</div>
+            <div className="text-base sm:text-xl font-bold mt-1">{currentWinStreak}</div>
+            <div className="text-[8px] sm:text-xs text-white/30 mt-1">
               Best: {bestWinStreak}
             </div>
           </div>
 
-          <div className="rounded-xl bg-white/5 p-4 border border-white/10">
-            <div className="text-xs text-white/50">🤖 Confidence</div>
-            <div className="flex items-center gap-2 mt-1">
-              <ProgressRing percent={confidence} size={40} stroke={3}>
-                <span className="text-[10px] font-bold">{confidence}%</span>
+          <div className="rounded-xl bg-white/5 p-3 sm:p-4 border border-white/10 col-span-2 sm:col-span-1">
+            <div className="text-[10px] sm:text-xs text-white/50">🤖 Conf</div>
+            <div className="flex items-center gap-1 sm:gap-2 mt-1">
+              <ProgressRing percent={confidence} size={32} stroke={2.5}>
+                <span className="text-[8px] font-bold">{confidence}%</span>
               </ProgressRing>
-              <span className="text-xs text-white/50">
-                {confidence >= 80
-                  ? "🔥 Excellent!"
-                  : confidence >= 60
-                  ? "👍 Good"
-                  : "📈 Building..."}
+              <span className="text-[8px] sm:text-xs text-white/50">
+                {confidence >= 80 ? "🔥" : confidence >= 60 ? "👍" : "📈"}
               </span>
             </div>
           </div>
@@ -1312,49 +1308,45 @@ export default function TradeDemo() {
 
         {/* ── Charts ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">📈 Equity Curve</h3>
-              <span className={"text-sm font-bold " + equityColorClass}>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <h3 className="font-semibold text-sm">📈 Equity</h3>
+              <span className={"text-xs sm:text-sm font-bold " + equityColorClass}>
                 {formatUsdPlain(equity)}
               </span>
             </div>
-            <EquityCurve data={equityHistory} height={130} />
+            <EquityCurve data={equityHistory} height={100} />
           </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">📊 Trade Results</h3>
-              <span className="text-xs text-white/40">
-                {tradeLog.length} total
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <h3 className="font-semibold text-sm">📊 Results</h3>
+              <span className="text-[10px] sm:text-xs text-white/40">
+                {tradeLog.length}
               </span>
             </div>
-            <MiniBarChart data={pnlChartData} height={130} />
-            <div className="flex justify-between mt-2 text-[10px] text-white/20">
-              <span>← Older</span>
-              <span>Newer →</span>
-            </div>
+            <MiniBarChart data={pnlChartData} height={100} />
           </div>
         </div>
 
         {/* ── Exchange Cards ── */}
         <div>
-          <h2 className="text-lg font-semibold mb-4">🔗 Exchanges</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">🔗 Exchanges</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <DemoExchangeCard
-              name="OKX Crypto"
+              name="OKX"
               icon="🔷"
               trades={tradesByExchange.OKX}
               active={currentPlan.exchanges.includes("OKX")}
             />
             <DemoExchangeCard
-              name="Alpaca Stocks"
+              name="Alpaca"
               icon="📈"
               trades={tradesByExchange.Alpaca}
               active={currentPlan.exchanges.includes("Alpaca")}
             />
             <DemoExchangeCard
-              name="DEX Trading"
+              name="DEX"
               icon="🦄"
               trades={tradesByExchange.DEX}
               active={currentPlan.exchanges.includes("DEX")}
@@ -1370,15 +1362,15 @@ export default function TradeDemo() {
 
         {/* ── Trade Feed + Session Stats ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
               <div className="flex items-center gap-2">
-                <span className="text-lg">📋</span>
-                <h3 className="font-semibold">Live Trades</h3>
+                <span className="text-base sm:text-lg">📋</span>
+                <h3 className="font-semibold text-sm">Trades</h3>
               </div>
               {running && (
-                <span className="flex items-center gap-1 text-xs text-emerald-400">
-                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                <span className="flex items-center gap-1 text-[10px] sm:text-xs text-emerald-400">
+                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
                   Live
                 </span>
               )}
@@ -1399,8 +1391,8 @@ export default function TradeDemo() {
         </div>
 
         {/* ── TradingOverview ── */}
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <h3 className="font-semibold mb-3">📉 Advanced Chart</h3>
+        <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
+          <h3 className="font-semibold text-sm mb-2 sm:mb-3">📉 Advanced Chart</h3>
           <TradingOverview
             feed={{
               equity: equity,
@@ -1423,41 +1415,38 @@ export default function TradeDemo() {
         />
 
         {/* ── CTA ── */}
-        <div className="bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-8 text-center">
-          <div className="text-5xl mb-3">🚀</div>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-2">
-            Ready to Trade for Real?
+        <div className="bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-xl sm:rounded-2xl p-4 sm:p-8 text-center">
+          <div className="text-3xl sm:text-5xl mb-2 sm:mb-3">🚀</div>
+          <h2 className="text-lg sm:text-2xl md:text-3xl font-bold mb-2">
+            Ready for Real?
           </h2>
-          <p className="text-white/60 max-w-lg mx-auto mb-6">
-            Everything here works with real money too. Sign up now and start
-            trading with your preferred plan and strategy — zero demo
-            limitations.
+          <p className="text-xs sm:text-sm text-white/60 max-w-lg mx-auto mb-4 sm:mb-6 px-2">
+            Everything works with real money too.
           </p>
-          <div className="flex flex-wrap justify-center gap-4">
+          <div className="flex flex-col xs:flex-row justify-center gap-2 sm:gap-4">
             <button
               onClick={function () {
                 nav("/signup");
               }}
-              className="px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 font-bold text-lg hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02]"
+              className="px-4 sm:px-8 py-2 sm:py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 font-bold text-sm sm:text-base hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02]"
             >
-              🚀 Create Account
+              🚀 Sign Up
             </button>
             <button
               onClick={function () {
                 nav("/pricing");
               }}
-              className="px-8 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 font-bold text-lg transition-colors"
+              className="px-4 sm:px-8 py-2 sm:py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 font-bold text-sm sm:text-base transition-colors"
             >
-              💳 View Plans
+              💳 Plans
             </button>
           </div>
         </div>
 
         {/* ── Footer Note ── */}
-        <div className="text-center py-6">
-          <p className="text-xs text-white/30">
-            🎮 This is a demo simulator. No real money is used. All trades and
-            results are simulated for educational purposes.
+        <div className="text-center py-4 sm:py-6">
+          <p className="text-[8px] sm:text-xs text-white/20">
+            🎮 Demo simulator. No real money used.
           </p>
         </div>
       </div>
