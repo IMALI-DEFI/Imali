@@ -4,14 +4,14 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import TradingOverview from "../components/Dashboard/TradingOverview.jsx";
 
 /* ===================== CONSTANTS ===================== */
-const STRATEGIES = [
+var STRATEGIES = [
   { value: "mean_reversion", label: "Conservative", icon: "🛡️", risk: 1 },
   { value: "ai_weighted", label: "Balanced", icon: "🤖", risk: 2 },
   { value: "momentum", label: "Growth", icon: "📈", risk: 3 },
   { value: "volume_spike", label: "Aggressive", icon: "🔥", risk: 4 },
 ];
 
-const PLANS = [
+var PLANS = [
   { value: "starter", label: "Starter", icon: "🎟️", exchanges: ["OKX", "Alpaca"] },
   { value: "pro", label: "Pro", icon: "⭐", exchanges: ["OKX", "Alpaca", "Staking"] },
   { value: "elite", label: "Elite", icon: "👑", exchanges: ["OKX", "Alpaca", "DEX", "Futures"] },
@@ -19,7 +19,7 @@ const PLANS = [
   { value: "bundle", label: "Bundle", icon: "🧩", exchanges: ["OKX", "Alpaca", "DEX", "Futures", "Staking"] },
 ];
 
-const DEMO_TOKENS = [
+var DEMO_TOKENS = [
   { symbol: "BTC", name: "Bitcoin", icon: "₿", exchange: "OKX" },
   { symbol: "ETH", name: "Ethereum", icon: "Ξ", exchange: "OKX" },
   { symbol: "SOL", name: "Solana", icon: "◎", exchange: "OKX" },
@@ -30,7 +30,7 @@ const DEMO_TOKENS = [
   { symbol: "BTC-PERP", name: "BTC Futures", icon: "📊", exchange: "Futures" },
 ];
 
-const LEVEL_THRESHOLDS = [
+var LEVEL_THRESHOLDS = [
   { name: "🥉 Bronze", min: 0, colorClass: "text-amber-600" },
   { name: "🥈 Silver", min: 30, colorClass: "text-gray-300" },
   { name: "🥇 Gold", min: 70, colorClass: "text-yellow-300" },
@@ -38,27 +38,122 @@ const LEVEL_THRESHOLDS = [
   { name: "🏆 Legend", min: 200, colorClass: "text-yellow-400" },
 ];
 
-const ALL_ACHIEVEMENTS = [
-  { id: "first_trade", emoji: "🚀", label: "First Trade", desc: "Complete your first trade", check: function(s) { return s.totalTrades > 0; } },
-  { id: "ten_trades", emoji: "📊", label: "10 Trades", desc: "Complete 10 trades", check: function(s) { return s.totalTrades >= 10; } },
-  { id: "fifty_trades", emoji: "💯", label: "50 Trades", desc: "Complete 50 trades", check: function(s) { return s.totalTrades >= 50; } },
-  { id: "profitable", emoji: "💰", label: "In The Green", desc: "Have positive P&L", check: function(s) { return s.pnl > 0; } },
-  { id: "hundred_profit", emoji: "💵", label: "100 Profit", desc: "Earn 100 in demo", check: function(s) { return s.pnl >= 100; } },
-  { id: "win_streak_3", emoji: "🔥", label: "Hot Streak", desc: "Win 3 in a row", check: function(s) { return s.currentWinStreak >= 3; } },
-  { id: "win_streak_5", emoji: "⚡", label: "On Fire!", desc: "Win 5 in a row", check: function(s) { return s.currentWinStreak >= 5; } },
-  { id: "high_wr", emoji: "🎯", label: "Sharpshooter", desc: "Win rate above 60%", check: function(s) { return s.winRate > 60; } },
-  { id: "day_streak", emoji: "📅", label: "Daily Player", desc: "Trade 3+ days", check: function(s) { return s.dayStreak >= 3; } },
-  { id: "upgraded", emoji: "⭐", label: "Plan Explorer", desc: "Try a paid plan", check: function(s) { return s.plan !== "starter"; } },
-  { id: "all_strats", emoji: "🧠", label: "Strategist", desc: "Try all 4 strategies", check: function(s) { return s.strategiesUsed >= 4; } },
-  { id: "confidence_80", emoji: "🤖", label: "Bot Master", desc: "Reach 80% confidence", check: function(s) { return s.confidence >= 80; } },
+var ALL_ACHIEVEMENTS = [
+  {
+    id: "first_trade",
+    emoji: "🚀",
+    label: "First Trade",
+    desc: "Complete your first trade",
+    check: function (s) {
+      return s.totalTrades > 0;
+    },
+  },
+  {
+    id: "ten_trades",
+    emoji: "📊",
+    label: "10 Trades",
+    desc: "Complete 10 trades",
+    check: function (s) {
+      return s.totalTrades >= 10;
+    },
+  },
+  {
+    id: "fifty_trades",
+    emoji: "💯",
+    label: "50 Trades",
+    desc: "Complete 50 trades",
+    check: function (s) {
+      return s.totalTrades >= 50;
+    },
+  },
+  {
+    id: "profitable",
+    emoji: "💰",
+    label: "In The Green",
+    desc: "Have positive P&L",
+    check: function (s) {
+      return s.pnl > 0;
+    },
+  },
+  {
+    id: "hundred_profit",
+    emoji: "💵",
+    label: "100 Profit",
+    desc: "Earn 100 in demo",
+    check: function (s) {
+      return s.pnl >= 100;
+    },
+  },
+  {
+    id: "win_streak_3",
+    emoji: "🔥",
+    label: "Hot Streak",
+    desc: "Win 3 in a row",
+    check: function (s) {
+      return s.currentWinStreak >= 3;
+    },
+  },
+  {
+    id: "win_streak_5",
+    emoji: "⚡",
+    label: "On Fire!",
+    desc: "Win 5 in a row",
+    check: function (s) {
+      return s.currentWinStreak >= 5;
+    },
+  },
+  {
+    id: "high_wr",
+    emoji: "🎯",
+    label: "Sharpshooter",
+    desc: "Win rate above 60%",
+    check: function (s) {
+      return s.winRate > 60;
+    },
+  },
+  {
+    id: "day_streak",
+    emoji: "📅",
+    label: "Daily Player",
+    desc: "Trade 3+ days",
+    check: function (s) {
+      return s.dayStreak >= 3;
+    },
+  },
+  {
+    id: "upgraded",
+    emoji: "⭐",
+    label: "Plan Explorer",
+    desc: "Try a paid plan",
+    check: function (s) {
+      return s.plan !== "starter";
+    },
+  },
+  {
+    id: "all_strats",
+    emoji: "🧠",
+    label: "Strategist",
+    desc: "Try all 4 strategies",
+    check: function (s) {
+      return s.strategiesUsed >= 4;
+    },
+  },
+  {
+    id: "confidence_80",
+    emoji: "🤖",
+    label: "Bot Master",
+    desc: "Reach 80% confidence",
+    check: function (s) {
+      return s.confidence >= 80;
+    },
+  },
 ];
 
 /* ===================== HELPERS ===================== */
-var clamp = function(n, lo, hi) {
+function clamp(n, lo, hi) {
   return Math.min(hi, Math.max(lo, n));
-};
+}
 
-// USE STRING CONCATENATION — NOT TEMPLATE LITERALS — for dollar signs
 function formatUsd(n) {
   var num = Number(n) || 0;
   var sign = num >= 0 ? "+" : "-";
@@ -135,12 +230,14 @@ function MiniBarChart(props) {
     );
   }
 
-  var absValues = data.map(function(d) { return Math.abs(d.value); });
+  var absValues = data.map(function (d) {
+    return Math.abs(d.value);
+  });
   var max = Math.max.apply(null, absValues.concat([1]));
 
   return (
     <div className="flex items-end gap-[2px]" style={{ height: height }}>
-      {data.slice(-30).map(function(d, i) {
+      {data.slice(-30).map(function (d, i) {
         var h = (Math.abs(d.value) / max) * height * 0.9;
         var isPositive = d.value >= 0;
         var barClass =
@@ -176,14 +273,16 @@ function EquityCurve(props) {
     );
   }
 
-  var values = data.map(function(d) { return d.value; });
+  var values = data.map(function (d) {
+    return d.value;
+  });
   var min = Math.min.apply(null, values);
   var max = Math.max.apply(null, values);
   var range = max - min || 1;
   var w = 400;
 
   var points = values
-    .map(function(v, i) {
+    .map(function (v, i) {
       var x = (i / (values.length - 1)) * w;
       var y = height - ((v - min) / range) * (height - 10) - 5;
       return x + "," + y;
@@ -247,10 +346,30 @@ function RiskMeter(props) {
         <span className={"font-medium " + labelColor}>{label}</span>
       </div>
       <div className="flex gap-1">
-        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 1 ? "bg-emerald-500" : "bg-white/10")} />
-        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 2 ? "bg-yellow-500" : "bg-white/10")} />
-        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 3 ? "bg-orange-500" : "bg-white/10")} />
-        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 4 ? "bg-red-500" : "bg-white/10")} />
+        <div
+          className={
+            "flex-1 h-2 rounded-full transition-all duration-300 " +
+            (level >= 1 ? "bg-emerald-500" : "bg-white/10")
+          }
+        />
+        <div
+          className={
+            "flex-1 h-2 rounded-full transition-all duration-300 " +
+            (level >= 2 ? "bg-yellow-500" : "bg-white/10")
+          }
+        />
+        <div
+          className={
+            "flex-1 h-2 rounded-full transition-all duration-300 " +
+            (level >= 3 ? "bg-orange-500" : "bg-white/10")
+          }
+        />
+        <div
+          className={
+            "flex-1 h-2 rounded-full transition-all duration-300 " +
+            (level >= 4 ? "bg-red-500" : "bg-white/10")
+          }
+        />
       </div>
     </div>
   );
@@ -274,13 +393,17 @@ function TradeFeed(props) {
       {trades
         .slice(-20)
         .reverse()
-        .map(function(t, i) {
+        .map(function (t, i) {
           var isLatest = i === 0;
           var isWin = t.pnl >= 0;
           var rowClass =
             "flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all " +
-            (isLatest ? "bg-white/10 border border-white/10" : "bg-white/[0.03]");
-          var pnlClass = "font-bold text-sm " + (isWin ? "text-emerald-400" : "text-red-400");
+            (isLatest
+              ? "bg-white/10 border border-white/10"
+              : "bg-white/[0.03]");
+          var pnlClass =
+            "font-bold text-sm " +
+            (isWin ? "text-emerald-400" : "text-red-400");
 
           return (
             <div key={t.id} className={rowClass}>
@@ -288,7 +411,9 @@ function TradeFeed(props) {
                 <span className="text-base">{t.icon}</span>
                 <div>
                   <span className="font-medium">{t.symbol}</span>
-                  <span className="text-xs text-white/40 ml-2">{t.exchange}</span>
+                  <span className="text-xs text-white/40 ml-2">
+                    {t.exchange}
+                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -319,15 +444,18 @@ function DemoExchangeCard(props) {
   var wr = total > 0 ? ((wins / total) * 100).toFixed(1) : "0.0";
   var wrNum = Number(wr);
 
-  var chartData = trades.slice(-15).map(function(t, idx) {
+  var chartData = trades.slice(-15).map(function (t, idx) {
     return { label: "#" + idx, value: t.pnl };
   });
 
   var cardClass =
     "bg-white/5 border rounded-xl p-4 transition-all " +
-    (active ? "border-white/20 hover:border-white/30" : "border-white/10 opacity-40 pointer-events-none");
+    (active
+      ? "border-white/20 hover:border-white/30"
+      : "border-white/10 opacity-40 pointer-events-none");
 
-  var pnlClass = "font-bold text-sm " + (pnl >= 0 ? "text-emerald-400" : "text-red-400");
+  var pnlClass =
+    "font-bold text-sm " + (pnl >= 0 ? "text-emerald-400" : "text-red-400");
 
   var wrBarClass =
     "h-full rounded-full transition-all duration-500 " +
@@ -343,7 +471,9 @@ function DemoExchangeCard(props) {
             {active ? (
               <span className="text-xs text-emerald-400">✅ Active</span>
             ) : (
-              <span className="text-xs text-white/30">🔒 Upgrade to unlock</span>
+              <span className="text-xs text-white/30">
+                🔒 Upgrade to unlock
+              </span>
             )}
           </div>
         </div>
@@ -367,7 +497,7 @@ function DemoExchangeCard(props) {
           <div className="font-bold text-sm">{total}</div>
         </div>
         <div className="bg-black/30 rounded-lg p-2 text-center">
-          <div className="text-[10px] text-white/40">P&L</div>
+          <div className="text-[10px] text-white/40">P&amp;L</div>
           <div className={pnlClass}>{formatUsd(pnl)}</div>
         </div>
       </div>
@@ -391,31 +521,34 @@ function DemoExchangeCard(props) {
 function LevelBadge(props) {
   var xp = props.xp || 0;
 
-  var level = useMemo(function() {
-    for (var i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
-      if (xp >= LEVEL_THRESHOLDS[i].min) {
-        var next = LEVEL_THRESHOLDS[i + 1]
-          ? LEVEL_THRESHOLDS[i + 1].min
-          : LEVEL_THRESHOLDS[i].min * 1.5;
-        return {
-          name: LEVEL_THRESHOLDS[i].name,
-          colorClass: LEVEL_THRESHOLDS[i].colorClass,
-          min: LEVEL_THRESHOLDS[i].min,
-          xp: xp,
-          next: next,
-          index: i,
-        };
+  var level = useMemo(
+    function () {
+      for (var i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+        if (xp >= LEVEL_THRESHOLDS[i].min) {
+          var next = LEVEL_THRESHOLDS[i + 1]
+            ? LEVEL_THRESHOLDS[i + 1].min
+            : LEVEL_THRESHOLDS[i].min * 1.5;
+          return {
+            name: LEVEL_THRESHOLDS[i].name,
+            colorClass: LEVEL_THRESHOLDS[i].colorClass,
+            min: LEVEL_THRESHOLDS[i].min,
+            xp: xp,
+            next: next,
+            index: i,
+          };
+        }
       }
-    }
-    return {
-      name: LEVEL_THRESHOLDS[0].name,
-      colorClass: LEVEL_THRESHOLDS[0].colorClass,
-      min: 0,
-      xp: xp,
-      next: 30,
-      index: 0,
-    };
-  }, [xp]);
+      return {
+        name: LEVEL_THRESHOLDS[0].name,
+        colorClass: LEVEL_THRESHOLDS[0].colorClass,
+        min: 0,
+        xp: xp,
+        next: 30,
+        index: 0,
+      };
+    },
+    [xp]
+  );
 
   var progress = level.next > 0 ? (xp / level.next) * 100 : 0;
   var xpToNext = Math.max(0, Math.floor(level.next - xp));
@@ -443,7 +576,9 @@ function LevelBadge(props) {
       </div>
       <p className="text-xs text-white/40 mt-1">
         {Math.floor(xp)} / {Math.floor(level.next)} XP —{" "}
-        {isMax ? "Max level reached! 🏆" : xpToNext + " XP to next level!"}
+        {isMax
+          ? "Max level reached! 🏆"
+          : xpToNext + " XP to next level!"}
       </p>
     </div>
   );
@@ -476,7 +611,7 @@ function AchievementsPanel(props) {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-        {ALL_ACHIEVEMENTS.map(function(a) {
+        {ALL_ACHIEVEMENTS.map(function (a) {
           var isUnlocked = unlocked.includes(a.id);
           var tileClass =
             "rounded-xl p-3 text-center transition-all border " +
@@ -509,7 +644,7 @@ function StrategySelector(props) {
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {STRATEGIES.map(function(s) {
+      {STRATEGIES.map(function (s) {
         var isActive = value === s.value;
         var btnClass =
           "p-4 rounded-xl text-center transition-all border " +
@@ -521,7 +656,9 @@ function StrategySelector(props) {
         return (
           <button
             key={s.value}
-            onClick={function() { onChange(s.value); }}
+            onClick={function () {
+              onChange(s.value);
+            }}
             disabled={disabled}
             className={btnClass}
           >
@@ -544,7 +681,7 @@ function PlanSelector(props) {
 
   return (
     <div className="flex flex-wrap gap-2">
-      {PLANS.map(function(p) {
+      {PLANS.map(function (p) {
         var isActive = value === p.value;
         var btnClass =
           "px-4 py-2.5 rounded-xl text-sm font-medium transition-all border " +
@@ -555,7 +692,9 @@ function PlanSelector(props) {
         return (
           <button
             key={p.value}
-            onClick={function() { onChange(p.value); }}
+            onClick={function () {
+              onChange(p.value);
+            }}
             className={btnClass}
           >
             <span className="mr-1">{p.icon}</span>
@@ -619,11 +758,15 @@ function SessionStats(props) {
         <div className="pt-3 mt-1 border-t border-white/10 space-y-2">
           <div className="flex justify-between">
             <span className="text-white/50">Plan</span>
-            <span>{currentPlan.icon} {currentPlan.label}</span>
+            <span>
+              {currentPlan.icon} {currentPlan.label}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-white/50">Strategy</span>
-            <span>{currentStrat.icon} {currentStrat.label}</span>
+            <span>
+              {currentStrat.icon} {currentStrat.label}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-white/50">Exchanges</span>
@@ -707,186 +850,279 @@ export default function TradeDemo() {
   var setSpeed = stateSpeed[1];
 
   /* ── Derived ── */
-  var currentPlan = useMemo(function() {
-    return PLANS.find(function(p) { return p.value === plan; }) || PLANS[0];
-  }, [plan]);
+  var currentPlan = useMemo(
+    function () {
+      return (
+        PLANS.find(function (p) {
+          return p.value === plan;
+        }) || PLANS[0]
+      );
+    },
+    [plan]
+  );
 
-  var currentStrat = useMemo(function() {
-    return STRATEGIES.find(function(s) { return s.value === strategy; }) || STRATEGIES[1];
-  }, [strategy]);
+  var currentStrat = useMemo(
+    function () {
+      return (
+        STRATEGIES.find(function (s) {
+          return s.value === strategy;
+        }) || STRATEGIES[1]
+      );
+    },
+    [strategy]
+  );
 
-  var winRate = useMemo(function() {
-    var t = wins + losses;
-    return t > 0 ? ((wins / t) * 100).toFixed(1) : "0.0";
-  }, [wins, losses]);
+  var winRate = useMemo(
+    function () {
+      var t = wins + losses;
+      return t > 0 ? ((wins / t) * 100).toFixed(1) : "0.0";
+    },
+    [wins, losses]
+  );
 
-  var xp = useMemo(function() {
-    var total = 0;
-    total += Math.min(wins + losses, 50) * 2;
-    var wr = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
-    total += Math.max(0, wr - 40) * 1.5;
-    total += Math.max(0, pnl) * 0.1;
-    total += currentWinStreak * 3;
-    total += dayStreak * 5;
-    if (plan !== "starter") total += 15;
-    return total;
-  }, [wins, losses, pnl, currentWinStreak, dayStreak, plan]);
+  var xp = useMemo(
+    function () {
+      var total = 0;
+      total += Math.min(wins + losses, 50) * 2;
+      var wr = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
+      total += Math.max(0, wr - 40) * 1.5;
+      total += Math.max(0, pnl) * 0.1;
+      total += currentWinStreak * 3;
+      total += dayStreak * 5;
+      if (plan !== "starter") total += 15;
+      return total;
+    },
+    [wins, losses, pnl, currentWinStreak, dayStreak, plan]
+  );
 
-  var confidence = useMemo(function() {
-    var t = wins + losses;
-    var s = 0;
-    if (t > 0) s += clamp((wins / t) * 40, 0, 40);
-    s += clamp(t * 1.2, 0, 30);
-    s += clamp(dayStreak * 5, 0, 20);
-    if (plan !== "starter") s += 10;
-    return clamp(Math.round(s), 0, 100);
-  }, [wins, losses, dayStreak, plan]);
+  var confidence = useMemo(
+    function () {
+      var t = wins + losses;
+      var s = 0;
+      if (t > 0) s += clamp((wins / t) * 40, 0, 40);
+      s += clamp(t * 1.2, 0, 30);
+      s += clamp(dayStreak * 5, 0, 20);
+      if (plan !== "starter") s += 10;
+      return clamp(Math.round(s), 0, 100);
+    },
+    [wins, losses, dayStreak, plan]
+  );
 
-  var tradesByExchange = useMemo(function() {
-    var r = { OKX: [], Alpaca: [], DEX: [], Futures: [] };
-    tradeLog.forEach(function(t) {
-      if (r[t.exchange]) r[t.exchange].push(t);
-    });
-    return r;
-  }, [tradeLog]);
+  var tradesByExchange = useMemo(
+    function () {
+      var r = { OKX: [], Alpaca: [], DEX: [], Futures: [] };
+      tradeLog.forEach(function (t) {
+        if (r[t.exchange]) r[t.exchange].push(t);
+      });
+      return r;
+    },
+    [tradeLog]
+  );
 
-  var unlockedAchievements = useMemo(function() {
-    var stats = {
-      totalTrades: wins + losses,
-      wins: wins,
-      losses: losses,
-      pnl: pnl,
-      currentWinStreak: currentWinStreak,
-      winRate: Number(winRate),
-      dayStreak: dayStreak,
-      plan: plan,
-      strategiesUsed: strategiesUsed.size,
-      confidence: confidence,
-    };
-    return ALL_ACHIEVEMENTS
-      .filter(function(a) { return a.check(stats); })
-      .map(function(a) { return a.id; });
-  }, [wins, losses, pnl, currentWinStreak, winRate, dayStreak, plan, strategiesUsed, confidence]);
+  var unlockedAchievements = useMemo(
+    function () {
+      var stats = {
+        totalTrades: wins + losses,
+        wins: wins,
+        losses: losses,
+        pnl: pnl,
+        currentWinStreak: currentWinStreak,
+        winRate: Number(winRate),
+        dayStreak: dayStreak,
+        plan: plan,
+        strategiesUsed: strategiesUsed.size,
+        confidence: confidence,
+      };
+      return ALL_ACHIEVEMENTS.filter(function (a) {
+        return a.check(stats);
+      }).map(function (a) {
+        return a.id;
+      });
+    },
+    [
+      wins,
+      losses,
+      pnl,
+      currentWinStreak,
+      winRate,
+      dayStreak,
+      plan,
+      strategiesUsed,
+      confidence,
+    ]
+  );
 
-  var pnlChartData = useMemo(function() {
-    return tradeLog.slice(-30).map(function(t, i) {
-      return { label: "#" + (i + 1), value: t.pnl };
-    });
-  }, [tradeLog]);
+  var pnlChartData = useMemo(
+    function () {
+      return tradeLog.slice(-30).map(function (t, i) {
+        return { label: "#" + (i + 1), value: t.pnl };
+      });
+    },
+    [tradeLog]
+  );
 
   /* ── Init from URL / localStorage ── */
-  useEffect(function() {
-    var ap = PLANS.map(function(p) { return p.value; });
-    var as2 = STRATEGIES.map(function(s) { return s.value; });
-
-    var pu = pickAllowed(params.get("plan") || params.get("tier"), ap, "");
-    var su = pickAllowed(params.get("strategy"), as2, "");
-
-    var ps = "";
-    var ss = "";
-    try {
-      ps = localStorage.getItem("imali_plan") || "";
-      ss = localStorage.getItem("imali_strategy") || "";
-    } catch (e) { /* ignore */ }
-
-    setPlan(pu || pickAllowed(ps, ap, "starter"));
-    setStrategy(su || pickAllowed(ss, as2, "ai_weighted"));
-  }, [params]);
-
-  /* ── Persist ── */
-  useEffect(function() {
-    try {
-      localStorage.setItem("imali_plan", plan);
-      localStorage.setItem("imali_strategy", strategy);
-    } catch (e) { /* ignore */ }
-  }, [plan, strategy]);
-
-  /* ── Track strategies used ── */
-  useEffect(function() {
-    setStrategiesUsed(function(prev) { return new Set([].concat(Array.from(prev), [strategy])); });
-  }, [strategy]);
-
-  /* ── Simulation tick ── */
-  useEffect(function() {
-    if (!running) return;
-
-    tickerRef.current = setInterval(function() {
-      var available = DEMO_TOKENS.filter(function(t) {
-        return currentPlan.exchanges.includes(t.exchange);
+  useEffect(
+    function () {
+      var ap = PLANS.map(function (p) {
+        return p.value;
       });
-      var token = available[Math.floor(Math.random() * available.length)] || DEMO_TOKENS[0];
-
-      var riskMult = 0.5 + currentStrat.risk * 0.4;
-      var winBias =
-        strategy === "mean_reversion" ? 0.52 :
-        strategy === "ai_weighted" ? 0.55 :
-        strategy === "momentum" ? 0.5 : 0.48;
-
-      var isWin = Math.random() < winBias;
-      var magnitude = (Math.random() * 20 + 5) * riskMult;
-      var delta = isWin ? magnitude : -magnitude * 0.7;
-
-      var trade = {
-        id: Date.now() + Math.random(),
-        symbol: token.symbol,
-        icon: token.icon,
-        exchange: token.exchange,
-        action: isWin ? "Sold ↑" : "Stopped ↓",
-        pnl: Number(delta.toFixed(2)),
-        timestamp: new Date().toLocaleTimeString(),
-      };
-
-      setTradeLog(function(prev) { return prev.slice(-100).concat([trade]); });
-      setPnl(function(p) { return p + delta; });
-      setEquity(function(e) {
-        var next = e + delta;
-        setEquityHistory(function(h) { return h.slice(-60).concat([{ value: next }]); });
-        return next;
+      var as2 = STRATEGIES.map(function (s) {
+        return s.value;
       });
 
-      if (isWin) {
-        setWins(function(w) { return w + 1; });
-        setCurrentWinStreak(function(s) {
-          var next = s + 1;
-          setBestWinStreak(function(b) { return Math.max(b, next); });
-          return next;
-        });
-      } else {
-        setLosses(function(l) { return l + 1; });
-        setCurrentWinStreak(0);
+      var pu = pickAllowed(
+        params.get("plan") || params.get("tier"),
+        ap,
+        ""
+      );
+      var su = pickAllowed(params.get("strategy"), as2, "");
+
+      var ps = "";
+      var ss = "";
+      try {
+        ps = localStorage.getItem("imali_plan") || "";
+        ss = localStorage.getItem("imali_strategy") || "";
+      } catch (e) {
+        /* ignore */
       }
 
-      var today = new Date().toDateString();
-      setLastTradeDay(function(prev) {
-        if (!prev || prev !== today) {
-          setDayStreak(function(s) { return s + 1; });
-          return today;
-        }
-        return prev;
-      });
-    }, speed);
+      setPlan(pu || pickAllowed(ps, ap, "starter"));
+      setStrategy(su || pickAllowed(ss, as2, "ai_weighted"));
+    },
+    [params]
+  );
 
-    return function() {
-      clearInterval(tickerRef.current);
-      tickerRef.current = null;
-    };
-  }, [running, plan, strategy, speed, currentPlan, currentStrat]);
+  /* ── Persist ── */
+  useEffect(
+    function () {
+      try {
+        localStorage.setItem("imali_plan", plan);
+        localStorage.setItem("imali_strategy", strategy);
+      } catch (e) {
+        /* ignore */
+      }
+    },
+    [plan, strategy]
+  );
+
+  /* ── Track strategies used ── */
+  useEffect(
+    function () {
+      setStrategiesUsed(function (prev) {
+        return new Set([].concat(Array.from(prev), [strategy]));
+      });
+    },
+    [strategy]
+  );
+
+  /* ── Simulation tick ── */
+  useEffect(
+    function () {
+      if (!running) return;
+
+      tickerRef.current = setInterval(function () {
+        var available = DEMO_TOKENS.filter(function (t) {
+          return currentPlan.exchanges.includes(t.exchange);
+        });
+        var token =
+          available[Math.floor(Math.random() * available.length)] ||
+          DEMO_TOKENS[0];
+
+        var riskMult = 0.5 + currentStrat.risk * 0.4;
+        var winBias =
+          strategy === "mean_reversion"
+            ? 0.52
+            : strategy === "ai_weighted"
+            ? 0.55
+            : strategy === "momentum"
+            ? 0.5
+            : 0.48;
+
+        var isWin = Math.random() < winBias;
+        var magnitude = (Math.random() * 20 + 5) * riskMult;
+        var delta = isWin ? magnitude : -magnitude * 0.7;
+
+        var trade = {
+          id: Date.now() + Math.random(),
+          symbol: token.symbol,
+          icon: token.icon,
+          exchange: token.exchange,
+          action: isWin ? "Sold ↑" : "Stopped ↓",
+          pnl: Number(delta.toFixed(2)),
+          timestamp: new Date().toLocaleTimeString(),
+        };
+
+        setTradeLog(function (prev) {
+          return prev.slice(-100).concat([trade]);
+        });
+        setPnl(function (p) {
+          return p + delta;
+        });
+        setEquity(function (e) {
+          var next = e + delta;
+          setEquityHistory(function (h) {
+            return h.slice(-60).concat([{ value: next }]);
+          });
+          return next;
+        });
+
+        if (isWin) {
+          setWins(function (w) {
+            return w + 1;
+          });
+          setCurrentWinStreak(function (s) {
+            var next = s + 1;
+            setBestWinStreak(function (b) {
+              return Math.max(b, next);
+            });
+            return next;
+          });
+        } else {
+          setLosses(function (l) {
+            return l + 1;
+          });
+          setCurrentWinStreak(0);
+        }
+
+        var today = new Date().toDateString();
+        setLastTradeDay(function (prev) {
+          if (!prev || prev !== today) {
+            setDayStreak(function (s) {
+              return s + 1;
+            });
+            return today;
+          }
+          return prev;
+        });
+      }, speed);
+
+      return function () {
+        clearInterval(tickerRef.current);
+        tickerRef.current = null;
+      };
+    },
+    [running, plan, strategy, speed, currentPlan, currentStrat]
+  );
 
   /* ── Reset ── */
-  var resetDemo = useCallback(function() {
-    setRunning(false);
-    setEquity(1000);
-    setPnl(0);
-    setWins(0);
-    setLosses(0);
-    setDayStreak(0);
-    setLastTradeDay(null);
-    setTradeLog([]);
-    setEquityHistory([{ value: 1000 }]);
-    setCurrentWinStreak(0);
-    setBestWinStreak(0);
-    setStrategiesUsed(new Set([strategy]));
-  }, [strategy]);
+  var resetDemo = useCallback(
+    function () {
+      setRunning(false);
+      setEquity(1000);
+      setPnl(0);
+      setWins(0);
+      setLosses(0);
+      setDayStreak(0);
+      setLastTradeDay(null);
+      setTradeLog([]);
+      setEquityHistory([{ value: 1000 }]);
+      setCurrentWinStreak(0);
+      setBestWinStreak(0);
+      setStrategiesUsed(new Set([strategy]));
+    },
+    [strategy]
+  );
 
   /* ===================== RENDER ===================== */
   var startBtnClass =
@@ -904,7 +1140,6 @@ export default function TradeDemo() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
-
         {/* ── Header ── */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -920,7 +1155,14 @@ export default function TradeDemo() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button onClick={function() { setRunning(function(r) { return !r; }); }} className={startBtnClass}>
+            <button
+              onClick={function () {
+                setRunning(function (r) {
+                  return !r;
+                });
+              }}
+              className={startBtnClass}
+            >
               {running ? "⏸ Stop Bot" : "▶️ Start Bot"}
             </button>
             <button
@@ -930,7 +1172,9 @@ export default function TradeDemo() {
               🔄 Reset
             </button>
             <button
-              onClick={function() { nav("/signup"); }}
+              onClick={function () {
+                nav("/signup");
+              }}
               className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02]"
             >
               🚀 Go Live
@@ -947,14 +1191,20 @@ export default function TradeDemo() {
               { label: "🚶 Normal", ms: 3000 },
               { label: "🏃 Fast", ms: 1500 },
               { label: "⚡ Turbo", ms: 700 },
-            ].map(function(s) {
+            ].map(function (s) {
               var cls =
                 "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border " +
                 (speed === s.ms
                   ? "bg-white/15 border-white/30"
                   : "bg-white/5 border-white/10 hover:bg-white/10");
               return (
-                <button key={s.ms} onClick={function() { setSpeed(s.ms); }} className={cls}>
+                <button
+                  key={s.ms}
+                  onClick={function () {
+                    setSpeed(s.ms);
+                  }}
+                  className={cls}
+                >
                   {s.label}
                 </button>
               );
@@ -971,11 +1221,14 @@ export default function TradeDemo() {
           <div className="flex items-center gap-2 mb-3">
             <span className="text-lg">💳</span>
             <h3 className="font-semibold">Choose Your Plan</h3>
-            <span className="text-xs text-white/40 ml-1">(demo — try them all!)</span>
+            <span className="text-xs text-white/40 ml-1">
+              (demo — try them all!)
+            </span>
           </div>
           <PlanSelector value={plan} onChange={setPlan} />
           <p className="text-xs text-white/40 mt-3">
-            {currentPlan.icon} <b>{currentPlan.label}</b> includes: {currentPlan.exchanges.join(", ")}
+            {currentPlan.icon} <b>{currentPlan.label}</b> includes:{" "}
+            {currentPlan.exchanges.join(", ")}
           </p>
         </div>
 
@@ -987,9 +1240,15 @@ export default function TradeDemo() {
               <h3 className="font-semibold">Trading Strategy</h3>
             </div>
           </div>
-          <StrategySelector value={strategy} onChange={setStrategy} disabled={running} />
+          <StrategySelector
+            value={strategy}
+            onChange={setStrategy}
+            disabled={running}
+          />
           {running && (
-            <p className="text-xs text-yellow-400/70 mt-3">⚠️ Stop the bot first to change strategy</p>
+            <p className="text-xs text-yellow-400/70 mt-3">
+              ⚠️ Stop the bot first to change strategy
+            </p>
           )}
         </div>
 
@@ -1000,15 +1259,19 @@ export default function TradeDemo() {
             <div className={"text-xl font-bold mt-1 " + equityColorClass}>
               {formatUsdPlain(equity)}
             </div>
-            <div className="text-xs text-white/30 mt-1">Started at \$1,000</div>
+            <div className="text-xs text-white/30 mt-1">
+              Started at \$1,000
+            </div>
           </div>
 
           <div className="rounded-xl bg-white/5 p-4 border border-white/10">
-            <div className="text-xs text-white/50">📊 Total P&L</div>
+            <div className="text-xs text-white/50">📊 Total P&amp;L</div>
             <div className={"text-xl font-bold mt-1 " + pnlColorClass}>
               {formatUsd(pnl)}
             </div>
-            <div className="text-xs text-white/30 mt-1">{wins + losses} trades</div>
+            <div className="text-xs text-white/30 mt-1">
+              {wins + losses} trades
+            </div>
           </div>
 
           <div className="rounded-xl bg-white/5 p-4 border border-white/10">
@@ -1022,7 +1285,9 @@ export default function TradeDemo() {
           <div className="rounded-xl bg-white/5 p-4 border border-white/10">
             <div className="text-xs text-white/50">🔥 Win Streak</div>
             <div className="text-xl font-bold mt-1">{currentWinStreak}</div>
-            <div className="text-xs text-white/30 mt-1">Best: {bestWinStreak}</div>
+            <div className="text-xs text-white/30 mt-1">
+              Best: {bestWinStreak}
+            </div>
           </div>
 
           <div className="rounded-xl bg-white/5 p-4 border border-white/10">
@@ -1032,7 +1297,11 @@ export default function TradeDemo() {
                 <span className="text-[10px] font-bold">{confidence}%</span>
               </ProgressRing>
               <span className="text-xs text-white/50">
-                {confidence >= 80 ? "🔥 Excellent!" : confidence >= 60 ? "👍 Good" : "📈 Building..."}
+                {confidence >= 80
+                  ? "🔥 Excellent!"
+                  : confidence >= 60
+                  ? "👍 Good"
+                  : "📈 Building..."}
               </span>
             </div>
           </div>
@@ -1056,7 +1325,9 @@ export default function TradeDemo() {
           <div className="bg-white/5 border border-white/10 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">📊 Trade Results</h3>
-              <span className="text-xs text-white/40">{tradeLog.length} total</span>
+              <span className="text-xs text-white/40">
+                {tradeLog.length} total
+              </span>
             </div>
             <MiniBarChart data={pnlChartData} height={130} />
             <div className="flex justify-between mt-2 text-[10px] text-white/20">
@@ -1070,10 +1341,30 @@ export default function TradeDemo() {
         <div>
           <h2 className="text-lg font-semibold mb-4">🔗 Exchanges</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <DemoExchangeCard name="OKX Crypto" icon="🔷" trades={tradesByExchange.OKX} active={currentPlan.exchanges.includes("OKX")} />
-            <DemoExchangeCard name="Alpaca Stocks" icon="📈" trades={tradesByExchange.Alpaca} active={currentPlan.exchanges.includes("Alpaca")} />
-            <DemoExchangeCard name="DEX Trading" icon="🦄" trades={tradesByExchange.DEX} active={currentPlan.exchanges.includes("DEX")} />
-            <DemoExchangeCard name="Futures" icon="📊" trades={tradesByExchange.Futures} active={currentPlan.exchanges.includes("Futures")} />
+            <DemoExchangeCard
+              name="OKX Crypto"
+              icon="🔷"
+              trades={tradesByExchange.OKX}
+              active={currentPlan.exchanges.includes("OKX")}
+            />
+            <DemoExchangeCard
+              name="Alpaca Stocks"
+              icon="📈"
+              trades={tradesByExchange.Alpaca}
+              active={currentPlan.exchanges.includes("Alpaca")}
+            />
+            <DemoExchangeCard
+              name="DEX Trading"
+              icon="🦄"
+              trades={tradesByExchange.DEX}
+              active={currentPlan.exchanges.includes("DEX")}
+            />
+            <DemoExchangeCard
+              name="Futures"
+              icon="📊"
+              trades={tradesByExchange.Futures}
+              active={currentPlan.exchanges.includes("Futures")}
+            />
           </div>
         </div>
 
@@ -1126,11 +1417,50 @@ export default function TradeDemo() {
         </div>
 
         {/* ── Achievements ── */}
-        <AchievementsPanel unlocked={unlockedAchievements} total={ALL_ACHIEVEMENTS.length} />
+        <AchievementsPanel
+          unlocked={unlockedAchievements}
+          total={ALL_ACHIEVEMENTS.length}
+        />
 
         {/* ── CTA ── */}
         <div className="bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-8 text-center">
           <div className="text-5xl mb-3">🚀</div>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-2">Ready to Trade for Real?</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold mb-2">
+            Ready to Trade for Real?
+          </h2>
           <p className="text-white/60 max-w-lg mx-auto mb-6">
-            Everything here works with real money too. Sign
+            Everything here works with real money too. Sign up now and start
+            trading with your preferred plan and strategy — zero demo
+            limitations.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <button
+              onClick={function () {
+                nav("/signup");
+              }}
+              className="px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 font-bold text-lg hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02]"
+            >
+              🚀 Create Account
+            </button>
+            <button
+              onClick={function () {
+                nav("/pricing");
+              }}
+              className="px-8 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 font-bold text-lg transition-colors"
+            >
+              💳 View Plans
+            </button>
+          </div>
+        </div>
+
+        {/* ── Footer Note ── */}
+        <div className="text-center py-6">
+          <p className="text-xs text-white/30">
+            🎮 This is a demo simulator. No real money is used. All trades and
+            results are simulated for educational purposes.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
