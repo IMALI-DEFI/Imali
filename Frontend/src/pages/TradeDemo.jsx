@@ -5,10 +5,10 @@ import TradingOverview from "../components/Dashboard/TradingOverview.jsx";
 
 /* ===================== CONSTANTS ===================== */
 var STRATEGIES = [
-  { value: "mean_reversion", label: "Conservative", icon: "🛡️", risk: 1 },
-  { value: "ai_weighted", label: "Balanced", icon: "🤖", risk: 2 },
-  { value: "momentum", label: "Growth", icon: "📈", risk: 3 },
-  { value: "volume_spike", label: "Aggressive", icon: "🔥", risk: 4 },
+  { value: "mean_reversion", label: "Conservative", icon: "🛡️", risk: 1, description: "Mean reversion, low risk", color: "blue" },
+  { value: "ai_weighted", label: "Balanced", icon: "🤖", risk: 2, description: "AI-weighted, medium risk", color: "purple" },
+  { value: "momentum", label: "Growth", icon: "📈", risk: 3, description: "Momentum following", color: "amber" },
+  { value: "volume_spike", label: "Aggressive", icon: "🔥", risk: 4, description: "Volume spike detection", color: "red" },
 ];
 
 var PLANS = [
@@ -636,22 +636,29 @@ function AchievementsPanel(props) {
   );
 }
 
-/* ===================== STRATEGY SELECTOR ===================== */
+/* ===================== STRATEGY SELECTOR (COMPACT & ORGANIZED) ===================== */
 function StrategySelector(props) {
   var value = props.value;
   var onChange = props.onChange;
   var disabled = props.disabled;
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {STRATEGIES.map(function (s) {
         var isActive = value === s.value;
+        var colorClasses = {
+          blue: isActive ? "bg-blue-500/20 border-blue-500/40" : "hover:bg-blue-500/10",
+          purple: isActive ? "bg-purple-500/20 border-purple-500/40" : "hover:bg-purple-500/10",
+          amber: isActive ? "bg-amber-500/20 border-amber-500/40" : "hover:bg-amber-500/10",
+          red: isActive ? "bg-red-500/20 border-red-500/40" : "hover:bg-red-500/10",
+        }[s.color] || "";
+
         var btnClass =
-          "p-3 sm:p-4 rounded-xl text-center transition-all border " +
-          (isActive
-            ? "bg-white/10 border-white/30 shadow-lg shadow-white/5"
-            : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20") +
-          (disabled ? " opacity-50 cursor-not-allowed" : "");
+          `p-3 rounded-xl text-center transition-all border ${
+            isActive
+              ? `${colorClasses} border-white/30 shadow-lg shadow-white/5`
+              : `bg-white/[0.03] border-white/10 ${colorClasses}`
+          }` + (disabled ? " opacity-50 cursor-not-allowed" : "");
 
         return (
           <button
@@ -662,11 +669,12 @@ function StrategySelector(props) {
             disabled={disabled}
             className={btnClass}
           >
-            <div className="text-2xl sm:text-3xl mb-1">{s.icon}</div>
-            <div className="text-xs sm:text-sm font-semibold">{s.label}</div>
-            <div className="mt-2">
-              <RiskMeter level={s.risk} />
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">{s.icon}</span>
+              <span className="text-sm font-semibold">{s.label}</span>
             </div>
+            <p className="text-[10px] text-white/40 mb-2 truncate">{s.description}</p>
+            <RiskMeter level={s.risk} />
           </button>
         );
       })}
@@ -1232,24 +1240,24 @@ export default function TradeDemo() {
           </p>
         </div>
 
-        {/* ── Strategy Selector ── */}
+        {/* ── Strategy Selector (Compact & Organized) ── */}
         <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
           <div className="flex items-center justify-between mb-3 sm:mb-4">
             <div className="flex items-center gap-2">
               <span className="text-base sm:text-lg">🧠</span>
-              <h3 className="font-semibold text-sm sm:text-base">Strategy</h3>
+              <h3 className="font-semibold text-sm sm:text-base">Trading Strategy</h3>
             </div>
+            {running && (
+              <span className="text-[10px] text-yellow-400/70 px-2 py-1 rounded-full border border-yellow-400/30">
+                ⚠️ Stop to change
+              </span>
+            )}
           </div>
           <StrategySelector
             value={strategy}
             onChange={setStrategy}
             disabled={running}
           />
-          {running && (
-            <p className="text-[10px] sm:text-xs text-yellow-400/70 mt-2 sm:mt-3">
-              ⚠️ Stop bot to change strategy
-            </p>
-          )}
         </div>
 
         {/* ── Stats Row ── */}
