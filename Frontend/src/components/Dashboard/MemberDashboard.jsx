@@ -67,7 +67,7 @@ const fetchWithRetry = async (url, retries = MAX_RETRIES, delay = RETRY_BASE_DEL
     const res = await api.get(url);
     return res;
   } catch (err) {
-    if (retries > 0 && err.response?.status === 429) {
+    if (retries > 0 && err?.response?.status === 429) {
       const retryAfter = parseInt(err.response.headers?.["retry-after"] || "0", 10) * 1000;
       const waitTime = Math.max(retryAfter, delay);
       await new Promise((r) => setTimeout(r, waitTime));
@@ -317,7 +317,7 @@ const ExchangeCard = ({ name, connected, mode, trades, icon, color = "blue" }) =
   );
 };
 
-/* ===================== UPGRADE CARD (SAFE CLASSES) ===================== */
+/* ===================== UPGRADE CARD ===================== */
 const UpgradeCard = ({ name, icon, description, features, colorKey, currentTier, requiredTier }) => {
   const nav = useNavigate();
   const unlocked = tierAtLeast(currentTier, requiredTier);
@@ -373,7 +373,7 @@ const UpgradeCard = ({ name, icon, description, features, colorKey, currentTier,
   );
 };
 
-/* ===================== TRADE FEED (COMPACT) ===================== */
+/* ===================== TRADE FEED ===================== */
 const TradeFeed = ({ trades }) => {
   if (!trades || !trades.length) {
     return (
@@ -414,7 +414,9 @@ const TradeFeed = ({ trades }) => {
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0">
-                <span className={`text-sm font-bold ${isWin ? "text-emerald-400" : "text-red-400"}`}>{formatMoney(t.pnl_usd || 0)}</span>
+                <span className={`text-sm font-bold ${isWin ? "text-emerald-400" : "text-red-400"}`}>
+                  {formatMoney(t.pnl_usd || 0)}
+                </span>
               </div>
             </div>
           );
@@ -508,7 +510,7 @@ export default function MemberDashboard() {
       const res = await fetchWithRetry("/api/sniper/trades");
       setTrades(Array.isArray(res.data?.trades) ? res.data.trades : []);
     } catch (err) {
-      if (err.response?.status !== 429) console.warn("[Dashboard] Failed to load trades:", err.message);
+      if (err?.response?.status !== 429) console.warn("[Dashboard] Failed to load trades:", err?.message);
     } finally {
       fetchInFlight.current = false;
       setLoading(false);
@@ -636,7 +638,6 @@ export default function MemberDashboard() {
   /* ================ RENDER ================ */
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      {/* tighter, mobile-first padding + spacing */}
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-3 sm:space-y-5">
         {/* Banner */}
         {banner ? (
@@ -656,7 +657,7 @@ export default function MemberDashboard() {
 
         <SetupBanner billing={billingComplete} connections={connectionsComplete} trading={tradingEnabled} onCTA={handleSetupCTA} />
 
-        {/* Header (no collisions) */}
+        {/* Header */}
         <Card className="p-3 sm:p-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="min-w-0">
@@ -677,7 +678,6 @@ export default function MemberDashboard() {
               <p className="text-[11px] sm:text-sm text-white/55 mt-1">Your trading dashboard</p>
             </div>
 
-            {/* actions: stack on mobile, no overlap */}
             <div className="grid grid-cols-2 gap-2 w-full lg:w-auto">
               <button
                 onClick={() => toggleTrading(!tradingEnabled)}
@@ -699,7 +699,7 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
-        {/* Stats: stacked cards + tighter spacing */}
+        {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
           <StatCard icon="💰" label="Account" value={formatUsd(1000 + totalPnL)} subValue="Start $1k" />
           <StatCard icon="📈" label="Today" value={formatMoney(todayPnL)} color={todayPnL >= 0 ? "green" : "red"} />
@@ -708,18 +708,13 @@ export default function MemberDashboard() {
           <StatCard icon="🤖" label="Confidence" value={`${confidence}%`} />
         </div>
 
-        {/* Level + chart: collapsible + mobile-first */}
+        {/* Level + chart */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
           <div className="lg:col-span-1">
             <LevelBadge trades={trades.length} winRate={Number(winRate)} pnl={totalPnL} />
           </div>
 
-          <CollapsibleSection
-            icon="📊"
-            title="Recent Results"
-            subtitle={`${trades.length} total trades`}
-            defaultOpen={true}
-          >
+          <CollapsibleSection icon="📊" title="Recent Results" subtitle={`${trades.length} total trades`} defaultOpen={true}>
             <MiniBarChart data={chartData} height={92} />
           </CollapsibleSection>
         </div>
@@ -727,34 +722,25 @@ export default function MemberDashboard() {
         {/* Activated content */}
         {activationComplete ? (
           <>
-            <CollapsibleSection
-              icon="🔗"
-              title="Your Services"
-              subtitle="Status by exchange"
-              defaultOpen={true}
-            >
+            <CollapsibleSection icon="🔗" title="Your Services" subtitle="Status by exchange" defaultOpen={true}>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-                {tierAtLeast(normalizedTier, "starter") ? (
-                  <ExchangeCard
-                    name="OKX"
-                    icon="🔷"
-                    color="blue"
-                    connected={okxConnected}
-                    mode={activation?.okx_mode}
-                    trades={trades.filter((t) => normalizeExchange(t.exchange) === "OKX")}
-                  />
-                ) : null}
+                <ExchangeCard
+                  name="OKX"
+                  icon="🔷"
+                  color="blue"
+                  connected={okxConnected}
+                  mode={activation?.okx_mode}
+                  trades={trades.filter((t) => normalizeExchange(t.exchange) === "OKX")}
+                />
 
-                {tierAtLeast(normalizedTier, "starter") ? (
-                  <ExchangeCard
-                    name="Alpaca"
-                    icon="📈"
-                    color="emerald"
-                    connected={alpacaConnected}
-                    mode={activation?.alpaca_mode}
-                    trades={trades.filter((t) => normalizeExchange(t.exchange) === "ALPACA")}
-                  />
-                ) : null}
+                <ExchangeCard
+                  name="Alpaca"
+                  icon="📈"
+                  color="emerald"
+                  connected={alpacaConnected}
+                  mode={activation?.alpaca_mode}
+                  trades={trades.filter((t) => normalizeExchange(t.exchange) === "ALPACA")}
+                />
 
                 {tierAtLeast(normalizedTier, "stock") ? (
                   <ExchangeCard
@@ -861,7 +847,6 @@ export default function MemberDashboard() {
               </div>
             </CollapsibleSection>
 
-            {/* Feature modules: collapse by default to avoid long mobile scroll + collisions */}
             <CollapsibleSection icon="🧩" title="Modules" subtitle="Balances, tiers, referrals, demo" defaultOpen={false}>
               <div className="space-y-3">
                 <ImaliBalance />
@@ -874,7 +859,9 @@ export default function MemberDashboard() {
                 {tierAtLeast(normalizedTier, "elite") ? <Futures /> : null}
 
                 <NFTPreview />
-                <TradeDemo />
+
+                {/* If your dashboard TradeDemo has the “Risk” duplication, this prop lets you hide the extra label there. */}
+                <TradeDemo hideInlineRiskLabel={true} />
               </div>
             </CollapsibleSection>
           </>
