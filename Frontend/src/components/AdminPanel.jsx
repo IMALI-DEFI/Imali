@@ -16,6 +16,7 @@ import NFTManagement from "../admin/NFTManagement.js";
 import ReferralAnalytics from "../admin/ReferralAnalytics.jsx";
 import SocialManager from "../admin/SocialManager.js";
 import AccessControl from "../admin/AccessControl.jsx";
+import UserManagement from "../admin/UserManagement.jsx"; // New import
 
 /* -------------------- Env + Chain helpers -------------------- */
 const IS_BROWSER = typeof window !== "undefined";
@@ -66,6 +67,7 @@ async function getChainKeyFromProvider(provider) {
 /* -------------------- Tabs (base shape) -------------------- */
 const BASE_TAB_DEFS = [
   { key: "overview", label: "Overview", emoji: "✨", render: (p) => <DashboardOverview {...p} /> },
+  { key: "users", label: "Users", emoji: "👥", render: (p) => <UserManagement {...p} /> }, // New tab
   { key: "token", label: "Token Mgmt", emoji: "🪙", render: (p) => <TokenManagement {...p} /> },
   // buyback tab will be overridden with callbacks inside component
   { key: "buyback", label: "Buyback", emoji: "♻️", render: (p) => <BuyBackDashboard {...p} /> },
@@ -216,9 +218,25 @@ export default function AdminPanel({ forceOwner = false }) {
                 />
               ),
             }
+          : t.key === "users"
+          ? {
+              ...t,
+              render: (p) => (
+                <UserManagement
+                  {...p}
+                  apiBase={API_BASE}
+                  onUserAction={(action) => {
+                    if (action === 'created' || action === 'updated') {
+                      // You could add a refresh callback here if needed
+                      console.log('User action:', action);
+                    }
+                  }}
+                />
+              ),
+            }
           : t
       ),
-    [handleTriggerBuyback, handleTriggerLiquidity, handleAutoStake, busyAction]
+    [handleTriggerBuyback, handleTriggerLiquidity, handleAutoStake, busyAction, API_BASE]
   );
 
   /* -------------------- Owner check -------------------- */
