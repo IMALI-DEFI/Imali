@@ -1,3 +1,4 @@
+
 // src/pages/dashboard/MemberDashboard.js
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
@@ -467,7 +468,7 @@ const SetupBanner = ({ billing, connections, trading, onCTA }) => {
 ===================================================================== */
 export default function MemberDashboard() {
   const nav = useNavigate();
-  const { user: authUser, activation, setActivation, refreshActivation } = useAuth();
+  const { user: authUser, activation, setActivation, refreshUser } = useAuth();
 
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -565,8 +566,8 @@ export default function MemberDashboard() {
       setBusy(true);
       await BotAPI.toggleTrading(enabled);
 
-      if (refreshActivation) {
-        await refreshActivation();
+      if (refreshUser) {
+        await refreshUser();
       } else {
         const res = await BotAPI.activationStatus();
         if (setActivation) setActivation(res?.status ?? res);
