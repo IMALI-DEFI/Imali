@@ -1,4 +1,3 @@
-// src/pages/Signup.jsx
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -18,6 +17,7 @@ export default function Signup() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [step, setStep] = useState(""); // '', 'creating', 'logging-in', 'redirecting'
 
   const validate = () => {
     if (!form.email.trim()) return "Email is required.";
@@ -45,10 +45,13 @@ export default function Signup() {
     setLoading(true);
     setError("");
 
-    try {
-      const email = form.email.trim().toLowerCase();
+    const email = form.email.trim().toLowerCase();
 
-      // 1️⃣ Create account
+    try {
+      // ── Step 1: Create account ──
+      setStep("creating");
+      console.log("[Signup] Creating account...");
+
       const signupResult = await signup({
         email,
         password: form.password,
@@ -59,51 +62,92 @@ export default function Signup() {
       if (!signupResult.success) {
         setError(signupResult.error);
         setLoading(false);
+        setStep("");
         return;
       }
 
-      // 2️⃣ Log in
+      console.log("[Signup] Account created successfully");
+
+      // Small delay between signup and login to avoid 429
+      await new Promise((r) => setTimeout(r, 1000));
+
+      // ── Step 2: Log in ──
+      setStep("logging-in");
+      console.log("[Signup] Logging in...");
+
       const loginResult = await login(email, form.password);
-      
+
       if (!loginResult.success) {
-        setError(loginResult.error);
-        setLoading(false);
+        // Login failed but account was created
+        // Send them to login page with a message
+        console.warn("[Signup] Auto-login failed, redirecting to login");
+        setError("");
+        navigate("/login", {
+          replace: true,
+          state: {
+            message: "Account created! Please log in to continue.",
+            email: email,
+          },
+        });
         return;
       }
 
-      // 3️⃣ Store email for billing page
+      console.log("[Signup] Login successful");
+
+      // ── Step 3: Store metadata for billing page ──
       localStorage.setItem("IMALI_EMAIL", email);
       localStorage.setItem("IMALI_TIER", form.tier);
 
-      // 4️⃣ Navigate to billing with state
-      navigate("/billing", { 
-        replace: true,
-        state: { 
-          email: email, 
-          tier: form.tier,
-          strategy: form.strategy 
-        }
-      });
+      // ── Step 4: Navigate to billing immediately ──
+      // Don't wait for loadUserData — the token is saved,
+      // billing page will work
+      setStep("redirecting");
+      console.log("[Signup] Navigating to /billing...");
 
+      navigate("/billing", {
+        replace: true,
+        state: {
+          email: email,
+          tier: form.tier,
+          strategy: form.strategy,
+          fromSignup: true,
+        },
+      });
     } catch (err) {
-      console.error("[Signup] Error:", err);
-      
-      // Handle different error types
-      if (err.response?.status === 409) {
+      console.error("[Signup] Unexpected error:", err);
+
+      const status = err?.response?.status;
+
+      if (status === 409) {
         setError("An account with this email already exists.");
-      } else if (err.response?.status === 400) {
+      } else if (status === 400) {
         setError(err.response?.data?.message || "Invalid signup information.");
-      } else if (err.response?.status === 429) {
-        setError("Too many attempts. Please try again later.");
-      } else if (err.response?.status === 503) {
+      } else if (status === 429) {
+        setError("Too many attempts. Please wait a moment and try again.");
+      } else if (status === 503 || status >= 500) {
         setError("Service temporarily unavailable. Please try again.");
-      } else if (err.message === 'Network Error') {
+      } else if (err.message === "Network Error" || err.code === "ERR_NETWORK") {
         setError("Unable to connect to server. Please check your connection.");
       } else {
         setError(err.message || "Signup failed. Please try again.");
       }
+
+      setStep("");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getButtonText = () => {
+    switch (step) {
+      case "creating":
+        return "Creating account…";
+      case "logging-in":
+        return "Signing in…";
+      case "redirecting":
+        return "Redirecting to billing…";
+      default:
+        return loading ? "Please wait…" : "Create account & continue";
     }
   };
 
@@ -133,7 +177,7 @@ export default function Signup() {
             onChange={(e) =>
               setForm((f) => ({ ...f, email: e.target.value }))
             }
-            className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
+            className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={loading}
           />
 
@@ -146,7 +190,7 @@ export default function Signup() {
             onChange={(e) =>
               setForm((f) => ({ ...f, password: e.target.value }))
             }
-            className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
+            className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={loading}
           />
 
@@ -159,7 +203,7 @@ export default function Signup() {
             onChange={(e) =>
               setForm((f) => ({ ...f, confirmPassword: e.target.value }))
             }
-            className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
+            className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={loading}
           />
 
@@ -168,7 +212,7 @@ export default function Signup() {
             onChange={(e) =>
               setForm((f) => ({ ...f, strategy: e.target.value }))
             }
-            className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white"
+            className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={loading}
           >
             <option value="ai_weighted">AI Weighted (Recommended)</option>
@@ -204,9 +248,9 @@ export default function Signup() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
           >
-            {loading ? "Creating account…" : "Create account & continue"}
+            {getButtonText()}
           </button>
         </form>
 
