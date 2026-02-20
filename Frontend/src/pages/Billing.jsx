@@ -19,9 +19,10 @@ function BillingInner() {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
-  const { refreshUser } = useAuth();
+  const { refreshActivation, refreshUser } = useAuth(); // Add refreshActivation
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [verifying, setVerifying] = useState(false);
 
   const handleSubmit = async () => {
     if (!stripe || !elements) return;
@@ -43,23 +44,54 @@ function BillingInner() {
       }
 
       // SUCCESS - Payment method saved
+      setVerifying(true);
       
-      // Wait for webhook to process (1.5 seconds is usually enough)
-      // This gives Stripe time to send webhook and backend time to update
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Wait longer for webhook to process (3 seconds)
+      // Stripe needs time to send webhook and backend to update
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
-      // Force refresh user data from backend
-      // This will update billing_complete in activation state
+      // Try multiple times to get updated activation status
+      let attempts = 0;
+      const maxAttempts = 5;
+      let billingComplete = false;
+
+      while (attempts < maxAttempts && !billingComplete) {
+        attempts++;
+        
+        // Force refresh activation data (this specifically checks billing_complete)
+        const freshActivation = await refreshActivation();
+        
+        // Check if billing is now complete
+        if (freshActivation?.billing_complete) {
+          billingComplete = true;
+          console.log(`✅ Billing confirmed after ${attempts} attempts`);
+          break;
+        }
+        
+        // Wait before next attempt (increasing delay)
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+      }
+
+      // Also refresh user data as backup
       await refreshUser();
 
-      // Now navigate to activation with fresh data
-      navigate("/activation", { replace: true });
+      if (billingComplete) {
+        // Navigate to activation with fresh data
+        navigate("/activation", { replace: true });
+      } else {
+        // Still go to activation but show a warning
+        navigate("/activation", { 
+          replace: true,
+          state: { billingPending: true }
+        });
+      }
 
     } catch (err) {
       console.error("Payment setup error:", err);
       setError(err.message || "Failed to save payment method");
     } finally {
       setBusy(false);
+      setVerifying(false);
     }
   };
 
@@ -78,13 +110,24 @@ function BillingInner() {
         disabled={busy || !stripe || !elements}
         className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {busy ? "Processing…" : "Save Payment Method"}
+        {busy ? (verifying ? "Verifying payment..." : "Processing…") : "Save Payment Method"}
       </button>
 
       {busy && (
-        <p className="text-xs text-center text-gray-400 mt-2">
-          Please wait while we confirm your payment method...
-        </p>
+        <div className="text-center">
+          <p className="text-xs text-gray-400 mt-2">
+            {verifying 
+              ? "Confirming your payment with Stripe... This may take a few seconds." 
+              : "Please wait while we process your payment method..."}
+          </p>
+          {verifying && (
+            <div className="flex justify-center mt-2 space-x-1">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }} />
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -93,7 +136,7 @@ function BillingInner() {
 export default function Billing() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshActivation, refreshUser } = useAuth();
 
   const email =
     location.state?.email || localStorage.getItem("IMALI_EMAIL") || user?.email;
@@ -102,6 +145,15 @@ export default function Billing() {
   const [clientSecret, setClientSecret] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [initialized, setInitialized] = useState(false);
+
+  // Pre-fetch activation data when component mounts
+  useEffect(() => {
+    if (!initialized && BotAPI.isLoggedIn()) {
+      refreshActivation().catch(console.warn);
+      setInitialized(true);
+    }
+  }, [refreshActivation, initialized]);
 
   useEffect(() => {
     const initializeBilling = async () => {
