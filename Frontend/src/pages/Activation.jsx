@@ -89,8 +89,9 @@ const HelpLink = () => (
 
 export default function Activation() {
   const navigate = useNavigate();
-  const { user, activation, refreshUser, refreshActivation, setActivation } = useAuth();
+  const { user, activation, refreshActivation, setActivation } = useAuth();
   const hasRedirected = useRef(false);
+  const initialLoadDone = useRef(false);
 
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -143,6 +144,27 @@ export default function Activation() {
     [status.billing, connectionsDone, status.trading]
   );
 
+  // ── Load initial data once ────────────────────────────────
+
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (initialLoadDone.current) return;
+      initialLoadDone.current = true;
+      
+      try {
+        // Only refresh if we don't have activation data yet
+        if (!activation && refreshActivation) {
+          console.log("[Activation] Loading initial activation data");
+          await refreshActivation();
+        }
+      } catch (err) {
+        console.warn("[Activation] Initial load failed:", err);
+      }
+    };
+
+    loadInitialData();
+  }, [activation, refreshActivation]);
+
   // ── Debug logging ─────────────────────────────────────────
 
   useEffect(() => {
@@ -173,41 +195,14 @@ export default function Activation() {
     }
   }, [fullyActivated, navigate]);
 
-  // ── Poll activation status while incomplete ───────────────
-
-  useEffect(() => {
-    if (fullyActivated) return;
-
-    const poll = async () => {
-      try {
-        console.log("[Activation] Polling activation status…");
-        if (refreshActivation) {
-          await refreshActivation();
-        } else {
-          // Fallback: fetch manually and push into context
-          const res = await BotAPI.activationStatus();
-          const fresh = res?.status ?? res?.data?.status ?? res;
-          if (setActivation) setActivation(fresh);
-        }
-      } catch (err) {
-        console.warn("[Activation] Poll failed:", err);
-      }
-    };
-
-    const id = setInterval(poll, 5000);
-    return () => clearInterval(id);
-  }, [fullyActivated, refreshActivation, setActivation]);
-
   // ── Refresh helper (called after every action) ────────────
 
   const refreshAfterAction = useCallback(async () => {
     try {
       if (refreshActivation) {
         await refreshActivation();
-      } else if (refreshUser) {
-        await refreshUser();
       } else {
-        // Last resort: fetch and set manually
+        // Fallback: fetch and set manually
         const res = await BotAPI.activationStatus();
         const fresh = res?.status ?? res?.data?.status ?? res;
         if (setActivation) setActivation(fresh);
@@ -215,7 +210,7 @@ export default function Activation() {
     } catch (err) {
       console.error("[Activation] Refresh after action failed:", err);
     }
-  }, [refreshActivation, refreshUser, setActivation]);
+  }, [refreshActivation, setActivation]);
 
   // ── Connection handlers ───────────────────────────────────
 
