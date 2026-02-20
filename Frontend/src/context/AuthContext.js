@@ -1,4 +1,3 @@
-// src/context/AuthContext.js
 import React, {
   createContext,
   useState,
@@ -6,6 +5,7 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
 } from "react";
 import BotAPI from "../utils/BotAPI";
 
@@ -13,21 +13,36 @@ const AuthContext = createContext({});
 export const useAuth = () => useContext(AuthContext);
 
 /* -------------------------------------------------------
-   Retry Helper (Safe + Controlled)
+   Retry Helper — more patient, backs off properly
 -------------------------------------------------------- */
-const retry = async (fn, retries = 2, delay = 800) => {
+const retry = async (fn, retries = 3, delay = 1500) => {
   try {
     return await fn();
   } catch (err) {
-    if (
-      retries > 0 &&
-      (err.response?.status === 429 || err.code === "ERR_NETWORK")
-    ) {
+    const status = err?.response?.status;
+    const isRetryable =
+      status === 429 ||
+      status >= 500 ||
+      err.code === "ERR_NETWORK" ||
+      err.code === "ECONNABORTED";
+
+    if (retries > 0 && isRetryable) {
+      console.warn(
+        `[retry] ${status || err.code} — waiting ${delay}ms, ${retries} retries left`
+      );
       await new Promise((r) => setTimeout(r, delay));
       return retry(fn, retries - 1, delay * 2);
     }
     throw err;
   }
+};
+
+/* -------------------------------------------------------
+   Is the error an auth failure (should clear token)?
+-------------------------------------------------------- */
+const isAuthError = (err) => {
+  const status = err?.response?.status;
+  return status === 401 || status === 403;
 };
 
 /* =======================================================
@@ -38,9 +53,13 @@ export const AuthProvider = ({ children }) => {
   const [activation, setActivation] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Guard against double-loading on mount (React StrictMode)
+  const initialLoadDone = useRef(false);
+  // Guard against concurrent loadUserData calls
+  const loadingLock = useRef(false);
+
   /* -------------------------------------------------------
      Refresh ONLY activation (lightweight, no user refetch)
-     — Used after connect/toggle actions on the Activation page
   -------------------------------------------------------- */
   const refreshActivation = useCallback(async () => {
     if (!BotAPI.isLoggedIn()) return null;
@@ -51,18 +70,20 @@ export const AuthProvider = ({ children }) => {
 
       console.log("[AuthContext] refreshActivation →", fresh);
 
-      // Functional update: avoids stale closure issues
       setActivation((prev) => {
-        const prevJSON = JSON.stringify(prev);
-        const freshJSON = JSON.stringify(fresh);
-        // Skip no-op updates so downstream memos don't re-fire
-        if (prevJSON === freshJSON) return prev;
+        if (JSON.stringify(prev) === JSON.stringify(fresh)) return prev;
         return fresh;
       });
 
       return fresh;
     } catch (err) {
       console.error("[AuthContext] refreshActivation failed:", err);
+      // Only clear on auth errors
+      if (isAuthError(err)) {
+        BotAPI.clearToken();
+        setUser(null);
+        setActivation(null);
+      }
       return null;
     }
   }, []);
@@ -80,70 +101,98 @@ export const AuthProvider = ({ children }) => {
       console.log("[AuthContext] refreshProfile →", fresh);
 
       setUser((prev) => {
-        const prevJSON = JSON.stringify(prev);
-        const freshJSON = JSON.stringify(fresh);
-        if (prevJSON === freshJSON) return prev;
+        if (JSON.stringify(prev) === JSON.stringify(fresh)) return prev;
         return fresh;
       });
 
       return fresh;
     } catch (err) {
       console.error("[AuthContext] refreshProfile failed:", err);
+      if (isAuthError(err)) {
+        BotAPI.clearToken();
+        setUser(null);
+        setActivation(null);
+      }
       return null;
     }
   }, []);
 
   /* -------------------------------------------------------
      Load User + Activation Together (Full Refresh)
+     — Sequential to avoid hammering the API with parallel calls
+     — Only clears token on 401/403, NOT on 429/network errors
   -------------------------------------------------------- */
   const loadUserData = useCallback(async () => {
     if (!BotAPI.isLoggedIn()) {
+      console.log("[AuthContext] loadUserData — no token, skipping");
       setUser(null);
       setActivation(null);
       setLoading(false);
       return;
     }
 
+    // Prevent concurrent calls
+    if (loadingLock.current) {
+      console.log("[AuthContext] loadUserData — already loading, skipping");
+      return;
+    }
+
+    loadingLock.current = true;
+
     try {
       setLoading(true);
 
-      // Fetch both in parallel for speed
-      const [userRaw, activationRaw] = await Promise.all([
-        retry(() => BotAPI.me()),
-        retry(() => BotAPI.activationStatus()),
-      ]);
-
+      // Sequential fetching to avoid 429 rate limits
+      console.log("[AuthContext] loadUserData — fetching /me...");
+      const userRaw = await retry(() => BotAPI.me());
       const userData = userRaw?.user ?? userRaw ?? null;
-      const activationData = activationRaw?.status ?? activationRaw ?? null;
+      setUser(userData);
 
-      console.log("[AuthContext] loadUserData →", {
+      // Small delay between calls to respect rate limits
+      await new Promise((r) => setTimeout(r, 500));
+
+      console.log("[AuthContext] loadUserData — fetching /activation-status...");
+      const activationRaw = await retry(() => BotAPI.activationStatus());
+      const activationData = activationRaw?.status ?? activationRaw ?? null;
+      setActivation(activationData);
+
+      console.log("[AuthContext] loadUserData complete →", {
         user: userData,
         activation: activationData,
       });
-
-      setUser(userData);
-      setActivation(activationData);
     } catch (err) {
       console.error("[AuthContext] loadUserData failed:", err);
-      BotAPI.clearToken();
-      setUser(null);
-      setActivation(null);
+
+      if (isAuthError(err)) {
+        // Real auth failure — clear everything
+        console.warn("[AuthContext] Auth failure — clearing session");
+        BotAPI.clearToken();
+        setUser(null);
+        setActivation(null);
+      } else {
+        // Transient error (429, 500, network) — keep token intact
+        // User stays "authenticated" even though data didn't load
+        console.warn(
+          "[AuthContext] Transient error — keeping token, user may retry"
+        );
+      }
     } finally {
       setLoading(false);
+      loadingLock.current = false;
     }
   }, []);
 
   /* -------------------------------------------------------
-     Initial Load
+     Initial Load — only once
   -------------------------------------------------------- */
   useEffect(() => {
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
     loadUserData();
   }, [loadUserData]);
 
   /* -------------------------------------------------------
      refreshUser — backwards-compatible alias
-     Components that already call refreshUser() keep working.
-     Now fetches both user + activation in parallel.
   -------------------------------------------------------- */
   const refreshUser = useCallback(async () => {
     console.log("[AuthContext] refreshUser called (full reload)");
@@ -184,13 +233,23 @@ export const AuthProvider = ({ children }) => {
   }, [user, activation]);
 
   /* -------------------------------------------------------
-     Login
+     Login — saves token, then loads user data with a delay
   -------------------------------------------------------- */
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     try {
       const res = await BotAPI.login({ email, password });
-      // Full load after login so both user + activation are fresh
-      await loadUserData();
+
+      console.log("[AuthContext] login success, token saved");
+
+      // Small delay before loading user data to let the
+      // server settle (avoids immediate 429 after login)
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Load user data but DON'T block navigation on failure
+      loadUserData().catch((err) => {
+        console.warn("[AuthContext] Post-login data load failed (non-blocking):", err);
+      });
+
       return { success: true, data: res };
     } catch (err) {
       return {
@@ -201,14 +260,21 @@ export const AuthProvider = ({ children }) => {
           "Login failed",
       };
     }
-  };
+  }, [loadUserData]);
 
   /* -------------------------------------------------------
-     Signup
+     Signup — creates account only, no auto-login
   -------------------------------------------------------- */
-  const signup = async (data) => {
+  const signup = useCallback(async (data) => {
     try {
       const res = await BotAPI.signup(data);
+
+      // If backend returns a token on signup, save it
+      if (res?.token) {
+        BotAPI.setToken(res.token);
+        console.log("[AuthContext] signup returned token, saved");
+      }
+
       return { success: true, data: res };
     } catch (err) {
       return {
@@ -219,16 +285,18 @@ export const AuthProvider = ({ children }) => {
           "Signup failed",
       };
     }
-  };
+  }, []);
 
   /* -------------------------------------------------------
      Logout
   -------------------------------------------------------- */
-  const logout = () => {
+  const logout = useCallback(() => {
     BotAPI.clearToken();
     setUser(null);
     setActivation(null);
-  };
+    initialLoadDone.current = false;
+    loadingLock.current = false;
+  }, []);
 
   /* -------------------------------------------------------
      Context Value
@@ -240,7 +308,7 @@ export const AuthProvider = ({ children }) => {
       activation,
       loading,
       activationComplete,
-      isAuthenticated: !!user,
+      isAuthenticated: !!user || BotAPI.isLoggedIn(),
       hasToken: BotAPI.isLoggedIn,
 
       // Setters (for edge-case manual updates)
@@ -253,15 +321,18 @@ export const AuthProvider = ({ children }) => {
       logout,
 
       // Refresh functions
-      refreshUser,            // full reload (user + activation)
-      refreshActivation,      // activation only (fast)
-      refreshProfile,         // user profile only (fast)
+      refreshUser,
+      refreshActivation,
+      refreshProfile,
     }),
     [
       user,
       activation,
       loading,
       activationComplete,
+      login,
+      signup,
+      logout,
       refreshUser,
       refreshActivation,
       refreshProfile,
