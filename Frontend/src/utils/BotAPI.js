@@ -1,4 +1,3 @@
-// src/utils/BotAPI.js
 import axios from "axios";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
@@ -100,12 +99,25 @@ api.interceptors.response.use(
     const url = error?.config?.url || "";
     const path = getPath();
 
-    // Handle 429 specifically - just pass it through for retry logic
+    // 429 — pass through for retry logic, never redirect
     if (status === 429) {
-      console.warn(`Rate limited on ${url}`);
+      console.warn(`[API] Rate limited on ${url}`);
       return Promise.reject(error);
     }
 
+    // 5xx — server errors, never redirect or clear token
+    if (status >= 500) {
+      console.warn(`[API] Server error ${status} on ${url}`);
+      return Promise.reject(error);
+    }
+
+    // Network errors — never redirect or clear token
+    if (error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") {
+      console.warn(`[API] Network error on ${url}`);
+      return Promise.reject(error);
+    }
+
+    // 401 — actual auth failure
     const isAuthEndpoint =
       url.includes("/api/auth/login") ||
       url.includes("/api/signup");
