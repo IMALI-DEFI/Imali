@@ -1,4 +1,3 @@
-// src/pages/SignupActivation.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
@@ -27,24 +26,58 @@ export default function SignupActivation() {
         password,
       });
 
-      // 2️⃣ Auto-login (this sets token internally)
+      setMsg("Account created. Signing in...");
+
+      // 2️⃣ Delay to avoid 429 rate limit from back-to-back requests
+      await new Promise((r) => setTimeout(r, 1000));
+
+      // 3️⃣ Auto-login (this sets token internally)
       await BotAPI.login({
         email: cleanEmail,
         password,
       });
 
-      setMsg("Account created. Redirecting to billing...");
+      // 4️⃣ Store email for billing page
+      localStorage.setItem("IMALI_EMAIL", cleanEmail);
 
-      setTimeout(() => {
-        nav("/billing", { replace: true });
-      }, 800);
+      setMsg("Signed in. Redirecting to billing...");
+
+      // 5️⃣ Navigate immediately — don't wait for loadUserData
+      nav("/billing", {
+        replace: true,
+        state: {
+          email: cleanEmail,
+          fromSignup: true,
+        },
+      });
 
     } catch (err) {
-      setMsg(
-        err?.response?.data?.message ||
-        err?.message ||
-        "Signup failed"
-      );
+      const status = err?.response?.status;
+
+      if (status === 409) {
+        setMsg("An account with this email already exists. Try logging in.");
+      } else if (status === 429) {
+        setMsg("Too many attempts. Please wait a moment and try again.");
+      } else if (status === 401) {
+        // Account created but auto-login failed
+        setMsg("Account created! Please log in manually.");
+        setTimeout(() => {
+          nav("/login", {
+            replace: true,
+            state: {
+              message: "Account created! Please log in to continue.",
+              email: email.trim().toLowerCase(),
+            },
+          });
+        }, 1500);
+        return;
+      } else {
+        setMsg(
+          err?.response?.data?.message ||
+          err?.message ||
+          "Signup failed. Please try again."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -52,7 +85,7 @@ export default function SignupActivation() {
 
   return (
     <div className="grid md:grid-cols-2 gap-8">
-      
+
       {/* Signup Form */}
       <form onSubmit={signup} className="card space-y-3">
         <h2 className="font-bold text-xl">Create Your Account</h2>
@@ -64,6 +97,7 @@ export default function SignupActivation() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email"
           className="border rounded-xl px-3 py-2 w-full"
+          disabled={loading}
         />
 
         <input
@@ -73,6 +107,7 @@ export default function SignupActivation() {
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
           className="border rounded-xl px-3 py-2 w-full"
+          disabled={loading}
         />
 
         <button
@@ -80,7 +115,7 @@ export default function SignupActivation() {
           type="submit"
           disabled={loading}
         >
-          {loading ? "Creating account…" : "Create account"}
+          {loading ? "Please wait…" : "Create account"}
         </button>
       </form>
 
