@@ -19,18 +19,20 @@ function BillingInner() {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
-  const { refreshActivation, refreshUser } = useAuth(); // Add refreshActivation
+  const { refreshActivation } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [verifying, setVerifying] = useState(false);
+  const [status, setStatus] = useState("idle"); // idle, processing, confirming, success
 
   const handleSubmit = async () => {
     if (!stripe || !elements) return;
 
     setBusy(true);
+    setStatus("processing");
     setError("");
 
     try {
+      // Step 1: Confirm setup with Stripe
       const { error: stripeError } = await stripe.confirmSetup({
         elements,
         confirmParams: {
@@ -43,55 +45,61 @@ function BillingInner() {
         throw stripeError;
       }
 
-      // SUCCESS - Payment method saved
-      setVerifying(true);
+      // Step 2: Payment successful - now confirm with our backend
+      setStatus("confirming");
       
-      // Wait longer for webhook to process (3 seconds)
-      // Stripe needs time to send webhook and backend to update
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      // Try multiple times to get updated activation status
-      let attempts = 0;
-      const maxAttempts = 5;
-      let billingComplete = false;
-
-      while (attempts < maxAttempts && !billingComplete) {
-        attempts++;
-        
-        // Force refresh activation data (this specifically checks billing_complete)
-        const freshActivation = await refreshActivation();
-        
-        // Check if billing is now complete
-        if (freshActivation?.billing_complete) {
-          billingComplete = true;
-          console.log(`✅ Billing confirmed after ${attempts} attempts`);
-          break;
-        }
-        
-        // Wait before next attempt (increasing delay)
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+      // Call our dedicated confirm-card endpoint
+      // This tells the backend to check Stripe and update the database
+      const confirmResult = await BotAPI.confirmCard();
+      
+      if (!confirmResult) {
+        throw new Error("No response from server");
       }
 
-      // Also refresh user data as backup
-      await refreshUser();
+      // Step 3: Refresh activation data to get updated billing_complete
+      setStatus("refreshing");
+      await refreshActivation();
+      
+      // Small delay for state to propagate
+      await new Promise(resolve => setTimeout(resolve, 300));
 
-      if (billingComplete) {
-        // Navigate to activation with fresh data
-        navigate("/activation", { replace: true });
-      } else {
-        // Still go to activation but show a warning
-        navigate("/activation", { 
-          replace: true,
-          state: { billingPending: true }
-        });
-      }
+      // Step 4: Navigate to activation
+      setStatus("success");
+      navigate("/activation", { replace: true });
 
     } catch (err) {
       console.error("Payment setup error:", err);
-      setError(err.message || "Failed to save payment method");
+      
+      // Handle specific errors
+      if (err.message?.includes("card_declined")) {
+        setError("Your card was declined. Please try another card.");
+      } else if (err.message?.includes("insufficient_funds")) {
+        setError("Insufficient funds. Please try another card.");
+      } else if (err.response?.status === 429) {
+        setError("Too many attempts. Please wait a moment and try again.");
+      } else {
+        setError(err.message || "Failed to save payment method");
+      }
+      
+      setStatus("idle");
     } finally {
       setBusy(false);
-      setVerifying(false);
+    }
+  };
+
+  // Helper to get status message
+  const getStatusMessage = () => {
+    switch (status) {
+      case "processing":
+        return "Processing your payment...";
+      case "confirming":
+        return "Confirming with Stripe...";
+      case "refreshing":
+        return "Updating your account...";
+      case "success":
+        return "Success! Redirecting...";
+      default:
+        return "Please wait...";
     }
   };
 
@@ -99,7 +107,7 @@ function BillingInner() {
     <div className="space-y-4">
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 text-red-200 px-4 py-3 rounded-lg text-sm">
-          {error}
+          ⚠️ {error}
         </div>
       )}
 
@@ -110,23 +118,19 @@ function BillingInner() {
         disabled={busy || !stripe || !elements}
         className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {busy ? (verifying ? "Verifying payment..." : "Processing…") : "Save Payment Method"}
+        {busy ? getStatusMessage() : "Save Payment Method"}
       </button>
 
       {busy && (
         <div className="text-center">
+          <div className="flex justify-center mt-2 space-x-1">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }} />
+          </div>
           <p className="text-xs text-gray-400 mt-2">
-            {verifying 
-              ? "Confirming your payment with Stripe... This may take a few seconds." 
-              : "Please wait while we process your payment method..."}
+            {getStatusMessage()}
           </p>
-          {verifying && (
-            <div className="flex justify-center mt-2 space-x-1">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }} />
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -136,7 +140,7 @@ function BillingInner() {
 export default function Billing() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, refreshActivation, refreshUser } = useAuth();
+  const { user } = useAuth();
 
   const email =
     location.state?.email || localStorage.getItem("IMALI_EMAIL") || user?.email;
@@ -145,35 +149,24 @@ export default function Billing() {
   const [clientSecret, setClientSecret] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [initialized, setInitialized] = useState(false);
-
-  // Pre-fetch activation data when component mounts
-  useEffect(() => {
-    if (!initialized && BotAPI.isLoggedIn()) {
-      refreshActivation().catch(console.warn);
-      setInitialized(true);
-    }
-  }, [refreshActivation, initialized]);
 
   useEffect(() => {
     const initializeBilling = async () => {
       try {
-        // Check if we're already logged in via token
+        // Check if we're logged in
         const token = BotAPI.getToken();
         
-        // If no token and no email, go to signup
         if (!token && !email) {
           navigate("/signup", { replace: true });
           return;
         }
 
-        // If we have token but no email, try to get it from user
+        // Get user email if not provided
         let userEmail = email;
         if (!userEmail && token) {
           try {
-            // Use refreshUser to get latest user data
-            const userData = await refreshUser();
-            userEmail = userData?.email;
+            const me = await BotAPI.me();
+            userEmail = me?.user?.email || me?.email;
             if (userEmail) {
               localStorage.setItem("IMALI_EMAIL", userEmail);
             }
@@ -182,13 +175,12 @@ export default function Billing() {
           }
         }
 
-        // If still no email, go to signup
         if (!userEmail) {
           navigate("/signup", { replace: true });
           return;
         }
 
-        // Create setup intent
+        // Create Stripe SetupIntent
         const res = await BotAPI.createSetupIntent({
           email: userEmail,
           tier,
@@ -202,24 +194,12 @@ export default function Billing() {
       } catch (err) {
         console.error("Billing initialization error:", err);
         
-        // Handle specific errors
         if (err.response?.status === 401) {
-          const isOnboarding = window.location.pathname.includes("/billing");
-          if (isOnboarding) {
-            setError("Session expired. Please try signing up again.");
-          } else {
-            navigate("/login", {
-              replace: true,
-              state: { from: "/billing" },
-            });
-          }
-          return;
-        }
-
-        if (err.response?.status === 429) {
-          setError("Too many requests. Please wait a moment and try again.");
+          setError("Session expired. Please log in again.");
+        } else if (err.response?.status === 429) {
+          setError("Too many requests. Please wait a moment.");
         } else if (err.response?.status === 503) {
-          setError("Service temporarily unavailable. Please try again later.");
+          setError("Service temporarily unavailable.");
         } else {
           setError(err.message || "Failed to initialize billing");
         }
@@ -229,7 +209,7 @@ export default function Billing() {
     };
 
     initializeBilling();
-  }, [email, tier, navigate, refreshUser]);
+  }, [email, tier, navigate]);
 
   if (loading) {
     return (
@@ -247,14 +227,14 @@ export default function Billing() {
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white p-6">
         <div className="max-w-md mx-auto text-center">
           <div className="bg-red-500/10 border border-red-500/30 text-red-200 px-4 py-3 rounded-lg mb-4">
-            {error}
+            ⚠️ {error}
           </div>
 
           <button
-            onClick={() => navigate("/signup")}
+            onClick={() => navigate("/activation")}
             className="inline-block bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
           >
-            Back to Signup
+            Back to Activation
           </button>
         </div>
       </div>
