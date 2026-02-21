@@ -755,7 +755,11 @@ const BotAPI = {
       throw error;
     }
   },
-
+   
+   async createBillingPortal() {
+     const res = await api.post("/api/billing/portal");
+     return unwrap(res);
+  }
   /* ========= UTIL ========= */
   errMessage(err, fallback) {
     return getErrMessage(err, fallback);
