@@ -1,12 +1,6 @@
 // src/App.js
 import React from "react";
-import {
-  Routes,
-  Route,
-  Navigate,
-  Link,
-  useLocation,
-} from "react-router-dom";
+import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
 
 /* Layout */
 import Header from "./components/Header";
@@ -24,6 +18,9 @@ import Signup from "./pages/SignupForm";
 import Login from "./pages/Login";
 import Activation from "./pages/Activation";
 import Billing from "./pages/Billing";
+
+/* NEW: Billing Management */
+import BillingDashboard from "./pages/BillingDashboard";
 
 /* Marketing */
 import Home from "./pages/Home";
@@ -55,8 +52,7 @@ function LoadingSpinner() {
 
 /**
  * RequireAuth — user must be logged in.
- * Used for: /activation, /billing, /settings
- * Does NOT check activation status.
+ * Used for: /activation, /billing, /billing-dashboard, /admin (admin checks handled inside AdminPanel)
  */
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -79,7 +75,7 @@ function RequireAuth({ children }) {
 
 /**
  * RequireActivation — user must be logged in AND fully activated.
- * Used for: /dashboard, /admin
+ * Used for: /dashboard
  * Redirects to /billing or /activation depending on what's missing.
  */
 function RequireActivation({ children }) {
@@ -88,7 +84,6 @@ function RequireActivation({ children }) {
 
   if (loading) return <LoadingSpinner />;
 
-  // Not logged in → login
   if (!user) {
     return (
       <Navigate
@@ -99,7 +94,6 @@ function RequireActivation({ children }) {
     );
   }
 
-  // Not activated → figure out where to send them
   if (!activationComplete) {
     console.log("[RequireActivation] Not complete, redirecting:", {
       path: location.pathname,
@@ -110,12 +104,10 @@ function RequireActivation({ children }) {
       trading: !!activation?.trading_enabled,
     });
 
-    // Billing not done → billing page
     if (!activation?.billing_complete) {
       return <Navigate to="/billing" replace />;
     }
 
-    // Everything else → activation page
     return <Navigate to="/activation" replace />;
   }
 
@@ -123,27 +115,17 @@ function RequireActivation({ children }) {
 }
 
 /**
- * RedirectIfActivated — if user is already fully activated
- * and lands on /activation, push them to /dashboard.
- * Prevents getting "stuck" on the activation page.
+ * RedirectIfActivated — if user is already fully activated and lands on /activation, push to /dashboard.
  */
 function RedirectIfActivated({ children }) {
   const { user, activationComplete, loading } = useAuth();
-  const location = useLocation();
 
   if (loading) return <LoadingSpinner />;
 
   if (!user) {
-    return (
-      <Navigate
-        to="/login"
-        replace
-        state={{ from: location.pathname + location.search }}
-      />
-    );
+    return <Navigate to="/login" replace state={{ from: "/activation" }} />;
   }
 
-  // Already done? Go to dashboard
   if (activationComplete) {
     console.log("[RedirectIfActivated] Already activated, → /dashboard");
     return <Navigate to="/dashboard" replace />;
@@ -197,13 +179,13 @@ function AppContent() {
           <Route path="/demo" element={<TradeDemo />} />
           <Route path="/signup" element={<Signup />} />
 
-          {/* ===== Login (redirect if already logged in) ===== */}
+          {/* ===== Login ===== */}
           <Route
             path="/login"
             element={user ? <Navigate to="/dashboard" replace /> : <Login />}
           />
 
-          {/* ===== Onboarding (auth required, activation NOT required) ===== */}
+          {/* ===== Onboarding (auth required; activation NOT required) ===== */}
           <Route
             path="/billing"
             element={
@@ -221,6 +203,21 @@ function AppContent() {
             }
           />
 
+          {/* ===== Billing Management (auth required; activation NOT required) ===== */}
+          <Route
+            path="/billing-dashboard"
+            element={
+              <RequireAuth>
+                <BillingDashboard />
+              </RequireAuth>
+            }
+          />
+          {/* nice alias */}
+          <Route
+            path="/settings/billing"
+            element={<Navigate to="/billing-dashboard" replace />}
+          />
+
           {/* ===== Protected (auth + activation required) ===== */}
           <Route
             path="/dashboard"
@@ -230,19 +227,16 @@ function AppContent() {
               </RequireActivation>
             }
           />
+          <Route path="/members" element={<Navigate to="/dashboard" replace />} />
+
+          {/* ===== Admin (auth required only; AdminPanel enforces admin/owner) ===== */}
           <Route
             path="/admin"
             element={
-              <RequireActivation>
-                <AdminPanel forceOwner />
-              </RequireActivation>
+              <RequireAuth>
+                <AdminPanel />
+              </RequireAuth>
             }
-          />
-
-          {/* ===== Aliases ===== */}
-          <Route
-            path="/members"
-            element={<Navigate to="/dashboard" replace />}
           />
 
           {/* ===== 404 ===== */}
