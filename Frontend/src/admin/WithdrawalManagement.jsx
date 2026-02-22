@@ -1,21 +1,13 @@
 // src/admin/WithdrawalManagement.jsx
 import React, { useState, useEffect } from 'react';
-import {
-  DollarSign,
-  CheckCircle,
-  XCircle,
-  Clock,
-  RefreshCw,
-  Search,
-  Filter,
-  Eye,
-  Download,
-  AlertTriangle,
-  User,
-  Calendar,
-  Copy,
-  ExternalLink
-} from 'lucide-react';
+import { 
+  FaUsers, 
+  FaSearch, 
+  FaFilter, 
+  FaEdit, 
+  FaTrash 
+} from 'react-icons/fa';
+
 import api from '../services/api';
 
 const WithdrawalManagement = () => {
