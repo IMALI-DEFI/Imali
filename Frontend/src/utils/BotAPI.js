@@ -1,7 +1,8 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const TOKEN_KEY = "imali_token";
 
 /* =========================
@@ -62,6 +63,7 @@ api.interceptors.request.use(
   (config) => {
     const token = getStoredToken();
     if (token && typeof token === "string") {
+      config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -79,10 +81,14 @@ const AUTH_WHITELIST = [
   "/login",
   "/signup",
   "/billing",
+  "/billing-dashboard",
+  "/settings/billing",
   "/activation",
   "/terms",
   "/privacy",
-  "/trade-demo",
+  "/demo",
+  "/funding-guide",
+  "/", // allow home without bouncing
 ];
 
 const getPath = () => {
@@ -100,7 +106,7 @@ api.interceptors.response.use(
     const url = error?.config?.url || "";
     const path = getPath();
 
-    // 429 — pass through for retry logic, never redirect
+    // 429 — pass through (AuthContext retry handles it), never redirect
     if (status === 429) {
       console.warn(`[API] Rate limited on ${url}`);
       return Promise.reject(error);
@@ -118,18 +124,17 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // 401 — actual auth failure
-    const isAuthEndpoint =
-      url.includes("/api/auth/login") ||
-      url.includes("/api/signup") ||
-      url.includes("/api/me") ||
-      url.includes("/api/me/activation-status");
+    // 401 handling:
+    // Only ignore 401 for the actual login/signup endpoints.
+    const isLoginOrSignup =
+      url.includes("/api/auth/login") || url.includes("/api/signup");
 
-    if (status === 401 && !isAuthEndpoint) {
+    if (status === 401 && !isLoginOrSignup) {
+      // Clear token so AuthContext doesn't think we're still logged in
       clearStoredToken();
 
       const isWhitelisted = AUTH_WHITELIST.some((p) =>
-        path.startsWith(p)
+        p === "/" ? path === "/" : path.startsWith(p)
       );
 
       if (!isWhitelisted && !redirecting) {
@@ -191,11 +196,11 @@ const BotAPI = {
       clearStoredToken();
       const res = await api.post("/api/auth/login", payload);
       const data = unwrap(res);
-      
+
       if (!data?.token) {
         throw new Error("Login failed: no token returned");
       }
-      
+
       setStoredToken(data.token);
       return data;
     } catch (error) {
@@ -245,10 +250,6 @@ const BotAPI = {
     }
   },
 
-  /**
-   * Confirm card after successful Stripe setup
-   * This tells the backend to verify with Stripe and update billing_complete
-   */
   async confirmCard() {
     try {
       const res = await api.post("/api/billing/confirm-card");
@@ -295,6 +296,16 @@ const BotAPI = {
       return unwrap(res);
     } catch (error) {
       console.error("[API] getFeeHistory error:", error);
+      throw error;
+    }
+  },
+
+  async createBillingPortal() {
+    try {
+      const res = await api.post("/api/billing/portal");
+      return unwrap(res);
+    } catch (error) {
+      console.error("[API] createBillingPortal error:", error);
       throw error;
     }
   },
@@ -510,7 +521,9 @@ const BotAPI = {
 
   async getWaitlistPosition(email) {
     try {
-      const res = await api.get(`/api/waitlist/position?email=${encodeURIComponent(email)}`);
+      const res = await api.get(
+        `/api/waitlist/position?email=${encodeURIComponent(email)}`
+      );
       return unwrap(res);
     } catch (error) {
       console.error("[API] getWaitlistPosition error:", error);
@@ -572,7 +585,10 @@ const BotAPI = {
 
   async addTicketMessage(ticketId, payload) {
     try {
-      const res = await api.post(`/api/support/tickets/${ticketId}/messages`, payload);
+      const res = await api.post(
+        `/api/support/tickets/${ticketId}/messages`,
+        payload
+      );
       return unwrap(res);
     } catch (error) {
       console.error("[API] addTicketMessage error:", error);
@@ -657,7 +673,9 @@ const BotAPI = {
 
   async adminToggleTrading(userId, enabled) {
     try {
-      const res = await api.post(`/api/admin/users/${userId}/trading`, { enabled });
+      const res = await api.post(`/api/admin/users/${userId}/trading`, {
+        enabled,
+      });
       return unwrap(res);
     } catch (error) {
       console.error("[API] adminToggleTrading error:", error);
@@ -727,7 +745,10 @@ const BotAPI = {
 
   async adminProcessReferralPayouts(payload) {
     try {
-      const res = await api.post("/api/admin/referrals/process-payouts", payload);
+      const res = await api.post(
+        "/api/admin/referrals/process-payouts",
+        payload
+      );
       return unwrap(res);
     } catch (error) {
       console.error("[API] adminProcessReferralPayouts error:", error);
@@ -755,11 +776,7 @@ const BotAPI = {
       throw error;
     }
   },
-   
-   async createBillingPortal() {
-     const res = await api.post("/api/billing/portal");
-     return unwrap(res);
-  }
+
   /* ========= UTIL ========= */
   errMessage(err, fallback) {
     return getErrMessage(err, fallback);
