@@ -1,21 +1,13 @@
 // src/admin/AuditLogs.jsx
 import React, { useState, useEffect } from 'react';
-import {
-  History,
-  Search,
-  Filter,
-  Calendar,
-  User,
-  Shield,
-  Download,
-  RefreshCw,
-  Eye,
-  ChevronLeft,
-  ChevronRight,
-  AlertCircle,
-  CheckCircle,
-  XCircle
-} from 'lucide-react';
+import { 
+  FaUsers, 
+  FaSearch, 
+  FaFilter, 
+  FaEdit, 
+  FaTrash 
+} from 'react-icons/fa';
+
 import api from '../services/api';
 
 const AuditLogs = () => {
