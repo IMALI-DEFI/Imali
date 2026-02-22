@@ -1,23 +1,13 @@
 // src/admin/UserManagement.jsx
 import React, { useState, useEffect } from 'react';
-import {
-  Users,
-  Search,
-  Filter,
-  Edit,
-  Trash2,
-  Eye,
-  Shield,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
-  UserPlus,
-  Download,
-  Mail,
-  Phone,
-  Wallet
-} from 'lucide-react';
+import { 
+  FaUsers, 
+  FaSearch, 
+  FaFilter, 
+  FaEdit, 
+  FaTrash 
+} from 'react-icons/fa';
+
 import api from '../services/api';
 
 const UserManagement = () => {
