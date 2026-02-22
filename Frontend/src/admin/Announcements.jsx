@@ -1,19 +1,13 @@
 // src/admin/Announcements.jsx
 import React, { useState, useEffect } from 'react';
-import {
-  Megaphone,
-  Plus,
-  Edit,
-  Trash2,
-  Eye,
-  Calendar,
-  Users,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
-  Send
-} from 'lucide-react';
+import { 
+  FaUsers, 
+  FaSearch, 
+  FaFilter, 
+  FaEdit, 
+  FaTrash 
+} from 'react-icons/fa';
+
 import api from '../services/api';
 
 const Announcements = () => {
