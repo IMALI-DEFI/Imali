@@ -1,19 +1,13 @@
 // src/admin/PromoManagement.jsx
 import React, { useState, useEffect } from 'react';
-import {
-  Gift,
-  Plus,
-  Edit,
-  Trash2,
-  Copy,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
-  Calendar,
-  Percent,
-  Users,
-  Clock
-} from 'lucide-react';
+import { 
+  FaUsers, 
+  FaSearch, 
+  FaFilter, 
+  FaEdit, 
+  FaTrash 
+} from 'react-icons/fa';
+
 import api from '../services/api';
 
 const PromoManagement = () => {
