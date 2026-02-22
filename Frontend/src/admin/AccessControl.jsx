@@ -1,17 +1,13 @@
 // src/admin/AccessControl.jsx
 import React, { useState, useEffect } from 'react';
 import { 
-  Shield, 
-  Users, 
-  Key, 
-  Globe, 
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Save,
-  RefreshCw
-} from 'lucide-react';
+  FaUsers, 
+  FaSearch, 
+  FaFilter, 
+  FaEdit, 
+  FaTrash 
+} from 'react-icons/fa';
+
 import api from '../services/api';
 
 const AccessControl = () => {
