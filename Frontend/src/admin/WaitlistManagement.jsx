@@ -1,19 +1,13 @@
 // src/admin/WaitlistManagement.jsx
 import React, { useState, useEffect } from 'react';
-import {
-  Users,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Mail,
-  Calendar,
-  RefreshCw,
-  Search,
-  Filter,
-  Send,
-  UserPlus,
-  Download
-} from 'lucide-react';
+import { 
+  FaUsers, 
+  FaSearch, 
+  FaFilter, 
+  FaEdit, 
+  FaTrash 
+} from 'react-icons/fa';
+
 import api from '../services/api';
 
 const WaitlistManagement = () => {
