@@ -1,21 +1,13 @@
 // src/admin/SupportTickets.jsx
 import React, { useState, useEffect } from 'react';
-import {
-  MessageSquare,
-  Search,
-  Filter,
-  Eye,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  RefreshCw,
-  Send,
-  Paperclip,
-  User,
-  Shield,
-  Tag,
-  Calendar
-} from 'lucide-react';
+import { 
+  FaUsers, 
+  FaSearch, 
+  FaFilter, 
+  FaEdit, 
+  FaTrash 
+} from 'react-icons/fa';
+
 import api from '../services/api';
 
 const SupportTickets = () => {
