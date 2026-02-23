@@ -1,12 +1,21 @@
 // src/admin/WithdrawalManagement.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
+import {
+  FiDollarSign,
+  FiCheckCircle,
+  FiXCircle,
+  FiClock,
+  FiRefreshCw,
+  FiSearch,
+  FiFilter,
+  FiEye,
+  FiDownload,
+  FiAlertTriangle,
+  FiUser,
+  FiCalendar,
+  FiCopy,
+  FiExternalLink
+} from 'react-icons/fi';
 
 import api from '../services/api';
 
