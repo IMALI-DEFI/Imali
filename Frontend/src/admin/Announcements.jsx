@@ -1,12 +1,19 @@
 // src/admin/Announcements.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
+import {
+  FiMegaphone,
+  FiPlus,
+  FiEdit2,
+  FiTrash2,
+  FiEye,
+  FiCalendar,
+  FiUsers,
+  FiAlertCircle,
+  FiCheckCircle,
+  FiXCircle,
+  FiRefreshCw,
+  FiSend
+} from 'react-icons/fi';
 
 import api from '../services/api';
 
