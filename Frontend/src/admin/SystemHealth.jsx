@@ -1,31 +1,51 @@
 // src/admin/SystemHealth.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
-
-import api from '../services/api';
 import {
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
+  Activity,
+  Server,
+  Database,
+  Shield,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  RefreshCw,
+  BarChart3,
+  Users,
+  DollarSign,
+  TrendingUp,
+  Cpu,
+  HardDrive,
+  Wifi,
+  Mail
+} from 'lucide-react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
-} from 'recharts';
+  Filler,
+  ArcElement
+} from 'chart.js';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
+import api from '../services/api';
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  ArcElement
+);
 
 const SystemHealth = () => {
   const [health, setHealth] = useState(null);
@@ -90,30 +110,113 @@ const SystemHealth = () => {
       case 'disabled':
         return <XCircle className="w-5 h-5 text-red-600" />;
       default:
-        return <AlertCircle className="w-5 h-5 text-gray-600" />;
+        return <AlertTriangle className="w-5 h-5 text-gray-600" />;
     }
   };
 
   // Sample data for charts - replace with real data from your API
-  const systemLoadData = [
-    { time: '00:00', cpu: 45, memory: 60, requests: 120 },
-    { time: '04:00', cpu: 42, memory: 58, requests: 98 },
-    { time: '08:00', cpu: 65, memory: 72, requests: 245 },
-    { time: '12:00', cpu: 78, memory: 85, requests: 389 },
-    { time: '16:00', cpu: 82, memory: 88, requests: 412 },
-    { time: '20:00', cpu: 58, memory: 70, requests: 267 },
-    { time: 'Now', cpu: 52, memory: 65, requests: 156 }
-  ];
+  const systemLoadData = {
+    labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', 'Now'],
+    datasets: [
+      {
+        label: 'CPU %',
+        data: [45, 42, 65, 78, 82, 58, 52],
+        borderColor: 'rgb(99, 102, 241)',
+        backgroundColor: 'rgba(99, 102, 241, 0.5)',
+        tension: 0.4,
+      },
+      {
+        label: 'Memory %',
+        data: [60, 58, 72, 85, 88, 70, 65],
+        borderColor: 'rgb(34, 197, 94)',
+        backgroundColor: 'rgba(34, 197, 94, 0.5)',
+        tension: 0.4,
+      },
+      {
+        label: 'Requests',
+        data: [120, 98, 245, 389, 412, 267, 156],
+        borderColor: 'rgb(249, 115, 22)',
+        backgroundColor: 'rgba(249, 115, 22, 0.5)',
+        tension: 0.4,
+        yAxisID: 'y1',
+      },
+    ],
+  };
 
-  const errorRateData = [
-    { time: '00:00', errors: 2 },
-    { time: '04:00', errors: 1 },
-    { time: '08:00', errors: 5 },
-    { time: '12:00', errors: 8 },
-    { time: '16:00', errors: 7 },
-    { time: '20:00', errors: 3 },
-    { time: 'Now', errors: 2 }
-  ];
+  const errorRateData = {
+    labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', 'Now'],
+    datasets: [
+      {
+        label: 'Errors',
+        data: [2, 1, 5, 8, 7, 3, 2],
+        borderColor: 'rgb(239, 68, 68)',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        fill: true,
+        tension: 0.4,
+      },
+    ],
+  };
+
+  const serviceDistributionData = {
+    labels: ['Healthy', 'Degraded', 'Down'],
+    datasets: [
+      {
+        data: [7, 1, 0],
+        backgroundColor: [
+          'rgba(34, 197, 94, 0.8)',
+          'rgba(234, 179, 8, 0.8)',
+          'rgba(239, 68, 68, 0.8)',
+        ],
+        borderColor: [
+          'rgb(34, 197, 94)',
+          'rgb(234, 179, 8)',
+          'rgb(239, 68, 68)',
+        ],
+        borderWidth: 1,
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+      },
+    },
+  };
+
+  const multiAxisOptions = {
+    ...chartOptions,
+    scales: {
+      y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        title: {
+          display: true,
+          text: 'Percentage (%)',
+        },
+      },
+      y1: {
+        type: 'linear',
+        display: true,
+        position: 'right',
+        title: {
+          display: true,
+          text: 'Request Count',
+        },
+        grid: {
+          drawOnChartArea: false,
+        },
+      },
+    },
+  };
 
   if (loading) {
     return (
@@ -249,150 +352,153 @@ const SystemHealth = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">System Load</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={systemLoadData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="cpu" stroke="#8884d8" name="CPU %" />
-              <Line type="monotone" dataKey="memory" stroke="#82ca9d" name="Memory %" />
-              <Line type="monotone" dataKey="requests" stroke="#ffc658" name="Requests" />
-            </LineChart>
-          </ResponsiveContainer>
+          <div className="h-80">
+            <Line data={systemLoadData} options={multiAxisOptions} />
+          </div>
         </div>
         
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Error Rate</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={errorRateData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis />
-              <Tooltip />
-              <Area type="monotone" dataKey="errors" stroke="#ff4d4f" fill="#ffccc7" name="Errors" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <div className="h-80">
+            <Line data={errorRateData} options={chartOptions} />
+          </div>
         </div>
       </div>
 
-      {/* Service Status */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b">
-          <h2 className="text-lg font-semibold">Service Status</h2>
+      {/* Service Status and Distribution */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden">
+          <div className="px-6 py-4 border-b">
+            <h2 className="text-lg font-semibold">Service Status</h2>
+          </div>
+          <div className="divide-y">
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Server className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="font-medium">API Server</div>
+                  <div className="text-sm text-gray-500">Python Flask</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-sm">99.9% uptime</span>
+                {getStatusIcon(health?.services?.api)}
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Database className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="font-medium">Firestore Database</div>
+                  <div className="text-sm text-gray-500">Google Cloud</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-sm">Connected</span>
+                {getStatusIcon(health?.services?.firestore)}
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <DollarSign className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="font-medium">Stripe Payments</div>
+                  <div className="text-sm text-gray-500">Payment Processing</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-sm">Configured</span>
+                {getStatusIcon(health?.services?.stripe)}
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Cpu className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="font-medium">Bot Service</div>
+                  <div className="text-sm text-gray-500">Trading Bots</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-sm">Operational</span>
+                {getStatusIcon(health?.services?.bot_service)}
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Shield className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="font-medium">Encryption Service</div>
+                  <div className="text-sm text-gray-500">AES-256</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-sm">Enabled</span>
+                {getStatusIcon(health?.services?.encryption)}
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <HardDrive className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="font-medium">Redis Cache</div>
+                  <div className="text-sm text-gray-500">Session Storage</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-sm">Connected</span>
+                {getStatusIcon(health?.services?.redis)}
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Mail className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="font-medium">Email Service</div>
+                  <div className="text-sm text-gray-500">SendGrid</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-sm">Configured</span>
+                {getStatusIcon(health?.services?.notifications?.email)}
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Wifi className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="font-medium">SMS Service</div>
+                  <div className="text-sm text-gray-500">Twilio</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-sm">Configured</span>
+                {getStatusIcon(health?.services?.notifications?.sms)}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="divide-y">
-          <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Server className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="font-medium">API Server</div>
-                <div className="text-sm text-gray-500">Python Flask</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm">99.9% uptime</span>
-              {getStatusIcon(health?.services?.api)}
-            </div>
-          </div>
-          
-          <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Database className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="font-medium">Firestore Database</div>
-                <div className="text-sm text-gray-500">Google Cloud</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm">Connected</span>
-              {getStatusIcon(health?.services?.firestore)}
-            </div>
-          </div>
-          
-          <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <DollarSign className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="font-medium">Stripe Payments</div>
-                <div className="text-sm text-gray-500">Payment Processing</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm">Configured</span>
-              {getStatusIcon(health?.services?.stripe)}
-            </div>
-          </div>
-          
-          <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Cpu className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="font-medium">Bot Service</div>
-                <div className="text-sm text-gray-500">Trading Bots</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm">Operational</span>
-              {getStatusIcon(health?.services?.bot_service)}
-            </div>
-          </div>
-          
-          <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Shield className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="font-medium">Encryption Service</div>
-                <div className="text-sm text-gray-500">AES-256</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm">Enabled</span>
-              {getStatusIcon(health?.services?.encryption)}
-            </div>
-          </div>
-          
-          <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <HardDrive className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="font-medium">Redis Cache</div>
-                <div className="text-sm text-gray-500">Session Storage</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm">Connected</span>
-              {getStatusIcon(health?.services?.redis)}
-            </div>
-          </div>
-          
-          <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Mail className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="font-medium">Email Service</div>
-                <div className="text-sm text-gray-500">SendGrid</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm">Configured</span>
-              {getStatusIcon(health?.services?.notifications?.email)}
-            </div>
-          </div>
-          
-          <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Wifi className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="font-medium">SMS Service</div>
-                <div className="text-sm text-gray-500">Twilio</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm">Configured</span>
-              {getStatusIcon(health?.services?.notifications?.sms)}
-            </div>
+
+        {/* Service Distribution Doughnut Chart */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Service Distribution</h2>
+          <div className="h-64">
+            <Doughnut data={serviceDistributionData} options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                },
+              },
+            }} />
           </div>
         </div>
       </div>
