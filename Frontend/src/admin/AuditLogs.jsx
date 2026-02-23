@@ -1,12 +1,21 @@
 // src/admin/AuditLogs.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
+import {
+  FiHistory,
+  FiSearch,
+  FiFilter,
+  FiCalendar,
+  FiUser,
+  FiShield,
+  FiDownload,
+  FiRefreshCw,
+  FiEye,
+  FiChevronLeft,
+  FiChevronRight,
+  FiAlertCircle,
+  FiCheckCircle,
+  FiXCircle
+} from 'react-icons/fi';
 
 import api from '../services/api';
 
