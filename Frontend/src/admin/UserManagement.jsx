@@ -1,12 +1,23 @@
 // src/admin/UserManagement.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
+import {
+  FiUsers,
+  FiSearch,
+  FiFilter,
+  FiEdit2,
+  FiTrash2,
+  FiEye,
+  FiShield,
+  FiAlertCircle,
+  FiCheckCircle,
+  FiXCircle,
+  FiRefreshCw,
+  FiUserPlus,
+  FiDownload,
+  FiMail,
+  FiPhone,
+  FiKey
+} from 'react-icons/fi';
 
 import api from '../services/api';
 
