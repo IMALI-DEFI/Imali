@@ -1,12 +1,21 @@
 // src/admin/SupportTickets.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
+import {
+  FiMessageSquare,
+  FiSearch,
+  FiFilter,
+  FiEye,
+  FiCheckCircle,
+  FiClock,
+  FiAlertCircle,
+  FiRefreshCw,
+  FiSend,
+  FiPaperclip,
+  FiUser,
+  FiShield,
+  FiTag,
+  FiCalendar
+} from 'react-icons/fi';
 
 import api from '../services/api';
 
