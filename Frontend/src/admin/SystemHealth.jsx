@@ -1,12 +1,24 @@
 // src/admin/SystemHealth.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
+import {
+  FiActivity,
+  FiServer,
+  FiDatabase,
+  FiShield,
+  FiClock,
+  FiCheckCircle,
+  FiXCircle,
+  FiAlertTriangle,
+  FiRefreshCw,
+  FiBarChart2,
+  FiUsers,
+  FiDollarSign,
+  FiTrendingUp,
+  FiCpu,
+  FiHardDrive,
+  FiWifi,
+  FiMail
+} from 'react-icons/fi';
 import {
   Chart as ChartJS,
   CategoryScale,
