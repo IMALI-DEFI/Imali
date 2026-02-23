@@ -1,12 +1,19 @@
 // src/admin/PromoManagement.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
+import {
+  FiGift,
+  FiPlus,
+  FiEdit2,
+  FiTrash2,
+  FiCopy,
+  FiCheckCircle,
+  FiXCircle,
+  FiRefreshCw,
+  FiCalendar,
+  FiPercent,
+  FiUsers,
+  FiClock
+} from 'react-icons/fi';
 
 import api from '../services/api';
 
