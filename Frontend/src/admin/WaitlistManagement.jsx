@@ -1,12 +1,19 @@
 // src/admin/WaitlistManagement.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
+import {
+  FiUsers,
+  FiClock,
+  FiCheckCircle,
+  FiXCircle,
+  FiMail,
+  FiCalendar,
+  FiRefreshCw,
+  FiSearch,
+  FiFilter,
+  FiSend,
+  FiUserPlus,
+  FiDownload
+} from 'react-icons/fi';
 
 import api from '../services/api';
 
