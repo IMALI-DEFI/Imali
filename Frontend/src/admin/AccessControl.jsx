@@ -1,12 +1,19 @@
 // src/admin/AccessControl.jsx
 import React, { useState, useEffect } from 'react';
 import { 
-  FaUsers, 
-  FaSearch, 
-  FaFilter, 
-  FaEdit, 
-  FaTrash 
-} from 'react-icons/fa';
+  FiShield, 
+  FiUsers, 
+  FiKey, 
+  FiGlobe, 
+  FiClock,
+  FiCheckCircle,
+  FiXCircle,
+  FiAlertTriangle,
+  FiSave,
+  FiRefreshCw,
+  FiPlus,
+  FiTrash2
+} from 'react-icons/fi';
 
 import api from '../services/api';
 
