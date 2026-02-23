@@ -1,24 +1,12 @@
 // src/admin/SystemHealth.jsx
 import React, { useState, useEffect } from 'react';
-import {
-  Activity,
-  Server,
-  Database,
-  Shield,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  RefreshCw,
-  BarChart3,
-  Users,
-  DollarSign,
-  TrendingUp,
-  Cpu,
-  HardDrive,
-  Wifi,
-  Mail
-} from 'lucide-react';
+import { 
+  FaUsers, 
+  FaSearch, 
+  FaFilter, 
+  FaEdit, 
+  FaTrash 
+} from 'react-icons/fa';
 import {
   Chart as ChartJS,
   CategoryScale,
