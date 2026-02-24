@@ -56,6 +56,94 @@ const clearStoredToken = () => {
 };
 
 /* =========================
+   REQUEST DEDUPLICATION
+   Prevents the same GET endpoint from being called
+   multiple times simultaneously
+========================= */
+
+const inflightRequests = new Map();
+
+const deduplicatedGet = async (url) => {
+  // If there's already a request in-flight for this URL, return it
+  if (inflightRequests.has(url)) {
+    console.log(`[API] Dedup: reusing in-flight request for ${url}`);
+    return inflightRequests.get(url);
+  }
+
+  const promise = api
+    .get(url)
+    .then((res) => {
+      inflightRequests.delete(url);
+      return res;
+    })
+    .catch((err) => {
+      inflightRequests.delete(url);
+      throw err;
+    });
+
+  inflightRequests.set(url, promise);
+  return promise;
+};
+
+/* =========================
+   REQUEST THROTTLE
+   Ensures minimum gap between requests to same endpoint
+========================= */
+
+const lastRequestTime = new Map();
+const MIN_REQUEST_GAP_MS = 2000; // 2 seconds between same endpoint calls
+
+const throttledGet = async (url) => {
+  const now = Date.now();
+  const lastTime = lastRequestTime.get(url) || 0;
+  const elapsed = now - lastTime;
+
+  if (elapsed < MIN_REQUEST_GAP_MS) {
+    const waitTime = MIN_REQUEST_GAP_MS - elapsed;
+    console.log(`[API] Throttle: waiting ${waitTime}ms before ${url}`);
+    await new Promise((r) => setTimeout(r, waitTime));
+  }
+
+  lastRequestTime.set(url, Date.now());
+  return deduplicatedGet(url);
+};
+
+/* =========================
+   RESPONSE CACHE
+   Short-lived cache for frequently requested data
+========================= */
+
+const responseCache = new Map();
+const CACHE_TTL_MS = 5000; // 5-second cache
+
+const cachedGet = async (url, ttl = CACHE_TTL_MS) => {
+  const cached = responseCache.get(url);
+  if (cached && Date.now() - cached.time < ttl) {
+    console.log(`[API] Cache hit: ${url} (age: ${Date.now() - cached.time}ms)`);
+    return cached.response;
+  }
+
+  const response = await throttledGet(url);
+
+  responseCache.set(url, {
+    response,
+    time: Date.now(),
+  });
+
+  return response;
+};
+
+// Clear stale cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [url, entry] of responseCache) {
+    if (now - entry.time > CACHE_TTL_MS * 2) {
+      responseCache.delete(url);
+    }
+  }
+}, 10000);
+
+/* =========================
    REQUEST INTERCEPTOR
 ========================= */
 
@@ -66,6 +154,11 @@ api.interceptors.request.use(
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[API] → ${config.method?.toUpperCase()} ${config.url}`);
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -88,7 +181,7 @@ const AUTH_WHITELIST = [
   "/privacy",
   "/demo",
   "/funding-guide",
-  "/", // allow home without bouncing
+  "/",
 ];
 
 const getPath = () => {
@@ -105,32 +198,45 @@ api.interceptors.response.use(
     const status = error?.response?.status;
     const url = error?.config?.url || "";
     const path = getPath();
+    const responseMessage = error?.response?.data?.message || "";
 
-    // 429 — pass through (AuthContext retry handles it), never redirect
+    // 429 — rate limited: log clearly, never redirect, never clear token
     if (status === 429) {
-      console.warn(`[API] Rate limited on ${url}`);
+      console.warn(
+        `[API] 429 Rate Limited on ${url}`,
+        "— Too many requests. The app will retry automatically."
+      );
       return Promise.reject(error);
     }
 
-    // 5xx — server errors, never redirect or clear token
+    // 5xx — server errors
     if (status >= 500) {
-      console.warn(`[API] Server error ${status} on ${url}`);
+      console.warn(`[API] ${status} Server Error on ${url}`);
       return Promise.reject(error);
     }
 
-    // Network errors — never redirect or clear token
+    // Network errors
     if (error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") {
       console.warn(`[API] Network error on ${url}`);
       return Promise.reject(error);
     }
 
-    // 401 handling:
-    // Only ignore 401 for the actual login/signup endpoints.
+    // 403 — Forbidden: user IS authenticated but lacks permission
+    // DO NOT clear token — this is NOT a session expiry
+    if (status === 403) {
+      console.error(
+        `[API] 403 Forbidden on ${url}: "${responseMessage}"`,
+        "\n→ User is authenticated but endpoint requires higher permissions.",
+        "\n→ If this is /api/me/* endpoint, the backend route has adminMiddleware by mistake."
+      );
+      return Promise.reject(error);
+    }
+
+    // 401 — Unauthorized: session expired or bad token
     const isLoginOrSignup =
       url.includes("/api/auth/login") || url.includes("/api/signup");
 
     if (status === 401 && !isLoginOrSignup) {
-      // Clear token so AuthContext doesn't think we're still logged in
       clearStoredToken();
 
       const isWhitelisted = AUTH_WHITELIST.some((p) =>
@@ -180,6 +286,13 @@ const BotAPI = {
   clearToken: clearStoredToken,
   isLoggedIn: () => !!getStoredToken(),
 
+  // Utility: clear all caches (useful after mutations)
+  clearCache() {
+    responseCache.clear();
+    inflightRequests.clear();
+    lastRequestTime.clear();
+  },
+
   /* ========= AUTH ========= */
   async signup(payload) {
     try {
@@ -194,6 +307,7 @@ const BotAPI = {
   async login(payload) {
     try {
       clearStoredToken();
+      this.clearCache(); // Fresh start after login
       const res = await api.post("/api/auth/login", payload);
       const data = unwrap(res);
 
@@ -211,7 +325,7 @@ const BotAPI = {
 
   async me() {
     try {
-      const res = await api.get("/api/me");
+      const res = await cachedGet("/api/me");
       return unwrap(res);
     } catch (error) {
       console.error("[API] me error:", error);
@@ -221,9 +335,32 @@ const BotAPI = {
 
   async activationStatus() {
     try {
-      const res = await api.get("/api/me/activation-status");
+      const res = await cachedGet("/api/me/activation-status");
       return unwrap(res);
     } catch (error) {
+      // If 403, try fallback endpoints
+      if (error?.response?.status === 403) {
+        console.warn(
+          "[API] 403 on /api/me/activation-status — trying fallback endpoints"
+        );
+
+        // Try /api/activation-status
+        try {
+          const fallback1 = await throttledGet("/api/activation-status");
+          return unwrap(fallback1);
+        } catch (e1) {
+          console.warn("[API] Fallback /api/activation-status failed:", e1?.response?.status);
+        }
+
+        // Try /api/user/activation-status
+        try {
+          const fallback2 = await throttledGet("/api/user/activation-status");
+          return unwrap(fallback2);
+        } catch (e2) {
+          console.warn("[API] Fallback /api/user/activation-status failed:", e2?.response?.status);
+        }
+      }
+
       console.error("[API] activationStatus error:", error);
       throw error;
     }
@@ -242,7 +379,7 @@ const BotAPI = {
 
   async getCardStatus() {
     try {
-      const res = await api.get("/api/billing/card-status");
+      const res = await cachedGet("/api/billing/card-status");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getCardStatus error:", error);
@@ -252,6 +389,7 @@ const BotAPI = {
 
   async confirmCard() {
     try {
+      this.clearCache(); // Mutation — clear cache
       const res = await api.post("/api/billing/confirm-card");
       return unwrap(res);
     } catch (error) {
@@ -262,6 +400,7 @@ const BotAPI = {
 
   async setDefaultPaymentMethod(payload) {
     try {
+      this.clearCache();
       const res = await api.post("/api/billing/set-default-payment", payload);
       return unwrap(res);
     } catch (error) {
@@ -292,7 +431,7 @@ const BotAPI = {
 
   async getFeeHistory() {
     try {
-      const res = await api.get("/api/billing/fee-history");
+      const res = await cachedGet("/api/billing/fee-history");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getFeeHistory error:", error);
@@ -313,6 +452,7 @@ const BotAPI = {
   /* ========= INTEGRATIONS ========= */
   async connectOKX(payload) {
     try {
+      this.clearCache();
       const res = await api.post("/api/integrations/okx", payload);
       return unwrap(res);
     } catch (error) {
@@ -323,6 +463,7 @@ const BotAPI = {
 
   async connectAlpaca(payload) {
     try {
+      this.clearCache();
       const res = await api.post("/api/integrations/alpaca", payload);
       return unwrap(res);
     } catch (error) {
@@ -333,6 +474,7 @@ const BotAPI = {
 
   async connectWallet(payload) {
     try {
+      this.clearCache();
       const res = await api.post("/api/integrations/wallet", payload);
       return unwrap(res);
     } catch (error) {
@@ -343,7 +485,7 @@ const BotAPI = {
 
   async getIntegrationStatus() {
     try {
-      const res = await api.get("/api/integrations/status");
+      const res = await cachedGet("/api/integrations/status");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getIntegrationStatus error:", error);
@@ -354,6 +496,7 @@ const BotAPI = {
   /* ========= TRADING ========= */
   async toggleTrading(enabled) {
     try {
+      this.clearCache();
       const res = await api.post("/api/trading/enable", { enabled });
       return unwrap(res);
     } catch (error) {
@@ -364,7 +507,7 @@ const BotAPI = {
 
   async getTradingStatus() {
     try {
-      const res = await api.get("/api/trading/status");
+      const res = await cachedGet("/api/trading/status");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getTradingStatus error:", error);
@@ -375,6 +518,7 @@ const BotAPI = {
   /* ========= BOT ========= */
   async startBot(payload = { mode: "paper" }) {
     try {
+      this.clearCache();
       const res = await api.post("/api/bot/start", payload);
       return unwrap(res);
     } catch (error) {
@@ -386,7 +530,8 @@ const BotAPI = {
   /* ========= TRADES ========= */
   async getTrades() {
     try {
-      const res = await api.get("/api/sniper/trades");
+      // Use cached + throttled GET to prevent 429
+      const res = await cachedGet("/api/sniper/trades");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getTrades error:", error);
@@ -428,7 +573,7 @@ const BotAPI = {
   /* ========= PROMO ========= */
   async getPromoStatus() {
     try {
-      const res = await api.get("/api/promo/status");
+      const res = await cachedGet("/api/promo/status");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getPromoStatus error:", error);
@@ -438,6 +583,7 @@ const BotAPI = {
 
   async claimPromo(payload) {
     try {
+      this.clearCache();
       const res = await api.post("/api/promo/claim", payload);
       return unwrap(res);
     } catch (error) {
@@ -448,7 +594,7 @@ const BotAPI = {
 
   async getMyPromoStatus() {
     try {
-      const res = await api.get("/api/promo/me");
+      const res = await cachedGet("/api/promo/me");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getMyPromoStatus error:", error);
@@ -458,6 +604,7 @@ const BotAPI = {
 
   async applyPromoCode(payload) {
     try {
+      this.clearCache();
       const res = await api.post("/api/promo/apply", payload);
       return unwrap(res);
     } catch (error) {
@@ -469,7 +616,7 @@ const BotAPI = {
   /* ========= REFERRALS ========= */
   async getReferralInfo() {
     try {
-      const res = await api.get("/api/referrals/info");
+      const res = await cachedGet("/api/referrals/info");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getReferralInfo error:", error);
@@ -490,6 +637,7 @@ const BotAPI = {
   /* ========= WITHDRAWALS ========= */
   async createWithdrawal(payload) {
     try {
+      this.clearCache();
       const res = await api.post("/api/withdrawals", payload);
       return unwrap(res);
     } catch (error) {
@@ -500,7 +648,7 @@ const BotAPI = {
 
   async getWithdrawals() {
     try {
-      const res = await api.get("/api/withdrawals");
+      const res = await cachedGet("/api/withdrawals");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getWithdrawals error:", error);
@@ -521,9 +669,8 @@ const BotAPI = {
 
   async getWaitlistPosition(email) {
     try {
-      const res = await api.get(
-        `/api/waitlist/position?email=${encodeURIComponent(email)}`
-      );
+      const url = `/api/waitlist/position?email=${encodeURIComponent(email)}`;
+      const res = await cachedGet(url);
       return unwrap(res);
     } catch (error) {
       console.error("[API] getWaitlistPosition error:", error);
@@ -534,7 +681,7 @@ const BotAPI = {
   /* ========= ANNOUNCEMENTS ========= */
   async getAnnouncements() {
     try {
-      const res = await api.get("/api/announcements");
+      const res = await cachedGet("/api/announcements");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getAnnouncements error:", error);
@@ -544,6 +691,7 @@ const BotAPI = {
 
   async markAnnouncementRead(announcementId) {
     try {
+      this.clearCache();
       const res = await api.post(`/api/announcements/${announcementId}/read`);
       return unwrap(res);
     } catch (error) {
@@ -555,6 +703,7 @@ const BotAPI = {
   /* ========= SUPPORT TICKETS ========= */
   async createSupportTicket(payload) {
     try {
+      this.clearCache();
       const res = await api.post("/api/support/tickets", payload);
       return unwrap(res);
     } catch (error) {
@@ -565,7 +714,7 @@ const BotAPI = {
 
   async getSupportTickets() {
     try {
-      const res = await api.get("/api/support/tickets");
+      const res = await cachedGet("/api/support/tickets");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getSupportTickets error:", error);
@@ -575,7 +724,7 @@ const BotAPI = {
 
   async getSupportTicket(ticketId) {
     try {
-      const res = await api.get(`/api/support/tickets/${ticketId}`);
+      const res = await cachedGet(`/api/support/tickets/${ticketId}`);
       return unwrap(res);
     } catch (error) {
       console.error("[API] getSupportTicket error:", error);
@@ -585,6 +734,7 @@ const BotAPI = {
 
   async addTicketMessage(ticketId, payload) {
     try {
+      this.clearCache();
       const res = await api.post(
         `/api/support/tickets/${ticketId}/messages`,
         payload
@@ -611,7 +761,7 @@ const BotAPI = {
   /* ========= USER PREFERENCES ========= */
   async getPreferences() {
     try {
-      const res = await api.get("/api/user/preferences");
+      const res = await cachedGet("/api/user/preferences");
       return unwrap(res);
     } catch (error) {
       console.error("[API] getPreferences error:", error);
@@ -621,6 +771,7 @@ const BotAPI = {
 
   async updatePreferences(payload) {
     try {
+      this.clearCache();
       const res = await api.put("/api/user/preferences", payload);
       return unwrap(res);
     } catch (error) {
