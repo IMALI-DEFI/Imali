@@ -57,14 +57,11 @@ const clearStoredToken = () => {
 
 /* =========================
    REQUEST DEDUPLICATION
-   Prevents the same GET endpoint from being called
-   multiple times simultaneously
 ========================= */
 
 const inflightRequests = new Map();
 
 const deduplicatedGet = async (url) => {
-  // If there's already a request in-flight for this URL, return it
   if (inflightRequests.has(url)) {
     console.log(`[API] Dedup: reusing in-flight request for ${url}`);
     return inflightRequests.get(url);
@@ -87,11 +84,10 @@ const deduplicatedGet = async (url) => {
 
 /* =========================
    REQUEST THROTTLE
-   Ensures minimum gap between requests to same endpoint
 ========================= */
 
 const lastRequestTime = new Map();
-const MIN_REQUEST_GAP_MS = 2000; // 2 seconds between same endpoint calls
+const MIN_REQUEST_GAP_MS = 2000;
 
 const throttledGet = async (url) => {
   const now = Date.now();
@@ -100,7 +96,6 @@ const throttledGet = async (url) => {
 
   if (elapsed < MIN_REQUEST_GAP_MS) {
     const waitTime = MIN_REQUEST_GAP_MS - elapsed;
-    console.log(`[API] Throttle: waiting ${waitTime}ms before ${url}`);
     await new Promise((r) => setTimeout(r, waitTime));
   }
 
@@ -110,30 +105,23 @@ const throttledGet = async (url) => {
 
 /* =========================
    RESPONSE CACHE
-   Short-lived cache for frequently requested data
 ========================= */
 
 const responseCache = new Map();
-const CACHE_TTL_MS = 5000; // 5-second cache
+const CACHE_TTL_MS = 5000;
 
 const cachedGet = async (url, ttl = CACHE_TTL_MS) => {
   const cached = responseCache.get(url);
   if (cached && Date.now() - cached.time < ttl) {
-    console.log(`[API] Cache hit: ${url} (age: ${Date.now() - cached.time}ms)`);
     return cached.response;
   }
 
   const response = await throttledGet(url);
-
-  responseCache.set(url, {
-    response,
-    time: Date.now(),
-  });
-
+  responseCache.set(url, { response, time: Date.now() });
   return response;
 };
 
-// Clear stale cache entries periodically
+// Clear stale cache
 setInterval(() => {
   const now = Date.now();
   for (const [url, entry] of responseCache) {
@@ -154,11 +142,6 @@ api.interceptors.request.use(
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
-
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[API] → ${config.method?.toUpperCase()} ${config.url}`);
-    }
-
     return config;
   },
   (error) => Promise.reject(error)
@@ -200,39 +183,26 @@ api.interceptors.response.use(
     const path = getPath();
     const responseMessage = error?.response?.data?.message || "";
 
-    // 429 — rate limited: log clearly, never redirect, never clear token
     if (status === 429) {
-      console.warn(
-        `[API] 429 Rate Limited on ${url}`,
-        "— Too many requests. The app will retry automatically."
-      );
+      console.warn(`[API] 429 Rate Limited on ${url}`);
       return Promise.reject(error);
     }
 
-    // 5xx — server errors
     if (status >= 500) {
       console.warn(`[API] ${status} Server Error on ${url}`);
       return Promise.reject(error);
     }
 
-    // Network errors
     if (error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") {
       console.warn(`[API] Network error on ${url}`);
       return Promise.reject(error);
     }
 
-    // 403 — Forbidden: user IS authenticated but lacks permission
-    // DO NOT clear token — this is NOT a session expiry
     if (status === 403) {
-      console.error(
-        `[API] 403 Forbidden on ${url}: "${responseMessage}"`,
-        "\n→ User is authenticated but endpoint requires higher permissions.",
-        "\n→ If this is /api/me/* endpoint, the backend route has adminMiddleware by mistake."
-      );
+      console.error(`[API] 403 Forbidden on ${url}: "${responseMessage}"`);
       return Promise.reject(error);
     }
 
-    // 401 — Unauthorized: session expired or bad token
     const isLoginOrSignup =
       url.includes("/api/auth/login") || url.includes("/api/signup");
 
@@ -276,6 +246,33 @@ const getErrMessage = (err, fallback = "Request failed") => {
 };
 
 /* =========================
+   BOT TYPE CONSTANTS
+========================= */
+
+export const BOT_TYPES = {
+  PAPER: "paper",
+  CEX: "cex",      // OKX
+  STOCKS: "stocks", // Alpaca
+  DEX: "dex",      // Uniswap, etc.
+  FUTURES: "futures" // Perpetual futures
+};
+
+export const EXCHANGE_TO_BOT_TYPE = {
+  "OKX": BOT_TYPES.CEX,
+  "Alpaca": BOT_TYPES.STOCKS,
+  "DEX": BOT_TYPES.DEX,
+  "Futures": BOT_TYPES.FUTURES
+};
+
+export const BOT_TYPE_TO_LABEL = {
+  [BOT_TYPES.PAPER]: "Paper Trading",
+  [BOT_TYPES.CEX]: "CEX (OKX)",
+  [BOT_TYPES.STOCKS]: "Stocks (Alpaca)",
+  [BOT_TYPES.DEX]: "DEX",
+  [BOT_TYPES.FUTURES]: "Futures"
+};
+
+/* =========================
    API METHODS
 ========================= */
 
@@ -286,7 +283,6 @@ const BotAPI = {
   clearToken: clearStoredToken,
   isLoggedIn: () => !!getStoredToken(),
 
-  // Utility: clear all caches (useful after mutations)
   clearCache() {
     responseCache.clear();
     inflightRequests.clear();
@@ -307,7 +303,7 @@ const BotAPI = {
   async login(payload) {
     try {
       clearStoredToken();
-      this.clearCache(); // Fresh start after login
+      this.clearCache();
       const res = await api.post("/api/auth/login", payload);
       const data = unwrap(res);
 
@@ -338,29 +334,17 @@ const BotAPI = {
       const res = await cachedGet("/api/me/activation-status");
       return unwrap(res);
     } catch (error) {
-      // If 403, try fallback endpoints
       if (error?.response?.status === 403) {
-        console.warn(
-          "[API] 403 on /api/me/activation-status — trying fallback endpoints"
-        );
-
-        // Try /api/activation-status
         try {
           const fallback1 = await throttledGet("/api/activation-status");
           return unwrap(fallback1);
         } catch (e1) {
-          console.warn("[API] Fallback /api/activation-status failed:", e1?.response?.status);
-        }
-
-        // Try /api/user/activation-status
-        try {
-          const fallback2 = await throttledGet("/api/user/activation-status");
-          return unwrap(fallback2);
-        } catch (e2) {
-          console.warn("[API] Fallback /api/user/activation-status failed:", e2?.response?.status);
+          try {
+            const fallback2 = await throttledGet("/api/user/activation-status");
+            return unwrap(fallback2);
+          } catch (e2) {}
         }
       }
-
       console.error("[API] activationStatus error:", error);
       throw error;
     }
@@ -389,7 +373,7 @@ const BotAPI = {
 
   async confirmCard() {
     try {
-      this.clearCache(); // Mutation — clear cache
+      this.clearCache();
       const res = await api.post("/api/billing/confirm-card");
       return unwrap(res);
     } catch (error) {
@@ -505,6 +489,11 @@ const BotAPI = {
     }
   },
 
+  // Alias for dashboard compatibility
+  async tradingEnable(enabled) {
+    return this.toggleTrading(enabled);
+  },
+
   async getTradingStatus() {
     try {
       const res = await cachedGet("/api/trading/status");
@@ -515,7 +504,7 @@ const BotAPI = {
     }
   },
 
-  /* ========= BOT ========= */
+  /* ========= BOT CONTROL ========= */
   async startBot(payload = { mode: "paper" }) {
     try {
       this.clearCache();
@@ -527,16 +516,94 @@ const BotAPI = {
     }
   },
 
-  /* ========= TRADES ========= */
-  async getTrades() {
+  async stopBot(botType = null) {
     try {
-      // Use cached + throttled GET to prevent 429
-      const res = await cachedGet("/api/sniper/trades");
+      this.clearCache();
+      const payload = botType ? { bot_type: botType } : {};
+      const res = await api.post("/api/bot/stop", payload);
       return unwrap(res);
     } catch (error) {
-      console.error("[API] getTrades error:", error);
+      console.error("[API] stopBot error:", error);
       throw error;
     }
+  },
+
+  async getBotStatus(botType = null) {
+    try {
+      const url = botType 
+        ? `/api/bot/status?type=${botType}`
+        : "/api/bot/status";
+      const res = await cachedGet(url);
+      return unwrap(res);
+    } catch (error) {
+      console.error("[API] getBotStatus error:", error);
+      return { running: false, bots: {} };
+    }
+  },
+
+  async getBotsStatus() {
+    try {
+      const res = await cachedGet("/api/bots/status");
+      return unwrap(res);
+    } catch (error) {
+      console.error("[API] getBotsStatus error:", error);
+      return {
+        paper: { running: false },
+        cex: { running: false },
+        stocks: { running: false },
+        dex: { running: false },
+        futures: { running: false }
+      };
+    }
+  },
+
+  /* ========= TRADES ========= */
+  async getTrades(params = {}) {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.botType) queryParams.append("bot_type", params.botType);
+      if (params.limit) queryParams.append("limit", params.limit);
+      
+      const url = queryParams.toString() 
+        ? `/api/sniper/trades?${queryParams.toString()}`
+        : "/api/sniper/trades";
+      
+      const res = await cachedGet(url);
+      const data = unwrap(res);
+      
+      return {
+        trades: Array.isArray(data?.trades) ? data.trades : 
+                Array.isArray(data) ? data : []
+      };
+    } catch (error) {
+      console.error("[API] getTrades error:", error);
+      return { trades: [] };
+    }
+  },
+
+  async getTradesByBot(botType) {
+    return this.getTrades({ botType, limit: 100 });
+  },
+
+  /* ========= BOT-SPECIFIC TRADES ========= */
+  async getPaperTrades() {
+    return this.getTrades({ botType: "paper", limit: 100 });
+  },
+
+  async getCexTrades() {
+    return this.getTrades({ botType: "cex", limit: 100 });
+  },
+
+  async getStocksTrades() {
+    return this.getTrades({ botType: "stocks", limit: 100 });
+  },
+
+  async getDexTrades() {
+    return this.getTrades({ botType: "dex", limit: 100 });
+  },
+
+  async getFuturesTrades() {
+    return this.getTrades({ botType: "futures", limit: 100 });
   },
 
   /* ========= ANALYTICS ========= */
@@ -735,10 +802,7 @@ const BotAPI = {
   async addTicketMessage(ticketId, payload) {
     try {
       this.clearCache();
-      const res = await api.post(
-        `/api/support/tickets/${ticketId}/messages`,
-        payload
-      );
+      const res = await api.post(`/api/support/tickets/${ticketId}/messages`, payload);
       return unwrap(res);
     } catch (error) {
       console.error("[API] addTicketMessage error:", error);
@@ -824,9 +888,7 @@ const BotAPI = {
 
   async adminToggleTrading(userId, enabled) {
     try {
-      const res = await api.post(`/api/admin/users/${userId}/trading`, {
-        enabled,
-      });
+      const res = await api.post(`/api/admin/users/${userId}/trading`, { enabled });
       return unwrap(res);
     } catch (error) {
       console.error("[API] adminToggleTrading error:", error);
@@ -896,10 +958,7 @@ const BotAPI = {
 
   async adminProcessReferralPayouts(payload) {
     try {
-      const res = await api.post(
-        "/api/admin/referrals/process-payouts",
-        payload
-      );
+      const res = await api.post("/api/admin/referrals/process-payouts", payload);
       return unwrap(res);
     } catch (error) {
       console.error("[API] adminProcessReferralPayouts error:", error);
