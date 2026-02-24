@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import BotAPI from "../../utils/BotAPI";
+import BotAPI, { BOT_TYPES, EXCHANGE_TO_BOT_TYPE, BOT_TYPE_TO_LABEL } from "../../utils/BotAPI";
 import TradingOverview from "../../components/Dashboard/TradingOverview.jsx";
 
 /* ===================== CONSTANTS ===================== */
@@ -79,6 +79,16 @@ const normalizeExchange = (exchange) => {
   if (u.includes("FUTURE")) return "FUTURES";
   if (u.includes("PAPER")) return "PAPER";
   return "DEX";
+};
+
+const getBotTypeFromExchange = (exchange) => {
+  const map = {
+    "OKX": BOT_TYPES.CEX,
+    "Alpaca": BOT_TYPES.STOCKS,
+    "DEX": BOT_TYPES.DEX,
+    "Futures": BOT_TYPES.FUTURES
+  };
+  return map[exchange];
 };
 
 const riskLabel = (level) => {
@@ -306,7 +316,7 @@ const TradeFeed = ({ trades = [], isPaper = false }) => {
 };
 
 /* ===================== EXCHANGE CARD ===================== */
-const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick }) => {
+const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick, isRunning }) => {
   const pnl = trades.reduce((sum, t) => sum + (t.pnl_usd || t.pnl || 0), 0);
   const wins = trades.filter((t) => (t.pnl_usd || t.pnl || 0) > 0).length;
   const total = trades.length;
@@ -320,7 +330,9 @@ const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick }) => {
 
   const cardClass = `rounded-2xl p-3 border transition-all cursor-pointer ${
     active 
-      ? "bg-white/5 border-white/15 hover:border-white/25" 
+      ? isRunning
+        ? "bg-green-500/10 border-green-500/30 hover:border-green-500/50" 
+        : "bg-white/5 border-white/15 hover:border-white/25"
       : "bg-white/[0.03] border-white/10 opacity-60 hover:opacity-80"
   }`;
 
@@ -335,7 +347,12 @@ const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick }) => {
             <div className="font-semibold text-sm truncate">{name}</div>
             <div className="text-[11px] leading-tight">
               {active ? (
-                mode ? (
+                isRunning ? (
+                  <span className="inline-flex items-center gap-1 text-green-400">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                    Running
+                  </span>
+                ) : mode ? (
                   <span className={`inline-flex mt-1 text-[10px] px-2 py-0.5 rounded-full ${
                     mode === "live"
                       ? "bg-emerald-500/20 text-emerald-300"
@@ -346,7 +363,7 @@ const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick }) => {
                     {mode === "paper" ? "🎮 paper" : mode || "active"}
                   </span>
                 ) : (
-                  <span className="text-emerald-400">✅ Active</span>
+                  <span className="text-emerald-400">✅ Ready</span>
                 )
               ) : (
                 <span className="text-white/35">🔒 {active === false ? "Upgrade Required" : "Coming Soon"}</span>
@@ -375,9 +392,13 @@ const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick }) => {
         </div>
       </div>
 
-      {!active && (
+      {!active ? (
         <div className="mt-2 text-center text-[10px] text-blue-400 hover:text-blue-300">
           Click to upgrade →
+        </div>
+      ) : !isRunning && (
+        <div className="mt-2 text-center text-[10px] text-emerald-400 hover:text-emerald-300">
+          Click to start bot →
         </div>
       )}
     </div>
@@ -739,9 +760,11 @@ const SessionStats = ({
   currentStrat,
   botRunning,
   botMode,
-  tradingEnabled
+  tradingEnabled,
+  activeBots
 }) => {
   const total = wins + losses;
+  const activeBotCount = Object.values(activeBots || {}).filter(Boolean).length;
 
   return (
     <CardShell title="Session Stats" icon="📊">
@@ -749,7 +772,9 @@ const SessionStats = ({
         <div className="flex justify-between gap-3">
           <span className="text-white/50">Status</span>
           <span className="font-bold">
-            {botRunning
+            {activeBotCount > 0
+              ? `${activeBotCount} bot${activeBotCount > 1 ? 's' : ''} active`
+              : botRunning
               ? botMode === "paper"
                 ? "🎮 Paper Trading"
                 : "💰 Live Trading"
@@ -887,6 +912,13 @@ export default function MemberDashboard() {
   const [busy, setBusy] = useState(false);
   const [botMode, setBotMode] = useState(null); // "paper" | "live" | null
   const [botRunning, setBotRunning] = useState(false);
+  const [activeBots, setActiveBots] = useState({
+    paper: false,
+    cex: false,
+    stocks: false,
+    dex: false,
+    futures: false
+  });
   const [strategy, setStrategy] = useState("ai_weighted");
   const [dayStreak, setDayStreak] = useState(0);
   const [lastTradeDay, setLastTradeDay] = useState(null);
@@ -906,6 +938,32 @@ export default function MemberDashboard() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  // Fetch bot statuses
+  const fetchBotStatuses = useCallback(async () => {
+    try {
+      const statuses = await BotAPI.getBotsStatus();
+      if (mountedRef.current) {
+        setActiveBots(statuses);
+        const anyRunning = Object.values(statuses).some(Boolean);
+        setBotRunning(anyRunning);
+        if (anyRunning) {
+          // Determine primary mode for display
+          if (statuses.paper) setBotMode("paper");
+          else if (statuses.cex || statuses.stocks || statuses.dex || statuses.futures) setBotMode("live");
+        }
+      }
+    } catch (err) {
+      console.warn("[Dashboard] Failed to fetch bot statuses:", err);
+    }
+  }, []);
+
+  // Initial bot status fetch
+  useEffect(() => {
+    fetchBotStatuses();
+    const interval = setInterval(fetchBotStatuses, 30000); // Every 30 seconds
+    return () => clearInterval(interval);
+  }, [fetchBotStatuses]);
 
   /* ================ DERIVED STATE ================ */
   const normalizedTier = useMemo(() => normalizeTier(user?.tier), [user?.tier]);
@@ -992,7 +1050,7 @@ export default function MemberDashboard() {
     const result = { OKX: [], Alpaca: [], DEX: [], Futures: [], PAPER: [] };
     trades.forEach((t) => {
       const exchange = normalizeExchange(t.exchange);
-      if (t.mode === "paper") {
+      if (t.mode === "paper" || t.bot_type === "paper") {
         result.PAPER.push(t);
       } else if (result[exchange]) {
         result[exchange].push(t);
@@ -1061,7 +1119,7 @@ export default function MemberDashboard() {
     loadTrades();
   }, [loadTrades]);
 
-  // Polling — only if bot is running or trading enabled
+  // Polling — only if any bot is running or trading enabled
   useEffect(() => {
     if (!botRunning && !tradingEnabled) return;
     if (pollRef.current) clearInterval(pollRef.current);
@@ -1096,26 +1154,49 @@ export default function MemberDashboard() {
     }
   };
 
-  const startBot = async (mode = "paper") => {
+  const startBot = async (mode = "paper", botType = null) => {
     try {
       setBusy(true);
-      setBotMode(mode);
-
-      const res = await BotAPI.startBot({ mode });
-
+      
+      // Determine which bot to start
+      const actualBotType = botType || (mode === "paper" ? "paper" : "live");
+      
+      const payload = {
+        mode,
+        strategy: strategy,
+        bot_type: actualBotType
+      };
+      
+      const res = await BotAPI.startBot(payload);
+      
       if (res?.started || res?.success) {
+        // Update active bots
+        setActiveBots(prev => ({ ...prev, [actualBotType]: true }));
         setBotRunning(true);
+        if (actualBotType === "paper") {
+          setBotMode("paper");
+        } else {
+          setBotMode("live");
+        }
+        
+        const messages = {
+          paper: "🎮 Paper trading bot started! Virtual trades will appear shortly.",
+          cex: "🤖 CEX (OKX) trading bot started!",
+          stocks: "📈 Stocks (Alpaca) trading bot started!",
+          dex: "🦄 DEX trading bot started!",
+          futures: "📊 Futures trading bot started!"
+        };
+        
         setBanner({
           type: "success",
-          message:
-            mode === "paper"
-              ? "🎮 Paper trading bot started! Virtual trades will appear shortly."
-              : "🤖 Live trading bot started!",
+          message: messages[actualBotType] || messages[mode] || "Bot started!"
         });
+        
         // Give the bot a moment to make its first trade, then refresh
         setTimeout(loadTrades, 3000);
         setTimeout(loadTrades, 8000);
         setTimeout(loadTrades, 15000);
+        setTimeout(fetchBotStatuses, 2000);
       } else {
         setBanner({
           type: "error",
@@ -1140,6 +1221,21 @@ export default function MemberDashboard() {
   const handleExchangeClick = (exchangeName) => {
     if (!currentPlan.exchanges.includes(exchangeName)) {
       navigate("/pricing");
+      return;
+    }
+    
+    // Map exchange to bot type
+    const botType = getBotTypeFromExchange(exchangeName);
+    
+    if (activeBots[botType]) {
+      // Bot already running - maybe show options
+      setBanner({
+        type: "info",
+        message: `${exchangeName} bot is already running`
+      });
+    } else {
+      // Start the specific bot
+      startBot("live", botType);
     }
   };
 
@@ -1233,10 +1329,10 @@ export default function MemberDashboard() {
                     ✓ Active
                   </span>
                 )}
-                {botRunning && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-orange-500/20 text-orange-300 border border-orange-500/30 font-semibold">
-                    <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" />
-                    {botMode === "paper" ? "Paper" : "Live"}
+                {Object.values(activeBots).some(Boolean) && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-green-500/20 text-green-300 border border-green-500/30 font-semibold">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                    {Object.values(activeBots).filter(Boolean).length} Active
                   </span>
                 )}
               </div>
@@ -1267,10 +1363,10 @@ export default function MemberDashboard() {
                 <>
                   <button
                     onClick={() => startBot("paper")}
-                    disabled={busy || botRunning}
+                    disabled={busy || activeBots.paper}
                     className="px-3 sm:px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 font-semibold text-sm disabled:opacity-50"
                   >
-                    {busy ? "..." : botRunning ? "🎮 Running" : "🎮 Paper Trade"}
+                    {busy ? "..." : activeBots.paper ? "🎮 Running" : "🎮 Paper Trade"}
                   </button>
                   <button
                     onClick={handleSetupCTA}
@@ -1341,7 +1437,7 @@ export default function MemberDashboard() {
           <PaperTradingCard
             onStart={startBot}
             busy={busy}
-            isRunning={botRunning && botMode === "paper"}
+            isRunning={activeBots.paper}
             trades={trades}
           />
         )}
@@ -1362,13 +1458,14 @@ export default function MemberDashboard() {
         {/* Exchanges */}
         <CollapsibleCard icon="🔗" title="Connected Exchanges" defaultOpen={true} right="click to manage">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-            {botMode === "paper" && (
+            {activeBots.paper && (
               <ExchangeCard
                 name="Paper Trading"
                 icon="🎮"
                 trades={tradesByExchange.PAPER}
                 active={true}
                 mode="paper"
+                isRunning={activeBots.paper}
                 onClick={() => navigate("/demo")}
               />
             )}
@@ -1379,6 +1476,7 @@ export default function MemberDashboard() {
               trades={tradesByExchange.OKX}
               active={okxConnected}
               mode={activation?.okx_mode}
+              isRunning={activeBots.cex}
               onClick={() => handleExchangeClick("OKX")}
             />
 
@@ -1388,6 +1486,7 @@ export default function MemberDashboard() {
               trades={tradesByExchange.Alpaca}
               active={alpacaConnected}
               mode={activation?.alpaca_mode}
+              isRunning={activeBots.stocks}
               onClick={() => handleExchangeClick("Alpaca")}
             />
 
@@ -1396,6 +1495,7 @@ export default function MemberDashboard() {
               icon="🦄"
               trades={tradesByExchange.DEX}
               active={walletConnected && tierAtLeast(normalizedTier, "stock")}
+              isRunning={activeBots.dex}
               onClick={() => handleExchangeClick("DEX")}
             />
 
@@ -1404,6 +1504,7 @@ export default function MemberDashboard() {
               icon="📊"
               trades={tradesByExchange.Futures}
               active={tierAtLeast(normalizedTier, "elite")}
+              isRunning={activeBots.futures}
               onClick={() => handleExchangeClick("Futures")}
             />
           </div>
@@ -1412,18 +1513,18 @@ export default function MemberDashboard() {
         {/* Trade Feed + Session Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
           <CardShell
-            title={botMode === "paper" ? "Paper Trades" : "Live Trades"}
+            title={activeBots.paper ? "Paper Trades" : "Live Trades"}
             icon="📋"
             right={
-              botRunning ? (
+              Object.values(activeBots).some(Boolean) ? (
                 <span className="flex items-center gap-2 text-[11px] text-emerald-400">
                   <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                  {botMode === "paper" ? "Paper" : "Live"}
+                  {activeBots.paper ? "Paper" : "Live"}
                 </span>
               ) : null
             }
           >
-            <TradeFeed trades={trades} isPaper={botMode === "paper"} />
+            <TradeFeed trades={trades} isPaper={activeBots.paper} />
           </CardShell>
 
           <SessionStats
@@ -1438,6 +1539,7 @@ export default function MemberDashboard() {
             botRunning={botRunning}
             botMode={botMode}
             tradingEnabled={tradingEnabled}
+            activeBots={activeBots}
           />
         </div>
 
@@ -1508,7 +1610,7 @@ export default function MemberDashboard() {
         )}
 
         {/* Not activated and not running — show setup prompt */}
-        {!activationComplete && !botRunning && (
+        {!activationComplete && !Object.values(activeBots).some(Boolean) && (
           <CardShell>
             <div className="text-center py-4">
               <div className="text-4xl sm:text-6xl mb-3">🤖</div>
