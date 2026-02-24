@@ -1,3 +1,4 @@
+// src/context/AuthContext.js
 import React, {
   createContext,
   useState,
@@ -13,13 +14,19 @@ const AuthContext = createContext({});
 export const useAuth = () => useContext(AuthContext);
 
 /* -------------------------------------------------------
-   Retry Helper — more patient, backs off properly
+   Retry Helper — respects rate limits with exponential backoff
 -------------------------------------------------------- */
-const retry = async (fn, retries = 3, delay = 1500) => {
+const retry = async (fn, retries = 3, delay = 2000) => {
   try {
     return await fn();
   } catch (err) {
     const status = err?.response?.status;
+
+    // NEVER retry 401 or 403 — those are permission issues, not transient
+    if (status === 401 || status === 403) {
+      throw err;
+    }
+
     const isRetryable =
       status === 429 ||
       status >= 500 ||
@@ -27,10 +34,19 @@ const retry = async (fn, retries = 3, delay = 1500) => {
       err.code === "ECONNABORTED";
 
     if (retries > 0 && isRetryable) {
+      // For 429, check Retry-After header
+      let waitTime = delay;
+      if (status === 429) {
+        const retryAfter = err?.response?.headers?.["retry-after"];
+        if (retryAfter) {
+          waitTime = Math.max(parseInt(retryAfter, 10) * 1000, delay);
+        }
+      }
+
       console.warn(
-        `[retry] ${status || err.code} — waiting ${delay}ms, ${retries} retries left`
+        `[retry] ${status || err.code} — waiting ${waitTime}ms, ${retries} retries left`
       );
-      await new Promise((r) => setTimeout(r, delay));
+      await new Promise((r) => setTimeout(r, waitTime));
       return retry(fn, retries - 1, delay * 2);
     }
     throw err;
@@ -38,12 +54,14 @@ const retry = async (fn, retries = 3, delay = 1500) => {
 };
 
 /* -------------------------------------------------------
-   Is the error an auth failure (should clear token)?
+   Error Classification
+   401 = not authenticated (clear token, redirect)
+   403 = authenticated but wrong role (DON'T clear token)
+   429 = rate limited (retry)
 -------------------------------------------------------- */
-const isAuthError = (err) => {
-  const status = err?.response?.status;
-  return status === 401 || status === 403;
-};
+const isSessionExpired = (err) => err?.response?.status === 401;
+const isForbidden = (err) => err?.response?.status === 403;
+const isRateLimited = (err) => err?.response?.status === 429;
 
 /* =======================================================
    AUTH PROVIDER
@@ -52,23 +70,23 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [activation, setActivation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
-  // Guard against double-loading on mount (React StrictMode)
   const initialLoadDone = useRef(false);
-  // Guard against concurrent loadUserData calls
   const loadingLock = useRef(false);
 
   /* -------------------------------------------------------
-     Refresh ONLY activation (lightweight, no user refetch)
+     Refresh ONLY activation (lightweight)
   -------------------------------------------------------- */
   const refreshActivation = useCallback(async () => {
     if (!BotAPI.isLoggedIn()) return null;
 
     try {
       const raw = await retry(() => BotAPI.activationStatus());
-      const fresh = raw?.status ?? raw ?? null;
+      const fresh = raw?.status ?? raw?.data?.status ?? raw ?? null;
 
       console.log("[AuthContext] refreshActivation →", fresh);
+      setAuthError(null);
 
       setActivation((prev) => {
         if (JSON.stringify(prev) === JSON.stringify(fresh)) return prev;
@@ -78,25 +96,49 @@ export const AuthProvider = ({ children }) => {
       return fresh;
     } catch (err) {
       console.error("[AuthContext] refreshActivation failed:", err);
-      // Only clear on auth errors
-      if (isAuthError(err)) {
+
+      if (isSessionExpired(err)) {
         BotAPI.clearToken();
         setUser(null);
         setActivation(null);
+      } else if (isForbidden(err)) {
+        const msg = err?.response?.data?.message || "Admin Only";
+        console.error(
+          `[AuthContext] 403 on activation-status: "${msg}"`,
+          "\nFIX: Change adminMiddleware → authMiddleware on /api/me/activation-status"
+        );
+        setAuthError(
+          `Cannot load activation status: "${msg}". ` +
+            "This endpoint requires admin access but should be available to all users."
+        );
+        // Set a safe default so the UI doesn't break
+        setActivation((prev) =>
+          prev || {
+            billing_complete: false,
+            okx_connected: false,
+            alpaca_connected: false,
+            wallet_connected: false,
+            trading_enabled: false,
+            _error: "forbidden",
+          }
+        );
+      } else if (isRateLimited(err)) {
+        console.warn("[AuthContext] Rate limited on refreshActivation — will retry later");
+        // Don't set error — this is transient
       }
       return null;
     }
   }, []);
 
   /* -------------------------------------------------------
-     Refresh ONLY user profile (lightweight, no activation)
+     Refresh ONLY user profile (lightweight)
   -------------------------------------------------------- */
   const refreshProfile = useCallback(async () => {
     if (!BotAPI.isLoggedIn()) return null;
 
     try {
       const raw = await retry(() => BotAPI.me());
-      const fresh = raw?.user ?? raw ?? null;
+      const fresh = raw?.user ?? raw?.data?.user ?? raw ?? null;
 
       console.log("[AuthContext] refreshProfile →", fresh);
 
@@ -108,10 +150,12 @@ export const AuthProvider = ({ children }) => {
       return fresh;
     } catch (err) {
       console.error("[AuthContext] refreshProfile failed:", err);
-      if (isAuthError(err)) {
+      if (isSessionExpired(err)) {
         BotAPI.clearToken();
         setUser(null);
         setActivation(null);
+      } else if (isForbidden(err)) {
+        setAuthError("Cannot load profile — 403 Forbidden on /api/me");
       }
       return null;
     }
@@ -119,8 +163,8 @@ export const AuthProvider = ({ children }) => {
 
   /* -------------------------------------------------------
      Load User + Activation Together (Full Refresh)
-     — Sequential to avoid hammering the API with parallel calls
-     — Only clears token on 401/403, NOT on 429/network errors
+     Each call wrapped independently — one failure doesn't
+     block the other
   -------------------------------------------------------- */
   const loadUserData = useCallback(async () => {
     if (!BotAPI.isLoggedIn()) {
@@ -131,51 +175,93 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    // Prevent concurrent calls
     if (loadingLock.current) {
       console.log("[AuthContext] loadUserData — already loading, skipping");
       return;
     }
 
     loadingLock.current = true;
+    setAuthError(null);
 
     try {
       setLoading(true);
 
-      // Sequential fetching to avoid 429 rate limits
-      console.log("[AuthContext] loadUserData — fetching /me...");
-      const userRaw = await retry(() => BotAPI.me());
-      const userData = userRaw?.user ?? userRaw ?? null;
-      setUser(userData);
+      // ── Fetch /me ──────────────────────────────────
+      let userData = null;
+      try {
+        console.log("[AuthContext] loadUserData — fetching /me...");
+        const userRaw = await retry(() => BotAPI.me());
+        userData = userRaw?.user ?? userRaw?.data?.user ?? userRaw ?? null;
+        setUser(userData);
+        console.log("[AuthContext] /me OK:", userData?.email);
+      } catch (meErr) {
+        if (isSessionExpired(meErr)) {
+          console.warn("[AuthContext] 401 on /me — session expired");
+          BotAPI.clearToken();
+          setUser(null);
+          setActivation(null);
+          return;
+        }
+        if (isForbidden(meErr)) {
+          setAuthError("403 on /me — backend route has admin guard");
+        }
+        console.warn("[AuthContext] /me failed:", meErr?.response?.status, meErr.message);
+      }
 
-      // Small delay between calls to respect rate limits
-      await new Promise((r) => setTimeout(r, 500));
+      // Delay between calls to respect rate limits
+      await new Promise((r) => setTimeout(r, 800));
 
-      console.log("[AuthContext] loadUserData — fetching /activation-status...");
-      const activationRaw = await retry(() => BotAPI.activationStatus());
-      const activationData = activationRaw?.status ?? activationRaw ?? null;
-      setActivation(activationData);
-
-      console.log("[AuthContext] loadUserData complete →", {
-        user: userData,
-        activation: activationData,
-      });
-    } catch (err) {
-      console.error("[AuthContext] loadUserData failed:", err);
-
-      if (isAuthError(err)) {
-        // Real auth failure — clear everything
-        console.warn("[AuthContext] Auth failure — clearing session");
-        BotAPI.clearToken();
-        setUser(null);
-        setActivation(null);
-      } else {
-        // Transient error (429, 500, network) — keep token intact
-        // User stays "authenticated" even though data didn't load
+      // ── Fetch /activation-status ───────────────────
+      try {
+        console.log("[AuthContext] loadUserData — fetching /activation-status...");
+        const activationRaw = await retry(() => BotAPI.activationStatus());
+        const activationData =
+          activationRaw?.status ??
+          activationRaw?.data?.status ??
+          activationRaw ??
+          null;
+        setActivation(activationData);
+        console.log("[AuthContext] /activation-status OK:", activationData);
+      } catch (actErr) {
+        if (isSessionExpired(actErr)) {
+          BotAPI.clearToken();
+          setUser(null);
+          setActivation(null);
+          return;
+        }
+        if (isForbidden(actErr)) {
+          const msg = actErr?.response?.data?.message || "Admin Only";
+          console.error(
+            `[AuthContext] 403 on /activation-status: "${msg}"`,
+            "\n\n🔧 BACKEND FIX NEEDED:",
+            "\n  File: routes/me.js (or wherever this route is defined)",
+            "\n  ❌ router.get('/activation-status', requireAdmin, handler)",
+            "\n  ✅ router.get('/activation-status', requireAuth, handler)\n"
+          );
+          setAuthError(
+            `Activation status returned "${msg}". Backend route needs fixing.`
+          );
+          setActivation({
+            billing_complete: false,
+            okx_connected: false,
+            alpaca_connected: false,
+            wallet_connected: false,
+            trading_enabled: false,
+            _error: "forbidden",
+          });
+        } else if (isRateLimited(actErr)) {
+          console.warn("[AuthContext] Rate limited on activation-status");
+        }
         console.warn(
-          "[AuthContext] Transient error — keeping token, user may retry"
+          "[AuthContext] /activation-status failed:",
+          actErr?.response?.status,
+          actErr.message
         );
       }
+
+      console.log("[AuthContext] loadUserData complete");
+    } catch (err) {
+      console.error("[AuthContext] loadUserData unexpected error:", err);
     } finally {
       setLoading(false);
       loadingLock.current = false;
@@ -200,10 +286,11 @@ export const AuthProvider = ({ children }) => {
   }, [loadUserData]);
 
   /* -------------------------------------------------------
-     Activation Completion Logic (Pure + Memoized)
+     Activation Completion Logic
   -------------------------------------------------------- */
   const activationComplete = useMemo(() => {
     if (!user || !activation) return false;
+    if (activation._error) return false;
 
     const tier = (user.tier || "starter").toLowerCase();
 
@@ -233,43 +320,46 @@ export const AuthProvider = ({ children }) => {
   }, [user, activation]);
 
   /* -------------------------------------------------------
-     Login — saves token, then loads user data with a delay
+     Login
   -------------------------------------------------------- */
-  const login = useCallback(async (email, password) => {
-    try {
-      const res = await BotAPI.login({ email, password });
+  const login = useCallback(
+    async (email, password) => {
+      try {
+        setAuthError(null);
+        const res = await BotAPI.login({ email, password });
 
-      console.log("[AuthContext] login success, token saved");
+        console.log("[AuthContext] login success, token saved");
 
-      // Small delay before loading user data to let the
-      // server settle (avoids immediate 429 after login)
-      await new Promise((r) => setTimeout(r, 500));
+        // Generous delay before loading data — server just authenticated us
+        await new Promise((r) => setTimeout(r, 800));
 
-      // Load user data but DON'T block navigation on failure
-      loadUserData().catch((err) => {
-        console.warn("[AuthContext] Post-login data load failed (non-blocking):", err);
-      });
+        loadUserData().catch((err) => {
+          console.warn(
+            "[AuthContext] Post-login data load failed (non-blocking):",
+            err
+          );
+        });
 
-      return { success: true, data: res };
-    } catch (err) {
-      return {
-        success: false,
-        error:
-          err.response?.data?.message ||
-          err.message ||
-          "Login failed",
-      };
-    }
-  }, [loadUserData]);
+        return { success: true, data: res };
+      } catch (err) {
+        return {
+          success: false,
+          error:
+            err.response?.data?.message || err.message || "Login failed",
+        };
+      }
+    },
+    [loadUserData]
+  );
 
   /* -------------------------------------------------------
-     Signup — creates account only, no auto-login
+     Signup
   -------------------------------------------------------- */
   const signup = useCallback(async (data) => {
     try {
+      setAuthError(null);
       const res = await BotAPI.signup(data);
 
-      // If backend returns a token on signup, save it
       if (res?.token) {
         BotAPI.setToken(res.token);
         console.log("[AuthContext] signup returned token, saved");
@@ -280,9 +370,7 @@ export const AuthProvider = ({ children }) => {
       return {
         success: false,
         error:
-          err.response?.data?.message ||
-          err.message ||
-          "Signup failed",
+          err.response?.data?.message || err.message || "Signup failed",
       };
     }
   }, []);
@@ -292,8 +380,10 @@ export const AuthProvider = ({ children }) => {
   -------------------------------------------------------- */
   const logout = useCallback(() => {
     BotAPI.clearToken();
+    BotAPI.clearCache();
     setUser(null);
     setActivation(null);
+    setAuthError(null);
     initialLoadDone.current = false;
     loadingLock.current = false;
   }, []);
@@ -303,24 +393,21 @@ export const AuthProvider = ({ children }) => {
   -------------------------------------------------------- */
   const value = useMemo(
     () => ({
-      // State
       user,
       activation,
       loading,
       activationComplete,
+      authError,
       isAuthenticated: !!user || BotAPI.isLoggedIn(),
       hasToken: BotAPI.isLoggedIn,
 
-      // Setters (for edge-case manual updates)
       setUser,
       setActivation,
 
-      // Actions
       login,
       signup,
       logout,
 
-      // Refresh functions
       refreshUser,
       refreshActivation,
       refreshProfile,
@@ -330,6 +417,7 @@ export const AuthProvider = ({ children }) => {
       activation,
       loading,
       activationComplete,
+      authError,
       login,
       signup,
       logout,
@@ -340,8 +428,6 @@ export const AuthProvider = ({ children }) => {
   );
 
   return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
   );
 };
