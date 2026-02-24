@@ -1,25 +1,27 @@
 // src/pages/TradeDemo.jsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import TradingOverview from "../components/Dashboard/TradingOverview.jsx";
+import { useAuth } from "../context/AuthContext";
+import BotAPI from "../utils/BotAPI";
 
 /* ===================== CONSTANTS ===================== */
-var STRATEGIES = [
-  { value: "mean_reversion", label: "Conservative", icon: "🛡️", risk: 1 },
-  { value: "ai_weighted", label: "Balanced", icon: "🤖", risk: 2 },
-  { value: "momentum", label: "Growth", icon: "📈", risk: 3 },
-  { value: "volume_spike", label: "Aggressive", icon: "🔥", risk: 4 },
+const STRATEGIES = [
+  { value: "mean_reversion", label: "Conservative", icon: "🛡️", risk: 1, description: "Lower risk, steady returns" },
+  { value: "ai_weighted", label: "Balanced", icon: "🤖", risk: 2, description: "AI-optimized risk/reward" },
+  { value: "momentum", label: "Growth", icon: "📈", risk: 3, description: "Higher risk, higher potential" },
+  { value: "volume_spike", label: "Aggressive", icon: "🔥", risk: 4, description: "Maximum risk, maximum reward" },
 ];
 
-var PLANS = [
-  { value: "starter", label: "Starter", icon: "🎟️", exchanges: ["OKX", "Alpaca"] },
-  { value: "pro", label: "Pro", icon: "⭐", exchanges: ["OKX", "Alpaca", "Staking"] },
-  { value: "elite", label: "Elite", icon: "👑", exchanges: ["OKX", "Alpaca", "DEX", "Futures"] },
-  { value: "stock", label: "Stocks", icon: "📈", exchanges: ["Alpaca", "DEX"] },
-  { value: "bundle", label: "Bundle", icon: "🧩", exchanges: ["OKX", "Alpaca", "DEX", "Futures", "Staking"] },
+const PLANS = [
+  { value: "starter", label: "Starter", icon: "🎟️", price: 49, exchanges: ["OKX", "Alpaca"], color: "blue" },
+  { value: "pro", label: "Pro", icon: "⭐", price: 99, exchanges: ["OKX", "Alpaca", "Staking"], color: "purple" },
+  { value: "elite", label: "Elite", icon: "👑", price: 199, exchanges: ["OKX", "Alpaca", "DEX", "Futures"], color: "gold" },
+  { value: "stock", label: "Stocks", icon: "📈", price: 79, exchanges: ["Alpaca", "DEX"], color: "emerald" },
+  { value: "bundle", label: "Bundle", icon: "🧩", price: 299, exchanges: ["OKX", "Alpaca", "DEX", "Futures", "Staking"], color: "amber" },
 ];
 
-var DEMO_TOKENS = [
+const DEMO_TOKENS = [
   { symbol: "BTC", name: "Bitcoin", icon: "₿", exchange: "OKX" },
   { symbol: "ETH", name: "Ethereum", icon: "Ξ", exchange: "OKX" },
   { symbol: "SOL", name: "Solana", icon: "◎", exchange: "OKX" },
@@ -30,7 +32,7 @@ var DEMO_TOKENS = [
   { symbol: "BTC-PERP", name: "BTC Futures", icon: "📊", exchange: "Futures" },
 ];
 
-var LEVEL_THRESHOLDS = [
+const LEVEL_THRESHOLDS = [
   { name: "🥉 Bronze", min: 0, colorClass: "text-amber-600" },
   { name: "🥈 Silver", min: 30, colorClass: "text-gray-300" },
   { name: "🥇 Gold", min: 70, colorClass: "text-yellow-300" },
@@ -38,131 +40,96 @@ var LEVEL_THRESHOLDS = [
   { name: "🏆 Legend", min: 200, colorClass: "text-yellow-400" },
 ];
 
-var ALL_ACHIEVEMENTS = [
-  { id: "first_trade", emoji: "🚀", label: "First Trade", desc: "Complete your first trade", check: function (s) { return s.totalTrades > 0; } },
-  { id: "ten_trades", emoji: "📊", label: "10 Trades", desc: "Complete 10 trades", check: function (s) { return s.totalTrades >= 10; } },
-  { id: "fifty_trades", emoji: "💯", label: "50 Trades", desc: "Complete 50 trades", check: function (s) { return s.totalTrades >= 50; } },
-  { id: "profitable", emoji: "💰", label: "In The Green", desc: "Have positive P&L", check: function (s) { return s.pnl > 0; } },
-  { id: "hundred_profit", emoji: "💵", label: "100 Profit", desc: "Earn 100 in demo", check: function (s) { return s.pnl >= 100; } },
-  { id: "win_streak_3", emoji: "🔥", label: "Hot Streak", desc: "Win 3 in a row", check: function (s) { return s.currentWinStreak >= 3; } },
-  { id: "win_streak_5", emoji: "⚡", label: "On Fire!", desc: "Win 5 in a row", check: function (s) { return s.currentWinStreak >= 5; } },
-  { id: "high_wr", emoji: "🎯", label: "Sharpshooter", desc: "Win rate above 60%", check: function (s) { return s.winRate > 60; } },
-  { id: "day_streak", emoji: "📅", label: "Daily Player", desc: "Trade 3+ days", check: function (s) { return s.dayStreak >= 3; } },
-  { id: "upgraded", emoji: "⭐", label: "Plan Explorer", desc: "Try a paid plan", check: function (s) { return s.plan !== "starter"; } },
-  { id: "all_strats", emoji: "🧠", label: "Strategist", desc: "Try all 4 strategies", check: function (s) { return s.strategiesUsed >= 4; } },
-  { id: "confidence_80", emoji: "🤖", label: "Bot Master", desc: "Reach 80% confidence", check: function (s) { return s.confidence >= 80; } },
+const ALL_ACHIEVEMENTS = [
+  { id: "first_trade", emoji: "🚀", label: "First Trade", desc: "Complete your first trade", check: (s) => s.totalTrades > 0 },
+  { id: "ten_trades", emoji: "📊", label: "10 Trades", desc: "Complete 10 trades", check: (s) => s.totalTrades >= 10 },
+  { id: "fifty_trades", emoji: "💯", label: "50 Trades", desc: "Complete 50 trades", check: (s) => s.totalTrades >= 50 },
+  { id: "profitable", emoji: "💰", label: "In The Green", desc: "Have positive P&L", check: (s) => s.pnl > 0 },
+  { id: "hundred_profit", emoji: "💵", label: "100 Profit", desc: "Earn 100 in demo", check: (s) => s.pnl >= 100 },
+  { id: "win_streak_3", emoji: "🔥", label: "Hot Streak", desc: "Win 3 in a row", check: (s) => s.currentWinStreak >= 3 },
+  { id: "win_streak_5", emoji: "⚡", label: "On Fire!", desc: "Win 5 in a row", check: (s) => s.currentWinStreak >= 5 },
+  { id: "high_wr", emoji: "🎯", label: "Sharpshooter", desc: "Win rate above 60%", check: (s) => s.winRate > 60 },
+  { id: "day_streak", emoji: "📅", label: "Daily Player", desc: "Trade 3+ days", check: (s) => s.dayStreak >= 3 },
+  { id: "upgraded", emoji: "⭐", label: "Plan Explorer", desc: "Try a paid plan", check: (s) => s.plan !== "starter" },
+  { id: "all_strats", emoji: "🧠", label: "Strategist", desc: "Try all 4 strategies", check: (s) => s.strategiesUsed >= 4 },
+  { id: "confidence_80", emoji: "🤖", label: "Bot Master", desc: "Reach 80% confidence", check: (s) => s.confidence >= 80 },
 ];
 
 /* ===================== HELPERS ===================== */
-function clamp(n, lo, hi) {
-  return Math.min(hi, Math.max(lo, n));
-}
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
-function formatUsd(n) {
-  var num = Number(n) || 0;
-  var sign = num >= 0 ? "+" : "-";
-  var abs = Math.abs(num).toFixed(2);
-  return sign + "$" + abs;
-}
+const formatUsd = (n) => {
+  const num = Number(n) || 0;
+  const sign = num >= 0 ? "+" : "-";
+  return `${sign}$${Math.abs(num).toFixed(2)}`;
+};
 
-function formatUsdPlain(n) {
-  var num = Number(n) || 0;
-  return "$" + num.toFixed(2);
-}
+const formatUsdPlain = (n) => {
+  const num = Number(n) || 0;
+  return `$${num.toFixed(2)}`;
+};
 
-function pickAllowed(v, allowed, fallback) {
-  var x = String(v || "").toLowerCase();
+const pickAllowed = (v, allowed, fallback) => {
+  const x = String(v || "").toLowerCase();
   return allowed.includes(x) ? x : fallback;
-}
+};
 
-function riskLabel(level) {
-  var labels = ["Low", "Medium", "High", "Extreme"];
+const riskLabel = (level) => {
+  const labels = ["Low", "Medium", "High", "Extreme"];
   return labels[(level || 2) - 1] || "Medium";
-}
+};
 
-function riskLabelColor(level) {
+const riskLabelColor = (level) => {
   if (level <= 1) return "text-emerald-400";
   if (level <= 2) return "text-yellow-400";
   if (level <= 3) return "text-orange-400";
   return "text-red-400";
-}
-
-function riskShort(level) {
-  return level === 1 ? "Low" : level === 2 ? "Med" : level === 3 ? "High" : "X";
-}
+};
 
 /* ===================== UI PRIMITIVES ===================== */
-function CardShell(props) {
-  var title = props.title;
-  var icon = props.icon;
-  var right = props.right;
-  var children = props.children;
-
-  return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4">
-      {(title || icon || right) && (
-        <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
-          <div className="flex items-center gap-2 min-w-0">
-            {icon && <span className="text-base sm:text-lg">{icon}</span>}
-            {title && <h3 className="font-semibold text-sm sm:text-base truncate">{title}</h3>}
-          </div>
-          {right && <div className="flex-shrink-0">{right}</div>}
+const CardShell = ({ title, icon, right, children }) => (
+  <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4">
+    {(title || icon || right) && (
+      <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {icon && <span className="text-base sm:text-lg">{icon}</span>}
+          {title && <h3 className="font-semibold text-sm sm:text-base truncate">{title}</h3>}
         </div>
-      )}
-      {children}
-    </div>
-  );
-}
+        {right && <div className="flex-shrink-0">{right}</div>}
+      </div>
+    )}
+    {children}
+  </div>
+);
 
-function CollapsibleCard(props) {
-  var title = props.title;
-  var icon = props.icon;
-  var right = props.right;
-  var children = props.children;
-  var defaultOpen = props.defaultOpen;
-
-  return (
-    <details className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden" open={!!defaultOpen}>
-      <summary className="list-none cursor-pointer select-none">
-        <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
-          <div className="flex items-center gap-2 min-w-0">
-            {icon && <span className="text-base sm:text-lg">{icon}</span>}
-            <h3 className="font-semibold text-sm sm:text-base truncate">{title}</h3>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {right}
-            <span className="text-white/40 text-xs">▾</span>
-          </div>
+const CollapsibleCard = ({ title, icon, right, children, defaultOpen = true }) => (
+  <details className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden" open={defaultOpen}>
+    <summary className="list-none cursor-pointer select-none">
+      <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
+        <div className="flex items-center gap-2 min-w-0">
+          {icon && <span className="text-base sm:text-lg">{icon}</span>}
+          <h3 className="font-semibold text-sm sm:text-base truncate">{title}</h3>
         </div>
-      </summary>
-      <div className="px-3 pb-3 sm:px-4 sm:pb-4">{children}</div>
-    </details>
-  );
-}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {right}
+          <span className="text-white/40 text-xs">▾</span>
+        </div>
+      </div>
+    </summary>
+    <div className="px-3 pb-3 sm:px-4 sm:pb-4">{children}</div>
+  </details>
+);
 
 /* ===================== PROGRESS RING ===================== */
-function ProgressRing(props) {
-  var percent = props.percent || 0;
-  var size = props.size || 80;
-  var stroke = props.stroke || 6;
-  var color = props.color || "#10b981";
-  var children = props.children;
-
-  var radius = (size - stroke) / 2;
-  var circ = 2 * Math.PI * radius;
-  var offset = circ - (Math.min(percent, 100) / 100) * circ;
+const ProgressRing = ({ percent = 0, size = 80, stroke = 6, color = "#10b981", children }) => {
+  const radius = (size - stroke) / 2;
+  const circ = 2 * Math.PI * radius;
+  const offset = circ - (Math.min(percent, 100) / 100) * circ;
 
   return (
     <div className="relative inline-flex items-center justify-center">
       <svg width={size} height={size} className="-rotate-90">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="rgba(255,255,255,0.06)"
-          strokeWidth={stroke}
-        />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -179,37 +146,33 @@ function ProgressRing(props) {
       <div className="absolute inset-0 flex items-center justify-center">{children}</div>
     </div>
   );
-}
+};
 
 /* ===================== MINI BAR CHART ===================== */
-function MiniBarChart(props) {
-  var data = props.data || [];
-  var height = props.height || 60;
-
+const MiniBarChart = ({ data = [], height = 60 }) => {
   if (!data.length) {
     return (
-      <div className="flex items-center justify-center text-[11px] text-white/30" style={{ height: height }}>
+      <div className="flex items-center justify-center text-[11px] text-white/30" style={{ height }}>
         Press Start to see trades here 🤖
       </div>
     );
   }
 
-  var absValues = data.map(function (d) { return Math.abs(d.value); });
-  var max = Math.max.apply(null, absValues.concat([1]));
+  const absValues = data.map((d) => Math.abs(d.value));
+  const max = Math.max(...absValues, 1);
 
   return (
-    <div className="flex items-end gap-[2px]" style={{ height: height }}>
-      {data.slice(-30).map(function (d, i) {
-        var h = (Math.abs(d.value) / max) * height * 0.9;
-        var isPositive = d.value >= 0;
-        var barClass =
-          "rounded-t flex-1 min-w-[3px] max-w-[14px] transition-all duration-300 cursor-pointer hover:opacity-70 " +
-          (isPositive ? "bg-emerald-500" : "bg-red-500");
+    <div className="flex items-end gap-[2px]" style={{ height }}>
+      {data.slice(-30).map((d, i) => {
+        const h = (Math.abs(d.value) / max) * height * 0.9;
+        const barClass = `rounded-t flex-1 min-w-[3px] max-w-[14px] transition-all duration-300 cursor-pointer hover:opacity-70 ${
+          d.value >= 0 ? "bg-emerald-500" : "bg-red-500"
+        }`;
 
         return (
           <div
             key={i}
-            title={d.label + ": " + formatUsd(d.value)}
+            title={`${d.label}: ${formatUsd(d.value)}`}
             className={barClass}
             style={{ height: Math.max(h, 2) }}
           />
@@ -217,43 +180,40 @@ function MiniBarChart(props) {
       })}
     </div>
   );
-}
+};
 
 /* ===================== EQUITY CURVE ===================== */
-function EquityCurve(props) {
-  var data = props.data || [];
-  var height = props.height || 120;
-
+const EquityCurve = ({ data = [], height = 120 }) => {
   if (data.length < 2) {
     return (
-      <div className="flex items-center justify-center text-[11px] text-white/20" style={{ height: height }}>
+      <div className="flex items-center justify-center text-[11px] text-white/20" style={{ height }}>
         Equity curve appears after a few trades
       </div>
     );
   }
 
-  var values = data.map(function (d) { return d.value; });
-  var min = Math.min.apply(null, values);
-  var max = Math.max.apply(null, values);
-  var range = max - min || 1;
-  var w = 400;
+  const values = data.map((d) => d.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const w = 400;
 
-  var points = values
-    .map(function (v, i) {
-      var x = (i / (values.length - 1)) * w;
-      var y = height - ((v - min) / range) * (height - 10) - 5;
-      return x + "," + y;
+  const points = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * w;
+      const y = height - ((v - min) / range) * (height - 10) - 5;
+      return `${x},${y}`;
     })
     .join(" ");
 
-  var lastVal = values[values.length - 1];
-  var firstVal = values[0];
-  var up = lastVal >= firstVal;
-  var strokeColor = up ? "#10b981" : "#ef4444";
-  var fillId = up ? "eqGradUp" : "eqGradDown";
+  const lastVal = values[values.length - 1];
+  const firstVal = values[0];
+  const up = lastVal >= firstVal;
+  const strokeColor = up ? "#10b981" : "#ef4444";
+  const fillId = up ? "eqGradUp" : "eqGradDown";
 
   return (
-    <svg viewBox={"0 0 " + w + " " + height} className="w-full" style={{ height: height }} preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${w} ${height}`} className="w-full" style={{ height }} preserveAspectRatio="none">
       <defs>
         <linearGradient id="eqGradUp" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#10b981" stopOpacity="0.28" />
@@ -264,32 +224,26 @@ function EquityCurve(props) {
           <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={"0," + height + " " + points + " " + w + "," + height} fill={"url(#" + fillId + ")"} />
+      <polygon points={`0,${height} ${points} ${w},${height}`} fill={`url(#${fillId})`} />
       <polyline points={points} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinejoin="round" />
     </svg>
   );
-}
+};
 
-/* ===================== RISK METER (BARS ONLY — FIX DUPLICATE TEXT) ===================== */
-function RiskMeter(props) {
-  var level = props.level || 1;
-
-  return (
-    <div className="w-full">
-      <div className="flex gap-1">
-        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 1 ? "bg-emerald-500" : "bg-white/10")} />
-        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 2 ? "bg-yellow-500" : "bg-white/10")} />
-        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 3 ? "bg-orange-500" : "bg-white/10")} />
-        <div className={"flex-1 h-2 rounded-full transition-all duration-300 " + (level >= 4 ? "bg-red-500" : "bg-white/10")} />
-      </div>
+/* ===================== RISK METER ===================== */
+const RiskMeter = ({ level = 1 }) => (
+  <div className="w-full">
+    <div className="flex gap-1">
+      <div className={`flex-1 h-2 rounded-full transition-all duration-300 ${level >= 1 ? "bg-emerald-500" : "bg-white/10"}`} />
+      <div className={`flex-1 h-2 rounded-full transition-all duration-300 ${level >= 2 ? "bg-yellow-500" : "bg-white/10"}`} />
+      <div className={`flex-1 h-2 rounded-full transition-all duration-300 ${level >= 3 ? "bg-orange-500" : "bg-white/10"}`} />
+      <div className={`flex-1 h-2 rounded-full transition-all duration-300 ${level >= 4 ? "bg-red-500" : "bg-white/10"}`} />
     </div>
-  );
-}
+  </div>
+);
 
 /* ===================== TRADE FEED ===================== */
-function TradeFeed(props) {
-  var trades = props.trades || [];
-
+const TradeFeed = ({ trades = [] }) => {
   if (!trades.length) {
     return (
       <div className="text-center py-6 text-white/30 text-sm">
@@ -301,16 +255,16 @@ function TradeFeed(props) {
 
   return (
     <div className="space-y-1 max-h-[320px] overflow-y-auto pr-1">
-      {trades.slice(-30).reverse().map(function (t, i) {
-        var isLatest = i === 0;
-        var isWin = t.pnl >= 0;
-        var rowClass =
-          "flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm transition-all " +
-          (isLatest ? "bg-white/10 border border-white/10" : "bg-white/[0.03]");
-        var pnlClass = "font-bold text-sm " + (isWin ? "text-emerald-400" : "text-red-400");
+      {trades.slice(-30).reverse().map((t, i) => {
+        const isLatest = i === 0;
+        const isWin = t.pnl >= 0;
+        const rowClass = `flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm transition-all ${
+          isLatest ? "bg-white/10 border border-white/10" : "bg-white/[0.03]"
+        }`;
+        const pnlClass = `font-bold text-sm ${isWin ? "text-emerald-400" : "text-red-400"}`;
 
         return (
-          <div key={t.id} className={rowClass}>
+          <div key={t.id || i} className={rowClass}>
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <span className="text-base flex-shrink-0">{t.icon}</span>
               <div className="min-w-0">
@@ -323,51 +277,45 @@ function TradeFeed(props) {
                 </div>
               </div>
             </div>
-            <div className={"flex-shrink-0 " + pnlClass}>{formatUsd(t.pnl)}</div>
+            <div className={`flex-shrink-0 ${pnlClass}`}>{formatUsd(t.pnl)}</div>
           </div>
         );
       })}
     </div>
   );
-}
+};
 
 /* ===================== EXCHANGE CARD ===================== */
-function DemoExchangeCard(props) {
-  var name = props.name;
-  var icon = props.icon;
-  var trades = props.trades || [];
-  var active = props.active;
+const DemoExchangeCard = ({ name, icon, trades = [], active, onClick }) => {
+  const pnl = trades.reduce((sum, t) => sum + t.pnl, 0);
+  const wins = trades.filter((t) => t.pnl > 0).length;
+  const total = trades.length;
+  const wr = total > 0 ? ((wins / total) * 100).toFixed(1) : "0.0";
+  const wrNum = Number(wr);
 
-  var pnl = 0;
-  var wins = 0;
-  for (var i = 0; i < trades.length; i++) {
-    pnl += trades[i].pnl;
-    if (trades[i].pnl > 0) wins++;
-  }
-  var total = trades.length;
-  var wr = total > 0 ? ((wins / total) * 100).toFixed(1) : "0.0";
-  var wrNum = Number(wr);
+  const chartData = trades.slice(-15).map((t, idx) => ({ label: `#${idx}`, value: t.pnl }));
 
-  var chartData = trades.slice(-15).map(function (t, idx) {
-    return { label: "#" + idx, value: t.pnl };
-  });
+  const cardClass = `rounded-2xl p-3 border transition-all cursor-pointer ${
+    active 
+      ? "bg-white/5 border-white/15 hover:border-white/25" 
+      : "bg-white/[0.03] border-white/10 opacity-60 hover:opacity-80"
+  }`;
 
-  var cardClass =
-    "rounded-2xl p-3 border transition-all " +
-    (active ? "bg-white/5 border-white/15 hover:border-white/25" : "bg-white/[0.03] border-white/10 opacity-45");
-
-  var pnlClass = "font-bold " + (pnl >= 0 ? "text-emerald-400" : "text-red-400");
-  var wrBarClass = "h-full rounded-full transition-all duration-500 " + (wrNum >= 50 ? "bg-emerald-500" : "bg-red-500");
+  const pnlClass = `font-bold ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`;
 
   return (
-    <div className={cardClass}>
+    <div className={cardClass} onClick={onClick}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl">{icon}</span>
           <div className="min-w-0">
             <div className="font-semibold text-sm truncate">{name}</div>
             <div className="text-[11px] leading-tight">
-              {active ? <span className="text-emerald-400">✅ Active</span> : <span className="text-white/35">🔒 Upgrade</span>}
+              {active ? (
+                <span className="text-emerald-400">✅ Active</span>
+              ) : (
+                <span className="text-white/35">🔒 {active === false ? "Upgrade Required" : "Coming Soon"}</span>
+              )}
             </div>
           </div>
         </div>
@@ -379,11 +327,7 @@ function DemoExchangeCard(props) {
         )}
       </div>
 
-      {active && (
-        <div className="mt-2">
-          <MiniBarChart data={chartData} height={26} />
-        </div>
-      )}
+      {active && <MiniBarChart data={chartData} height={26} />}
 
       <div className="grid grid-cols-2 gap-2 mt-3">
         <div className="bg-black/30 rounded-xl p-2 text-center">
@@ -392,79 +336,73 @@ function DemoExchangeCard(props) {
         </div>
         <div className="bg-black/30 rounded-xl p-2 text-center">
           <div className="text-[10px] text-white/45">P&L</div>
-          <div className={pnlClass + " text-sm"}>{formatUsd(pnl)}</div>
+          <div className={`${pnlClass} text-sm`}>{formatUsd(pnl)}</div>
         </div>
       </div>
 
-      {active && total > 0 && (
-        <div className="mt-2">
-          <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-            <div className={wrBarClass} style={{ width: wr + "%" }} />
-          </div>
-          <div className="flex justify-between text-[10px] text-white/35 mt-1">
-            <span>{wins}W</span>
-            <span>{total - wins}L</span>
-          </div>
+      {!active && (
+        <div className="mt-2 text-center text-[10px] text-blue-400 hover:text-blue-300">
+          Click to upgrade →
         </div>
       )}
     </div>
   );
-}
+};
 
 /* ===================== LEVEL BADGE ===================== */
-function LevelBadge(props) {
-  var xp = props.xp || 0;
-
-  var level = useMemo(function () {
-    for (var i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+const LevelBadge = ({ xp = 0 }) => {
+  const level = useMemo(() => {
+    for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
       if (xp >= LEVEL_THRESHOLDS[i].min) {
-        var next = LEVEL_THRESHOLDS[i + 1] ? LEVEL_THRESHOLDS[i + 1].min : LEVEL_THRESHOLDS[i].min * 1.5;
+        const next = LEVEL_THRESHOLDS[i + 1] ? LEVEL_THRESHOLDS[i + 1].min : LEVEL_THRESHOLDS[i].min * 1.5;
         return {
           name: LEVEL_THRESHOLDS[i].name,
           colorClass: LEVEL_THRESHOLDS[i].colorClass,
           min: LEVEL_THRESHOLDS[i].min,
-          xp: xp,
-          next: next,
+          xp,
+          next,
           index: i,
         };
       }
     }
-    return { name: LEVEL_THRESHOLDS[0].name, colorClass: LEVEL_THRESHOLDS[0].colorClass, min: 0, xp: xp, next: 30, index: 0 };
+    return { 
+      name: LEVEL_THRESHOLDS[0].name, 
+      colorClass: LEVEL_THRESHOLDS[0].colorClass, 
+      min: 0, 
+      xp, 
+      next: 30, 
+      index: 0 
+    };
   }, [xp]);
 
-  var progress = level.next > 0 ? (xp / level.next) * 100 : 0;
-  var xpToNext = Math.max(0, Math.floor(level.next - xp));
-  var isMax = level.index >= LEVEL_THRESHOLDS.length - 1;
+  const progress = level.next > 0 ? (xp / level.next) * 100 : 0;
+  const xpToNext = Math.max(0, Math.floor(level.next - xp));
+  const isMax = level.index >= LEVEL_THRESHOLDS.length - 1;
 
   return (
     <CardShell
       title="Your Trader Level"
       icon="🏅"
-      right={
-        <span className="text-[11px] text-white/45">
-          XP: <b className="text-white">{Math.floor(xp)}</b>
-        </span>
-      }
+      right={<span className="text-[11px] text-white/45">XP: <b className="text-white">{Math.floor(xp)}</b></span>}
     >
-      <div className={"text-lg font-bold leading-tight " + level.colorClass}>{level.name}</div>
+      <div className={`text-lg font-bold leading-tight ${level.colorClass}`}>{level.name}</div>
       <div className="w-full bg-white/10 rounded-full h-2 mt-2 overflow-hidden">
         <div
           className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-700"
-          style={{ width: Math.min(progress, 100) + "%" }}
+          style={{ width: `${Math.min(progress, 100)}%` }}
         />
       </div>
       <p className="text-[11px] text-white/45 mt-1">
-        {Math.floor(xp)} / {Math.floor(level.next)} XP — {isMax ? "Max level reached 🏆" : xpToNext + " XP to next level"}
+        {Math.floor(xp)} / {Math.floor(level.next)} XP —{" "}
+        {isMax ? "Max level reached 🏆" : `${xpToNext} XP to next level`}
       </p>
     </CardShell>
   );
-}
+};
 
-/* ===================== ACHIEVEMENTS ===================== */
-function AchievementsPanel(props) {
-  var unlocked = props.unlocked || [];
-  var total = props.total || 0;
-  var pct = total > 0 ? ((unlocked.length / total) * 100).toFixed(0) : 0;
+/* ===================== ACHIEVEMENTS PANEL ===================== */
+const AchievementsPanel = ({ unlocked = [], total = 0 }) => {
+  const pct = total > 0 ? ((unlocked.length / total) * 100).toFixed(0) : 0;
 
   return (
     <CollapsibleCard
@@ -477,19 +415,19 @@ function AchievementsPanel(props) {
             {unlocked.length}/{total}
           </span>
           <div className="w-16 bg-white/10 rounded-full h-2 overflow-hidden">
-            <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: pct + "%" }} />
+            <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${pct}%` }} />
           </div>
         </div>
       }
     >
       <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-6 gap-2">
-        {ALL_ACHIEVEMENTS.map(function (a) {
-          var isUnlocked = unlocked.includes(a.id);
-          var tileClass =
-            "rounded-2xl p-2 text-center transition-all border " +
-            (isUnlocked
+        {ALL_ACHIEVEMENTS.map((a) => {
+          const isUnlocked = unlocked.includes(a.id);
+          const tileClass = `rounded-2xl p-2 text-center transition-all border ${
+            isUnlocked
               ? "bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-500/50"
-              : "bg-black/20 border-white/5 opacity-45");
+              : "bg-black/20 border-white/5 opacity-45"
+          }`;
 
           return (
             <div key={a.id} title={a.desc} className={tileClass}>
@@ -502,98 +440,83 @@ function AchievementsPanel(props) {
       </div>
     </CollapsibleCard>
   );
-}
+};
 
 /* ===================== STRATEGY SELECTOR ===================== */
-function StrategySelector(props) {
-  var value = props.value;
-  var onChange = props.onChange;
-  var disabled = props.disabled;
+const StrategySelector = ({ value, onChange, disabled }) => (
+  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+    {STRATEGIES.map((s) => {
+      const isActive = value === s.value;
+      const btnClass = `rounded-2xl text-left transition-all border p-3 sm:p-4 ${
+        isActive
+          ? "bg-white/10 border-white/30 shadow-lg shadow-white/5"
+          : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`;
 
-  return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-      {STRATEGIES.map(function (s) {
-        var isActive = value === s.value;
-        var btnClass =
-          "rounded-2xl text-left transition-all border p-3 sm:p-4 " +
-          (isActive
-            ? "bg-white/10 border-white/30 shadow-lg shadow-white/5"
-            : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20") +
-          (disabled ? " opacity-50 cursor-not-allowed" : "");
-
-        var rLabel = riskLabel(s.risk);
-        var rColor = riskLabelColor(s.risk);
-
-        return (
-          <button
-            key={s.value}
-            onClick={function () { onChange(s.value); }}
-            disabled={disabled}
-            className={btnClass}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-2xl leading-none">{s.icon}</div>
-                <div className="mt-1 font-semibold text-[13px] sm:text-sm leading-tight truncate">{s.label}</div>
-              </div>
-
-              {/* SINGLE source of risk text (no duplication) */}
-              <div className="text-[10px] text-white/35 leading-tight text-right">
-                <div>Risk</div>
-                <div className={"font-semibold " + rColor}>{rLabel}</div>
-              </div>
+      return (
+        <button
+          key={s.value}
+          onClick={() => onChange(s.value)}
+          disabled={disabled}
+          className={btnClass}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-2xl leading-none">{s.icon}</div>
+              <div className="mt-1 font-semibold text-[13px] sm:text-sm leading-tight truncate">{s.label}</div>
+              <div className="text-[10px] text-white/35 mt-1">{s.description}</div>
             </div>
 
-            {/* Bars only */}
-            <div className="mt-2">
-              <RiskMeter level={s.risk} />
+            <div className={`text-[10px] font-semibold ${riskLabelColor(s.risk)}`}>
+              {riskLabel(s.risk)}
             </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+          </div>
+
+          <div className="mt-2">
+            <RiskMeter level={s.risk} />
+          </div>
+        </button>
+      );
+    })}
+  </div>
+);
 
 /* ===================== PLAN SELECTOR ===================== */
-function PlanSelector(props) {
-  var value = props.value;
-  var onChange = props.onChange;
+const PlanSelector = ({ value, onChange, disabled }) => (
+  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+    {PLANS.map((p) => {
+      const isActive = value === p.value;
+      const btnClass = `rounded-2xl text-left transition-all border px-3 py-2.5 sm:px-4 sm:py-2.5 ${
+        isActive
+          ? "bg-white/10 border-white/30 shadow-lg shadow-white/5"
+          : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`;
 
-  return (
-    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-      {PLANS.map(function (p) {
-        var isActive = value === p.value;
-        var btnClass =
-          "rounded-2xl text-left transition-all border px-3 py-2.5 sm:px-4 sm:py-2.5 " +
-          (isActive
-            ? "bg-white/10 border-white/30 shadow-lg shadow-white/5"
-            : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20");
-
-        return (
-          <button key={p.value} onClick={function () { onChange(p.value); }} className={btnClass}>
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-base">{p.icon}</span>
-              <span className="font-semibold text-[13px] sm:text-sm truncate">{p.label}</span>
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+      return (
+        <button key={p.value} onClick={() => onChange(p.value)} disabled={disabled} className={btnClass}>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base">{p.icon}</span>
+            <span className="font-semibold text-[13px] sm:text-sm truncate">{p.label}</span>
+          </div>
+          <div className="text-[10px] text-white/35 mt-1">${p.price}/mo</div>
+        </button>
+      );
+    })}
+  </div>
+);
 
 /* ===================== SESSION STATS ===================== */
-function SessionStats(props) {
-  var wins = props.wins || 0;
-  var losses = props.losses || 0;
-  var bestWinStreak = props.bestWinStreak || 0;
-  var dayStreak = props.dayStreak || 0;
-  var strategiesUsed = props.strategiesUsed || 0;
-  var xp = props.xp || 0;
-  var currentPlan = props.currentPlan || PLANS[0];
-  var currentStrat = props.currentStrat || STRATEGIES[1];
-  var total = wins + losses;
+const SessionStats = ({ 
+  wins = 0, 
+  losses = 0, 
+  bestWinStreak = 0, 
+  dayStreak = 0, 
+  strategiesUsed = 0, 
+  xp = 0, 
+  currentPlan,
+  currentStrat 
+}) => {
+  const total = wins + losses;
 
   return (
     <CardShell title="Session Stats" icon="📊">
@@ -605,7 +528,8 @@ function SessionStats(props) {
         <div className="flex justify-between gap-3">
           <span className="text-white/50">Wins / Losses</span>
           <span>
-            <span className="text-emerald-400 font-bold">{wins}</span> {" / "} <span className="text-red-400 font-bold">{losses}</span>
+            <span className="text-emerald-400 font-bold">{wins}</span> /{" "}
+            <span className="text-red-400 font-bold">{losses}</span>
           </span>
         </div>
         <div className="flex justify-between gap-3">
@@ -629,112 +553,93 @@ function SessionStats(props) {
           <div className="flex justify-between gap-3">
             <span className="text-white/50">Plan</span>
             <span className="text-[12px] sm:text-sm font-semibold">
-              {currentPlan.icon} {currentPlan.label}
+              {currentPlan?.icon} {currentPlan?.label}
             </span>
           </div>
           <div className="flex justify-between gap-3">
             <span className="text-white/50">Strategy</span>
             <span className="text-[12px] sm:text-sm font-semibold">
-              {currentStrat.icon} {currentStrat.label}
+              {currentStrat?.icon} {currentStrat?.label}
             </span>
           </div>
           <div className="flex justify-between gap-3">
             <span className="text-white/50">Exchanges</span>
-            <span className="text-[11px] text-white/60 text-right leading-snug">{currentPlan.exchanges.join(", ")}</span>
+            <span className="text-[11px] text-white/60 text-right leading-snug">
+              {currentPlan?.exchanges.join(", ")}
+            </span>
           </div>
         </div>
       </div>
     </CardShell>
   );
-}
+};
 
-/* =====================================================================
-   MAIN COMPONENT
-===================================================================== */
+/* ===================== UPGRADE BANNER ===================== */
+const UpgradeBanner = ({ currentPlan, onUpgrade }) => {
+  const isStarter = currentPlan?.value === "starter";
+  
+  if (!isStarter) return null;
+  
+  return (
+    <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-2xl p-4">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <span className="text-3xl">🚀</span>
+          <div>
+            <h3 className="font-semibold text-sm sm:text-base">Upgrade to unlock more exchanges</h3>
+            <p className="text-xs text-white/60 mt-1">
+              Starter: OKX + Alpaca • Pro: + Staking • Elite: + DEX + Futures
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onUpgrade}
+          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 font-bold text-sm hover:from-blue-500 hover:to-purple-500 transition-all whitespace-nowrap"
+        >
+          View Plans →
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ===================== MAIN COMPONENT ===================== */
 export default function TradeDemo() {
-  var nav = useNavigate();
-  var searchParams = useSearchParams();
-  var params = searchParams[0];
-  var tickerRef = useRef(null);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const tickerRef = useRef(null);
+  const { user, isAuthenticated } = useAuth();
 
-  var stateEquity = useState(1000);
-  var equity = stateEquity[0];
-  var setEquity = stateEquity[1];
+  // Demo state
+  const [equity, setEquity] = useState(1000);
+  const [pnl, setPnl] = useState(0);
+  const [wins, setWins] = useState(0);
+  const [losses, setLosses] = useState(0);
+  const [plan, setPlan] = useState("starter");
+  const [strategy, setStrategy] = useState("ai_weighted");
+  const [running, setRunning] = useState(false);
+  const [dayStreak, setDayStreak] = useState(0);
+  const [lastTradeDay, setLastTradeDay] = useState(null);
+  const [tradeLog, setTradeLog] = useState([]);
+  const [equityHistory, setEquityHistory] = useState([{ value: 1000 }]);
+  const [currentWinStreak, setCurrentWinStreak] = useState(0);
+  const [bestWinStreak, setBestWinStreak] = useState(0);
+  const [strategiesUsed, setStrategiesUsed] = useState(new Set(["ai_weighted"]));
+  const [speed, setSpeed] = useState(3000);
 
-  var statePnl = useState(0);
-  var pnl = statePnl[0];
-  var setPnl = statePnl[1];
-
-  var stateWins = useState(0);
-  var wins = stateWins[0];
-  var setWins = stateWins[1];
-
-  var stateLosses = useState(0);
-  var losses = stateLosses[0];
-  var setLosses = stateLosses[1];
-
-  var statePlan = useState("starter");
-  var plan = statePlan[0];
-  var setPlan = statePlan[1];
-
-  var stateStrategy = useState("ai_weighted");
-  var strategy = stateStrategy[0];
-  var setStrategy = stateStrategy[1];
-
-  var stateRunning = useState(false);
-  var running = stateRunning[0];
-  var setRunning = stateRunning[1];
-
-  var stateDayStreak = useState(0);
-  var dayStreak = stateDayStreak[0];
-  var setDayStreak = stateDayStreak[1];
-
-  var stateLastTradeDay = useState(null);
-  var lastTradeDay = stateLastTradeDay[0];
-  var setLastTradeDay = stateLastTradeDay[1];
-
-  var stateTradeLog = useState([]);
-  var tradeLog = stateTradeLog[0];
-  var setTradeLog = stateTradeLog[1];
-
-  var stateEquityHistory = useState([{ value: 1000 }]);
-  var equityHistory = stateEquityHistory[0];
-  var setEquityHistory = stateEquityHistory[1];
-
-  var stateCurrentWinStreak = useState(0);
-  var currentWinStreak = stateCurrentWinStreak[0];
-  var setCurrentWinStreak = stateCurrentWinStreak[1];
-
-  var stateBestWinStreak = useState(0);
-  var bestWinStreak = stateBestWinStreak[0];
-  var setBestWinStreak = stateBestWinStreak[1];
-
-  var stateStrategiesUsed = useState(new Set(["ai_weighted"]));
-  var strategiesUsed = stateStrategiesUsed[0];
-  var setStrategiesUsed = stateStrategiesUsed[1];
-
-  var stateSpeed = useState(3000);
-  var speed = stateSpeed[0];
-  var setSpeed = stateSpeed[1];
-
-  /* ── Derived ── */
-  var currentPlan = useMemo(function () {
-    return PLANS.find(function (p) { return p.value === plan; }) || PLANS[0];
-  }, [plan]);
-
-  var currentStrat = useMemo(function () {
-    return STRATEGIES.find(function (s) { return s.value === strategy; }) || STRATEGIES[1];
-  }, [strategy]);
-
-  var winRate = useMemo(function () {
-    var t = wins + losses;
+  // Derived values
+  const currentPlan = useMemo(() => PLANS.find((p) => p.value === plan) || PLANS[0], [plan]);
+  const currentStrat = useMemo(() => STRATEGIES.find((s) => s.value === strategy) || STRATEGIES[1], [strategy]);
+  
+  const winRate = useMemo(() => {
+    const t = wins + losses;
     return t > 0 ? ((wins / t) * 100).toFixed(1) : "0.0";
   }, [wins, losses]);
 
-  var xp = useMemo(function () {
-    var total = 0;
+  const xp = useMemo(() => {
+    let total = 0;
     total += Math.min(wins + losses, 50) * 2;
-    var wr = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
+    const wr = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
     total += Math.max(0, wr - 40) * 1.5;
     total += Math.max(0, pnl) * 0.1;
     total += currentWinStreak * 3;
@@ -743,9 +648,9 @@ export default function TradeDemo() {
     return total;
   }, [wins, losses, pnl, currentWinStreak, dayStreak, plan]);
 
-  var confidence = useMemo(function () {
-    var t = wins + losses;
-    var s = 0;
+  const confidence = useMemo(() => {
+    const t = wins + losses;
+    let s = 0;
     if (t > 0) s += clamp((wins / t) * 40, 0, 40);
     s += clamp(t * 1.2, 0, 30);
     s += clamp(dayStreak * 5, 0, 20);
@@ -753,89 +658,86 @@ export default function TradeDemo() {
     return clamp(Math.round(s), 0, 100);
   }, [wins, losses, dayStreak, plan]);
 
-  var tradesByExchange = useMemo(function () {
-    var r = { OKX: [], Alpaca: [], DEX: [], Futures: [] };
-    tradeLog.forEach(function (t) { if (r[t.exchange]) r[t.exchange].push(t); });
-    return r;
+  const tradesByExchange = useMemo(() => {
+    const result = { OKX: [], Alpaca: [], DEX: [], Futures: [] };
+    tradeLog.forEach((t) => {
+      if (result[t.exchange]) result[t.exchange].push(t);
+    });
+    return result;
   }, [tradeLog]);
 
-  var unlockedAchievements = useMemo(function () {
-    var stats = {
+  const unlockedAchievements = useMemo(() => {
+    const stats = {
       totalTrades: wins + losses,
-      wins: wins,
-      losses: losses,
-      pnl: pnl,
-      currentWinStreak: currentWinStreak,
+      wins,
+      losses,
+      pnl,
+      currentWinStreak,
       winRate: Number(winRate),
-      dayStreak: dayStreak,
-      plan: plan,
+      dayStreak,
+      plan,
       strategiesUsed: strategiesUsed.size,
-      confidence: confidence,
+      confidence,
     };
-    return ALL_ACHIEVEMENTS.filter(function (a) { return a.check(stats); }).map(function (a) { return a.id; });
+    return ALL_ACHIEVEMENTS.filter((a) => a.check(stats)).map((a) => a.id);
   }, [wins, losses, pnl, currentWinStreak, winRate, dayStreak, plan, strategiesUsed, confidence]);
 
-  var pnlChartData = useMemo(function () {
-    return tradeLog.slice(-30).map(function (t, i) { return { label: "#" + (i + 1), value: t.pnl }; });
+  const pnlChartData = useMemo(() => {
+    return tradeLog.slice(-30).map((t, i) => ({ label: `#${i + 1}`, value: t.pnl }));
   }, [tradeLog]);
 
-  /* ── Init from URL / localStorage ── */
-  useEffect(function () {
-    var ap = PLANS.map(function (p) { return p.value; });
-    var as2 = STRATEGIES.map(function (s) { return s.value; });
+  // Init from URL params
+  useEffect(() => {
+    const planValues = PLANS.map((p) => p.value);
+    const strategyValues = STRATEGIES.map((s) => s.value);
 
-    var pu = pickAllowed(params.get("plan") || params.get("tier"), ap, "");
-    var su = pickAllowed(params.get("strategy"), as2, "");
+    const urlPlan = pickAllowed(searchParams.get("plan") || searchParams.get("tier"), planValues, "");
+    const urlStrategy = pickAllowed(searchParams.get("strategy"), strategyValues, "");
 
-    var ps = "";
-    var ss = "";
+    // Try localStorage
+    let savedPlan = "";
+    let savedStrategy = "";
     try {
-      ps = localStorage.getItem("imali_plan") || "";
-      ss = localStorage.getItem("imali_strategy") || "";
-    } catch (e) { /* ignore */ }
+      savedPlan = localStorage.getItem("imali_demo_plan") || "";
+      savedStrategy = localStorage.getItem("imali_demo_strategy") || "";
+    } catch (e) {}
 
-    setPlan(pu || pickAllowed(ps, ap, "starter"));
-    setStrategy(su || pickAllowed(ss, as2, "ai_weighted"));
-  }, [params]);
+    setPlan(urlPlan || pickAllowed(savedPlan, planValues, "starter"));
+    setStrategy(urlStrategy || pickAllowed(savedStrategy, strategyValues, "ai_weighted"));
+  }, [searchParams]);
 
-  /* ── Persist ── */
-  useEffect(function () {
+  // Persist selections
+  useEffect(() => {
     try {
-      localStorage.setItem("imali_plan", plan);
-      localStorage.setItem("imali_strategy", strategy);
-    } catch (e) { /* ignore */ }
+      localStorage.setItem("imali_demo_plan", plan);
+      localStorage.setItem("imali_demo_strategy", strategy);
+    } catch (e) {}
   }, [plan, strategy]);
 
-  /* ── Track strategies used ── */
-  useEffect(function () {
-    setStrategiesUsed(function (prev) {
-      return new Set([].concat(Array.from(prev), [strategy]));
-    });
+  // Track strategies used
+  useEffect(() => {
+    setStrategiesUsed((prev) => new Set([...Array.from(prev), strategy]));
   }, [strategy]);
 
-  /* ── Simulation tick ── */
-  useEffect(function () {
+  // Simulation tick
+  useEffect(() => {
     if (!running) return;
 
-    tickerRef.current = setInterval(function () {
-      var available = DEMO_TOKENS.filter(function (t) { return currentPlan.exchanges.includes(t.exchange); });
-      var token = available[Math.floor(Math.random() * available.length)] || DEMO_TOKENS[0];
+    tickerRef.current = setInterval(() => {
+      const available = DEMO_TOKENS.filter((t) => currentPlan.exchanges.includes(t.exchange));
+      const token = available[Math.floor(Math.random() * available.length)] || DEMO_TOKENS[0];
 
-      var riskMult = 0.5 + currentStrat.risk * 0.4;
-      var winBias =
-        strategy === "mean_reversion"
-          ? 0.52
-          : strategy === "ai_weighted"
-          ? 0.55
-          : strategy === "momentum"
-          ? 0.5
-          : 0.48;
+      const riskMult = 0.5 + currentStrat.risk * 0.4;
+      const winBias = 
+        strategy === "mean_reversion" ? 0.52 :
+        strategy === "ai_weighted" ? 0.55 :
+        strategy === "momentum" ? 0.5 : 0.48;
 
-      var isWin = Math.random() < winBias;
-      var magnitude = (Math.random() * 20 + 5) * riskMult;
-      var delta = isWin ? magnitude : -magnitude * 0.7;
+      const isWin = Math.random() < winBias;
+      const magnitude = (Math.random() * 20 + 5) * riskMult;
+      const delta = isWin ? magnitude : -magnitude * 0.7;
 
-      var trade = {
+      const trade = {
         id: Date.now() + Math.random(),
         symbol: token.symbol,
         icon: token.icon,
@@ -845,44 +747,44 @@ export default function TradeDemo() {
         timestamp: new Date().toLocaleTimeString(),
       };
 
-      setTradeLog(function (prev) { return prev.slice(-100).concat([trade]); });
-      setPnl(function (p) { return p + delta; });
-      setEquity(function (e) {
-        var next = e + delta;
-        setEquityHistory(function (h) { return h.slice(-60).concat([{ value: next }]); });
+      setTradeLog((prev) => [...prev.slice(-100), trade]);
+      setPnl((p) => p + delta);
+      setEquity((e) => {
+        const next = e + delta;
+        setEquityHistory((h) => [...h.slice(-60), { value: next }]);
         return next;
       });
 
       if (isWin) {
-        setWins(function (w) { return w + 1; });
-        setCurrentWinStreak(function (s) {
-          var next = s + 1;
-          setBestWinStreak(function (b) { return Math.max(b, next); });
+        setWins((w) => w + 1);
+        setCurrentWinStreak((s) => {
+          const next = s + 1;
+          setBestWinStreak((b) => Math.max(b, next));
           return next;
         });
       } else {
-        setLosses(function (l) { return l + 1; });
+        setLosses((l) => l + 1);
         setCurrentWinStreak(0);
       }
 
-      var today = new Date().toDateString();
-      setLastTradeDay(function (prev) {
+      const today = new Date().toDateString();
+      setLastTradeDay((prev) => {
         if (!prev || prev !== today) {
-          setDayStreak(function (s) { return s + 1; });
+          setDayStreak((s) => s + 1);
           return today;
         }
         return prev;
       });
     }, speed);
 
-    return function () {
+    return () => {
       clearInterval(tickerRef.current);
       tickerRef.current = null;
     };
-  }, [running, plan, strategy, speed, currentPlan, currentStrat]);
+  }, [running, strategy, speed, currentPlan, currentStrat]);
 
-  /* ── Reset ── */
-  var resetDemo = useCallback(function () {
+  // Reset demo
+  const resetDemo = useCallback(() => {
     setRunning(false);
     setEquity(1000);
     setPnl(0);
@@ -897,37 +799,76 @@ export default function TradeDemo() {
     setStrategiesUsed(new Set([strategy]));
   }, [strategy]);
 
-  /* ===================== RENDER ===================== */
-  var startBtnClass =
-    "px-4 py-2.5 rounded-2xl font-bold transition-all text-sm " +
-    (running
-      ? "bg-red-600 hover:bg-red-500"
-      : "bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/20");
+  // Handlers
+  const handleUpgrade = () => {
+    if (isAuthenticated) {
+      navigate("/pricing");
+    } else {
+      sessionStorage.setItem("redirectAfterLogin", "/pricing");
+      navigate("/signup");
+    }
+  };
 
-  var equityColorClass = equity >= 1000 ? "text-emerald-400" : "text-red-400";
-  var pnlColorClass = pnl >= 0 ? "text-emerald-400" : "text-red-400";
-  var wrBarClass =
-    "h-full rounded-full transition-all duration-500 " +
-    (Number(winRate) >= 50 ? "bg-emerald-500" : "bg-red-500");
+  const handleExchangeClick = (exchangeName) => {
+    if (!currentPlan.exchanges.includes(exchangeName)) {
+      handleUpgrade();
+    }
+  };
+
+  const handleGoLive = () => {
+    if (isAuthenticated) {
+      if (user?.tier_active === "starter") {
+        navigate("/activation");
+      } else {
+        navigate("/dashboard");
+      }
+    } else {
+      sessionStorage.setItem("redirectAfterLogin", "/dashboard");
+      navigate("/signup");
+    }
+  };
+
+  // Render
+  const startBtnClass = `px-4 py-2.5 rounded-2xl font-bold transition-all text-sm ${
+    running
+      ? "bg-red-600 hover:bg-red-500"
+      : "bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/20"
+  }`;
+
+  const equityColorClass = equity >= 1000 ? "text-emerald-400" : "text-red-400";
+  const pnlColorClass = pnl >= 0 ? "text-emerald-400" : "text-red-400";
+  const wrBarClass = `h-full rounded-full transition-all duration-500 ${
+    Number(winRate) >= 50 ? "bg-emerald-500" : "bg-red-500"
+  }`;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-7xl mx-auto px-3 py-3 sm:p-4 md:p-6 space-y-3 sm:space-y-5">
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg sm:text-2xl font-bold truncate">🎮 Trading Sim</h1>
+                <h1 className="text-lg sm:text-2xl font-bold truncate">🎮 Trading Simulator</h1>
                 <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full text-[10px] font-bold border border-blue-500/30">
                   DEMO
                 </span>
+                {isAuthenticated && user && (
+                  <Link 
+                    to="/dashboard"
+                    className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full text-[10px] font-bold border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors"
+                  >
+                    Go to Live Dashboard →
+                  </Link>
+                )}
               </div>
-              <p className="text-[12px] sm:text-sm text-white/50 mt-1 leading-snug">Practice with fake money — no risk.</p>
+              <p className="text-[12px] sm:text-sm text-white/50 mt-1 leading-snug">
+                Practice with fake money — no risk. Select a plan to see available exchanges.
+              </p>
             </div>
 
             <div className="flex gap-2 flex-shrink-0">
-              <button onClick={function () { setRunning(function (r) { return !r; }); }} className={startBtnClass}>
+              <button onClick={() => setRunning((r) => !r)} className={startBtnClass}>
                 {running ? "⏸ Stop" : "▶️ Start"}
               </button>
               <button
@@ -938,24 +879,29 @@ export default function TradeDemo() {
                 🔄
               </button>
               <button
-                onClick={function () { nav("/signup"); }}
+                onClick={handleGoLive}
                 className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold text-sm hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/20 transition-all"
               >
-                🚀 Live
+                {isAuthenticated ? "🚀 Go Live" : "🚀 Sign Up"}
               </button>
             </div>
           </div>
 
-          {/* Speed (only when running) */}
+          {/* Speed control - only when running */}
           {running && (
             <div className="mt-3 flex flex-wrap items-center gap-2 bg-black/25 border border-white/10 rounded-2xl px-3 py-2">
               <span className="text-[11px] text-white/60">Speed:</span>
-              {[{ label: "🐌", ms: 5000 }, { label: "🚶", ms: 3000 }, { label: "🏃", ms: 1500 }, { label: "⚡", ms: 700 }].map(function (s) {
-                var cls =
-                  "px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all border " +
-                  (speed === s.ms ? "bg-white/15 border-white/30" : "bg-white/5 border-white/10 hover:bg-white/10");
+              {[
+                { label: "🐌", ms: 5000 },
+                { label: "🚶", ms: 3000 },
+                { label: "🏃", ms: 1500 },
+                { label: "⚡", ms: 700 },
+              ].map((s) => {
+                const cls = `px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all border ${
+                  speed === s.ms ? "bg-white/15 border-white/30" : "bg-white/5 border-white/10 hover:bg-white/10"
+                }`;
                 return (
-                  <button key={s.ms} onClick={function () { setSpeed(s.ms); }} className={cls}>
+                  <button key={s.ms} onClick={() => setSpeed(s.ms)} className={cls}>
                     {s.label}
                   </button>
                 );
@@ -968,40 +914,53 @@ export default function TradeDemo() {
           )}
         </div>
 
-        {/* ── Collapsible Controls ── */}
-        <CollapsibleCard title="Plan" icon="💳" defaultOpen={true} right={<span className="text-[11px] text-white/45">(try all)</span>}>
-          <PlanSelector value={plan} onChange={setPlan} />
-          <div className="mt-2 text-[11px] text-white/50 leading-snug">
-            {currentPlan.icon} <b className="text-white">{currentPlan.label}</b>:{" "}
-            <span className="text-white/55">{currentPlan.exchanges.join(", ")}</span>
+        {/* Plan selector - gated by demo status */}
+        <CollapsibleCard title="Select Plan" icon="💳" defaultOpen={true} right={<span className="text-[11px] text-white/45">affects available exchanges</span>}>
+          <PlanSelector value={plan} onChange={setPlan} disabled={running} />
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-5 gap-2">
+            {PLANS.map((p) => (
+              <div
+                key={p.value}
+                className={`text-[11px] p-2 rounded-xl ${
+                  plan === p.value ? "bg-white/10 border border-white/20" : "bg-black/20"
+                }`}
+              >
+                <span className="font-semibold block">{p.icon} {p.label}</span>
+                <span className="text-white/50">${p.price}/mo</span>
+              </div>
+            ))}
           </div>
         </CollapsibleCard>
 
+        {/* Strategy selector */}
         <CollapsibleCard
           title="Strategy"
           icon="🧠"
           defaultOpen={true}
-          right={running ? <span className="text-[11px] text-yellow-300/80">Stop to change</span> : <span className="text-[11px] text-white/45">Pick one</span>}
+          right={running ? <span className="text-[11px] text-yellow-300/80">Stop to change</span> : null}
         >
           <StrategySelector value={strategy} onChange={setStrategy} disabled={running} />
         </CollapsibleCard>
 
-        {/* ── Key Stats ── */}
+        {/* Upgrade banner for starter plan users */}
+        <UpgradeBanner currentPlan={currentPlan} onUpgrade={handleUpgrade} />
+
+        {/* Key Stats */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
           <CardShell title="Equity" icon="💰">
-            <div className={"text-xl font-bold leading-tight " + equityColorClass}>{formatUsdPlain(equity)}</div>
+            <div className={`text-xl font-bold leading-tight ${equityColorClass}`}>{formatUsdPlain(equity)}</div>
             <div className="text-[11px] text-white/35 mt-1">Start $1k</div>
           </CardShell>
 
           <CardShell title="P&L" icon="📊">
-            <div className={"text-xl font-bold leading-tight " + pnlColorClass}>{formatUsd(pnl)}</div>
+            <div className={`text-xl font-bold leading-tight ${pnlColorClass}`}>{formatUsd(pnl)}</div>
             <div className="text-[11px] text-white/35 mt-1">{wins + losses} trades</div>
           </CardShell>
 
           <CardShell title="Win Rate" icon="🎯">
             <div className="text-xl font-bold leading-tight">{winRate}%</div>
             <div className="w-full bg-white/10 rounded-full h-2 mt-2 overflow-hidden">
-              <div className={wrBarClass} style={{ width: winRate + "%" }} />
+              <div className={wrBarClass} style={{ width: `${winRate}%` }} />
             </div>
           </CardShell>
 
@@ -1024,10 +983,10 @@ export default function TradeDemo() {
 
         <LevelBadge xp={xp} />
 
-        {/* ── Charts ── */}
+        {/* Charts */}
         <CollapsibleCard title="Charts" icon="📈" defaultOpen={false} right={<span className="text-[11px] text-white/45">Equity + Results</span>}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <CardShell title="Equity" icon="📈" right={<span className={"text-[12px] font-bold " + equityColorClass}>{formatUsdPlain(equity)}</span>}>
+            <CardShell title="Equity" icon="📈" right={<span className={`text-[12px] font-bold ${equityColorClass}`}>{formatUsdPlain(equity)}</span>}>
               <EquityCurve data={equityHistory} height={110} />
             </CardShell>
 
@@ -1037,20 +996,44 @@ export default function TradeDemo() {
           </div>
         </CollapsibleCard>
 
-        {/* ── Exchanges ── */}
-        <CollapsibleCard title="Exchanges" icon="🔗" defaultOpen={false} right={<span className="text-[11px] text-white/45">per plan</span>}>
+        {/* Exchanges - with gating */}
+        <CollapsibleCard title="Exchanges" icon="🔗" defaultOpen={true} right={<span className="text-[11px] text-white/45">click to upgrade</span>}>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-            <DemoExchangeCard name="OKX" icon="🔷" trades={tradesByExchange.OKX} active={currentPlan.exchanges.includes("OKX")} />
-            <DemoExchangeCard name="Alpaca" icon="📈" trades={tradesByExchange.Alpaca} active={currentPlan.exchanges.includes("Alpaca")} />
-            <DemoExchangeCard name="DEX" icon="🦄" trades={tradesByExchange.DEX} active={currentPlan.exchanges.includes("DEX")} />
-            <DemoExchangeCard name="Futures" icon="📊" trades={tradesByExchange.Futures} active={currentPlan.exchanges.includes("Futures")} />
+            <DemoExchangeCard
+              name="OKX"
+              icon="🔷"
+              trades={tradesByExchange.OKX}
+              active={currentPlan.exchanges.includes("OKX")}
+              onClick={() => handleExchangeClick("OKX")}
+            />
+            <DemoExchangeCard
+              name="Alpaca"
+              icon="📈"
+              trades={tradesByExchange.Alpaca}
+              active={currentPlan.exchanges.includes("Alpaca")}
+              onClick={() => handleExchangeClick("Alpaca")}
+            />
+            <DemoExchangeCard
+              name="DEX"
+              icon="🦄"
+              trades={tradesByExchange.DEX}
+              active={currentPlan.exchanges.includes("DEX")}
+              onClick={() => handleExchangeClick("DEX")}
+            />
+            <DemoExchangeCard
+              name="Futures"
+              icon="📊"
+              trades={tradesByExchange.Futures}
+              active={currentPlan.exchanges.includes("Futures")}
+              onClick={() => handleExchangeClick("Futures")}
+            />
           </div>
         </CollapsibleCard>
 
-        {/* ── Trades + Session Stats ── */}
+        {/* Trades + Session Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <CardShell
-            title="Trades"
+            title="Trade Feed"
             icon="📋"
             right={
               running ? (
@@ -1078,7 +1061,7 @@ export default function TradeDemo() {
           />
         </div>
 
-        {/* ── Advanced Chart ── */}
+        {/* Advanced Chart */}
         <CollapsibleCard title="Advanced Chart" icon="📉" defaultOpen={false} right={<span className="text-[11px] text-white/45">overview</span>}>
           <div className="bg-black/20 border border-white/10 rounded-2xl p-2 sm:p-3">
             <TradingOverview
@@ -1099,29 +1082,32 @@ export default function TradeDemo() {
 
         <AchievementsPanel unlocked={unlockedAchievements} total={ALL_ACHIEVEMENTS.length} />
 
-        {/* ── CTA ── */}
+        {/* CTA */}
         <div className="bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-4 sm:p-7 text-center">
           <div className="text-4xl sm:text-5xl mb-2">🚀</div>
           <h2 className="text-lg sm:text-2xl font-bold mb-2">Ready for Real?</h2>
-          <p className="text-[12px] sm:text-sm text-white/60 max-w-lg mx-auto mb-4">Everything works with real money too.</p>
+          <p className="text-[12px] sm:text-sm text-white/60 max-w-lg mx-auto mb-4">
+            Everything works with real money too. {isAuthenticated ? "Go live now!" : "Sign up to start trading live."}
+          </p>
           <div className="flex flex-col xs:flex-row justify-center gap-2 sm:gap-4">
             <button
-              onClick={function () { nav("/signup"); }}
+              onClick={handleGoLive}
               className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-cyan-600 font-bold text-sm hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/20 transition-all"
             >
-              🚀 Sign Up
+              {isAuthenticated ? "🚀 Go to Dashboard" : "🚀 Sign Up"}
             </button>
             <button
-              onClick={function () { nav("/pricing"); }}
+              onClick={() => navigate("/pricing")}
               className="px-5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 font-bold text-sm transition-colors"
             >
-              💳 Plans
+              💳 View Plans
             </button>
           </div>
         </div>
 
+        {/* Footer */}
         <div className="text-center py-3">
-          <p className="text-[10px] text-white/25">🎮 Demo simulator. No real money used.</p>
+          <p className="text-[10px] text-white/25">🎮 Demo simulator. No real money used. Practice only.</p>
         </div>
       </div>
     </div>
