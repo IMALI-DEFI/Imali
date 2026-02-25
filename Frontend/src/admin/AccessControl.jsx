@@ -105,7 +105,7 @@ const AccessControl = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <RefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
+        <RiRefreshLine className="w-8 h-8 animate-spin text-indigo-600" />
       </div>
     );
   }
@@ -122,7 +122,7 @@ const AccessControl = () => {
           disabled={saving}
           className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
         >
-          {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {saving ? <FiRefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
