@@ -122,7 +122,8 @@ const AccessControl = () => {
           disabled={saving}
           className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
         >
-          {saving ? <FiRefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
+          {saving ? <FiRefreshCw className="w-5 h-5 animate-spin" /> : <FiSave className="w-5 h-5" 
+        />}                                                               
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
