@@ -44,7 +44,11 @@ const ALL_ACHIEVEMENTS = [
   { id: "confidence_80", emoji: "🤖", label: "Bot Master", desc: "Reach 80% confidence", check: (s) => s.confidence >= 80 },
 ];
 
-const POLL_INTERVAL = 10000; // 10 seconds
+// INCREASED POLLING INTERVAL TO PREVENT RATE LIMITING
+const POLL_INTERVAL = 60000; // 60 seconds (increased from 10 seconds)
+
+// Maximum number of consecutive rate limit errors before backing off
+const MAX_RATE_LIMIT_BACKOFF = 3;
 
 /* ===================== HELPERS ===================== */
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
@@ -925,6 +929,10 @@ export default function MemberDashboard() {
   const [currentWinStreak, setCurrentWinStreak] = useState(0);
   const [bestWinStreak, setBestWinStreak] = useState(0);
   const [strategiesUsed, setStrategiesUsed] = useState(new Set(["ai_weighted"]));
+  
+  // Rate limiting backoff state
+  const [rateLimitCount, setRateLimitCount] = useState(0);
+  const [pollInterval, setPollInterval] = useState(POLL_INTERVAL);
 
   const fetchLock = useRef(false);
   const pollRef = useRef(null);
@@ -1083,6 +1091,14 @@ export default function MemberDashboard() {
     fetchLock.current = true;
     try {
       const res = await BotAPI.getTrades();
+      
+      // Reset rate limit count on success
+      if (rateLimitCount > 0) {
+        setRateLimitCount(0);
+        // Gradually reduce poll interval back to normal
+        setPollInterval(prev => Math.max(POLL_INTERVAL, prev * 0.8));
+      }
+      
       if (mountedRef.current) {
         setTrades(Array.isArray(res?.trades) ? res.trades : []);
         
@@ -1105,14 +1121,24 @@ export default function MemberDashboard() {
         }
       }
     } catch (err) {
-      if (err?.response?.status !== 429 && err?.response?.status !== 403) {
+      if (err?.response?.status === 429) {
+        // Rate limited - increase backoff
+        setRateLimitCount(prev => {
+          const newCount = prev + 1;
+          // Exponential backoff: double interval each time, up to 5 minutes
+          const backoffMultiplier = Math.min(Math.pow(2, newCount), 10);
+          setPollInterval(Math.min(300000, POLL_INTERVAL * backoffMultiplier));
+          console.log(`[Dashboard] Rate limited (${newCount}/${MAX_RATE_LIMIT_BACKOFF}), backing off to ${pollInterval}ms`);
+          return newCount;
+        });
+      } else if (err?.response?.status !== 403) {
         console.warn("[Dashboard] loadTrades failed:", err?.response?.status, err?.message);
       }
     } finally {
       fetchLock.current = false;
       if (mountedRef.current) setLoading(false);
     }
-  }, [user]);
+  }, [user, rateLimitCount, pollInterval]);
 
   // Initial load
   useEffect(() => {
@@ -1124,11 +1150,14 @@ export default function MemberDashboard() {
     if (!botRunning && !tradingEnabled) return;
     if (pollRef.current) clearInterval(pollRef.current);
 
-    pollRef.current = setInterval(loadTrades, POLL_INTERVAL);
+    // Use adaptive poll interval
+    pollRef.current = setInterval(loadTrades, pollInterval);
+    console.log(`[Dashboard] Polling set to ${pollInterval}ms`);
+    
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [botRunning, tradingEnabled, loadTrades]);
+  }, [botRunning, tradingEnabled, loadTrades, pollInterval]);
 
   /* ================ ACTIONS ================ */
   const toggleTrading = async (enabled) => {
