@@ -100,11 +100,72 @@ const TIERS = {
 };
 
 // ============================================================================
-// PAYMENT METHOD COMPONENT
+// PAYMENT METHOD COMPONENT (Inner - uses Stripe hooks)
 // ============================================================================
-function PaymentMethodManager({ onSuccess }) {
+function PaymentMethodForm({ onSuccess, onCancel, clientSecret }) {
   const stripe = useStripe();
   const elements = useElements();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleConfirmCard = async () => {
+    if (!stripe || !elements) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      const { error: stripeError } = await stripe.confirmSetup({
+        elements,
+        confirmParams: {
+          return_url: `${window.location.origin}/billing-dashboard`,
+        },
+        redirect: "if_required",
+      });
+
+      if (stripeError) throw stripeError;
+
+      // Confirm with backend
+      await BotAPI.confirmCard();
+      onSuccess();
+    } catch (err) {
+      setError(err.message || "Failed to save card");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 p-4 bg-black/30 rounded-lg">
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-200 text-sm">
+          ⚠️ {error}
+        </div>
+      )}
+      <PaymentElement />
+      <div className="flex gap-2 mt-4">
+        <button
+          onClick={handleConfirmCard}
+          disabled={busy || !stripe}
+          className="flex-1 px-4 py-2 bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {busy ? "Saving..." : "Save Card"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// PAYMENT METHOD MANAGER (Wrapper - provides Elements context)
+// ============================================================================
+function PaymentMethodManager({ onSuccess }) {
   const [showAddCard, setShowAddCard] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -123,7 +184,7 @@ function PaymentMethodManager({ onSuccess }) {
       const res = await BotAPI.getCardStatus();
       if (res?.payment_method) {
         setDefaultMethod(res.payment_method);
-        setPaymentMethods([res.payment_method]); // In real app, you'd list all
+        setPaymentMethods([res.payment_method]);
       }
     } catch (err) {
       console.error("Failed to load payment methods:", err);
@@ -146,39 +207,13 @@ function PaymentMethodManager({ onSuccess }) {
     }
   };
 
-  const handleConfirmCard = async () => {
-    if (!stripe || !elements) return;
-
-    setBusy(true);
-    setError("");
-
-    try {
-      const { error: stripeError } = await stripe.confirmSetup({
-        elements,
-        confirmParams: {
-          return_url: `${window.location.origin}/billing`,
-        },
-        redirect: "if_required",
-      });
-
-      if (stripeError) throw stripeError;
-
-      // Confirm with backend
-      await BotAPI.confirmCard();
-      
-      // Reload payment methods
-      await loadPaymentMethods();
-      setShowAddCard(false);
-      if (onSuccess) onSuccess();
-    } catch (err) {
-      setError(err.message || "Failed to save card");
-    } finally {
-      setBusy(false);
-    }
+  const handleConfirmSuccess = async () => {
+    await loadPaymentMethods();
+    setShowAddCard(false);
+    if (onSuccess) onSuccess();
   };
 
   const handleRemoveCard = async (methodId) => {
-    // Note: This endpoint would need to be added to your backend
     if (!window.confirm("Are you sure you want to remove this card?")) return;
     
     try {
@@ -227,11 +262,7 @@ function PaymentMethodManager({ onSuccess }) {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">
-                    {method.brand === "visa" && "💳"}
-                    {method.brand === "mastercard" && "💳"}
-                    {method.brand === "amex" && "💳"}
-                  </span>
+                  <span className="text-2xl">💳</span>
                   <div>
                     <p className="font-medium">
                       {method.brand?.toUpperCase()} •••• {method.last4}
@@ -275,32 +306,13 @@ function PaymentMethodManager({ onSuccess }) {
 
       {/* Add card form */}
       {showAddCard && clientSecret ? (
-        <div className="mt-4 p-4 bg-black/30 rounded-lg">
-          <Elements
-            stripe={stripePromise}
-            options={{
-              clientSecret,
-              appearance: {
-                theme: "night",
-                variables: {
-                  colorPrimary: "#10b981",
-                  colorBackground: "#1f2937",
-                  colorText: "#ffffff",
-                  colorDanger: "#ef4444",
-                },
-              },
-            }}
-          >
-            <PaymentElement />
-            <button
-              onClick={handleConfirmCard}
-              disabled={busy}
-              className="w-full mt-4 px-4 py-2 bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {busy ? "Saving..." : "Save Card"}
-            </button>
-          </Elements>
-        </div>
+        <Elements stripe={stripePromise} options={{ clientSecret }}>
+          <PaymentMethodForm
+            onSuccess={handleConfirmSuccess}
+            onCancel={() => setShowAddCard(false)}
+            clientSecret={clientSecret}
+          />
+        </Elements>
       ) : (
         <button
           onClick={handleAddCard}
@@ -370,7 +382,7 @@ function SubscriptionPlans({ currentTier, onUpgrade }) {
                   onClick={() => onUpgrade(key)}
                   className="w-full mt-4 px-3 py-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg text-sm font-semibold hover:opacity-90"
                 >
-                  {parseInt(tier.price) > parseInt(TIERS[currentTier].price)
+                  {parseInt(tier.price) > parseInt(TIERS[currentTier]?.price || 0)
                     ? "Upgrade"
                     : "Downgrade"}
                 </button>
@@ -466,9 +478,7 @@ function NewsletterPreferences() {
     setSaving(true);
 
     try {
-      // This endpoint would need to be added to your backend
-      // await BotAPI.updateNewsletterPrefs(newPrefs);
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (err) {
       console.error("Failed to save preferences:", err);
     } finally {
@@ -558,11 +568,6 @@ function AccountSecurity() {
 
   const loadSessions = async () => {
     try {
-      // This endpoint would need to be added to your backend
-      // const data = await BotAPI.getActiveSessions();
-      // setSessions(data.sessions || []);
-      
-      // Mock data for now
       setSessions([
         {
           id: 1,
@@ -591,7 +596,6 @@ function AccountSecurity() {
   const handleRevokeSession = async (sessionId) => {
     if (!window.confirm("Log out this device?")) return;
     try {
-      // await BotAPI.revokeSession(sessionId);
       await loadSessions();
     } catch (err) {
       console.error("Failed to revoke session:", err);
@@ -601,7 +605,6 @@ function AccountSecurity() {
   const handleRevokeAll = async () => {
     if (!window.confirm("Log out all other devices?")) return;
     try {
-      // await BotAPI.revokeAllSessions();
       await loadSessions();
     } catch (err) {
       console.error("Failed to revoke sessions:", err);
@@ -615,7 +618,6 @@ function AccountSecurity() {
       </h3>
 
       <div className="space-y-4">
-        {/* Active Sessions */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <h4 className="font-medium text-sm">Active Sessions</h4>
@@ -677,7 +679,6 @@ function AccountSecurity() {
           )}
         </div>
 
-        {/* Password Change */}
         <div className="border-t border-white/10 pt-4">
           <h4 className="font-medium text-sm mb-3">Password & Authentication</h4>
           <button className="w-full px-4 py-2 bg-blue-600/20 text-blue-300 rounded-lg hover:bg-blue-600/30 text-sm">
@@ -685,7 +686,6 @@ function AccountSecurity() {
           </button>
         </div>
 
-        {/* 2FA Status */}
         <div className="border-t border-white/10 pt-4">
           <div className="flex items-center justify-between">
             <div>
@@ -713,7 +713,6 @@ function UsageStatistics({ user, activation }) {
   });
 
   useEffect(() => {
-    // Mock data - replace with real API calls
     setStats({
       apiCalls: 1234,
       trades: 56,
@@ -745,7 +744,6 @@ function UsageStatistics({ user, activation }) {
         </div>
       </div>
 
-      {/* Progress bars */}
       <div className="mt-4 space-y-2">
         <div>
           <div className="flex justify-between text-xs mb-1">
@@ -775,8 +773,6 @@ function CancelSubscription({ tier, onCancel }) {
   const handleCancel = async () => {
     setCanceling(true);
     try {
-      // This endpoint would need to be added
-      // await BotAPI.cancelSubscription({ reason });
       await new Promise(resolve => setTimeout(resolve, 1500));
       onCancel?.();
       setShowConfirm(false);
@@ -859,7 +855,6 @@ export default function BillingDashboard() {
   }, [user, navigate]);
 
   const handleUpgrade = async (newTier) => {
-    // Navigate to checkout or show upgrade flow
     navigate(`/checkout?tier=${newTier}`);
   };
 
@@ -886,7 +881,7 @@ export default function BillingDashboard() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-white/10 pb-4">
+        <div className="flex gap-2 mb-6 border-b border-white/10 pb-4 overflow-x-auto">
           {[
             { id: "overview", label: "Overview", icon: "📊" },
             { id: "plans", label: "Plans", icon: "📋" },
@@ -898,7 +893,7 @@ export default function BillingDashboard() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.id
                   ? "bg-emerald-600 text-white"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -916,7 +911,7 @@ export default function BillingDashboard() {
             <>
               {/* Current Plan Card */}
               <div className={`bg-gradient-to-r ${tierInfo.color} rounded-xl p-6 border ${tierInfo.border}`}>
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between flex-wrap gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-3xl">{tierInfo.icon}</span>
