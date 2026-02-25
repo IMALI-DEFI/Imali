@@ -45,10 +45,65 @@ const ALL_ACHIEVEMENTS = [
 ];
 
 // INCREASED POLLING INTERVAL TO PREVENT RATE LIMITING
-const POLL_INTERVAL = 60000; // 60 seconds (increased from 10 seconds)
+const POLL_INTERVAL = 120000; // 2 minutes (increased from 60 seconds)
+const INITIAL_LOAD_DELAY = 2000; // Wait 2 seconds after login
 
 // Maximum number of consecutive rate limit errors before backing off
 const MAX_RATE_LIMIT_BACKOFF = 3;
+
+/* ===================== GLOBAL FETCH SINGLETON ===================== */
+const tradesFetchState = {
+  lastFetchTime: 0,
+  lastResult: null,
+  inFlight: null,
+  MIN_GAP: 10000, // 10 seconds minimum between fetches
+};
+
+const fetchTradesSingleton = async () => {
+  const now = Date.now();
+  const elapsed = now - tradesFetchState.lastFetchTime;
+
+  // Return cached result if we fetched recently
+  if (elapsed < tradesFetchState.MIN_GAP && tradesFetchState.lastResult !== null) {
+    console.log(`[Dashboard] Using cached trades (${Math.round(elapsed / 1000)}s old)`);
+    return tradesFetchState.lastResult;
+  }
+
+  // If there's already a request in-flight, wait for it
+  if (tradesFetchState.inFlight) {
+    console.log("[Dashboard] Joining in-flight trades request");
+    return tradesFetchState.inFlight;
+  }
+
+  // Make a new request
+  console.log("[Dashboard] Fetching fresh trades");
+  tradesFetchState.inFlight = BotAPI.getTrades()
+    .then((res) => {
+      const trades = Array.isArray(res?.trades) ? res.trades : Array.isArray(res) ? res : [];
+      tradesFetchState.lastResult = trades;
+      tradesFetchState.lastFetchTime = Date.now();
+      tradesFetchState.inFlight = null;
+      return trades;
+    })
+    .catch((err) => {
+      tradesFetchState.inFlight = null;
+
+      // On 429, extend the gap so we don't retry too soon
+      if (err?.response?.status === 429) {
+        const retryAfter = parseInt(err.response.headers?.["retry-after"] || "30", 10);
+        tradesFetchState.lastFetchTime = Date.now() + retryAfter * 1000;
+        console.warn(`[Dashboard] 429 — backing off ${retryAfter}s`);
+
+        // Return cached data if we have it
+        if (tradesFetchState.lastResult !== null) {
+          return tradesFetchState.lastResult;
+        }
+      }
+      throw err;
+    });
+
+  return tradesFetchState.inFlight;
+};
 
 /* ===================== HELPERS ===================== */
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
@@ -937,6 +992,7 @@ export default function MemberDashboard() {
   const fetchLock = useRef(false);
   const pollRef = useRef(null);
   const mountedRef = useRef(true);
+  const hasLoadedOnce = useRef(false);
 
   // Lifecycle
   useEffect(() => {
@@ -1090,25 +1146,25 @@ export default function MemberDashboard() {
 
     fetchLock.current = true;
     try {
-      const res = await BotAPI.getTrades();
+      const result = await fetchTradesSingleton();
       
       // Reset rate limit count on success
       if (rateLimitCount > 0) {
         setRateLimitCount(0);
         // Gradually reduce poll interval back to normal
-        setPollInterval(prev => Math.max(POLL_INTERVAL, prev * 0.8));
+        setPollInterval(prev => Math.max(POLL_INTERVAL, Math.floor(prev * 0.8)));
       }
       
       if (mountedRef.current) {
-        setTrades(Array.isArray(res?.trades) ? res.trades : []);
+        setTrades(result);
         
         // Update streaks based on trades
-        if (res.trades?.length > 0) {
+        if (result.length > 0) {
           // Calculate win streak
           let streak = 0;
           let best = 0;
-          for (let i = res.trades.length - 1; i >= 0; i--) {
-            const pnl = res.trades[i].pnl_usd || res.trades[i].pnl || 0;
+          for (let i = result.length - 1; i >= 0; i--) {
+            const pnl = result[i].pnl_usd || result[i].pnl || 0;
             if (pnl > 0) {
               streak++;
               best = Math.max(best, streak);
@@ -1140,9 +1196,16 @@ export default function MemberDashboard() {
     }
   }, [user, rateLimitCount, pollInterval]);
 
-  // Initial load
+  // Initial load — delayed to avoid 429 from login burst
   useEffect(() => {
-    loadTrades();
+    if (hasLoadedOnce.current) return;
+    hasLoadedOnce.current = true;
+
+    const timer = setTimeout(() => {
+      loadTrades();
+    }, INITIAL_LOAD_DELAY);
+
+    return () => clearTimeout(timer);
   }, [loadTrades]);
 
   // Polling — only if any bot is running or trading enabled
@@ -1152,7 +1215,7 @@ export default function MemberDashboard() {
 
     // Use adaptive poll interval
     pollRef.current = setInterval(loadTrades, pollInterval);
-    console.log(`[Dashboard] Polling set to ${pollInterval}ms`);
+    console.log(`[Dashboard] Polling set to ${pollInterval / 1000}s`);
     
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -1196,7 +1259,10 @@ export default function MemberDashboard() {
         bot_type: actualBotType
       };
       
+      console.log(`[Dashboard] Starting ${actualBotType} bot with payload:`, payload);
+      
       const res = await BotAPI.startBot(payload);
+      console.log(`[Dashboard] Start bot response:`, res);
       
       if (res?.started || res?.success) {
         // Update active bots
@@ -1233,6 +1299,7 @@ export default function MemberDashboard() {
         });
       }
     } catch (err) {
+      console.error("[Dashboard] Start bot error:", err);
       setBanner({
         type: "error",
         message: err?.response?.data?.message || "Bot failed to start. Please try again.",
@@ -1296,12 +1363,6 @@ export default function MemberDashboard() {
   const displayName = user.email?.split("@")[0] || "Trader";
 
   /* ================ RENDER ================ */
-  const startBtnClass = `px-4 py-2.5 rounded-2xl font-bold transition-all text-sm ${
-    botRunning
-      ? "bg-red-600 hover:bg-red-500"
-      : "bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 shadow-lg shadow-emerald-500/20"
-  }`;
-
   const equityColorClass = (1000 + totalPnL) >= 1000 ? "text-emerald-400" : "text-red-400";
   const pnlColorClass = totalPnL >= 0 ? "text-emerald-400" : "text-red-400";
   const wrBarClass = `h-full rounded-full transition-all duration-500 ${
