@@ -564,20 +564,31 @@ const BotAPI = {
       if (params.botType) queryParams.append("bot_type", params.botType);
       if (params.limit) queryParams.append("limit", params.limit);
       
+      // 🔥 FIXED: Use /api/trades which includes ALL trades (spot, futures, stocks, sniper)
       const url = queryParams.toString() 
-        ? `/api/sniper/trades?${queryParams.toString()}`
-        : "/api/sniper/trades";
+        ? `/api/trades?${queryParams.toString()}`
+        : "/api/trades";
       
       const res = await cachedGet(url);
       const data = unwrap(res);
       
+      // Handle different response formats
+      let trades = [];
+      if (data?.trades && Array.isArray(data.trades)) {
+        trades = data.trades;
+      } else if (Array.isArray(data)) {
+        trades = data;
+      }
+      
       return {
-        trades: Array.isArray(data?.trades) ? data.trades : 
-                Array.isArray(data) ? data : []
+        trades,
+        count: data?.count || trades.length,
+        total_pnl: data?.total_pnl || 0,
+        success: data?.success !== false
       };
     } catch (error) {
       console.error("[API] getTrades error:", error);
-      return { trades: [] };
+      return { trades: [], count: 0, success: false };
     }
   },
 
