@@ -5,6 +5,10 @@ const API_BASE =
   process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const TOKEN_KEY = "imali_token";
 
+// Increase cache TTL to reduce requests
+const CACHE_TTL_MS = 10000; // Increased from 5000 to 10000ms
+const BOTS_STATUS_CACHE_TTL_MS = 30000; // Special longer TTL for bots status
+
 /* =========================
    AXIOS INSTANCE
 ========================= */
@@ -87,7 +91,7 @@ const deduplicatedGet = async (url) => {
 ========================= */
 
 const lastRequestTime = new Map();
-const MIN_REQUEST_GAP_MS = 2000;
+const MIN_REQUEST_GAP_MS = 3000; // Increased from 2000 to 3000ms
 
 const throttledGet = async (url) => {
   const now = Date.now();
@@ -104,32 +108,43 @@ const throttledGet = async (url) => {
 };
 
 /* =========================
-   RESPONSE CACHE
+   RESPONSE CACHE WITH RATE LIMIT HANDLING
 ========================= */
 
 const responseCache = new Map();
-const CACHE_TTL_MS = 5000;
 
-const cachedGet = async (url, ttl = CACHE_TTL_MS) => {
+const cachedGet = async (url, ttl = CACHE_TTL_MS, retryCount = 0) => {
   const cached = responseCache.get(url);
   if (cached && Date.now() - cached.time < ttl) {
     return cached.response;
   }
 
-  const response = await throttledGet(url);
-  responseCache.set(url, { response, time: Date.now() });
-  return response;
+  try {
+    const response = await throttledGet(url);
+    responseCache.set(url, { response, time: Date.now() });
+    return response;
+  } catch (error) {
+    // Handle 429 Rate Limit with exponential backoff
+    if (error?.response?.status === 429 && retryCount < 3) {
+      const retryAfter = parseInt(error.response.headers?.['retry-after'] || '5', 10);
+      const waitTime = retryAfter * 1000 || Math.pow(2, retryCount) * 2000;
+      console.log(`[API] Rate limited on ${url}, waiting ${waitTime/1000}s (attempt ${retryCount + 1}/3)`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return cachedGet(url, ttl, retryCount + 1);
+    }
+    throw error;
+  }
 };
 
-// Clear stale cache
+// Clear stale cache less frequently
 setInterval(() => {
   const now = Date.now();
   for (const [url, entry] of responseCache) {
-    if (now - entry.time > CACHE_TTL_MS * 2) {
+    if (now - entry.time > CACHE_TTL_MS * 3) {
       responseCache.delete(url);
     }
   }
-}, 10000);
+}, 30000); // Increased from 10000 to 30000ms
 
 /* =========================
    REQUEST INTERCEPTOR
@@ -183,8 +198,9 @@ api.interceptors.response.use(
     const path = getPath();
     const responseMessage = error?.response?.data?.message || "";
 
+    // Don't reject 429 here - let the cachedGet handle it with retries
     if (status === 429) {
-      console.warn(`[API] 429 Rate Limited on ${url}`);
+      console.warn(`[API] 429 Rate Limited on ${url} - will retry with backoff`);
       return Promise.reject(error);
     }
 
@@ -336,11 +352,11 @@ const BotAPI = {
     } catch (error) {
       if (error?.response?.status === 403) {
         try {
-          const fallback1 = await throttledGet("/api/activation-status");
+          const fallback1 = await cachedGet("/api/activation-status", CACHE_TTL_MS);
           return unwrap(fallback1);
         } catch (e1) {
           try {
-            const fallback2 = await throttledGet("/api/user/activation-status");
+            const fallback2 = await cachedGet("/api/user/activation-status", CACHE_TTL_MS);
             return unwrap(fallback2);
           } catch (e2) {}
         }
@@ -543,9 +559,18 @@ const BotAPI = {
 
   async getBotsStatus() {
     try {
-      const res = await cachedGet("/api/bots/status");
+      // Use longer TTL for bots status to reduce polling frequency
+      const res = await cachedGet("/api/bots/status", BOTS_STATUS_CACHE_TTL_MS);
       return unwrap(res);
     } catch (error) {
+      // If rate limited, return cached data if available
+      if (error?.response?.status === 429) {
+        const cached = responseCache.get("/api/bots/status");
+        if (cached) {
+          console.log("[API] Using cached bots status due to rate limit");
+          return unwrap(cached.response);
+        }
+      }
       console.error("[API] getBotsStatus error:", error);
       return {
         paper: { running: false },
@@ -564,7 +589,7 @@ const BotAPI = {
       if (params.botType) queryParams.append("bot_type", params.botType);
       if (params.limit) queryParams.append("limit", params.limit);
       
-      // 🔥 FIXED: Use /api/trades which includes ALL trades (spot, futures, stocks, sniper)
+      // Use /api/trades which includes ALL trades (spot, futures, stocks, sniper)
       const url = queryParams.toString() 
         ? `/api/trades?${queryParams.toString()}`
         : "/api/trades";
