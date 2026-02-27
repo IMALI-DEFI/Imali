@@ -1,5 +1,5 @@
 // src/pages/dashboard/MemberDashboard.js
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI, { BOT_TYPES, EXCHANGE_TO_BOT_TYPE, BOT_TYPE_TO_LABEL } from "../../utils/BotAPI";
