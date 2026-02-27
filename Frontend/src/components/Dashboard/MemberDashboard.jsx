@@ -1,10 +1,11 @@
 // src/pages/dashboard/MemberDashboard.js
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI, { BOT_TYPES, EXCHANGE_TO_BOT_TYPE, BOT_TYPE_TO_LABEL } from "../../utils/BotAPI";
 import TradingOverview from "../../components/Dashboard/TradingOverview.jsx";
 import useBotWebSocket from '../../hooks/useBotWebSocket';
+
 /* ===================== CONSTANTS ===================== */
 const STRATEGIES = [
   { value: "mean_reversion", label: "Conservative", icon: "🛡️", risk: 1, description: "Lower risk, steady returns" },
@@ -51,60 +52,9 @@ const ALL_ACHIEVEMENTS = [
   { id: "multi_chain", emoji: "🌐", label: "Multi-Chain", desc: "Trade on multiple chains", check: (s) => s.chainsTraded > 1 },
 ];
 
-// POLLING INTERVAL
-const POLL_INTERVAL = 60000; // 1 minute
+// POLLING INTERVAL - reduced since we use WebSocket
+const POLL_INTERVAL = 120000; // 2 minutes (fallback only)
 const INITIAL_LOAD_DELAY = 2000;
-
-// Maximum number of consecutive rate limit errors before backing off
-const MAX_RATE_LIMIT_BACKOFF = 3;
-
-/* ===================== GLOBAL FETCH SINGLETON ===================== */
-const tradesFetchState = {
-  lastFetchTime: 0,
-  lastResult: null,
-  inFlight: null,
-  MIN_GAP: 10000, // 10 seconds minimum between fetches
-};
-
-const fetchTradesSingleton = async () => {
-  const now = Date.now();
-  const elapsed = now - tradesFetchState.lastFetchTime;
-
-  if (elapsed < tradesFetchState.MIN_GAP && tradesFetchState.lastResult !== null) {
-    console.log(`[Dashboard] Using cached trades (${Math.round(elapsed / 1000)}s old)`);
-    return tradesFetchState.lastResult;
-  }
-
-  if (tradesFetchState.inFlight) {
-    console.log("[Dashboard] Joining in-flight trades request");
-    return tradesFetchState.inFlight;
-  }
-
-  console.log("[Dashboard] Fetching fresh trades");
-  tradesFetchState.inFlight = BotAPI.getTrades()
-    .then((res) => {
-      tradesFetchState.lastResult = res;
-      tradesFetchState.lastFetchTime = Date.now();
-      tradesFetchState.inFlight = null;
-      return res;
-    })
-    .catch((err) => {
-      tradesFetchState.inFlight = null;
-
-      if (err?.response?.status === 429) {
-        const retryAfter = parseInt(err.response.headers?.["retry-after"] || "30", 10);
-        tradesFetchState.lastFetchTime = Date.now() + retryAfter * 1000;
-        console.warn(`[Dashboard] 429 — backing off ${retryAfter}s`);
-
-        if (tradesFetchState.lastResult !== null) {
-          return tradesFetchState.lastResult;
-        }
-      }
-      throw err;
-    });
-
-  return tradesFetchState.inFlight;
-};
 
 /* ===================== HELPERS ===================== */
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
@@ -980,6 +930,9 @@ export default function MemberDashboard() {
     authError,
   } = useAuth();
 
+  // WebSocket connection for real-time bot data
+  const { botData, connected: wsConnected, error: wsError } = useBotWebSocket();
+
   // State
   const [trades, setTrades] = useState([]);
   const [stats, setStats] = useState({
@@ -1012,17 +965,14 @@ export default function MemberDashboard() {
   });
   const [strategy, setStrategy] = useState("ai_weighted");
   const [dayStreak, setDayStreak] = useState(0);
-  const [lastTradeDay, setLastTradeDay] = useState(null);
   const [currentWinStreak, setCurrentWinStreak] = useState(0);
   const [bestWinStreak, setBestWinStreak] = useState(0);
   const [strategiesUsed, setStrategiesUsed] = useState(new Set(["ai_weighted"]));
   const [chainsTraded, setChainsTraded] = useState(0);
   
   const [rateLimitCount, setRateLimitCount] = useState(0);
-  const [pollInterval, setPollInterval] = useState(POLL_INTERVAL);
+  const [pollInterval] = useState(POLL_INTERVAL);
 
-  const fetchLock = useRef(false);
-  const pollRef = useRef(null);
   const mountedRef = useRef(true);
   const hasLoadedOnce = useRef(false);
 
@@ -1030,9 +980,29 @@ export default function MemberDashboard() {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  // Update state from WebSocket data
+  useEffect(() => {
+    if (botData) {
+      // Update bot running state
+      setBotRunning(botData.state === 'running');
+      
+      // Update active positions
+      setStats(prev => ({
+        ...prev,
+        active_positions: botData.active_trade_count || 0,
+        total_trades: (prev.spot_trades || 0) + (prev.futures_trades || 0) + 
+                     (prev.stock_trades || 0) + (prev.sniper_trades || 0)
+      }));
+
+      // Calculate chains from networks
+      if (botData.networks) {
+        setChainsTraded(Object.keys(botData.networks).length);
+      }
+    }
+  }, [botData]);
 
   const fetchBotStatuses = useCallback(async () => {
     try {
@@ -1066,7 +1036,6 @@ export default function MemberDashboard() {
   const alpacaConnected = !!activation?.alpaca_connected;
   const walletConnected = !!activation?.wallet_connected;
   const tradingEnabled = !!activation?.trading_enabled;
-  const hasActivationError = !!activation?._error;
 
   const connectionsComplete = useMemo(() => {
     const needsOkx = ["starter", "pro", "bundle"].includes(normalizedTier);
@@ -1080,10 +1049,10 @@ export default function MemberDashboard() {
   const canPaperTrade = !!user;
   const canLiveTrade = activationComplete;
 
-  const totalPnL = useMemo(() => trades.reduce((s, t) => s + (t.pnl_usd || 0), 0), [trades]);
-  const wins = useMemo(() => trades.filter((t) => (t.pnl_usd || 0) > 0).length, [trades]);
-  const losses = useMemo(() => trades.filter((t) => (t.pnl_usd || 0) < 0).length, [trades]);
-  const totalTrades = trades.length;
+  const totalPnL = useMemo(() => botData?.pnl_total || 0, [botData]);
+  const wins = 0; // Calculate from trades if needed
+  const losses = 0;
+  const totalTrades = stats.total_trades;
 
   const winRate = useMemo(() => {
     if (!totalTrades) return "0.0";
@@ -1168,43 +1137,26 @@ export default function MemberDashboard() {
   }, [stats.total_trades, wins, losses, totalPnL, currentWinStreak, winRate, dayStreak, normalizedTier, strategiesUsed, confidence, chainsTraded]);
 
   const loadTrades = useCallback(async () => {
-    if (fetchLock.current) return;
     if (!user) return;
 
-    fetchLock.current = true;
     try {
-      const result = await fetchTradesSingleton();
-      
-      if (rateLimitCount > 0) {
-        setRateLimitCount(0);
-        setPollInterval(prev => Math.max(POLL_INTERVAL, Math.floor(prev * 0.8)));
-      }
+      const result = await BotAPI.getTrades();
       
       if (mountedRef.current) {
         setTrades(result.trades || []);
-        setStats(result.stats || {
-          total_trades: 0,
-          buy_trades: 0,
-          sell_trades: 0,
-          spot_trades: 0,
-          futures_trades: 0,
-          stock_trades: 0,
-          sniper_trades: 0,
-          spot_positions: 0,
-          futures_positions: false,
-          stock_positions: false,
-          sniper_positions: 0,
-          today_trades: 0,
-          total_volume: 0,
-          active_positions: 0
-        });
-        
-        // Calculate chains traded
-        const chains = new Set();
-        result.trades?.forEach(t => {
-          if (t.chain) chains.add(t.chain);
-        });
-        setChainsTraded(chains.size);
+        setStats(prev => ({
+          ...prev,
+          spot_trades: result.stats?.spot_trades || 0,
+          futures_trades: result.stats?.futures_trades || 0,
+          stock_trades: result.stats?.stock_trades || 0,
+          sniper_trades: result.stats?.sniper_trades || 0,
+          spot_positions: result.stats?.spot_positions || 0,
+          total_volume: result.stats?.total_volume || 0,
+          total_trades: (result.stats?.spot_trades || 0) + 
+                       (result.stats?.futures_trades || 0) + 
+                       (result.stats?.stock_trades || 0) + 
+                       (result.stats?.sniper_trades || 0)
+        }));
         
         if (result.trades && result.trades.length > 0) {
           let streak = 0;
@@ -1224,20 +1176,14 @@ export default function MemberDashboard() {
       }
     } catch (err) {
       if (err?.response?.status === 429) {
-        setRateLimitCount(prev => {
-          const newCount = prev + 1;
-          const backoffMultiplier = Math.min(Math.pow(2, newCount), 10);
-          setPollInterval(Math.min(300000, POLL_INTERVAL * backoffMultiplier));
-          return newCount;
-        });
-      } else if (err?.response?.status !== 403) {
-        console.warn("[Dashboard] loadTrades failed:", err?.response?.status, err?.message);
+        setRateLimitCount(prev => prev + 1);
+      } else {
+        console.warn("[Dashboard] loadTrades failed:", err?.message);
       }
     } finally {
-      fetchLock.current = false;
       if (mountedRef.current) setLoading(false);
     }
-  }, [user, rateLimitCount, pollInterval]);
+  }, [user]);
 
   useEffect(() => {
     if (hasLoadedOnce.current) return;
@@ -1249,17 +1195,6 @@ export default function MemberDashboard() {
 
     return () => clearTimeout(timer);
   }, [loadTrades]);
-
-  useEffect(() => {
-    if (!botRunning && !tradingEnabled) return;
-    if (pollRef.current) clearInterval(pollRef.current);
-
-    pollRef.current = setInterval(loadTrades, pollInterval);
-    
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [botRunning, tradingEnabled, loadTrades, pollInterval]);
 
   const toggleTrading = async (enabled) => {
     try {
@@ -1400,6 +1335,13 @@ export default function MemberDashboard() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-7xl mx-auto px-3 py-3 sm:p-4 md:p-6 space-y-3 sm:space-y-5">
+        {/* WebSocket Connection Status */}
+        <div className="flex items-center justify-end gap-2 text-xs">
+          <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span className="text-white/50">Real-time: {wsConnected ? 'Connected' : 'Disconnected'}</span>
+          {wsError && <span className="text-red-400 ml-2">{wsError}</span>}
+        </div>
+
         {banner && (
           <div
             className={`p-3 rounded-2xl border flex items-start justify-between gap-3 text-sm ${
