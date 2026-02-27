@@ -82,8 +82,10 @@ export const AuthProvider = ({ children }) => {
     if (!BotAPI.isLoggedIn()) return null;
 
     try {
+      // The correct endpoint from your API is /api/me/activation-status
       const raw = await retry(() => BotAPI.activationStatus());
-      const fresh = raw?.status ?? raw?.data?.status ?? raw ?? null;
+      // The API returns the status directly
+      const fresh = raw?.status ?? raw ?? null;
 
       console.log("[AuthContext] refreshActivation →", fresh);
       setAuthError(null);
@@ -102,14 +104,10 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setActivation(null);
       } else if (isForbidden(err)) {
-        const msg = err?.response?.data?.message || "Admin Only";
-        console.error(
-          `[AuthContext] 403 on activation-status: "${msg}"`,
-          "\nFIX: Change adminMiddleware → authMiddleware on /api/me/activation-status"
-        );
+        const msg = err?.response?.data?.message || "Forbidden";
+        console.error(`[AuthContext] 403 on activation-status: "${msg}"`);
         setAuthError(
-          `Cannot load activation status: "${msg}". ` +
-            "This endpoint requires admin access but should be available to all users."
+          `Cannot load activation status: "${msg}".`
         );
         // Set a safe default so the UI doesn't break
         setActivation((prev) =>
@@ -137,8 +135,10 @@ export const AuthProvider = ({ children }) => {
     if (!BotAPI.isLoggedIn()) return null;
 
     try {
+      // /api/me returns user data directly
       const raw = await retry(() => BotAPI.me());
-      const fresh = raw?.user ?? raw?.data?.user ?? raw ?? null;
+      // The API returns user object directly
+      const fresh = raw?.user ?? raw ?? null;
 
       console.log("[AuthContext] refreshProfile →", fresh);
 
@@ -163,8 +163,6 @@ export const AuthProvider = ({ children }) => {
 
   /* -------------------------------------------------------
      Load User + Activation Together (Full Refresh)
-     Each call wrapped independently — one failure doesn't
-     block the other
   -------------------------------------------------------- */
   const loadUserData = useCallback(async () => {
     if (!BotAPI.isLoggedIn()) {
@@ -186,42 +184,40 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
 
-      // ── Fetch /me ──────────────────────────────────
+      // ── Fetch /api/me ──────────────────────────────────
       let userData = null;
       try {
-        console.log("[AuthContext] loadUserData — fetching /me...");
+        console.log("[AuthContext] loadUserData — fetching /api/me...");
         const userRaw = await retry(() => BotAPI.me());
-        userData = userRaw?.user ?? userRaw?.data?.user ?? userRaw ?? null;
+        // The API returns user data directly
+        userData = userRaw?.user ?? userRaw ?? null;
         setUser(userData);
-        console.log("[AuthContext] /me OK:", userData?.email);
+        console.log("[AuthContext] /api/me OK:", userData?.email);
       } catch (meErr) {
         if (isSessionExpired(meErr)) {
-          console.warn("[AuthContext] 401 on /me — session expired");
+          console.warn("[AuthContext] 401 on /api/me — session expired");
           BotAPI.clearToken();
           setUser(null);
           setActivation(null);
           return;
         }
         if (isForbidden(meErr)) {
-          setAuthError("403 on /me — backend route has admin guard");
+          setAuthError("403 on /api/me — backend route has admin guard");
         }
-        console.warn("[AuthContext] /me failed:", meErr?.response?.status, meErr.message);
+        console.warn("[AuthContext] /api/me failed:", meErr?.response?.status, meErr.message);
       }
 
       // Delay between calls to respect rate limits
       await new Promise((r) => setTimeout(r, 800));
 
-      // ── Fetch /activation-status ───────────────────
+      // ── Fetch /api/me/activation-status ───────────────────
       try {
-        console.log("[AuthContext] loadUserData — fetching /activation-status...");
+        console.log("[AuthContext] loadUserData — fetching /api/me/activation-status...");
         const activationRaw = await retry(() => BotAPI.activationStatus());
-        const activationData =
-          activationRaw?.status ??
-          activationRaw?.data?.status ??
-          activationRaw ??
-          null;
+        // The API returns activation status directly
+        const activationData = activationRaw?.status ?? activationRaw ?? null;
         setActivation(activationData);
-        console.log("[AuthContext] /activation-status OK:", activationData);
+        console.log("[AuthContext] /api/me/activation-status OK:", activationData);
       } catch (actErr) {
         if (isSessionExpired(actErr)) {
           BotAPI.clearToken();
@@ -230,16 +226,10 @@ export const AuthProvider = ({ children }) => {
           return;
         }
         if (isForbidden(actErr)) {
-          const msg = actErr?.response?.data?.message || "Admin Only";
-          console.error(
-            `[AuthContext] 403 on /activation-status: "${msg}"`,
-            "\n\n🔧 BACKEND FIX NEEDED:",
-            "\n  File: routes/me.js (or wherever this route is defined)",
-            "\n  ❌ router.get('/activation-status', requireAdmin, handler)",
-            "\n  ✅ router.get('/activation-status', requireAuth, handler)\n"
-          );
+          const msg = actErr?.response?.data?.message || "Forbidden";
+          console.error(`[AuthContext] 403 on /api/me/activation-status: "${msg}"`);
           setAuthError(
-            `Activation status returned "${msg}". Backend route needs fixing.`
+            `Activation status returned "${msg}".`
           );
           setActivation({
             billing_complete: false,
@@ -253,7 +243,7 @@ export const AuthProvider = ({ children }) => {
           console.warn("[AuthContext] Rate limited on activation-status");
         }
         console.warn(
-          "[AuthContext] /activation-status failed:",
+          "[AuthContext] /api/me/activation-status failed:",
           actErr?.response?.status,
           actErr.message
         );
@@ -342,6 +332,7 @@ export const AuthProvider = ({ children }) => {
 
         return { success: true, data: res };
       } catch (err) {
+        console.error("[AuthContext] login error:", err);
         return {
           success: false,
           error:
@@ -367,6 +358,7 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true, data: res };
     } catch (err) {
+      console.error("[AuthContext] signup error:", err);
       return {
         success: false,
         error:
