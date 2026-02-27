@@ -4,7 +4,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI, { BOT_TYPES, EXCHANGE_TO_BOT_TYPE, BOT_TYPE_TO_LABEL } from "../../utils/BotAPI";
 import TradingOverview from "../../components/Dashboard/TradingOverview.jsx";
-
+import useBotWebSocket from '../../hooks/useBotWebSocket';
 /* ===================== CONSTANTS ===================== */
 const STRATEGIES = [
   { value: "mean_reversion", label: "Conservative", icon: "🛡️", risk: 1, description: "Lower risk, steady returns" },
