@@ -810,7 +810,7 @@ const SessionStats = ({
           <span className="text-white/50">Total P&L</span>
           <span className={`font-bold ${pnlTotal >= 0 ? "text-emerald-400" : "text-red-400"}`}>
             {formatUsd(pnlTotal)}
-          </div>
+          </span>
         </div>
         <div className="flex justify-between gap-3">
           <span className="text-white/50">Total Volume</span>
