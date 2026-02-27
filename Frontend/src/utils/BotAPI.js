@@ -1,13 +1,14 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
+// Update the API base to your server IP - this is the key change!
 const API_BASE =
-  process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+  process.env.REACT_APP_API_BASE_URL || "http://129.213.90.84:8001";
 const TOKEN_KEY = "imali_token";
 
-// Increase cache TTL to reduce requests
-const CACHE_TTL_MS = 10000; // Increased from 5000 to 10000ms
-const BOTS_STATUS_CACHE_TTL_MS = 30000; // Special longer TTL for bots status
+// Cache TTL settings
+const CACHE_TTL_MS = 10000;
+const BOTS_STATUS_CACHE_TTL_MS = 30000;
 
 /* =========================
    AXIOS INSTANCE
@@ -91,7 +92,7 @@ const deduplicatedGet = async (url) => {
 ========================= */
 
 const lastRequestTime = new Map();
-const MIN_REQUEST_GAP_MS = 3000; // Increased from 2000 to 3000ms
+const MIN_REQUEST_GAP_MS = 3000;
 
 const throttledGet = async (url) => {
   const now = Date.now();
@@ -108,7 +109,7 @@ const throttledGet = async (url) => {
 };
 
 /* =========================
-   RESPONSE CACHE WITH RATE LIMIT HANDLING
+   RESPONSE CACHE
 ========================= */
 
 const responseCache = new Map();
@@ -124,7 +125,6 @@ const cachedGet = async (url, ttl = CACHE_TTL_MS, retryCount = 0) => {
     responseCache.set(url, { response, time: Date.now() });
     return response;
   } catch (error) {
-    // Handle 429 Rate Limit with exponential backoff
     if (error?.response?.status === 429 && retryCount < 3) {
       const retryAfter = parseInt(error.response.headers?.['retry-after'] || '5', 10);
       const waitTime = retryAfter * 1000 || Math.pow(2, retryCount) * 2000;
@@ -136,7 +136,6 @@ const cachedGet = async (url, ttl = CACHE_TTL_MS, retryCount = 0) => {
   }
 };
 
-// Clear stale cache less frequently
 setInterval(() => {
   const now = Date.now();
   for (const [url, entry] of responseCache) {
@@ -144,7 +143,7 @@ setInterval(() => {
       responseCache.delete(url);
     }
   }
-}, 30000); // Increased from 10000 to 30000ms
+}, 30000);
 
 /* =========================
    REQUEST INTERCEPTOR
@@ -198,7 +197,6 @@ api.interceptors.response.use(
     const path = getPath();
     const responseMessage = error?.response?.data?.message || "";
 
-    // Don't reject 429 here - let the cachedGet handle it with retries
     if (status === 429) {
       console.warn(`[API] 429 Rate Limited on ${url} - will retry with backoff`);
       return Promise.reject(error);
@@ -267,10 +265,10 @@ const getErrMessage = (err, fallback = "Request failed") => {
 
 export const BOT_TYPES = {
   PAPER: "paper",
-  CEX: "cex",      // OKX
-  STOCKS: "stocks", // Alpaca
-  DEX: "dex",      // Uniswap, etc.
-  FUTURES: "futures" // Perpetual futures
+  CEX: "cex",
+  STOCKS: "stocks",
+  DEX: "dex",
+  FUTURES: "futures"
 };
 
 export const EXCHANGE_TO_BOT_TYPE = {
@@ -289,7 +287,7 @@ export const BOT_TYPE_TO_LABEL = {
 };
 
 /* =========================
-   API METHODS
+   API METHODS - UPDATED WITH CORRECT ENDPOINTS
 ========================= */
 
 const BotAPI = {
@@ -505,7 +503,6 @@ const BotAPI = {
     }
   },
 
-  // Alias for dashboard compatibility
   async tradingEnable(enabled) {
     return this.toggleTrading(enabled);
   },
@@ -559,25 +556,17 @@ const BotAPI = {
 
   async getBotsStatus() {
     try {
-      // Use longer TTL for bots status to reduce polling frequency
+      // ✅ This endpoint works - we tested it!
       const res = await cachedGet("/api/bots/status", BOTS_STATUS_CACHE_TTL_MS);
       return unwrap(res);
     } catch (error) {
-      // If rate limited, return cached data if available
-      if (error?.response?.status === 429) {
-        const cached = responseCache.get("/api/bots/status");
-        if (cached) {
-          console.log("[API] Using cached bots status due to rate limit");
-          return unwrap(cached.response);
-        }
-      }
       console.error("[API] getBotsStatus error:", error);
       return {
-        paper: { running: false },
-        cex: { running: false },
-        stocks: { running: false },
-        dex: { running: false },
-        futures: { running: false }
+        paper: false,
+        cex: false,
+        stocks: false,
+        dex: false,
+        futures: false
       };
     }
   },
@@ -585,31 +574,16 @@ const BotAPI = {
   /* ========= TRADES ========= */
   async getTrades(params = {}) {
     try {
-      const queryParams = new URLSearchParams();
-      if (params.botType) queryParams.append("bot_type", params.botType);
-      if (params.limit) queryParams.append("limit", params.limit);
-      
-      // Use /api/trades which includes ALL trades (spot, futures, stocks, sniper)
-      const url = queryParams.toString() 
-        ? `/api/trades?${queryParams.toString()}`
-        : "/api/trades";
-      
+      // ✅ Use /api/sniper/trades which we tested and works!
+      const url = "/api/sniper/trades";
       const res = await cachedGet(url);
       const data = unwrap(res);
       
-      // Handle different response formats
-      let trades = [];
-      if (data?.trades && Array.isArray(data.trades)) {
-        trades = data.trades;
-      } else if (Array.isArray(data)) {
-        trades = data;
-      }
-      
       return {
-        trades,
-        count: data?.count || trades.length,
+        trades: data?.trades || [],
+        count: data?.count || 0,
         total_pnl: data?.total_pnl || 0,
-        success: data?.success !== false
+        success: true
       };
     } catch (error) {
       console.error("[API] getTrades error:", error);
@@ -623,23 +597,36 @@ const BotAPI = {
 
   /* ========= BOT-SPECIFIC TRADES ========= */
   async getPaperTrades() {
-    return this.getTrades({ botType: "paper", limit: 100 });
+    return this.getTrades();
   },
 
   async getCexTrades() {
-    return this.getTrades({ botType: "cex", limit: 100 });
+    const result = await this.getTrades();
+    // Filter for CEX trades (spot/futures)
+    return {
+      trades: result.trades.filter(t => t.bot_type === 'spot' || t.bot_type === 'futures')
+    };
   },
 
   async getStocksTrades() {
-    return this.getTrades({ botType: "stocks", limit: 100 });
+    const result = await this.getTrades();
+    return {
+      trades: result.trades.filter(t => t.bot_type === 'stock')
+    };
   },
 
   async getDexTrades() {
-    return this.getTrades({ botType: "dex", limit: 100 });
+    const result = await this.getTrades();
+    return {
+      trades: result.trades.filter(t => t.bot_type === 'sniper')
+    };
   },
 
   async getFuturesTrades() {
-    return this.getTrades({ botType: "futures", limit: 100 });
+    const result = await this.getTrades();
+    return {
+      trades: result.trades.filter(t => t.bot_type === 'futures')
+    };
   },
 
   /* ========= ANALYTICS ========= */
