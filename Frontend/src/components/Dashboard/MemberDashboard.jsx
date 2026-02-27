@@ -1,10 +1,9 @@
-// src/pages/dashboard/MemberDashboard.js
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import BotAPI, { BOT_TYPES, EXCHANGE_TO_BOT_TYPE, BOT_TYPE_TO_LABEL } from "../../utils/BotAPI";
+import BotAPI from "../../utils/BotAPI";
 import TradingOverview from "../../components/Dashboard/TradingOverview.jsx";
-import useBotWebSocket from '../../hooks/useBotWebSocket';
+import useBotWebSocket from "../../hooks/useBotWebSocket";
 
 /* ===================== CONSTANTS ===================== */
 const STRATEGIES = [
@@ -39,9 +38,9 @@ const ALL_ACHIEVEMENTS = [
   { id: "ten_thousand_trades", emoji: "💎", label: "10K Trades", desc: "Complete 10,000 trades", check: (s) => s.totalTrades >= 10000 },
   { id: "thirty_thousand_trades", emoji: "🏆", label: "30K Trades", desc: "Complete 30,000 trades", check: (s) => s.totalTrades >= 30000 },
   { id: "profitable", emoji: "💰", label: "In The Green", desc: "Have positive P&L", check: (s) => s.pnl > 0 },
-  { id: "hundred_profit", emoji: "💵", label: "100 Profit", desc: "Earn $100 profit", check: (s) => s.pnl >= 100 },
-  { id: "thousand_profit", emoji: "💰", label: "1K Profit", desc: "Earn $1,000 profit", check: (s) => s.pnl >= 1000 },
-  { id: "ten_thousand_profit", emoji: "💎", label: "10K Profit", desc: "Earn $10,000 profit", check: (s) => s.pnl >= 10000 },
+  { id: "hundred_profit", emoji: "💵", label: "100 Profit", desc: "Earn \$100 profit", check: (s) => s.pnl >= 100 },
+  { id: "thousand_profit", emoji: "💰", label: "1K Profit", desc: "Earn \$1,000 profit", check: (s) => s.pnl >= 1000 },
+  { id: "ten_thousand_profit", emoji: "💎", label: "10K Profit", desc: "Earn \$10,000 profit", check: (s) => s.pnl >= 10000 },
   { id: "win_streak_3", emoji: "🔥", label: "Hot Streak", desc: "Win 3 in a row", check: (s) => s.currentWinStreak >= 3 },
   { id: "win_streak_5", emoji: "⚡", label: "On Fire!", desc: "Win 5 in a row", check: (s) => s.currentWinStreak >= 5 },
   { id: "high_wr", emoji: "🎯", label: "Sharpshooter", desc: "Win rate above 60%", check: (s) => s.winRate > 60 },
@@ -58,25 +57,27 @@ const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const formatUsd = (n) => {
   const num = Number(n) || 0;
   const sign = num >= 0 ? "+" : "-";
-  return `${sign}$${Math.abs(num).toFixed(2)}`;
+  return `${sign}
+$$
+{Math.abs(num).toFixed(2)}`;
 };
 
 const formatUsdPlain = (n) => {
   const num = Number(n) || 0;
-  return `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `
+$$
+{num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-const formatNumber = (n) => {
-  return Number(n || 0).toLocaleString();
-};
+const formatNumber = (n) => Number(n || 0).toLocaleString();
 
 const normalizeTier = (tier) => {
   const t = String(tier || "starter").toLowerCase().trim();
-  return PLANS.some(p => p.value === t) ? t : "starter";
+  return PLANS.some((p) => p.value === t) ? t : "starter";
 };
 
 const tierAtLeast = (userTier, requiredTier) => {
-  const tierOrder = PLANS.map(p => p.value);
+  const tierOrder = PLANS.map((p) => p.value);
   return tierOrder.indexOf(normalizeTier(userTier)) >= tierOrder.indexOf(normalizeTier(requiredTier));
 };
 
@@ -84,21 +85,11 @@ const normalizeExchange = (exchange) => {
   if (!exchange) return "DEX";
   const u = String(exchange).toUpperCase();
   if (u.includes("OKX")) return "OKX";
-  if (u.includes("ALPACA")) return "ALPACA";
-  if (u.includes("DEX")) return "DEX";
-  if (u.includes("FUTURE")) return "FUTURES";
+  if (u.includes("ALPACA")) return "Alpaca";
+  if (u.includes("DEX") || u.includes("UNI") || u.includes("SWAP")) return "DEX";
+  if (u.includes("FUTURE")) return "Futures";
   if (u.includes("PAPER")) return "PAPER";
   return "DEX";
-};
-
-const getBotTypeFromExchange = (exchange) => {
-  const map = {
-    "OKX": BOT_TYPES.CEX,
-    "Alpaca": BOT_TYPES.STOCKS,
-    "DEX": BOT_TYPES.DEX,
-    "Futures": BOT_TYPES.FUTURES
-  };
-  return map[exchange];
 };
 
 const riskLabel = (level) => {
@@ -111,6 +102,100 @@ const riskLabelColor = (level) => {
   if (level <= 2) return "text-yellow-400";
   if (level <= 3) return "text-orange-400";
   return "text-red-400";
+};
+
+/**
+ * Compute wins, losses, streaks, day-streak, and unique strategies
+ * from a flat array of trade objects.
+ */
+const computeTradeStats = (allTrades) => {
+  let wins = 0;
+  let losses = 0;
+  let currentWinStreak = 0;
+  let bestWinStreak = 0;
+  const tradingDays = new Set();
+  const strategiesUsed = new Set();
+  const exchangesSeen = new Set();
+
+  // Sort by time ascending so streak calc is correct
+  const sorted = [...allTrades].sort((a, b) => {
+    const ta = new Date(a.created_at || a.timestamp || 0).getTime();
+    const tb = new Date(b.created_at || b.timestamp || 0).getTime();
+    return ta - tb;
+  });
+
+  sorted.forEach((t) => {
+    const pnl = Number(t.pnl_usd || t.pnl || 0);
+
+    if (pnl > 0) {
+      wins++;
+      currentWinStreak++;
+      bestWinStreak = Math.max(bestWinStreak, currentWinStreak);
+    } else if (pnl < 0) {
+      losses++;
+      currentWinStreak = 0;
+    }
+    // pnl === 0 → breakeven, don't break streak
+
+    // Track trading days
+    const dateStr = t.created_at || t.timestamp;
+    if (dateStr) {
+      tradingDays.add(new Date(dateStr).toDateString());
+    }
+
+    // Track strategies
+    if (t.strategy) strategiesUsed.add(t.strategy);
+
+    // Track exchanges/chains
+    const ex = normalizeExchange(t.exchange || t.network);
+    exchangesSeen.add(ex);
+  });
+
+  return {
+    wins,
+    losses,
+    currentWinStreak,
+    bestWinStreak,
+    dayStreak: tradingDays.size,
+    strategiesUsed,
+    chainsTraded: Math.max(1, exchangesSeen.size),
+  };
+};
+
+/**
+ * Merge REST trades + WebSocket active trades into one de-duped list.
+ * WebSocket trades take priority (they're more current).
+ */
+const mergeTrades = (restTrades = [], wsTrades = []) => {
+  const byId = new Map();
+
+  // REST trades first (older)
+  restTrades.forEach((t) => {
+    const id = t.id || t._id || `rest-${t.symbol}-${t.created_at}`;
+    byId.set(id, { ...t, _source: "rest" });
+  });
+
+  // WebSocket trades override (newer)
+  wsTrades.forEach((t) => {
+    const id = t.id || t._id || `ws-${t.pair || t.symbol}-${t.opened_at}`;
+    byId.set(id, {
+      ...t,
+      // Normalize WebSocket trade shape to match REST
+      symbol: t.symbol || t.pair || "UNKNOWN",
+      pnl_usd: t.pnl_usd ?? t.pnl ?? 0,
+      exchange: t.exchange || t.network || "DEX",
+      timestamp: t.timestamp || t.opened_at || t.created_at,
+      created_at: t.created_at || t.opened_at || new Date().toISOString(),
+      _source: "ws",
+    });
+  });
+
+  // Sort newest first
+  return Array.from(byId.values()).sort((a, b) => {
+    const ta = new Date(a.created_at || a.timestamp || 0).getTime();
+    const tb = new Date(b.created_at || b.timestamp || 0).getTime();
+    return tb - ta;
+  });
 };
 
 /* ===================== UI PRIMITIVES ===================== */
@@ -158,16 +243,10 @@ const ProgressRing = ({ percent = 0, size = 80, stroke = 6, color = "#10b981", c
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          className="transition-all duration-700 ease-out"
+          cx={size / 2} cy={size / 2} r={radius} fill="none"
+          stroke={color} strokeWidth={stroke}
+          strokeDasharray={circ} strokeDashoffset={offset}
+          strokeLinecap="round" className="transition-all duration-700 ease-out"
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">{children}</div>
@@ -192,15 +271,13 @@ const MiniBarChart = ({ data = [], height = 60 }) => {
     <div className="flex items-end gap-[2px]" style={{ height }}>
       {data.slice(-30).map((d, i) => {
         const h = (Math.abs(d.value) / max) * height * 0.9;
-        const barClass = `rounded-t flex-1 min-w-[3px] max-w-[14px] transition-all duration-300 cursor-pointer hover:opacity-70 ${
-          d.value >= 0 ? "bg-emerald-500" : "bg-red-500"
-        }`;
-
         return (
           <div
             key={i}
             title={`${d.label}: ${formatUsd(d.value)}`}
-            className={barClass}
+            className={`rounded-t flex-1 min-w-[3px] max-w-[14px] transition-all duration-300 cursor-pointer hover:opacity-70 ${
+              d.value >= 0 ? "bg-emerald-500" : "bg-red-500"
+            }`}
             style={{ height: Math.max(h, 2) }}
           />
         );
@@ -233,9 +310,7 @@ const EquityCurve = ({ data = [], height = 120 }) => {
     })
     .join(" ");
 
-  const lastVal = values[values.length - 1];
-  const firstVal = values[0];
-  const up = lastVal >= firstVal;
+  const up = values[values.length - 1] >= values[0];
   const strokeColor = up ? "#10b981" : "#ef4444";
   const fillId = up ? "eqGradUp" : "eqGradDown";
 
@@ -284,40 +359,58 @@ const TradeFeed = ({ trades = [], isPaper = false }) => {
 
   return (
     <div className="space-y-1 max-h-[320px] overflow-y-auto pr-1">
-      {trades.slice(-30).reverse().map((t, i) => {
+      {trades.slice(0, 30).map((t, i) => {
         const isLatest = i === 0;
-        const isWin = (t.pnl_usd || 0) >= 0;
-        const exchange = normalizeExchange(t.exchange);
-        const isPaperTrade = t.mode === "paper" || exchange === "PAPER";
-        const pnlValue = t.pnl_usd || 0;
-        
-        const rowClass = `flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm transition-all ${
-          isLatest ? "bg-white/10 border border-white/10" : "bg-white/[0.03]"
-        }`;
-        const pnlClass = `font-bold text-sm ${isWin ? "text-emerald-400" : "text-red-400"}`;
+        const pnlValue = Number(t.pnl_usd || t.pnl || 0);
+        const isWin = pnlValue >= 0;
+        const exchange = normalizeExchange(t.exchange || t.network);
+        const isPaperTrade = t.mode === "paper" || t.bot_type === "paper" || exchange === "PAPER";
+        const isLive = t._source === "ws" && !t.closed_at;
 
         return (
-          <div key={t.id || i} className={rowClass}>
+          <div
+            key={t.id || t._id || i}
+            className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm transition-all ${
+              isLatest
+                ? "bg-white/10 border border-white/10"
+                : isLive
+                ? "bg-emerald-500/5 border border-emerald-500/10"
+                : "bg-white/[0.03]"
+            }`}
+          >
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <span className="text-base flex-shrink-0">
-                {exchange === "OKX" ? "🔷" : exchange === "ALPACA" ? "📈" : exchange === "PAPER" ? "🎮" : "🦄"}
+                {exchange === "OKX" ? "🔷" : exchange === "Alpaca" ? "📈" : exchange === "PAPER" ? "🎮" : "🦄"}
               </span>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                  <span className="font-semibold text-sm truncate">{t.symbol || "BTC"}</span>
+                  <span className="font-semibold text-sm truncate">{t.symbol || t.pair || "BTC"}</span>
                   <span className="text-[10px] text-white/40 hidden xs:inline">{exchange}</span>
                   {isPaperTrade && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300">
-                      PAPER
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300">PAPER</span>
+                  )}
+                  {isLive && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-300 flex items-center gap-1">
+                      <span className="w-1 h-1 bg-green-400 rounded-full animate-pulse" />
+                      LIVE
                     </span>
                   )}
                 </div>
                 <div className="text-[10px] text-white/35 truncate hidden sm:block">
-                  {t.action || "Trade"} • {t.timestamp || new Date(t.created_at || Date.now()).toLocaleTimeString()}
+                  {t.action || t.side || "Trade"} •{" "}
+                  {t.timestamp
+                    ? new Date(t.timestamp).toLocaleTimeString()
+                    : t.created_at
+                    ? new Date(t.created_at).toLocaleTimeString()
+                    : t.opened_at
+                    ? new Date(t.opened_at).toLocaleTimeString()
+                    : ""}
                 </div>
               </div>
             </div>
-            <div className={`flex-shrink-0 ${pnlClass}`}>{formatUsd(pnlValue)}</div>
+            <div className={`flex-shrink-0 font-bold text-sm ${isWin ? "text-emerald-400" : "text-red-400"}`}>
+              {formatUsd(pnlValue)}
+            </div>
           </div>
         );
       })}
@@ -327,29 +420,28 @@ const TradeFeed = ({ trades = [], isPaper = false }) => {
 
 /* ===================== EXCHANGE CARD ===================== */
 const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick, isRunning, pairs, positions }) => {
-  const pnl = trades.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
-  const wins = trades.filter((t) => (t.pnl_usd || 0) > 0).length;
+  const pnl = trades.reduce((sum, t) => sum + Number(t.pnl_usd || t.pnl || 0), 0);
+  const wins = trades.filter((t) => Number(t.pnl_usd || t.pnl || 0) > 0).length;
   const total = trades.length;
   const wr = total > 0 ? ((wins / total) * 100).toFixed(1) : "0.0";
   const wrNum = Number(wr);
 
-  const chartData = trades.slice(-15).map((t, idx) => ({ 
-    label: `#${idx}`, 
-    value: t.pnl_usd || 0 
+  const chartData = trades.slice(-15).map((t, idx) => ({
+    label: `#${idx}`,
+    value: Number(t.pnl_usd || t.pnl || 0),
   }));
 
-  const cardClass = `rounded-2xl p-3 border transition-all cursor-pointer ${
-    active 
-      ? isRunning
-        ? "bg-green-500/10 border-green-500/30 hover:border-green-500/50" 
-        : "bg-white/5 border-white/15 hover:border-white/25"
-      : "bg-white/[0.03] border-white/10 opacity-60 hover:opacity-80"
-  }`;
-
-  const pnlClass = `font-bold ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`;
-
   return (
-    <div className={cardClass} onClick={onClick}>
+    <div
+      className={`rounded-2xl p-3 border transition-all cursor-pointer ${
+        active
+          ? isRunning
+            ? "bg-green-500/10 border-green-500/30 hover:border-green-500/50"
+            : "bg-white/5 border-white/15 hover:border-white/25"
+          : "bg-white/[0.03] border-white/10 opacity-60 hover:opacity-80"
+      }`}
+      onClick={onClick}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl">{icon}</span>
@@ -363,13 +455,15 @@ const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick, isRunnin
                     Running
                   </span>
                 ) : mode ? (
-                  <span className={`inline-flex mt-1 text-[10px] px-2 py-0.5 rounded-full ${
-                    mode === "live"
-                      ? "bg-emerald-500/20 text-emerald-300"
-                      : mode === "paper"
-                      ? "bg-orange-500/20 text-orange-300"
-                      : "bg-blue-500/20 text-blue-300"
-                  }`}>
+                  <span
+                    className={`inline-flex mt-1 text-[10px] px-2 py-0.5 rounded-full ${
+                      mode === "live"
+                        ? "bg-emerald-500/20 text-emerald-300"
+                        : mode === "paper"
+                        ? "bg-orange-500/20 text-orange-300"
+                        : "bg-blue-500/20 text-blue-300"
+                    }`}
+                  >
                     {mode === "paper" ? "🎮 paper" : mode || "active"}
                   </span>
                 ) : (
@@ -397,8 +491,10 @@ const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick, isRunnin
           <div className="font-bold text-sm">{total}</div>
         </div>
         <div className="bg-black/30 rounded-xl p-2 text-center">
-          <div className="text-[10px] text-white/45">Positions</div>
-          <div className="font-bold text-sm">{positions || 0}</div>
+          <div className="text-[10px] text-white/45">P&L</div>
+          <div className={`font-bold text-sm ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {formatUsd(pnl)}
+          </div>
         </div>
         <div className="bg-black/30 rounded-xl p-2 text-center">
           <div className="text-[10px] text-white/45">Pairs</div>
@@ -407,13 +503,11 @@ const ExchangeCard = ({ name, icon, trades = [], active, mode, onClick, isRunnin
       </div>
 
       {!active ? (
-        <div className="mt-2 text-center text-[10px] text-blue-400 hover:text-blue-300">
-          Click to upgrade →
-        </div>
-      ) : !isRunning && (
-        <div className="mt-2 text-center text-[10px] text-emerald-400 hover:text-emerald-300">
-          Click to start bot →
-        </div>
+        <div className="mt-2 text-center text-[10px] text-blue-400 hover:text-blue-300">Click to upgrade →</div>
+      ) : (
+        !isRunning && (
+          <div className="mt-2 text-center text-[10px] text-emerald-400 hover:text-emerald-300">Click to start bot →</div>
+        )
       )}
     </div>
   );
@@ -434,24 +528,10 @@ const LevelBadge = ({ trades = 0, winRate = 0, pnl = 0, chainsTraded = 1 }) => {
     for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
       if (xp >= LEVEL_THRESHOLDS[i].min) {
         const next = LEVEL_THRESHOLDS[i + 1] ? LEVEL_THRESHOLDS[i + 1].min : LEVEL_THRESHOLDS[i].min * 1.5;
-        return {
-          name: LEVEL_THRESHOLDS[i].name,
-          colorClass: LEVEL_THRESHOLDS[i].colorClass,
-          min: LEVEL_THRESHOLDS[i].min,
-          xp,
-          next,
-          index: i,
-        };
+        return { name: LEVEL_THRESHOLDS[i].name, colorClass: LEVEL_THRESHOLDS[i].colorClass, min: LEVEL_THRESHOLDS[i].min, xp, next, index: i };
       }
     }
-    return { 
-      name: LEVEL_THRESHOLDS[0].name, 
-      colorClass: LEVEL_THRESHOLDS[0].colorClass, 
-      min: 0, 
-      xp, 
-      next: 30, 
-      index: 0 
-    };
+    return { name: LEVEL_THRESHOLDS[0].name, colorClass: LEVEL_THRESHOLDS[0].colorClass, min: 0, xp, next: 30, index: 0 };
   }, [xp]);
 
   const progress = level.next > 0 ? (xp / level.next) * 100 : 0;
@@ -459,21 +539,13 @@ const LevelBadge = ({ trades = 0, winRate = 0, pnl = 0, chainsTraded = 1 }) => {
   const isMax = level.index >= LEVEL_THRESHOLDS.length - 1;
 
   return (
-    <CardShell
-      title="Trader Level"
-      icon="🏅"
-      right={<span className="text-[11px] text-white/45">XP: <b className="text-white">{Math.floor(xp)}</b></span>}
-    >
+    <CardShell title="Trader Level" icon="🏅" right={<span className="text-[11px] text-white/45">XP: <b className="text-white">{Math.floor(xp)}</b></span>}>
       <div className={`text-lg font-bold leading-tight ${level.colorClass}`}>{level.name}</div>
       <div className="w-full bg-white/10 rounded-full h-2 mt-2 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-700"
-          style={{ width: `${Math.min(progress, 100)}%` }}
-        />
+        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-700" style={{ width: `${Math.min(progress, 100)}%` }} />
       </div>
       <p className="text-[11px] text-white/45 mt-1">
-        {Math.floor(xp)} / {Math.floor(level.next)} XP —{" "}
-        {isMax ? "Max level reached 🏆" : `${xpToNext} XP to next level`}
+        {Math.floor(xp)} / {Math.floor(level.next)} XP — {isMax ? "Max level reached 🏆" : `${xpToNext} XP to next level`}
       </p>
     </CardShell>
   );
@@ -485,14 +557,10 @@ const AchievementsPanel = ({ unlocked = [], total = 0 }) => {
 
   return (
     <CollapsibleCard
-      title="Achievements"
-      icon="🏆"
-      defaultOpen={false}
+      title="Achievements" icon="🏆" defaultOpen={false}
       right={
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-white/45">
-            {unlocked.length}/{total}
-          </span>
+          <span className="text-[11px] text-white/45">{unlocked.length}/{total}</span>
           <div className="w-16 bg-white/10 rounded-full h-2 overflow-hidden">
             <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${pct}%` }} />
           </div>
@@ -502,14 +570,13 @@ const AchievementsPanel = ({ unlocked = [], total = 0 }) => {
       <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-6 gap-2">
         {ALL_ACHIEVEMENTS.map((a) => {
           const isUnlocked = unlocked.includes(a.id);
-          const tileClass = `rounded-2xl p-2 text-center transition-all border ${
-            isUnlocked
-              ? "bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-500/50"
-              : "bg-black/20 border-white/5 opacity-45"
-          }`;
-
           return (
-            <div key={a.id} title={a.desc} className={tileClass}>
+            <div
+              key={a.id} title={a.desc}
+              className={`rounded-2xl p-2 text-center transition-all border ${
+                isUnlocked ? "bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-500/50" : "bg-black/20 border-white/5 opacity-45"
+              }`}
+            >
               <div className="text-2xl mb-1">{a.emoji}</div>
               <div className="text-[10px] font-semibold text-white/85 leading-tight">{a.label}</div>
               <div className="text-[9px] text-white/35 mt-1">{isUnlocked ? "✅" : "🔒"}</div>
@@ -524,53 +591,38 @@ const AchievementsPanel = ({ unlocked = [], total = 0 }) => {
 /* ===================== STRATEGY SELECTOR ===================== */
 const StrategySelector = ({ value, onChange, disabled }) => (
   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-    {STRATEGIES.map((s) => {
-      const isActive = value === s.value;
-      const btnClass = `rounded-2xl text-left transition-all border p-3 sm:p-4 ${
-        isActive
-          ? "bg-white/10 border-white/30 shadow-lg shadow-white/5"
-          : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`;
-
-      return (
-        <button
-          key={s.value}
-          onClick={() => onChange(s.value)}
-          disabled={disabled}
-          className={btnClass}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-2xl leading-none">{s.icon}</div>
-              <div className="mt-1 font-semibold text-[13px] sm:text-sm leading-tight truncate">{s.label}</div>
-              <div className="text-[10px] text-white/35 mt-1">{s.description}</div>
-            </div>
-
-            <div className={`text-[10px] font-semibold ${riskLabelColor(s.risk)}`}>
-              {riskLabel(s.risk)}
-            </div>
+    {STRATEGIES.map((s) => (
+      <button
+        key={s.value}
+        onClick={() => onChange(s.value)}
+        disabled={disabled}
+        className={`rounded-2xl text-left transition-all border p-3 sm:p-4 ${
+          value === s.value
+            ? "bg-white/10 border-white/30 shadow-lg shadow-white/5"
+            : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20"
+        } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-2xl leading-none">{s.icon}</div>
+            <div className="mt-1 font-semibold text-[13px] sm:text-sm leading-tight truncate">{s.label}</div>
+            <div className="text-[10px] text-white/35 mt-1">{s.description}</div>
           </div>
-
-          <div className="mt-2">
-            <RiskMeter level={s.risk} />
-          </div>
-        </button>
-      );
-    })}
+          <div className={`text-[10px] font-semibold ${riskLabelColor(s.risk)}`}>{riskLabel(s.risk)}</div>
+        </div>
+        <div className="mt-2"><RiskMeter level={s.risk} /></div>
+      </button>
+    ))}
   </div>
 );
 
 /* ===================== PAPER TRADING CARD ===================== */
 const PaperTradingCard = ({ onStart, busy, isRunning, trades = [] }) => {
-  const paperPnl = useMemo(
-    () => trades.filter((t) => t.mode === "paper" || normalizeExchange(t.exchange) === "PAPER")
-      .reduce((s, t) => s + (t.pnl_usd || 0), 0),
+  const paperTrades = useMemo(
+    () => trades.filter((t) => t.mode === "paper" || t.bot_type === "paper" || normalizeExchange(t.exchange) === "PAPER"),
     [trades]
   );
-  const paperCount = useMemo(
-    () => trades.filter((t) => t.mode === "paper" || normalizeExchange(t.exchange) === "PAPER").length,
-    [trades]
-  );
+  const paperPnl = useMemo(() => paperTrades.reduce((s, t) => s + Number(t.pnl_usd || t.pnl || 0), 0), [paperTrades]);
 
   return (
     <CardShell>
@@ -579,12 +631,9 @@ const PaperTradingCard = ({ onStart, busy, isRunning, trades = [] }) => {
           <span className="text-3xl">🎮</span>
           <div>
             <h3 className="font-semibold text-base">Paper Trading</h3>
-            <p className="text-xs text-white/50 mt-0.5">
-              Practice with virtual money — no risk, real market data
-            </p>
+            <p className="text-xs text-white/50 mt-0.5">Practice with virtual money — no risk, real market data</p>
           </div>
         </div>
-
         {isRunning && (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] bg-orange-500/20 text-orange-300 border border-orange-500/30">
             <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" />
@@ -596,11 +645,11 @@ const PaperTradingCard = ({ onStart, busy, isRunning, trades = [] }) => {
       <div className="grid grid-cols-3 gap-2 mt-4 mb-4">
         <div className="bg-black/30 rounded-xl p-2.5 text-center">
           <div className="text-[10px] text-white/40">Virtual Balance</div>
-          <div className="text-sm font-bold text-white">$100,000</div>
+          <div className="text-sm font-bold text-white">\$100,000</div>
         </div>
         <div className="bg-black/30 rounded-xl p-2.5 text-center">
           <div className="text-[10px] text-white/40">Paper Trades</div>
-          <div className="text-sm font-bold">{paperCount}</div>
+          <div className="text-sm font-bold">{paperTrades.length}</div>
         </div>
         <div className="bg-black/30 rounded-xl p-2.5 text-center">
           <div className="text-[10px] text-white/40">Paper P&L</div>
@@ -612,9 +661,7 @@ const PaperTradingCard = ({ onStart, busy, isRunning, trades = [] }) => {
 
       <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl mb-4">
         <p className="text-xs text-blue-200">
-          💡 <strong>How it works:</strong> Paper trading simulates real trades
-          using live market data but with virtual money. Perfect for testing
-          strategies before going live.
+          💡 <strong>How it works:</strong> Paper trading simulates real trades using live market data but with virtual money. Perfect for testing strategies before going live.
         </p>
       </div>
 
@@ -622,18 +669,14 @@ const PaperTradingCard = ({ onStart, busy, isRunning, trades = [] }) => {
         onClick={() => onStart("paper")}
         disabled={busy || isRunning}
         className={`w-full py-3 rounded-xl font-semibold text-sm transition-all ${
-          isRunning
-            ? "bg-orange-600/50 cursor-default"
-            : "bg-orange-600 hover:bg-orange-500"
+          isRunning ? "bg-orange-600/50 cursor-default" : "bg-orange-600 hover:bg-orange-500"
         } disabled:opacity-50`}
       >
         {busy ? "Starting..." : isRunning ? "🎮 Paper Bot Running" : "🎮 Start Paper Trading"}
       </button>
 
       {!isRunning && (
-        <p className="text-[10px] text-white/30 text-center mt-2">
-          No API keys required • No real money used • Uses live market prices
-        </p>
+        <p className="text-[10px] text-white/30 text-center mt-2">No API keys required • No real money used • Uses live market prices</p>
       )}
     </CardShell>
   );
@@ -644,39 +687,19 @@ const QuickLinksBar = () => (
   <CardShell>
     <div className="flex flex-wrap items-center gap-2 sm:gap-3">
       <span className="text-xs text-white/40 mr-1">Quick Links:</span>
-
-      <Link
-        to="/billing-dashboard"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors"
-      >
+      <Link to="/billing-dashboard" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
         <span>💳</span> Billing Dashboard
       </Link>
-
-      <Link
-        to="/billing"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors"
-      >
+      <Link to="/billing" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
         <span>💰</span> Add Payment
       </Link>
-
-      <Link
-        to="/activation"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors"
-      >
+      <Link to="/activation" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
         <span>⚡</span> Activation
       </Link>
-
-      <Link
-        to="/demo"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors"
-      >
+      <Link to="/demo" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
         <span>🎮</span> Demo
       </Link>
-
-      <a
-        href="mailto:support@imali-defi.com"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors"
-      >
+      <a href="mailto:support@imali-defi.com" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
         <span>📧</span> Support
       </a>
     </div>
@@ -684,29 +707,26 @@ const QuickLinksBar = () => (
 );
 
 /* ===================== SETUP BANNER ===================== */
-const SetupBanner = ({ billing, connections, trading, onCTA, authError }) => {
+const SetupBanner = ({ billing, connections, trading, onCTA, configWarning }) => {
   const steps = [
     { done: billing, label: "Billing", icon: "💳" },
     { done: connections, label: "Connect", icon: "🔌" },
     { done: trading, label: "Enable", icon: "⚡" },
   ];
-
   const allDone = billing && connections && trading;
   const currentStep = Math.max(0, steps.findIndex((s) => !s.done));
   const stepText = !billing ? "Add payment" : !connections ? "Connect services" : "Enable trading";
 
   return (
     <div className="space-y-3">
-      {authError && (
+      {configWarning && (
         <CardShell>
           <div className="flex items-start gap-3">
             <span className="text-xl flex-shrink-0">⚙️</span>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-orange-200">Configuration Notice</p>
-              <p className="text-xs text-orange-200/70 mt-1">{authError}</p>
-              <p className="text-[10px] text-orange-200/50 mt-2">
-                You can still use paper trading while this is being resolved.
-              </p>
+              <p className="text-xs text-orange-200/70 mt-1">{configWarning}</p>
+              <p className="text-[10px] text-orange-200/50 mt-2">You can still use paper trading while this is being resolved.</p>
             </div>
           </div>
         </CardShell>
@@ -719,9 +739,7 @@ const SetupBanner = ({ billing, connections, trading, onCTA, authError }) => {
               <span className="text-2xl sm:text-3xl flex-shrink-0">🚀</span>
               <div className="min-w-0">
                 <p className="text-white font-semibold text-sm sm:text-base leading-tight">Complete your setup</p>
-                <p className="text-[11px] sm:text-xs text-white/50 mt-1">
-                  Step {currentStep + 1}/3 — {steps[currentStep]?.label}
-                </p>
+                <p className="text-[11px] sm:text-xs text-white/50 mt-1">Step {currentStep + 1}/3 — {steps[currentStep]?.label}</p>
                 <div className="flex items-center gap-2 mt-2">
                   {steps.map((s, i) => (
                     <div key={i} className="flex items-center gap-1">
@@ -736,19 +754,13 @@ const SetupBanner = ({ billing, connections, trading, onCTA, authError }) => {
                       >
                         {s.done ? "✓" : s.icon}
                       </span>
-                      {i < steps.length - 1 && (
-                        <div className={`w-6 h-0.5 ${s.done ? "bg-emerald-500/40" : "bg-white/10"}`} />
-                      )}
+                      {i < steps.length - 1 && <div className={`w-6 h-0.5 ${s.done ? "bg-emerald-500/40" : "bg-white/10"}`} />}
                     </div>
                   ))}
                 </div>
               </div>
             </div>
-
-            <button
-              onClick={onCTA}
-              className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-semibold text-sm transition-colors"
-            >
+            <button onClick={onCTA} className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-semibold text-sm transition-colors">
               {stepText} →
             </button>
           </div>
@@ -759,24 +771,11 @@ const SetupBanner = ({ billing, connections, trading, onCTA, authError }) => {
 };
 
 /* ===================== SESSION STATS ===================== */
-const SessionStats = ({ 
-  wins = 0, 
-  losses = 0, 
-  bestWinStreak = 0, 
-  dayStreak = 0, 
-  strategiesUsed = 0, 
-  xp = 0, 
-  currentPlan,
-  currentStrat,
-  botRunning,
-  botMode,
-  tradingEnabled,
-  activeBots,
-  totalTrades = 0,
-  chainsTraded = 1,
-  totalVolume = 0,
-  activePositions = 0,
-  pnlTotal = 0
+const SessionStats = ({
+  wins = 0, losses = 0, bestWinStreak = 0, dayStreak = 0, strategiesUsed = 0,
+  xp = 0, currentPlan, currentStrat, botRunning, botMode, tradingEnabled,
+  activeBots, totalTrades = 0, chainsTraded = 1, totalVolume = 0,
+  activePositions = 0, pnlTotal = 0,
 }) => {
   const total = wins + losses;
   const activeBotCount = Object.values(activeBots || {}).filter(Boolean).length;
@@ -788,14 +787,10 @@ const SessionStats = ({
           <span className="text-white/50">Status</span>
           <span className="font-bold">
             {activeBotCount > 0
-              ? `${activeBotCount} bot${activeBotCount > 1 ? 's' : ''} active`
+              ? `${activeBotCount} bot${activeBotCount > 1 ? "s" : ""} active`
               : botRunning
-              ? botMode === "paper"
-                ? "🎮 Paper Trading"
-                : "💰 Live Trading"
-              : tradingEnabled
-              ? "⏸ Paused"
-              : "⚡ Ready"}
+              ? botMode === "paper" ? "🎮 Paper Trading" : "💰 Live Trading"
+              : tradingEnabled ? "⏸ Paused" : "⚡ Ready"}
           </span>
         </div>
         <div className="flex justify-between gap-3">
@@ -808,9 +803,7 @@ const SessionStats = ({
         </div>
         <div className="flex justify-between gap-3">
           <span className="text-white/50">Total P&L</span>
-          <span className={`font-bold ${pnlTotal >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-            {formatUsd(pnlTotal)}
-          </span>
+          <span className={`font-bold ${pnlTotal >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatUsd(pnlTotal)}</span>
         </div>
         <div className="flex justify-between gap-3">
           <span className="text-white/50">Total Volume</span>
@@ -823,8 +816,7 @@ const SessionStats = ({
         <div className="flex justify-between gap-3">
           <span className="text-white/50">Wins / Losses</span>
           <span>
-            <span className="text-emerald-400 font-bold">{wins}</span> /{" "}
-            <span className="text-red-400 font-bold">{losses}</span>
+            <span className="text-emerald-400 font-bold">{wins}</span> / <span className="text-red-400 font-bold">{losses}</span>
           </span>
         </div>
         <div className="flex justify-between gap-3">
@@ -843,25 +835,18 @@ const SessionStats = ({
           <span className="text-white/50">XP Earned</span>
           <span className="font-bold">{Math.floor(xp)} ⭐</span>
         </div>
-
         <div className="pt-3 mt-1 border-t border-white/10 space-y-2">
           <div className="flex justify-between gap-3">
             <span className="text-white/50">Plan</span>
-            <span className="text-[12px] sm:text-sm font-semibold">
-              {currentPlan?.icon} {currentPlan?.label}
-            </span>
+            <span className="text-[12px] sm:text-sm font-semibold">{currentPlan?.icon} {currentPlan?.label}</span>
           </div>
           <div className="flex justify-between gap-3">
             <span className="text-white/50">Strategy</span>
-            <span className="text-[12px] sm:text-sm font-semibold">
-              {currentStrat?.icon} {currentStrat?.label}
-            </span>
+            <span className="text-[12px] sm:text-sm font-semibold">{currentStrat?.icon} {currentStrat?.label}</span>
           </div>
           <div className="flex justify-between gap-3">
             <span className="text-white/50">Exchanges</span>
-            <span className="text-[11px] text-white/60 text-right leading-snug">
-              {currentPlan?.exchanges.join(", ")}
-            </span>
+            <span className="text-[11px] text-white/60 text-right leading-snug">{currentPlan?.exchanges.join(", ")}</span>
           </div>
         </div>
       </div>
@@ -873,7 +858,7 @@ const SessionStats = ({
 const UpgradeCard = ({ name, icon, description, features, colorKey, currentTier, requiredTier }) => {
   const navigate = useNavigate();
   const unlocked = tierAtLeast(currentTier, requiredTier);
-  
+
   const colorMap = {
     blue: "from-blue-600/10 to-blue-600/5 border-blue-500/30",
     purple: "from-purple-600/10 to-purple-600/5 border-purple-500/30",
@@ -882,11 +867,8 @@ const UpgradeCard = ({ name, icon, description, features, colorKey, currentTier,
     gold: "from-yellow-600/10 to-yellow-600/5 border-yellow-500/30",
   };
 
-  const unlockedClass = `bg-gradient-to-br ${colorMap[colorKey] || colorMap.blue}`;
-  const lockedClass = "bg-white/5 border-white/10 opacity-80";
-
   return (
-    <div className={`rounded-2xl p-3 sm:p-4 border transition-all overflow-hidden ${unlocked ? unlockedClass : lockedClass}`}>
+    <div className={`rounded-2xl p-3 sm:p-4 border transition-all overflow-hidden ${unlocked ? `bg-gradient-to-br ${colorMap[colorKey] || colorMap.blue}` : "bg-white/5 border-white/10 opacity-80"}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2 min-w-0">
           <span className="text-xl flex-shrink-0">{icon}</span>
@@ -897,15 +879,9 @@ const UpgradeCard = ({ name, icon, description, features, colorKey, currentTier,
             </div>
           </div>
         </div>
-        {!unlocked && (
-          <span className="text-[10px] px-2 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-            {requiredTier}
-          </span>
-        )}
+        {!unlocked && <span className="text-[10px] px-2 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">{requiredTier}</span>}
       </div>
-
       <p className="text-[11px] sm:text-xs text-white/55 mt-2">{description}</p>
-
       <ul className="mt-3 space-y-1">
         {(features || []).slice(0, 4).map((f, i) => (
           <li key={i} className="text-[11px] sm:text-xs text-white/45 flex items-start gap-2">
@@ -914,12 +890,8 @@ const UpgradeCard = ({ name, icon, description, features, colorKey, currentTier,
           </li>
         ))}
       </ul>
-
       {!unlocked && (
-        <button
-          onClick={() => navigate("/pricing")}
-          className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-xs font-semibold hover:opacity-90 transition-opacity"
-        >
+        <button onClick={() => navigate("/pricing")} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-xs font-semibold hover:opacity-90 transition-opacity">
           Upgrade →
         </button>
       )}
@@ -930,58 +902,117 @@ const UpgradeCard = ({ name, icon, description, features, colorKey, currentTier,
 /* ===================== MAIN DASHBOARD COMPONENT ===================== */
 export default function MemberDashboard() {
   const navigate = useNavigate();
-  const {
-    user,
-    activation,
-    refreshUser,
-    refreshActivation,
-    authError,
-  } = useAuth();
+  const { user, activation, refreshActivation } = useAuth();
 
-  // WebSocket connection for real-time bot data
-  const { botData, connected: wsConnected, error: wsError } = useBotWebSocket();
+  // WebSocket for real-time bot data
+  const { botData, connected: wsConnected, error: wsError, requestSnapshot } = useBotWebSocket();
 
-  // State - simplified, mostly derived from WebSocket
-  const [trades, setTrades] = useState([]);
+  // REST-fetched historical trades
+  const [restTrades, setRestTrades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
   const [botMode, setBotMode] = useState(null);
-  const [strategy, setStrategy] = useState("ai_weighted");
-  const [dayStreak, setDayStreak] = useState(0);
-  const [currentWinStreak, setCurrentWinStreak] = useState(0);
-  const [bestWinStreak, setBestWinStreak] = useState(0);
-  const [strategiesUsed, setStrategiesUsed] = useState(new Set(["ai_weighted"]));
+  const [strategy, setStrategy] = useState(user?.strategy || "ai_weighted");
+  const [configWarning, setConfigWarning] = useState(null);
 
   const mountedRef = useRef(true);
   const hasLoadedOnce = useRef(false);
+  const tradePollingRef = useRef(null);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (tradePollingRef.current) clearInterval(tradePollingRef.current);
     };
   }, []);
 
-  // Derived state from WebSocket data
-  const botRunning = botData?.state === 'running';
-  const activePositions = botData?.active_trade_count || 0;
-  const totalPnL = botData?.pnl_total || 0;
-  const chainsTraded = botData?.networks ? Object.keys(botData.networks).length : 0;
-  
-  // Stats from WebSocket
-  const stats = useMemo(() => ({
-    active_positions: activePositions,
-    total_volume: botData?.stats?.total_volume || 0,
-    total_trades: botData?.completed_trade_count || 0,
-    spot_trades: botData?.stats?.spot_trades || 0,
-    futures_trades: botData?.stats?.futures_trades || 0,
-    stock_trades: botData?.stats?.stock_trades || 0,
-    sniper_trades: botData?.stats?.sniper_trades || 0,
-    spot_positions: botData?.stats?.spot_positions || 0
-  }), [botData]);
+  // Sync strategy from user profile
+  useEffect(() => {
+    if (user?.strategy) setStrategy(user.strategy);
+  }, [user?.strategy]);
 
-  // Auth-derived values
+  /* ── Derived: bot running state ── */
+  const botRunning = botData?.state === "running";
+
+  // Update botMode from WebSocket
+  useEffect(() => {
+    if (botData?.mode) setBotMode(botData.mode);
+    else if (botData?.state === "running" && !botMode) setBotMode("live");
+  }, [botData?.state, botData?.mode, botMode]);
+
+  /* ── Derived: merged trade list ── */
+  const allTrades = useMemo(() => {
+    const wsActive = botData?.active_trades || [];
+    const wsCompleted = botData?.completed_trades || [];
+
+    // Normalize WS trades to have consistent shape
+    const wsTrades = [...wsActive, ...wsCompleted].map((t) => ({
+      ...t,
+      id: t.id || t._id,
+      symbol: t.symbol || t.pair || "UNKNOWN",
+      pnl_usd: t.pnl_usd ?? t.pnl ?? 0,
+      exchange: t.exchange || t.network || "DEX",
+      timestamp: t.timestamp || t.opened_at || t.closed_at || t.created_at,
+      created_at: t.created_at || t.opened_at || new Date().toISOString(),
+      mode: t.mode || (t.bot_type === "paper" ? "paper" : "live"),
+      _live: !t.closed_at && wsActive.includes(t),
+    }));
+
+    return mergeTrades(restTrades, wsTrades);
+  }, [restTrades, botData?.active_trades, botData?.completed_trades]);
+
+  /* ── Derived: trade stats (wins, losses, streaks) ── */
+  const tradeStats = useMemo(() => computeTradeStats(allTrades), [allTrades]);
+
+  /* ── Derived: trades by exchange ── */
+  const tradesByExchange = useMemo(() => {
+    const result = { OKX: [], Alpaca: [], DEX: [], Futures: [], PAPER: [] };
+    allTrades.forEach((t) => {
+      const exchange = normalizeExchange(t.exchange || t.network);
+      if (t.mode === "paper" || t.bot_type === "paper") {
+        result.PAPER.push(t);
+      } else if (result[exchange]) {
+        result[exchange].push(t);
+      } else {
+        result.DEX.push(t);
+      }
+    });
+    return result;
+  }, [allTrades]);
+
+  /* ── Derived: today's trades ── */
+  const todayStr = new Date().toDateString();
+  const todayTrades = useMemo(
+    () => allTrades.filter((t) => new Date(t.created_at || t.timestamp || 0).toDateString() === todayStr),
+    [allTrades, todayStr]
+  );
+  const todayPnL = useMemo(
+    () => todayTrades.reduce((s, t) => s + Number(t.pnl_usd || t.pnl || 0), 0),
+    [todayTrades]
+  );
+
+  /* ── Derived: P&L (prefer WebSocket, fallback to trade calculation) ── */
+  const totalPnL = useMemo(() => {
+    if (botData?.pnl_total != null && botData.pnl_total !== 0) return botData.pnl_total;
+    return allTrades.reduce((s, t) => s + Number(t.pnl_usd || t.pnl || 0), 0);
+  }, [botData?.pnl_total, allTrades]);
+
+  const activePositions = botData?.active_trade_count ?? (botData?.active_trades?.length || 0);
+
+  const chainsTraded = useMemo(() => {
+    const wsChains = botData?.networks ? Object.keys(botData.networks).length : 0;
+    return Math.max(wsChains, tradeStats.chainsTraded);
+  }, [botData?.networks, tradeStats.chainsTraded]);
+
+  /* ── Derived: chart data ── */
+  const chartData = useMemo(
+    () => allTrades.slice(0, 24).reverse().map((t, i) => ({ label: `#${i + 1}`, value: Number(t.pnl_usd || t.pnl || 0) })),
+    [allTrades]
+  );
+
+  /* ── Auth-derived values ── */
   const normalizedTier = useMemo(() => normalizeTier(user?.tier), [user?.tier]);
   const currentPlan = useMemo(() => PLANS.find((p) => p.value === normalizedTier) || PLANS[0], [normalizedTier]);
   const currentStrat = useMemo(() => STRATEGIES.find((s) => s.value === strategy) || STRATEGIES[1], [strategy]);
@@ -1000,119 +1031,144 @@ export default function MemberDashboard() {
   }, [normalizedTier, okxConnected, alpacaConnected, walletConnected]);
 
   const activationComplete = billingComplete && connectionsComplete && tradingEnabled;
-
-  const canPaperTrade = !!user;
   const canLiveTrade = activationComplete;
 
-  // Trade feed data (from REST API, could also come from WebSocket in future)
-  const tradesByExchange = useMemo(() => {
-    const result = { OKX: [], Alpaca: [], DEX: [], Futures: [], PAPER: [] };
-    trades.forEach((t) => {
-      const exchange = normalizeExchange(t.exchange);
-      if (t.mode === "paper" || t.bot_type === "paper") {
-        result.PAPER.push(t);
-      } else if (result[exchange]) {
-        result[exchange].push(t);
-      }
-    });
-    return result;
-  }, [trades]);
-
-  const todayTrades = useMemo(() => {
-    const today = new Date().toDateString();
-    return trades.filter((t) => {
-      const date = t.timestamp || t.created_at || Date.now();
-      return new Date(date).toDateString() === today;
-    });
-  }, [trades]);
-
-  const todayPnL = useMemo(() => todayTrades.reduce((s, t) => s + (t.pnl_usd || 0), 0), [todayTrades]);
-
-  const chartData = useMemo(
-    () => trades.slice(-24).map((t, i) => ({ label: `#${i + 1}`, value: t.pnl_usd || 0 })),
-    [trades]
-  );
-
-  // Win rate and XP calculations
-  const wins = 0; // Calculate from trades if needed
-  const losses = 0;
-  const totalTrades = stats.total_trades;
+  /* ── Derived: win rate ── */
+  const totalTradeCount = allTrades.length;
+  const { wins, losses, currentWinStreak, bestWinStreak, dayStreak, strategiesUsed } = tradeStats;
 
   const winRate = useMemo(() => {
-    if (!totalTrades) return "0.0";
-    return ((wins / totalTrades) * 100).toFixed(1);
-  }, [wins, totalTrades]);
+    if (!totalTradeCount) return 0;
+    return Number(((wins / totalTradeCount) * 100).toFixed(1));
+  }, [wins, totalTradeCount]);
 
+  /* ── Derived: XP ── */
   const xp = useMemo(() => {
     let total = 0;
-    total += Math.min(stats.total_trades, 100) * 2;
-    total += Math.max(0, Number(winRate) - 40) * 1.5;
+    total += Math.min(totalTradeCount, 100) * 2;
+    total += Math.max(0, winRate - 40) * 1.5;
     total += Math.max(0, totalPnL) * 0.1;
     total += currentWinStreak * 3;
     total += dayStreak * 5;
     total += chainsTraded * 10;
     if (normalizedTier !== "starter") total += 15;
     return total;
-  }, [stats.total_trades, winRate, totalPnL, currentWinStreak, dayStreak, chainsTraded, normalizedTier]);
+  }, [totalTradeCount, winRate, totalPnL, currentWinStreak, dayStreak, chainsTraded, normalizedTier]);
 
+  /* ── Derived: confidence score ── */
   const confidence = useMemo(() => {
     let s = 0;
-    if (stats.total_trades > 0) s += clamp((wins / stats.total_trades) * 40, 0, 40);
-    s += clamp(stats.total_trades * 0.1, 0, 30);
+    if (totalTradeCount > 0) s += clamp((wins / totalTradeCount) * 40, 0, 40);
+    s += clamp(totalTradeCount * 0.1, 0, 30);
     s += clamp(dayStreak * 5, 0, 20);
     s += chainsTraded * 5;
     if (normalizedTier !== "starter") s += 10;
     if (activationComplete) s += 15;
     if (botRunning) s += 5;
     return clamp(Math.round(s), 0, 100);
-  }, [wins, stats.total_trades, dayStreak, chainsTraded, normalizedTier, activationComplete, botRunning]);
+  }, [wins, totalTradeCount, dayStreak, chainsTraded, normalizedTier, activationComplete, botRunning]);
 
+  /* ── Derived: achievements ── */
   const unlockedAchievements = useMemo(() => {
     const statsData = {
-      totalTrades: stats.total_trades,
+      totalTrades: totalTradeCount,
       wins,
       losses,
       pnl: totalPnL,
       currentWinStreak,
-      winRate: Number(winRate),
+      winRate,
       dayStreak,
       plan: normalizedTier,
       strategiesUsed: strategiesUsed.size,
       confidence,
-      chainsTraded
+      chainsTraded,
     };
     return ALL_ACHIEVEMENTS.filter((a) => a.check(statsData)).map((a) => a.id);
-  }, [stats.total_trades, wins, losses, totalPnL, currentWinStreak, winRate, dayStreak, normalizedTier, strategiesUsed, confidence, chainsTraded]);
+  }, [totalTradeCount, wins, losses, totalPnL, currentWinStreak, winRate, dayStreak, normalizedTier, strategiesUsed, confidence, chainsTraded]);
 
-  // Load trades once (could be replaced with WebSocket trade feed in future)
+  /* ── Derived: exchange-level stats for cards ── */
+  const exchangePositions = useMemo(() => {
+    const positions = { OKX: 0, Alpaca: 0, DEX: 0, Futures: 0 };
+    (botData?.active_trades || []).forEach((t) => {
+      const ex = normalizeExchange(t.exchange || t.network);
+      if (positions[ex] !== undefined) positions[ex]++;
+    });
+    return positions;
+  }, [botData?.active_trades]);
+
+  /* ── Derived: total volume ── */
+  const totalVolume = useMemo(() => {
+    if (botData?.stats?.total_volume) return botData.stats.total_volume;
+    return allTrades.reduce((s, t) => s + Math.abs(Number(t.amount || t.volume || t.pnl_usd || 0)), 0);
+  }, [botData?.stats?.total_volume, allTrades]);
+
+  /* ── Derived: active bots map ── */
+  const activeBots = useMemo(() => {
+    const bots = {};
+    if (botData?.networks) {
+      Object.entries(botData.networks).forEach(([name, info]) => {
+        bots[name] = info.state === "running";
+      });
+    }
+    if (botRunning && Object.keys(bots).length === 0) {
+      bots[botMode || "default"] = true;
+    }
+    return bots;
+  }, [botData?.networks, botRunning, botMode]);
+
+  /* ── Load REST trades ── */
   const loadTrades = useCallback(async () => {
     if (!user) return;
 
     try {
       const result = await BotAPI.getTrades();
       if (mountedRef.current) {
-        setTrades(result.trades || []);
+        const trades = result?.trades || result || [];
+        setRestTrades(Array.isArray(trades) ? trades : []);
       }
     } catch (err) {
       console.warn("[Dashboard] loadTrades failed:", err?.message);
+      // Don't clear trades on error — keep showing what we have
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
+        setConfigWarning("Session expired. Please refresh or log in again.");
+      }
     } finally {
       if (mountedRef.current) setLoading(false);
     }
   }, [user]);
 
+  // Initial trade load
   useEffect(() => {
     if (hasLoadedOnce.current) return;
     hasLoadedOnce.current = true;
     loadTrades();
   }, [loadTrades]);
 
-  // Actions
+  // Poll REST trades every 30s when bot is running (backup to WebSocket)
+  useEffect(() => {
+    if (tradePollingRef.current) clearInterval(tradePollingRef.current);
+
+    if (botRunning && user) {
+      tradePollingRef.current = setInterval(() => {
+        loadTrades();
+      }, 30000);
+    }
+
+    return () => {
+      if (tradePollingRef.current) clearInterval(tradePollingRef.current);
+    };
+  }, [botRunning, user, loadTrades]);
+
+  /* ── Actions ── */
   const toggleTrading = async (enabled) => {
     try {
       setBusy(true);
-      await BotAPI.tradingEnable(enabled);
+      await BotAPI.toggleTrading(enabled);
       if (refreshActivation) await refreshActivation();
-      setBanner({ type: "success", message: enabled ? "✅ Trading enabled!" : "⏸ Trading paused." });
+      setBanner({
+        type: "success",
+        message: enabled ? "✅ Trading enabled!" : "⏸ Trading paused.",
+      });
     } catch (err) {
       setBanner({
         type: "error",
@@ -1128,20 +1184,36 @@ export default function MemberDashboard() {
       setBusy(true);
       const actualBotType = botType || (mode === "paper" ? "paper" : "live");
       const payload = { mode, strategy, bot_type: actualBotType };
+
+      console.log("[Dashboard] Starting bot:", payload);
       const res = await BotAPI.startBot(payload);
-      
+
       if (res?.started || res?.success) {
+        setBotMode(mode);
+
         const messages = {
           paper: "🎮 Paper trading bot started! Virtual trades will appear shortly.",
           cex: "🤖 CEX (OKX) trading bot started!",
           stocks: "📈 Stocks (Alpaca) trading bot started!",
           dex: "🦄 DEX trading bot started!",
-          futures: "📊 Futures trading bot started!"
+          futures: "📊 Futures trading bot started!",
         };
-        setBanner({ type: "success", message: messages[actualBotType] || messages[mode] || "Bot started!" });
+
+        setBanner({
+          type: "success",
+          message: messages[actualBotType] || messages[mode] || "Bot started!",
+        });
+
+        // Request fresh snapshot from WebSocket
+        if (requestSnapshot) requestSnapshot();
+
+        // Also fetch REST trades after a delay as fallback
         setTimeout(loadTrades, 3000);
       } else {
-        setBanner({ type: "error", message: res?.message || "Bot didn't start — try again" });
+        setBanner({
+          type: "error",
+          message: res?.message || "Bot didn't start — try again",
+        });
       }
     } catch (err) {
       console.error("[Dashboard] Start bot error:", err);
@@ -1164,11 +1236,24 @@ export default function MemberDashboard() {
       navigate("/pricing");
       return;
     }
-    const botType = getBotTypeFromExchange(exchangeName);
+
+    if (!activationComplete) {
+      handleSetupCTA();
+      return;
+    }
+
+    const exchangeToBotType = {
+      OKX: "cex",
+      Alpaca: "stocks",
+      DEX: "dex",
+      Futures: "futures",
+    };
+
+    const botType = exchangeToBotType[exchangeName] || "live";
     startBot("live", botType);
   };
 
-  // Loading state
+  /* ── Loading state ── */
   if (loading && !user) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white px-4">
@@ -1193,31 +1278,47 @@ export default function MemberDashboard() {
     );
   }
 
+  /* ── Render helpers ── */
   const displayName = user.email?.split("@")[0] || "Trader";
-  const equityColorClass = (activationComplete ? 1000 + totalPnL : 100000 + totalPnL) >= (activationComplete ? 1000 : 100000) 
-    ? "text-emerald-400" : "text-red-400";
-  const pnlColorClass = totalPnL >= 0 ? "text-emerald-400" : "text-red-400";
-  const wrBarClass = `h-full rounded-full transition-all duration-500 ${
-    Number(winRate) >= 50 ? "bg-emerald-500" : "bg-red-500"
-  }`;
+  const baseBalance = activationComplete ? 1000 : 100000;
+  const currentBalance = baseBalance + totalPnL;
+  const balanceColorClass = currentBalance >= baseBalance ? "text-emerald-400" : "text-red-400";
+
+  /* ── Derived: spot/futures/stock counts from exchange buckets ── */
+  const spotTrades = tradesByExchange.OKX.length;
+  const futuresTrades = tradesByExchange.Futures.length;
+  const stockTrades = tradesByExchange.Alpaca.length;
+  const dexTrades = tradesByExchange.DEX.length;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-7xl mx-auto px-3 py-3 sm:p-4 md:p-6 space-y-3 sm:space-y-5">
         {/* WebSocket Connection Status */}
         <div className="flex items-center justify-end gap-2 text-xs">
-          <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-white/50">Real-time: {wsConnected ? 'Connected' : 'Disconnected'}</span>
+          <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500" : "bg-red-500"}`} />
+          <span className="text-white/50">
+            Real-time: {wsConnected ? "Connected" : "Reconnecting..."}
+          </span>
           {wsError && <span className="text-red-400 ml-2">{wsError}</span>}
+          {!wsConnected && (
+            <button
+              onClick={requestSnapshot}
+              className="text-blue-400 hover:text-blue-300 ml-1"
+            >
+              Retry
+            </button>
+          )}
         </div>
 
         {/* Banner */}
         {banner && (
-          <div className={`p-3 rounded-2xl border flex items-start justify-between gap-3 text-sm ${
-            banner.type === "error"
-              ? "bg-red-600/10 border-red-500/40 text-red-200"
-              : "bg-emerald-600/10 border-emerald-500/40 text-emerald-200"
-          }`}>
+          <div
+            className={`p-3 rounded-2xl border flex items-start justify-between gap-3 text-sm ${
+              banner.type === "error"
+                ? "bg-red-600/10 border-red-500/40 text-red-200"
+                : "bg-emerald-600/10 border-emerald-500/40 text-emerald-200"
+            }`}
+          >
             <span className="min-w-0">{banner.message}</span>
             <button onClick={() => setBanner(null)} className="text-white/50 hover:text-white flex-shrink-0">
               ✕
@@ -1226,12 +1327,13 @@ export default function MemberDashboard() {
         )}
 
         <QuickLinksBar />
+
         <SetupBanner
           billing={billingComplete}
           connections={connectionsComplete}
           trading={tradingEnabled}
           onCTA={handleSetupCTA}
-          authError={authError}
+          configWarning={configWarning}
         />
 
         {/* Header */}
@@ -1259,8 +1361,8 @@ export default function MemberDashboard() {
                 )}
               </div>
               <p className="text-[11px] sm:text-sm text-white/55 mt-1">
-                {stats.total_trades > 0 
-                  ? `${formatNumber(stats.total_trades)} total trades` 
+                {totalTradeCount > 0
+                  ? `${formatNumber(totalTradeCount)} total trades · ${formatUsd(totalPnL)} P&L`
                   : "Your trading dashboard"}
               </p>
             </div>
@@ -1311,7 +1413,11 @@ export default function MemberDashboard() {
           title="Strategy"
           icon="🧠"
           defaultOpen={false}
-          right={botRunning ? <span className="text-[11px] text-yellow-300/80">Stop to change</span> : null}
+          right={
+            botRunning ? (
+              <span className="text-[11px] text-yellow-300/80">Stop to change</span>
+            ) : null
+          }
         >
           <StrategySelector value={strategy} onChange={setStrategy} disabled={botRunning} />
         </CollapsibleCard>
@@ -1319,11 +1425,11 @@ export default function MemberDashboard() {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
           <CardShell title="Balance" icon="💰">
-            <div className={`text-xl font-bold leading-tight ${equityColorClass}`}>
-              {formatUsdPlain(activationComplete ? 1000 + totalPnL : 100000 + totalPnL)}
+            <div className={`text-xl font-bold leading-tight ${balanceColorClass}`}>
+              {formatUsdPlain(currentBalance)}
             </div>
             <div className="text-[11px] text-white/35 mt-1">
-              {activationComplete ? "Live • Start $1k" : "Paper • $100k virtual"}
+              {activationComplete ? "Live • Start \$1k" : "Paper • \$100k virtual"}
             </div>
           </CardShell>
 
@@ -1331,26 +1437,38 @@ export default function MemberDashboard() {
             <div className={`text-xl font-bold leading-tight ${todayPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
               {formatUsd(todayPnL)}
             </div>
-            <div className="text-[11px] text-white/35 mt-1">{todayTrades.length} trades</div>
+            <div className="text-[11px] text-white/35 mt-1">{todayTrades.length} trades today</div>
           </CardShell>
 
           <CardShell title="Total Trades" icon="📊">
-            <div className="text-xl font-bold leading-tight text-white">{formatNumber(stats.total_trades)}</div>
-            <div className="text-[11px] text-white/35 mt-1">{stats.spot_trades} spot · {stats.futures_trades} futures</div>
+            <div className="text-xl font-bold leading-tight text-white">{formatNumber(totalTradeCount)}</div>
+            <div className="text-[11px] text-white/35 mt-1">
+              {spotTrades} spot · {futuresTrades} futures · {stockTrades} stocks
+            </div>
           </CardShell>
 
           <CardShell title="Active Positions" icon="🎯">
             <div className="text-xl font-bold leading-tight text-white">{activePositions}</div>
-            <div className="text-[11px] text-white/35 mt-1">Across {chainsTraded} chains</div>
+            <div className="text-[11px] text-white/35 mt-1">
+              Across {chainsTraded} chain{chainsTraded !== 1 ? "s" : ""}
+            </div>
           </CardShell>
 
-          <CardShell title="Confidence" icon="🤖" right={<span className="text-[11px] text-white/45">{confidence}%</span>}>
+          <CardShell
+            title="Confidence"
+            icon="🤖"
+            right={<span className="text-[11px] text-white/45">{confidence}%</span>}
+          >
             <div className="flex items-center gap-2">
               <ProgressRing percent={confidence} size={42} stroke={3}>
                 <span className="text-[10px] font-bold">{confidence}%</span>
               </ProgressRing>
               <div className="text-[11px] text-white/50 leading-snug">
-                {confidence >= 80 ? "🔥 Very strong" : confidence >= 60 ? "👍 Improving" : "📈 Warming up"}
+                {confidence >= 80
+                  ? "🔥 Very strong"
+                  : confidence >= 60
+                  ? "👍 Improving"
+                  : "📈 Warming up"}
               </div>
             </div>
           </CardShell>
@@ -1362,22 +1480,27 @@ export default function MemberDashboard() {
             onStart={startBot}
             busy={busy}
             isRunning={botRunning && botMode === "paper"}
-            trades={trades}
+            trades={allTrades}
           />
         )}
 
         {/* Level and Chart */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
           <div className="lg:col-span-1">
-            <LevelBadge 
-              trades={stats.total_trades} 
-              winRate={Number(winRate)} 
-              pnl={totalPnL} 
+            <LevelBadge
+              trades={totalTradeCount}
+              winRate={winRate}
+              pnl={totalPnL}
               chainsTraded={chainsTraded}
             />
           </div>
           <div className="lg:col-span-2">
-            <CollapsibleCard icon="📊" title="Recent Results" defaultOpen={true} right={`${stats.total_trades} total trades`}>
+            <CollapsibleCard
+              icon="📊"
+              title="Recent Results"
+              defaultOpen={true}
+              right={`${totalTradeCount} total trades`}
+            >
               <MiniBarChart data={chartData} height={92} />
             </CollapsibleCard>
           </div>
@@ -1392,10 +1515,10 @@ export default function MemberDashboard() {
               trades={tradesByExchange.OKX}
               active={okxConnected}
               mode={activation?.okx_mode}
-              isRunning={botRunning}
+              isRunning={botRunning && !!activeBots.cex}
               onClick={() => handleExchangeClick("OKX")}
               pairs={162}
-              positions={stats.spot_positions}
+              positions={exchangePositions.OKX}
             />
             <ExchangeCard
               name="Alpaca"
@@ -1403,30 +1526,30 @@ export default function MemberDashboard() {
               trades={tradesByExchange.Alpaca}
               active={alpacaConnected}
               mode={activation?.alpaca_mode}
-              isRunning={botRunning}
+              isRunning={botRunning && !!activeBots.stocks}
               onClick={() => handleExchangeClick("Alpaca")}
               pairs={417}
-              positions={stats.spot_positions}
+              positions={exchangePositions.Alpaca}
             />
             <ExchangeCard
               name="DEX"
               icon="🦄"
               trades={tradesByExchange.DEX}
               active={walletConnected && tierAtLeast(normalizedTier, "stock")}
-              isRunning={botRunning}
+              isRunning={botRunning && !!activeBots.dex}
               onClick={() => handleExchangeClick("DEX")}
               pairs={162}
-              positions={0}
+              positions={exchangePositions.DEX}
             />
             <ExchangeCard
               name="Futures"
               icon="📊"
               trades={tradesByExchange.Futures}
               active={tierAtLeast(normalizedTier, "elite")}
-              isRunning={botRunning}
+              isRunning={botRunning && !!activeBots.futures}
               onClick={() => handleExchangeClick("Futures")}
               pairs={199}
-              positions={0}
+              positions={exchangePositions.Futures}
             />
           </div>
         </CollapsibleCard>
@@ -1436,14 +1559,20 @@ export default function MemberDashboard() {
           <CardShell
             title="Live Trades"
             icon="📋"
-            right={botRunning ? (
-              <span className="flex items-center gap-2 text-[11px] text-emerald-400">
-                <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                Live
-              </span>
-            ) : null}
+            right={
+              botRunning ? (
+                <span className="flex items-center gap-2 text-[11px] text-emerald-400">
+                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                  Live
+                </span>
+              ) : (
+                <span className="text-[11px] text-white/40">
+                  {totalTradeCount} total
+                </span>
+              )
+            }
           >
-            <TradeFeed trades={trades} isPaper={false} />
+            <TradeFeed trades={allTrades} isPaper={botMode === "paper"} />
           </CardShell>
 
           <SessionStats
@@ -1458,10 +1587,10 @@ export default function MemberDashboard() {
             botRunning={botRunning}
             botMode={botMode}
             tradingEnabled={tradingEnabled}
-            activeBots={{}}
-            totalTrades={stats.total_trades}
+            activeBots={activeBots}
+            totalTrades={totalTradeCount}
             chainsTraded={chainsTraded}
-            totalVolume={stats.total_volume}
+            totalVolume={totalVolume}
             activePositions={activePositions}
             pnlTotal={totalPnL}
           />
@@ -1472,7 +1601,7 @@ export default function MemberDashboard() {
           <div className="bg-black/20 border border-white/10 rounded-2xl p-2 sm:p-3">
             <TradingOverview
               feed={{
-                equity: activationComplete ? 1000 + totalPnL : 100000 + totalPnL,
+                equity: currentBalance,
                 pnl: totalPnL,
                 wins: wins,
                 losses: losses,
