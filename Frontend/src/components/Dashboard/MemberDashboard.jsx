@@ -1016,7 +1016,7 @@ export default function MemberDashboard() {
   const [currentWinStreak, setCurrentWinStreak] = useState(0);
   const [bestWinStreak, setBestWinStreak] = useState(0);
   const [strategiesUsed, setStrategiesUsed] = useState(new Set(["ai_weighted"]));
-  const [chainsTraded, setChainsTraded] = useState(1);
+  const [chainsTraded, setChainsTraded] = useState(0);
   
   const [rateLimitCount, setRateLimitCount] = useState(0);
   const [pollInterval, setPollInterval] = useState(POLL_INTERVAL);
@@ -1186,17 +1186,17 @@ export default function MemberDashboard() {
           total_trades: 0,
           buy_trades: 0,
           sell_trades: 0,
-          spot_trades: 33335,
+          spot_trades: 0,
           futures_trades: 0,
           stock_trades: 0,
           sniper_trades: 0,
-          spot_positions: 32,
+          spot_positions: 0,
           futures_positions: false,
           stock_positions: false,
           sniper_positions: 0,
           today_trades: 0,
-          total_volume: 1666750,
-          active_positions: 32
+          total_volume: 0,
+          active_positions: 0
         });
         
         // Calculate chains traded
@@ -1204,7 +1204,7 @@ export default function MemberDashboard() {
         result.trades?.forEach(t => {
           if (t.chain) chains.add(t.chain);
         });
-        setChainsTraded(Math.max(1, chains.size));
+        setChainsTraded(chains.size);
         
         if (result.trades && result.trades.length > 0) {
           let streak = 0;
@@ -1452,7 +1452,7 @@ export default function MemberDashboard() {
               </div>
               <p className="text-[11px] sm:text-sm text-white/55 mt-1">
                 {stats.total_trades > 0 
-                  ? `${formatNumber(stats.total_trades)} total trades across ${chainsTraded} chains` 
+                  ? `${formatNumber(stats.total_trades)} total trades` 
                   : "Your trading dashboard"}
               </p>
             </div>
