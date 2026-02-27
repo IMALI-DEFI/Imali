@@ -1,9 +1,9 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
-// Update the API base to your server IP - this is the key change!
+// Update the API base to your HTTPS endpoint
 const API_BASE =
-  process.env.REACT_APP_API_BASE_URL || "http://129.213.90.84:8001";
+  process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"; // ← CHANGED TO HTTPS
 const TOKEN_KEY = "imali_token";
 
 // Cache TTL settings
