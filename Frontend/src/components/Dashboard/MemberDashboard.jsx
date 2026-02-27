@@ -52,10 +52,6 @@ const ALL_ACHIEVEMENTS = [
   { id: "multi_chain", emoji: "🌐", label: "Multi-Chain", desc: "Trade on multiple chains", check: (s) => s.chainsTraded > 1 },
 ];
 
-// POLLING INTERVAL - reduced since we use WebSocket
-const POLL_INTERVAL = 120000; // 2 minutes (fallback only)
-const INITIAL_LOAD_DELAY = 2000;
-
 /* ===================== HELPERS ===================== */
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
@@ -778,7 +774,9 @@ const SessionStats = ({
   activeBots,
   totalTrades = 0,
   chainsTraded = 1,
-  totalVolume = 0
+  totalVolume = 0,
+  activePositions = 0,
+  pnlTotal = 0
 }) => {
   const total = wins + losses;
   const activeBotCount = Object.values(activeBots || {}).filter(Boolean).length;
@@ -803,6 +801,16 @@ const SessionStats = ({
         <div className="flex justify-between gap-3">
           <span className="text-white/50">Total Trades</span>
           <span className="font-bold">{formatNumber(totalTrades)}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-white/50">Active Positions</span>
+          <span className="font-bold">{activePositions}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-white/50">Total P&L</span>
+          <span className={`font-bold ${pnlTotal >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {formatUsd(pnlTotal)}
+          </div>
         </div>
         <div className="flex justify-between gap-3">
           <span className="text-white/50">Total Volume</span>
@@ -933,45 +941,17 @@ export default function MemberDashboard() {
   // WebSocket connection for real-time bot data
   const { botData, connected: wsConnected, error: wsError } = useBotWebSocket();
 
-  // State
+  // State - simplified, mostly derived from WebSocket
   const [trades, setTrades] = useState([]);
-  const [stats, setStats] = useState({
-    total_trades: 0,
-    buy_trades: 0,
-    sell_trades: 0,
-    spot_trades: 0,
-    futures_trades: 0,
-    stock_trades: 0,
-    sniper_trades: 0,
-    spot_positions: 0,
-    futures_positions: false,
-    stock_positions: false,
-    sniper_positions: 0,
-    today_trades: 0,
-    total_volume: 0,
-    active_positions: 0
-  });
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
   const [botMode, setBotMode] = useState(null);
-  const [botRunning, setBotRunning] = useState(false);
-  const [activeBots, setActiveBots] = useState({
-    paper: false,
-    cex: false,
-    stocks: false,
-    dex: false,
-    futures: false
-  });
   const [strategy, setStrategy] = useState("ai_weighted");
   const [dayStreak, setDayStreak] = useState(0);
   const [currentWinStreak, setCurrentWinStreak] = useState(0);
   const [bestWinStreak, setBestWinStreak] = useState(0);
   const [strategiesUsed, setStrategiesUsed] = useState(new Set(["ai_weighted"]));
-  const [chainsTraded, setChainsTraded] = useState(0);
-  
-  const [rateLimitCount, setRateLimitCount] = useState(0);
-  const [pollInterval] = useState(POLL_INTERVAL);
 
   const mountedRef = useRef(true);
   const hasLoadedOnce = useRef(false);
@@ -983,50 +963,25 @@ export default function MemberDashboard() {
     };
   }, []);
 
-  // Update state from WebSocket data
-  useEffect(() => {
-    if (botData) {
-      // Update bot running state
-      setBotRunning(botData.state === 'running');
-      
-      // Update active positions
-      setStats(prev => ({
-        ...prev,
-        active_positions: botData.active_trade_count || 0,
-        total_trades: (prev.spot_trades || 0) + (prev.futures_trades || 0) + 
-                     (prev.stock_trades || 0) + (prev.sniper_trades || 0)
-      }));
+  // Derived state from WebSocket data
+  const botRunning = botData?.state === 'running';
+  const activePositions = botData?.active_trade_count || 0;
+  const totalPnL = botData?.pnl_total || 0;
+  const chainsTraded = botData?.networks ? Object.keys(botData.networks).length : 0;
+  
+  // Stats from WebSocket
+  const stats = useMemo(() => ({
+    active_positions: activePositions,
+    total_volume: botData?.stats?.total_volume || 0,
+    total_trades: botData?.completed_trade_count || 0,
+    spot_trades: botData?.stats?.spot_trades || 0,
+    futures_trades: botData?.stats?.futures_trades || 0,
+    stock_trades: botData?.stats?.stock_trades || 0,
+    sniper_trades: botData?.stats?.sniper_trades || 0,
+    spot_positions: botData?.stats?.spot_positions || 0
+  }), [botData]);
 
-      // Calculate chains from networks
-      if (botData.networks) {
-        setChainsTraded(Object.keys(botData.networks).length);
-      }
-    }
-  }, [botData]);
-
-  const fetchBotStatuses = useCallback(async () => {
-    try {
-      const statuses = await BotAPI.getBotsStatus();
-      if (mountedRef.current) {
-        setActiveBots(statuses);
-        const anyRunning = Object.values(statuses).some(Boolean);
-        setBotRunning(anyRunning);
-        if (anyRunning) {
-          if (statuses.paper) setBotMode("paper");
-          else if (statuses.cex || statuses.stocks || statuses.dex || statuses.futures) setBotMode("live");
-        }
-      }
-    } catch (err) {
-      console.warn("[Dashboard] Failed to fetch bot statuses:", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchBotStatuses();
-    const interval = setInterval(fetchBotStatuses, 30000);
-    return () => clearInterval(interval);
-  }, [fetchBotStatuses]);
-
+  // Auth-derived values
   const normalizedTier = useMemo(() => normalizeTier(user?.tier), [user?.tier]);
   const currentPlan = useMemo(() => PLANS.find((p) => p.value === normalizedTier) || PLANS[0], [normalizedTier]);
   const currentStrat = useMemo(() => STRATEGIES.find((s) => s.value === strategy) || STRATEGIES[1], [strategy]);
@@ -1049,7 +1004,36 @@ export default function MemberDashboard() {
   const canPaperTrade = !!user;
   const canLiveTrade = activationComplete;
 
-  const totalPnL = useMemo(() => botData?.pnl_total || 0, [botData]);
+  // Trade feed data (from REST API, could also come from WebSocket in future)
+  const tradesByExchange = useMemo(() => {
+    const result = { OKX: [], Alpaca: [], DEX: [], Futures: [], PAPER: [] };
+    trades.forEach((t) => {
+      const exchange = normalizeExchange(t.exchange);
+      if (t.mode === "paper" || t.bot_type === "paper") {
+        result.PAPER.push(t);
+      } else if (result[exchange]) {
+        result[exchange].push(t);
+      }
+    });
+    return result;
+  }, [trades]);
+
+  const todayTrades = useMemo(() => {
+    const today = new Date().toDateString();
+    return trades.filter((t) => {
+      const date = t.timestamp || t.created_at || Date.now();
+      return new Date(date).toDateString() === today;
+    });
+  }, [trades]);
+
+  const todayPnL = useMemo(() => todayTrades.reduce((s, t) => s + (t.pnl_usd || 0), 0), [todayTrades]);
+
+  const chartData = useMemo(
+    () => trades.slice(-24).map((t, i) => ({ label: `#${i + 1}`, value: t.pnl_usd || 0 })),
+    [trades]
+  );
+
+  // Win rate and XP calculations
   const wins = 0; // Calculate from trades if needed
   const losses = 0;
   const totalTrades = stats.total_trades;
@@ -1083,42 +1067,6 @@ export default function MemberDashboard() {
     return clamp(Math.round(s), 0, 100);
   }, [wins, stats.total_trades, dayStreak, chainsTraded, normalizedTier, activationComplete, botRunning]);
 
-  const todayTrades = useMemo(() => {
-    const today = new Date().toDateString();
-    return trades.filter((t) => {
-      const date = t.timestamp || t.created_at || Date.now();
-      return new Date(date).toDateString() === today;
-    });
-  }, [trades]);
-
-  const todayPnL = useMemo(() => todayTrades.reduce((s, t) => s + (t.pnl_usd || 0), 0), [todayTrades]);
-
-  const chartData = useMemo(
-    () => trades.slice(-24).map((t, i) => ({ label: `#${i + 1}`, value: t.pnl_usd || 0 })),
-    [trades]
-  );
-
-  const equityHistory = useMemo(() => {
-    let balance = activationComplete ? 1000 : 100000;
-    return trades.map((t) => {
-      balance += (t.pnl_usd || 0);
-      return { value: balance };
-    });
-  }, [trades, activationComplete]);
-
-  const tradesByExchange = useMemo(() => {
-    const result = { OKX: [], Alpaca: [], DEX: [], Futures: [], PAPER: [] };
-    trades.forEach((t) => {
-      const exchange = normalizeExchange(t.exchange);
-      if (t.mode === "paper" || t.bot_type === "paper") {
-        result.PAPER.push(t);
-      } else if (result[exchange]) {
-        result[exchange].push(t);
-      }
-    });
-    return result;
-  }, [trades]);
-
   const unlockedAchievements = useMemo(() => {
     const statsData = {
       totalTrades: stats.total_trades,
@@ -1136,50 +1084,17 @@ export default function MemberDashboard() {
     return ALL_ACHIEVEMENTS.filter((a) => a.check(statsData)).map((a) => a.id);
   }, [stats.total_trades, wins, losses, totalPnL, currentWinStreak, winRate, dayStreak, normalizedTier, strategiesUsed, confidence, chainsTraded]);
 
+  // Load trades once (could be replaced with WebSocket trade feed in future)
   const loadTrades = useCallback(async () => {
     if (!user) return;
 
     try {
       const result = await BotAPI.getTrades();
-      
       if (mountedRef.current) {
         setTrades(result.trades || []);
-        setStats(prev => ({
-          ...prev,
-          spot_trades: result.stats?.spot_trades || 0,
-          futures_trades: result.stats?.futures_trades || 0,
-          stock_trades: result.stats?.stock_trades || 0,
-          sniper_trades: result.stats?.sniper_trades || 0,
-          spot_positions: result.stats?.spot_positions || 0,
-          total_volume: result.stats?.total_volume || 0,
-          total_trades: (result.stats?.spot_trades || 0) + 
-                       (result.stats?.futures_trades || 0) + 
-                       (result.stats?.stock_trades || 0) + 
-                       (result.stats?.sniper_trades || 0)
-        }));
-        
-        if (result.trades && result.trades.length > 0) {
-          let streak = 0;
-          let best = 0;
-          for (let i = result.trades.length - 1; i >= 0; i--) {
-            const pnl = result.trades[i].pnl_usd || 0;
-            if (pnl > 0) {
-              streak++;
-              best = Math.max(best, streak);
-            } else if (pnl < 0) {
-              streak = 0;
-            }
-          }
-          setCurrentWinStreak(streak);
-          setBestWinStreak((prev) => Math.max(prev, best));
-        }
       }
     } catch (err) {
-      if (err?.response?.status === 429) {
-        setRateLimitCount(prev => prev + 1);
-      } else {
-        console.warn("[Dashboard] loadTrades failed:", err?.message);
-      }
+      console.warn("[Dashboard] loadTrades failed:", err?.message);
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -1188,27 +1103,16 @@ export default function MemberDashboard() {
   useEffect(() => {
     if (hasLoadedOnce.current) return;
     hasLoadedOnce.current = true;
-
-    const timer = setTimeout(() => {
-      loadTrades();
-    }, INITIAL_LOAD_DELAY);
-
-    return () => clearTimeout(timer);
+    loadTrades();
   }, [loadTrades]);
 
+  // Actions
   const toggleTrading = async (enabled) => {
     try {
       setBusy(true);
       await BotAPI.tradingEnable(enabled);
-
-      if (refreshActivation) {
-        await refreshActivation();
-      } else if (refreshUser) {
-        await refreshUser();
-      }
-
+      if (refreshActivation) await refreshActivation();
       setBanner({ type: "success", message: enabled ? "✅ Trading enabled!" : "⏸ Trading paused." });
-      if (enabled) setTimeout(loadTrades, 2000);
     } catch (err) {
       setBanner({
         type: "error",
@@ -1222,26 +1126,11 @@ export default function MemberDashboard() {
   const startBot = async (mode = "paper", botType = null) => {
     try {
       setBusy(true);
-      
       const actualBotType = botType || (mode === "paper" ? "paper" : "live");
-      
-      const payload = {
-        mode,
-        strategy: strategy,
-        bot_type: actualBotType
-      };
-      
+      const payload = { mode, strategy, bot_type: actualBotType };
       const res = await BotAPI.startBot(payload);
       
       if (res?.started || res?.success) {
-        setActiveBots(prev => ({ ...prev, [actualBotType]: true }));
-        setBotRunning(true);
-        if (actualBotType === "paper") {
-          setBotMode("paper");
-        } else {
-          setBotMode("live");
-        }
-        
         const messages = {
           paper: "🎮 Paper trading bot started! Virtual trades will appear shortly.",
           cex: "🤖 CEX (OKX) trading bot started!",
@@ -1249,21 +1138,10 @@ export default function MemberDashboard() {
           dex: "🦄 DEX trading bot started!",
           futures: "📊 Futures trading bot started!"
         };
-        
-        setBanner({
-          type: "success",
-          message: messages[actualBotType] || messages[mode] || "Bot started!"
-        });
-        
+        setBanner({ type: "success", message: messages[actualBotType] || messages[mode] || "Bot started!" });
         setTimeout(loadTrades, 3000);
-        setTimeout(loadTrades, 8000);
-        setTimeout(loadTrades, 15000);
-        setTimeout(fetchBotStatuses, 2000);
       } else {
-        setBanner({
-          type: "error",
-          message: res?.message || "Bot didn't start — try again",
-        });
+        setBanner({ type: "error", message: res?.message || "Bot didn't start — try again" });
       }
     } catch (err) {
       console.error("[Dashboard] Start bot error:", err);
@@ -1286,19 +1164,11 @@ export default function MemberDashboard() {
       navigate("/pricing");
       return;
     }
-    
     const botType = getBotTypeFromExchange(exchangeName);
-    
-    if (activeBots[botType]) {
-      setBanner({
-        type: "info",
-        message: `${exchangeName} bot is already running`
-      });
-    } else {
-      startBot("live", botType);
-    }
+    startBot("live", botType);
   };
 
+  // Loading state
   if (loading && !user) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white px-4">
@@ -1324,7 +1194,6 @@ export default function MemberDashboard() {
   }
 
   const displayName = user.email?.split("@")[0] || "Trader";
-
   const equityColorClass = (activationComplete ? 1000 + totalPnL : 100000 + totalPnL) >= (activationComplete ? 1000 : 100000) 
     ? "text-emerald-400" : "text-red-400";
   const pnlColorClass = totalPnL >= 0 ? "text-emerald-400" : "text-red-400";
@@ -1342,14 +1211,13 @@ export default function MemberDashboard() {
           {wsError && <span className="text-red-400 ml-2">{wsError}</span>}
         </div>
 
+        {/* Banner */}
         {banner && (
-          <div
-            className={`p-3 rounded-2xl border flex items-start justify-between gap-3 text-sm ${
-              banner.type === "error"
-                ? "bg-red-600/10 border-red-500/40 text-red-200"
-                : "bg-emerald-600/10 border-emerald-500/40 text-emerald-200"
-            }`}
-          >
+          <div className={`p-3 rounded-2xl border flex items-start justify-between gap-3 text-sm ${
+            banner.type === "error"
+              ? "bg-red-600/10 border-red-500/40 text-red-200"
+              : "bg-emerald-600/10 border-emerald-500/40 text-emerald-200"
+          }`}>
             <span className="min-w-0">{banner.message}</span>
             <button onClick={() => setBanner(null)} className="text-white/50 hover:text-white flex-shrink-0">
               ✕
@@ -1358,7 +1226,6 @@ export default function MemberDashboard() {
         )}
 
         <QuickLinksBar />
-
         <SetupBanner
           billing={billingComplete}
           connections={connectionsComplete}
@@ -1367,6 +1234,7 @@ export default function MemberDashboard() {
           authError={authError}
         />
 
+        {/* Header */}
         <CardShell>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="min-w-0">
@@ -1374,9 +1242,7 @@ export default function MemberDashboard() {
                 <h1 className="text-lg sm:text-2xl font-bold leading-tight min-w-0 truncate">
                   👋 Hey, {displayName}!
                 </h1>
-                <span
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30`}
-                >
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
                   <span>{currentPlan.icon}</span>
                   <span className="capitalize">{normalizedTier}</span>
                 </span>
@@ -1385,10 +1251,10 @@ export default function MemberDashboard() {
                     ✓ Active
                   </span>
                 )}
-                {Object.values(activeBots).some(Boolean) && (
+                {botRunning && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-green-500/20 text-green-300 border border-green-500/30 font-semibold">
                     <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                    {Object.values(activeBots).filter(Boolean).length} Active
+                    Bot Active
                   </span>
                 )}
               </div>
@@ -1423,10 +1289,10 @@ export default function MemberDashboard() {
                 <>
                   <button
                     onClick={() => startBot("paper")}
-                    disabled={busy || activeBots.paper}
+                    disabled={busy}
                     className="px-3 sm:px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 font-semibold text-sm disabled:opacity-50"
                   >
-                    {busy ? "..." : activeBots.paper ? "🎮 Running" : "🎮 Paper Trade"}
+                    {busy ? "..." : "🎮 Paper Trade"}
                   </button>
                   <button
                     onClick={handleSetupCTA}
@@ -1440,6 +1306,7 @@ export default function MemberDashboard() {
           </div>
         </CardShell>
 
+        {/* Strategy Selector */}
         <CollapsibleCard
           title="Strategy"
           icon="🧠"
@@ -1449,6 +1316,7 @@ export default function MemberDashboard() {
           <StrategySelector value={strategy} onChange={setStrategy} disabled={botRunning} />
         </CollapsibleCard>
 
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
           <CardShell title="Balance" icon="💰">
             <div className={`text-xl font-bold leading-tight ${equityColorClass}`}>
@@ -1472,7 +1340,7 @@ export default function MemberDashboard() {
           </CardShell>
 
           <CardShell title="Active Positions" icon="🎯">
-            <div className="text-xl font-bold leading-tight text-white">{stats.active_positions}</div>
+            <div className="text-xl font-bold leading-tight text-white">{activePositions}</div>
             <div className="text-[11px] text-white/35 mt-1">Across {chainsTraded} chains</div>
           </CardShell>
 
@@ -1488,15 +1356,17 @@ export default function MemberDashboard() {
           </CardShell>
         </div>
 
+        {/* Paper Trading Card */}
         {!activationComplete && (
           <PaperTradingCard
             onStart={startBot}
             busy={busy}
-            isRunning={activeBots.paper}
+            isRunning={botRunning && botMode === "paper"}
             trades={trades}
           />
         )}
 
+        {/* Level and Chart */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
           <div className="lg:col-span-1">
             <LevelBadge 
@@ -1506,7 +1376,6 @@ export default function MemberDashboard() {
               chainsTraded={chainsTraded}
             />
           </div>
-
           <div className="lg:col-span-2">
             <CollapsibleCard icon="📊" title="Recent Results" defaultOpen={true} right={`${stats.total_trades} total trades`}>
               <MiniBarChart data={chartData} height={92} />
@@ -1514,84 +1383,67 @@ export default function MemberDashboard() {
           </div>
         </div>
 
+        {/* Connected Exchanges */}
         <CollapsibleCard icon="🔗" title="Connected Exchanges" defaultOpen={true} right="click to manage">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-            {activeBots.paper && (
-              <ExchangeCard
-                name="Paper Trading"
-                icon="🎮"
-                trades={tradesByExchange.PAPER}
-                active={true}
-                mode="paper"
-                isRunning={activeBots.paper}
-                onClick={() => navigate("/demo")}
-                pairs={0}
-                positions={0}
-              />
-            )}
-
             <ExchangeCard
               name="OKX"
               icon="🔷"
               trades={tradesByExchange.OKX}
               active={okxConnected}
               mode={activation?.okx_mode}
-              isRunning={activeBots.cex}
+              isRunning={botRunning}
               onClick={() => handleExchangeClick("OKX")}
               pairs={162}
               positions={stats.spot_positions}
             />
-
             <ExchangeCard
               name="Alpaca"
               icon="📈"
               trades={tradesByExchange.Alpaca}
               active={alpacaConnected}
               mode={activation?.alpaca_mode}
-              isRunning={activeBots.stocks}
+              isRunning={botRunning}
               onClick={() => handleExchangeClick("Alpaca")}
               pairs={417}
-              positions={stats.stock_positions ? 1 : 0}
+              positions={stats.spot_positions}
             />
-
             <ExchangeCard
               name="DEX"
               icon="🦄"
               trades={tradesByExchange.DEX}
               active={walletConnected && tierAtLeast(normalizedTier, "stock")}
-              isRunning={activeBots.dex}
+              isRunning={botRunning}
               onClick={() => handleExchangeClick("DEX")}
               pairs={162}
               positions={0}
             />
-
             <ExchangeCard
               name="Futures"
               icon="📊"
               trades={tradesByExchange.Futures}
               active={tierAtLeast(normalizedTier, "elite")}
-              isRunning={activeBots.futures}
+              isRunning={botRunning}
               onClick={() => handleExchangeClick("Futures")}
               pairs={199}
-              positions={stats.futures_positions ? 1 : 0}
+              positions={0}
             />
           </div>
         </CollapsibleCard>
 
+        {/* Trade Feed and Session Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
           <CardShell
-            title={activeBots.paper ? "Paper Trades" : "Live Trades"}
+            title="Live Trades"
             icon="📋"
-            right={
-              Object.values(activeBots).some(Boolean) ? (
-                <span className="flex items-center gap-2 text-[11px] text-emerald-400">
-                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                  {activeBots.paper ? "Paper" : "Live"}
-                </span>
-              ) : null
-            }
+            right={botRunning ? (
+              <span className="flex items-center gap-2 text-[11px] text-emerald-400">
+                <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                Live
+              </span>
+            ) : null}
           >
-            <TradeFeed trades={trades} isPaper={activeBots.paper} />
+            <TradeFeed trades={trades} isPaper={false} />
           </CardShell>
 
           <SessionStats
@@ -1606,13 +1458,16 @@ export default function MemberDashboard() {
             botRunning={botRunning}
             botMode={botMode}
             tradingEnabled={tradingEnabled}
-            activeBots={activeBots}
+            activeBots={{}}
             totalTrades={stats.total_trades}
             chainsTraded={chainsTraded}
             totalVolume={stats.total_volume}
+            activePositions={activePositions}
+            pnlTotal={totalPnL}
           />
         </div>
 
+        {/* Advanced Chart */}
         <CollapsibleCard title="Advanced Chart" icon="📉" defaultOpen={false} right="overview">
           <div className="bg-black/20 border border-white/10 rounded-2xl p-2 sm:p-3">
             <TradingOverview
@@ -1631,8 +1486,10 @@ export default function MemberDashboard() {
           </div>
         </CollapsibleCard>
 
+        {/* Achievements */}
         <AchievementsPanel unlocked={unlockedAchievements} total={ALL_ACHIEVEMENTS.length} />
 
+        {/* Upgrades Section */}
         {activationComplete && (
           <CollapsibleCard icon="⚡" title="Upgrades" defaultOpen={false} right="unlock more">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
@@ -1676,7 +1533,8 @@ export default function MemberDashboard() {
           </CollapsibleCard>
         )}
 
-        {!activationComplete && !Object.values(activeBots).some(Boolean) && (
+        {/* Setup Prompt */}
+        {!activationComplete && !botRunning && (
           <CardShell>
             <div className="text-center py-4">
               <div className="text-4xl sm:text-6xl mb-3">🤖</div>
@@ -1703,33 +1561,23 @@ export default function MemberDashboard() {
           </CardShell>
         )}
 
+        {/* Footer */}
         <div className="text-center py-3">
           <Link to="/demo" className="text-[11px] text-white/40 hover:text-white/60 transition-colors">
             🎮 Try the Demo Simulator →
           </Link>
         </div>
-
         <div className="pt-4 border-t border-white/10">
           <div className="flex flex-wrap gap-3 justify-center text-xs text-white/40">
-            <Link to="/billing-dashboard" className="hover:text-white transition-colors">
-              💳 Billing Dashboard
-            </Link>
+            <Link to="/billing-dashboard" className="hover:text-white transition-colors">💳 Billing Dashboard</Link>
             <span>•</span>
-            <Link to="/activation" className="hover:text-white transition-colors">
-              ⚡ Activation
-            </Link>
+            <Link to="/activation" className="hover:text-white transition-colors">⚡ Activation</Link>
             <span>•</span>
-            <Link to="/billing" className="hover:text-white transition-colors">
-              💰 Payment Methods
-            </Link>
+            <Link to="/billing" className="hover:text-white transition-colors">💰 Payment Methods</Link>
             <span>•</span>
-            <Link to="/demo" className="hover:text-white transition-colors">
-              🎮 Demo
-            </Link>
+            <Link to="/demo" className="hover:text-white transition-colors">🎮 Demo</Link>
             <span>•</span>
-            <a href="mailto:support@imali-defi.com" className="hover:text-white transition-colors">
-              📧 Support
-            </a>
+            <a href="mailto:support@imali-defi.com" className="hover:text-white transition-colors">📧 Support</a>
           </div>
         </div>
       </div>
