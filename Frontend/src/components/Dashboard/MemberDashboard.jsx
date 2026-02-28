@@ -142,7 +142,7 @@ export default function MemberDashboard() {
   const { user, activation, refreshActivation } = useAuth();
 
   // API Base URL
-  const API_BASE = 'http://129.213.90.84';
+  const API_BASE = process.env.REACT_APP_API_URL || 'http://129.213.90.84';
 
   // State for all backend data
   const [allTrades, setAllTrades] = useState([]);
