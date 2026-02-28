@@ -212,7 +212,7 @@ export default function MemberDashboard() {
   const [banner, setBanner] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
 
-  const API_BASE = 'https://api.imali-defi.com'; // Update this to your backend URL
+  const API_BASE = 'http://129.213.90.84:8011';// Update this to your backend URL
 
   // Fetch all data
   const fetchAllData = useCallback(async () => {
