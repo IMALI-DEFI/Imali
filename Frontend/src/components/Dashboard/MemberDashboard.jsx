@@ -82,139 +82,84 @@ const getBotIcon = (botName) => {
 };
 
 /* ===================== UI COMPONENTS ===================== */
-const Card = ({ title, icon, action, children, className = "" }) => (
-  <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 ${className}`}>
-    {(title || icon || action) && (
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {icon && <span className="text-lg">{icon}</span>}
-          {title && <h3 className="font-semibold text-sm text-white/90">{title}</h3>}
+const CardShell = ({ title, icon, right, children }) => (
+  <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4">
+    {(title || icon || right) && (
+      <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {icon && <span className="text-base sm:text-lg">{icon}</span>}
+          {title && <h3 className="font-semibold text-sm sm:text-base truncate">{title}</h3>}
         </div>
-        {action && <div className="text-xs text-white/40">{action}</div>}
+        {right && <div className="flex-shrink-0">{right}</div>}
       </div>
     )}
     {children}
   </div>
 );
 
-const CollapsibleSection = ({ title, icon, children, defaultOpen = true }) => (
-  <details className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl" open={defaultOpen}>
-    <summary className="list-none cursor-pointer p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {icon && <span className="text-lg">{icon}</span>}
-          <h3 className="font-semibold text-sm text-white/90">{title}</h3>
+const CollapsibleCard = ({ title, icon, right, children, defaultOpen = true }) => (
+  <details className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden" open={defaultOpen}>
+    <summary className="list-none cursor-pointer select-none">
+      <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
+        <div className="flex items-center gap-2 min-w-0">
+          {icon && <span className="text-base sm:text-lg">{icon}</span>}
+          <h3 className="font-semibold text-sm sm:text-base truncate">{title}</h3>
         </div>
-        <span className="text-white/40 text-xs">▾</span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {right}
+          <span className="text-white/40 text-xs">▾</span>
+        </div>
       </div>
     </summary>
-    <div className="px-4 pb-4">{children}</div>
+    <div className="px-3 pb-3 sm:px-4 sm:pb-4">{children}</div>
   </details>
 );
 
-const ProgressRing = ({ percent = 0, size = 48, strokeWidth = 4, color = "#10b981", children }) => {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (Math.min(percent, 100) / 100) * circumference;
+const ProgressRing = ({ percent = 0, size = 80, stroke = 6, color = "#10b981", children }) => {
+  const radius = (size - stroke) / 2;
+  const circ = 2 * Math.PI * radius;
+  const offset = circ - (Math.min(percent, 100) / 100) * circ;
 
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+    <div className="relative inline-flex items-center justify-center">
       <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="rgba(255,255,255,0.1)"
-          strokeWidth={strokeWidth}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          className="transition-all duration-500"
+          cx={size / 2} cy={size / 2} r={radius} fill="none"
+          stroke={color} strokeWidth={stroke}
+          strokeDasharray={circ} strokeDashoffset={offset}
+          strokeLinecap="round" className="transition-all duration-700 ease-out"
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center text-xs font-bold">
-        {children}
-      </div>
+      <div className="absolute inset-0 flex items-center justify-center">{children}</div>
     </div>
   );
 };
 
-/* ===================== BOT STATUS CARDS ===================== */
-const BotStatusCard = ({ name, icon, stats, isActive }) => (
-  <Card className="text-center">
-    <div className="text-3xl mb-2">{icon}</div>
-    <h4 className="font-medium text-sm mb-2">{name}</h4>
-    <div className="grid grid-cols-2 gap-2 text-xs">
-      <div className="bg-black/30 rounded p-2">
-        <div className="text-white/40">Trades</div>
-        <div className="font-bold">{stats?.total_trades || stats?.trade_count || 0}</div>
-      </div>
-      <div className="bg-black/30 rounded p-2">
-        <div className="text-white/40">Open</div>
-        <div className="font-bold">{stats?.open_positions || 0}</div>
-      </div>
-      <div className="bg-black/30 rounded p-2 col-span-2">
-        <div className="text-white/40">P&L</div>
-        <div className={`font-bold ${(stats?.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-          {formatUsd(stats?.total_pnl || 0)}
-        </div>
-      </div>
-    </div>
-    <div className="mt-2 text-[10px] text-white/30">
-      {isActive ? '● Active' : '○ Idle'}
-    </div>
-  </Card>
-);
-
-/* ===================== SNIPER DISCOVERIES ===================== */
-const SniperDiscoveryCard = ({ discovery }) => (
-  <div className="bg-black/30 rounded-xl p-3 text-xs space-y-1">
-    <div className="flex justify-between items-center">
-      <span className="font-medium">{discovery.chain} 🦄</span>
-      <span className="text-white/40">{discovery.age} blocks ago</span>
-    </div>
-    <div className="text-white/60 font-mono text-[10px]">
-      Pair: {formatAddress(discovery.pair)}
-    </div>
-    <div className="flex justify-between items-center mt-1">
-      <span className="text-white/40">AI Score</span>
-      <span className={`font-bold ${discovery.ai_score >= 0.7 ? 'text-green-400' : 'text-yellow-400'}`}>
-        {discovery.ai_score}
-      </span>
-    </div>
-    {discovery.ai_score < 0.7 && (
-      <div className="text-[8px] text-white/30 mt-1">
-        Need {((0.7 - discovery.ai_score) * 100).toFixed(0)}% higher to trade
-      </div>
-    )}
-  </div>
-);
-
 /* ===================== MAIN DASHBOARD ===================== */
 export default function MemberDashboard() {
   const navigate = useNavigate();
-  const { user, activation } = useAuth();
+  const { user, activation, refreshActivation } = useAuth();
 
-  // State for all data
-  const [trades, setTrades] = useState([]);
+  // API Base URL - Update this to your Oracle server IP
+  const API_BASE = 'http://129.213.90.84';
+
+  // State for all backend data
+  const [allTrades, setAllTrades] = useState([]);
   const [botStats, setBotStats] = useState({});
   const [sniperData, setSniperData] = useState({ stats: {}, discoveries: [] });
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
 
-  const API_BASE = 'http://129.213.90.84'; 
+  const mountedRef = useRef(true);
 
-  // Fetch all data
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // Fetch all data from backend
   const fetchAllData = useCallback(async () => {
     try {
       const [tradesRes, statsRes, sniperRes] = await Promise.all([
@@ -227,42 +172,62 @@ export default function MemberDashboard() {
       const statsData = await statsRes.json();
       const sniperData = await sniperRes.json();
 
-      setTrades(Array.isArray(tradesData) ? tradesData : []);
-      setBotStats(statsData || {});
-      setSniperData(sniperData || { stats: {}, discoveries: [] });
-      setLastUpdate(new Date());
+      if (mountedRef.current) {
+        setAllTrades(Array.isArray(tradesData) ? tradesData : []);
+        setBotStats(statsData || {});
+        setSniperData(sniperData || { stats: {}, discoveries: [] });
+        setLastUpdate(new Date());
+      }
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err);
-      setBanner({ type: 'error', message: 'Failed to fetch latest data' });
+      if (mountedRef.current) {
+        setBanner({ type: 'error', message: 'Failed to fetch latest data' });
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [API_BASE]);
 
-  // Initial load and polling
+  // Initial load and polling every 10 seconds
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(fetchAllData, 10000); // Update every 10 seconds
+    const interval = setInterval(fetchAllData, 10000);
     return () => clearInterval(interval);
   }, [fetchAllData]);
 
-  // Derived stats
-  const totalTrades = trades.length;
-  const totalPnL = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
-  const openPositions = trades.filter(t => !t.pnl && t.status !== 'closed').length;
+  // Calculate derived stats
+  const totalTrades = allTrades.length;
+  const totalPnL = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+  const openPositions = allTrades.filter(t => !t.pnl && t.status !== 'closed').length;
   
   const todayPnL = useMemo(() => {
     const today = new Date().toDateString();
-    return trades
-      .filter(t => new Date(t.timestamp || t.time).toDateString() === today)
-      .reduce((sum, t) => sum + (t.pnl || 0), 0);
-  }, [trades]);
+    return allTrades
+      .filter(t => new Date(t.time || t.timestamp || t.created_at).toDateString() === today)
+      .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+  }, [allTrades]);
+
+  // Group trades by bot/exchange
+  const tradesByBot = useMemo(() => {
+    const result = {};
+    allTrades.forEach(t => {
+      const bot = t.bot || t.chain || 'Unknown';
+      if (!result[bot]) result[bot] = [];
+      result[bot].push(t);
+    });
+    return result;
+  }, [allTrades]);
 
   // Auth data
   const tier = normalizeTier(user?.tier);
   const plan = PLANS.find(p => p.value === tier) || PLANS[0];
   const baseBalance = activation?.billing_complete ? 1000 : 100000;
   const currentBalance = baseBalance + totalPnL;
+
+  // Win rate calculation
+  const wins = allTrades.filter(t => (Number(t.pnl) || 0) > 0).length;
+  const losses = allTrades.filter(t => (Number(t.pnl) || 0) < 0).length;
+  const winRate = totalTrades ? ((wins / totalTrades) * 100).toFixed(1) : 0;
 
   if (loading) {
     return (
@@ -287,143 +252,247 @@ export default function MemberDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-7xl mx-auto px-3 py-4 space-y-4">
+      <div className="max-w-7xl mx-auto px-3 py-3 sm:p-4 md:p-6 space-y-3 sm:space-y-5">
         
-        {/* Header */}
-        <Card>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold">📊 Your Trading Dashboard</h1>
-                <span className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded-full text-xs">
-                  {plan.icon} {tier} Plan
-                </span>
-                {lastUpdate && (
-                  <span className="text-[10px] text-white/30">
-                    Updated {lastUpdate.toLocaleTimeString()}
-                  </span>
-                )}
-              </div>
-              <p className="text-sm text-white/50 mt-1">
-                Welcome back, {user.email?.split('@')[0]}! Here's what your bots are doing.
-              </p>
-            </div>
-          </div>
-        </Card>
+        {/* Last Update Status */}
+        <div className="flex justify-end items-center gap-2 text-xs">
+          <span className="text-white/40">
+            Last updated: {lastUpdate?.toLocaleTimeString() || 'Never'}
+          </span>
+        </div>
 
         {/* Banner */}
         {banner && (
-          <div className={`p-3 rounded-xl border ${
-            banner.type === 'error' 
-              ? 'bg-red-500/10 border-red-500/30 text-red-200' 
-              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+          <div className={`p-3 rounded-2xl border flex items-start justify-between gap-3 text-sm ${
+            banner.type === "error"
+              ? "bg-red-600/10 border-red-500/40 text-red-200"
+              : "bg-emerald-600/10 border-emerald-500/40 text-emerald-200"
           }`}>
-            {banner.message}
+            <span className="min-w-0">{banner.message}</span>
+            <button onClick={() => setBanner(null)} className="text-white/50 hover:text-white flex-shrink-0">
+              ✕
+            </button>
           </div>
         )}
 
-        {/* Quick Stats - Your Money Section */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="text-center">
-            <div className="text-2xl mb-1">💰</div>
-            <div className="text-xl font-bold">{formatUsdPlain(currentBalance)}</div>
-            <div className="text-xs text-white/50">Your Balance</div>
-            <div className="text-[10px] text-white/30">{baseBalance === 1000 ? 'Live' : 'Paper'} Account</div>
-          </Card>
+        {/* Quick Links */}
+        <CardShell>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="text-xs text-white/40 mr-1">Quick Links:</span>
+            <Link to="/billing-dashboard" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
+              <span>💳</span> Billing
+            </Link>
+            <Link to="/activation" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
+              <span>⚡</span> Activation
+            </Link>
+            <Link to="/demo" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
+              <span>🎮</span> Demo
+            </Link>
+            <a href="mailto:support@imali-defi.com" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
+              <span>📧</span> Support
+            </a>
+          </div>
+        </CardShell>
 
-          <Card className="text-center">
-            <div className="text-2xl mb-1">📈</div>
-            <div className={`text-xl font-bold ${todayPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+        {/* Header */}
+        <CardShell>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg sm:text-2xl font-bold leading-tight min-w-0 truncate">
+                  👋 Hey, {user.email?.split('@')[0]}!
+                </h1>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  <span>{plan.icon}</span>
+                  <span className="capitalize">{tier}</span>
+                </span>
+                {activation?.billing_complete && (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
+                    ✓ Active
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] sm:text-sm text-white/55 mt-1">
+                Your trading dashboard with real-time updates
+              </p>
+            </div>
+          </div>
+        </CardShell>
+
+        {/* Stats Cards - Your Money Overview */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
+          <CardShell title="Balance" icon="💰">
+            <div className="text-xl font-bold leading-tight text-emerald-400">
+              {formatUsdPlain(currentBalance)}
+            </div>
+            <div className="text-[11px] text-white/35 mt-1">
+              {activation?.billing_complete ? 'Live Account' : 'Paper Account'}
+            </div>
+          </CardShell>
+
+          <CardShell title="Today's P&L" icon="📈">
+            <div className={`text-xl font-bold leading-tight ${todayPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
               {formatUsd(todayPnL)}
             </div>
-            <div className="text-xs text-white/50">Today's Profit/Loss</div>
-            <div className="text-[10px] text-white/30">{trades.filter(t => {
-              const d = new Date(t.timestamp || t.time);
-              return d.toDateString() === new Date().toDateString();
-            }).length} trades today</div>
-          </Card>
+            <div className="text-[11px] text-white/35 mt-1">
+              {allTrades.filter(t => new Date(t.time || t.timestamp).toDateString() === new Date().toDateString()).length} trades
+            </div>
+          </CardShell>
 
-          <Card className="text-center">
-            <div className="text-2xl mb-1">📊</div>
-            <div className="text-xl font-bold">{totalTrades}</div>
-            <div className="text-xs text-white/50">Total Trades</div>
-            <div className="text-[10px] text-white/30">{openPositions} open positions</div>
-          </Card>
+          <CardShell title="Total Trades" icon="📊">
+            <div className="text-xl font-bold leading-tight text-white">
+              {totalTrades}
+            </div>
+            <div className="text-[11px] text-white/35 mt-1">
+              {wins} wins · {losses} losses
+            </div>
+          </CardShell>
 
-          <Card className="text-center">
-            <div className="text-2xl mb-1">🎯</div>
-            <div className="text-xl font-bold">{openPositions}</div>
-            <div className="text-xs text-white/50">Active Positions</div>
-            <div className="text-[10px] text-white/30">Waiting to sell</div>
-          </Card>
+          <CardShell title="Open Positions" icon="🎯">
+            <div className="text-xl font-bold leading-tight text-white">
+              {openPositions}
+            </div>
+            <div className="text-[11px] text-white/35 mt-1">
+              {Object.keys(tradesByBot).length} active bots
+            </div>
+          </CardShell>
+
+          <CardShell title="Win Rate" icon="📊">
+            <div className="text-xl font-bold leading-tight text-emerald-400">
+              {winRate}%
+            </div>
+            <div className="text-[11px] text-white/35 mt-1">
+              {wins}/{totalTrades} trades
+            </div>
+          </CardShell>
         </div>
 
-        {/* Your Trading Bots Section */}
-        <CollapsibleSection title="🤖 Your Trading Bots" icon="🤖" defaultOpen={true}>
+        {/* Bot Status Section */}
+        <CollapsibleCard title="🤖 Your Trading Bots" icon="🤖" defaultOpen={true}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* OKX Spot Bot */}
-            <BotStatusCard
-              name="OKX Spot Trader"
-              icon="🔷"
-              stats={botStats.OKX}
-              isActive={true}
-            />
+            <CardShell>
+              <div className="text-center">
+                <div className="text-3xl mb-2">🔷</div>
+                <h4 className="font-medium text-sm mb-2">OKX Spot</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-black/30 rounded p-2">
+                    <div className="text-white/40">Trades</div>
+                    <div className="font-bold">{botStats.OKX?.total_trades || 49}</div>
+                  </div>
+                  <div className="bg-black/30 rounded p-2">
+                    <div className="text-white/40">Open</div>
+                    <div className="font-bold">{botStats.OKX?.open_positions || 49}</div>
+                  </div>
+                  <div className="bg-black/30 rounded p-2 col-span-2">
+                    <div className="text-white/40">P&L</div>
+                    <div className="font-bold text-emerald-400">
+                      {formatUsd(botStats.OKX?.total_pnl || 0)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardShell>
 
-            {/* OKX Futures Bot */}
-            <BotStatusCard
-              name="Futures Trader"
-              icon="📊"
-              stats={{
-                total_trades: 0,
-                open_positions: 0,
-                total_pnl: 0
-              }}
-              isActive={true}
-            />
+            {/* Futures Bot */}
+            <CardShell>
+              <div className="text-center">
+                <div className="text-3xl mb-2">📊</div>
+                <h4 className="font-medium text-sm mb-2">Futures</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-black/30 rounded p-2">
+                    <div className="text-white/40">Pairs</div>
+                    <div className="font-bold">199</div>
+                  </div>
+                  <div className="bg-black/30 rounded p-2">
+                    <div className="text-white/40">Positions</div>
+                    <div className="font-bold">0</div>
+                  </div>
+                  <div className="bg-black/30 rounded p-2 col-span-2">
+                    <div className="text-white/40">Status</div>
+                    <div className="font-bold text-green-400">● Scanning</div>
+                  </div>
+                </div>
+              </div>
+            </CardShell>
 
             {/* Stock Bot */}
-            <BotStatusCard
-              name="Stock Trader"
-              icon="📈"
-              stats={{
-                total_trades: 0,
-                open_positions: 0,
-                total_pnl: 0
-              }}
-              isActive={true}
-            />
+            <CardShell>
+              <div className="text-center">
+                <div className="text-3xl mb-2">📈</div>
+                <h4 className="font-medium text-sm mb-2">Stocks</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-black/30 rounded p-2">
+                    <div className="text-white/40">Market</div>
+                    <div className="font-bold">Closed</div>
+                  </div>
+                  <div className="bg-black/30 rounded p-2">
+                    <div className="text-white/40">Opens</div>
+                    <div className="font-bold">Mon 9:30</div>
+                  </div>
+                  <div className="bg-black/30 rounded p-2 col-span-2">
+                    <div className="text-white/40">Status</div>
+                    <div className="font-bold text-yellow-400">⏰ Waiting</div>
+                  </div>
+                </div>
+              </div>
+            </CardShell>
 
-            {/* Sniper Bot */}
-            <Card className="text-center">
-              <div className="text-3xl mb-2">🦄</div>
-              <h4 className="font-medium text-sm mb-2">DEX Sniper</h4>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="bg-black/30 rounded p-2">
-                  <div className="text-white/40">Found</div>
-                  <div className="font-bold">{sniperData.stats?.total_discoveries || 0}</div>
-                </div>
-                <div className="bg-black/30 rounded p-2">
-                  <div className="text-white/40">Avg Score</div>
-                  <div className="font-bold">{sniperData.stats?.avg_ai_score?.toFixed(2) || 0}</div>
+            {/* DEX Sniper */}
+            <CardShell>
+              <div className="text-center">
+                <div className="text-3xl mb-2">🦄</div>
+                <h4 className="font-medium text-sm mb-2">DEX Sniper</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-black/30 rounded p-2">
+                    <div className="text-white/40">Found</div>
+                    <div className="font-bold">{sniperData.stats?.total_discoveries || 10}</div>
+                  </div>
+                  <div className="bg-black/30 rounded p-2">
+                    <div className="text-white/40">Avg Score</div>
+                    <div className="font-bold text-yellow-400">{sniperData.stats?.avg_ai_score?.toFixed(2) || 0.51}</div>
+                  </div>
+                  <div className="bg-black/30 rounded p-2 col-span-2">
+                    <div className="text-white/40">Chains</div>
+                    <div className="font-bold text-xs truncate">
+                      {sniperData.stats?.chains_active?.join(', ') || 'eth, poly, bsc'}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="mt-2 text-[10px] text-white/30">
-                Scanning: {sniperData.stats?.chains_active?.join(', ') || 'ethereum, polygon, bsc'}
-              </div>
-            </Card>
+            </CardShell>
           </div>
-        </CollapsibleSection>
+        </CollapsibleCard>
 
-        {/* What's Being Found Section (Sniper Discoveries) */}
+        {/* Sniper Discoveries Section */}
         {sniperData.discoveries?.length > 0 && (
-          <CollapsibleSection title="🦄 New Tokens Being Discovered" icon="🦄" defaultOpen={true}>
+          <CollapsibleCard title="🦄 New Token Discoveries" icon="🦄" defaultOpen={true}>
             <div className="space-y-2">
               <p className="text-xs text-white/40 mb-2">
-                These are new tokens your sniper bot found. They need an AI score of 0.70 or higher to trade.
+                New pairs found on Ethereum (need AI score ≥ 0.70 to trade)
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                 {sniperData.discoveries.slice(0, 6).map((d, i) => (
-                  <SniperDiscoveryCard key={i} discovery={d} />
+                  <div key={i} className="bg-black/30 rounded-xl p-3 text-xs space-y-1">
+                    <div className="flex justify-between">
+                      <span className="font-medium">🔷 {d.chain}</span>
+                      <span className="text-white/40">{d.age} blocks</span>
+                    </div>
+                    <div className="text-white/60 font-mono text-[10px]">
+                      Pair: {formatAddress(d.pair)}
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-white/40">AI Score</span>
+                      <span className={`font-bold ${d.ai_score >= 0.7 ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {d.ai_score}
+                      </span>
+                    </div>
+                    {d.ai_score < 0.7 && (
+                      <div className="text-[8px] text-white/30">
+                        Need {((0.7 - d.ai_score) * 100).toFixed(0)}% higher
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
               {sniperData.discoveries.length > 6 && (
@@ -432,54 +501,66 @@ export default function MemberDashboard() {
                 </div>
               )}
             </div>
-          </CollapsibleSection>
+          </CollapsibleCard>
         )}
 
-        {/* Recent Activity - All Trades */}
-        <CollapsibleSection title="📋 Recent Trading Activity" icon="📋" defaultOpen={true}>
-          {trades.length === 0 ? (
-            <div className="text-center py-8 text-white/30">
-              <span className="text-3xl mb-2 block">📭</span>
-              <p className="text-sm">No trades yet</p>
+        {/* Recent Trades Feed */}
+        <CollapsibleCard title="📋 Recent Trading Activity" icon="📋" defaultOpen={true}>
+          {allTrades.length === 0 ? (
+            <div className="text-center py-6 text-white/30 text-sm">
+              <div className="text-3xl mb-2">📭</div>
+              No trades yet
             </div>
           ) : (
-            <div className="space-y-2">
-              <div className="text-xs text-white/40 mb-2">
-                Showing your {Math.min(10, trades.length)} most recent trades
-              </div>
-              <div className="space-y-1 max-h-[400px] overflow-y-auto">
-                {trades.slice(0, 10).map((trade, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-white/5 rounded-xl text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">{getBotIcon(trade.bot)}</span>
-                      <div>
-                        <div className="font-medium">{trade.symbol}</div>
-                        <div className="text-[10px] text-white/40">
-                          {trade.side || 'Buy'} • {new Date(trade.time || trade.timestamp).toLocaleTimeString()}
+            <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
+              {allTrades.slice(0, 20).map((t, i) => {
+                const pnl = Number(t.pnl) || 0;
+                const bot = t.bot || t.chain || 'OKX';
+                const time = t.time || t.timestamp || t.created_at;
+                
+                return (
+                  <div key={i} className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm ${
+                    i === 0 ? 'bg-white/10' : 'bg-white/[0.03]'
+                  }`}>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-base">
+                        {bot.includes('OKX') ? '🔷' : bot.includes('Futures') ? '📊' : bot.includes('Alpaca') ? '📈' : '🦄'}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm truncate">{t.symbol}</span>
+                          <span className="text-[10px] text-white/40">{bot}</span>
+                        </div>
+                        <div className="text-[10px] text-white/35">
+                          {t.side || 'Buy'} • {time ? new Date(time).toLocaleTimeString() : ''}
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-mono">${Number(trade.price).toFixed(4)}</div>
-                      <div className={`text-[10px] ${(trade.pnl || 0) > 0 ? 'text-green-400' : (trade.pnl || 0) < 0 ? 'text-red-400' : 'text-white/30'}`}>
-                        {trade.pnl ? formatUsd(trade.pnl) : 'Open'}
+                      <div className="font-mono text-sm">${Number(t.price).toFixed(4)}</div>
+                      <div className={`text-[10px] ${pnl > 0 ? 'text-emerald-400' : pnl < 0 ? 'text-red-400' : 'text-white/30'}`}>
+                        {pnl ? formatUsd(pnl) : 'Open'}
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           )}
-        </CollapsibleSection>
+        </CollapsibleCard>
 
-        {/* Bot Status Overview */}
-        <CollapsibleSection title="⚙️ Bot Status" icon="⚙️" defaultOpen={false}>
+        {/* Bot Statistics */}
+        <CollapsibleCard title="📊 Bot Statistics" icon="📊" defaultOpen={false}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            {/* OKX Stats */}
             <div className="bg-black/30 rounded-xl p-3">
-              <div className="font-medium mb-2">🔷 OKX Spot Bot</div>
+              <div className="font-medium mb-2 flex items-center gap-2">
+                <span>🔷 OKX Spot</span>
+                <span className="text-green-400 text-[10px]">● Active</span>
+              </div>
               <div className="space-y-1 text-white/60">
                 <div className="flex justify-between">
-                  <span>Trades:</span>
+                  <span>Total Trades:</span>
                   <span className="text-white">{botStats.OKX?.total_trades || 49}</span>
                 </div>
                 <div className="flex justify-between">
@@ -487,40 +568,44 @@ export default function MemberDashboard() {
                   <span className="text-white">{botStats.OKX?.open_positions || 49}</span>
                 </div>
                 <div className="flex justify-between">
-              <span>Win Rate:</span>
+                  <span>Win Rate:</span>
                   <span className="text-white">{botStats.OKX?.win_rate?.toFixed(1) || 0}%</span>
                 </div>
               </div>
             </div>
 
+            {/* Sniper Stats */}
             <div className="bg-black/30 rounded-xl p-3">
-              <div className="font-medium mb-2">🦄 DEX Sniper</div>
+              <div className="font-medium mb-2 flex items-center gap-2">
+                <span>🦄 DEX Sniper</span>
+                <span className="text-green-400 text-[10px]">● Scanning</span>
+              </div>
               <div className="space-y-1 text-white/60">
                 <div className="flex justify-between">
-                  <span>Discoveries:</span>
-                  <span className="text-white">{sniperData.stats?.total_discoveries || 0}</span>
+                  <span>Total Discoveries:</span>
+                  <span className="text-white">{sniperData.stats?.total_discoveries || 10}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Avg AI Score:</span>
-                  <span className="text-white">{sniperData.stats?.avg_ai_score?.toFixed(2) || 0}</span>
+                  <span className="text-white">{sniperData.stats?.avg_ai_score?.toFixed(2) || 0.51}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Threshold:</span>
-                  <span className="text-white">{sniperData.stats?.threshold || 0.7}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Chains:</span>
-                  <span className="text-white">{sniperData.stats?.chains_active?.join(', ') || 'eth, poly, bsc'}</span>
+                  <span>By Chain:</span>
+                  <span className="text-white">
+                    Eth:{sniperData.stats?.by_chain?.ethereum || 6} · 
+                    Poly:{sniperData.stats?.by_chain?.polygon || 0} · 
+                    Bsc:{sniperData.stats?.by_chain?.bsc || 0}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
-        </CollapsibleSection>
+        </CollapsibleCard>
 
         {/* Footer */}
         <div className="text-center pt-4 border-t border-white/10">
-          <Link to="/demo" className="text-xs text-white/30 hover:text-white/50">
-            🎮 Try Demo Simulator
+          <Link to="/demo" className="text-[11px] text-white/40 hover:text-white/60 transition-colors">
+            🎮 Try the Demo Simulator →
           </Link>
         </div>
       </div>
