@@ -141,7 +141,7 @@ export default function MemberDashboard() {
   const navigate = useNavigate();
   const { user, activation, refreshActivation } = useAuth();
 
-  // API Base URL - Update this to your Oracle server IP
+  // API Base URL
   const API_BASE = 'http://129.213.90.84';
 
   // State for all backend data
@@ -167,6 +167,10 @@ export default function MemberDashboard() {
         fetch(`${API_BASE}/api/all/stats`),
         fetch(`${API_BASE}/api/sniper/all`)
       ]);
+
+      if (!tradesRes.ok || !statsRes.ok || !sniperRes.ok) {
+        throw new Error('Failed to fetch data');
+      }
 
       const tradesData = await tradesRes.json();
       const statsData = await statsRes.json();
@@ -207,13 +211,55 @@ export default function MemberDashboard() {
       .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
   }, [allTrades]);
 
+  // Calculate today's trades count
+  const todayTrades = useMemo(() => {
+    const today = new Date().toDateString();
+    return allTrades.filter(t => 
+      new Date(t.time || t.timestamp || t.created_at).toDateString() === today
+    ).length;
+  }, [allTrades]);
+
+  // Win/Loss calculations
+  const wins = allTrades.filter(t => (Number(t.pnl) || 0) > 0).length;
+  const losses = allTrades.filter(t => (Number(t.pnl) || 0) < 0).length;
+  const winRate = totalTrades ? ((wins / totalTrades) * 100).toFixed(1) : 0;
+
+  // Calculate best win streak
+  const bestWinStreak = useMemo(() => {
+    let currentStreak = 0;
+    let bestStreak = 0;
+    
+    allTrades.slice().reverse().forEach(t => {
+      const pnl = Number(t.pnl) || 0;
+      if (pnl > 0) {
+        currentStreak++;
+        bestStreak = Math.max(bestStreak, currentStreak);
+      } else if (pnl < 0) {
+        currentStreak = 0;
+      }
+    });
+    
+    return bestStreak;
+  }, [allTrades]);
+
   // Group trades by bot/exchange
   const tradesByBot = useMemo(() => {
     const result = {};
     allTrades.forEach(t => {
-      const bot = t.bot || t.chain || 'Unknown';
+      const bot = t.bot || t.chain || 'OKX';
       if (!result[bot]) result[bot] = [];
       result[bot].push(t);
+    });
+    return result;
+  }, [allTrades]);
+
+  // Calculate P&L by bot
+  const pnlByBot = useMemo(() => {
+    const result = {};
+    allTrades.forEach(t => {
+      const bot = t.bot || t.chain || 'OKX';
+      if (!result[bot]) result[bot] = 0;
+      result[bot] += Number(t.pnl) || 0;
     });
     return result;
   }, [allTrades]);
@@ -224,10 +270,8 @@ export default function MemberDashboard() {
   const baseBalance = activation?.billing_complete ? 1000 : 100000;
   const currentBalance = baseBalance + totalPnL;
 
-  // Win rate calculation
-  const wins = allTrades.filter(t => (Number(t.pnl) || 0) > 0).length;
-  const losses = allTrades.filter(t => (Number(t.pnl) || 0) < 0).length;
-  const winRate = totalTrades ? ((wins / totalTrades) * 100).toFixed(1) : 0;
+  // Active bots count
+  const activeBotsCount = Object.keys(botStats).length + (sniperData.discoveries?.length > 0 ? 1 : 0);
 
   if (loading) {
     return (
@@ -335,7 +379,7 @@ export default function MemberDashboard() {
               {formatUsd(todayPnL)}
             </div>
             <div className="text-[11px] text-white/35 mt-1">
-              {allTrades.filter(t => new Date(t.time || t.timestamp).toDateString() === new Date().toDateString()).length} trades
+              {todayTrades} trades today
             </div>
           </CardShell>
 
@@ -353,7 +397,7 @@ export default function MemberDashboard() {
               {openPositions}
             </div>
             <div className="text-[11px] text-white/35 mt-1">
-              {Object.keys(tradesByBot).length} active bots
+              {activeBotsCount} active bots
             </div>
           </CardShell>
 
@@ -362,7 +406,7 @@ export default function MemberDashboard() {
               {winRate}%
             </div>
             <div className="text-[11px] text-white/35 mt-1">
-              {wins}/{totalTrades} trades
+              Best streak: {bestWinStreak} 🔥
             </div>
           </CardShell>
         </div>
@@ -378,16 +422,16 @@ export default function MemberDashboard() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Trades</div>
-                    <div className="font-bold">{botStats.OKX?.total_trades || 49}</div>
+                    <div className="font-bold">{tradesByBot.OKX?.length || 0}</div>
                   </div>
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Open</div>
-                    <div className="font-bold">{botStats.OKX?.open_positions || 49}</div>
+                    <div className="font-bold">{allTrades.filter(t => (t.bot === 'OKX' || t.chain === 'OKX') && !t.pnl).length}</div>
                   </div>
                   <div className="bg-black/30 rounded p-2 col-span-2">
                     <div className="text-white/40">P&L</div>
-                    <div className="font-bold text-emerald-400">
-                      {formatUsd(botStats.OKX?.total_pnl || 0)}
+                    <div className={`font-bold ${(pnlByBot.OKX || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {formatUsd(pnlByBot.OKX || 0)}
                     </div>
                   </div>
                 </div>
@@ -406,7 +450,7 @@ export default function MemberDashboard() {
                   </div>
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Positions</div>
-                    <div className="font-bold">0</div>
+                    <div className="font-bold">{tradesByBot.Futures?.length || 0}</div>
                   </div>
                   <div className="bg-black/30 rounded p-2 col-span-2">
                     <div className="text-white/40">Status</div>
@@ -446,11 +490,13 @@ export default function MemberDashboard() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Found</div>
-                    <div className="font-bold">{sniperData.stats?.total_discoveries || 10}</div>
+                    <div className="font-bold">{sniperData.stats?.total_discoveries || 0}</div>
                   </div>
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Avg Score</div>
-                    <div className="font-bold text-yellow-400">{sniperData.stats?.avg_ai_score?.toFixed(2) || 0.51}</div>
+                    <div className={`font-bold ${(sniperData.stats?.avg_ai_score || 0) >= 0.7 ? 'text-green-400' : 'text-yellow-400'}`}>
+                      {sniperData.stats?.avg_ai_score?.toFixed(2) || 0}
+                    </div>
                   </div>
                   <div className="bg-black/30 rounded p-2 col-span-2">
                     <div className="text-white/40">Chains</div>
@@ -489,7 +535,7 @@ export default function MemberDashboard() {
                     </div>
                     {d.ai_score < 0.7 && (
                       <div className="text-[8px] text-white/30">
-                        Need {((0.7 - d.ai_score) * 100).toFixed(0)}% higher
+                        Need {((0.7 - d.ai_score) * 100).toFixed(0)}% higher to trade
                       </div>
                     )}
                   </div>
@@ -517,6 +563,8 @@ export default function MemberDashboard() {
                 const pnl = Number(t.pnl) || 0;
                 const bot = t.bot || t.chain || 'OKX';
                 const time = t.time || t.timestamp || t.created_at;
+                const isBuy = t.side?.toLowerCase() === 'buy' || !t.side;
+                const pnlPercent = t.pnl_percentage ? Number(t.pnl_percentage).toFixed(2) : null;
                 
                 return (
                   <div key={i} className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm ${
@@ -524,23 +572,32 @@ export default function MemberDashboard() {
                   }`}>
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className="text-base">
-                        {bot.includes('OKX') ? '🔷' : bot.includes('Futures') ? '📊' : bot.includes('Alpaca') ? '📈' : '🦄'}
+                        {getBotIcon(bot)}
                       </span>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-sm truncate">{t.symbol}</span>
                           <span className="text-[10px] text-white/40">{bot}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            isBuy ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
+                          }`}>
+                            {isBuy ? 'BUY' : 'SELL'}
+                          </span>
                         </div>
                         <div className="text-[10px] text-white/35">
-                          {t.side || 'Buy'} • {time ? new Date(time).toLocaleTimeString() : ''}
+                          {time ? new Date(time).toLocaleTimeString() : ''} • ${Number(t.price).toFixed(4)}
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-mono text-sm">${Number(t.price).toFixed(4)}</div>
-                      <div className={`text-[10px] ${pnl > 0 ? 'text-emerald-400' : pnl < 0 ? 'text-red-400' : 'text-white/30'}`}>
+                      <div className={`font-bold text-sm ${pnl > 0 ? 'text-emerald-400' : pnl < 0 ? 'text-red-400' : 'text-white/40'}`}>
                         {pnl ? formatUsd(pnl) : 'Open'}
                       </div>
+                      {pnlPercent && (
+                        <div className={`text-[10px] ${pnl > 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+                          {pnl > 0 ? '+' : ''}{pnlPercent}%
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -561,15 +618,23 @@ export default function MemberDashboard() {
               <div className="space-y-1 text-white/60">
                 <div className="flex justify-between">
                   <span>Total Trades:</span>
-                  <span className="text-white">{botStats.OKX?.total_trades || 49}</span>
+                  <span className="text-white">{tradesByBot.OKX?.length || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Open Positions:</span>
-                  <span className="text-white">{botStats.OKX?.open_positions || 49}</span>
+                  <span className="text-white">{allTrades.filter(t => (t.bot === 'OKX' || t.chain === 'OKX') && !t.pnl).length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total P&L:</span>
+                  <span className={`${(pnlByBot.OKX || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {formatUsd(pnlByBot.OKX || 0)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Win Rate:</span>
-                  <span className="text-white">{botStats.OKX?.win_rate?.toFixed(1) || 0}%</span>
+                  <span className="text-white">
+                    {tradesByBot.OKX?.length ? ((tradesByBot.OKX.filter(t => (t.pnl || 0) > 0).length / tradesByBot.OKX.length) * 100).toFixed(1) : 0}%
+                  </span>
                 </div>
               </div>
             </div>
@@ -583,19 +648,23 @@ export default function MemberDashboard() {
               <div className="space-y-1 text-white/60">
                 <div className="flex justify-between">
                   <span>Total Discoveries:</span>
-                  <span className="text-white">{sniperData.stats?.total_discoveries || 10}</span>
+                  <span className="text-white">{sniperData.stats?.total_discoveries || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Avg AI Score:</span>
-                  <span className="text-white">{sniperData.stats?.avg_ai_score?.toFixed(2) || 0.51}</span>
+                  <span className="text-white">{sniperData.stats?.avg_ai_score?.toFixed(2) || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>By Chain:</span>
                   <span className="text-white">
-                    Eth:{sniperData.stats?.by_chain?.ethereum || 6} · 
+                    Eth:{sniperData.stats?.by_chain?.ethereum || 0} · 
                     Poly:{sniperData.stats?.by_chain?.polygon || 0} · 
                     Bsc:{sniperData.stats?.by_chain?.bsc || 0}
                   </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Threshold:</span>
+                  <span className="text-white">{sniperData.stats?.threshold || 0.7}</span>
                 </div>
               </div>
             </div>
