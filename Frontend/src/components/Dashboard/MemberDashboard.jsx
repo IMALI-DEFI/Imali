@@ -180,6 +180,7 @@ export default function MemberDashboard() {
   const [botStats, setBotStats] = useState({});
   const [sniperData, setSniperData] = useState({ stats: {}, discoveries: [], scanning_status: {} });
   const [futuresData, setFuturesData] = useState({ stats: {}, positions: [], scanning_status: {} });
+  const [accountBalance, setAccountBalance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -194,11 +195,12 @@ export default function MemberDashboard() {
   // Fetch all data from backend
   const fetchAllData = useCallback(async () => {
     try {
-      const [tradesRes, statsRes, sniperRes, futuresRes] = await Promise.all([
+      const [tradesRes, statsRes, sniperRes, futuresRes, balanceRes] = await Promise.all([
         fetch(`${API_BASE}/api/all/trades`),
         fetch(`${API_BASE}/api/all/stats`),
         fetch(`${API_BASE}/api/sniper/all`),
-        fetch(`${API_BASE}/api/futures/status`)
+        fetch(`${API_BASE}/api/futures/status`),
+        fetch(`${API_BASE}/api/user/balance`)
       ]);
 
       if (!tradesRes.ok || !statsRes.ok || !sniperRes.ok) {
@@ -209,12 +211,14 @@ export default function MemberDashboard() {
       const statsData = await statsRes.json();
       const sniperData = await sniperRes.json();
       const futuresData = futuresRes.ok ? await futuresRes.json() : {};
+      const balanceData = balanceRes.ok ? await balanceRes.json() : null;
 
       if (mountedRef.current) {
         setAllTrades(Array.isArray(tradesData) ? tradesData : []);
         setBotStats(statsData || {});
         setSniperData(sniperData || { stats: {}, discoveries: [], scanning_status: {} });
         setFuturesData(futuresData || { stats: {}, positions: [], scanning_status: {} });
+        setAccountBalance(balanceData);
         setLastUpdate(new Date());
       }
     } catch (err) {
@@ -237,14 +241,35 @@ export default function MemberDashboard() {
   // Calculate derived stats
   const totalTrades = allTrades.length;
   const totalPnL = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-  const openPositions = allTrades.filter(t => !t.pnl && t.status !== 'closed').length;
+  
+  // FIXED: Properly count open positions (trades without P&L and not closed)
+  const openPositions = useMemo(() => allTrades.filter(t => 
+    !t.pnl && t.status !== 'closed'
+  ).length, [allTrades]);
+  
+  // FIXED: Separate buys and sells correctly (all trades regardless of P&L)
+  const buys = useMemo(() => allTrades.filter(t => 
+    t.side?.toLowerCase() === 'buy'
+  ), [allTrades]);
+
+  const sells = useMemo(() => allTrades.filter(t => 
+    t.side?.toLowerCase() === 'sell'
+  ), [allTrades]);
+
+  const closedTrades = useMemo(() => allTrades.filter(t => 
+    t.pnl || t.status === 'closed'
+  ), [allTrades]);
+
+  const wins = closedTrades.filter(t => (Number(t.pnl) || 0) > 0).length;
+  const losses = closedTrades.filter(t => (Number(t.pnl) || 0) < 0).length;
+  const winRate = closedTrades.length ? ((wins / closedTrades.length) * 100).toFixed(1) : 0;
   
   const todayPnL = useMemo(() => {
     const today = new Date().toDateString();
-    return allTrades
+    return closedTrades
       .filter(t => new Date(t.time || t.timestamp || t.created_at).toDateString() === today)
       .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-  }, [allTrades]);
+  }, [closedTrades]);
 
   // Calculate today's trades count
   const todayTrades = useMemo(() => {
@@ -254,17 +279,12 @@ export default function MemberDashboard() {
     ).length;
   }, [allTrades]);
 
-  // Win/Loss calculations
-  const wins = allTrades.filter(t => (Number(t.pnl) || 0) > 0).length;
-  const losses = allTrades.filter(t => (Number(t.pnl) || 0) < 0).length;
-  const winRate = totalTrades ? ((wins / totalTrades) * 100).toFixed(1) : 0;
-
   // Calculate best win streak
   const bestWinStreak = useMemo(() => {
     let currentStreak = 0;
     let bestStreak = 0;
     
-    allTrades.slice().reverse().forEach(t => {
+    closedTrades.slice().reverse().forEach(t => {
       const pnl = Number(t.pnl) || 0;
       if (pnl > 0) {
         currentStreak++;
@@ -275,7 +295,7 @@ export default function MemberDashboard() {
     });
     
     return bestStreak;
-  }, [allTrades]);
+  }, [closedTrades]);
 
   // Group trades by bot/exchange
   const tradesByBot = useMemo(() => {
@@ -299,17 +319,43 @@ export default function MemberDashboard() {
     return result;
   }, [allTrades]);
 
-  // Separate buys and sells for clearer display
-  const buys = useMemo(() => allTrades.filter(t => t.side?.toLowerCase() === 'buy' || !t.pnl), [allTrades]);
-  const sells = useMemo(() => allTrades.filter(t => t.side?.toLowerCase() === 'sell' && t.pnl), [allTrades]);
-
   // Auth data
   const tier = normalizeTier(user?.tier);
   const plan = PLANS.find(p => p.value === tier) || PLANS[0];
   
-  // CHANGED: Paper trading balance set to $100
-  const baseBalance = activation?.billing_complete ? 1000 : 100; // $100 for paper trading
-  const currentBalance = baseBalance + totalPnL;
+  // BALANCE HANDLING:
+  // - Paper trading: Start with $100,000 virtual balance
+  // - Live trading: Fetch actual balance from exchange APIs
+  const isLive = activation?.billing_complete || false;
+  
+  // Paper trading base balance: $100,000
+  const PAPER_BALANCE = 100000;
+  
+  // Current balance calculation
+  const currentBalance = useMemo(() => {
+    if (isLive && accountBalance?.total) {
+      // Live trading - use actual balance from exchanges
+      return accountBalance.total;
+    } else if (isLive) {
+      // Live trading but no balance data yet
+      return null;
+    } else {
+      // Paper trading - start with $100,000 + P&L
+      return PAPER_BALANCE + totalPnL;
+    }
+  }, [isLive, accountBalance, totalPnL]);
+
+  // Balance breakdown for live trading
+  const balanceBreakdown = useMemo(() => {
+    if (!isLive || !accountBalance) return null;
+    
+    return {
+      okx: accountBalance.okx || 0,
+      alpaca: accountBalance.alpaca || 0,
+      available: accountBalance.available || 0,
+      inPositions: accountBalance.inPositions || 0
+    };
+  }, [isLive, accountBalance]);
 
   // Active bots count
   const activeBotsCount = Object.keys(botStats).length + (sniperData.discoveries?.length > 0 ? 1 : 0);
@@ -395,20 +441,20 @@ export default function MemberDashboard() {
                   <span>{plan.icon}</span>
                   <span className="capitalize">{tier}</span>
                 </span>
-                {activation?.billing_complete ? (
+                {isLive ? (
                   <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
                     ✓ Live Account
                   </span>
                 ) : (
                   <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
-                    📝 Paper Trading ($100)
+                    📝 Paper Trading ($100,000)
                   </span>
                 )}
               </div>
               <p className="text-[11px] sm:text-sm text-white/55 mt-1">
-                {activation?.billing_complete 
-                  ? 'Live trading dashboard with real funds' 
-                  : 'Paper trading with $100 virtual balance - upgrade to go live!'}
+                {isLive 
+                  ? 'Live trading dashboard with real funds from your connected exchanges'
+                  : 'Paper trading with $100,000 virtual balance - practice risk-free!'}
               </p>
             </div>
           </div>
@@ -417,13 +463,31 @@ export default function MemberDashboard() {
         {/* Stats Cards - Your Money Overview */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
           <CardShell title="Balance" icon="💰">
-            <div className="text-xl font-bold leading-tight text-emerald-400">
-              {formatUsdPlain(currentBalance)}
-            </div>
-            <div className="text-[11px] text-white/35 mt-1 flex items-center gap-1">
-              <span className={`inline-block w-1.5 h-1.5 rounded-full ${activation?.billing_complete ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
-              {activation?.billing_complete ? 'Live Account' : '$100 Paper Account'}
-            </div>
+            {currentBalance !== null ? (
+              <>
+                <div className={`text-xl font-bold leading-tight ${isLive ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {formatUsdPlain(currentBalance)}
+                </div>
+                <div className="text-[11px] text-white/35 mt-1 flex items-center gap-1">
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                  {isLive ? 'Live Balance' : '$100,000 Paper Balance'}
+                </div>
+                {isLive && balanceBreakdown && (
+                  <div className="text-[9px] text-white/30 mt-1">
+                    OKX: ${balanceBreakdown.okx.toFixed(2)} · Alpaca: ${balanceBreakdown.alpaca.toFixed(2)}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="text-xl font-bold leading-tight text-white/50">
+                  Loading...
+                </div>
+                <div className="text-[11px] text-white/35 mt-1">
+                  Fetching live balance
+                </div>
+              </>
+            )}
           </CardShell>
 
           <CardShell title="Today's P&L" icon="📈">
@@ -440,7 +504,7 @@ export default function MemberDashboard() {
               {totalTrades}
             </div>
             <div className="text-[11px] text-white/35 mt-1">
-              <span className="text-emerald-400">{wins} wins</span> · <span className="text-red-400">{losses} losses</span>
+              {buys.length} buys · {sells.length} sells
             </div>
           </CardShell>
 
@@ -458,7 +522,7 @@ export default function MemberDashboard() {
               {winRate}%
             </div>
             <div className="text-[11px] text-white/35 mt-1">
-              Best streak: {bestWinStreak} 🔥
+              {wins} wins · {losses} losses
             </div>
           </CardShell>
         </div>
@@ -478,7 +542,7 @@ export default function MemberDashboard() {
                   </div>
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Open</div>
-                    <div className="font-bold">{allTrades.filter(t => (t.bot === 'OKX' || t.chain === 'OKX') && !t.pnl).length}</div>
+                    <div className="font-bold">{allTrades.filter(t => (t.bot === 'OKX' || t.chain === 'OKX') && !t.pnl && t.status !== 'closed').length}</div>
                   </div>
                   <div className="bg-black/30 rounded p-2 col-span-2">
                     <div className="text-white/40">P&L</div>
@@ -601,7 +665,7 @@ export default function MemberDashboard() {
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Avg Score</div>
                     <div className={`font-bold ${(sniperData.stats?.avg_ai_score || 0) >= 0.7 ? 'text-green-400' : 'text-yellow-400'}`}>
-                      {sniperData.stats?.avg_ai_score?.toFixed(2) || 0}
+                      {(sniperData.stats?.avg_ai_score || 0).toFixed(2)}
                     </div>
                   </div>
                   <div className="bg-black/30 rounded p-2 col-span-2">
@@ -690,23 +754,27 @@ export default function MemberDashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {/* Trade Summary Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                <div className="bg-emerald-500/10 rounded-lg p-2 border border-emerald-500/20">
-                  <div className="text-emerald-400 text-lg font-bold">{buys.length}</div>
-                  <div className="text-white/40">Buys</div>
-                </div>
-                <div className="bg-red-500/10 rounded-lg p-2 border border-red-500/20">
-                  <div className="text-red-400 text-lg font-bold">{sells.length}</div>
-                  <div className="text-white/40">Sells</div>
-                </div>
+              {/* Trade Summary Stats - FIXED to show all buys/sells */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                 <div className="bg-blue-500/10 rounded-lg p-2 border border-blue-500/20">
-                  <div className="text-blue-400 text-lg font-bold">{openPositions}</div>
-                  <div className="text-white/40">Open</div>
+                  <div className="text-blue-400 text-lg font-bold">{buys.length}</div>
+                  <div className="text-white/40">Total Buys</div>
                 </div>
                 <div className="bg-purple-500/10 rounded-lg p-2 border border-purple-500/20">
-                  <div className="text-purple-400 text-lg font-bold">{wins + losses}</div>
-                  <div className="text-white/40">Closed</div>
+                  <div className="text-purple-400 text-lg font-bold">{sells.length}</div>
+                  <div className="text-white/40">Total Sells</div>
+                </div>
+                <div className="bg-amber-500/10 rounded-lg p-2 border border-amber-500/20">
+                  <div className="text-amber-400 text-lg font-bold">{openPositions}</div>
+                  <div className="text-white/40">Open Positions</div>
+                </div>
+                <div className="bg-emerald-500/10 rounded-lg p-2 border border-emerald-500/20">
+                  <div className="text-emerald-400 text-lg font-bold">{wins}</div>
+                  <div className="text-white/40">Wins</div>
+                </div>
+                <div className="bg-red-500/10 rounded-lg p-2 border border-red-500/20">
+                  <div className="text-red-400 text-lg font-bold">{losses}</div>
+                  <div className="text-white/40">Losses</div>
                 </div>
               </div>
 
@@ -716,8 +784,10 @@ export default function MemberDashboard() {
                   const pnl = Number(t.pnl) || 0;
                   const bot = t.bot || t.chain || 'OKX';
                   const time = t.time || t.timestamp || t.created_at;
-                  const isBuy = t.side?.toLowerCase() === 'buy' || !t.side;
-                  const isClosed = !!t.pnl;
+                  const isBuy = t.side?.toLowerCase() === 'buy';
+                  const isSell = t.side?.toLowerCase() === 'sell';
+                  const isClosed = !!t.pnl || t.status === 'closed';
+                  const isOpen = !isClosed;
                   const pnlPercent = t.pnl_percentage ? Number(t.pnl_percentage).toFixed(2) : null;
                   
                   return (
@@ -730,7 +800,9 @@ export default function MemberDashboard() {
                             : pnl < 0 
                               ? 'border-l-red-500 bg-red-500/5' 
                               : 'border-l-gray-500 bg-white/[0.03]'
-                          : 'border-l-blue-500 bg-blue-500/5'
+                          : isBuy
+                            ? 'border-l-blue-500 bg-blue-500/5'
+                            : 'border-l-purple-500 bg-purple-500/5'
                       } ${i === 0 ? 'bg-white/10' : ''}`}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -748,39 +820,46 @@ export default function MemberDashboard() {
                             }`}>
                               {isBuy ? 'BUY' : 'SELL'}
                             </span>
-                            {isClosed && (
+                            {isClosed ? (
                               <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                                 pnl > 0 
                                   ? 'bg-emerald-500/20 text-emerald-300' 
-                                  : 'bg-red-500/20 text-red-300'
+                                  : pnl < 0
+                                    ? 'bg-red-500/20 text-red-300'
+                                    : 'bg-gray-500/20 text-gray-300'
                               }`}>
                                 CLOSED
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                                OPEN
                               </span>
                             )}
                           </div>
                           <div className="text-[10px] text-white/35">
                             {time ? new Date(time).toLocaleTimeString() : ''} • ${Number(t.price).toFixed(4)}
+                            {t.qty && ` • ${t.qty} units`}
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
                         {isClosed ? (
                           <>
-                            <div className={`font-bold text-sm ${pnl > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <div className={`font-bold text-sm ${pnl > 0 ? 'text-emerald-400' : pnl < 0 ? 'text-red-400' : 'text-white/40'}`}>
                               {formatUsd(pnl)}
                             </div>
                             {pnlPercent && (
-                              <div className={`text-[10px] ${pnl > 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+                              <div className={`text-[10px] ${pnl > 0 ? 'text-emerald-400/70' : pnl < 0 ? 'text-red-400/70' : 'text-white/40'}`}>
                                 {pnl > 0 ? '+' : ''}{pnlPercent}%
                               </div>
                             )}
                           </>
                         ) : (
                           <>
-                            <div className="font-bold text-sm text-blue-400">
+                            <div className="font-bold text-sm text-amber-400">
                               Open
                             </div>
-                            <div className="text-[10px] text-blue-400/70">
+                            <div className="text-[10px] text-amber-400/70">
                               @ ${Number(t.price).toFixed(4)}
                             </div>
                           </>
@@ -810,7 +889,7 @@ export default function MemberDashboard() {
                 </div>
                 <div className="flex justify-between">
                   <span>Open Positions:</span>
-                  <span className="text-white">{allTrades.filter(t => (t.bot === 'OKX' || t.chain === 'OKX') && !t.pnl).length}</span>
+                  <span className="text-white">{allTrades.filter(t => (t.bot === 'OKX' || t.chain === 'OKX') && !t.pnl && t.status !== 'closed').length}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Total P&L:</span>
@@ -821,7 +900,7 @@ export default function MemberDashboard() {
                 <div className="flex justify-between">
                   <span>Win Rate:</span>
                   <span className="text-white">
-                    {tradesByBot.OKX?.length ? ((tradesByBot.OKX.filter(t => (t.pnl || 0) > 0).length / tradesByBot.OKX.filter(t => t.pnl).length) * 100).toFixed(1) : 0}%
+                    {tradesByBot.OKX?.filter(t => t.pnl).length ? ((tradesByBot.OKX.filter(t => (t.pnl || 0) > 0).length / tradesByBot.OKX.filter(t => t.pnl).length) * 100).toFixed(1) : 0}%
                   </span>
                 </div>
               </div>
@@ -904,7 +983,7 @@ export default function MemberDashboard() {
                 </div>
                 <div className="flex justify-between">
                   <span>Avg AI Score:</span>
-                  <span className="text-white">{sniperData.stats?.avg_ai_score?.toFixed(2) || 0}</span>
+                  <span className="text-white">{(sniperData.stats?.avg_ai_score || 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>By Chain:</span>
