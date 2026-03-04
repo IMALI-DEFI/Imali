@@ -81,6 +81,37 @@ const getBotIcon = (botName) => {
   return "🤖";
 };
 
+const getBotScanningInfo = (botName, botData) => {
+  if (botName?.includes('Futures')) {
+    return {
+      pairs: "199 pairs",
+      frequency: "Every 5s",
+      batchSize: "20 per scan",
+      status: "🟢 Live"
+    };
+  }
+  if (botName?.includes('Sniper')) {
+    return {
+      chains: botData?.chains_active?.join(', ') || 'eth, poly, bsc',
+      blocksPerScan: "50 blocks",
+      frequency: "~2s per RPC",
+      status: botData?.is_scanning ? "🟢 Scanning" : "⏸️ Idle"
+    };
+  }
+  if (botName?.includes('Stocks') || botName?.includes('Alpaca')) {
+    return {
+      market: "NASDAQ, NYSE",
+      symbols: "500 stocks",
+      frequency: "Every 5 min",
+      status: new Date().getHours() >= 9 && new Date().getHours() <= 16 ? "🟢 Market Open" : "⏰ Market Closed"
+    };
+  }
+  return {
+    frequency: "Real-time",
+    status: "🟢 Active"
+  };
+};
+
 /* ===================== UI COMPONENTS ===================== */
 const CardShell = ({ title, icon, right, children }) => (
   <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4">
@@ -147,7 +178,8 @@ export default function MemberDashboard() {
   // State for all backend data
   const [allTrades, setAllTrades] = useState([]);
   const [botStats, setBotStats] = useState({});
-  const [sniperData, setSniperData] = useState({ stats: {}, discoveries: [] });
+  const [sniperData, setSniperData] = useState({ stats: {}, discoveries: [], scanning_status: {} });
+  const [futuresData, setFuturesData] = useState({ stats: {}, positions: [], scanning_status: {} });
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -162,10 +194,11 @@ export default function MemberDashboard() {
   // Fetch all data from backend
   const fetchAllData = useCallback(async () => {
     try {
-      const [tradesRes, statsRes, sniperRes] = await Promise.all([
+      const [tradesRes, statsRes, sniperRes, futuresRes] = await Promise.all([
         fetch(`${API_BASE}/api/all/trades`),
         fetch(`${API_BASE}/api/all/stats`),
-        fetch(`${API_BASE}/api/sniper/all`)
+        fetch(`${API_BASE}/api/sniper/all`),
+        fetch(`${API_BASE}/api/futures/status`)
       ]);
 
       if (!tradesRes.ok || !statsRes.ok || !sniperRes.ok) {
@@ -175,11 +208,13 @@ export default function MemberDashboard() {
       const tradesData = await tradesRes.json();
       const statsData = await statsRes.json();
       const sniperData = await sniperRes.json();
+      const futuresData = futuresRes.ok ? await futuresRes.json() : {};
 
       if (mountedRef.current) {
         setAllTrades(Array.isArray(tradesData) ? tradesData : []);
         setBotStats(statsData || {});
-        setSniperData(sniperData || { stats: {}, discoveries: [] });
+        setSniperData(sniperData || { stats: {}, discoveries: [], scanning_status: {} });
+        setFuturesData(futuresData || { stats: {}, positions: [], scanning_status: {} });
         setLastUpdate(new Date());
       }
     } catch (err) {
@@ -264,10 +299,16 @@ export default function MemberDashboard() {
     return result;
   }, [allTrades]);
 
+  // Separate buys and sells for clearer display
+  const buys = useMemo(() => allTrades.filter(t => t.side?.toLowerCase() === 'buy' || !t.pnl), [allTrades]);
+  const sells = useMemo(() => allTrades.filter(t => t.side?.toLowerCase() === 'sell' && t.pnl), [allTrades]);
+
   // Auth data
   const tier = normalizeTier(user?.tier);
   const plan = PLANS.find(p => p.value === tier) || PLANS[0];
-  const baseBalance = activation?.billing_complete ? 1000 : 100000;
+  
+  // CHANGED: Paper trading balance set to $100
+  const baseBalance = activation?.billing_complete ? 1000 : 100; // $100 for paper trading
   const currentBalance = baseBalance + totalPnL;
 
   // Active bots count
@@ -299,7 +340,11 @@ export default function MemberDashboard() {
       <div className="max-w-7xl mx-auto px-3 py-3 sm:p-4 md:p-6 space-y-3 sm:space-y-5">
         
         {/* Last Update Status */}
-        <div className="flex justify-end items-center gap-2 text-xs">
+        <div className="flex justify-between items-center gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+            <span className="text-white/60">Live data - refreshes every 10s</span>
+          </div>
           <span className="text-white/40">
             Last updated: {lastUpdate?.toLocaleTimeString() || 'Never'}
           </span>
@@ -350,14 +395,20 @@ export default function MemberDashboard() {
                   <span>{plan.icon}</span>
                   <span className="capitalize">{tier}</span>
                 </span>
-                {activation?.billing_complete && (
+                {activation?.billing_complete ? (
                   <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
-                    ✓ Active
+                    ✓ Live Account
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                    📝 Paper Trading ($100)
                   </span>
                 )}
               </div>
               <p className="text-[11px] sm:text-sm text-white/55 mt-1">
-                Your trading dashboard with real-time updates
+                {activation?.billing_complete 
+                  ? 'Live trading dashboard with real funds' 
+                  : 'Paper trading with $100 virtual balance - upgrade to go live!'}
               </p>
             </div>
           </div>
@@ -369,8 +420,9 @@ export default function MemberDashboard() {
             <div className="text-xl font-bold leading-tight text-emerald-400">
               {formatUsdPlain(currentBalance)}
             </div>
-            <div className="text-[11px] text-white/35 mt-1">
-              {activation?.billing_complete ? 'Live Account' : 'Paper Account'}
+            <div className="text-[11px] text-white/35 mt-1 flex items-center gap-1">
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${activation?.billing_complete ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+              {activation?.billing_complete ? 'Live Account' : '$100 Paper Account'}
             </div>
           </CardShell>
 
@@ -388,7 +440,7 @@ export default function MemberDashboard() {
               {totalTrades}
             </div>
             <div className="text-[11px] text-white/35 mt-1">
-              {wins} wins · {losses} losses
+              <span className="text-emerald-400">{wins} wins</span> · <span className="text-red-400">{losses} losses</span>
             </div>
           </CardShell>
 
@@ -411,7 +463,7 @@ export default function MemberDashboard() {
           </CardShell>
         </div>
 
-        {/* Bot Status Section */}
+        {/* Bot Status Section with Scanning Info */}
         <CollapsibleCard title="🤖 Your Trading Bots" icon="🤖" defaultOpen={true}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* OKX Spot Bot */}
@@ -419,7 +471,7 @@ export default function MemberDashboard() {
               <div className="text-center">
                 <div className="text-3xl mb-2">🔷</div>
                 <h4 className="font-medium text-sm mb-2">OKX Spot</h4>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-2 gap-2 text-xs mb-2">
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Trades</div>
                     <div className="font-bold">{tradesByBot.OKX?.length || 0}</div>
@@ -435,6 +487,20 @@ export default function MemberDashboard() {
                     </div>
                   </div>
                 </div>
+                <div className="text-[10px] bg-white/5 rounded p-2 text-left">
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Status:</span>
+                    <span className="text-green-400">● Live</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Scanning:</span>
+                    <span>Every 5s</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Pairs:</span>
+                    <span>199</span>
+                  </div>
+                </div>
               </div>
             </CardShell>
 
@@ -443,18 +509,36 @@ export default function MemberDashboard() {
               <div className="text-center">
                 <div className="text-3xl mb-2">📊</div>
                 <h4 className="font-medium text-sm mb-2">Futures</h4>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-2 gap-2 text-xs mb-2">
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Pairs</div>
                     <div className="font-bold">199</div>
                   </div>
                   <div className="bg-black/30 rounded p-2">
-                    <div className="text-white/40">Positions</div>
-                    <div className="font-bold">{tradesByBot.Futures?.length || 0}</div>
+                    <div className="text-white/40">Batch</div>
+                    <div className="font-bold">20</div>
                   </div>
                   <div className="bg-black/30 rounded p-2 col-span-2">
-                    <div className="text-white/40">Status</div>
-                    <div className="font-bold text-green-400">● Scanning</div>
+                    <div className="text-white/40">Active</div>
+                    <div className="font-bold">{futuresData.positions?.length || 0} positions</div>
+                  </div>
+                </div>
+                <div className="text-[10px] bg-white/5 rounded p-2 text-left">
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Status:</span>
+                    <span className="text-green-400">● Scanning</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Frequency:</span>
+                    <span>Every 5s</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Batch Size:</span>
+                    <span>20 symbols</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Full Cycle:</span>
+                    <span>~50 seconds</span>
                   </div>
                 </div>
               </div>
@@ -465,18 +549,40 @@ export default function MemberDashboard() {
               <div className="text-center">
                 <div className="text-3xl mb-2">📈</div>
                 <h4 className="font-medium text-sm mb-2">Stocks</h4>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-2 gap-2 text-xs mb-2">
                   <div className="bg-black/30 rounded p-2">
-                    <div className="text-white/40">Market</div>
-                    <div className="font-bold">Closed</div>
+                    <div className="text-white/40">Symbols</div>
+                    <div className="font-bold">500</div>
                   </div>
                   <div className="bg-black/30 rounded p-2">
-                    <div className="text-white/40">Opens</div>
-                    <div className="font-bold">Mon 9:30</div>
+                    <div className="text-white/40">Batch</div>
+                    <div className="font-bold">200</div>
                   </div>
                   <div className="bg-black/30 rounded p-2 col-span-2">
-                    <div className="text-white/40">Status</div>
-                    <div className="font-bold text-yellow-400">⏰ Waiting</div>
+                    <div className="text-white/40">Market</div>
+                    <div className="font-bold">NASDAQ, NYSE</div>
+                  </div>
+                </div>
+                <div className="text-[10px] bg-white/5 rounded p-2 text-left">
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Status:</span>
+                    {new Date().getHours() >= 9 && new Date().getHours() <= 16 ? (
+                      <span className="text-green-400">● Market Open</span>
+                    ) : (
+                      <span className="text-yellow-400">⏰ Market Closed</span>
+                    )}
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Frequency:</span>
+                    <span>Every 5 min</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Full Cycle:</span>
+                    <span>~12.5 min</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Opens:</span>
+                    <span>Mon-Fri 9:30</span>
                   </div>
                 </div>
               </div>
@@ -487,7 +593,7 @@ export default function MemberDashboard() {
               <div className="text-center">
                 <div className="text-3xl mb-2">🦄</div>
                 <h4 className="font-medium text-sm mb-2">DEX Sniper</h4>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-2 gap-2 text-xs mb-2">
                   <div className="bg-black/30 rounded p-2">
                     <div className="text-white/40">Found</div>
                     <div className="font-bold">{sniperData.stats?.total_discoveries || 0}</div>
@@ -499,10 +605,30 @@ export default function MemberDashboard() {
                     </div>
                   </div>
                   <div className="bg-black/30 rounded p-2 col-span-2">
-                    <div className="text-white/40">Chains</div>
+                    <div className="text-white/40">By Chain</div>
                     <div className="font-bold text-xs truncate">
-                      {sniperData.stats?.chains_active?.join(', ') || 'eth, poly, bsc'}
+                      Eth:{sniperData.stats?.by_chain?.ethereum || 0} · 
+                      Poly:{sniperData.stats?.by_chain?.polygon || 0} · 
+                      Bsc:{sniperData.stats?.by_chain?.bsc || 0}
                     </div>
+                  </div>
+                </div>
+                <div className="text-[10px] bg-white/5 rounded p-2 text-left">
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Status:</span>
+                    <span className="text-green-400">● Scanning</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Chains:</span>
+                    <span>eth, poly, bsc</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Blocks/Scan:</span>
+                    <span>50 blocks</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">AI Threshold:</span>
+                    <span>0.70</span>
                   </div>
                 </div>
               </div>
@@ -515,14 +641,14 @@ export default function MemberDashboard() {
           <CollapsibleCard title="🦄 New Token Discoveries" icon="🦄" defaultOpen={true}>
             <div className="space-y-2">
               <p className="text-xs text-white/40 mb-2">
-                New pairs found on Ethereum (need AI score ≥ 0.70 to trade)
+                New pairs found on Ethereum, Polygon, and BSC (need AI score ≥ 0.70 to trade)
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                 {sniperData.discoveries.slice(0, 6).map((d, i) => (
                   <div key={i} className="bg-black/30 rounded-xl p-3 text-xs space-y-1">
                     <div className="flex justify-between">
                       <span className="font-medium">🔷 {d.chain}</span>
-                      <span className="text-white/40">{d.age} blocks</span>
+                      <span className="text-white/40">{d.age} blocks old</span>
                     </div>
                     <div className="text-white/60 font-mono text-[10px]">
                       Pair: {formatAddress(d.pair)}
@@ -538,6 +664,11 @@ export default function MemberDashboard() {
                         Need {((0.7 - d.ai_score) * 100).toFixed(0)}% higher to trade
                       </div>
                     )}
+                    {d.ai_score >= 0.7 && (
+                      <div className="text-[8px] text-green-400/70">
+                        ✅ Ready to trade!
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -550,7 +681,7 @@ export default function MemberDashboard() {
           </CollapsibleCard>
         )}
 
-        {/* Recent Trades Feed */}
+        {/* Recent Trades Feed - Enhanced with Clearer Sells */}
         <CollapsibleCard title="📋 Recent Trading Activity" icon="📋" defaultOpen={true}>
           {allTrades.length === 0 ? (
             <div className="text-center py-6 text-white/30 text-sm">
@@ -558,55 +689,112 @@ export default function MemberDashboard() {
               No trades yet
             </div>
           ) : (
-            <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
-              {allTrades.slice(0, 20).map((t, i) => {
-                const pnl = Number(t.pnl) || 0;
-                const bot = t.bot || t.chain || 'OKX';
-                const time = t.time || t.timestamp || t.created_at;
-                const isBuy = t.side?.toLowerCase() === 'buy' || !t.side;
-                const pnlPercent = t.pnl_percentage ? Number(t.pnl_percentage).toFixed(2) : null;
-                
-                return (
-                  <div key={i} className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm ${
-                    i === 0 ? 'bg-white/10' : 'bg-white/[0.03]'
-                  }`}>
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="text-base">
-                        {getBotIcon(bot)}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm truncate">{t.symbol}</span>
-                          <span className="text-[10px] text-white/40">{bot}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                            isBuy ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
-                          }`}>
-                            {isBuy ? 'BUY' : 'SELL'}
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-white/35">
-                          {time ? new Date(time).toLocaleTimeString() : ''} • ${Number(t.price).toFixed(4)}
+            <div className="space-y-3">
+              {/* Trade Summary Stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="bg-emerald-500/10 rounded-lg p-2 border border-emerald-500/20">
+                  <div className="text-emerald-400 text-lg font-bold">{buys.length}</div>
+                  <div className="text-white/40">Buys</div>
+                </div>
+                <div className="bg-red-500/10 rounded-lg p-2 border border-red-500/20">
+                  <div className="text-red-400 text-lg font-bold">{sells.length}</div>
+                  <div className="text-white/40">Sells</div>
+                </div>
+                <div className="bg-blue-500/10 rounded-lg p-2 border border-blue-500/20">
+                  <div className="text-blue-400 text-lg font-bold">{openPositions}</div>
+                  <div className="text-white/40">Open</div>
+                </div>
+                <div className="bg-purple-500/10 rounded-lg p-2 border border-purple-500/20">
+                  <div className="text-purple-400 text-lg font-bold">{wins + losses}</div>
+                  <div className="text-white/40">Closed</div>
+                </div>
+              </div>
+
+              {/* Trades List */}
+              <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
+                {allTrades.slice(0, 20).map((t, i) => {
+                  const pnl = Number(t.pnl) || 0;
+                  const bot = t.bot || t.chain || 'OKX';
+                  const time = t.time || t.timestamp || t.created_at;
+                  const isBuy = t.side?.toLowerCase() === 'buy' || !t.side;
+                  const isClosed = !!t.pnl;
+                  const pnlPercent = t.pnl_percentage ? Number(t.pnl_percentage).toFixed(2) : null;
+                  
+                  return (
+                    <div 
+                      key={i} 
+                      className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${
+                        isClosed 
+                          ? pnl > 0 
+                            ? 'border-l-emerald-500 bg-emerald-500/5' 
+                            : pnl < 0 
+                              ? 'border-l-red-500 bg-red-500/5' 
+                              : 'border-l-gray-500 bg-white/[0.03]'
+                          : 'border-l-blue-500 bg-blue-500/5'
+                      } ${i === 0 ? 'bg-white/10' : ''}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-base">
+                          {getBotIcon(bot)}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm truncate">{t.symbol}</span>
+                            <span className="text-[10px] text-white/40">{bot}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              isBuy 
+                                ? 'bg-blue-500/20 text-blue-300' 
+                                : 'bg-purple-500/20 text-purple-300'
+                            }`}>
+                              {isBuy ? 'BUY' : 'SELL'}
+                            </span>
+                            {isClosed && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                pnl > 0 
+                                  ? 'bg-emerald-500/20 text-emerald-300' 
+                                  : 'bg-red-500/20 text-red-300'
+                              }`}>
+                                CLOSED
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-white/35">
+                            {time ? new Date(time).toLocaleTimeString() : ''} • ${Number(t.price).toFixed(4)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`font-bold text-sm ${pnl > 0 ? 'text-emerald-400' : pnl < 0 ? 'text-red-400' : 'text-white/40'}`}>
-                        {pnl ? formatUsd(pnl) : 'Open'}
+                      <div className="text-right">
+                        {isClosed ? (
+                          <>
+                            <div className={`font-bold text-sm ${pnl > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {formatUsd(pnl)}
+                            </div>
+                            {pnlPercent && (
+                              <div className={`text-[10px] ${pnl > 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+                                {pnl > 0 ? '+' : ''}{pnlPercent}%
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div className="font-bold text-sm text-blue-400">
+                              Open
+                            </div>
+                            <div className="text-[10px] text-blue-400/70">
+                              @ ${Number(t.price).toFixed(4)}
+                            </div>
+                          </>
+                        )}
                       </div>
-                      {pnlPercent && (
-                        <div className={`text-[10px] ${pnl > 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
-                          {pnl > 0 ? '+' : ''}{pnlPercent}%
-                        </div>
-                      )}
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
         </CollapsibleCard>
 
-        {/* Bot Statistics */}
+        {/* Bot Statistics with Scanning Details */}
         <CollapsibleCard title="📊 Bot Statistics" icon="📊" defaultOpen={false}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             {/* OKX Stats */}
@@ -633,8 +821,72 @@ export default function MemberDashboard() {
                 <div className="flex justify-between">
                   <span>Win Rate:</span>
                   <span className="text-white">
-                    {tradesByBot.OKX?.length ? ((tradesByBot.OKX.filter(t => (t.pnl || 0) > 0).length / tradesByBot.OKX.length) * 100).toFixed(1) : 0}%
+                    {tradesByBot.OKX?.length ? ((tradesByBot.OKX.filter(t => (t.pnl || 0) > 0).length / tradesByBot.OKX.filter(t => t.pnl).length) * 100).toFixed(1) : 0}%
                   </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Futures Stats */}
+            <div className="bg-black/30 rounded-xl p-3">
+              <div className="font-medium mb-2 flex items-center gap-2">
+                <span>📊 Futures Bot</span>
+                <span className="text-green-400 text-[10px]">● Scanning</span>
+              </div>
+              <div className="space-y-1 text-white/60">
+                <div className="flex justify-between">
+                  <span>Pairs Monitored:</span>
+                  <span className="text-white">199</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Batch Size:</span>
+                  <span className="text-white">20 per scan</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Scan Frequency:</span>
+                  <span className="text-white">Every 5 seconds</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Full Cycle:</span>
+                  <span className="text-white">~50 seconds</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Active Positions:</span>
+                  <span className="text-white">{futuresData.positions?.length || 0}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Stock Bot Stats */}
+            <div className="bg-black/30 rounded-xl p-3">
+              <div className="font-medium mb-2 flex items-center gap-2">
+                <span>📈 Stock Bot</span>
+                {new Date().getHours() >= 9 && new Date().getHours() <= 16 ? (
+                  <span className="text-green-400 text-[10px]">● Market Open</span>
+                ) : (
+                  <span className="text-yellow-400 text-[10px]">⏰ Market Closed</span>
+                )}
+              </div>
+              <div className="space-y-1 text-white/60">
+                <div className="flex justify-between">
+                  <span>Symbols:</span>
+                  <span className="text-white">500 (427 stocks, 73 crypto)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Batch Size:</span>
+                  <span className="text-white">200 per scan</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Scan Frequency:</span>
+                  <span className="text-white">Every 5 minutes</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Full Cycle:</span>
+                  <span className="text-white">~12.5 minutes</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Market Hours:</span>
+                  <span className="text-white">Mon-Fri 9:30-16:00</span>
                 </div>
               </div>
             </div>
@@ -663,7 +915,11 @@ export default function MemberDashboard() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Threshold:</span>
+                  <span>Blocks/Scan:</span>
+                  <span className="text-white">50 blocks</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>AI Threshold:</span>
                   <span className="text-white">{sniperData.stats?.threshold || 0.7}</span>
                 </div>
               </div>
