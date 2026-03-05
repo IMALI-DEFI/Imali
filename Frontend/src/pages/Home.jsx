@@ -8,14 +8,23 @@ import tradeLoss from "../assets/images/cards/trade_loss_template2.PNG";
 import tradeWin from "../assets/images/cards/trade_win_template2.PNG";
 
 /* ============================================================
-   API BASE
+   API BASE - Use HTTPS only
 ============================================================ */
-const API_BASE = process.env.REACT_APP_API_BASE_URL || 
-  (typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "http://localhost:8001"
-    : "https://api.imali-defi.com");
-
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const SERVER_IP = "129.213.90.84";
+
+// Use proxy endpoints through your main API
+const PROXY_ENDPOINTS = {
+  futuresHealth: `${API_BASE}/api/proxy/futures/health`,
+  futuresTrades: `${API_BASE}/api/proxy/futures/trades`,
+  futuresPositions: `${API_BASE}/api/proxy/futures/positions`,
+  stocksHealth: `${API_BASE}/api/proxy/stocks/health`,
+  stocksPositions: `${API_BASE}/api/proxy/stocks/positions`,
+  sniperHealth: `${API_BASE}/api/proxy/sniper/health`,
+  sniperDiscoveries: `${API_BASE}/api/proxy/sniper/discoveries`,
+  okxHealth: `${API_BASE}/api/proxy/okx/health`,
+  liveStats: `${API_BASE}/api/public/live-stats`,
+};
 
 /* ============================================================
    HOOKS
@@ -167,7 +176,7 @@ function useLiveActivity() {
 
     const fetchActivity = async () => {
       try {
-        // Fetch from all sources
+        // Use proxy endpoints through HTTPS
         const [
           futuresHealth,
           stocksHealth,
@@ -176,12 +185,12 @@ function useLiveActivity() {
           futuresTrades,
           sniperDiscoveries
         ] = await Promise.allSettled([
-          axios.get(`http://${SERVER_IP}:8008/health`, { timeout: 3000 }),
-          axios.get(`http://${SERVER_IP}:3001/health`, { timeout: 3000 }),
-          axios.get(`http://${SERVER_IP}:5004/health`, { timeout: 3000 }),
-          axios.get(`http://${SERVER_IP}:8005/health`, { timeout: 3000 }),
-          axios.get(`http://${SERVER_IP}:8008/trades?limit=5`, { timeout: 3000 }),
-          axios.get(`${API_BASE}/api/sniper/discoveries?limit=3`, { timeout: 3000 })
+          axios.get(PROXY_ENDPOINTS.futuresHealth, { timeout: 3000 }),
+          axios.get(PROXY_ENDPOINTS.stocksHealth, { timeout: 3000 }),
+          axios.get(PROXY_ENDPOINTS.sniperHealth, { timeout: 3000 }),
+          axios.get(PROXY_ENDPOINTS.okxHealth, { timeout: 3000 }),
+          axios.get(PROXY_ENDPOINTS.futuresTrades, { timeout: 3000 }),
+          axios.get(PROXY_ENDPOINTS.sniperDiscoveries, { timeout: 3000 })
         ]);
 
         if (!mounted) return;
@@ -196,7 +205,7 @@ function useLiveActivity() {
         let positions = 0;
         if (futuresOnline) {
           try {
-            const positionsRes = await axios.get(`http://${SERVER_IP}:8008/positions`, { timeout: 2000 });
+            const positionsRes = await axios.get(PROXY_ENDPOINTS.futuresPositions, { timeout: 2000 });
             positions = positionsRes.data?.positions?.length || 0;
           } catch (e) {}
         }
