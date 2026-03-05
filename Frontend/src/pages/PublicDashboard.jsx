@@ -5,17 +5,7 @@ import axios from "axios";
 
 // ========== CONFIGURATION ==========
 const API_BASE = "https://api.imali-defi.com";
-const PROXY_ENDPOINTS = {
-  futuresHealth: `${API_BASE}/api/proxy/futures/health`,
-  futuresTrades: `${API_BASE}/api/proxy/futures/trades?limit=20`,
-  futuresPositions: `${API_BASE}/api/proxy/futures/positions`,
-  stocksHealth: `${API_BASE}/api/proxy/stocks/health`,
-  stocksPositions: `${API_BASE}/api/proxy/stocks/positions`,
-  sniperHealth: `${API_BASE}/api/proxy/sniper/health`,
-  sniperDiscoveries: `${API_BASE}/api/proxy/sniper/discoveries?limit=10`,
-  okxHealth: `${API_BASE}/api/proxy/okx/health`,
-  liveStats: `${API_BASE}/api/public/live-stats`,
-};
+const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
 // ========== COMPONENTS ==========
 function StatCard({ title, value, icon, subtext, color = "emerald" }) {
@@ -23,7 +13,8 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
     emerald: "text-emerald-400",
     indigo: "text-indigo-400",
     purple: "text-purple-400",
-    amber: "text-amber-400"
+    amber: "text-amber-400",
+    red: "text-red-400"
   };
 
   return (
@@ -82,7 +73,6 @@ function TradeRow({ trade }) {
     }
   };
 
-  // Determine trade type and styling
   const isBuy = trade.side === 'buy' || trade.side === 'long';
   const isSell = trade.side === 'sell' || trade.side === 'short';
   const isClose = trade.side === 'close';
@@ -115,11 +105,6 @@ function TradeRow({ trade }) {
     badgeText = "SELL";
   }
 
-  // Calculate P&L display
-  const pnlValue = trade.pnl || trade.pnl_percent || 0;
-  const pnlUsd = trade.pnl_usd || 0;
-  const isProfitable = pnlValue > 0;
-
   return (
     <div className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor}`}>
       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -130,14 +115,9 @@ function TradeRow({ trade }) {
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${badgeColor}`}>
               {badgeText}
             </span>
-            {trade.strategy && (
-              <span className="text-[8px] text-white/40 bg-white/5 px-1.5 py-0.5 rounded">
-                {trade.strategy}
-              </span>
-            )}
           </div>
           <div className="text-[10px] text-white/35">
-            {formatTime(trade.created_at || trade.timestamp || trade.time)} • 
+            {formatTime(trade.created_at || trade.timestamp)} • 
             ${Number(trade.price || 0).toFixed(2)} • 
             {trade.qty && ` ${Number(trade.qty).toFixed(4)} units`}
           </div>
@@ -146,16 +126,9 @@ function TradeRow({ trade }) {
       <div className="text-right">
         {isOpen ? (
           <div className="font-bold text-sm text-blue-400">Open</div>
-        ) : isClose ? (
-          <div>
-            <div className={`font-bold text-sm ${pnlUsd > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {pnlUsd > 0 ? '+' : ''}{pnlUsd.toFixed(2)} USD
-            </div>
-            {pnlValue && (
-              <div className={`text-[10px] ${pnlValue > 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
-                {pnlValue > 0 ? '+' : ''}{pnlValue.toFixed(2)}%
-              </div>
-            )}
+        ) : trade.pnl_usd ? (
+          <div className={`font-bold text-sm ${trade.pnl_usd > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {trade.pnl_usd > 0 ? '+' : ''}{trade.pnl_usd.toFixed(2)} USD
           </div>
         ) : (
           <div className="font-bold text-sm text-white">
@@ -202,7 +175,7 @@ function DiscoveryCard({ discovery }) {
 function useLiveData() {
   const [data, setData] = useState({
     futures: { positions: [], health: null, trades: [] },
-    stocks: { positions: [], health: null },
+    stocks: { health: null },
     sniper: { discoveries: [], health: null },
     okx: { health: null },
     loading: true,
@@ -213,90 +186,50 @@ function useLiveData() {
   useEffect(() => {
     let mounted = true;
 
-    const fetchAllData = async () => {
+    const fetchLiveStats = async () => {
       try {
-        console.log("Fetching all data from endpoints...");
+        console.log("Fetching live stats from combined endpoint...");
         
-        // Fetch all data in parallel
-        const [
-          futuresHealth,
-          stocksHealth,
-          sniperHealth,
-          okxHealth,
-          futuresTrades,
-          sniperDiscoveries,
-          futuresPositions
-        ] = await Promise.allSettled([
-          axios.get(PROXY_ENDPOINTS.futuresHealth, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.stocksHealth, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.sniperHealth, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.okxHealth, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.futuresTrades, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.sniperDiscoveries, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.futuresPositions, { timeout: 5000 })
-        ]);
+        // SINGLE REQUEST - gets all data at once
+        const response = await axios.get(LIVE_STATS_URL, { timeout: 5000 });
 
         if (!mounted) return;
 
-        // Process futures trades - handle different response formats
-        let trades = [];
-        if (futuresTrades.status === 'fulfilled' && futuresTrades.value.data) {
-          trades = futuresTrades.value.data.trades || 
-                   futuresTrades.value.data || 
-                   [];
-        }
-
-        // Process futures positions
-        let positions = [];
-        if (futuresPositions.status === 'fulfilled' && futuresPositions.value.data) {
-          positions = futuresPositions.value.data.positions || 
-                      futuresPositions.value.data || 
-                      [];
-        }
-
-        // Process sniper discoveries
-        let discoveries = [];
-        if (sniperDiscoveries.status === 'fulfilled' && sniperDiscoveries.value.data) {
-          discoveries = sniperDiscoveries.value.data.discoveries || 
-                        sniperDiscoveries.value.data || 
-                        [];
-        }
-
+        const statsData = response.data;
+        
         setData({
           futures: {
-            health: futuresHealth.status === 'fulfilled' ? futuresHealth.value.data : null,
-            positions: positions,
-            trades: trades
+            health: statsData.futures,
+            positions: statsData.futures?.positions || [],
+            trades: statsData.recent_trades || []
           },
           stocks: {
-            health: stocksHealth.status === 'fulfilled' ? stocksHealth.value.data : null,
-            positions: stocksHealth.status === 'fulfilled' ? stocksHealth.value.data?.positions || [] : []
+            health: statsData.stocks
           },
           sniper: {
-            health: sniperHealth.status === 'fulfilled' ? sniperHealth.value.data : null,
-            discoveries: discoveries
+            health: statsData.sniper,
+            discoveries: statsData.discoveries || []
           },
-          okx: { health: okxHealth.status === 'fulfilled' ? okxHealth.value.data : null },
+          okx: { health: statsData.okx },
           loading: false,
           lastUpdate: new Date(),
           error: null
         });
 
         console.log("Data updated:", {
-          trades: trades.length,
-          positions: positions.length,
-          discoveries: discoveries.length
+          trades: statsData.recent_trades?.length || 0,
+          discoveries: statsData.discoveries?.length || 0
         });
 
       } catch (err) {
         console.error("Fetch error:", err);
         if (!mounted) return;
-        setData(prev => ({ ...prev, loading: false, error: "Some services unavailable" }));
+        setData(prev => ({ ...prev, loading: false, error: "Live data unavailable" }));
       }
     };
 
-    fetchAllData();
-    const interval = setInterval(fetchAllData, 15000);
+    fetchLiveStats();
+    const interval = setInterval(fetchLiveStats, 30000); // 30 seconds
     return () => { mounted = false; clearInterval(interval); };
   }, []);
 
@@ -318,7 +251,7 @@ export default function PublicDashboard() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-white/60">Connecting to trading bots...</p>
         </div>
       </div>
@@ -327,47 +260,28 @@ export default function PublicDashboard() {
 
   const hasConnection = data.futures.health || data.stocks.health || data.sniper.health || data.okx.health;
   
-  // Combine all trades from futures bot
   const allTrades = (data.futures.trades || []).sort((a, b) => {
-    const timeA = new Date(a.created_at || a.timestamp || a.time || 0).getTime();
-    const timeB = new Date(b.created_at || b.timestamp || b.time || 0).getTime();
+    const timeA = new Date(a.created_at || a.timestamp || 0).getTime();
+    const timeB = new Date(b.created_at || b.timestamp || 0).getTime();
     return timeB - timeA;
   }).slice(0, 30);
 
   const filteredTrades = activeTab === 'all' 
     ? allTrades 
-    : allTrades.filter(t => {
-        if (activeTab === 'open') return !t.pnl && t.status !== 'closed' && t.side !== 'close';
-        if (activeTab === 'closed') return t.pnl || t.status === 'closed' || t.side === 'close';
-        if (activeTab === 'buy') return t.side === 'buy' || t.side === 'long';
-        if (activeTab === 'sell') return t.side === 'sell' || t.side === 'short';
-        return true;
-      });
+    : activeTab === 'open' 
+      ? allTrades.filter(t => !t.pnl && t.status !== 'closed' && t.side !== 'close')
+      : activeTab === 'closed'
+        ? allTrades.filter(t => t.pnl || t.status === 'closed' || t.side === 'close')
+        : allTrades;
 
   const tabs = [
     { id: 'all', label: 'All', icon: '🌐', count: allTrades.length },
     { id: 'open', label: 'Open', icon: '🟢', count: allTrades.filter(t => !t.pnl && t.status !== 'closed' && t.side !== 'close').length },
     { id: 'closed', label: 'Closed', icon: '✅', count: allTrades.filter(t => t.pnl || t.status === 'closed' || t.side === 'close').length },
-    { id: 'buy', label: 'Buys', icon: '📈', count: allTrades.filter(t => t.side === 'buy' || t.side === 'long').length },
-    { id: 'sell', label: 'Sells', icon: '📉', count: allTrades.filter(t => t.side === 'sell' || t.side === 'short').length },
   ];
 
-  const activePositions = data.futures.positions?.length || 0;
-  const activeBots = [
-    data.futures.health ? 'Futures' : null,
-    data.stocks.health ? 'Stocks' : null,
-    data.sniper.health ? 'Sniper' : null,
-    data.okx.health ? 'OKX' : null
-  ].filter(Boolean).length;
-
-  // Calculate stats from trades
-  const totalPnL = allTrades
-    .filter(t => t.pnl_usd)
-    .reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
-  
-  const winningTrades = allTrades.filter(t => t.pnl_usd > 0).length;
-  const losingTrades = allTrades.filter(t => t.pnl_usd < 0).length;
-  const winRate = allTrades.length ? ((winningTrades / allTrades.length) * 100).toFixed(1) : 0;
+  const activeBots = [data.futures.health, data.stocks.health, data.sniper.health, data.okx.health].filter(Boolean).length;
+  const totalPnL = allTrades.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
@@ -383,7 +297,7 @@ export default function PublicDashboard() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-xs text-white/40">
                 <span className={`w-2 h-2 rounded-full ${hasConnection ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
-                <span>Updates every 15s</span>
+                <span>Updates every 30s</span>
               </div>
               <div className="text-xs text-white/40">{lastUpdate.toLocaleTimeString()}</div>
               <Link to="/signup" className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-xs sm:text-sm font-semibold transition-all">
@@ -395,36 +309,29 @@ export default function PublicDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {!hasConnection && (
+        {data.error && (
           <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
-            <p className="text-amber-300 text-sm">⚠️ Waiting for connection to trading bots...</p>
+            <p className="text-amber-300 text-sm">⚠️ {data.error}</p>
           </div>
         )}
 
         <div className="text-center mb-8">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3">Live Trading Dashboard 🚀</h1>
           <p className="text-white/60 max-w-2xl mx-auto">
-            Watch our AI bots trade in real-time across futures, stocks, and crypto markets.
-            {activePositions > 0 && (
-              <span className="block mt-2 text-emerald-400">🔥 Currently {activePositions} active position{activePositions !== 1 ? 's' : ''}</span>
-            )}
+            Watch our AI bots trade in real-time
           </p>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <StatCard title="Active Positions" value={activePositions} icon="🎯" color="emerald" subtext="Open trades" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
           <StatCard title="Active Bots" value={activeBots} icon="🤖" color="indigo" subtext="Online" />
-          <StatCard title="Win Rate" value={`${winRate}%`} icon="📊" color="purple" subtext={`${winningTrades}W / ${losingTrades}L`} />
+          <StatCard title="Total Trades" value={allTrades.length} icon="📊" color="purple" subtext="All time" />
           <StatCard title="Total P&L" value={`$${Math.abs(totalPnL).toFixed(2)}`} icon="💰" color={totalPnL >= 0 ? "emerald" : "red"} subtext={totalPnL >= 0 ? 'Profit' : 'Loss'} />
-          <StatCard title="Total Trades" value={allTrades.length} icon="📋" color="amber" subtext="All time" />
+          <StatCard title="Discoveries" value={data.sniper.discoveries.length} icon="🦄" color="amber" subtext="New tokens" />
         </div>
 
-        {/* Bot Status Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <BotCard name="Futures Bot" icon="📊" health={data.futures.health} stats={
             <>
-              <div>Positions: {data.futures.positions?.length || 0}</div>
               <div>Pairs: {data.futures.health?.total_symbols || 199}</div>
               <div>Trades: {data.futures.trades?.length || 0}</div>
             </>
@@ -449,9 +356,7 @@ export default function PublicDashboard() {
           } />
         </div>
 
-        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Trades Feed */}
           <div className="lg:col-span-2">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <div className="flex items-center justify-between mb-4">
@@ -459,12 +364,12 @@ export default function PublicDashboard() {
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                   Live Trade Feed
                 </h2>
-                <div className="flex flex-wrap gap-1 bg-black/30 rounded-lg p-1 max-w-[400px]">
+                <div className="flex gap-1 bg-black/30 rounded-lg p-1">
                   {tabs.map(tab => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
                         activeTab === tab.id
                           ? 'bg-emerald-600 text-white'
                           : 'text-white/40 hover:text-white/60'
@@ -481,7 +386,7 @@ export default function PublicDashboard() {
                   ))}
                 </div>
               </div>
-              <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
                 {filteredTrades.length > 0 ? (
                   filteredTrades.map((trade, i) => <TradeRow key={i} trade={trade} />)
                 ) : (
@@ -494,13 +399,10 @@ export default function PublicDashboard() {
             </div>
           </div>
 
-          {/* Right Column - Discoveries & Info */}
           <div className="space-y-4">
-            {/* Recent Discoveries */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
-                <span>🦄</span>
-                New Token Discoveries
+                <span>🦄</span> New Token Discoveries
                 {data.sniper.discoveries.length > 0 && (
                   <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
                     {data.sniper.discoveries.length} new
@@ -519,49 +421,17 @@ export default function PublicDashboard() {
               </div>
             </div>
 
-            {/* Recent Activity Summary */}
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
-              <h2 className="font-bold text-lg mb-3">📊 Recent Activity</h2>
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/40">Last 10 trades</span>
-                  <span className="font-bold">{allTrades.slice(0, 10).length}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/40">24h Volume</span>
-                  <span className="font-bold">${(allTrades.reduce((sum, t) => sum + (t.qty * t.price || 0), 0) * 0.1).toFixed(0)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/40">Best Trade</span>
-                  <span className="font-bold text-emerald-400">
-                    {allTrades.sort((a, b) => (b.pnl_usd || 0) - (a.pnl_usd || 0))[0]?.symbol || 'None'}
-                  </span>
-                </div>
-                {data.futures.positions?.length > 0 && (
-                  <div className="border-t border-white/10 pt-3 mt-2">
-                    <div className="text-xs text-white/40 mb-2">Current Positions:</div>
-                    {data.futures.positions.slice(0, 2).map((pos, i) => (
-                      <div key={i} className="text-sm font-mono bg-emerald-500/10 p-2 rounded-lg mb-1">
-                        {pos.symbol} {pos.side} · {pos.qty} units @ ${pos.entry?.toFixed(2)}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="border-t border-white/10 my-3" />
-                <div className="text-center">
-                  <Link to="/signup" className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all">
-                    Start Trading Free →
-                  </Link>
-                  <p className="text-[10px] text-white/30 mt-2">No credit card required</p>
-                </div>
-              </div>
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
+              <Link to="/signup" className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all">
+                Start Trading Free →
+              </Link>
+              <p className="text-[10px] text-white/30 mt-2">No credit card required</p>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
         <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
-          <p>Live data refreshes every 15 seconds. Connected to futures bot with {allTrades.length} trades recorded.<br />
+          <p>Live data refreshes every 30 seconds via single endpoint.<br />
             <Link to="/" className="text-indigo-400 hover:underline">Home</Link> • <Link to="/dashboard" className="text-indigo-400 hover:underline">Member Dashboard</Link>
           </p>
         </div>
