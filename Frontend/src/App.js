@@ -19,7 +19,7 @@ import Login from "./pages/Login";
 import Activation from "./pages/Activation";
 import Billing from "./pages/Billing";
 
-/* NEW: Billing Management */
+/* Billing Management */
 import BillingDashboard from "./pages/BillingDashboard";
 
 /* Marketing */
@@ -31,6 +31,9 @@ import Support from "./pages/Support";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import FundingGuide from "./pages/FundingGuide";
+
+/* Public Dashboard */
+import PublicDashboard from "./pages/PublicDashboard";
 
 /* Auth */
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -52,7 +55,7 @@ function LoadingSpinner() {
 
 /**
  * RequireAuth — user must be logged in.
- * Used for: /activation, /billing, /billing-dashboard, /admin (admin checks handled inside AdminPanel)
+ * Used for: /activation, /billing, /billing-dashboard, /admin
  */
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -76,7 +79,6 @@ function RequireAuth({ children }) {
 /**
  * RequireActivation — user must be logged in AND fully activated.
  * Used for: /dashboard
- * Redirects to /billing or /activation depending on what's missing.
  */
 function RequireActivation({ children }) {
   const { user, activation, activationComplete, loading } = useAuth();
@@ -115,7 +117,7 @@ function RequireActivation({ children }) {
 }
 
 /**
- * RedirectIfActivated — if user is already fully activated and lands on /activation, push to /dashboard.
+ * RedirectIfActivated — if user is already fully activated, redirect to dashboard.
  */
 function RedirectIfActivated({ children }) {
   const { user, activationComplete, loading } = useAuth();
@@ -167,7 +169,7 @@ function AppContent() {
 
       <main className="min-h-screen pt-16 bg-black text-white">
         <Routes>
-          {/* ===== Public ===== */}
+          {/* ===== Public Marketing Pages ===== */}
           <Route path="/" element={<Home />} />
           <Route path="/about-us" element={<AboutUs />} />
           <Route path="/how-it-works" element={<HowItWorks />} />
@@ -176,10 +178,13 @@ function AppContent() {
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/funding-guide" element={<FundingGuide />} />
-          <Route path="/demo" element={<TradeDemo />} />
-          <Route path="/signup" element={<Signup />} />
 
-          {/* ===== Login ===== */}
+          {/* ===== Public Demo & Live Dashboard ===== */}
+          <Route path="/demo" element={<TradeDemo />} />
+          <Route path="/live" element={<PublicDashboard />} />
+
+          {/* ===== Auth ===== */}
+          <Route path="/signup" element={<Signup />} />
           <Route
             path="/login"
             element={user ? <Navigate to="/dashboard" replace /> : <Login />}
@@ -212,13 +217,12 @@ function AppContent() {
               </RequireAuth>
             }
           />
-          {/* nice alias */}
           <Route
             path="/settings/billing"
             element={<Navigate to="/billing-dashboard" replace />}
           />
 
-          {/* ===== Protected (auth + activation required) ===== */}
+          {/* ===== Protected Member Dashboard (auth + activation required) ===== */}
           <Route
             path="/dashboard"
             element={
@@ -229,7 +233,7 @@ function AppContent() {
           />
           <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
-          {/* ===== Admin (auth required only; AdminPanel enforces admin/owner) ===== */}
+          {/* ===== Admin Panel (auth required; AdminPanel enforces admin/owner) ===== */}
           <Route
             path="/admin"
             element={
@@ -239,7 +243,7 @@ function AppContent() {
             }
           />
 
-          {/* ===== 404 ===== */}
+          {/* ===== 404 - Not Found ===== */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
