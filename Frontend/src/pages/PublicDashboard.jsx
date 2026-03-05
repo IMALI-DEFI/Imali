@@ -5,19 +5,7 @@ import axios from "axios";
 
 // ========== CONFIGURATION ==========
 const API_BASE = "https://api.imali-defi.com";
-
-// Proxy endpoints through your main API (HTTPS)
-const PROXY_ENDPOINTS = {
-  futuresHealth: `${API_BASE}/api/proxy/futures/health`,
-  futuresTrades: `${API_BASE}/api/proxy/futures/trades`,
-  futuresPositions: `${API_BASE}/api/proxy/futures/positions`,
-  stocksHealth: `${API_BASE}/api/proxy/stocks/health`,
-  stocksPositions: `${API_BASE}/api/proxy/stocks/positions`,
-  sniperHealth: `${API_BASE}/api/proxy/sniper/health`,
-  sniperDiscoveries: `${API_BASE}/api/proxy/sniper/discoveries`,
-  okxHealth: `${API_BASE}/api/proxy/okx/health`,
-  liveStats: `${API_BASE}/api/public/live-stats`,
-};
+const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
 // ========== COMPONENTS ==========
 function StatCard({ title, value, icon, subtext, color = "emerald" }) {
@@ -178,7 +166,6 @@ function useLiveData() {
     stocks: { positions: [], health: null },
     sniper: { discoveries: [], health: null },
     okx: { health: null },
-    api: { health: null },
     loading: true,
     lastUpdate: null,
     error: null
@@ -187,60 +174,38 @@ function useLiveData() {
   useEffect(() => {
     let mounted = true;
 
-    const fetchAll = async () => {
+    const fetchLiveStats = async () => {
       try {
-        console.log("Fetching data from server via HTTPS proxies...");
+        console.log("Fetching live stats from combined endpoint...");
         
-        const [futuresHealth, stocksHealth, sniperHealth, okxHealth, apiHealth, futuresTrades, sniperDiscoveries] = await Promise.allSettled([
-          axios.get(PROXY_ENDPOINTS.futuresHealth, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.stocksHealth, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.sniperHealth, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.okxHealth, { timeout: 5000 }),
-          axios.get(`${API_BASE}/api/health`, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.futuresTrades, { timeout: 5000 }),
-          axios.get(PROXY_ENDPOINTS.sniperDiscoveries, { timeout: 5000 })
-        ]);
+        const response = await axios.get(LIVE_STATS_URL, { timeout: 5000 });
 
         if (!mounted) return;
 
-        // Get positions if futures is online
-        let futuresPositions = [];
-        if (futuresHealth.status === 'fulfilled' && futuresHealth.value.data) {
-          try {
-            const positionsRes = await axios.get(PROXY_ENDPOINTS.futuresPositions, { timeout: 3000 });
-            futuresPositions = positionsRes.data?.positions || [];
-          } catch (e) {
-            console.log("Could not fetch futures positions");
-          }
-        }
-
+        // Extract data from the combined response
+        const statsData = response.data;
+        
         setData({
           futures: {
-            health: futuresHealth.status === 'fulfilled' ? futuresHealth.value.data : null,
-            positions: futuresPositions,
-            trades: futuresTrades.status === 'fulfilled' ? futuresTrades.value.data?.trades || [] : []
+            health: statsData.futures,
+            positions: [], // You might need a separate call for positions
+            trades: statsData.recent_trades || []
           },
           stocks: {
-            health: stocksHealth.status === 'fulfilled' ? stocksHealth.value.data : null,
-            positions: stocksHealth.status === 'fulfilled' ? stocksHealth.value.data?.positions || [] : []
+            health: statsData.stocks,
+            positions: statsData.stocks?.positions || []
           },
           sniper: {
-            health: sniperHealth.status === 'fulfilled' ? sniperHealth.value.data : null,
-            discoveries: sniperDiscoveries.status === 'fulfilled' ? sniperDiscoveries.value.data?.discoveries || [] : []
+            health: statsData.sniper,
+            discoveries: statsData.discoveries || []
           },
-          okx: { health: okxHealth.status === 'fulfilled' ? okxHealth.value.data : null },
-          api: { health: apiHealth.status === 'fulfilled' ? apiHealth.value.data : null },
+          okx: { health: statsData.okx },
           loading: false,
           lastUpdate: new Date(),
           error: null
         });
 
-        console.log("Data updated:", { 
-          futures: futuresHealth.status, 
-          stocks: stocksHealth.status,
-          sniper: sniperHealth.status,
-          okx: okxHealth.status
-        });
+        console.log("Data updated from live-stats");
 
       } catch (err) {
         console.error("Fetch error:", err);
@@ -249,8 +214,8 @@ function useLiveData() {
       }
     };
 
-    fetchAll();
-    const interval = setInterval(fetchAll, 8000);
+    fetchLiveStats();
+    const interval = setInterval(fetchLiveStats, 15000); // 15 seconds to avoid rate limits
     return () => { mounted = false; clearInterval(interval); };
   }, []);
 
@@ -283,16 +248,7 @@ export default function PublicDashboard() {
   
   // Combine all trades
   const allTrades = [
-    ...(data.futures.trades || []).map(t => ({ ...t, source: 'futures' })),
-    ...(data.stocks.positions || []).map(p => ({ 
-      ...p, 
-      source: 'stocks',
-      symbol: p.symbol,
-      side: p.side || 'long',
-      price: p.current || p.entry,
-      pnl: p.pnl_percent,
-      timestamp: p.opened
-    }))
+    ...(data.futures.trades || []).map(t => ({ ...t, source: 'futures' }))
   ].sort((a, b) => {
     const timeA = a.timestamp || a.created_at || a.time || 0;
     const timeB = b.timestamp || b.created_at || b.time || 0;
@@ -305,11 +261,10 @@ export default function PublicDashboard() {
 
   const tabs = [
     { id: 'all', label: 'All', icon: '🌐', count: allTrades.length },
-    { id: 'futures', label: 'Futures', icon: '📊', count: data.futures.trades?.length || 0 },
-    { id: 'stocks', label: 'Stocks', icon: '📈', count: data.stocks.positions?.length || 0 }
+    { id: 'futures', label: 'Futures', icon: '📊', count: data.futures.trades?.length || 0 }
   ];
 
-  const activePositions = (data.futures.positions?.length || 0) + (data.stocks.positions?.length || 0);
+  const activePositions = data.futures.positions?.length || 0;
   const activeBots = [data.futures.health, data.stocks.health, data.sniper.health, data.okx.health].filter(Boolean).length;
 
   return (
@@ -326,7 +281,7 @@ export default function PublicDashboard() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-xs text-white/40">
                 <span className={`w-2 h-2 rounded-full ${hasConnection ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
-                <span>Updates every 8s</span>
+                <span>Updates every 15s</span>
               </div>
               <div className="text-xs text-white/40">{lastUpdate.toLocaleTimeString()}</div>
               <Link to="/signup" className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-xs sm:text-sm font-semibold transition-all">
@@ -355,7 +310,7 @@ export default function PublicDashboard() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-          <StatCard title="Active Positions" value={activePositions} icon="🎯" color="emerald" subtext="199 futures · 500 stocks" />
+          <StatCard title="Active Positions" value={activePositions} icon="🎯" color="emerald" subtext="199 futures" />
           <StatCard title="Active Bots" value={activeBots} icon="🤖" color="indigo" subtext="Futures · Stocks · Sniper · OKX" />
           <StatCard title="Win Rate" value="68%" icon="📊" color="purple" subtext="Last 30 days" />
           <StatCard title="Total Users" value="24,189" icon="👥" color="amber" subtext="+127 this week" />
@@ -462,14 +417,6 @@ export default function PublicDashboard() {
                   <span className="text-white/40">24h Trades</span>
                   <span className="font-bold">{Math.max(1, Math.floor(allTrades.length * 2.5))}</span>
                 </div>
-                {data.futures.positions?.length > 0 && (
-                  <div className="border-t border-white/10 pt-2 mt-2">
-                    <div className="text-xs text-white/40 mb-1">Current Position:</div>
-                    <div className="text-sm font-mono bg-emerald-500/10 p-2 rounded-lg">
-                      {data.futures.positions[0]?.symbol} {data.futures.positions[0]?.side} · {data.futures.positions[0]?.qty} units
-                    </div>
-                  </div>
-                )}
                 <div className="border-t border-white/10 my-2" />
                 <div className="text-center">
                   <Link to="/signup" className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all">
@@ -483,7 +430,7 @@ export default function PublicDashboard() {
         </div>
 
         <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
-          <p>Live data refreshes every 8 seconds via secure HTTPS.<br />
+          <p>Live data refreshes every 15 seconds via combined endpoint.<br />
             <Link to="/" className="text-indigo-400 hover:underline">Home</Link> • <Link to="/dashboard" className="text-indigo-400 hover:underline">Member Dashboard</Link>
           </p>
         </div>
