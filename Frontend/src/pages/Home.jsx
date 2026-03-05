@@ -15,6 +15,8 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL ||
     ? "http://localhost:8001"
     : "https://api.imali-defi.com");
 
+const SERVER_IP = "129.213.90.84";
+
 /* ============================================================
    HOOKS
 ============================================================ */
@@ -115,6 +117,131 @@ function usePromoClaim() {
   return { state, claim, reset };
 }
 
+function useAnnouncements() {
+  const [announcements, setAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchAnnouncements = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/api/announcements`, { timeout: 5000 });
+        if (!mounted) return;
+        
+        const data = res.data?.announcements || res.data || [];
+        setAnnouncements(Array.isArray(data) ? data : []);
+        setLoading(false);
+      } catch (err) {
+        if (!mounted) return;
+        setAnnouncements([]);
+        setLoading(false);
+      }
+    };
+
+    fetchAnnouncements();
+    const interval = setInterval(fetchAnnouncements, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  return { announcements, loading };
+}
+
+function useLiveActivity() {
+  const [activity, setActivity] = useState({
+    trades: [],
+    discoveries: [],
+    stats: {
+      activePositions: 0,
+      activeBots: 0,
+      online: false
+    },
+    loading: true
+  });
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchActivity = async () => {
+      try {
+        // Fetch from all sources
+        const [
+          futuresHealth,
+          stocksHealth,
+          sniperHealth,
+          okxHealth,
+          futuresTrades,
+          sniperDiscoveries
+        ] = await Promise.allSettled([
+          axios.get(`http://${SERVER_IP}:8008/health`, { timeout: 3000 }),
+          axios.get(`http://${SERVER_IP}:3001/health`, { timeout: 3000 }),
+          axios.get(`http://${SERVER_IP}:5004/health`, { timeout: 3000 }),
+          axios.get(`http://${SERVER_IP}:8005/health`, { timeout: 3000 }),
+          axios.get(`http://${SERVER_IP}:8008/trades?limit=5`, { timeout: 3000 }),
+          axios.get(`${API_BASE}/api/sniper/discoveries?limit=3`, { timeout: 3000 })
+        ]);
+
+        if (!mounted) return;
+
+        // Process health checks
+        const futuresOnline = futuresHealth.status === 'fulfilled' && futuresHealth.value.data;
+        const stocksOnline = stocksHealth.status === 'fulfilled' && stocksHealth.value.data;
+        const sniperOnline = sniperHealth.status === 'fulfilled' && sniperHealth.value.data;
+        const okxOnline = okxHealth.status === 'fulfilled' && okxHealth.value.data;
+
+        // Get active positions count
+        let positions = 0;
+        if (futuresOnline) {
+          try {
+            const positionsRes = await axios.get(`http://${SERVER_IP}:8008/positions`, { timeout: 2000 });
+            positions = positionsRes.data?.positions?.length || 0;
+          } catch (e) {}
+        }
+
+        // Get trades
+        const trades = [];
+        if (futuresTrades.status === 'fulfilled' && futuresTrades.value.data) {
+          const tradeData = futuresTrades.value.data.trades || futuresTrades.value.data || [];
+          trades.push(...tradeData.slice(0, 3).map(t => ({ ...t, source: 'futures' })));
+        }
+
+        // Get discoveries
+        const discoveries = [];
+        if (sniperDiscoveries.status === 'fulfilled' && sniperDiscoveries.value.data) {
+          const discData = sniperDiscoveries.value.data.discoveries || sniperDiscoveries.value.data || [];
+          discoveries.push(...discData.slice(0, 2));
+        }
+
+        setActivity({
+          trades,
+          discoveries,
+          stats: {
+            activePositions: positions,
+            activeBots: [futuresOnline, stocksOnline, sniperOnline, okxOnline].filter(Boolean).length,
+            online: futuresOnline || stocksOnline || sniperOnline || okxOnline
+          },
+          loading: false
+        });
+      } catch (err) {
+        if (!mounted) return;
+        setActivity(prev => ({ ...prev, loading: false }));
+      }
+    };
+
+    fetchActivity();
+    const interval = setInterval(fetchActivity, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  return activity;
+}
+
 /* ============================================================
    SMALL COMPONENTS
 ============================================================ */
@@ -123,6 +250,8 @@ function Pill({ children, color = "indigo" }) {
     emerald: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
     indigo: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
     purple: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+    amber: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+    red: "bg-red-500/20 text-red-300 border-red-500/30",
   };
 
   return (
@@ -164,6 +293,158 @@ function FeatureRow({ icon, label }) {
     <div className="flex items-start gap-2 text-sm text-white/80">
       <span className="text-emerald-400 flex-shrink-0 mt-0.5">{icon}</span>
       <span className="leading-snug">{label}</span>
+    </div>
+  );
+}
+
+/* ============================================================
+   ANNOUNCEMENT BANNER
+============================================================ */
+function AnnouncementBanner({ announcements }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    if (announcements.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setCurrentIndex((prev) => (prev + 1) % announcements.length);
+        setVisible(true);
+      }, 300);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [announcements.length]);
+
+  if (!announcements || announcements.length === 0) return null;
+
+  const announcement = announcements[currentIndex];
+  const bgColor = announcement.priority === 'high' ? 'red' : 
+                  announcement.priority === 'medium' ? 'amber' : 'indigo';
+
+  const bgColorClass = {
+    red: 'bg-red-600/20 border-red-500/30',
+    amber: 'bg-amber-600/20 border-amber-500/30',
+    indigo: 'bg-indigo-600/20 border-indigo-500/30',
+  }[bgColor];
+
+  return (
+    <div className={`w-full mb-6 rounded-xl border p-3 sm:p-4 ${bgColorClass}`}>
+      <div className="flex items-start gap-3">
+        <span className="text-xl sm:text-2xl flex-shrink-0">{announcement.emoji || '📢'}</span>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-bold text-sm sm:text-base mb-1">{announcement.title || 'Announcement'}</h4>
+          <p className="text-xs sm:text-sm text-white/80">{announcement.content || announcement.message}</p>
+        </div>
+        {announcements.length > 1 && (
+          <span className="text-xs text-white/40 flex-shrink-0">
+            {currentIndex + 1}/{announcements.length}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   LIVE ACTIVITY WIDGET
+============================================================ */
+function LiveActivityWidget({ activity }) {
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+      return `${Math.floor(diffMins / 1440)}d ago`;
+    } catch {
+      return '';
+    }
+  };
+
+  if (activity.loading) {
+    return (
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+        <div className="flex items-center justify-center gap-2 text-white/40">
+          <div className="animate-spin h-4 w-4 border-2 border-emerald-400 border-t-transparent rounded-full" />
+          <span className="text-sm">Loading live activity...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-bold text-base flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${activity.stats.online ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
+          Live Trading Activity
+        </h3>
+        <Link to="/live" className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
+          <span>👁️</span> Full Dashboard
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="bg-black/30 rounded-lg p-2 text-center">
+          <div className="text-lg font-bold text-emerald-400">{activity.stats.activeBots}</div>
+          <div className="text-[10px] text-white/40">Active Bots</div>
+        </div>
+        <div className="bg-black/30 rounded-lg p-2 text-center">
+          <div className="text-lg font-bold text-indigo-400">{activity.stats.activePositions}</div>
+          <div className="text-[10px] text-white/40">Positions</div>
+        </div>
+      </div>
+
+      <div className="space-y-2 max-h-[200px] overflow-y-auto">
+        {activity.trades.length > 0 ? (
+          activity.trades.map((trade, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-black/30 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span>{trade.source === 'futures' ? '📊' : '🔷'}</span>
+                <span className="font-medium truncate">{trade.symbol}</span>
+                <span className={`text-[10px] px-1 py-0.5 rounded ${
+                  trade.side === 'buy' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
+                }`}>
+                  {trade.side?.toUpperCase()}
+                </span>
+              </div>
+              <div className="text-right text-white/60">
+                {formatTime(trade.timestamp)}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-3 text-white/30 text-xs">
+            <div className="text-xl mb-1">📭</div>
+            No recent trades
+          </div>
+        )}
+
+        {activity.discoveries.length > 0 && (
+          <>
+            <div className="border-t border-white/10 my-2" />
+            {activity.discoveries.map((d, i) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-purple-500/5 text-xs">
+                <span>🦄</span>
+                <span className="text-white/60 truncate">New on {d.chain}</span>
+                <span className={`ml-auto text-[10px] ${
+                  d.ai_score >= 0.7 ? 'text-green-400' : 'text-yellow-400'
+                }`}>
+                  {d.ai_score?.toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -253,11 +534,21 @@ export default function Home() {
 
   const promo = usePromoStatus();
   const promoClaim = usePromoClaim();
+  const { announcements, loading: announcementsLoading } = useAnnouncements();
+  const activity = useLiveActivity();
+  
   const [email, setEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   return (
     <div className="bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white overflow-x-hidden">
+      {/* Announcements Banner */}
+      {!announcementsLoading && announcements.length > 0 && (
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-4">
+          <AnnouncementBanner announcements={announcements} />
+        </div>
+      )}
+
       {/* Hero Section */}
       <section className="relative overflow-hidden">
         {/* Background card images */}
@@ -276,89 +567,91 @@ export default function Home() {
           />
         </div>
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 md:pt-24 pb-12 sm:pb-16 text-center">
-          <div className="mb-6 sm:mb-8">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 md:pt-24 pb-12 sm:pb-16">
+          {/* Top Bar with Live Dashboard Link */}
+          <div className="flex justify-between items-center mb-6">
             <LiveTicker />
-          </div>
-
-          <h1 className="font-extrabold leading-tight">
-            <span className="block text-2xl sm:text-3xl md:text-4xl lg:text-5xl text-white/90">
-              Your Money-Making Robot 🤖
-            </span>
-            <span className="block text-3xl sm:text-4xl md:text-5xl lg:text-7xl bg-gradient-to-r from-indigo-400 via-purple-400 to-emerald-400 bg-clip-text text-transparent mt-2">
-              Is Ready to Trade
-            </span>
-          </h1>
-
-          <p className="mt-4 sm:mt-6 max-w-2xl mx-auto text-base sm:text-lg md:text-xl text-white/70 leading-relaxed px-2">
-            Our AI bot buys and sells <b>stocks &amp; crypto</b> for you — automatically.
-            You don't need to know anything about trading.{" "}
-            <span className="text-emerald-400 font-medium">
-              Just press start and watch it work.
-            </span>
-          </p>
-
-          <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mt-5 sm:mt-6 px-2">
-            <Pill color="emerald">✅ No experience needed</Pill>
-            <Pill color="indigo">🤖 Fully automated</Pill>
-            <Pill color="purple">💰 Only pay when you profit</Pill>
-          </div>
-
-          <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-4 sm:px-0">
             <Link
-              to="/signup"
-              className="group relative px-8 sm:px-10 py-4 sm:py-5 rounded-full font-bold text-base sm:text-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/25 transition-all hover:shadow-xl hover:shadow-indigo-500/30 active:scale-95 sm:hover:scale-105 text-center"
+              to="/live"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs sm:text-sm font-medium transition-all group"
             >
-              🚀 Start For Free
-              <span className="block text-[11px] sm:text-xs font-normal opacity-70 mt-0.5">
-                No credit card needed to sign up
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span>LIVE DASHBOARD</span>
+              <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+            </Link>
+          </div>
+
+          {/* Main Headline */}
+          <div className="text-center">
+            <h1 className="font-extrabold leading-tight">
+              <span className="block text-2xl sm:text-3xl md:text-4xl lg:text-5xl text-white/90">
+                Your Money-Making Robot 🤖
               </span>
-            </Link>
-            <Link
-              to="/demo"
-              className="px-8 sm:px-10 py-4 sm:py-5 rounded-full font-bold text-base sm:text-lg border-2 border-white/20 hover:border-white/40 hover:bg-white/5 transition-all active:scale-95 text-center"
-            >
-              🎮 Try the Demo First
-            </Link>
+              <span className="block text-3xl sm:text-4xl md:text-5xl lg:text-7xl bg-gradient-to-r from-indigo-400 via-purple-400 to-emerald-400 bg-clip-text text-transparent mt-2">
+                Is Ready to Trade
+              </span>
+            </h1>
+
+            <p className="mt-4 sm:mt-6 max-w-2xl mx-auto text-base sm:text-lg md:text-xl text-white/70 leading-relaxed px-2">
+              Our AI bot buys and sells <b>stocks &amp; crypto</b> for you — automatically.
+              You don't need to know anything about trading.{" "}
+              <span className="text-emerald-400 font-medium">
+                Just press start and watch it work.
+              </span>
+            </p>
+
+            <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mt-5 sm:mt-6 px-2">
+              <Pill color="emerald">✅ No experience needed</Pill>
+              <Pill color="indigo">🤖 Fully automated</Pill>
+              <Pill color="purple">💰 Only pay when you profit</Pill>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Stats Section - Static numbers */}
-      <section className="max-w-5xl mx-auto px-3 sm:px-4 -mt-2 sm:-mt-4 mb-10 sm:mb-12">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
-            <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-mono text-emerald-400">
-              $3.28M
+      {/* Stats + Live Activity Grid */}
+      <section className="max-w-6xl mx-auto px-3 sm:px-4 -mt-2 sm:-mt-4 mb-10 sm:mb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Stats Cards */}
+          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
+              <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-mono text-emerald-400">
+                $3.28M
+              </div>
+              <div className="text-xs sm:text-sm text-white/50 mt-1">
+                Total Profits Earned
+              </div>
+              <div className="text-[11px] sm:text-xs text-emerald-400/60 mt-1">
+                📈 and growing
+              </div>
             </div>
-            <div className="text-xs sm:text-sm text-white/50 mt-1">
-              Total Profits Earned
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
+              <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-mono text-indigo-400">
+                24,189
+              </div>
+              <div className="text-xs sm:text-sm text-white/50 mt-1">
+                Happy Traders
+              </div>
+              <div className="text-[11px] sm:text-xs text-indigo-400/60 mt-1">
+                👥 join them today
+              </div>
             </div>
-            <div className="text-[11px] sm:text-xs text-emerald-400/60 mt-1">
-              📈 and growing
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
+              <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-mono text-purple-400">
+                78%
+              </div>
+              <div className="text-xs sm:text-sm text-white/50 mt-1">
+                Average Win Rate
+              </div>
+              <div className="text-[11px] sm:text-xs text-purple-400/60 mt-1">
+                🎯 that's really good
+              </div>
             </div>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
-            <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-mono text-indigo-400">
-              24,189
-            </div>
-            <div className="text-xs sm:text-sm text-white/50 mt-1">
-              Happy Traders
-            </div>
-            <div className="text-[11px] sm:text-xs text-indigo-400/60 mt-1">
-              👥 join them today
-            </div>
-          </div>
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
-            <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-mono text-purple-400">
-              78%
-            </div>
-            <div className="text-xs sm:text-sm text-white/50 mt-1">
-              Average Win Rate
-            </div>
-            <div className="text-[11px] sm:text-xs text-purple-400/60 mt-1">
-              🎯 that's really good
-            </div>
+
+          {/* Live Activity Widget */}
+          <div className="lg:col-span-1">
+            <LiveActivityWidget activity={activity} />
           </div>
         </div>
       </section>
@@ -755,6 +1048,7 @@ export default function Home() {
           <Link to="/support" className="hover:text-white transition-colors py-1">Support</Link>
           <Link to="/privacy" className="hover:text-white transition-colors py-1">Privacy</Link>
           <Link to="/terms" className="hover:text-white transition-colors py-1">Terms</Link>
+          <Link to="/live" className="text-emerald-400 hover:text-emerald-300 transition-colors py-1">Live</Link>
         </div>
       </section>
     </div>
