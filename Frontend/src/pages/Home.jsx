@@ -11,20 +11,9 @@ import tradeWin from "../assets/images/cards/trade_win_template2.PNG";
    API BASE - Use HTTPS only
 ============================================================ */
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
-const SERVER_IP = "129.213.90.84";
 
-// Use proxy endpoints through your main API
-const PROXY_ENDPOINTS = {
-  futuresHealth: `${API_BASE}/api/proxy/futures/health`,
-  futuresTrades: `${API_BASE}/api/proxy/futures/trades`,
-  futuresPositions: `${API_BASE}/api/proxy/futures/positions`,
-  stocksHealth: `${API_BASE}/api/proxy/stocks/health`,
-  stocksPositions: `${API_BASE}/api/proxy/stocks/positions`,
-  sniperHealth: `${API_BASE}/api/proxy/sniper/health`,
-  sniperDiscoveries: `${API_BASE}/api/proxy/sniper/discoveries`,
-  okxHealth: `${API_BASE}/api/proxy/okx/health`,
-  liveStats: `${API_BASE}/api/public/live-stats`,
-};
+// Use the combined live stats endpoint (only 1 request instead of 6)
+const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
 /* ============================================================
    HOOKS
@@ -149,7 +138,7 @@ function useAnnouncements() {
     };
 
     fetchAnnouncements();
-    const interval = setInterval(fetchAnnouncements, 30000);
+    const interval = setInterval(fetchAnnouncements, 60000); // Increased to 60 seconds
     return () => {
       mounted = false;
       clearInterval(interval);
@@ -166,9 +155,11 @@ function useLiveActivity() {
     stats: {
       activePositions: 0,
       activeBots: 0,
-      online: false
+      online: false,
+      bots: []
     },
-    loading: true
+    loading: true,
+    error: null
   });
 
   useEffect(() => {
@@ -176,72 +167,59 @@ function useLiveActivity() {
 
     const fetchActivity = async () => {
       try {
-        // Use proxy endpoints through HTTPS
-        const [
-          futuresHealth,
-          stocksHealth,
-          sniperHealth,
-          okxHealth,
-          futuresTrades,
-          sniperDiscoveries
-        ] = await Promise.allSettled([
-          axios.get(PROXY_ENDPOINTS.futuresHealth, { timeout: 3000 }),
-          axios.get(PROXY_ENDPOINTS.stocksHealth, { timeout: 3000 }),
-          axios.get(PROXY_ENDPOINTS.sniperHealth, { timeout: 3000 }),
-          axios.get(PROXY_ENDPOINTS.okxHealth, { timeout: 3000 }),
-          axios.get(PROXY_ENDPOINTS.futuresTrades, { timeout: 3000 }),
-          axios.get(PROXY_ENDPOINTS.sniperDiscoveries, { timeout: 3000 })
-        ]);
+        console.log("Fetching live stats from combined endpoint...");
+        
+        // Make a single request to the combined endpoint
+        const response = await axios.get(LIVE_STATS_URL, { timeout: 5000 });
 
         if (!mounted) return;
 
-        // Process health checks
-        const futuresOnline = futuresHealth.status === 'fulfilled' && futuresHealth.value.data;
-        const stocksOnline = stocksHealth.status === 'fulfilled' && stocksHealth.value.data;
-        const sniperOnline = sniperHealth.status === 'fulfilled' && sniperHealth.value.data;
-        const okxOnline = okxHealth.status === 'fulfilled' && okxHealth.value.data;
+        const data = response.data;
+        
+        // Process the data
+        const onlineBots = [
+          data.futures ? 'Futures' : null,
+          data.stocks ? 'Stocks' : null,
+          data.sniper ? 'Sniper' : null,
+          data.okx ? 'OKX' : null
+        ].filter(Boolean);
 
-        // Get active positions count
-        let positions = 0;
-        if (futuresOnline) {
-          try {
-            const positionsRes = await axios.get(PROXY_ENDPOINTS.futuresPositions, { timeout: 2000 });
-            positions = positionsRes.data?.positions?.length || 0;
-          } catch (e) {}
-        }
+        // Get recent trades (first 3)
+        const recentTrades = (data.recent_trades || []).slice(0, 3).map(t => ({
+          ...t,
+          source: 'futures',
+          timestamp: t.created_at || t.timestamp
+        }));
 
-        // Get trades
-        const trades = [];
-        if (futuresTrades.status === 'fulfilled' && futuresTrades.value.data) {
-          const tradeData = futuresTrades.value.data.trades || futuresTrades.value.data || [];
-          trades.push(...tradeData.slice(0, 3).map(t => ({ ...t, source: 'futures' })));
-        }
-
-        // Get discoveries
-        const discoveries = [];
-        if (sniperDiscoveries.status === 'fulfilled' && sniperDiscoveries.value.data) {
-          const discData = sniperDiscoveries.value.data.discoveries || sniperDiscoveries.value.data || [];
-          discoveries.push(...discData.slice(0, 2));
-        }
+        // Get recent discoveries (first 2)
+        const recentDiscoveries = (data.discoveries || []).slice(0, 2);
 
         setActivity({
-          trades,
-          discoveries,
+          trades: recentTrades,
+          discoveries: recentDiscoveries,
           stats: {
-            activePositions: positions,
-            activeBots: [futuresOnline, stocksOnline, sniperOnline, okxOnline].filter(Boolean).length,
-            online: futuresOnline || stocksOnline || sniperOnline || okxOnline
+            activePositions: data.futures?.positions || 0,
+            activeBots: onlineBots.length,
+            online: onlineBots.length > 0,
+            bots: onlineBots
           },
-          loading: false
+          loading: false,
+          error: null
         });
+
       } catch (err) {
+        console.error("Fetch error:", err);
         if (!mounted) return;
-        setActivity(prev => ({ ...prev, loading: false }));
+        setActivity(prev => ({ 
+          ...prev, 
+          loading: false, 
+          error: "Live data temporarily unavailable" 
+        }));
       }
     };
 
     fetchActivity();
-    const interval = setInterval(fetchActivity, 10000);
+    const interval = setInterval(fetchActivity, 30000); // Increased to 30 seconds
     return () => {
       mounted = false;
       clearInterval(interval);
@@ -412,48 +390,54 @@ function LiveActivityWidget({ activity }) {
         </div>
       </div>
 
-      <div className="space-y-2 max-h-[200px] overflow-y-auto">
-        {activity.trades.length > 0 ? (
-          activity.trades.map((trade, i) => (
-            <div key={i} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-black/30 text-xs">
-              <div className="flex items-center gap-2 min-w-0">
-                <span>{trade.source === 'futures' ? '📊' : '🔷'}</span>
-                <span className="font-medium truncate">{trade.symbol}</span>
-                <span className={`text-[10px] px-1 py-0.5 rounded ${
-                  trade.side === 'buy' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
-                }`}>
-                  {trade.side?.toUpperCase()}
-                </span>
+      {activity.error ? (
+        <div className="text-center py-3 text-amber-400 text-xs">
+          ⚠️ {activity.error}
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-[200px] overflow-y-auto">
+          {activity.trades.length > 0 ? (
+            activity.trades.map((trade, i) => (
+              <div key={i} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-black/30 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span>📊</span>
+                  <span className="font-medium truncate">{trade.symbol}</span>
+                  <span className={`text-[10px] px-1 py-0.5 rounded ${
+                    trade.side === 'buy' || trade.side === 'long' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
+                  }`}>
+                    {(trade.side || 'buy').toUpperCase()}
+                  </span>
+                </div>
+                <div className="text-right text-white/60">
+                  {formatTime(trade.created_at || trade.timestamp)}
+                </div>
               </div>
-              <div className="text-right text-white/60">
-                {formatTime(trade.timestamp)}
-              </div>
+            ))
+          ) : (
+            <div className="text-center py-3 text-white/30 text-xs">
+              <div className="text-xl mb-1">📭</div>
+              No recent trades
             </div>
-          ))
-        ) : (
-          <div className="text-center py-3 text-white/30 text-xs">
-            <div className="text-xl mb-1">📭</div>
-            No recent trades
-          </div>
-        )}
+          )}
 
-        {activity.discoveries.length > 0 && (
-          <>
-            <div className="border-t border-white/10 my-2" />
-            {activity.discoveries.map((d, i) => (
-              <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-purple-500/5 text-xs">
-                <span>🦄</span>
-                <span className="text-white/60 truncate">New on {d.chain}</span>
-                <span className={`ml-auto text-[10px] ${
-                  d.ai_score >= 0.7 ? 'text-green-400' : 'text-yellow-400'
-                }`}>
-                  {d.ai_score?.toFixed(2)}
-                </span>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
+          {activity.discoveries.length > 0 && (
+            <>
+              <div className="border-t border-white/10 my-2" />
+              {activity.discoveries.map((d, i) => (
+                <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-purple-500/5 text-xs">
+                  <span>🦄</span>
+                  <span className="text-white/60 truncate">New on {d.chain}</span>
+                  <span className={`ml-auto text-[10px] ${
+                    d.ai_score >= 0.7 ? 'text-green-400' : 'text-yellow-400'
+                  }`}>
+                    {d.ai_score?.toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
