@@ -3,8 +3,21 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 
-const SERVER_IP = "129.213.90.84";
-const API_BASE = `http://${SERVER_IP}:8001`; // Will be updated to HTTPS proxy
+// ========== CONFIGURATION ==========
+const API_BASE = "https://api.imali-defi.com";
+
+// Proxy endpoints through your main API (HTTPS)
+const PROXY_ENDPOINTS = {
+  futuresHealth: `${API_BASE}/api/proxy/futures/health`,
+  futuresTrades: `${API_BASE}/api/proxy/futures/trades`,
+  futuresPositions: `${API_BASE}/api/proxy/futures/positions`,
+  stocksHealth: `${API_BASE}/api/proxy/stocks/health`,
+  stocksPositions: `${API_BASE}/api/proxy/stocks/positions`,
+  sniperHealth: `${API_BASE}/api/proxy/sniper/health`,
+  sniperDiscoveries: `${API_BASE}/api/proxy/sniper/discoveries`,
+  okxHealth: `${API_BASE}/api/proxy/okx/health`,
+  liveStats: `${API_BASE}/api/public/live-stats`,
+};
 
 // ========== COMPONENTS ==========
 function StatCard({ title, value, icon, subtext, color = "emerald" }) {
@@ -176,29 +189,40 @@ function useLiveData() {
 
     const fetchAll = async () => {
       try {
-        console.log("Fetching data from server...");
+        console.log("Fetching data from server via HTTPS proxies...");
         
         const [futuresHealth, stocksHealth, sniperHealth, okxHealth, apiHealth, futuresTrades, sniperDiscoveries] = await Promise.allSettled([
-          axios.get(`http://${SERVER_IP}:8008/health`, { timeout: 5000 }),
-          axios.get(`http://${SERVER_IP}:3001/health`, { timeout: 5000 }),
-          axios.get(`http://${SERVER_IP}:5004/health`, { timeout: 5000 }),
-          axios.get(`http://${SERVER_IP}:8005/health`, { timeout: 5000 }),
-          axios.get(`http://${SERVER_IP}:8001/api/health`, { timeout: 5000 }),
-          axios.get(`http://${SERVER_IP}:8008/trades?limit=10`, { timeout: 5000 }),
-          axios.get(`http://${SERVER_IP}:8001/api/sniper/discoveries?limit=10`, { timeout: 5000 })
+          axios.get(PROXY_ENDPOINTS.futuresHealth, { timeout: 5000 }),
+          axios.get(PROXY_ENDPOINTS.stocksHealth, { timeout: 5000 }),
+          axios.get(PROXY_ENDPOINTS.sniperHealth, { timeout: 5000 }),
+          axios.get(PROXY_ENDPOINTS.okxHealth, { timeout: 5000 }),
+          axios.get(`${API_BASE}/api/health`, { timeout: 5000 }),
+          axios.get(PROXY_ENDPOINTS.futuresTrades, { timeout: 5000 }),
+          axios.get(PROXY_ENDPOINTS.sniperDiscoveries, { timeout: 5000 })
         ]);
 
         if (!mounted) return;
 
+        // Get positions if futures is online
+        let futuresPositions = [];
+        if (futuresHealth.status === 'fulfilled' && futuresHealth.value.data) {
+          try {
+            const positionsRes = await axios.get(PROXY_ENDPOINTS.futuresPositions, { timeout: 3000 });
+            futuresPositions = positionsRes.data?.positions || [];
+          } catch (e) {
+            console.log("Could not fetch futures positions");
+          }
+        }
+
         setData({
           futures: {
             health: futuresHealth.status === 'fulfilled' ? futuresHealth.value.data : null,
-            positions: [],
+            positions: futuresPositions,
             trades: futuresTrades.status === 'fulfilled' ? futuresTrades.value.data?.trades || [] : []
           },
           stocks: {
             health: stocksHealth.status === 'fulfilled' ? stocksHealth.value.data : null,
-            positions: []
+            positions: stocksHealth.status === 'fulfilled' ? stocksHealth.value.data?.positions || [] : []
           },
           sniper: {
             health: sniperHealth.status === 'fulfilled' ? sniperHealth.value.data : null,
@@ -256,8 +280,36 @@ export default function PublicDashboard() {
   }
 
   const hasConnection = data.futures.health || data.stocks.health || data.sniper.health || data.okx.health;
-  const allTrades = [...(data.futures.trades || []).map(t => ({ ...t, source: 'futures' }))];
-  const activePositions = data.futures.positions?.length || 0;
+  
+  // Combine all trades
+  const allTrades = [
+    ...(data.futures.trades || []).map(t => ({ ...t, source: 'futures' })),
+    ...(data.stocks.positions || []).map(p => ({ 
+      ...p, 
+      source: 'stocks',
+      symbol: p.symbol,
+      side: p.side || 'long',
+      price: p.current || p.entry,
+      pnl: p.pnl_percent,
+      timestamp: p.opened
+    }))
+  ].sort((a, b) => {
+    const timeA = a.timestamp || a.created_at || a.time || 0;
+    const timeB = b.timestamp || b.created_at || b.time || 0;
+    return timeB - timeA;
+  }).slice(0, 20);
+
+  const filteredTrades = activeTab === 'all' 
+    ? allTrades 
+    : allTrades.filter(t => t.source === activeTab);
+
+  const tabs = [
+    { id: 'all', label: 'All', icon: '🌐', count: allTrades.length },
+    { id: 'futures', label: 'Futures', icon: '📊', count: data.futures.trades?.length || 0 },
+    { id: 'stocks', label: 'Stocks', icon: '📈', count: data.stocks.positions?.length || 0 }
+  ];
+
+  const activePositions = (data.futures.positions?.length || 0) + (data.stocks.positions?.length || 0);
   const activeBots = [data.futures.health, data.stocks.health, data.sniper.health, data.okx.health].filter(Boolean).length;
 
   return (
@@ -310,21 +362,64 @@ export default function PublicDashboard() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <BotCard name="Futures Bot" icon="📊" health={data.futures.health} stats={<><div>Pairs: 199</div></>} />
-          <BotCard name="Stock Bot" icon="📈" health={data.stocks.health} stats={<><div>Symbols: 500</div></>} />
-          <BotCard name="Sniper Bot" icon="🦄" health={data.sniper.health} stats={<><div>Discoveries: {data.sniper.discoveries.length}</div></>} />
-          <BotCard name="OKX Spot" icon="🔷" health={data.okx.health} stats={<><div>Status: Online</div></>} />
+          <BotCard name="Futures Bot" icon="📊" health={data.futures.health} stats={
+            <>
+              <div>Positions: {data.futures.positions?.length || 0}</div>
+              <div>Pairs: {data.futures.health?.total_symbols || 199}</div>
+            </>
+          } />
+          <BotCard name="Stock Bot" icon="📈" health={data.stocks.health} stats={
+            <>
+              <div>Symbols: {data.stocks.health?.symbols || 500}</div>
+              <div>Mode: {data.stocks.health?.mode || 'paper'}</div>
+            </>
+          } />
+          <BotCard name="Sniper Bot" icon="🦄" health={data.sniper.health} stats={
+            <>
+              <div>Discoveries: {data.sniper.discoveries.length}</div>
+              <div>Dry Run: {data.sniper.health?.dry_run ? 'Yes' : 'No'}</div>
+            </>
+          } />
+          <BotCard name="OKX Spot" icon="🔷" health={data.okx.health} stats={
+            <>
+              <div>Status: Online</div>
+              <div>Ready to trade</div>
+            </>
+          } />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
-              <h2 className="font-bold text-lg flex items-center gap-2 mb-4">
-                <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                Live Trade Feed
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-lg flex items-center gap-2">
+                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                  Live Trade Feed
+                </h2>
+                <div className="flex gap-1 bg-black/30 rounded-lg p-1">
+                  {tabs.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                        activeTab === tab.id
+                          ? 'bg-emerald-600 text-white'
+                          : 'text-white/40 hover:text-white/60'
+                      }`}
+                    >
+                      <span>{tab.icon}</span>
+                      <span className="hidden sm:inline">{tab.label}</span>
+                      {tab.count > 0 && (
+                        <span className="ml-1 text-[10px] bg-white/20 px-1.5 rounded-full">
+                          {tab.count}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                {allTrades.length > 0 ? allTrades.map((t, i) => <TradeRow key={i} trade={t} />) : (
+                {filteredTrades.length > 0 ? filteredTrades.map((t, i) => <TradeRow key={i} trade={t} />) : (
                   <div className="text-center py-8 text-white/30">
                     <div className="text-4xl mb-3">📭</div>
                     <p className="text-sm">No recent trades</p>
@@ -359,8 +454,22 @@ export default function PublicDashboard() {
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg mb-3">📊 Quick Stats</h2>
               <div className="space-y-3">
-                <div className="flex justify-between text-sm"><span className="text-white/40">Open Positions</span><span className="font-bold">{activePositions}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-white/40">24h Trades</span><span className="font-bold">{Math.max(1, Math.floor(allTrades.length * 2.5))}</span></div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/40">Open Positions</span>
+                  <span className="font-bold">{activePositions}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/40">24h Trades</span>
+                  <span className="font-bold">{Math.max(1, Math.floor(allTrades.length * 2.5))}</span>
+                </div>
+                {data.futures.positions?.length > 0 && (
+                  <div className="border-t border-white/10 pt-2 mt-2">
+                    <div className="text-xs text-white/40 mb-1">Current Position:</div>
+                    <div className="text-sm font-mono bg-emerald-500/10 p-2 rounded-lg">
+                      {data.futures.positions[0]?.symbol} {data.futures.positions[0]?.side} · {data.futures.positions[0]?.qty} units
+                    </div>
+                  </div>
+                )}
                 <div className="border-t border-white/10 my-2" />
                 <div className="text-center">
                   <Link to="/signup" className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all">
@@ -374,7 +483,7 @@ export default function PublicDashboard() {
         </div>
 
         <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
-          <p>Live data refreshes every 8 seconds.<br />
+          <p>Live data refreshes every 8 seconds via secure HTTPS.<br />
             <Link to="/" className="text-indigo-400 hover:underline">Home</Link> • <Link to="/dashboard" className="text-indigo-400 hover:underline">Member Dashboard</Link>
           </p>
         </div>
