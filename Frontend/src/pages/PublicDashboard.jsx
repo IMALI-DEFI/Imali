@@ -185,17 +185,24 @@ function useLiveData() {
 
   useEffect(() => {
     let mounted = true;
+    let timeoutId;
+    let pollInterval = 30000; // Start with 30 seconds
 
     const fetchLiveStats = async () => {
+      // Pause polling if the tab is hidden to save API rate limits
+      if (document.hidden) {
+        timeoutId = setTimeout(fetchLiveStats, pollInterval);
+        return;
+      }
+
       try {
         console.log("Fetching live stats from combined endpoint...");
-        
-        // SINGLE REQUEST - gets all data at once
-        const response = await axios.get(LIVE_STATS_URL, { timeout: 5000 });
+        const response = await axios.get(LIVE_STATS_URL, { timeout: 8000 });
 
         if (!mounted) return;
 
         const statsData = response.data;
+        pollInterval = 30000; // Reset interval to default on successful fetch
         
         setData({
           futures: {
@@ -216,21 +223,36 @@ function useLiveData() {
           error: null
         });
 
-        console.log("Data updated:", {
-          trades: statsData.recent_trades?.length || 0,
-          discoveries: statsData.discoveries?.length || 0
-        });
-
       } catch (err) {
         console.error("Fetch error:", err);
         if (!mounted) return;
-        setData(prev => ({ ...prev, loading: false, error: "Live data unavailable" }));
+        
+        // Handle 429 Too Many Requests cleanly with Exponential Backoff
+        if (err.response?.status === 429) {
+          pollInterval = Math.min(pollInterval * 2, 120000); // Max wait 2 minutes
+          setData(prev => ({ 
+            ...prev, 
+            loading: false, 
+            error: `Rate limited. Retrying in ${pollInterval / 1000}s...` 
+          }));
+        } else {
+          setData(prev => ({ ...prev, loading: false, error: "Live data unavailable" }));
+        }
+      }
+
+      // Recursively schedule next fetch dynamically based on the rate limit status
+      if (mounted) {
+        timeoutId = setTimeout(fetchLiveStats, pollInterval);
       }
     };
 
-    fetchLiveStats();
-    const interval = setInterval(fetchLiveStats, 30000); // 30 seconds
-    return () => { mounted = false; clearInterval(interval); };
+    // 50ms delay on initial fetch prevents React Strict Mode from double-firing the API
+    timeoutId = setTimeout(fetchLiveStats, 50);
+
+    return () => { 
+      mounted = false; 
+      clearTimeout(timeoutId); 
+    };
   }, []);
 
   return data;
