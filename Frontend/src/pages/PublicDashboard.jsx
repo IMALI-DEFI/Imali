@@ -9,7 +9,7 @@ import axios from "axios";
 
 const API_BASE =
   process.env.REACT_APP_API_BASE?.replace(/\/+$/, "") ||
-  "https://api.imali-defi.com";
+ "http://129.213.90.84:8001";
 
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
