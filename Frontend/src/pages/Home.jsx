@@ -12,7 +12,7 @@ import tradeWin from "../assets/images/cards/trade_win_template2.PNG";
 
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
-  "https://api.imali-defi.com";
+  "http://129.213.90.84:8001";
 
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
