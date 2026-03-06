@@ -14,41 +14,17 @@ const API_BASE =
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
 const DEFAULT_STATE = {
-  futures: {
-    health: null,
-    positions: [],
-    trades: [],
-    stats: null,
-  },
-  stocks: {
-    health: null,
-    positions: [],
-    trades: [],
-    stats: null,
-  },
-  sniper: {
-    health: null,
-    discoveries: [],
-    stats: null,
-  },
-  okx: {
-    health: null,
-    positions: [],
-    trades: [],
-    stats: null,
-  },
-  dex: {
-    health: null,
-    positions: [],
-    trades: [],
-    stats: null,
-  },
-  recent_trades: [],
+  futures: { health: null, positions: [], trades: [], stats: null },
+  stocks:  { health: null, positions: [], trades: [], stats: null },
+  sniper:  { health: null, discoveries: [], stats: null },
+  okx:     { health: null, positions: [], trades: [], stats: null },
+  dex:     { health: null, positions: [], trades: [], stats: null },
+  recent_trades:   [],
   recent_activity: [],
-  loading: true,
-  error: null,
-  lastUpdate: null,
-  lastSuccessAt: null,
+  loading:          true,
+  error:            null,
+  lastUpdate:       null,
+  lastSuccessAt:    null,
   rateLimitedUntil: null,
 };
 
@@ -62,29 +38,24 @@ function safeNumber(value, fallback = 0) {
 }
 
 function formatCurrency(value, digits = 2) {
-  return `$${safeNumber(value).toFixed(digits)}`;
-}
-
-function formatPct(value, digits = 2) {
-  return `${safeNumber(value).toFixed(digits)}%`;
+  return `
+$$
+{safeNumber(value).toFixed(digits)}`;
 }
 
 function timeAgo(timestamp) {
   if (!timestamp) return "—";
   try {
-    const date = new Date(timestamp);
-    const diffMs = Date.now() - date.getTime();
+    const diffMs = Date.now() - new Date(timestamp).getTime();
     if (diffMs < 0) return "just now";
-
     const sec = Math.floor(diffMs / 1000);
     const min = Math.floor(sec / 60);
-    const hr = Math.floor(min / 60);
-    const day = Math.floor(hr / 24);
-
-    if (sec < 30) return "just now";
-    if (sec < 60) return `${sec}s ago`;
-    if (min < 60) return `${min}m ago`;
-    if (hr < 24) return `${hr}h ago`;
+    const hr  = Math.floor(min / 60);
+    const day = Math.floor(hr  / 24);
+    if (sec < 30)  return "just now";
+    if (sec < 60)  return `${sec}s ago`;
+    if (min < 60)  return `${min}m ago`;
+    if (hr  < 24)  return `${hr}h ago`;
     return `${day}d ago`;
   } catch {
     return "—";
@@ -93,11 +64,8 @@ function timeAgo(timestamp) {
 
 function formatClock(timestamp) {
   if (!timestamp) return "—";
-  try {
-    return new Date(timestamp).toLocaleTimeString();
-  } catch {
-    return "—";
-  }
+  try { return new Date(timestamp).toLocaleTimeString(); }
+  catch { return "—"; }
 }
 
 function getTradeTimestamp(trade) {
@@ -127,37 +95,106 @@ function normalizeArray(value) {
 function mergeLiveStatsPayload(payload = {}) {
   return {
     futures: {
-      health: payload?.futures || null,
+      health:    payload?.futures || null,
       positions: normalizeArray(payload?.futures?.positions),
-      trades: normalizeArray(payload?.futures?.trades),
-      stats: payload?.futures?.stats || null,
+      trades:    normalizeArray(payload?.futures?.trades),
+      stats:     payload?.futures?.stats || null,
     },
     stocks: {
-      health: payload?.stocks || null,
+      health:    payload?.stocks || null,
       positions: normalizeArray(payload?.stocks?.positions),
-      trades: normalizeArray(payload?.stocks?.trades),
-      stats: payload?.stocks?.stats || null,
+      trades:    normalizeArray(payload?.stocks?.trades),
+      stats:     payload?.stocks?.stats || null,
     },
     sniper: {
-      health: payload?.sniper || null,
+      health:      payload?.sniper || null,
       discoveries: normalizeArray(payload?.discoveries || payload?.sniper?.discoveries),
-      stats: payload?.sniper?.stats || null,
+      stats:       payload?.sniper?.stats || null,
     },
     okx: {
-      health: payload?.okx || null,
+      health:    payload?.okx || null,
       positions: normalizeArray(payload?.okx?.positions),
-      trades: normalizeArray(payload?.okx?.trades),
-      stats: payload?.okx?.stats || null,
+      trades:    normalizeArray(payload?.okx?.trades),
+      stats:     payload?.okx?.stats || null,
     },
     dex: {
-      health: payload?.dex || null,
+      health:    payload?.dex || null,
       positions: normalizeArray(payload?.dex?.positions),
-      trades: normalizeArray(payload?.dex?.trades),
-      stats: payload?.dex?.stats || null,
+      trades:    normalizeArray(payload?.dex?.trades),
+      stats:     payload?.dex?.stats || null,
     },
-    recent_trades: normalizeArray(payload?.recent_trades),
+    recent_trades:   normalizeArray(payload?.recent_trades),
     recent_activity: normalizeArray(payload?.recent_activity),
   };
+}
+
+/* =====================================================
+   HEARTBEAT COMPONENT
+===================================================== */
+
+function Heartbeat({ active = true }) {
+  const [beat, setBeat] = useState(false);
+
+  useEffect(() => {
+    if (!active) return;
+
+    // pulse every 1.4 seconds to mimic a real heartbeat rhythm
+    const interval = setInterval(() => {
+      setBeat(true);
+      setTimeout(() => setBeat(false), 300);
+    }, 1400);
+
+    return () => clearInterval(interval);
+  }, [active]);
+
+  if (!active) {
+    return (
+      <svg
+        viewBox="0 0 100 40"
+        className="w-24 h-8 opacity-20"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <polyline
+          points="0,20 30,20 35,20 40,20 45,20 50,20 100,20"
+          fill="none"
+          stroke="#6b7280"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      viewBox="0 0 100 40"
+      className={`w-24 h-8 transition-all duration-150 ${
+        beat ? "drop-shadow-[0_0_6px_rgba(52,211,153,0.9)]" : ""
+      }`}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* baseline → spike → return */}
+      <polyline
+        points="0,20 28,20 33,5 38,34 43,20 55,20 60,14 65,26 70,20 100,20"
+        fill="none"
+        stroke={beat ? "#34d399" : "#10b981"}
+        strokeWidth={beat ? "2.5" : "2"}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="transition-all duration-150"
+      />
+
+      {/* travelling dot on the waveform tip */}
+      <circle
+        cx={beat ? "43" : "70"}
+        cy={beat ? "20" : "20"}
+        r="3"
+        fill={beat ? "#34d399" : "#10b981"}
+        className="transition-all duration-300"
+      />
+    </svg>
+  );
 }
 
 /* =====================================================
@@ -167,11 +204,11 @@ function mergeLiveStatsPayload(payload = {}) {
 function StatCard({ title, value, icon, subtext, color = "emerald" }) {
   const colorClasses = {
     emerald: "text-emerald-400",
-    indigo: "text-indigo-400",
-    purple: "text-purple-400",
-    amber: "text-amber-400",
-    red: "text-red-400",
-    cyan: "text-cyan-400",
+    indigo:  "text-indigo-400",
+    purple:  "text-purple-400",
+    amber:   "text-amber-400",
+    red:     "text-red-400",
+    cyan:    "text-cyan-400",
   };
 
   return (
@@ -194,25 +231,25 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
 
 function BotCard({ name, icon, health, lines = [], accent = "indigo" }) {
   const isOnline = !!health;
-  const statusColor = isOnline ? "text-green-400" : "text-red-400";
-  const statusText = isOnline ? "● Online" : "○ Offline";
 
   const borderMap = {
-    indigo: "border-indigo-500/20 bg-indigo-500/10",
+    indigo:  "border-indigo-500/20  bg-indigo-500/10",
     emerald: "border-emerald-500/20 bg-emerald-500/10",
-    purple: "border-purple-500/20 bg-purple-500/10",
-    amber: "border-amber-500/20 bg-amber-500/10",
-    cyan: "border-cyan-500/20 bg-cyan-500/10",
+    purple:  "border-purple-500/20  bg-purple-500/10",
+    amber:   "border-amber-500/20   bg-amber-500/10",
+    cyan:    "border-cyan-500/20    bg-cyan-500/10",
   };
 
   return (
-    <div className={`border rounded-xl p-3 sm:p-4 ${borderMap[accent] || borderMap.indigo}`}>
+    <div className={`border rounded-xl p-3 sm:p-4 ${borderMap[accent] ?? borderMap.indigo}`}>
       <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">{icon}</span>
           <span className="font-semibold text-sm sm:text-base truncate">{name}</span>
         </div>
-        <span className={`text-xs shrink-0 ${statusColor}`}>{statusText}</span>
+        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
+          {isOnline ? "● Online" : "○ Offline"}
+        </span>
       </div>
 
       {isOnline ? (
@@ -228,49 +265,142 @@ function BotCard({ name, icon, health, lines = [], accent = "indigo" }) {
   );
 }
 
-function TradeRow({ trade }) {
-  const side = getTradeSide(trade);
-  const pnlUsd = safeNumber(getTradePnlUsd(trade), 0);
-  const qty = safeNumber(getTradeQty(trade), 0);
-  const price = safeNumber(trade?.price, 0);
-  const symbol = trade?.symbol || "Unknown";
-  const bot = getTradeBot(trade);
-  const ts = getTradeTimestamp(trade);
+/* --------------------------------------------------
+   Sniper Bot Card — has its own heartbeat monitor
+-------------------------------------------------- */
+function SniperCard({ health, discoveries }) {
+  const isOnline   = !!health;
+  const discCount  = normalizeArray(discoveries).length;
+  const chains     = Array.isArray(health?.chains) ? health.chains.join(", ") : "—";
+  const isDryRun   = health?.dry_run;
 
-  const isBuy = side === "buy" || side === "long";
-  const isSell = side === "sell" || side === "short";
+  // track last discovery timestamp to animate a "ping" on new finds
+  const prevDiscRef = useRef(discCount);
+  const [pinged, setPinged] = useState(false);
+
+  useEffect(() => {
+    if (discCount > prevDiscRef.current) {
+      setPinged(true);
+      const t = setTimeout(() => setPinged(false), 1200);
+      prevDiscRef.current = discCount;
+      return () => clearTimeout(t);
+    }
+    prevDiscRef.current = discCount;
+  }, [discCount]);
+
+  return (
+    <div
+      className={`border rounded-xl p-3 sm:p-4 transition-all duration-300
+        border-purple-500/30 bg-purple-500/10
+        ${pinged ? "ring-2 ring-purple-400/60" : ""}
+      `}
+    >
+      {/* header */}
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xl sm:text-2xl shrink-0">🦄</span>
+          <span className="font-semibold text-sm sm:text-base truncate">Sniper Bot</span>
+        </div>
+        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
+          {isOnline ? "● Online" : "○ Offline"}
+        </span>
+      </div>
+
+      {/* heartbeat waveform */}
+      <div className="flex items-center justify-center mb-3">
+        <Heartbeat active={isOnline} />
+      </div>
+
+      {isOnline ? (
+        <div className="text-xs space-y-1 text-white/65">
+          <div className="flex justify-between">
+            <span>Discoveries</span>
+            <span
+              className={`font-semibold ${
+                discCount > 0 ? "text-purple-300" : "text-white/40"
+              }`}
+            >
+              {discCount}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>Dry Run</span>
+            <span>{isDryRun ? "Yes" : "No"}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="shrink-0">Chains</span>
+            <span className="text-right truncate text-white/50">{chains}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="text-xs text-white/30 py-1 text-center">Waiting for connection...</div>
+      )}
+
+      {/* new discovery ping badge */}
+      {pinged && (
+        <div className="mt-2 text-center text-[10px] text-purple-300 bg-purple-500/20 rounded-full py-0.5 animate-pulse">
+          ✨ New discovery detected
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =====================================================
+   TRADE ROW
+===================================================== */
+
+function TradeRow({ trade }) {
+  const side   = getTradeSide(trade);
+  const pnlUsd = safeNumber(getTradePnlUsd(trade), 0);
+  const qty    = safeNumber(getTradeQty(trade), 0);
+  const price  = safeNumber(trade?.price, 0);
+  const symbol = trade?.symbol || "Unknown";
+  const bot    = getTradeBot(trade);
+  const ts     = getTradeTimestamp(trade);
+
+  const isBuy   = side === "buy"  || side === "long";
+  const isSell  = side === "sell" || side === "short";
   const isClose = side === "close";
-  const isOpen = !isClose && !trade?.closed && trade?.status !== "closed" && trade?.pnl_usd == null && trade?.pnl == null;
+  const isOpen  =
+    !isClose &&
+    !trade?.closed &&
+    trade?.status !== "closed" &&
+    trade?.pnl_usd == null &&
+    trade?.pnl == null;
 
   let borderColor = "border-l-gray-500";
-  let bgColor = "bg-white/[0.03]";
-  let badgeColor = "bg-gray-500/20 text-gray-300";
-  let badgeText = side ? side.toUpperCase() : "UNKNOWN";
+  let bgColor     = "bg-white/[0.03]";
+  let badgeColor  = "bg-gray-500/20 text-gray-300";
+  let badgeText   = side ? side.toUpperCase() : "UNKNOWN";
 
   if (isOpen) {
     borderColor = "border-l-blue-500";
-    bgColor = "bg-blue-500/5";
-    badgeColor = "bg-blue-500/20 text-blue-300";
-    badgeText = "OPEN";
+    bgColor     = "bg-blue-500/5";
+    badgeColor  = "bg-blue-500/20 text-blue-300";
+    badgeText   = "OPEN";
   } else if (isClose) {
     borderColor = "border-l-purple-500";
-    bgColor = "bg-purple-500/5";
-    badgeColor = "bg-purple-500/20 text-purple-300";
-    badgeText = "CLOSED";
+    bgColor     = "bg-purple-500/5";
+    badgeColor  = "bg-purple-500/20 text-purple-300";
+    badgeText   = "CLOSED";
   } else if (isBuy) {
     borderColor = "border-l-green-500";
-    bgColor = "bg-green-500/5";
-    badgeColor = "bg-green-500/20 text-green-300";
-    badgeText = "BUY";
+    bgColor     = "bg-green-500/5";
+    badgeColor  = "bg-green-500/20 text-green-300";
+    badgeText   = "BUY";
   } else if (isSell) {
     borderColor = "border-l-red-500";
-    bgColor = "bg-red-500/5";
-    badgeColor = "bg-red-500/20 text-red-300";
-    badgeText = "SELL";
+    bgColor     = "bg-red-500/5";
+    badgeColor  = "bg-red-500/20 text-red-300";
+    badgeText   = "SELL";
   }
 
   return (
-    <div className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor}`}>
+    <div
+      className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl
+        text-sm border-l-4 ${borderColor} ${bgColor}`}
+    >
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <span className="text-base shrink-0">📊</span>
         <div className="min-w-0">
@@ -280,7 +410,8 @@ function TradeRow({ trade }) {
             <span className="text-[10px] text-white/35">{bot}</span>
           </div>
           <div className="text-[10px] text-white/35">
-            {timeAgo(ts)} • {formatCurrency(price)} • {qty > 0 ? `${qty.toFixed(4)} units` : "—"}
+            {timeAgo(ts)} • {formatCurrency(price)} •{" "}
+            {qty > 0 ? `${qty.toFixed(4)} units` : "—"}
           </div>
         </div>
       </div>
@@ -289,7 +420,9 @@ function TradeRow({ trade }) {
         {isOpen ? (
           <div className="font-bold text-sm text-blue-400">Open</div>
         ) : trade?.pnl_usd != null || trade?.pnl != null ? (
-          <div className={`font-bold text-sm ${pnlUsd >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+          <div
+            className={`font-bold text-sm ${pnlUsd >= 0 ? "text-emerald-400" : "text-red-400"}`}
+          >
             {pnlUsd >= 0 ? "+" : ""}
             {pnlUsd.toFixed(2)} USD
           </div>
@@ -301,11 +434,15 @@ function TradeRow({ trade }) {
   );
 }
 
+/* =====================================================
+   DISCOVERY CARD
+===================================================== */
+
 function DiscoveryCard({ discovery }) {
   const score = safeNumber(discovery?.ai_score ?? discovery?.score, 0);
   const chain = discovery?.chain || "ethereum";
-  const age = discovery?.age ?? discovery?.age_blocks ?? 0;
-  const pair = discovery?.pair || discovery?.address || discovery?.token || "New token";
+  const age   = discovery?.age ?? discovery?.age_blocks ?? 0;
+  const pair  = discovery?.pair || discovery?.address || discovery?.token || "New token";
 
   let scoreColor = "text-orange-400";
   if (score >= 0.7) scoreColor = "text-green-400";
@@ -339,16 +476,16 @@ function DiscoveryCard({ discovery }) {
 }
 
 /* =====================================================
-   HOOK
+   DATA HOOK
 ===================================================== */
 
 function useLiveData() {
   const [data, setData] = useState(DEFAULT_STATE);
 
-  const timerRef = useRef(null);
-  const abortRef = useRef(null);
-  const mountedRef = useRef(true);
-  const backoffRef = useRef(30000);
+  const timerRef    = useRef(null);
+  const abortRef    = useRef(null);
+  const mountedRef  = useRef(true);
+  const backoffRef  = useRef(30000);
   const lastGoodRef = useRef(DEFAULT_STATE);
 
   useEffect(() => {
@@ -378,56 +515,52 @@ function useLiveData() {
 
         const response = await axios.get(LIVE_STATS_URL, {
           timeout: 10000,
-          signal: abortRef.current.signal,
-          headers: {
-            "Cache-Control": "no-cache",
-          },
+          signal:  abortRef.current.signal,
+          headers: { "Cache-Control": "no-cache" },
         });
 
         if (!mountedRef.current) return;
 
         const normalized = mergeLiveStatsPayload(response.data);
-        const now = new Date();
+        const now        = new Date();
 
         backoffRef.current = 30000;
 
         const nextState = {
           ...lastGoodRef.current,
           ...normalized,
-          loading: false,
-          error: null,
-          lastUpdate: now,
-          lastSuccessAt: now,
+          loading:          false,
+          error:            null,
+          lastUpdate:       now,
+          lastSuccessAt:    now,
           rateLimitedUntil: null,
         };
 
         lastGoodRef.current = nextState;
         setData(nextState);
-
         scheduleNext(backoffRef.current);
       } catch (err) {
-        if (!mountedRef.current) return;
-        if (axios.isCancel(err)) return;
+        if (!mountedRef.current)     return;
+        if (axios.isCancel(err))     return;
 
-        const status = err?.response?.status;
-        const retryAfterHeader = err?.response?.headers?.["retry-after"];
-        const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : null;
+        const status             = err?.response?.status;
+        const retryAfterHeader   = err?.response?.headers?.["retry-after"];
+        const retryAfterSeconds  = retryAfterHeader ? Number(retryAfterHeader) : null;
 
         if (status === 429) {
-          const nextDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-            ? retryAfterSeconds * 1000
-            : Math.min(backoffRef.current * 2, 120000);
+          const nextDelay =
+            Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+              ? retryAfterSeconds * 1000
+              : Math.min(backoffRef.current * 2, 120000);
 
           backoffRef.current = nextDelay;
 
-          const until = new Date(Date.now() + nextDelay);
-
           setData((prev) => ({
             ...lastGoodRef.current,
-            loading: false,
-            error: `Rate limited. Retrying in ${Math.ceil(nextDelay / 1000)}s...`,
-            rateLimitedUntil: until,
-            lastUpdate: prev.lastUpdate || lastGoodRef.current.lastUpdate,
+            loading:          false,
+            error:            `Rate limited. Retrying in ${Math.ceil(nextDelay / 1000)}s...`,
+            rateLimitedUntil: new Date(Date.now() + nextDelay),
+            lastUpdate:       prev.lastUpdate || lastGoodRef.current.lastUpdate,
           }));
 
           scheduleNext(nextDelay);
@@ -436,8 +569,8 @@ function useLiveData() {
 
         setData((prev) => ({
           ...lastGoodRef.current,
-          loading: false,
-          error: "Live data unavailable",
+          loading:    false,
+          error:      "Live data unavailable",
           lastUpdate: prev.lastUpdate || lastGoodRef.current.lastUpdate,
         }));
 
@@ -452,7 +585,7 @@ function useLiveData() {
       if (!document.hidden) {
         clearPending();
         backoffRef.current = 30000;
-        timerRef.current = setTimeout(fetchLiveStats, 500);
+        timerRef.current   = setTimeout(fetchLiveStats, 500);
       }
     };
 
@@ -469,13 +602,13 @@ function useLiveData() {
 }
 
 /* =====================================================
-   MAIN
+   MAIN COMPONENT
 ===================================================== */
 
 export default function PublicDashboard() {
-  const data = useLiveData();
+  const data       = useLiveData();
   const [activeTab, setActiveTab] = useState("all");
-  const [clock, setClock] = useState(new Date());
+  const [clock, setClock]         = useState(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 1000);
@@ -484,12 +617,18 @@ export default function PublicDashboard() {
 
   const hasConnection = !!(
     data.futures.health ||
-    data.stocks.health ||
-    data.sniper.health ||
-    data.okx.health ||
-    data.dex.health
+    data.stocks.health  ||
+    data.sniper.health  ||
+    data.okx.health
   );
 
+  const isStale = data.lastSuccessAt
+    ? Math.floor((Date.now() - new Date(data.lastSuccessAt).getTime()) / 1000) > 90
+    : false;
+
+  /* --------------------------------------------------
+     All trades (deduped + sorted)
+  -------------------------------------------------- */
   const allTrades = useMemo(() => {
     const merged = [
       ...normalizeArray(data.recent_trades),
@@ -499,18 +638,18 @@ export default function PublicDashboard() {
       ...normalizeArray(data.dex.trades),
     ];
 
+    const seen   = new Set();
     const unique = [];
-    const seen = new Set();
 
     for (const trade of merged) {
       const key = [
-        trade?.id || "",
-        trade?.symbol || "",
-        trade?.side || "",
+        trade?.id              || "",
+        trade?.symbol          || "",
+        trade?.side            || "",
         getTradeTimestamp(trade) || "",
-        trade?.price || "",
-        getTradeQty(trade) || "",
-        getTradeBot(trade) || "",
+        trade?.price           || "",
+        getTradeQty(trade)     || "",
+        getTradeBot(trade)     || "",
       ].join("|");
 
       if (!seen.has(key)) {
@@ -521,99 +660,66 @@ export default function PublicDashboard() {
 
     return unique
       .sort((a, b) => {
-        const timeA = new Date(getTradeTimestamp(a) || 0).getTime();
-        const timeB = new Date(getTradeTimestamp(b) || 0).getTime();
-        return timeB - timeA;
+        const tA = new Date(getTradeTimestamp(a) || 0).getTime();
+        const tB = new Date(getTradeTimestamp(b) || 0).getTime();
+        return tB - tA;
       })
       .slice(0, 50);
   }, [data]);
 
+  /* --------------------------------------------------
+     Tab counts + filtering
+  -------------------------------------------------- */
+  const isOpenTrade   = (t) =>
+    !t?.pnl && t?.pnl_usd == null && t?.status !== "closed" && getTradeSide(t) !== "close";
+  const isClosedTrade = (t) =>
+    t?.pnl || t?.pnl_usd != null || t?.status === "closed" || getTradeSide(t) === "close";
+  const isDexTrade    = (t) =>
+    String(getTradeBot(t)).toLowerCase().includes("dex");
+  const isCexTrade    = (t) => {
+    const bot = String(getTradeBot(t)).toLowerCase();
+    return bot.includes("okx") || bot.includes("stock") || bot.includes("futures");
+  };
+
   const filteredTrades = useMemo(() => {
-    if (activeTab === "all") return allTrades;
-
-    if (activeTab === "open") {
-      return allTrades.filter(
-        (t) => !t?.pnl && t?.pnl_usd == null && t?.status !== "closed" && getTradeSide(t) !== "close"
-      );
-    }
-
-    if (activeTab === "closed") {
-      return allTrades.filter(
-        (t) => t?.pnl || t?.pnl_usd != null || t?.status === "closed" || getTradeSide(t) === "close"
-      );
-    }
-
-    if (activeTab === "dex") {
-      return allTrades.filter((t) => String(getTradeBot(t)).toLowerCase().includes("dex"));
-    }
-
-    if (activeTab === "cex") {
-      return allTrades.filter((t) => {
-        const bot = String(getTradeBot(t)).toLowerCase();
-        return bot.includes("okx") || bot.includes("stock") || bot.includes("futures");
-      });
-    }
-
+    if (activeTab === "open")   return allTrades.filter(isOpenTrade);
+    if (activeTab === "closed") return allTrades.filter(isClosedTrade);
+    if (activeTab === "dex")    return allTrades.filter(isDexTrade);
+    if (activeTab === "cex")    return allTrades.filter(isCexTrade);
     return allTrades;
   }, [activeTab, allTrades]);
 
   const tabs = [
-    { id: "all", label: "All", icon: "🌐", count: allTrades.length },
-    {
-      id: "open",
-      label: "Open",
-      icon: "🟢",
-      count: allTrades.filter(
-        (t) => !t?.pnl && t?.pnl_usd == null && t?.status !== "closed" && getTradeSide(t) !== "close"
-      ).length,
-    },
-    {
-      id: "closed",
-      label: "Closed",
-      icon: "✅",
-      count: allTrades.filter(
-        (t) => t?.pnl || t?.pnl_usd != null || t?.status === "closed" || getTradeSide(t) === "close"
-      ).length,
-    },
-    {
-      id: "dex",
-      label: "DEX",
-      icon: "🦄",
-      count: allTrades.filter((t) => String(getTradeBot(t)).toLowerCase().includes("dex")).length,
-    },
-    {
-      id: "cex",
-      label: "CEX",
-      icon: "🏦",
-      count: allTrades.filter((t) => {
-        const bot = String(getTradeBot(t)).toLowerCase();
-        return bot.includes("okx") || bot.includes("stock") || bot.includes("futures");
-      }).length,
-    },
+    { id: "all",    label: "All",    icon: "🌐", count: allTrades.length                     },
+    { id: "open",   label: "Open",   icon: "🟢", count: allTrades.filter(isOpenTrade).length  },
+    { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(isClosedTrade).length },
+    { id: "dex",    label: "DEX",    icon: "🦄", count: allTrades.filter(isDexTrade).length    },
+    { id: "cex",    label: "CEX",    icon: "🏦", count: allTrades.filter(isCexTrade).length    },
   ];
 
+  /* --------------------------------------------------
+     Aggregates
+  -------------------------------------------------- */
   const activeBots = [
     data.futures.health,
     data.stocks.health,
     data.sniper.health,
     data.okx.health,
-    data.dex.health,
   ].filter(Boolean).length;
 
-  const totalPnL = allTrades.reduce((sum, trade) => sum + safeNumber(getTradePnlUsd(trade), 0), 0);
+  const totalPnL = allTrades.reduce(
+    (sum, t) => sum + safeNumber(getTradePnlUsd(t), 0),
+    0
+  );
 
   const openPositionsCount =
     normalizeArray(data.futures.positions).length +
-    normalizeArray(data.stocks.positions).length +
-    normalizeArray(data.okx.positions).length +
-    normalizeArray(data.dex.positions).length;
+    normalizeArray(data.stocks.positions).length  +
+    normalizeArray(data.okx.positions).length;
 
-  const staleSeconds = data.lastSuccessAt
-    ? Math.floor((Date.now() - new Date(data.lastSuccessAt).getTime()) / 1000)
-    : null;
-
-  const isStale = staleSeconds != null && staleSeconds > 90;
-
+  /* --------------------------------------------------
+     Loading splash
+  -------------------------------------------------- */
   if (data.loading && !data.lastSuccessAt) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white flex items-center justify-center">
@@ -625,11 +731,17 @@ export default function PublicDashboard() {
     );
   }
 
+  /* --------------------------------------------------
+     RENDER
+  -------------------------------------------------- */
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
+
+      {/* ── Header ── */}
       <header className="border-b border-white/10 bg-black/20 backdrop-blur sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
+
             <div className="flex items-center gap-3">
               <Link
                 to="/"
@@ -670,7 +782,7 @@ export default function PublicDashboard() {
               </div>
 
               <div className="text-xs text-white/40">
-                Last good update: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
+                Last good: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
               </div>
 
               <div className="text-xs text-white/40">{clock.toLocaleTimeString()}</div>
@@ -686,31 +798,57 @@ export default function PublicDashboard() {
         </div>
       </header>
 
+      {/* ── Main ── */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+
         {data.error ? (
           <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
             <p className="text-amber-300 text-sm">⚠️ {data.error}</p>
           </div>
         ) : null}
 
+        {/* Hero */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3">Live Trading Dashboard 🚀</h1>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3">
+            Live Trading Dashboard 🚀
+          </h1>
           <p className="text-white/60 max-w-2xl mx-auto">
             Watch our trading stack scan, discover, and execute in real time.
           </p>
         </div>
 
+        {/* ── Stat Cards ── */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <StatCard title="Active Bots" value={activeBots} icon="🤖" color="indigo" subtext="Online" />
-          <StatCard title="Recent Trades" value={allTrades.length} icon="📊" color="purple" subtext="Visible feed" />
+          <StatCard
+            title="Active Bots"
+            value={activeBots}
+            icon="🤖"
+            color="indigo"
+            subtext="Online"
+          />
+          <StatCard
+            title="Recent Trades"
+            value={allTrades.length}
+            icon="📊"
+            color="purple"
+            subtext="Visible feed"
+          />
           <StatCard
             title="Total P&L"
-            value={`${totalPnL >= 0 ? "+" : "-"}$${Math.abs(totalPnL).toFixed(2)}`}
+            value={`${totalPnL >= 0 ? "+" : "-"}
+$$
+{Math.abs(totalPnL).toFixed(2)}`}
             icon="💰"
             color={totalPnL >= 0 ? "emerald" : "red"}
             subtext={totalPnL >= 0 ? "Profit" : "Loss"}
           />
-          <StatCard title="Open Positions" value={openPositionsCount} icon="📌" color="cyan" subtext="All bots" />
+          <StatCard
+            title="Open Positions"
+            value={openPositionsCount}
+            icon="📌"
+            color="cyan"
+            subtext="All bots"
+          />
           <StatCard
             title="Discoveries"
             value={normalizeArray(data.sniper.discoveries).length}
@@ -720,7 +858,8 @@ export default function PublicDashboard() {
           />
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+        {/* ── Bot Cards (4 only — no DEX card) ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <BotCard
             name="Futures Bot"
             icon="📊"
@@ -729,7 +868,10 @@ export default function PublicDashboard() {
             lines={[
               `Pairs: ${data.futures.health?.total_symbols || 0}`,
               `Positions: ${normalizeArray(data.futures.positions).length}`,
-              `Trades: ${normalizeArray(data.futures.trades).length || normalizeArray(data.recent_trades).length}`,
+              `Trades: ${
+                normalizeArray(data.futures.trades).length ||
+                normalizeArray(data.recent_trades).length
+              }`,
             ]}
           />
 
@@ -745,16 +887,10 @@ export default function PublicDashboard() {
             ]}
           />
 
-          <BotCard
-            name="Sniper Bot"
-            icon="🦄"
+          {/* Sniper — heartbeat card */}
+          <SniperCard
             health={data.sniper.health}
-            accent="purple"
-            lines={[
-              `Discoveries: ${normalizeArray(data.sniper.discoveries).length}`,
-              `Dry Run: ${data.sniper.health?.dry_run ? "Yes" : "No"}`,
-              `Chains: ${Array.isArray(data.sniper.health?.chains) ? data.sniper.health.chains.join(", ") : "—"}`,
-            ]}
+            discoveries={data.sniper.discoveries}
           />
 
           <BotCard
@@ -768,21 +904,12 @@ export default function PublicDashboard() {
               `Status: ${data.okx.health ? "Ready" : "Waiting"}`,
             ]}
           />
-
-          <BotCard
-            name="DEX Bot"
-            icon="⚡"
-            health={data.dex.health || data.sniper.health}
-            accent="cyan"
-            lines={[
-              `Positions: ${normalizeArray(data.dex.positions).length}`,
-              `Trades: ${normalizeArray(data.dex.trades).length}`,
-              `Discoveries: ${normalizeArray(data.sniper.discoveries).length}`,
-            ]}
-          />
         </div>
 
+        {/* ── Bottom split: Feed + Sidebar ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* Trade feed */}
           <div className="lg:col-span-2">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
@@ -791,6 +918,7 @@ export default function PublicDashboard() {
                   Live Trade Feed
                 </h2>
 
+                {/* Tab bar */}
                 <div className="flex gap-1 bg-black/30 rounded-lg p-1 flex-wrap">
                   {tabs.map((tab) => (
                     <button
@@ -814,20 +942,29 @@ export default function PublicDashboard() {
                 </div>
               </div>
 
+              {/* Trade list */}
               <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
                 {filteredTrades.length > 0 ? (
-                  filteredTrades.map((trade, i) => <TradeRow key={`${getTradeTimestamp(trade)}-${trade?.symbol}-${i}`} trade={trade} />)
+                  filteredTrades.map((trade, i) => (
+                    <TradeRow
+                      key={`${getTradeTimestamp(trade)}-${trade?.symbol}-${i}`}
+                      trade={trade}
+                    />
+                  ))
                 ) : (
                   <div className="text-center py-12 text-white/30">
                     <div className="text-4xl mb-3">📭</div>
-                    <p className="text-sm">No trades match filter</p>
+                    <p className="text-sm">No trades match this filter</p>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
+          {/* Sidebar */}
           <div className="space-y-4">
+
+            {/* DEX Discoveries */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
                 <span>🦄</span>
@@ -843,7 +980,12 @@ export default function PublicDashboard() {
                 {normalizeArray(data.sniper.discoveries).length > 0 ? (
                   normalizeArray(data.sniper.discoveries)
                     .slice(0, 10)
-                    .map((d, i) => <DiscoveryCard key={`${d?.pair || d?.address || i}`} discovery={d} />)
+                    .map((d, i) => (
+                      <DiscoveryCard
+                        key={d?.pair || d?.address || i}
+                        discovery={d}
+                      />
+                    ))
                 ) : (
                   <div className="text-center py-8 text-white/30 text-sm">
                     <div className="text-2xl mb-2">🔍</div>
@@ -853,6 +995,7 @@ export default function PublicDashboard() {
               </div>
             </div>
 
+            {/* System snapshot */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
                 <span>📡</span>
@@ -885,6 +1028,7 @@ export default function PublicDashboard() {
               </div>
             </div>
 
+            {/* CTA */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
               <Link
                 to="/signup"
@@ -897,17 +1041,14 @@ export default function PublicDashboard() {
           </div>
         </div>
 
+        {/* Footer */}
         <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
           <p>
             Adaptive polling with rate-limit backoff.
             <br />
-            <Link to="/" className="text-indigo-400 hover:underline">
-              Home
-            </Link>{" "}
-            •{" "}
-            <Link to="/dashboard" className="text-indigo-400 hover:underline">
-              Member Dashboard
-            </Link>
+            <Link to="/"          className="text-indigo-400 hover:underline">Home</Link>
+            {" • "}
+            <Link to="/dashboard" className="text-indigo-400 hover:underline">Member Dashboard</Link>
           </p>
         </div>
       </main>
