@@ -3,21 +3,133 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 
-// Background card images
 import tradeLoss from "../assets/images/cards/trade_loss_template2.PNG";
 import tradeWin from "../assets/images/cards/trade_win_template2.PNG";
 
 /* ============================================================
-   API BASE - Use HTTPS only
+   CONFIG
 ============================================================ */
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
-// Use the combined live stats endpoint (only 1 request instead of 6)
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
+  "https://api.imali-defi.com";
+
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
+
+/* ============================================================
+   HELPERS (shared)
+============================================================ */
+
+function safeNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Given the raw live-stats payload, count open positions across all bots.
+ * Each bot stores positions as an array OR as a plain number.
+ */
+function countPositions(data = {}) {
+  const asCount = (val) => {
+    if (Array.isArray(val)) return val.length;
+    return safeNumber(val, 0);
+  };
+
+  return (
+    asCount(data?.futures?.positions) +
+    asCount(data?.stocks?.positions)  +
+    asCount(data?.okx?.positions)     +
+    asCount(data?.dex?.positions)
+  );
+}
+
+/**
+ * Determine which bots are online from the payload.
+ * A bot is "online" if its key exists and is a non-null object.
+ */
+function getOnlineBots(data = {}) {
+  const candidates = [
+    { key: "futures", label: "Futures" },
+    { key: "stocks",  label: "Stocks"  },
+    { key: "sniper",  label: "Sniper"  },
+    { key: "okx",     label: "OKX"     },
+    { key: "dex",     label: "DEX"     },
+  ];
+
+  return candidates
+    .filter(({ key }) => {
+      const v = data[key];
+      return v !== null && v !== undefined && typeof v === "object";
+    })
+    .map(({ label }) => label);
+}
+
+/**
+ * Collect the most recent trades from all available sources in the payload.
+ */
+function collectRecentTrades(data = {}, limit = 5) {
+  const combined = [
+    ...normalizeArray(data?.recent_trades),
+    ...normalizeArray(data?.futures?.trades),
+    ...normalizeArray(data?.stocks?.trades),
+    ...normalizeArray(data?.okx?.trades),
+    ...normalizeArray(data?.dex?.trades),
+  ];
+
+  // deduplicate by id or fallback composite key
+  const seen = new Set();
+  const unique = [];
+
+  for (const t of combined) {
+    const key = t?.id || [t?.symbol, t?.side, t?.created_at || t?.timestamp, t?.price].join("|");
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(t);
+    }
+  }
+
+  // sort newest first
+  return unique
+    .sort((a, b) => {
+      const tA = new Date(a?.created_at || a?.timestamp || 0).getTime();
+      const tB = new Date(b?.created_at || b?.timestamp || 0).getTime();
+      return tB - tA;
+    })
+    .slice(0, limit);
+}
+
+/**
+ * Collect sniper / DEX discoveries from the payload.
+ */
+function collectDiscoveries(data = {}, limit = 3) {
+  const combined = [
+    ...normalizeArray(data?.discoveries),
+    ...normalizeArray(data?.sniper?.discoveries),
+    ...normalizeArray(data?.dex?.discoveries),
+  ];
+
+  const seen  = new Set();
+  const unique = [];
+
+  for (const d of combined) {
+    const key = d?.pair || d?.address || d?.token || JSON.stringify(d);
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(d);
+    }
+  }
+
+  return unique.slice(0, limit);
+}
 
 /* ============================================================
    HOOKS
 ============================================================ */
+
 function usePromoStatus() {
   const [state, setState] = useState({
     limit: 50,
@@ -34,59 +146,61 @@ function usePromoStatus() {
     const load = async () => {
       try {
         const res = await axios.get(`${API_BASE}/api/promo/status`, { timeout: 6000 });
-        const limit = Number(res.data?.limit || 50);
-        const claimed = Number(res.data?.claimed || 0);
+        const limit   = safeNumber(res.data?.limit,   50);
+        const claimed = safeNumber(res.data?.claimed,  0);
 
         if (!mounted) return;
 
-        setState({
+        const next = {
           limit,
           claimed,
           spotsLeft: Math.max(0, limit - claimed),
-          active: claimed < limit,
-          loading: false,
-          error: null,
-        });
+          active:    claimed < limit,
+          loading:   false,
+          error:     null,
+        };
 
+        setState(next);
         localStorage.setItem(
           "imali_promo_cache",
           JSON.stringify({ limit, claimed, ts: Date.now() })
         );
-      } catch (err) {
+      } catch {
         const cached = JSON.parse(localStorage.getItem("imali_promo_cache") || "{}");
 
-        if (cached.limit != null && mounted) {
-          setState({
-            limit: cached.limit,
-            claimed: cached.claimed,
-            spotsLeft: Math.max(0, cached.limit - cached.claimed),
-            active: cached.claimed < cached.limit,
-            loading: false,
-            error: "Using cached data",
-          });
-        } else if (mounted) {
-          setState(prev => ({ ...prev, loading: false, error: "Promo unavailable" }));
+        if (mounted) {
+          if (cached.limit != null) {
+            setState({
+              limit:     cached.limit,
+              claimed:   cached.claimed,
+              spotsLeft: Math.max(0, cached.limit - cached.claimed),
+              active:    cached.claimed < cached.limit,
+              loading:   false,
+              error:     "Using cached data",
+            });
+          } else {
+            setState(prev => ({ ...prev, loading: false, error: "Promo unavailable" }));
+          }
         }
       }
     };
 
     load();
-    const id = setInterval(load, 60000);
-    return () => {
-      mounted = false;
-      clearInterval(id);
-    };
+    const id = setInterval(load, 60_000);
+    return () => { mounted = false; clearInterval(id); };
   }, []);
 
   return state;
 }
 
+/* ---------------------------------------- */
+
 function usePromoClaim() {
   const [state, setState] = useState({
     loading: false,
     success: false,
-    error: null,
-    data: null,
+    error:   null,
+    data:    null,
   });
 
   const claim = async (email) => {
@@ -108,12 +222,12 @@ function usePromoClaim() {
     }
   };
 
-  const reset = () => {
-    setState({ loading: false, success: false, error: null, data: null });
-  };
+  const reset = () => setState({ loading: false, success: false, error: null, data: null });
 
   return { state, claim, reset };
 }
+
+/* ---------------------------------------- */
 
 function useAnnouncements() {
   const [announcements, setAnnouncements] = useState([]);
@@ -122,44 +236,41 @@ function useAnnouncements() {
   useEffect(() => {
     let mounted = true;
 
-    const fetchAnnouncements = async () => {
+    const fetch_ = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/api/announcements`, { timeout: 5000 });
-        if (!mounted) return;
-        
+        const res  = await axios.get(`${API_BASE}/api/announcements`, { timeout: 5000 });
         const data = res.data?.announcements || res.data || [];
-        setAnnouncements(Array.isArray(data) ? data : []);
-        setLoading(false);
-      } catch (err) {
-        if (!mounted) return;
-        setAnnouncements([]);
-        setLoading(false);
+        if (mounted) {
+          setAnnouncements(Array.isArray(data) ? data : []);
+          setLoading(false);
+        }
+      } catch {
+        if (mounted) { setAnnouncements([]); setLoading(false); }
       }
     };
 
-    fetchAnnouncements();
-    const interval = setInterval(fetchAnnouncements, 60000); // Increased to 60 seconds
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
+    fetch_();
+    const id = setInterval(fetch_, 60_000);
+    return () => { mounted = false; clearInterval(id); };
   }, []);
 
   return { announcements, loading };
 }
 
+/* ---------------------------------------- */
+
 function useLiveActivity() {
   const [activity, setActivity] = useState({
-    trades: [],
+    trades:      [],
     discoveries: [],
     stats: {
       activePositions: 0,
-      activeBots: 0,
-      online: false,
-      bots: []
+      activeBots:      0,
+      online:          false,
+      bots:            [],
     },
     loading: true,
-    error: null
+    error:   null,
   });
 
   useEffect(() => {
@@ -167,63 +278,43 @@ function useLiveActivity() {
 
     const fetchActivity = async () => {
       try {
-        console.log("Fetching live stats from combined endpoint...");
-        
-        // Make a single request to the combined endpoint
-        const response = await axios.get(LIVE_STATS_URL, { timeout: 5000 });
-
+        const response = await axios.get(LIVE_STATS_URL, { timeout: 8000 });
         if (!mounted) return;
 
-        const data = response.data;
-        
-        // Process the data
-        const onlineBots = [
-          data.futures ? 'Futures' : null,
-          data.stocks ? 'Stocks' : null,
-          data.sniper ? 'Sniper' : null,
-          data.okx ? 'OKX' : null
-        ].filter(Boolean);
+        const data = response.data || {};
 
-        // Get recent trades (first 3)
-        const recentTrades = (data.recent_trades || []).slice(0, 3).map(t => ({
-          ...t,
-          source: 'futures',
-          timestamp: t.created_at || t.timestamp
-        }));
-
-        // Get recent discoveries (first 2)
-        const recentDiscoveries = (data.discoveries || []).slice(0, 2);
+        // ── bot detection ──────────────────────────────────────────
+        const onlineBots      = getOnlineBots(data);
+        const activePositions = countPositions(data);
+        const recentTrades    = collectRecentTrades(data, 5);
+        const discoveries     = collectDiscoveries(data, 3);
 
         setActivity({
-          trades: recentTrades,
-          discoveries: recentDiscoveries,
+          trades:      recentTrades,
+          discoveries,
           stats: {
-            activePositions: data.futures?.positions || 0,
+            activePositions,
             activeBots: onlineBots.length,
-            online: onlineBots.length > 0,
-            bots: onlineBots
+            online:     onlineBots.length > 0,
+            bots:       onlineBots,
           },
           loading: false,
-          error: null
+          error:   null,
         });
-
       } catch (err) {
-        console.error("Fetch error:", err);
         if (!mounted) return;
-        setActivity(prev => ({ 
-          ...prev, 
-          loading: false, 
-          error: "Live data temporarily unavailable" 
+        // keep stale data, just surface the error message
+        setActivity(prev => ({
+          ...prev,
+          loading: false,
+          error:   "Live data temporarily unavailable",
         }));
       }
     };
 
     fetchActivity();
-    const interval = setInterval(fetchActivity, 30000); // Increased to 30 seconds
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
+    const id = setInterval(fetchActivity, 30_000);
+    return () => { mounted = false; clearInterval(id); };
   }, []);
 
   return activity;
@@ -232,17 +323,21 @@ function useLiveActivity() {
 /* ============================================================
    SMALL COMPONENTS
 ============================================================ */
+
 function Pill({ children, color = "indigo" }) {
-  const colorClasses = {
+  const classes = {
     emerald: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-    indigo: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
-    purple: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-    amber: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-    red: "bg-red-500/20 text-red-300 border-red-500/30",
+    indigo:  "bg-indigo-500/20  text-indigo-300  border-indigo-500/30",
+    purple:  "bg-purple-500/20  text-purple-300  border-purple-500/30",
+    amber:   "bg-amber-500/20   text-amber-300   border-amber-500/30",
+    red:     "bg-red-500/20     text-red-300     border-red-500/30",
   };
 
   return (
-    <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold border ${colorClasses[color] || colorClasses.indigo}`}>
+    <span
+      className={`inline-block px-2.5 py-1 rounded-full text-[11px] sm:text-xs
+        font-bold border ${classes[color] ?? classes.indigo}`}
+    >
       {children}
     </span>
   );
@@ -266,9 +361,7 @@ function StepCard({ number, emoji, title, description }) {
         {number}
       </div>
       <div className="min-w-0">
-        <h3 className="font-bold text-base sm:text-lg">
-          {emoji} {title}
-        </h3>
+        <h3 className="font-bold text-base sm:text-lg">{emoji} {title}</h3>
         <p className="text-white/60 text-sm mt-1 leading-relaxed">{description}</p>
       </div>
     </div>
@@ -287,47 +380,45 @@ function FeatureRow({ icon, label }) {
 /* ============================================================
    ANNOUNCEMENT BANNER
 ============================================================ */
+
 function AnnouncementBanner({ announcements }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [idx, setIdx]         = useState(0);
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
     if (announcements.length <= 1) return;
 
-    const interval = setInterval(() => {
+    const id = setInterval(() => {
       setVisible(false);
       setTimeout(() => {
-        setCurrentIndex((prev) => (prev + 1) % announcements.length);
+        setIdx(prev => (prev + 1) % announcements.length);
         setVisible(true);
       }, 300);
     }, 5000);
 
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, [announcements.length]);
 
-  if (!announcements || announcements.length === 0) return null;
+  if (!announcements?.length) return null;
 
-  const announcement = announcements[currentIndex];
-  const bgColor = announcement.priority === 'high' ? 'red' : 
-                  announcement.priority === 'medium' ? 'amber' : 'indigo';
-
-  const bgColorClass = {
-    red: 'bg-red-600/20 border-red-500/30',
-    amber: 'bg-amber-600/20 border-amber-500/30',
-    indigo: 'bg-indigo-600/20 border-indigo-500/30',
-  }[bgColor];
+  const a  = announcements[idx];
+  const bg = {
+    high:   "bg-red-600/20 border-red-500/30",
+    medium: "bg-amber-600/20 border-amber-500/30",
+    low:    "bg-indigo-600/20 border-indigo-500/30",
+  }[a?.priority ?? "low"] ?? "bg-indigo-600/20 border-indigo-500/30";
 
   return (
-    <div className={`w-full mb-6 rounded-xl border p-3 sm:p-4 ${bgColorClass}`}>
+    <div className={`w-full mb-6 rounded-xl border p-3 sm:p-4 ${bg}`}>
       <div className="flex items-start gap-3">
-        <span className="text-xl sm:text-2xl flex-shrink-0">{announcement.emoji || '📢'}</span>
+        <span className="text-xl sm:text-2xl flex-shrink-0">{a?.emoji || "📢"}</span>
         <div className="flex-1 min-w-0">
-          <h4 className="font-bold text-sm sm:text-base mb-1">{announcement.title || 'Announcement'}</h4>
-          <p className="text-xs sm:text-sm text-white/80">{announcement.content || announcement.message}</p>
+          <h4 className="font-bold text-sm sm:text-base mb-1">{a?.title || "Announcement"}</h4>
+          <p className="text-xs sm:text-sm text-white/80">{a?.content || a?.message}</p>
         </div>
         {announcements.length > 1 && (
           <span className="text-xs text-white/40 flex-shrink-0">
-            {currentIndex + 1}/{announcements.length}
+            {idx + 1}/{announcements.length}
           </span>
         )}
       </div>
@@ -338,22 +429,18 @@ function AnnouncementBanner({ announcements }) {
 /* ============================================================
    LIVE ACTIVITY WIDGET
 ============================================================ */
+
 function LiveActivityWidget({ activity }) {
-  const formatTime = (timestamp) => {
-    if (!timestamp) return '';
+  const formatTime = (ts) => {
+    if (!ts) return "";
     try {
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffMins = Math.floor(diffMs / 60000);
-      
-      if (diffMins < 1) return 'just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffMs   = Date.now() - new Date(ts).getTime();
+      const diffMins = Math.floor(diffMs / 60_000);
+      if (diffMins < 1)    return "just now";
+      if (diffMins < 60)   return `${diffMins}m ago`;
       if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
       return `${Math.floor(diffMins / 1440)}d ago`;
-    } catch {
-      return '';
-    }
+    } catch { return ""; }
   };
 
   if (activity.loading) {
@@ -367,52 +454,96 @@ function LiveActivityWidget({ activity }) {
     );
   }
 
+  const { trades, discoveries, stats } = activity;
+
   return (
     <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+      {/* header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-base flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${activity.stats.online ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
+          <span
+            className={`w-2 h-2 rounded-full ${
+              stats.online ? "bg-green-400 animate-pulse" : "bg-gray-500"
+            }`}
+          />
           Live Trading Activity
         </h3>
-        <Link to="/live" className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
+        <Link
+          to="/live"
+          className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+        >
           <span>👁️</span> Full Dashboard
         </Link>
       </div>
 
+      {/* counters */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div className="bg-black/30 rounded-lg p-2 text-center">
-          <div className="text-lg font-bold text-emerald-400">{activity.stats.activeBots}</div>
+          <div className="text-lg font-bold text-emerald-400">{stats.activeBots}</div>
           <div className="text-[10px] text-white/40">Active Bots</div>
         </div>
         <div className="bg-black/30 rounded-lg p-2 text-center">
-          <div className="text-lg font-bold text-indigo-400">{activity.stats.activePositions}</div>
+          <div className="text-lg font-bold text-indigo-400">{stats.activePositions}</div>
           <div className="text-[10px] text-white/40">Positions</div>
         </div>
       </div>
 
-      {activity.error ? (
-        <div className="text-center py-3 text-amber-400 text-xs">
-          ⚠️ {activity.error}
+      {/* online bot pills */}
+      {stats.bots.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {stats.bots.map((bot) => (
+            <span
+              key={bot}
+              className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+            >
+              ● {bot}
+            </span>
+          ))}
         </div>
+      )}
+
+      {activity.error ? (
+        <div className="text-center py-3 text-amber-400 text-xs">⚠️ {activity.error}</div>
       ) : (
-        <div className="space-y-2 max-h-[200px] overflow-y-auto">
-          {activity.trades.length > 0 ? (
-            activity.trades.map((trade, i) => (
-              <div key={i} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-black/30 text-xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span>📊</span>
-                  <span className="font-medium truncate">{trade.symbol}</span>
-                  <span className={`text-[10px] px-1 py-0.5 rounded ${
-                    trade.side === 'buy' || trade.side === 'long' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
-                  }`}>
-                    {(trade.side || 'buy').toUpperCase()}
-                  </span>
+        <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+          {/* trades */}
+          {trades.length > 0 ? (
+            trades.map((trade, i) => {
+              const side = String(trade?.side || "buy").toLowerCase();
+              const isBuy =
+                side === "buy" || side === "long";
+
+              return (
+                <div
+                  key={trade?.id || i}
+                  className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-black/30 text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span>📊</span>
+                    <span className="font-medium truncate">
+                      {trade?.symbol || "Unknown"}
+                    </span>
+                    <span
+                      className={`text-[10px] px-1 py-0.5 rounded ${
+                        isBuy
+                          ? "bg-green-500/20 text-green-300"
+                          : "bg-red-500/20 text-red-300"
+                      }`}
+                    >
+                      {side.toUpperCase()}
+                    </span>
+                    {trade?.bot && (
+                      <span className="text-[10px] text-white/30 hidden sm:inline truncate">
+                        {trade.bot}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-right text-white/50 shrink-0">
+                    {formatTime(trade?.created_at || trade?.timestamp)}
+                  </div>
                 </div>
-                <div className="text-right text-white/60">
-                  {formatTime(trade.created_at || trade.timestamp)}
-                </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="text-center py-3 text-white/30 text-xs">
               <div className="text-xl mb-1">📭</div>
@@ -420,17 +551,27 @@ function LiveActivityWidget({ activity }) {
             </div>
           )}
 
-          {activity.discoveries.length > 0 && (
+          {/* discoveries divider */}
+          {discoveries.length > 0 && (
             <>
               <div className="border-t border-white/10 my-2" />
-              {activity.discoveries.map((d, i) => (
-                <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-purple-500/5 text-xs">
+              {discoveries.map((d, i) => (
+                <div
+                  key={d?.pair || d?.address || i}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-purple-500/5 text-xs"
+                >
                   <span>🦄</span>
-                  <span className="text-white/60 truncate">New on {d.chain}</span>
-                  <span className={`ml-auto text-[10px] ${
-                    d.ai_score >= 0.7 ? 'text-green-400' : 'text-yellow-400'
-                  }`}>
-                    {d.ai_score?.toFixed(2)}
+                  <span className="text-white/60 truncate">
+                    New on {d?.chain || "unknown chain"}
+                  </span>
+                  <span
+                    className={`ml-auto text-[10px] shrink-0 ${
+                      safeNumber(d?.ai_score ?? d?.score, 0) >= 0.7
+                        ? "text-green-400"
+                        : "text-yellow-400"
+                    }`}
+                  >
+                    {safeNumber(d?.ai_score ?? d?.score, 0).toFixed(2)}
                   </span>
                 </div>
               ))}
@@ -445,6 +586,7 @@ function LiveActivityWidget({ activity }) {
 /* ============================================================
    LIVE TICKER
 ============================================================ */
+
 const TICKER_MESSAGES = [
   "🟢 Alex from NY just earned +\$47.20 on BTC",
   "🟢 Sarah started her first bot today!",
@@ -459,25 +601,29 @@ const TICKER_MESSAGES = [
 ];
 
 function LiveTicker() {
-  const [index, setIndex] = useState(0);
+  const [index, setIndex]     = useState(0);
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const id = setInterval(() => {
       setVisible(false);
       setTimeout(() => {
-        setIndex((i) => (i + 1) % TICKER_MESSAGES.length);
+        setIndex(i => (i + 1) % TICKER_MESSAGES.length);
         setVisible(true);
       }, 400);
     }, 4000);
 
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, []);
 
   return (
     <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 sm:px-4 py-2 inline-flex items-center gap-2 text-xs sm:text-sm max-w-full overflow-hidden">
       <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse flex-shrink-0" />
-      <span className={`transition-opacity duration-300 truncate ${visible ? 'opacity-100' : 'opacity-0'}`}>
+      <span
+        className={`transition-opacity duration-300 truncate ${
+          visible ? "opacity-100" : "opacity-0"
+        }`}
+      >
         {TICKER_MESSAGES[index]}
       </span>
     </div>
@@ -487,9 +633,10 @@ function LiveTicker() {
 /* ============================================================
    PROMO METER
 ============================================================ */
+
 function PromoMeter({ claimed, limit, spotsLeft, loading }) {
-  const pct = limit > 0 ? (claimed / limit) * 100 : 0;
-  const urgency = spotsLeft <= 10 ? "text-red-400" : spotsLeft <= 25 ? "text-yellow-400" : "text-emerald-400";
+  const pct      = limit > 0 ? (claimed / limit) * 100 : 0;
+  const urgency  = spotsLeft <= 10 ? "text-red-400" : spotsLeft <= 25 ? "text-yellow-400" : "text-emerald-400";
   const barColor = spotsLeft <= 10
     ? "bg-gradient-to-r from-red-500 to-orange-500"
     : "bg-gradient-to-r from-emerald-500 to-cyan-500";
@@ -498,18 +645,20 @@ function PromoMeter({ claimed, limit, spotsLeft, loading }) {
     <div className="space-y-2">
       <div className="flex justify-between text-xs sm:text-sm">
         <span className="text-white/60">
-          {loading ? "Loading..." : claimed + " of " + limit + " spots claimed"}
+          {loading ? "Loading..." : `${claimed} of ${limit} spots claimed`}
         </span>
         <span className={`font-bold ${urgency}`}>
-          {loading ? "…" : spotsLeft + " left!"}
+          {loading ? "…" : `${spotsLeft} left!`}
         </span>
       </div>
+
       <div className="h-3 bg-white/10 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
-          style={{ width: pct + "%" }}
+          style={{ width: `${pct}%` }}
         />
       </div>
+
       {spotsLeft <= 10 && spotsLeft > 0 && (
         <p className="text-xs text-red-400 animate-pulse font-medium">
           ⚡ Almost full — grab your spot before it's gone!
@@ -522,29 +671,30 @@ function PromoMeter({ claimed, limit, spotsLeft, loading }) {
 /* ============================================================
    HOME PAGE
 ============================================================ */
+
 export default function Home() {
   const navigate = useNavigate();
 
-  const promo = usePromoStatus();
-  const promoClaim = usePromoClaim();
+  const promo       = usePromoStatus();
+  const promoClaim  = usePromoClaim();
   const { announcements, loading: announcementsLoading } = useAnnouncements();
-  const activity = useLiveActivity();
-  
-  const [email, setEmail] = useState("");
+  const activity    = useLiveActivity();
+
+  const [email, setEmail]       = useState("");
   const [showForm, setShowForm] = useState(false);
 
   return (
     <div className="bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white overflow-x-hidden">
-      {/* Announcements Banner */}
+
+      {/* Announcements */}
       {!announcementsLoading && announcements.length > 0 && (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-4">
           <AnnouncementBanner announcements={announcements} />
         </div>
       )}
 
-      {/* Hero Section */}
+      {/* ── Hero ── */}
       <section className="relative overflow-hidden">
-        {/* Background card images */}
         <div className="absolute inset-0 opacity-[0.07] sm:opacity-10 pointer-events-none select-none">
           <img
             src={tradeLoss}
@@ -561,7 +711,6 @@ export default function Home() {
         </div>
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 md:pt-24 pb-12 sm:pb-16">
-          {/* Top Bar with Live Dashboard Link */}
           <div className="flex justify-between items-center mb-6">
             <LiveTicker />
             <Link
@@ -574,7 +723,6 @@ export default function Home() {
             </Link>
           </div>
 
-          {/* Main Headline */}
           <div className="text-center">
             <h1 className="font-extrabold leading-tight">
               <span className="block text-2xl sm:text-3xl md:text-4xl lg:text-5xl text-white/90">
@@ -602,59 +750,48 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Stats + Live Activity Grid */}
+      {/* ── Stats + Live Activity ── */}
       <section className="max-w-6xl mx-auto px-3 sm:px-4 -mt-2 sm:-mt-4 mb-10 sm:mb-12">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Stats Cards */}
+
+          {/* stat cards */}
           <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
               <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-mono text-emerald-400">
-                $3.28M
+                \$3.28M
               </div>
-              <div className="text-xs sm:text-sm text-white/50 mt-1">
-                Total Profits Earned
-              </div>
-              <div className="text-[11px] sm:text-xs text-emerald-400/60 mt-1">
-                📈 and growing
-              </div>
+              <div className="text-xs sm:text-sm text-white/50 mt-1">Total Profits Earned</div>
+              <div className="text-[11px] sm:text-xs text-emerald-400/60 mt-1">📈 and growing</div>
             </div>
+
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
               <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-mono text-indigo-400">
                 24,189
               </div>
-              <div className="text-xs sm:text-sm text-white/50 mt-1">
-                Happy Traders
-              </div>
-              <div className="text-[11px] sm:text-xs text-indigo-400/60 mt-1">
-                👥 join them today
-              </div>
+              <div className="text-xs sm:text-sm text-white/50 mt-1">Happy Traders</div>
+              <div className="text-[11px] sm:text-xs text-indigo-400/60 mt-1">👥 join them today</div>
             </div>
+
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
               <div className="text-2xl sm:text-3xl md:text-4xl font-bold font-mono text-purple-400">
                 78%
               </div>
-              <div className="text-xs sm:text-sm text-white/50 mt-1">
-                Average Win Rate
-              </div>
-              <div className="text-[11px] sm:text-xs text-purple-400/60 mt-1">
-                🎯 that's really good
-              </div>
+              <div className="text-xs sm:text-sm text-white/50 mt-1">Average Win Rate</div>
+              <div className="text-[11px] sm:text-xs text-purple-400/60 mt-1">🎯 that's really good</div>
             </div>
           </div>
 
-          {/* Live Activity Widget */}
+          {/* live widget */}
           <div className="lg:col-span-1">
             <LiveActivityWidget activity={activity} />
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
+      {/* ── How It Works ── */}
       <section className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <div className="text-center mb-8 sm:mb-12">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold">
-            How Does It Work? 🤔
-          </h2>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold">How Does It Work? 🤔</h2>
           <p className="text-white/60 mt-2 sm:mt-3 max-w-xl mx-auto text-sm sm:text-base px-2">
             It's as easy as 1-2-3. Seriously — even if you've never traded before.
           </p>
@@ -662,22 +799,19 @@ export default function Home() {
 
         <div className="space-y-6 sm:space-y-8 px-1 sm:px-0">
           <StepCard
-            number="1"
-            emoji="📝"
+            number="1" emoji="📝"
             title="Sign Up (takes 2 minutes)"
             description="Create your free account and pick a plan. No trading knowledge required — we handle everything."
           />
           <div className="ml-5 sm:ml-6 border-l-2 border-white/10 h-4 sm:h-6" />
           <StepCard
-            number="2"
-            emoji="🔗"
+            number="2" emoji="🔗"
             title="Connect Your Accounts"
             description="Link your OKX (crypto) or Alpaca (stocks) account. We'll walk you through every step with a simple guide."
           />
           <div className="ml-5 sm:ml-6 border-l-2 border-white/10 h-4 sm:h-6" />
           <StepCard
-            number="3"
-            emoji="🚀"
+            number="3" emoji="🚀"
             title="Press Start & Relax"
             description="Hit the big green button and our AI bot starts trading for you 24/7. Watch your profits grow on your dashboard!"
           />
@@ -693,7 +827,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Promo Section */}
+      {/* ── Promo ── */}
       <section className="max-w-3xl mx-auto px-3 sm:px-4 py-10 sm:py-12">
         <GlowCard>
           <div className="flex items-start sm:items-center gap-3 mb-4">
@@ -743,17 +877,15 @@ export default function Home() {
               }}
               className="mt-4 space-y-3"
             >
-              <div className="relative">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email address"
-                  className="w-full rounded-xl bg-black/40 border border-emerald-500/50 px-4 py-3.5 sm:py-4 text-white text-sm sm:text-base placeholder:text-white/30 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-colors"
-                  required
-                  autoFocus
-                />
-              </div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email address"
+                className="w-full rounded-xl bg-black/40 border border-emerald-500/50 px-4 py-3.5 sm:py-4 text-white text-sm sm:text-base placeholder:text-white/30 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-colors"
+                required
+                autoFocus
+              />
 
               {promoClaim.state.error && (
                 <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
@@ -778,10 +910,7 @@ export default function Home() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowForm(false);
-                    promoClaim.reset();
-                  }}
+                  onClick={() => { setShowForm(false); promoClaim.reset(); }}
                   className="px-4 sm:px-6 text-sm text-white/40 hover:text-white/70 transition-colors"
                 >
                   Cancel
@@ -821,7 +950,7 @@ export default function Home() {
         </GlowCard>
       </section>
 
-      {/* Features */}
+      {/* ── Features ── */}
       <section className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-12 sm:py-16">
         <div className="text-center mb-8 sm:mb-12">
           <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold">
@@ -833,75 +962,27 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          <GlowCard>
-            <div className="text-2xl sm:text-3xl mb-2 sm:mb-3">🤖</div>
-            <h3 className="font-bold text-base sm:text-lg">AI Trading Bot</h3>
-            <p className="text-xs sm:text-sm text-white/60 mt-2 leading-relaxed">
-              Our smart bot watches the market 24/7 and makes trades for you. It learns and gets better over time!
-            </p>
-            <div className="mt-3">
-              <Pill color="emerald">All Plans</Pill>
-            </div>
-          </GlowCard>
-
-          <GlowCard>
-            <div className="text-2xl sm:text-3xl mb-2 sm:mb-3">📊</div>
-            <h3 className="font-bold text-base sm:text-lg">Live Charts & Stats</h3>
-            <p className="text-xs sm:text-sm text-white/60 mt-2 leading-relaxed">
-              See your profits, win rate, and trade history in colorful easy-to-read charts. Watch your money grow!
-            </p>
-            <div className="mt-3">
-              <Pill color="emerald">All Plans</Pill>
-            </div>
-          </GlowCard>
-
-          <GlowCard>
-            <div className="text-2xl sm:text-3xl mb-2 sm:mb-3">🏆</div>
-            <h3 className="font-bold text-base sm:text-lg">Trader Levels</h3>
-            <p className="text-xs sm:text-sm text-white/60 mt-2 leading-relaxed">
-              Earn XP with every trade! Level up from Bronze to Legend. Compete and show off your rank.
-            </p>
-            <div className="mt-3">
-              <Pill color="emerald">All Plans</Pill>
-            </div>
-          </GlowCard>
-
-          <GlowCard>
-            <div className="text-2xl sm:text-3xl mb-2 sm:mb-3">📈</div>
-            <h3 className="font-bold text-base sm:text-lg">Stock Trading</h3>
-            <p className="text-xs sm:text-sm text-white/60 mt-2 leading-relaxed">
-              Trade real stocks like Apple, Tesla, and Amazon through Alpaca. The bot picks the best ones!
-            </p>
-            <div className="mt-3">
-              <Pill color="indigo">Starter+</Pill>
-            </div>
-          </GlowCard>
-
-          <GlowCard>
-            <div className="text-2xl sm:text-3xl mb-2 sm:mb-3">🦄</div>
-            <h3 className="font-bold text-base sm:text-lg">DEX Trading</h3>
-            <p className="text-xs sm:text-sm text-white/60 mt-2 leading-relaxed">
-              Trade on decentralized exchanges for even more crypto opportunities. Advanced but powerful!
-            </p>
-            <div className="mt-3">
-              <Pill color="purple">Elite+</Pill>
-            </div>
-          </GlowCard>
-
-          <GlowCard>
-            <div className="text-2xl sm:text-3xl mb-2 sm:mb-3">📊</div>
-            <h3 className="font-bold text-base sm:text-lg">Futures & Leverage</h3>
-            <p className="text-xs sm:text-sm text-white/60 mt-2 leading-relaxed">
-              Multiply your gains with futures trading. The bot manages risk automatically so you don't have to.
-            </p>
-            <div className="mt-3">
-              <Pill color="purple">Elite+</Pill>
-            </div>
-          </GlowCard>
+          {[
+            { icon: "🤖", title: "AI Trading Bot",       pill: "emerald", plan: "All Plans",  desc: "Our smart bot watches the market 24/7 and makes trades for you. It learns and gets better over time!" },
+            { icon: "📊", title: "Live Charts & Stats",  pill: "emerald", plan: "All Plans",  desc: "See your profits, win rate, and trade history in colorful easy-to-read charts. Watch your money grow!" },
+            { icon: "🏆", title: "Trader Levels",        pill: "emerald", plan: "All Plans",  desc: "Earn XP with every trade! Level up from Bronze to Legend. Compete and show off your rank." },
+            { icon: "📈", title: "Stock Trading",        pill: "indigo",  plan: "Starter+",   desc: "Trade real stocks like Apple, Tesla, and Amazon through Alpaca. The bot picks the best ones!" },
+            { icon: "🦄", title: "DEX Trading",          pill: "purple",  plan: "Elite+",     desc: "Trade on decentralized exchanges for even more crypto opportunities. Advanced but powerful!" },
+            { icon: "📊", title: "Futures & Leverage",   pill: "purple",  plan: "Elite+",     desc: "Multiply your gains with futures trading. The bot manages risk automatically so you don't have to." },
+          ].map(({ icon, title, pill, plan, desc }) => (
+            <GlowCard key={title}>
+              <div className="text-2xl sm:text-3xl mb-2 sm:mb-3">{icon}</div>
+              <h3 className="font-bold text-base sm:text-lg">{title}</h3>
+              <p className="text-xs sm:text-sm text-white/60 mt-2 leading-relaxed">{desc}</p>
+              <div className="mt-3">
+                <Pill color={pill}>{plan}</Pill>
+              </div>
+            </GlowCard>
+          ))}
         </div>
       </section>
 
-      {/* Demo */}
+      {/* ── Demo ── */}
       <section className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-10 sm:py-12">
         <div className="text-center mb-6 sm:mb-8">
           <h2 className="text-2xl sm:text-3xl font-bold">Not Sure Yet? Try It Free! 🎮</h2>
@@ -915,9 +996,7 @@ export default function Home() {
             <div className="flex items-center gap-3 mb-3 sm:mb-4">
               <span className="text-2xl sm:text-3xl">🔷</span>
               <div>
-                <div className="text-[10px] sm:text-xs uppercase tracking-wide text-indigo-300">
-                  Crypto Bot
-                </div>
+                <div className="text-[10px] sm:text-xs uppercase tracking-wide text-indigo-300">Crypto Bot</div>
                 <h3 className="text-lg sm:text-xl font-bold">Try Crypto Trading</h3>
               </div>
             </div>
@@ -936,9 +1015,7 @@ export default function Home() {
             <div className="flex items-center gap-3 mb-3 sm:mb-4">
               <span className="text-2xl sm:text-3xl">📈</span>
               <div>
-                <div className="text-[10px] sm:text-xs uppercase tracking-wide text-emerald-300">
-                  Stock Bot
-                </div>
+                <div className="text-[10px] sm:text-xs uppercase tracking-wide text-emerald-300">Stock Bot</div>
                 <h3 className="text-lg sm:text-xl font-bold">Try Stock Trading</h3>
               </div>
             </div>
@@ -955,7 +1032,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* FAQ */}
+      {/* ── FAQ ── */}
       <section className="max-w-4xl mx-auto px-3 sm:px-4 md:px-6 py-12 sm:py-16">
         <div className="text-center mb-8 sm:mb-10">
           <h2 className="text-2xl sm:text-3xl font-bold">Common Questions 💬</h2>
@@ -969,7 +1046,7 @@ export default function Home() {
             },
             {
               q: "How much money do I need to start?",
-              a: "You can start with as little as $50 in your exchange account. The bot works with whatever amount you have.",
+              a: "You can start with as little as \$50 in your exchange account. The bot works with whatever amount you have.",
             },
             {
               q: "When do I get charged?",
@@ -990,9 +1067,7 @@ export default function Home() {
             >
               <summary className="flex items-center justify-between p-4 sm:p-5 cursor-pointer hover:bg-white/5 transition-colors text-sm sm:text-base">
                 <span className="font-medium pr-4">{item.q}</span>
-                <span className="text-white/40 group-open:rotate-45 transition-transform text-lg sm:text-xl flex-shrink-0">
-                  +
-                </span>
+                <span className="text-white/40 group-open:rotate-45 transition-transform text-lg sm:text-xl flex-shrink-0">+</span>
               </summary>
               <div className="px-4 sm:px-5 pb-4 sm:pb-5 text-white/60 text-xs sm:text-sm leading-relaxed">
                 {item.a}
@@ -1002,7 +1077,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Final CTA */}
+      {/* ── Final CTA ── */}
       <section className="text-center py-14 sm:py-20 px-4">
         <div className="max-w-2xl mx-auto">
           <div className="text-4xl sm:text-5xl mb-3 sm:mb-4">🚀</div>
@@ -1010,7 +1085,8 @@ export default function Home() {
             Ready to Let Your Bot Make Money?
           </h2>
           <p className="text-white/60 mb-6 sm:mb-8 text-base sm:text-lg px-2">
-            Join thousands of people who are already earning while they sleep. No experience needed. Start in 2 minutes.
+            Join thousands of people who are already earning while they sleep.
+            No experience needed. Start in 2 minutes.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-2 sm:px-0">
             <Link
@@ -1032,16 +1108,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
+      {/* ── Footer ── */}
       <section className="border-t border-white/10 py-6 sm:py-8">
         <div className="max-w-6xl mx-auto px-4 flex flex-wrap justify-center gap-x-4 gap-y-2 sm:gap-6 text-xs sm:text-sm text-white/40">
-          <Link to="/how-it-works" className="hover:text-white transition-colors py-1">How It Works</Link>
-          <Link to="/pricing" className="hover:text-white transition-colors py-1">Pricing</Link>
-          <Link to="/funding-guide" className="hover:text-white transition-colors py-1">Funding Guide</Link>
-          <Link to="/support" className="hover:text-white transition-colors py-1">Support</Link>
-          <Link to="/privacy" className="hover:text-white transition-colors py-1">Privacy</Link>
-          <Link to="/terms" className="hover:text-white transition-colors py-1">Terms</Link>
-          <Link to="/live" className="text-emerald-400 hover:text-emerald-300 transition-colors py-1">Live</Link>
+          <Link to="/how-it-works"   className="hover:text-white transition-colors py-1">How It Works</Link>
+          <Link to="/pricing"        className="hover:text-white transition-colors py-1">Pricing</Link>
+          <Link to="/funding-guide"  className="hover:text-white transition-colors py-1">Funding Guide</Link>
+          <Link to="/support"        className="hover:text-white transition-colors py-1">Support</Link>
+          <Link to="/privacy"        className="hover:text-white transition-colors py-1">Privacy</Link>
+          <Link to="/terms"          className="hover:text-white transition-colors py-1">Terms</Link>
+          <Link to="/live"           className="text-emerald-400 hover:text-emerald-300 transition-colors py-1">Live</Link>
         </div>
       </section>
     </div>
