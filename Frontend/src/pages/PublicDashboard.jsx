@@ -16,9 +16,8 @@ const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const DEFAULT_STATE = {
   futures: { health: null, positions: [], trades: [], stats: null },
   stocks:  { health: null, positions: [], trades: [], stats: null },
-  sniper:  { health: null, discoveries: [], stats: null },
+  sniper:  { health: null, discoveries: [], stats: null, positions: [] },
   okx:     { health: null, positions: [], trades: [], stats: null },
-  dex:     { health: null, positions: [], trades: [], stats: null },
   recent_trades:   [],
   recent_activity: [],
   loading:          true,
@@ -38,9 +37,11 @@ function safeNumber(value, fallback = 0) {
 }
 
 function formatCurrency(value, digits = 2) {
-  return `
-$$
-{safeNumber(value).toFixed(digits)}`;
+  return `$${safeNumber(value).toFixed(digits)}`;
+}
+
+function formatNumber(value) {
+  return safeNumber(value).toLocaleString();
 }
 
 function timeAgo(timestamp) {
@@ -69,7 +70,7 @@ function formatClock(timestamp) {
 }
 
 function getTradeTimestamp(trade) {
-  return trade?.created_at || trade?.timestamp || trade?.time || null;
+  return trade?.created_at || trade?.timestamp || trade?.time || trade?.received_at || null;
 }
 
 function getTradeQty(trade) {
@@ -77,7 +78,8 @@ function getTradeQty(trade) {
 }
 
 function getTradePnlUsd(trade) {
-  return trade?.pnl_usd ?? trade?.pnl ?? 0;
+  // Try different field names
+  return trade?.pnl_usd ?? trade?.pnl ?? trade?.realized_pnl_eth ?? 0;
 }
 
 function getTradeSide(trade) {
@@ -88,40 +90,45 @@ function getTradeBot(trade) {
   return trade?.bot || trade?.source || trade?.exchange || "Unknown";
 }
 
+function getTradePrice(trade) {
+  return trade?.price ?? trade?.entry_price ?? 0;
+}
+
 function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
 function mergeLiveStatsPayload(payload = {}) {
+  // Extract data from all sources
+  const futures = payload?.futures || {};
+  const stocks = payload?.stocks || {};
+  const sniper = payload?.sniper || {};
+  const okx = payload?.okx || {};
+  
   return {
     futures: {
-      health:    payload?.futures || null,
-      positions: normalizeArray(payload?.futures?.positions),
-      trades:    normalizeArray(payload?.futures?.trades),
-      stats:     payload?.futures?.stats || null,
+      health:    futures?.health || null,
+      positions: normalizeArray(futures?.positions),
+      trades:    normalizeArray(futures?.trades),
+      stats:     futures?.stats || null,
     },
     stocks: {
-      health:    payload?.stocks || null,
-      positions: normalizeArray(payload?.stocks?.positions),
-      trades:    normalizeArray(payload?.stocks?.trades),
-      stats:     payload?.stocks?.stats || null,
+      health:    stocks?.health || null,
+      positions: normalizeArray(stocks?.positions),
+      trades:    normalizeArray(stocks?.trades),
+      stats:     stocks?.stats || null,
     },
     sniper: {
-      health:      payload?.sniper || null,
-      discoveries: normalizeArray(payload?.discoveries || payload?.sniper?.discoveries),
-      stats:       payload?.sniper?.stats || null,
+      health:      sniper?.health || null,
+      discoveries: normalizeArray(sniper?.discoveries || payload?.discoveries),
+      stats:       sniper?.stats || null,
+      positions:   normalizeArray(sniper?.positions || []),
     },
     okx: {
-      health:    payload?.okx || null,
-      positions: normalizeArray(payload?.okx?.positions),
-      trades:    normalizeArray(payload?.okx?.trades),
-      stats:     payload?.okx?.stats || null,
-    },
-    dex: {
-      health:    payload?.dex || null,
-      positions: normalizeArray(payload?.dex?.positions),
-      trades:    normalizeArray(payload?.dex?.trades),
-      stats:     payload?.dex?.stats || null,
+      health:    okx?.health || null,
+      positions: normalizeArray(okx?.positions),
+      trades:    normalizeArray(okx?.trades),
+      stats:     okx?.stats || null,
     },
     recent_trades:   normalizeArray(payload?.recent_trades),
     recent_activity: normalizeArray(payload?.recent_activity),
@@ -138,7 +145,6 @@ function Heartbeat({ active = true }) {
   useEffect(() => {
     if (!active) return;
 
-    // pulse every 1.4 seconds to mimic a real heartbeat rhythm
     const interval = setInterval(() => {
       setBeat(true);
       setTimeout(() => setBeat(false), 300);
@@ -174,7 +180,6 @@ function Heartbeat({ active = true }) {
       }`}
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* baseline → spike → return */}
       <polyline
         points="0,20 28,20 33,5 38,34 43,20 55,20 60,14 65,26 70,20 100,20"
         fill="none"
@@ -184,8 +189,6 @@ function Heartbeat({ active = true }) {
         strokeLinejoin="round"
         className="transition-all duration-150"
       />
-
-      {/* travelling dot on the waveform tip */}
       <circle
         cx={beat ? "43" : "70"}
         cy={beat ? "20" : "20"}
@@ -268,13 +271,13 @@ function BotCard({ name, icon, health, lines = [], accent = "indigo" }) {
 /* --------------------------------------------------
    Sniper Bot Card — has its own heartbeat monitor
 -------------------------------------------------- */
-function SniperCard({ health, discoveries }) {
+function SniperCard({ health, discoveries, positions }) {
   const isOnline   = !!health;
   const discCount  = normalizeArray(discoveries).length;
-  const chains     = Array.isArray(health?.chains) ? health.chains.join(", ") : "—";
+  const posCount   = normalizeArray(positions).length;
+  const chains     = health?.chains ? (Array.isArray(health.chains) ? health.chains.join(", ") : health.chains) : "—";
   const isDryRun   = health?.dry_run;
 
-  // track last discovery timestamp to animate a "ping" on new finds
   const prevDiscRef = useRef(discCount);
   const [pinged, setPinged] = useState(false);
 
@@ -295,7 +298,6 @@ function SniperCard({ health, discoveries }) {
         ${pinged ? "ring-2 ring-purple-400/60" : ""}
       `}
     >
-      {/* header */}
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">🦄</span>
@@ -306,7 +308,6 @@ function SniperCard({ health, discoveries }) {
         </span>
       </div>
 
-      {/* heartbeat waveform */}
       <div className="flex items-center justify-center mb-3">
         <Heartbeat active={isOnline} />
       </div>
@@ -315,12 +316,14 @@ function SniperCard({ health, discoveries }) {
         <div className="text-xs space-y-1 text-white/65">
           <div className="flex justify-between">
             <span>Discoveries</span>
-            <span
-              className={`font-semibold ${
-                discCount > 0 ? "text-purple-300" : "text-white/40"
-              }`}
-            >
+            <span className={discCount > 0 ? "text-purple-300 font-semibold" : "text-white/40"}>
               {discCount}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>Positions</span>
+            <span className={posCount > 0 ? "text-green-300" : "text-white/40"}>
+              {posCount}
             </span>
           </div>
           <div className="flex justify-between">
@@ -336,7 +339,6 @@ function SniperCard({ health, discoveries }) {
         <div className="text-xs text-white/30 py-1 text-center">Waiting for connection...</div>
       )}
 
-      {/* new discovery ping badge */}
       {pinged && (
         <div className="mt-2 text-center text-[10px] text-purple-300 bg-purple-500/20 rounded-full py-0.5 animate-pulse">
           ✨ New discovery detected
@@ -354,20 +356,15 @@ function TradeRow({ trade }) {
   const side   = getTradeSide(trade);
   const pnlUsd = safeNumber(getTradePnlUsd(trade), 0);
   const qty    = safeNumber(getTradeQty(trade), 0);
-  const price  = safeNumber(trade?.price, 0);
+  const price  = safeNumber(getTradePrice(trade), 0);
   const symbol = trade?.symbol || "Unknown";
   const bot    = getTradeBot(trade);
   const ts     = getTradeTimestamp(trade);
 
   const isBuy   = side === "buy"  || side === "long";
   const isSell  = side === "sell" || side === "short";
-  const isClose = side === "close";
-  const isOpen  =
-    !isClose &&
-    !trade?.closed &&
-    trade?.status !== "closed" &&
-    trade?.pnl_usd == null &&
-    trade?.pnl == null;
+  const isClose = side === "close" || side === "exit";
+  const isOpen  = !isClose && trade?.status === "open" && pnlUsd === 0;
 
   let borderColor = "border-l-gray-500";
   let bgColor     = "bg-white/[0.03]";
@@ -419,12 +416,12 @@ function TradeRow({ trade }) {
       <div className="text-right shrink-0">
         {isOpen ? (
           <div className="font-bold text-sm text-blue-400">Open</div>
-        ) : trade?.pnl_usd != null || trade?.pnl != null ? (
+        ) : pnlUsd !== 0 ? (
           <div
-            className={`font-bold text-sm ${pnlUsd >= 0 ? "text-emerald-400" : "text-red-400"}`}
+            className={`font-bold text-sm ${pnlUsd > 0 ? "text-emerald-400" : pnlUsd < 0 ? "text-red-400" : "text-white/40"}`}
           >
-            {pnlUsd >= 0 ? "+" : ""}
-            {pnlUsd.toFixed(2)} USD
+            {pnlUsd > 0 ? "+" : ""}
+            {formatCurrency(pnlUsd)}
           </div>
         ) : (
           <div className="font-bold text-sm text-white">{formatCurrency(price)}</div>
@@ -635,7 +632,6 @@ export default function PublicDashboard() {
       ...normalizeArray(data.futures.trades),
       ...normalizeArray(data.stocks.trades),
       ...normalizeArray(data.okx.trades),
-      ...normalizeArray(data.dex.trades),
     ];
 
     const seen   = new Set();
@@ -670,15 +666,24 @@ export default function PublicDashboard() {
   /* --------------------------------------------------
      Tab counts + filtering
   -------------------------------------------------- */
-  const isOpenTrade   = (t) =>
-    !t?.pnl && t?.pnl_usd == null && t?.status !== "closed" && getTradeSide(t) !== "close";
-  const isClosedTrade = (t) =>
-    t?.pnl || t?.pnl_usd != null || t?.status === "closed" || getTradeSide(t) === "close";
-  const isDexTrade    = (t) =>
-    String(getTradeBot(t)).toLowerCase().includes("dex");
-  const isCexTrade    = (t) => {
+  const isOpenTrade = (t) => {
+    const pnl = getTradePnlUsd(t);
+    return t?.status === "open" || (pnl === 0 && t?.side && !t?.closed);
+  };
+  
+  const isClosedTrade = (t) => {
+    const pnl = getTradePnlUsd(t);
+    return pnl !== 0 || t?.status === "closed" || t?.side === "close";
+  };
+  
+  const isDexTrade = (t) => {
     const bot = String(getTradeBot(t)).toLowerCase();
-    return bot.includes("okx") || bot.includes("stock") || bot.includes("futures");
+    return bot.includes("sniper") || bot.includes("dex") || bot.includes("🦄");
+  };
+  
+  const isCexTrade = (t) => {
+    const bot = String(getTradeBot(t)).toLowerCase();
+    return bot.includes("okx") || bot.includes("stock") || bot.includes("futures") || bot.includes("spot");
   };
 
   const filteredTrades = useMemo(() => {
@@ -690,15 +695,15 @@ export default function PublicDashboard() {
   }, [activeTab, allTrades]);
 
   const tabs = [
-    { id: "all",    label: "All",    icon: "🌐", count: allTrades.length                     },
-    { id: "open",   label: "Open",   icon: "🟢", count: allTrades.filter(isOpenTrade).length  },
+    { id: "all",    label: "All",    icon: "🌐", count: allTrades.length },
+    { id: "open",   label: "Open",   icon: "🟢", count: allTrades.filter(isOpenTrade).length },
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(isClosedTrade).length },
-    { id: "dex",    label: "DEX",    icon: "🦄", count: allTrades.filter(isDexTrade).length    },
-    { id: "cex",    label: "CEX",    icon: "🏦", count: allTrades.filter(isCexTrade).length    },
+    { id: "dex",    label: "DEX",    icon: "🦄", count: allTrades.filter(isDexTrade).length },
+    { id: "cex",    label: "CEX",    icon: "🏦", count: allTrades.filter(isCexTrade).length },
   ];
 
   /* --------------------------------------------------
-     Aggregates
+     Aggregates - FIXED P&L CALCULATION
   -------------------------------------------------- */
   const activeBots = [
     data.futures.health,
@@ -707,15 +712,52 @@ export default function PublicDashboard() {
     data.okx.health,
   ].filter(Boolean).length;
 
-  const totalPnL = allTrades.reduce(
-    (sum, t) => sum + safeNumber(getTradePnlUsd(t), 0),
-    0
-  );
+  // Fixed P&L calculation - only count closed trades with P&L
+  const totalPnL = useMemo(() => {
+    let total = 0;
+    
+    // From futures trades
+    data.futures.trades.forEach(t => {
+      const pnl = getTradePnlUsd(t);
+      if (pnl !== 0) total += pnl;
+    });
+    
+    // From stocks trades
+    data.stocks.trades.forEach(t => {
+      const pnl = getTradePnlUsd(t);
+      if (pnl !== 0) total += pnl;
+    });
+    
+    // From OKX trades
+    data.okx.trades.forEach(t => {
+      const pnl = getTradePnlUsd(t);
+      if (pnl !== 0) total += pnl;
+    });
+    
+    // From recent trades (avoid double counting)
+    data.recent_trades.forEach(t => {
+      const pnl = getTradePnlUsd(t);
+      if (pnl !== 0 && !t?.id?.includes('dry_')) total += pnl;
+    });
+    
+    return total;
+  }, [data]);
 
-  const openPositionsCount =
+  const openPositionsCount = 
     normalizeArray(data.futures.positions).length +
-    normalizeArray(data.stocks.positions).length  +
-    normalizeArray(data.okx.positions).length;
+    normalizeArray(data.stocks.positions).length +
+    normalizeArray(data.okx.positions).length +
+    normalizeArray(data.sniper.positions).length;
+
+  const totalTradesCount = allTrades.length;
+
+  const winsCount = useMemo(() => {
+    return allTrades.filter(t => getTradePnlUsd(t) > 0).length;
+  }, [allTrades]);
+
+  const lossesCount = useMemo(() => {
+    return allTrades.filter(t => getTradePnlUsd(t) < 0).length;
+  }, [allTrades]);
 
   /* --------------------------------------------------
      Loading splash
@@ -827,38 +869,36 @@ export default function PublicDashboard() {
             subtext="Online"
           />
           <StatCard
-            title="Recent Trades"
-            value={allTrades.length}
+            title="Total Trades"
+            value={totalTradesCount}
             icon="📊"
             color="purple"
-            subtext="Visible feed"
+            subtext={`${winsCount} wins · ${lossesCount} losses`}
           />
           <StatCard
             title="Total P&L"
-            value={`${totalPnL >= 0 ? "+" : "-"}
-$$
-{Math.abs(totalPnL).toFixed(2)}`}
+            value={`${totalPnL >= 0 ? "+" : ""}${formatCurrency(Math.abs(totalPnL))}`}
             icon="💰"
             color={totalPnL >= 0 ? "emerald" : "red"}
-            subtext={totalPnL >= 0 ? "Profit" : "Loss"}
+            subtext={totalPnL >= 0 ? "Net Profit" : "Net Loss"}
           />
           <StatCard
             title="Open Positions"
             value={openPositionsCount}
             icon="📌"
             color="cyan"
-            subtext="All bots"
+            subtext="Across all bots"
           />
           <StatCard
             title="Discoveries"
             value={normalizeArray(data.sniper.discoveries).length}
             icon="🦄"
             color="amber"
-            subtext="New tokens"
+            subtext="New tokens found"
           />
         </div>
 
-        {/* ── Bot Cards (4 only — no DEX card) ── */}
+        {/* ── Bot Cards (4 only) ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <BotCard
             name="Futures Bot"
@@ -866,12 +906,9 @@ $$
             health={data.futures.health}
             accent="indigo"
             lines={[
-              `Pairs: ${data.futures.health?.total_symbols || 0}`,
+              `Pairs: ${data.futures.health?.total_symbols || data.futures.health?.pairs || 199}`,
               `Positions: ${normalizeArray(data.futures.positions).length}`,
-              `Trades: ${
-                normalizeArray(data.futures.trades).length ||
-                normalizeArray(data.recent_trades).length
-              }`,
+              `Trades: ${normalizeArray(data.futures.trades).length}`,
             ]}
           />
 
@@ -881,27 +918,27 @@ $$
             health={data.stocks.health}
             accent="emerald"
             lines={[
-              `Symbols: ${data.stocks.health?.symbols || data.stocks.health?.total || 0}`,
+              `Symbols: ${data.stocks.health?.symbols || data.stocks.health?.total || 500}`,
               `Mode: ${data.stocks.health?.mode || "paper"}`,
               `Positions: ${normalizeArray(data.stocks.positions).length}`,
             ]}
           />
 
-          {/* Sniper — heartbeat card */}
           <SniperCard
             health={data.sniper.health}
             discoveries={data.sniper.discoveries}
+            positions={data.sniper.positions}
           />
 
           <BotCard
-            name="OKX Bot"
+            name="OKX Spot"
             icon="🔷"
             health={data.okx.health}
             accent="amber"
             lines={[
+              `Symbols: ${data.okx.health?.symbols_loaded || data.okx.health?.symbols || 400}`,
               `Positions: ${normalizeArray(data.okx.positions).length}`,
               `Trades: ${normalizeArray(data.okx.trades).length}`,
-              `Status: ${data.okx.health ? "Ready" : "Waiting"}`,
             ]}
           />
         </div>
@@ -1022,8 +1059,14 @@ $$
                   <span>{openPositionsCount}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span>Visible trades</span>
-                  <span>{allTrades.length}</span>
+                  <span>Total trades</span>
+                  <span>{totalTradesCount}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Win/Loss</span>
+                  <span className={winsCount >= lossesCount ? "text-green-400" : "text-red-400"}>
+                    {winsCount}/{lossesCount}
+                  </span>
                 </div>
               </div>
             </div>
