@@ -920,4 +920,296 @@ export default function PublicDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
+      <header className="border-b border-white/10 bg-black/20 backdrop-blur sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Link
+                to="/"
+                className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent"
+              >
+                IMALI
+              </Link>
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  hasConnection
+                    ? isStale
+                      ? "bg-amber-500/20 text-amber-300"
+                      : "bg-emerald-500/20 text-emerald-300"
+                    : "bg-yellow-500/20 text-yellow-300"
+                }`}
+              >
+                {hasConnection ? (isStale ? "STALE" : "LIVE") : "CONNECTING"}
+              </span>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2 text-xs text-white/40">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    hasConnection
+                      ? isStale
+                        ? "bg-amber-400"
+                        : "bg-green-400 animate-pulse"
+                      : "bg-yellow-400"
+                  }`}
+                />
+                <span>
+                  {data.rateLimitedUntil
+                    ? `Backoff until ${formatClock(data.rateLimitedUntil)}`
+                    : "Adaptive refresh"}
+                </span>
+              </div>
+              <div className="text-xs text-white/40">
+                Last good: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
+              </div>
+              <div className="text-xs text-white/40">{clock.toLocaleTimeString()}</div>
+              <Link
+                to="/signup"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-xs sm:text-sm font-semibold transition-all"
+              >
+                Sign Up Free →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {data.error ? (
+          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
+            <p className="text-amber-300 text-sm">⚠️ {data.error}</p>
+          </div>
+        ) : null}
+
+        <div className="text-center mb-8">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3">
+            Live Trading Dashboard 🚀
+          </h1>
+          <p className="text-white/60 max-w-2xl mx-auto">
+            Watch our trading stack scan, discover, and execute in real time.
+          </p>
+        </div>
+
+        {/* Stat Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
+          <StatCard
+            title="Active Bots"
+            value={activeBots}
+            icon="🤖"
+            color="indigo"
+            subtext="Online"
+          />
+          <StatCard
+            title="Total Trades"
+            value={totalTradesCount}
+            icon="📊"
+            color="purple"
+            subtext={`${winsCount} wins · ${lossesCount} losses`}
+          />
+          <StatCard
+            title="Total P&L"
+            value={`${totalPnL >= 0 ? "+" : ""}${formatCurrency(Math.abs(totalPnL))}`}
+            icon="💰"
+            color={totalPnL >= 0 ? "emerald" : "red"}
+            subtext={formatPercent(totalPnLPercent)}
+          />
+          <StatCard
+            title="Open Positions"
+            value={openPositionsCount}
+            icon="📌"
+            color="cyan"
+            subtext="Across all bots"
+          />
+          <StatCard
+            title="Discoveries"
+            value={normalizeArray(data.sniper.discoveries).length}
+            icon="🦄"
+            color="amber"
+            subtext="New tokens found"
+          />
+        </div>
+
+        {/* Historical Performance */}
+        <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+          <h2 className="font-bold text-lg mb-3 flex items-center gap-2">📈 Historical Performance</h2>
+          <HistoricalChart data={data.historical} type={historicalType} />
+        </div>
+
+        {/* Bot Cards with Controls */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <BotCard
+            name="Futures Bot"
+            icon="📊"
+            health={data.futures.health}
+            positions={data.futures.positions}
+            trades={data.futures.trades}
+            onControl={(action) => handleBotControl("futures", action)}
+            accent="indigo"
+          />
+          <BotCard
+            name="Stock Bot"
+            icon="📈"
+            health={data.stocks.health}
+            positions={data.stocks.positions}
+            trades={data.stocks.trades}
+            onControl={(action) => handleBotControl("stocks", action)}
+            accent="emerald"
+          />
+          <SniperCard
+            health={data.sniper.health}
+            discoveries={data.sniper.discoveries}
+            positions={data.sniper.positions}
+            onControl={(action) => handleBotControl("sniper", action)}
+          />
+          <BotCard
+            name="OKX Spot"
+            icon="🔷"
+            health={data.okx.health}
+            positions={data.okx.positions}
+            trades={data.okx.trades}
+            onControl={(action) => handleBotControl("okx", action)}
+            accent="amber"
+          />
+        </div>
+
+        {/* Trade Feed + Sidebar */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                <h2 className="font-bold text-lg flex items-center gap-2">
+                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                  Live Trade Feed
+                </h2>
+                <div className="flex gap-1 bg-black/30 rounded-lg p-1 flex-wrap">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                        activeTab === tab.id
+                          ? "bg-emerald-600 text-white"
+                          : "text-white/40 hover:text-white/60"
+                      }`}
+                    >
+                      <span>{tab.icon}</span>
+                      <span className="hidden sm:inline">{tab.label}</span>
+                      {tab.count > 0 ? (
+                        <span className="ml-1 text-[8px] bg-white/20 px-1.5 rounded-full">
+                          {tab.count}
+                        </span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                {filteredTrades.length > 0 ? (
+                  filteredTrades.map((trade, i) => (
+                    <TradeRow
+                      key={`${getTradeTimestamp(trade)}-${trade?.symbol}-${i}`}
+                      trade={trade}
+                    />
+                  ))
+                ) : (
+                  <div className="text-center py-12 text-white/30">
+                    <div className="text-4xl mb-3">📭</div>
+                    <p className="text-sm">No trades match this filter</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+              <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
+                <span>🦄</span>
+                DEX Discoveries
+                {normalizeArray(data.sniper.discoveries).length > 0 ? (
+                  <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
+                    {normalizeArray(data.sniper.discoveries).length} new
+                  </span>
+                ) : null}
+              </h2>
+              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                {normalizeArray(data.sniper.discoveries).length > 0 ? (
+                  normalizeArray(data.sniper.discoveries)
+                    .slice(0, 10)
+                    .map((d, i) => <DiscoveryCard key={d?.pair || d?.address || i} discovery={d} />)
+                ) : (
+                  <div className="text-center py-8 text-white/30 text-sm">
+                    <div className="text-2xl mb-2">🔍</div>
+                    Scanning for new tokens...
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+              <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
+                <span>📡</span>
+                System Snapshot
+              </h2>
+              <div className="space-y-2 text-xs text-white/65">
+                <div className="flex justify-between gap-3">
+                  <span>API</span>
+                  <span className="text-white/40 truncate">{API_BASE}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Connection</span>
+                  <span className={hasConnection ? "text-green-400" : "text-yellow-400"}>
+                    {hasConnection ? (isStale ? "Stale" : "Live") : "Connecting"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Last good update</span>
+                  <span>{data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Open positions</span>
+                  <span>{openPositionsCount}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Total trades</span>
+                  <span>{totalTradesCount}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Win/Loss</span>
+                  <span className={winsCount >= lossesCount ? "text-green-400" : "text-red-400"}>
+                    {winsCount}/{lossesCount}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
+              <Link
+                to="/signup"
+                className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all"
+              >
+                Start Trading Free →
+              </Link>
+              <p className="text-[10px] text-white/30 mt-2">No credit card required</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
+          <p>
+            Adaptive polling with rate-limit backoff.
+            <br />
+            <Link to="/" className="text-indigo-400 hover:underline">
+              Home
+            </Link>
+            {" • "}
+            <Link to="/dashboard" className="text-indigo-400 hover:underline">
+              Member Dashboard
+            </Link>
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}
