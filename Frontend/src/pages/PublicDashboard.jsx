@@ -19,7 +19,7 @@ const DEFAULT_STATE = {
   futures: { health: null, positions: [], trades: [], stats: null },
   stocks: { health: null, positions: [], trades: [], stats: null },
   sniper: { health: null, discoveries: [], stats: null, positions: [] },
-  okx: { health: null, positions: [], trades: [], stats: null },
+  okx: { health: null, positions: [], trades: [], stats: { total_trades: 0, total_pnl: 0, positions_count: 0, mode: 'unknown' } },
   recent_trades: [],
   recent_activity: [],
   historical: { daily: [], weekly: [], monthly: [] },
@@ -121,39 +121,61 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+/* =====================================================
+   FIXED DATA MERGING - Properly maps API response
+===================================================== */
+
 function mergeLiveStatsPayload(payload = {}) {
+  // Extract data with proper mapping
   const futures = payload?.futures || {};
   const stocks = payload?.stocks || {};
   const sniper = payload?.sniper || {};
   const okx = payload?.okx || {};
 
+  // Create positions array from count if needed
+  const okxPositions = [];
+  const positionsCount = typeof okx?.positions === 'number' ? okx.positions : 0;
+  for (let i = 0; i < positionsCount; i++) {
+    okxPositions.push({ id: `pos-${i}`, placeholder: true });
+  }
+
+  // Get trades count
+  const tradesCount = okx?.total_trades || 0;
+
   return {
     futures: {
-      health: futures?.health || null,
-      positions: normalizeArray(futures?.positions),
-      trades: normalizeArray(futures?.trades),
-      stats: futures?.stats || null,
+      health: futures,
+      positions: normalizeArray(futures?.positions || []),
+      trades: normalizeArray(futures?.trades || []),
+      stats: futures,
     },
     stocks: {
-      health: stocks?.health || null,
-      positions: normalizeArray(stocks?.positions),
-      trades: normalizeArray(stocks?.trades),
-      stats: stocks?.stats || null,
+      health: stocks,
+      positions: normalizeArray(stocks?.positions || []),
+      trades: normalizeArray(stocks?.trades || []),
+      stats: stocks,
     },
     sniper: {
-      health: sniper?.health || null,
-      discoveries: normalizeArray(sniper?.discoveries || payload?.discoveries),
-      stats: sniper?.stats || null,
+      health: sniper,
+      discoveries: normalizeArray(sniper?.discoveries || payload?.discoveries || []),
+      stats: sniper,
       positions: normalizeArray(sniper?.positions || []),
     },
     okx: {
-      health: okx?.health || null,
-      positions: normalizeArray(okx?.positions),
-      trades: normalizeArray(okx?.trades),
-      stats: okx?.stats || null,
+      health: okx,
+      positions: okxPositions,
+      trades: [],
+      stats: {
+        total_trades: tradesCount,
+        total_pnl: okx?.total_pnl || 0,
+        positions_count: positionsCount,
+        mode: okx?.mode || 'dry_run',
+        scan_count: okx?.scan_count || 0,
+        last_scan_time: okx?.last_scan_time || null,
+      },
     },
-    recent_trades: normalizeArray(payload?.recent_trades),
-    recent_activity: normalizeArray(payload?.recent_activity),
+    recent_trades: normalizeArray(payload?.recent_trades || []),
+    recent_activity: normalizeArray(payload?.recent_activity || []),
     historical: payload?.historical || { daily: [], weekly: [], monthly: [] },
   };
 }
@@ -247,9 +269,8 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
   );
 }
 
-function BotCard({ name, icon, health, positions = [], trades = [], onControl, accent = "indigo" }) {
+function BotCard({ name, icon, health, stats, accent = "indigo" }) {
   const isOnline = !!health;
-  const [showControls, setShowControls] = useState(false);
 
   const borderMap = {
     indigo: "border-indigo-500/20  bg-indigo-500/10",
@@ -259,73 +280,39 @@ function BotCard({ name, icon, health, positions = [], trades = [], onControl, a
     cyan: "border-cyan-500/20    bg-cyan-500/10",
   };
 
+  const getDisplayStats = () => {
+    if (name === "OKX Spot") {
+      return [
+        `Positions: ${stats?.positions_count || 0}`,
+        `Trades: ${stats?.total_trades || 0}`,
+        `Mode: ${stats?.mode || 'dry_run'}`,
+      ];
+    }
+    return [
+      `Status: ${isOnline ? 'Online' : 'Offline'}`,
+    ];
+  };
+
   return (
-    <div className={`border rounded-xl p-3 sm:p-4 ${borderMap[accent] ?? borderMap.indigo} relative`}>
+    <div className={`border rounded-xl p-3 sm:p-4 ${borderMap[accent] ?? borderMap.indigo}`}>
       <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">{icon}</span>
           <span className="font-semibold text-sm sm:text-base truncate">{name}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
-            {isOnline ? "● Online" : "○ Offline"}
-          </span>
-          <button
-            onClick={() => setShowControls(!showControls)}
-            className="text-xs text-white/40 hover:text-white/60"
-          >
-            ⚙️
-          </button>
-        </div>
+        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
+          {isOnline ? "● Online" : "○ Offline"}
+        </span>
       </div>
-
-      {showControls && onControl && (
-        <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-10 p-2">
-          <button
-            onClick={() => onControl("restart")}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-white/10 rounded-lg"
-          >
-            🔄 Restart
-          </button>
-          <button
-            onClick={() => onControl("stop")}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-white/10 rounded-lg"
-          >
-            ⏹️ Stop
-          </button>
-          <button
-            onClick={() => onControl("start")}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-white/10 rounded-lg"
-          >
-            ▶️ Start
-          </button>
-          <button
-            onClick={() => onControl("dry-run")}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-white/10 rounded-lg"
-          >
-            🧪 Toggle Dry Run
-          </button>
-        </div>
-      )}
 
       {isOnline ? (
         <div className="text-xs space-y-1 text-white/65">
-          <div className="flex justify-between">
-            <span>Positions</span>
-            <span className="text-white">{positions.length}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Trades</span>
-            <span className="text-white">{trades.length}</span>
-          </div>
-          {health?.mode && (
-            <div className="flex justify-between">
-              <span>Mode</span>
-              <span className={health.mode === "live" ? "text-green-400" : "text-yellow-400"}>
-                {health.mode}
-              </span>
+          {getDisplayStats().map((line, idx) => (
+            <div key={idx} className="flex justify-between">
+              <span>{line.split(':')[0]}:</span>
+              <span className="text-white">{line.split(':')[1]}</span>
             </div>
-          )}
+          ))}
         </div>
       ) : (
         <div className="text-xs text-white/30 py-1">Waiting for connection...</div>
@@ -334,7 +321,7 @@ function BotCard({ name, icon, health, positions = [], trades = [], onControl, a
   );
 }
 
-function SniperCard({ health, discoveries, positions, onControl }) {
+function SniperCard({ health, discoveries, positions }) {
   const isOnline = !!health;
   const discCount = normalizeArray(discoveries).length;
   const posCount = normalizeArray(positions).length;
@@ -344,7 +331,6 @@ function SniperCard({ health, discoveries, positions, onControl }) {
       : health.chains
     : "—";
   const isDryRun = health?.dry_run;
-  const [showControls, setShowControls] = useState(false);
 
   const prevDiscRef = useRef(discCount);
   const [pinged, setPinged] = useState(false);
@@ -363,54 +349,17 @@ function SniperCard({ health, discoveries, positions, onControl }) {
     <div
       className={`border rounded-xl p-3 sm:p-4 transition-all duration-300 border-purple-500/30 bg-purple-500/10 ${
         pinged ? "ring-2 ring-purple-400/60" : ""
-      } relative`}
+      }`}
     >
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">🦄</span>
           <span className="font-semibold text-sm sm:text-base truncate">Sniper Bot</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
-            {isOnline ? "● Online" : "○ Offline"}
-          </span>
-          <button
-            onClick={() => setShowControls(!showControls)}
-            className="text-xs text-white/40 hover:text-white/60"
-          >
-            ⚙️
-          </button>
-        </div>
+        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
+          {isOnline ? "● Online" : "○ Offline"}
+        </span>
       </div>
-
-      {showControls && onControl && (
-        <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-white/10 rounded-xl shadow-xl z-10 p-2">
-          <button
-            onClick={() => onControl("restart")}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-white/10 rounded-lg"
-          >
-            🔄 Restart
-          </button>
-          <button
-            onClick={() => onControl("stop")}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-white/10 rounded-lg"
-          >
-            ⏹️ Stop
-          </button>
-          <button
-            onClick={() => onControl("start")}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-white/10 rounded-lg"
-          >
-            ▶️ Start
-          </button>
-          <button
-            onClick={() => onControl("dry-run")}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-white/10 rounded-lg"
-          >
-            🧪 Toggle Dry Run
-          </button>
-        </div>
-      )}
 
       <div className="flex items-center justify-center mb-3">
         <Heartbeat active={isOnline} />
@@ -607,7 +556,7 @@ function HistoricalChart({ data, type = "daily" }) {
 }
 
 /* =====================================================
-   FIXED DATA HOOK - Removed lastGoodRef to prevent stale data
+   FIXED DATA HOOK
 ===================================================== */
 
 function useLiveData() {
@@ -631,7 +580,6 @@ function useLiveData() {
   const sendControl = async (bot, action) => {
     try {
       await axios.post(CONTROL_URL, { bot, action }, { timeout: 5000 });
-      // Refresh data after control action
       setTimeout(fetchLiveStats, 1000);
     } catch (err) {
       console.error("Control action failed:", err);
@@ -678,7 +626,6 @@ function useLiveData() {
 
         backoffRef.current = 30000;
 
-        // DIRECTLY set the new data WITHOUT using lastGoodRef
         setData({
           ...normalized,
           historical: historicalData,
@@ -707,7 +654,7 @@ function useLiveData() {
           backoffRef.current = nextDelay;
 
           setData((prev) => ({
-            ...prev, // Keep existing data, don't use lastGoodRef
+            ...prev,
             loading: false,
             error: `Rate limited. Retrying in ${Math.ceil(nextDelay / 1000)}s...`,
             rateLimitedUntil: new Date(Date.now() + nextDelay),
@@ -718,7 +665,7 @@ function useLiveData() {
         }
 
         setData((prev) => ({
-          ...prev, // Keep existing data
+          ...prev,
           loading: false,
           error: "Live data unavailable",
         }));
@@ -779,9 +726,6 @@ export default function PublicDashboard() {
   const allTrades = useMemo(() => {
     const merged = [
       ...normalizeArray(data.recent_trades),
-      ...normalizeArray(data.futures.trades),
-      ...normalizeArray(data.stocks.trades),
-      ...normalizeArray(data.okx.trades),
     ];
 
     const seen = new Set();
@@ -863,37 +807,31 @@ export default function PublicDashboard() {
 
   const totalPnL = useMemo(() => {
     let total = 0;
-    data.futures.trades.forEach((t) => {
-      const pnl = getTradePnlUsd(t);
-      if (pnl !== 0) total += pnl;
-    });
-    data.stocks.trades.forEach((t) => {
-      const pnl = getTradePnlUsd(t);
-      if (pnl !== 0) total += pnl;
-    });
-    data.okx.trades.forEach((t) => {
-      const pnl = getTradePnlUsd(t);
-      if (pnl !== 0) total += pnl;
-    });
+    
+    // Add OKX P&L from stats
+    if (data.okx.stats?.total_pnl) {
+      total += data.okx.stats.total_pnl;
+    }
+    
+    // Add recent trades P&L
     data.recent_trades.forEach((t) => {
       const pnl = getTradePnlUsd(t);
       if (pnl !== 0 && !t?.id?.includes("dry_")) total += pnl;
     });
+    
     return total;
   }, [data]);
 
   const totalPnLPercent = useMemo(() => {
-    const totalInvested = 100000; // Starting capital - you can make this dynamic
+    const totalInvested = 100000;
     return (totalPnL / totalInvested) * 100;
   }, [totalPnL]);
 
-  const openPositionsCount =
-    normalizeArray(data.futures.positions).length +
-    normalizeArray(data.stocks.positions).length +
-    normalizeArray(data.okx.positions).length +
+  const openPositionsCount = 
+    (data.okx.stats?.positions_count || 0) +
     normalizeArray(data.sniper.positions).length;
 
-  const totalTradesCount = allTrades.length;
+  const totalTradesCount = (data.okx.stats?.total_trades || 0) + allTrades.length;
 
   const winsCount = useMemo(
     () => allTrades.filter((t) => getTradePnlUsd(t) > 0).length,
@@ -903,10 +841,6 @@ export default function PublicDashboard() {
     () => allTrades.filter((t) => getTradePnlUsd(t) < 0).length,
     [allTrades]
   );
-
-  const handleBotControl = (bot, action) => {
-    sendControl(bot, action);
-  };
 
   if (data.loading && !data.lastSuccessAt) {
     return (
@@ -1042,33 +976,26 @@ export default function PublicDashboard() {
             name="Futures Bot"
             icon="📊"
             health={data.futures.health}
-            positions={data.futures.positions}
-            trades={data.futures.trades}
-            onControl={(action) => handleBotControl("futures", action)}
+            stats={data.futures.stats}
             accent="indigo"
           />
           <BotCard
             name="Stock Bot"
             icon="📈"
             health={data.stocks.health}
-            positions={data.stocks.positions}
-            trades={data.stocks.trades}
-            onControl={(action) => handleBotControl("stocks", action)}
+            stats={data.stocks.stats}
             accent="emerald"
           />
           <SniperCard
             health={data.sniper.health}
             discoveries={data.sniper.discoveries}
             positions={data.sniper.positions}
-            onControl={(action) => handleBotControl("sniper", action)}
           />
           <BotCard
             name="OKX Spot"
             icon="🔷"
             health={data.okx.health}
-            positions={data.okx.positions}
-            trades={data.okx.trades}
-            onControl={(action) => handleBotControl("okx", action)}
+            stats={data.okx.stats}
             accent="amber"
           />
         </div>
