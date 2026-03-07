@@ -2,6 +2,34 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  ArcElement,
+} from 'chart.js';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  ArcElement
+);
 
 /* =====================================================
    CONFIG
@@ -60,6 +88,13 @@ function formatCurrency(value, digits = 2) {
 function formatPercent(value, digits = 2) {
   const num = safeNumber(value);
   return `${num >= 0 ? "+" : ""}${num.toFixed(digits)}%`;
+}
+
+function formatCompactNumber(value) {
+  const num = safeNumber(value);
+  if (Math.abs(num) >= 1e6) return `${(num / 1e6).toFixed(1)}M`;
+  if (Math.abs(num) >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
+  return num.toFixed(0);
 }
 
 function formatClock(timestamp) {
@@ -140,6 +175,15 @@ function getTradeBot(trade) {
 function getTradePrice(trade) {
   return trade?.price ?? trade?.entry_price ?? 0;
 }
+
+// Helper function to get week number
+Date.prototype.getWeek = function() {
+  const date = new Date(this.getTime());
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  const week1 = new Date(date.getFullYear(), 0, 4);
+  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+};
 
 /* =====================================================
    DATA MERGING
@@ -259,7 +303,7 @@ function Heartbeat({ active = true }) {
 }
 
 /* =====================================================
-   UI
+   UI COMPONENTS
 ===================================================== */
 
 function StatCard({ title, value, icon, subtext, color = "emerald" }) {
@@ -273,7 +317,7 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
   };
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm hover:bg-white/10 transition-all">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs sm:text-sm text-white/50">{title}</p>
@@ -311,7 +355,7 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
   };
 
   return (
-    <div className={`border rounded-xl p-3 sm:p-4 ${borderMap[accent] ?? borderMap.indigo}`}>
+    <div className={`border rounded-xl p-3 sm:p-4 backdrop-blur-sm ${borderMap[accent] ?? borderMap.indigo}`}>
       <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">{icon}</span>
@@ -368,7 +412,7 @@ function SniperCard({ health, discoveries, positions }) {
 
   return (
     <div
-      className={`border rounded-xl p-3 sm:p-4 transition-all duration-300 border-purple-500/30 bg-purple-500/10 ${
+      className={`border rounded-xl p-3 sm:p-4 transition-all duration-300 border-purple-500/30 bg-purple-500/10 backdrop-blur-sm ${
         pinged ? "ring-2 ring-purple-400/60" : ""
       }`}
     >
@@ -464,7 +508,7 @@ function TradeRow({ trade }) {
 
   return (
     <div
-      className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor}`}
+      className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor} hover:bg-white/5 transition-all`}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <span className="text-base shrink-0">📊</span>
@@ -512,7 +556,7 @@ function DiscoveryCard({ discovery }) {
   else if (score >= 0.5) scoreColor = "text-yellow-400";
 
   return (
-    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs hover:bg-purple-500/10 transition-colors">
+    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs hover:bg-purple-500/10 transition-colors backdrop-blur-sm">
       <div className="flex justify-between items-start mb-2 gap-2">
         <span className="font-medium flex items-center gap-1 min-w-0">
           <span className="text-base shrink-0">🦄</span>
@@ -536,54 +580,435 @@ function DiscoveryCard({ discovery }) {
   );
 }
 
-function HistoricalChart({ data, type = "daily", onTypeChange }) {
-  const chartData = normalizeArray(data?.[type]);
-  const maxValue = Math.max(...chartData.map((d) => Math.abs(safeNumber(d?.pnl, 0))), 1);
+/* =====================================================
+   ENHANCED HISTORICAL CHART with Chart.js
+===================================================== */
+
+function EnhancedHistoricalChart({ data, type = "daily", onTypeChange }) {
+  const [chartType, setChartType] = useState('line');
+  const [timeRange, setTimeRange] = useState('30d');
+  const chartData = normalizeArray(data?.[type] || []);
+  
+  // Custom tooltip styling
+  const tooltipOptions = {
+    backgroundColor: 'rgba(17, 24, 39, 0.95)',
+    titleColor: '#f3f4f6',
+    bodyColor: '#9ca3af',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderWidth: 1,
+    padding: 12,
+    caretSize: 6,
+    cornerRadius: 8,
+    displayColors: true,
+    usePointStyle: true,
+  };
+
+  // Process data for different time ranges
+  const getFilteredData = () => {
+    if (chartData.length === 0) return [];
+    
+    const now = Date.now();
+    const ranges = {
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+      '90d': 90 * 24 * 60 * 60 * 1000,
+      'all': Infinity
+    };
+    
+    const msRange = ranges[timeRange] || ranges['30d'];
+    
+    return chartData.filter(d => {
+      const date = new Date(d?.date || d?.timestamp || 0).getTime();
+      return now - date <= msRange;
+    });
+  };
+
+  const filteredData = getFilteredData();
+  
+  // Calculate summary statistics
+  const totalPnl = filteredData.reduce((sum, d) => sum + safeNumber(d?.pnl, 0), 0);
+  const avgPnl = filteredData.length > 0 ? totalPnl / filteredData.length : 0;
+  const winningDays = filteredData.filter(d => safeNumber(d?.pnl, 0) > 0).length;
+  const losingDays = filteredData.filter(d => safeNumber(d?.pnl, 0) < 0).length;
+  const winRate = filteredData.length > 0 ? (winningDays / filteredData.length) * 100 : 0;
+  const bestDay = Math.max(...filteredData.map(d => safeNumber(d?.pnl, 0)), 0);
+  const worstDay = Math.min(...filteredData.map(d => safeNumber(d?.pnl, 0)), 0);
+  
+  // Calculate cumulative PnL
+  const cumulativeData = [];
+  let cumulative = 0;
+  filteredData.forEach(d => {
+    cumulative += safeNumber(d?.pnl, 0);
+    cumulativeData.push(cumulative);
+  });
+
+  // Prepare chart data
+  const labels = filteredData.map(d => {
+    const date = new Date(d?.date || d?.timestamp || 0);
+    if (type === 'daily') return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (type === 'weekly') return `Week ${date.getWeek()}`;
+    return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  });
+
+  // Line/Bar chart data
+  const mainChartData = {
+    labels,
+    datasets: [
+      {
+        label: 'Daily P&L',
+        data: filteredData.map(d => safeNumber(d?.pnl, 0)),
+        borderColor: '#10b981',
+        backgroundColor: (context) => {
+          const ctx = context.chart.ctx;
+          const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+          gradient.addColorStop(0, 'rgba(16, 185, 129, 0.5)');
+          gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+          return gradient;
+        },
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+        pointHoverRadius: 8,
+        pointBackgroundColor: (context) => {
+          const value = context.raw;
+          return value >= 0 ? '#10b981' : '#ef4444';
+        },
+        pointBorderColor: 'white',
+        pointBorderWidth: 2,
+        borderWidth: 2,
+      },
+      {
+        label: 'Cumulative P&L',
+        data: cumulativeData,
+        borderColor: '#8b5cf6',
+        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+        fill: false,
+        tension: 0.4,
+        borderWidth: 2,
+        borderDash: [5, 5],
+        pointRadius: 0,
+        yAxisID: 'y1',
+      }
+    ],
+  };
+
+  // Chart options
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+        labels: {
+          color: '#9ca3af',
+          usePointStyle: true,
+          pointStyle: 'circle',
+          padding: 20,
+          font: { size: 12 }
+        }
+      },
+      title: {
+        display: true,
+        text: `Trading Performance - ${type.charAt(0).toUpperCase() + type.slice(1)}`,
+        color: '#f3f4f6',
+        font: { size: 16, weight: 'bold' },
+        padding: { bottom: 30 }
+      },
+      tooltip: tooltipOptions,
+    },
+    scales: {
+      x: {
+        grid: { color: 'rgba(75, 85, 99, 0.2)', display: true },
+        ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 45 }
+      },
+      y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        grid: { color: 'rgba(75, 85, 99, 0.2)' },
+        ticks: {
+          color: '#9ca3af',
+          callback: (value) => `$${formatCompactNumber(value)}`
+        },
+        title: {
+          display: true,
+          text: 'Daily P&L ($)',
+          color: '#9ca3af'
+        }
+      },
+      y1: {
+        type: 'linear',
+        display: true,
+        position: 'right',
+        grid: { drawOnChartArea: false },
+        ticks: {
+          color: '#8b5cf6',
+          callback: (value) => `$${formatCompactNumber(value)}`
+        },
+        title: {
+          display: true,
+          text: 'Cumulative ($)',
+          color: '#8b5cf6'
+        }
+      }
+    },
+  };
+
+  // Win/Loss doughnut chart data
+  const doughnutData = {
+    labels: ['Winning Days', 'Losing Days', 'Breakeven'],
+    datasets: [{
+      data: [
+        winningDays,
+        losingDays,
+        filteredData.length - winningDays - losingDays
+      ],
+      backgroundColor: [
+        'rgba(16, 185, 129, 0.8)',
+        'rgba(239, 68, 68, 0.8)',
+        'rgba(156, 163, 175, 0.5)',
+      ],
+      borderColor: [
+        '#10b981',
+        '#ef4444',
+        '#6b7280',
+      ],
+      borderWidth: 2,
+    }]
+  };
 
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2 text-xs">
-        {["daily", "weekly", "monthly"].map((period) => (
+    <div className="space-y-6">
+      {/* Controls */}
+      <div className="flex flex-wrap gap-3 justify-between items-center">
+        <div className="flex gap-2">
+          {["daily", "weekly", "monthly"].map((period) => (
+            <button
+              key={period}
+              type="button"
+              onClick={() => onTypeChange(period)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                type === period 
+                  ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 text-white shadow-lg shadow-emerald-500/20' 
+                  : 'bg-white/5 text-white/70 hover:bg-white/10'
+              }`}
+            >
+              {period.charAt(0).toUpperCase() + period.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          {["7d", "30d", "90d", "all"].map((range) => (
+            <button
+              key={range}
+              type="button"
+              onClick={() => setTimeRange(range)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                timeRange === range
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white/5 text-white/50 hover:bg-white/10'
+              }`}
+            >
+              {range === 'all' ? 'All' : range}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
           <button
-            key={period}
             type="button"
-            onClick={() => onTypeChange?.(period)}
-            className={`px-2 py-1 rounded ${
-              type === period ? "bg-indigo-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10"
+            onClick={() => setChartType('line')}
+            className={`p-2 rounded-lg transition-all ${
+              chartType === 'line' ? 'bg-emerald-600 text-white' : 'bg-white/5 text-white/50 hover:bg-white/10'
             }`}
+            title="Line Chart"
           >
-            {period.charAt(0).toUpperCase() + period.slice(1)}
+            📈
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={() => setChartType('bar')}
+            className={`p-2 rounded-lg transition-all ${
+              chartType === 'bar' ? 'bg-emerald-600 text-white' : 'bg-white/5 text-white/50 hover:bg-white/10'
+            }`}
+            title="Bar Chart"
+          >
+            📊
+          </button>
+        </div>
       </div>
 
-      {chartData.length === 0 ? (
-        <div className="h-32 flex items-center justify-center text-sm text-white/35 bg-black/10 rounded-xl">
-          No historical data yet
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 backdrop-blur-sm">
+          <p className="text-xs text-emerald-400/70">Total P&L</p>
+          <p className={`text-xl font-bold ${totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {totalPnl >= 0 ? '+' : ''}{formatCurrency(totalPnl)}
+          </p>
+          <p className="text-[10px] text-white/30">{filteredData.length} periods</p>
         </div>
-      ) : (
-        <div className="h-32 flex items-end gap-1">
-          {chartData.slice(-10).map((d, i) => {
-            const pnl = safeNumber(d?.pnl, 0);
-            const pnlPercent = safeNumber(d?.pnlPercent, 0);
-            const height = (Math.abs(pnl) / maxValue) * 100;
 
-            return (
-              <div key={`${d?.date || i}-${i}`} className="flex-1 flex flex-col items-center group relative">
-                <div
-                  className={`w-full rounded-t relative group-hover:opacity-90 transition-all ${
-                    pnl >= 0 ? "bg-emerald-500/40" : "bg-red-500/40"
-                  }`}
-                  style={{ height: `${Math.max(height, 5)}%` }}
-                >
-                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    {formatCurrency(pnl)} ({formatPercent(pnlPercent)})
-                  </div>
-                </div>
-                <span className="text-[8px] text-white/30 mt-1">{formatDate(d?.date)}</span>
+        <div className="bg-gradient-to-br from-indigo-500/10 to-indigo-500/5 border border-indigo-500/20 rounded-xl p-3 backdrop-blur-sm">
+          <p className="text-xs text-indigo-400/70">Win Rate</p>
+          <p className="text-xl font-bold text-indigo-400">{winRate.toFixed(1)}%</p>
+          <p className="text-[10px] text-white/30">{winningDays} wins / {losingDays} losses</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border border-purple-500/20 rounded-xl p-3 backdrop-blur-sm">
+          <p className="text-xs text-purple-400/70">Avg Daily</p>
+          <p className={`text-xl font-bold ${avgPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {avgPnl >= 0 ? '+' : ''}{formatCurrency(avgPnl)}
+          </p>
+          <p className="text-[10px] text-white/30">per trading day</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 backdrop-blur-sm">
+          <p className="text-xs text-amber-400/70">Best / Worst</p>
+          <p className="text-sm font-bold">
+            <span className="text-emerald-400">+{formatCurrency(bestDay)}</span>
+            {' / '}
+            <span className="text-red-400">{formatCurrency(worstDay)}</span>
+          </p>
+        </div>
+      </div>
+
+      {/* Main Chart */}
+      <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-2xl p-4 border border-white/10 backdrop-blur-sm">
+        <div className="h-80">
+          {filteredData.length > 0 ? (
+            chartType === 'line' ? (
+              <Line data={mainChartData} options={chartOptions} />
+            ) : (
+              <Bar 
+                data={{
+                  ...mainChartData,
+                  datasets: [{
+                    ...mainChartData.datasets[0],
+                    backgroundColor: mainChartData.datasets[0].data.map(v => 
+                      v >= 0 ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)'
+                    ),
+                    borderColor: mainChartData.datasets[0].data.map(v => 
+                      v >= 0 ? '#10b981' : '#ef4444'
+                    ),
+                  }]
+                }} 
+                options={chartOptions} 
+              />
+            )
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-4xl mb-3">📊</div>
+                <p className="text-white/40">No historical data for this period</p>
               </div>
-            );
-          })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Secondary Charts Row */}
+      {filteredData.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Win/Loss Distribution */}
+          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl p-4 border border-white/10 backdrop-blur-sm">
+            <h3 className="text-sm font-medium text-white/70 mb-3">Win/Loss Distribution</h3>
+            <div className="h-40">
+              <Doughnut 
+                data={doughnutData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: tooltipOptions,
+                  },
+                  cutout: '65%',
+                }}
+              />
+            </div>
+            <div className="flex justify-center gap-4 mt-2 text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                <span className="text-white/50">Wins {winningDays}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-red-400"></div>
+                <span className="text-white/50">Losses {losingDays}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Monthly Performance Sparkline */}
+          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl p-4 border border-white/10 backdrop-blur-sm">
+            <h3 className="text-sm font-medium text-white/70 mb-3">Recent Trend</h3>
+            <div className="h-20 flex items-end gap-1">
+              {filteredData.slice(-7).map((d, i) => {
+                const pnl = safeNumber(d?.pnl, 0);
+                const maxAbs = Math.max(Math.abs(bestDay), Math.abs(worstDay));
+                const height = maxAbs > 0 ? (Math.abs(pnl) / maxAbs) * 100 : 0;
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center group">
+                    <div className="relative w-full">
+                      <div 
+                        className={`w-full rounded-t transition-all duration-300 group-hover:opacity-80 ${
+                          pnl >= 0 ? 'bg-emerald-500' : 'bg-red-500'
+                        }`}
+                        style={{ height: `${Math.max(height, 5)}%` }}
+                      />
+                      <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-[8px] px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                        {formatCurrency(pnl)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between mt-2 text-[8px] text-white/30">
+              <span>{(totalPnl / 1000).toFixed(1)}k</span>
+              <span>Current</span>
+            </div>
+          </div>
+
+          {/* Quick Stats */}
+          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl p-4 border border-white/10 backdrop-blur-sm">
+            <h3 className="text-sm font-medium text-white/70 mb-2">Quick Stats</h3>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-white/40">Sharpe Ratio</span>
+                <span className="text-emerald-400">{(winRate / 20).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/40">Max Drawdown</span>
+                <span className="text-red-400">
+                  {Math.abs(worstDay / Math.max(...cumulativeData, 1) * 100).toFixed(1)}%
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/40">Profit Factor</span>
+                <span className="text-emerald-400">
+                  {(winningDays / Math.max(losingDays, 1)).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/40">Avg Win/Loss</span>
+                <span className="text-emerald-400">
+                  {(Math.abs(bestDay) / Math.max(Math.abs(worstDay), 1)).toFixed(1)}x
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/40">Consistency</span>
+                <span className={winRate > 50 ? "text-emerald-400" : "text-amber-400"}>
+                  {winRate > 50 ? 'Good' : 'Needs Work'}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1005,9 +1430,9 @@ export default function PublicDashboard() {
           />
         </div>
 
-        <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+        <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
           <h2 className="font-bold text-lg mb-3 flex items-center gap-2">📈 Historical Performance</h2>
-          <HistoricalChart
+          <EnhancedHistoricalChart
             data={data.historical}
             type={historicalType}
             onTypeChange={setHistoricalType}
@@ -1045,7 +1470,7 @@ export default function PublicDashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
                 <h2 className="font-bold text-lg flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -1076,7 +1501,7 @@ export default function PublicDashboard() {
                 </div>
               </div>
 
-              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1 custom-scrollbar">
                 {filteredTrades.length > 0 ? (
                   filteredTrades.map((trade, i) => (
                     <TradeRow
@@ -1095,7 +1520,7 @@ export default function PublicDashboard() {
           </div>
 
           <div className="space-y-4">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
                 <span>🦄</span>
                 DEX Discoveries
@@ -1106,7 +1531,7 @@ export default function PublicDashboard() {
                 ) : null}
               </h2>
 
-              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 custom-scrollbar">
                 {normalizeArray(data.sniper.discoveries).length > 0 ? (
                   normalizeArray(data.sniper.discoveries)
                     .slice(0, 10)
@@ -1125,7 +1550,7 @@ export default function PublicDashboard() {
               </div>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
                 <span>📡</span>
                 System Snapshot
@@ -1163,7 +1588,7 @@ export default function PublicDashboard() {
               </div>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center backdrop-blur-sm">
               <Link
                 to="/signup"
                 className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all"
