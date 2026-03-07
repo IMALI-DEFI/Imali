@@ -37,6 +37,7 @@ const API_BASE =
   "https://api.imali-defi.com";
 
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
+const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
 
 /* ============================
 HELPERS
@@ -66,6 +67,16 @@ const formatCompactNumber = (value) => {
   return num.toString();
 };
 
+const formatShortDate = (timestamp) => {
+  if (!timestamp) return "—";
+  try {
+    const d = new Date(timestamp);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  } catch {
+    return "—";
+  }
+};
+
 /* ============================
 LIVE DATA HOOK
 ============================ */
@@ -75,11 +86,11 @@ function useLiveActivity() {
     trades: [],
     bots: [],
     stats: {
-      totalUsers: 1248,
       totalRevenue: 284500,
-      activeBots: 4,
+      activeBots: 0,
       totalTrades: 15243
     },
+    historicalData: [],
     loading: true,
     error: null
   });
@@ -89,35 +100,37 @@ function useLiveActivity() {
 
     const load = async () => {
       try {
-        const res = await axios.get(LIVE_STATS_URL);
+        const [liveRes, historicalRes] = await Promise.all([
+          axios.get(LIVE_STATS_URL),
+          axios.get(HISTORICAL_URL)
+        ]);
 
         if (!mounted) return;
 
-        const data = res.data || {};
+        const liveData = liveRes.data || {};
+        const historicalData = historicalRes.data || {};
 
-        const trades = normalizeArray(data.recent_trades).slice(0, 10);
+        const trades = normalizeArray(liveData.recent_trades).slice(0, 10);
 
-        const bots = Object.keys(data).filter((k) =>
+        const bots = Object.keys(liveData).filter((k) =>
           ["futures", "stocks", "sniper", "okx"].includes(k)
         ).map(k => ({
           name: k,
-          online: !!data[k]?.health
+          online: !!liveData[k]?.health
         }));
 
-        // Calculate stats from real data
-        const okxPnl = safeNumber(data.okx?.stats?.total_pnl, 0);
-        const futuresPnl = safeNumber(data.futures?.stats?.daily_realized, 0);
-        const totalPnl = okxPnl + (typeof futuresPnl === 'number' ? futuresPnl : 0);
+        // Get daily historical data for chart
+        const dailyHistorical = normalizeArray(historicalData.daily || []).slice(-14);
 
         setState({
           trades,
           bots,
           stats: {
-            totalUsers: 1248 + (data.recent_trades?.length || 0), // Growing with activity
-            totalRevenue: 284500 + totalPnl,
+            totalRevenue: 284500 + (liveData.okx?.stats?.total_pnl || 0),
             activeBots: bots.filter(b => b.online).length,
-            totalTrades: 15243 + (data.okx?.stats?.total_trades || 0)
+            totalTrades: 15243 + (liveData.okx?.stats?.total_trades || 0)
           },
+          historicalData: dailyHistorical,
           loading: false,
           error: null
         });
@@ -183,21 +196,30 @@ function usePromoStatus() {
 }
 
 /* ============================
-LIVE CHART
+HISTORICAL CHART
 ============================ */
 
-function ActivityChart({ trades }) {
-  const data = {
-    labels: trades.map((_, i) => i),
+function MiniHistoricalChart({ data }) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-24 bg-white/5 rounded-xl flex items-center justify-center text-white/30 text-xs">
+        No historical data
+      </div>
+    );
+  }
+
+  const chartData = {
+    labels: data.map(d => formatShortDate(d.date)),
     datasets: [
       {
-        label: 'Trading Volume',
-        data: trades.map((t) => safeNumber(t.value || t.price * t.qty, Math.random() * 5000)),
+        data: data.map(d => safeNumber(d.pnl, 0)),
         borderColor: "#34d399",
-        backgroundColor: "rgba(52,211,153,0.2)",
-        tension: 0.4,
+        backgroundColor: "rgba(52,211,153,0.1)",
+        tension: 0.3,
         fill: true,
-        pointRadius: 0
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 2
       }
     ]
   };
@@ -205,7 +227,23 @@ function ActivityChart({ trades }) {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
+    plugins: { 
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+        titleColor: '#f3f4f6',
+        bodyColor: '#9ca3af',
+        borderColor: 'rgba(16, 185, 129, 0.3)',
+        borderWidth: 1,
+        padding: 8,
+        callbacks: {
+          label: (context) => {
+            const value = context.raw;
+            return `P&L: ${value >= 0 ? '+' : ''}$${Math.abs(value).toFixed(2)}`;
+          }
+        }
+      }
+    },
     scales: {
       x: { display: false },
       y: { display: false }
@@ -214,7 +252,7 @@ function ActivityChart({ trades }) {
 
   return (
     <div className="h-24">
-      <Line data={data} options={options} />
+      <Line data={chartData} options={options} />
     </div>
   );
 }
@@ -223,40 +261,12 @@ function ActivityChart({ trades }) {
 STAT CARD
 ============================ */
 
-function StatCard({ label, value, change }) {
+function StatCard({ label, value, subtext }) {
   return (
     <div className="bg-white/5 rounded-xl p-4 border border-white/10">
       <div className="text-sm text-white/50">{label}</div>
       <div className="text-2xl font-bold mt-1">{value}</div>
-      {change && <div className="text-xs text-emerald-400 mt-1">{change}</div>}
-    </div>
-  );
-}
-
-/* ============================
-USER CARD
-============================ */
-
-function UserCard({ name, role, avatar, trades, pnl, status }) {
-  const pnlColor = pnl >= 0 ? "text-emerald-400" : "text-red-400";
-  const statusColor = status === "online" ? "bg-green-400" : "bg-gray-400";
-
-  return (
-    <div className="bg-white/5 rounded-xl p-4 border border-white/10 flex items-center gap-3">
-      <div className="relative">
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-xl font-bold">
-          {avatar}
-        </div>
-        <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ${statusColor} border-2 border-gray-900`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold truncate">{name}</div>
-        <div className="text-xs text-white/50">{role}</div>
-        <div className="flex justify-between items-center mt-1 text-xs">
-          <span className="text-white/40">{trades} trades</span>
-          <span className={pnlColor}>{pnl >= 0 ? '+' : ''}{pnl}%</span>
-        </div>
-      </div>
+      {subtext && <div className="text-xs text-white/40 mt-1">{subtext}</div>}
     </div>
   );
 }
@@ -285,13 +295,12 @@ function LiveActivityWidget({ activity }) {
         </Link>
       </div>
 
-      <ActivityChart trades={activity.trades} />
+      <MiniHistoricalChart data={activity.historicalData} />
 
       <div className="grid grid-cols-2 gap-3 mt-4">
         <StatCard 
           label="Active Bots" 
           value={activity.stats.activeBots} 
-          change="+2 this week"
         />
         <StatCard 
           label="Total Trades" 
@@ -299,16 +308,10 @@ function LiveActivityWidget({ activity }) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mt-3">
-        <StatCard 
-          label="Total Users" 
-          value={formatCompactNumber(activity.stats.totalUsers)} 
-          change="+124 new"
-        />
+      <div className="grid grid-cols-1 gap-3 mt-3">
         <StatCard 
           label="Total Revenue" 
           value={formatCurrency(activity.stats.totalRevenue)} 
-          change="↑ 12.5%"
         />
       </div>
 
@@ -360,32 +363,6 @@ function PromoMeter({ claimed, limit, spotsLeft }) {
       <p className="text-xs text-white/40 mt-1">
         First 50 customers get 5% performance fee for 90 days
       </p>
-    </div>
-  );
-}
-
-/* ============================
-TOP USERS SECTION
-============================ */
-
-function TopUsers() {
-  // Mock data - replace with real data from API
-  const users = [
-    { name: "0x7F...3aB2", role: "Elite Trader", avatar: "🦊", trades: 1247, pnl: 32.4, status: "online" },
-    { name: "crypto_whale", role: "Pro Trader", avatar: "🐋", trades: 892, pnl: 28.7, status: "online" },
-    { name: "defi_sniper", role: "Elite Trader", avatar: "🦄", trades: 2156, pnl: 41.2, status: "online" },
-    { name: "market_maker", role: "Pro Trader", avatar: "📈", trades: 634, pnl: 19.8, status: "offline" },
-    { name: "eth_maxi", role: "Starter", avatar: "🐙", trades: 123, pnl: 8.4, status: "online" },
-  ];
-
-  return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-      <h3 className="font-bold text-lg mb-4">Top Traders</h3>
-      <div className="space-y-3">
-        {users.map((user, i) => (
-          <UserCard key={i} {...user} />
-        ))}
-      </div>
     </div>
   );
 }
@@ -461,7 +438,7 @@ export default function Home() {
         </div>
 
         <h1 className="text-4xl md:text-6xl font-extrabold bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-400 bg-clip-text text-transparent">
-          AI-Powered Trading Robots
+          Automated Trading Robots
         </h1>
 
         <p className="text-white/60 mt-4 max-w-2xl mx-auto text-lg">
@@ -477,10 +454,10 @@ export default function Home() {
             Start Trading Free
           </Link>
           <Link
-            to="/live"
+            to="/demo"
             className="px-8 py-4 rounded-full bg-white/10 hover:bg-white/20 font-bold text-lg transition-all border border-white/10"
           >
-            View Live Dashboard
+            Try Demo →
           </Link>
         </div>
 
@@ -502,70 +479,70 @@ export default function Home() {
 
       {/* STATS SECTION */}
       <section className="max-w-6xl mx-auto px-6 mb-16">
-        <div className="grid md:grid-cols-4 gap-4">
-          <StatCard label="Total Users" value={formatCompactNumber(activity.stats.totalUsers)} change="↑ 12% this month" />
-          <StatCard label="Total Volume" value={formatCurrency(activity.stats.totalRevenue)} change="↑ 8.3% vs last month" />
-          <StatCard label="Active Bots" value={activity.stats.activeBots} change="100% uptime" />
-          <StatCard label="Total Trades" value={formatCompactNumber(activity.stats.totalTrades)} change="+2,847 today" />
+        <div className="grid md:grid-cols-3 gap-4">
+          <StatCard 
+            label="Total Revenue" 
+            value={formatCurrency(activity.stats.totalRevenue)} 
+          />
+          <StatCard 
+            label="Active Bots" 
+            value={activity.stats.activeBots} 
+          />
+          <StatCard 
+            label="Total Trades" 
+            value={formatCompactNumber(activity.stats.totalTrades)} 
+          />
         </div>
       </section>
 
       {/* MAIN CONTENT GRID */}
-      <section className="max-w-6xl mx-auto px-6 mb-16 grid lg:grid-cols-3 gap-6">
-        {/* Left column - Live Activity */}
-        <div className="lg:col-span-2">
+      <section className="max-w-6xl mx-auto px-6 mb-16 grid lg:grid-cols-2 gap-6">
+        {/* Live Activity */}
+        <div>
           <LiveActivityWidget activity={activity} />
         </div>
 
-        {/* Right column - Top Users */}
-        <div>
-          <TopUsers />
-        </div>
-      </section>
-
-      {/* BOTTOM GRID */}
-      <section className="max-w-6xl mx-auto px-6 mb-16 grid lg:grid-cols-3 gap-6">
         {/* NFT Showcase */}
         <div>
           <NFTShowcase />
         </div>
+      </section>
 
-        {/* Promo Section */}
-        <div className="lg:col-span-2">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-            <h3 className="font-bold text-xl mb-2">Early Access Promo</h3>
-            <p className="text-white/60 mb-4">
-              Be among the first 50 traders to get reduced fees for 90 days.
-            </p>
+      {/* PROMO SECTION */}
+      <section className="max-w-4xl mx-auto px-6 mb-20">
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
+          <h2 className="text-3xl font-bold mb-3">Early Access Promo</h2>
+          <p className="text-white/60 mb-6 max-w-xl mx-auto">
+            Be among the first 50 traders to get reduced fees for 90 days.
+          </p>
 
-            <PromoMeter
-              claimed={promo.claimed}
-              limit={promo.limit}
-              spotsLeft={promo.spotsLeft}
-            />
+          <PromoMeter
+            claimed={promo.claimed}
+            limit={promo.limit}
+            spotsLeft={promo.spotsLeft}
+          />
 
-            {!success && (
-              <form onSubmit={claimSpot} className="mt-4 flex gap-2">
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  className="flex-1 bg-black/40 border border-white/10 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <button className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-semibold transition-all">
-                  Claim Spot
-                </button>
-              </form>
-            )}
+          {!success && (
+            <form onSubmit={claimSpot} className="mt-6 flex max-w-md mx-auto gap-2">
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-semibold transition-all">
+                Claim Spot
+              </button>
+            </form>
+          )}
 
-            {success && (
-              <div className="mt-4 p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400">
-                ✅ Spot reserved! Check your email for confirmation.
-              </div>
-            )}
-          </div>
+          {success && (
+            <div className="mt-6 p-4 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400">
+              ✅ Spot reserved! Check your email for confirmation.
+            </div>
+          )}
         </div>
       </section>
 
@@ -578,6 +555,7 @@ export default function Home() {
           <Link to="/terms" className="hover:text-white/50">Terms</Link>
           <Link to="/privacy" className="hover:text-white/50">Privacy</Link>
           <Link to="/pricing" className="hover:text-white/50">Pricing</Link>
+          <Link to="/demo" className="hover:text-white/50">Demo</Link>
         </div>
       </footer>
     </div>
