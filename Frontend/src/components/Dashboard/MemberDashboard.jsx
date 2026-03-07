@@ -39,20 +39,38 @@ const STRATEGIES = [
 ];
 
 const PLANS = [
-  { value: "starter", label: "Starter", icon: "🎟️", price: 49, exchanges: ["OKX", "Alpaca"], color: "blue" },
-  { value: "pro", label: "Pro", icon: "⭐", price: 99, exchanges: ["OKX", "Alpaca", "Staking"], color: "purple" },
-  { value: "elite", label: "Elite", icon: "👑", price: 199, exchanges: ["OKX", "Alpaca", "DEX", "Futures", "Sniper"], color: "gold" },
-  { value: "stock", label: "Stocks", icon: "📈", price: 79, exchanges: ["Alpaca"], color: "emerald" },
-  { value: "bundle", label: "Bundle", icon: "🧩", price: 299, exchanges: ["OKX", "Alpaca", "DEX", "Futures", "Staking", "Sniper"], color: "amber" },
+  { value: "starter", label: "Starter", icon: "🎟️", price: 49, 
+    features: ["OKX Spot", "Stock Bot"], 
+    color: "blue", priceLabel: "$49/mo" },
+  { value: "pro", label: "Pro", icon: "⭐", price: 99, 
+    features: ["OKX Spot", "Stock Bot", "Staking", "Yield Farming"], 
+    color: "purple", priceLabel: "$99/mo" },
+  { value: "elite", label: "Elite", icon: "👑", price: 199, 
+    features: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "NFT Marketplace", "Staking", "Yield Farming"], 
+    color: "amber", priceLabel: "$199/mo" },
+  { value: "stock", label: "Stocks", icon: "📈", price: 79, 
+    features: ["Stock Bot", "DEX Sniper"], 
+    color: "emerald", priceLabel: "$79/mo" },
+  { value: "bundle", label: "Bundle", icon: "🧩", price: 299, 
+    features: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "Staking", "Yield Farming", "NFT Marketplace"], 
+    color: "amber", priceLabel: "$299/mo" },
 ];
 
 const TIER_BOTS = {
   starter: ["OKX Spot", "Stock Bot"],
-  pro: ["OKX Spot", "Stock Bot", "Staking"],
-  elite: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "NFT"],
-  stock: ["Stock Bot"],
-  bundle: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "Staking", "NFT"],
+  pro: ["OKX Spot", "Stock Bot", "Staking", "Yield Farming"],
+  elite: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "NFT Marketplace", "Staking", "Yield Farming"],
+  stock: ["Stock Bot", "DEX Sniper"],
+  bundle: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "Staking", "Yield Farming", "NFT Marketplace"],
 };
+
+const LEVEL_THRESHOLDS = [
+  { name: "🥉 Bronze", min: 0, colorClass: "text-amber-600" },
+  { name: "🥈 Silver", min: 30, colorClass: "text-gray-300" },
+  { name: "🥇 Gold", min: 70, colorClass: "text-yellow-300" },
+  { name: "💎 Diamond", min: 120, colorClass: "text-cyan-400" },
+  { name: "🏆 Legend", min: 200, colorClass: "text-yellow-400" },
+];
 
 /* ===================== API CONFIG ===================== */
 const API_BASE = process.env.REACT_APP_API_URL || 'https://api.imali-defi.com';
@@ -187,6 +205,11 @@ const normalizeTier = (tier) => {
   return PLANS.some((p) => p.value === t) ? t : "starter";
 };
 
+const tierHasFeature = (userTier, feature) => {
+  const tier = normalizeTier(userTier);
+  return TIER_BOTS[tier]?.includes(feature) || false;
+};
+
 const getBotIcon = (botName) => {
   const name = String(botName || "").toLowerCase();
   if (name.includes('okx')) return "🔷";
@@ -194,6 +217,7 @@ const getBotIcon = (botName) => {
   if (name.includes('alpaca') || name.includes('stock')) return "📈";
   if (name.includes('sniper')) return "🦄";
   if (name.includes('staking')) return "🥩";
+  if (name.includes('yield') || name.includes('farming')) return "🌾";
   if (name.includes('nft')) return "🖼️";
   return "🤖";
 };
@@ -321,22 +345,6 @@ function PerformanceChart({ historicalData, type = "daily", onTypeChange }) {
     },
   };
 
-  const barOptions = {
-    ...chartOptions,
-    plugins: {
-      ...chartOptions.plugins,
-      tooltip: {
-        ...chartOptions.plugins.tooltip,
-        callbacks: {
-          label: (context) => {
-            const value = context.raw;
-            return `P&L: ${value >= 0 ? '+' : ''}$${Math.abs(value).toFixed(2)}`;
-          }
-        }
-      }
-    }
-  };
-
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 justify-between items-center">
@@ -395,7 +403,7 @@ function PerformanceChart({ historicalData, type = "daily", onTypeChange }) {
                   ),
                 }]
               }} 
-              options={barOptions} 
+              options={chartOptions} 
             />
           )
         ) : (
@@ -609,6 +617,30 @@ const DiscoveryCard = ({ discovery }) => {
   );
 };
 
+const FeatureLock = ({ feature, children }) => {
+  const { user } = useAuth();
+  const tier = normalizeTier(user?.tier);
+  const hasFeature = tierHasFeature(tier, feature);
+  
+  if (hasFeature) return children;
+  
+  return (
+    <div className="relative group">
+      <div className="opacity-50 pointer-events-none blur-[1px]">
+        {children}
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <Link 
+          to="/pricing" 
+          className="bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs border border-amber-500/30 text-amber-300 hover:bg-black/70 transition-all"
+        >
+          🔒 Upgrade to Unlock
+        </Link>
+      </div>
+    </div>
+  );
+};
+
 /* ===================== MAIN DASHBOARD ===================== */
 export default function MemberDashboard() {
   const navigate = useNavigate();
@@ -624,6 +656,12 @@ export default function MemberDashboard() {
     historical: { daily: [], weekly: [], monthly: [] }
   });
   
+  const [mockData, setMockData] = useState({
+    staking: { balance: 25000, rewards: 1875, apy: 8.5, tvl: 4500000 },
+    yieldFarming: { pools: 3, value: 15000, rewards: 825, apy: 12.2 },
+    nft: { collections: 5, floor: 0.85, volume: 234, owned: 12 }
+  });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -742,7 +780,7 @@ export default function MemberDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent mx-auto mb-4" />
           <p className="text-white/60">Loading your dashboard...</p>
@@ -753,7 +791,7 @@ export default function MemberDashboard() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white flex items-center justify-center p-4">
         <div className="text-center">
           <p className="text-white/60 mb-4">Please log in to view your dashboard</p>
           <button onClick={() => navigate("/login")} className="px-6 py-2 bg-emerald-600 rounded-xl">
@@ -804,8 +842,8 @@ export default function MemberDashboard() {
             <Link to="/demo" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
               <span>🎮</span> Demo
             </Link>
-            <Link to="/live" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs transition-colors">
-              <span>👁️</span> Public Live Feed
+            <Link to="/pricing" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-xs transition-colors">
+              <span>⭐</span> Upgrade
             </Link>
           </div>
         </CardShell>
@@ -833,6 +871,12 @@ export default function MemberDashboard() {
                 )}
               </div>
             </div>
+            <Link 
+              to="/pricing" 
+              className="text-xs bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 rounded-lg hover:from-amber-500 hover:to-orange-500 transition-all"
+            >
+              Upgrade Plan →
+            </Link>
           </div>
         </CardShell>
 
@@ -853,36 +897,73 @@ export default function MemberDashboard() {
           <StatCard title="Active Bots" value={activeBots} subtext="Systems online" color="cyan" />
         </div>
 
-        {/* Bot Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <CardShell title="Futures Bot" icon="📊">
-            <MetricRow label="Status" value={liveData.futures.health ? "Online" : "Offline"} 
-              valueClassName={liveData.futures.health ? "text-green-400" : "text-red-400"} />
-            <MetricRow label="Positions" value={liveData.futures.stats?.positions || 0} />
-            <MetricRow label="Pairs" value={liveData.futures.stats?.total_symbols || 150} />
-          </CardShell>
+        {/* Bot Cards - Available in your tier */}
+        <CollapsibleCard title="🤖 Your Trading Bots" icon="🤖" defaultOpen={true}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* OKX Spot Bot */}
+            <CardShell title="OKX Spot" icon="🔷">
+              <MetricRow label="Status" value={liveData.okx.health ? "Online" : "Offline"} 
+                valueClassName={liveData.okx.health ? "text-green-400" : "text-red-400"} />
+              <MetricRow label="Positions" value={okxPositions} />
+              <MetricRow label="Trades" value={liveData.okx.stats?.total_trades || 0} />
+            </CardShell>
 
-          <CardShell title="Stock Bot" icon="📈">
-            <MetricRow label="Status" value={liveData.stocks.health ? "Online" : "Offline"} 
-              valueClassName={liveData.stocks.health ? "text-green-400" : "text-red-400"} />
-            <MetricRow label="Symbols" value={liveData.stocks.stats?.symbols || 500} />
-            <MetricRow label="Mode" value={liveData.stocks.stats?.mode || "paper"} />
-          </CardShell>
+            {/* Stock Bot */}
+            <CardShell title="Stock Bot" icon="📈">
+              <MetricRow label="Status" value={liveData.stocks.health ? "Online" : "Offline"} 
+                valueClassName={liveData.stocks.health ? "text-green-400" : "text-red-400"} />
+              <MetricRow label="Symbols" value={liveData.stocks.stats?.symbols || 500} />
+              <MetricRow label="Mode" value={liveData.stocks.stats?.mode || "paper"} />
+            </CardShell>
 
-          <CardShell title="OKX Spot" icon="🔷">
-            <MetricRow label="Status" value={liveData.okx.health ? "Online" : "Offline"} 
-              valueClassName={liveData.okx.health ? "text-green-400" : "text-red-400"} />
-            <MetricRow label="Positions" value={okxPositions} />
-            <MetricRow label="Trades" value={liveData.okx.stats?.total_trades || 0} />
-          </CardShell>
+            {/* Futures Bot - Gated */}
+            <FeatureLock feature="Futures">
+              <CardShell title="Futures" icon="📊">
+                <MetricRow label="Status" value={liveData.futures.health ? "Online" : "Offline"} 
+                  valueClassName={liveData.futures.health ? "text-green-400" : "text-red-400"} />
+                <MetricRow label="Positions" value={liveData.futures.stats?.positions || 0} />
+                <MetricRow label="Pairs" value={liveData.futures.stats?.total_symbols || 199} />
+              </CardShell>
+            </FeatureLock>
 
-          <CardShell title="DEX Sniper" icon="🦄">
-            <MetricRow label="Status" value={liveData.sniper.health ? "Online" : "Offline"} 
-              valueClassName={liveData.sniper.health ? "text-green-400" : "text-red-400"} />
-            <MetricRow label="Discoveries" value={sniperDiscoveries} valueClassName="text-purple-400" />
-            <MetricRow label="State" value={liveData.sniper.stats?.bot_state || "idle"} />
-          </CardShell>
-        </div>
+            {/* DEX Sniper - Gated */}
+            <FeatureLock feature="DEX Sniper">
+              <CardShell title="DEX Sniper" icon="🦄">
+                <MetricRow label="Status" value={liveData.sniper.health ? "Online" : "Offline"} 
+                  valueClassName={liveData.sniper.health ? "text-green-400" : "text-red-400"} />
+                <MetricRow label="Discoveries" value={sniperDiscoveries} valueClassName="text-purple-400" />
+                <MetricRow label="State" value={liveData.sniper.stats?.bot_state || "idle"} />
+              </CardShell>
+            </FeatureLock>
+
+            {/* Staking - Gated */}
+            <FeatureLock feature="Staking">
+              <CardShell title="Staking" icon="🥩">
+                <MetricRow label="Staked" value={formatUsdPlain(mockData.staking.balance)} />
+                <MetricRow label="APY" value={`${mockData.staking.apy}%`} valueClassName="text-emerald-400" />
+                <MetricRow label="Rewards" value={formatUsdPlain(mockData.staking.rewards)} />
+              </CardShell>
+            </FeatureLock>
+
+            {/* Yield Farming - Gated */}
+            <FeatureLock feature="Yield Farming">
+              <CardShell title="Yield Farming" icon="🌾">
+                <MetricRow label="Value" value={formatUsdPlain(mockData.yieldFarming.value)} />
+                <MetricRow label="APY" value={`${mockData.yieldFarming.apy}%`} valueClassName="text-emerald-400" />
+                <MetricRow label="Pools" value={mockData.yieldFarming.pools} />
+              </CardShell>
+            </FeatureLock>
+
+            {/* NFT Marketplace - Gated */}
+            <FeatureLock feature="NFT Marketplace">
+              <CardShell title="NFTs" icon="🖼️">
+                <MetricRow label="Owned" value={mockData.nft.owned} />
+                <MetricRow label="Floor" value={`${mockData.nft.floor} ETH`} />
+                <MetricRow label="Volume" value={`${mockData.nft.volume} ETH`} />
+              </CardShell>
+            </FeatureLock>
+          </div>
+        </CollapsibleCard>
 
         {/* Win/Loss Chart and Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -904,8 +985,7 @@ export default function MemberDashboard() {
             <div className="space-y-2 text-xs">
               <MetricRow label="Total Trades" value={allTrades.length} />
               <MetricRow label="Open Positions" value={allTrades.filter(isOpenTrade).length} />
-              <MetricRow label="Avg Win/Loss" value={(wins / Math.max(losses, 1)).toFixed(2)} />
-              <MetricRow label="Best Streak" value="3" />
+              <MetricRow label="Win/Loss Ratio" value={(wins / Math.max(losses, 1)).toFixed(2)} />
             </div>
           </CardShell>
 
@@ -913,13 +993,13 @@ export default function MemberDashboard() {
             <div className="space-y-2 text-xs">
               <MetricRow label="API" value="Connected" valueClassName="text-green-400" />
               <MetricRow label="Last Update" value={lastUpdate ? timeAgo(lastUpdate) : "—"} />
-              <MetricRow label="Data Fresh" value={lastUpdate ? "Real-time" : "Stale"} />
+              <MetricRow label="Your Tier" value={tier.toUpperCase()} valueClassName="text-amber-400" />
             </div>
           </CardShell>
         </div>
 
         {/* DEX Discoveries */}
-        {sniperDiscoveries > 0 && (
+        {sniperDiscoveries > 0 && tierHasFeature(tier, "DEX Sniper") && (
           <CardShell title="🦄 New Token Discoveries" icon="🦄">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {liveData.sniper.discoveries.slice(0, 6).map((d, i) => (
@@ -927,6 +1007,22 @@ export default function MemberDashboard() {
               ))}
             </div>
           </CardShell>
+        )}
+
+        {/* Upgrade Prompt for missing features */}
+        {!tierHasFeature(tier, "Staking") && !tierHasFeature(tier, "Yield Farming") && !tierHasFeature(tier, "NFT Marketplace") && (
+          <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-2xl p-5 text-center">
+            <h3 className="font-bold text-lg mb-2">🚀 Unlock Advanced Features</h3>
+            <p className="text-sm text-white/60 mb-4">
+              Upgrade to Pro or Elite to access Staking, Yield Farming, NFT Marketplace and more!
+            </p>
+            <Link 
+              to="/pricing" 
+              className="inline-block px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 rounded-xl font-semibold hover:from-amber-500 hover:to-orange-500 transition-all"
+            >
+              View Plans →
+            </Link>
+          </div>
         )}
 
         {/* Recent Trades Feed */}
@@ -971,6 +1067,9 @@ export default function MemberDashboard() {
         <div className="text-center pt-4 border-t border-white/10 flex justify-center gap-4">
           <Link to="/demo" className="text-[11px] text-white/40 hover:text-white/60 transition-colors">
             🎮 Try Demo
+          </Link>
+          <Link to="/pricing" className="text-[11px] text-amber-400 hover:text-amber-300 transition-colors">
+            ⭐ Upgrade Plan
           </Link>
           <Link to="/live" className="text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors">
             👁️ Public Live Dashboard
