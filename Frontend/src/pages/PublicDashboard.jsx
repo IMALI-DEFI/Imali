@@ -31,7 +31,7 @@ const DEFAULT_STATE = {
 };
 
 /* =====================================================
-   HELPERS (unchanged - keep all your existing helpers)
+   HELPERS
 ===================================================== */
 
 function safeNumber(value, fallback = 0) {
@@ -161,7 +161,7 @@ function dedupeTrades(trades) {
 }
 
 /* =====================================================
-   PAYLOAD NORMALIZATION (unchanged)
+   PAYLOAD NORMALIZATION
 ===================================================== */
 
 function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTORICAL) {
@@ -234,7 +234,7 @@ function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTOR
 }
 
 /* =====================================================
-   DATA HOOK (unchanged)
+   DATA HOOK
 ===================================================== */
 
 function useLiveData() {
@@ -389,7 +389,7 @@ function useLiveData() {
 }
 
 /* =====================================================
-   UI COMPONENTS - Enhanced for noble/investor audience
+   UI COMPONENTS
 ===================================================== */
 
 function Heartbeat({ active = true }) {
@@ -474,7 +474,8 @@ function StatCard({ title, value, icon, subtext, trend, color = "emerald" }) {
   );
 }
 
-function BotCard({ name, icon, health, stats, accent = "indigo", details = [] }) {
+// Fixed BotCard - Now uses stats directly instead of details prop
+function BotCard({ name, icon, health, stats, accent = "indigo" }) {
   const isOnline = hasObjectData(health);
 
   const accentMap = {
@@ -483,6 +484,31 @@ function BotCard({ name, icon, health, stats, accent = "indigo", details = [] })
     purple: "border-purple-500/20 bg-purple-500/10 hover:border-purple-500/40",
     amber: "border-amber-500/20 bg-amber-500/10 hover:border-amber-500/40",
     cyan: "border-cyan-500/20 bg-cyan-500/10 hover:border-cyan-500/40",
+  };
+
+  // Define which stats to show based on bot name
+  const getStatsLines = () => {
+    if (name === "Futures Bot") {
+      return [
+        ["Pairs", stats?.total_symbols || 0],
+        ["Status", stats?.status || "unknown"],
+        ["DB", stats?.db_connected ? "connected" : "disconnected"],
+      ];
+    } else if (name === "Stock Bot") {
+      return [
+        ["Symbols", stats?.symbols || 0],
+        ["Mode", stats?.mode || "paper"],
+        ["Refresh", stats?.lastRefresh ? timeAgo(stats.lastRefresh) : "—"],
+      ];
+    } else if (name === "OKX Spot") {
+      return [
+        ["Positions", stats?.positions_count || 0],
+        ["Trades", stats?.total_trades || 0],
+        ["Mode", stats?.mode || "dry_run"],
+        ["Candidates", stats?.last_candidate_count || 0],
+      ];
+    }
+    return [];
   };
 
   return (
@@ -501,12 +527,10 @@ function BotCard({ name, icon, health, stats, accent = "indigo", details = [] })
 
       {isOnline ? (
         <div className="text-xs space-y-2">
-          {details.map(({ label, value, format }, idx) => (
+          {getStatsLines().map(([label, value], idx) => (
             <div key={idx} className="flex justify-between items-center">
               <span className="text-white/50">{label}</span>
-              <span className="text-white font-medium">
-                {format ? format(value) : value}
-              </span>
+              <span className="text-white font-medium">{value}</span>
             </div>
           ))}
         </div>
@@ -700,9 +724,16 @@ function DiscoveryCard({ discovery }) {
   );
 }
 
+// Fixed HistoricalChart - Now properly shows lines
 function HistoricalChart({ data, type, onChangeType }) {
   const chartData = safeArray(data?.[type]);
-  const maxValue = Math.max(...chartData.map((d) => Math.abs(safeNumber(d?.pnl))), 1);
+  
+  // Calculate max value for scaling
+  const maxValue = Math.max(...chartData.map((d) => Math.abs(safeNumber(d?.pnl || d?.value || 0)), 1));
+  
+  // Get the appropriate label based on data structure
+  const getValue = (item) => safeNumber(item?.pnl || item?.value || item?.pnl_usd || 0);
+  const getDate = (item) => item?.date || item?.timestamp || item?.day || "";
 
   if (!chartData.length) {
     return (
@@ -722,7 +753,7 @@ function HistoricalChart({ data, type, onChangeType }) {
           ))}
         </div>
         <div className="h-32 flex items-center justify-center text-white/30 text-sm">
-          Building historical data...
+          No historical data yet
         </div>
       </div>
     );
@@ -747,13 +778,13 @@ function HistoricalChart({ data, type, onChangeType }) {
 
       <div className="h-32 flex items-end gap-1">
         {chartData.slice(-10).map((d, i) => {
-          const pnl = safeNumber(d?.pnl);
-          const pnlPercent = safeNumber(d?.pnlPercent);
-          const height = (Math.abs(pnl) / maxValue) * 100;
-          const positive = pnl >= 0;
+          const value = getValue(d);
+          const height = maxValue > 0 ? (Math.abs(value) / maxValue) * 100 : 0;
+          const positive = value >= 0;
+          const date = getDate(d);
 
           return (
-            <div key={`${d?.date || i}`} className="flex-1 flex flex-col items-center group relative">
+            <div key={`${date || i}`} className="flex-1 flex flex-col items-center group relative">
               <div
                 className={`w-full rounded-t relative group-hover:opacity-80 transition-all ${
                   positive ? "bg-emerald-500/50" : "bg-red-500/50"
@@ -761,13 +792,15 @@ function HistoricalChart({ data, type, onChangeType }) {
                 style={{ height: `${Math.max(height, 5)}%` }}
               >
                 <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 border border-white/10">
-                  <div className="font-medium">{formatDate(d?.date)}</div>
+                  <div className="font-medium">{date ? formatDate(date) : formatDate(new Date())}</div>
                   <div className={positive ? "text-emerald-400" : "text-red-400"}>
-                    {formatCurrencySigned(pnl)} ({formatPercent(pnlPercent)})
+                    {formatCurrencySigned(value)}
                   </div>
                 </div>
               </div>
-              <span className="text-[8px] text-white/30 mt-1">{formatDate(d?.date).slice(0, 5)}</span>
+              <span className="text-[8px] text-white/30 mt-1">
+                {date ? formatDate(date).slice(0, 5) : "—"}
+              </span>
             </div>
           );
         })}
@@ -886,7 +919,7 @@ function NobleInvestorPanel({ data, totalPnL, totalTradesCount, activeBots, disc
 }
 
 /* =====================================================
-   MAIN COMPONENT - Redesigned layout
+   MAIN COMPONENT
 ===================================================== */
 
 export default function PublicDashboard() {
@@ -1047,7 +1080,7 @@ export default function PublicDashboard() {
           </p>
         </div>
 
-        {/* Key Metrics - Always visible */}
+        {/* Key Metrics */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
           <StatCard 
             title="Active Bots" 
@@ -1086,7 +1119,7 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Investor Panel - Enhanced for nobles */}
+        {/* Investor Panel */}
         <div className="mb-6">
           <NobleInvestorPanel
             data={data}
@@ -1097,7 +1130,7 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Historical Performance - Moved up as requested */}
+        {/* Historical Performance - Moved up */}
         <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-lg flex items-center gap-2">
@@ -1113,7 +1146,7 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Bot Cards - All rendered */}
+        {/* Bot Cards - All rendered with proper data */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <BotCard
             name="Futures Bot"
@@ -1121,12 +1154,6 @@ export default function PublicDashboard() {
             health={data.futures.health}
             stats={data.futures.stats}
             accent="indigo"
-            details={[
-              { label: "Pairs", value: data.futures.stats?.total_symbols || 0 },
-              { label: "Status", value: data.futures.stats?.status || "unknown" },
-              { label: "Positions", value: data.futures.stats?.positions || 0 },
-              { label: "DB", value: data.futures.stats?.db_connected ? "Connected" : "Disconnected" },
-            ]}
           />
           <BotCard
             name="Stock Bot"
@@ -1134,12 +1161,6 @@ export default function PublicDashboard() {
             health={data.stocks.health}
             stats={data.stocks.stats}
             accent="emerald"
-            details={[
-              { label: "Symbols", value: data.stocks.stats?.symbols || 0 },
-              { label: "Mode", value: data.stocks.stats?.mode || "paper" },
-              { label: "Status", value: data.stocks.stats?.running ? "Running" : "Idle" },
-              { label: "Last Refresh", value: data.stocks.stats?.lastRefresh ? timeAgo(data.stocks.stats.lastRefresh) : "—" },
-            ]}
           />
           <SniperCard
             health={data.sniper.health}
@@ -1152,12 +1173,6 @@ export default function PublicDashboard() {
             health={data.okx.health}
             stats={data.okx.stats}
             accent="amber"
-            details={[
-              { label: "Positions", value: data.okx.stats?.positions_count || 0 },
-              { label: "Trades", value: data.okx.stats?.total_trades || 0 },
-              { label: "Mode", value: data.okx.stats?.mode || "dry_run" },
-              { label: "Scan Count", value: data.okx.stats?.scan_count || 0 },
-            ]}
           />
         </div>
 
