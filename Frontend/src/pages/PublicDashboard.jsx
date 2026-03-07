@@ -31,6 +31,7 @@ const DEFAULT_STATE = {
       dry_run: true,
       db_connected: false,
       positions: 0,
+      scanning: false,
     },
   },
   stocks: {
@@ -40,6 +41,7 @@ const DEFAULT_STATE = {
       mode: "paper",
       running: false,
       lastRefresh: null,
+      positions: 0,
     },
   },
   sniper: {
@@ -51,6 +53,7 @@ const DEFAULT_STATE = {
       bot_state: "idle",
       last_heartbeat: null,
       active_networks: [],
+      active_trades_count: 0,
     },
   },
   okx: {
@@ -67,6 +70,7 @@ const DEFAULT_STATE = {
       symbols_loaded: 0,
       max_positions: 0,
       min_ai_score: 0,
+      scan_interval: 0,
     },
   },
   recent_trades: [],
@@ -227,6 +231,80 @@ function sumNumericObjectValues(obj) {
   return Object.values(obj).reduce((sum, value) => sum + safeNumber(value), 0);
 }
 
+function hasMeaningfulStats(stats = {}) {
+  return Object.values(stats).some((value) => {
+    if (typeof value === "number") return value !== 0;
+    if (typeof value === "string") return value && value !== "unknown" && value !== "idle";
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === "object") return Object.keys(value).length > 0;
+    if (typeof value === "boolean") return value === true;
+    return false;
+  });
+}
+
+function buildFallbackFeed(data) {
+  const items = [];
+  const now = new Date().toISOString();
+
+  if (safeNumber(data?.okx?.stats?.total_trades) > 0) {
+    items.push({
+      id: "okx-summary",
+      symbol: "OKX Spot",
+      side: "system",
+      bot: "OKX",
+      price: 0,
+      qty: safeNumber(data.okx.stats.total_trades),
+      pnl: safeNumber(data.okx.stats.total_pnl),
+      pnl_percentage: 0,
+      timestamp: data.okx.stats.last_scan_time || now,
+      status: "closed",
+      note: "summary",
+    });
+  }
+
+  if (safeNumber(data?.futures?.stats?.positions) > 0 || safeNumber(data?.futures?.stats?.total_symbols) > 0) {
+    items.push({
+      id: "futures-summary",
+      symbol: "Futures Bot",
+      side: "system",
+      bot: "Futures",
+      price: 0,
+      qty: safeNumber(data.futures.stats.positions),
+      pnl: sumNumericObjectValues(data.futures.stats.daily_realized),
+      pnl_percentage: 0,
+      timestamp: now,
+      status: "closed",
+      note: "summary",
+    });
+  }
+
+  if (safeArray(data?.sniper?.discoveries).length > 0) {
+    items.push({
+      id: "sniper-summary",
+      symbol: "Sniper Discoveries",
+      side: "system",
+      bot: "Sniper",
+      price: 0,
+      qty: safeArray(data.sniper.discoveries).length,
+      pnl: 0,
+      pnl_percentage: 0,
+      timestamp: data.sniper.stats.last_heartbeat || now,
+      status: "open",
+      note: "summary",
+    });
+  }
+
+  return items;
+}
+
+function historicalHasData(historical) {
+  return (
+    safeArray(historical?.daily).length > 0 ||
+    safeArray(historical?.weekly).length > 0 ||
+    safeArray(historical?.monthly).length > 0
+  );
+}
+
 /* =====================================================
    PAYLOAD NORMALIZATION
 ===================================================== */
@@ -237,14 +315,14 @@ function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTOR
   const sniper = hasObjectData(payload?.sniper) ? payload.sniper : {};
   const okx = hasObjectData(payload?.okx) ? payload.okx : {};
 
-  const recentTrades = dedupeTrades(payload?.recent_trades);
+  const incomingRecentTrades = Array.isArray(payload?.recent_trades)
+    ? payload.recent_trades
+    : [];
+
   const discoveries = safeArray(sniper?.discoveries || payload?.discoveries);
 
   const incomingHistorical = normalizeHistoricalShape(payload?.historical);
-  const hasIncomingHistorical =
-    incomingHistorical.daily.length > 0 ||
-    incomingHistorical.weekly.length > 0 ||
-    incomingHistorical.monthly.length > 0;
+  const hasIncomingHistorical = historicalHasData(incomingHistorical);
 
   return {
     futures: {
@@ -257,6 +335,7 @@ function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTOR
         dry_run: !!futures?.dry_run,
         db_connected: !!futures?.db_connected,
         positions: safeNumber(futures?.positions, 0),
+        scanning: !!futures?.scanning,
       },
     },
 
@@ -265,8 +344,9 @@ function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTOR
       stats: {
         symbols: safeNumber(stocks?.symbols, 0),
         mode: stocks?.mode || "paper",
-        running: stocks?.running ?? false,
+        running: !!stocks?.running,
         lastRefresh: stocks?.lastRefresh || null,
+        positions: safeNumber(stocks?.positions, 0),
       },
     },
 
@@ -276,6 +356,7 @@ function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTOR
       stats: {
         status: sniper?.status || "idle",
         active_trades: safeNumber(sniper?.active_trades, 0),
+        active_trades_count: safeNumber(sniper?.active_trades, 0),
         bot_state: sniper?.bot_state || "idle",
         last_heartbeat: sniper?.last_heartbeat || sniper?.timestamp || null,
         active_networks: safeArray(sniper?.active_networks),
@@ -299,10 +380,11 @@ function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTOR
         symbols_loaded: safeNumber(okx?.symbols_loaded, 0),
         max_positions: safeNumber(okx?.max_positions, 0),
         min_ai_score: safeNumber(okx?.min_ai_score, 0),
+        scan_interval: safeNumber(okx?.scan_interval, 0),
       },
     },
 
-    recent_trades: recentTrades,
+    recent_trades: dedupeTrades(incomingRecentTrades),
     historical: hasIncomingHistorical ? incomingHistorical : existingHistorical,
   };
 }
@@ -332,12 +414,7 @@ function useLiveData() {
       });
 
       const normalized = normalizeHistoricalShape(response.data);
-      const hasAny =
-        normalized.daily.length > 0 ||
-        normalized.weekly.length > 0 ||
-        normalized.monthly.length > 0;
-
-      return hasAny ? normalized : null;
+      return historicalHasData(normalized) ? normalized : null;
     } catch (err) {
       console.warn("Historical fetch failed:", err?.message || err);
       return null;
@@ -396,8 +473,7 @@ function useLiveData() {
           const status = liveResponse.reason?.response?.status;
 
           if (status === 429) {
-            const retryAfterHeader =
-              liveResponse.reason?.response?.headers?.["retry-after"];
+            const retryAfterHeader = liveResponse.reason?.response?.headers?.["retry-after"];
             const retryAfterSeconds = Number(retryAfterHeader);
 
             backoffRef.current =
@@ -421,9 +497,7 @@ function useLiveData() {
             : null,
           lastUpdate: now,
           lastSuccessAt: hadLiveError ? previous.lastSuccessAt : now,
-          rateLimitedUntil: hadLiveError
-            ? new Date(Date.now() + backoffRef.current)
-            : null,
+          rateLimitedUntil: hadLiveError ? new Date(Date.now() + backoffRef.current) : null,
         });
 
         scheduleNext(backoffRef.current);
@@ -553,7 +627,7 @@ function MetricRow({ label, value, valueClassName = "text-white font-medium" }) 
 }
 
 function BotCard({ name, icon, health, stats, accent = "indigo" }) {
-  const isOnline = hasObjectData(health);
+  const isOnline = hasObjectData(health) || hasMeaningfulStats(stats);
 
   const accentMap = {
     indigo: "border-indigo-500/20 bg-indigo-500/10",
@@ -622,7 +696,7 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
 }
 
 function SniperCard({ health, discoveries, stats }) {
-  const isOnline = hasObjectData(health);
+  const isOnline = hasObjectData(health) || hasMeaningfulStats(stats);
   const discoveryCount = safeArray(discoveries).length;
   const networks = safeArray(stats?.active_networks);
   const [pinged, setPinged] = useState(false);
@@ -689,17 +763,23 @@ function TradeRow({ trade }) {
   const bot = getTradeBot(trade);
   const ts = getTradeTimestamp(trade);
 
+  const isSystem = side === "system";
   const isBuy = side === "buy" || side === "long";
   const isSell = side === "sell" || side === "short";
   const isClose = side === "close" || side === "exit";
-  const isOpen = !isClose && trade?.status === "open" && pnlUsd === 0;
+  const isOpen = !isClose && !isSystem && trade?.status === "open" && pnlUsd === 0;
 
   let borderColor = "border-l-gray-500";
   let bgColor = "bg-white/[0.03]";
   let badgeColor = "bg-gray-500/20 text-gray-300";
   let badgeText = side ? side.toUpperCase() : "UNKNOWN";
 
-  if (isOpen) {
+  if (isSystem) {
+    borderColor = "border-l-cyan-500";
+    bgColor = "bg-cyan-500/5";
+    badgeColor = "bg-cyan-500/20 text-cyan-300";
+    badgeText = "SYSTEM";
+  } else if (isOpen) {
     borderColor = "border-l-blue-500";
     bgColor = "bg-blue-500/5";
     badgeColor = "bg-blue-500/20 text-blue-300";
@@ -724,7 +804,7 @@ function TradeRow({ trade }) {
   return (
     <div className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor}`}>
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        <span className="text-base shrink-0">📊</span>
+        <span className="text-base shrink-0">{isSystem ? "🛰️" : "📊"}</span>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-sm truncate">{symbol}</span>
@@ -732,7 +812,7 @@ function TradeRow({ trade }) {
             <span className="text-[10px] text-white/35">{bot}</span>
           </div>
           <div className="text-[10px] text-white/35">
-            {timeAgo(ts)} • {formatCurrency(price)} • {qty > 0 ? `${qty.toFixed(4)} units` : "—"}
+            {timeAgo(ts)} • {price > 0 ? formatCurrency(price) : "No price"} • {qty > 0 ? `${qty.toFixed(4)} units` : "—"}
           </div>
         </div>
       </div>
@@ -750,7 +830,7 @@ function TradeRow({ trade }) {
             </div>
           </div>
         ) : (
-          <div className="font-bold text-sm text-white">{formatCurrency(price)}</div>
+          <div className="font-bold text-sm text-white">{isSystem ? "Live" : formatCurrency(price)}</div>
         )}
       </div>
     </div>
@@ -794,9 +874,18 @@ function DiscoveryCard({ discovery }) {
 
 function HistoricalChart({ data, type, onChangeType }) {
   const chartData = safeArray(data?.[type]);
-  const maxValue = Math.max(...chartData.map((d) => Math.abs(safeNumber(d?.pnl))), 1);
+  const [hoverIndex, setHoverIndex] = useState(null);
 
-  if (!chartData.length) {
+  const normalized = useMemo(() => {
+    return chartData.map((item, index) => ({
+      index,
+      date: item?.date || item?.label || `${type}-${index + 1}`,
+      pnl: safeNumber(item?.pnl),
+      pnlPercent: safeNumber(item?.pnlPercent),
+    }));
+  }, [chartData, type]);
+
+  if (!normalized.length) {
     return (
       <div className="space-y-3">
         <div className="flex gap-2 text-xs">
@@ -813,15 +902,29 @@ function HistoricalChart({ data, type, onChangeType }) {
             </button>
           ))}
         </div>
-        <div className="h-32 flex items-center justify-center text-white/30 text-sm">
+        <div className="h-44 flex items-center justify-center text-white/30 text-sm">
           No historical data yet
         </div>
       </div>
     );
   }
 
+  const minVal = Math.min(...normalized.map((d) => d.pnl), 0);
+  const maxVal = Math.max(...normalized.map((d) => d.pnl), 0);
+  const range = maxVal - minVal || 1;
+
+  const points = normalized
+    .map((d, i) => {
+      const x = normalized.length === 1 ? 50 : (i / (normalized.length - 1)) * 100;
+      const y = 100 - ((d.pnl - minVal) / range) * 100;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  const activePoint = hoverIndex !== null ? normalized[hoverIndex] : normalized[normalized.length - 1];
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex gap-2 text-xs">
         {["daily", "weekly", "monthly"].map((period) => (
           <button
@@ -837,32 +940,76 @@ function HistoricalChart({ data, type, onChangeType }) {
         ))}
       </div>
 
-      <div className="h-32 flex items-end gap-1">
-        {chartData.slice(-10).map((d, i) => {
-          const pnl = safeNumber(d?.pnl);
-          const pnlPercent = safeNumber(d?.pnlPercent);
-          const height = (Math.abs(pnl) / maxValue) * 100;
-          const positive = pnl >= 0;
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_260px] gap-4">
+        <div className="bg-black/20 rounded-2xl border border-white/10 p-4">
+          <div className="h-44 relative">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+              <line x1="0" y1="100" x2="100" y2="100" stroke="rgba(255,255,255,0.10)" strokeWidth="0.6" />
+              <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" strokeDasharray="2 2" />
+              <line x1="0" y1="0" x2="100" y2="0" stroke="rgba(255,255,255,0.05)" strokeWidth="0.4" />
 
-          return (
-            <div key={`${d?.date || i}`} className="flex-1 flex flex-col items-center group relative">
-              <div
-                className={`w-full rounded-t relative group-hover:opacity-80 transition-all ${
-                  positive ? "bg-emerald-500/50" : "bg-red-500/50"
-                }`}
-                style={{ height: `${Math.max(height, 5)}%` }}
+              <polyline
+                fill="none"
+                stroke="rgba(99,102,241,0.95)"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                points={points}
+              />
+
+              {normalized.map((d, i) => {
+                const x = normalized.length === 1 ? 50 : (i / (normalized.length - 1)) * 100;
+                const y = 100 - ((d.pnl - minVal) / range) * 100;
+
+                return (
+                  <g key={`${d.date}-${i}`}>
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={hoverIndex === i ? 2.2 : 1.2}
+                      fill={d.pnl >= 0 ? "#34d399" : "#f87171"}
+                      onMouseEnter={() => setHoverIndex(i)}
+                      onMouseLeave={() => setHoverIndex(null)}
+                      style={{ cursor: "pointer" }}
+                    />
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          <div className="mt-3 flex justify-between gap-2 text-[10px] text-white/35">
+            {normalized.map((d, i) => (
+              <button
+                key={`${d.date}-label-${i}`}
+                type="button"
+                onMouseEnter={() => setHoverIndex(i)}
+                onMouseLeave={() => setHoverIndex(null)}
+                className={`truncate ${hoverIndex === i ? "text-white/80" : ""}`}
               >
-                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 border border-white/10">
-                  <div className="font-medium">{formatDate(d?.date)}</div>
-                  <div className={positive ? "text-emerald-400" : "text-red-400"}>
-                    {formatCurrencySigned(pnl)} ({formatPercent(pnlPercent)})
-                  </div>
-                </div>
-              </div>
-              <span className="text-[8px] text-white/30 mt-1">{formatDate(d?.date).slice(0, 5)}</span>
-            </div>
-          );
-        })}
+                {formatDate(d.date)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-black/20 rounded-2xl border border-white/10 p-4">
+          <div className="text-xs text-white/50 mb-2">Selected point</div>
+          <div className="text-lg font-bold text-white mb-1">{formatDate(activePoint?.date)}</div>
+          <div className={`text-2xl font-bold ${activePoint?.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {formatCurrencySigned(activePoint?.pnl)}
+          </div>
+          <div className={`text-sm mt-1 ${activePoint?.pnlPercent >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+            {formatPercent(activePoint?.pnlPercent)}
+          </div>
+
+          <div className="mt-4 space-y-2 text-xs">
+            <MetricRow label="Period" value={type} />
+            <MetricRow label="Points" value={normalized.length} />
+            <MetricRow label="High" value={formatCurrencySigned(maxVal)} valueClassName="text-emerald-400 font-medium" />
+            <MetricRow label="Low" value={formatCurrencySigned(minVal)} valueClassName="text-red-400 font-medium" />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -961,7 +1108,11 @@ export default function PublicDashboard() {
     data.futures.health ||
     data.stocks.health ||
     data.sniper.health ||
-    data.okx.health
+    data.okx.health ||
+    hasMeaningfulStats(data.futures.stats) ||
+    hasMeaningfulStats(data.stocks.stats) ||
+    hasMeaningfulStats(data.sniper.stats) ||
+    hasMeaningfulStats(data.okx.stats)
   );
 
   const isStale = data.lastSuccessAt
@@ -969,23 +1120,25 @@ export default function PublicDashboard() {
     : false;
 
   const allTrades = useMemo(() => {
-    return dedupeTrades(data.recent_trades)
+    const actualTrades = dedupeTrades(data.recent_trades);
+    const fallback = actualTrades.length === 0 ? buildFallbackFeed(data) : [];
+    return [...actualTrades, ...fallback]
       .sort((a, b) => {
         const tA = new Date(getTradeTimestamp(a) || 0).getTime();
         const tB = new Date(getTradeTimestamp(b) || 0).getTime();
         return tB - tA;
       })
       .slice(0, 50);
-  }, [data.recent_trades]);
+  }, [data]);
 
   const isOpenTrade = (trade) => {
     const pnl = getTradePnlUsd(trade);
-    return trade?.status === "open" || (pnl === 0 && getTradeSide(trade) && !trade?.closed);
+    return trade?.status === "open" || (pnl === 0 && getTradeSide(trade) && getTradeSide(trade) !== "system" && !trade?.closed);
   };
 
   const isClosedTrade = (trade) => {
     const pnl = getTradePnlUsd(trade);
-    return pnl !== 0 || trade?.status === "closed" || getTradeSide(trade) === "close";
+    return pnl !== 0 || trade?.status === "closed" || getTradeSide(trade) === "close" || getTradeSide(trade) === "system";
   };
 
   const filteredTrades = useMemo(() => {
@@ -1001,15 +1154,17 @@ export default function PublicDashboard() {
   ];
 
   const activeBots = [
-    data.futures.health,
-    data.stocks.health,
-    data.sniper.health,
-    data.okx.health,
+    hasObjectData(data.futures.health) || hasMeaningfulStats(data.futures.stats),
+    hasObjectData(data.stocks.health) || hasMeaningfulStats(data.stocks.stats),
+    hasObjectData(data.sniper.health) || hasMeaningfulStats(data.sniper.stats),
+    hasObjectData(data.okx.health) || hasMeaningfulStats(data.okx.stats),
   ].filter(Boolean).length;
 
   const totalPnL = useMemo(() => {
-    return safeNumber(data.okx.stats?.total_pnl, 0);
-  }, [data.okx.stats?.total_pnl]);
+    const okxPnl = safeNumber(data.okx.stats?.total_pnl, 0);
+    const futuresDaily = sumNumericObjectValues(data.futures.stats?.daily_realized);
+    return okxPnl + futuresDaily;
+  }, [data.okx.stats?.total_pnl, data.futures.stats?.daily_realized]);
 
   const totalPnLPercent = useMemo(() => {
     const baseline = 100000;
@@ -1019,7 +1174,8 @@ export default function PublicDashboard() {
   const openPositionsCount =
     safeNumber(data.okx.stats?.positions_count, 0) +
     safeNumber(data.futures.stats?.positions, 0) +
-    safeNumber(data.sniper.stats?.active_trades, 0);
+    safeNumber(data.sniper.stats?.active_trades, 0) +
+    safeNumber(data.stocks.stats?.positions, 0);
 
   const totalTradesCount = Math.max(
     safeNumber(data.okx.stats?.total_trades, 0),
@@ -1175,7 +1331,7 @@ export default function PublicDashboard() {
               <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
                 <h2 className="font-bold text-lg flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                  Live Trade Feed
+                  Live Feed
                   <span className="text-xs text-white/30 ml-2">{allTrades.length} rows</span>
                 </h2>
 
@@ -1207,7 +1363,7 @@ export default function PublicDashboard() {
                 ) : (
                   <div className="text-center py-12 text-white/30">
                     <div className="text-4xl mb-3">📭</div>
-                    <p className="text-sm">No trades match this filter</p>
+                    <p className="text-sm">No feed data available yet</p>
                   </div>
                 )}
               </div>
