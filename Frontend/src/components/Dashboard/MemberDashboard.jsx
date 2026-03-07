@@ -1,6 +1,34 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  ArcElement,
+} from 'chart.js';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  ArcElement
+);
 
 /* ===================== CONSTANTS ===================== */
 const STRATEGIES = [
@@ -26,51 +54,132 @@ const TIER_BOTS = {
   bundle: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "Staking", "NFT"],
 };
 
-const LEVEL_THRESHOLDS = [
-  { name: "🥉 Bronze", min: 0, colorClass: "text-amber-600" },
-  { name: "🥈 Silver", min: 30, colorClass: "text-gray-300" },
-  { name: "🥇 Gold", min: 70, colorClass: "text-yellow-300" },
-  { name: "💎 Diamond", min: 120, colorClass: "text-cyan-400" },
-  { name: "🏆 Legend", min: 200, colorClass: "text-yellow-400" },
-];
-
-const ACHIEVEMENTS = [
-  { id: "first_trade", emoji: "🚀", label: "First Trade", desc: "Complete your first trade", check: (s) => s.totalTrades > 0 },
-  { id: "ten_trades", emoji: "📊", label: "10 Trades", desc: "Complete 10 trades", check: (s) => s.totalTrades >= 10 },
-  { id: "fifty_trades", emoji: "💯", label: "50 Trades", desc: "Complete 50 trades", check: (s) => s.totalTrades >= 50 },
-  { id: "hundred_trades", emoji: "💪", label: "100 Trades", desc: "Complete 100 trades", check: (s) => s.totalTrades >= 100 },
-  { id: "profitable", emoji: "💰", label: "In The Green", desc: "Have positive P&L", check: (s) => s.pnl > 0 },
-  { id: "win_streak_3", emoji: "🔥", label: "Hot Streak", desc: "Win 3 in a row", check: (s) => s.currentWinStreak >= 3 },
-  { id: "win_streak_5", emoji: "⚡", label: "On Fire!", desc: "Win 5 in a row", check: (s) => s.currentWinStreak >= 5 },
-  { id: "high_wr", emoji: "🎯", label: "Sharpshooter", desc: "Win rate above 60%", check: (s) => s.winRate > 60 },
-  { id: "day_streak", emoji: "📅", label: "Daily Player", desc: "Trade 3+ days", check: (s) => s.dayStreak >= 3 },
-  { id: "premium", emoji: "⭐", label: "Premium User", desc: "Upgrade to paid plan", check: (s) => s.plan !== "starter" },
-  { id: "all_strats", emoji: "🧠", label: "Strategist", desc: "Try all 4 strategies", check: (s) => s.strategiesUsed >= 4 },
-  { id: "confidence_80", emoji: "🤖", label: "Bot Master", desc: "Reach 80% confidence", check: (s) => s.confidence >= 80 },
-  { id: "multi_chain", emoji: "🌐", label: "Multi-Chain", desc: "Trade on multiple chains", check: (s) => s.chainsTraded > 1 },
-  { id: "futures_trader", emoji: "📊", label: "Futures Pro", desc: "Trade futures", check: (s) => s.hasFutures },
-  { id: "sniper", emoji: "🦄", label: "Token Sniper", desc: "Discover new tokens", check: (s) => s.hasSniper },
-];
+/* ===================== API CONFIG ===================== */
+const API_BASE = process.env.REACT_APP_API_URL || 'https://api.imali-defi.com';
+const PUBLIC_LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
+const PUBLIC_HISTORICAL_URL = `${API_BASE}/api/public/historical`;
 
 /* ===================== HELPERS ===================== */
-const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+const safeNumber = (v, f = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : f;
+};
+
+const normalizeArray = (v) => (Array.isArray(v) ? v : []);
 
 const formatUsd = (n) => {
-  const num = Number(n) || 0;
+  const num = safeNumber(n);
   const sign = num >= 0 ? "+" : "-";
   return `${sign}$${Math.abs(num).toFixed(2)}`;
 };
 
 const formatUsdPlain = (n) => {
-  const num = Number(n) || 0;
+  const num = safeNumber(n);
   return `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-const formatNumber = (n) => Number(n || 0).toLocaleString();
+const formatCompact = (n) => {
+  const num = safeNumber(n);
+  if (Math.abs(num) >= 1e6) return `${(num / 1e6).toFixed(1)}M`;
+  if (Math.abs(num) >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
+  return num.toFixed(0);
+};
 
-const formatAddress = (addr) => {
-  if (!addr) return '';
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+const formatPercent = (v, digits = 2) => {
+  const num = safeNumber(v);
+  return `${num >= 0 ? "+" : ""}${num.toFixed(digits)}%`;
+};
+
+const formatDate = (timestamp) => {
+  if (!timestamp) return "—";
+  try {
+    return new Date(timestamp).toLocaleDateString();
+  } catch {
+    return "—";
+  }
+};
+
+const formatShortDate = (timestamp) => {
+  if (!timestamp) return "—";
+  try {
+    const d = new Date(timestamp);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  } catch {
+    return "—";
+  }
+};
+
+const timeAgo = (timestamp) => {
+  if (!timestamp) return "—";
+  try {
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    if (diffMs < 0) return "just now";
+
+    const sec = Math.floor(diffMs / 1000);
+    const min = Math.floor(sec / 60);
+    const hr = Math.floor(min / 60);
+    const day = Math.floor(hr / 24);
+
+    if (sec < 30) return "just now";
+    if (sec < 60) return `${sec}s ago`;
+    if (min < 60) return `${min}m ago`;
+    if (hr < 24) return `${hr}h ago`;
+    return `${day}d ago`;
+  } catch {
+    return "—";
+  }
+};
+
+const getTradeTimestamp = (trade) => {
+  return trade?.created_at || trade?.timestamp || trade?.time || trade?.received_at || null;
+};
+
+const getTradePnlUsd = (trade) => {
+  return trade?.pnl_usd ?? trade?.pnl ?? 0;
+};
+
+const getTradePnlPercent = (trade) => {
+  return trade?.pnl_percentage ?? trade?.pnl_pct ?? trade?.return_percent ?? 0;
+};
+
+const getTradeSide = (trade) => {
+  return String(trade?.side || trade?.action || "").toLowerCase();
+};
+
+const getTradeBot = (trade) => {
+  return trade?.bot || trade?.source || trade?.exchange || trade?.chain || "Unknown";
+};
+
+const getTradePrice = (trade) => {
+  return trade?.price ?? trade?.entry_price ?? 0;
+};
+
+const getTradeQty = (trade) => {
+  return trade?.qty ?? trade?.quantity ?? trade?.size ?? 0;
+};
+
+const dedupeTrades = (trades) => {
+  const seen = new Set();
+  const unique = [];
+
+  for (const trade of normalizeArray(trades)) {
+    const key = [
+      trade?.id || "",
+      trade?.symbol || "",
+      getTradeSide(trade),
+      getTradeTimestamp(trade) || "",
+      getTradePrice(trade),
+      getTradeQty(trade),
+      getTradeBot(trade),
+    ].join("|");
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(trade);
+    }
+  }
+
+  return unique;
 };
 
 const normalizeTier = (tier) => {
@@ -78,67 +187,254 @@ const normalizeTier = (tier) => {
   return PLANS.some((p) => p.value === t) ? t : "starter";
 };
 
-const tierAtLeast = (userTier, requiredTier) => {
-  const tierOrder = PLANS.map((p) => p.value);
-  return tierOrder.indexOf(normalizeTier(userTier)) >= tierOrder.indexOf(normalizeTier(requiredTier));
-};
-
 const getBotIcon = (botName) => {
-  if (botName?.includes('OKX')) return "🔷";
-  if (botName?.includes('Futures')) return "📊";
-  if (botName?.includes('Alpaca') || botName?.includes('Stock')) return "📈";
-  if (botName?.includes('Sniper')) return "🦄";
-  if (botName?.includes('Staking')) return "🥩";
-  if (botName?.includes('NFT')) return "🖼️";
+  const name = String(botName || "").toLowerCase();
+  if (name.includes('okx')) return "🔷";
+  if (name.includes('futures')) return "📊";
+  if (name.includes('alpaca') || name.includes('stock')) return "📈";
+  if (name.includes('sniper')) return "🦄";
+  if (name.includes('staking')) return "🥩";
+  if (name.includes('nft')) return "🖼️";
   return "🤖";
 };
 
-const getBotScanningInfo = (botName, botData) => {
-  if (botName?.includes('Futures')) {
-    return {
-      pairs: "199 pairs",
-      frequency: "Every 5s",
-      batchSize: "20 per scan",
-      status: "🟢 Live"
-    };
-  }
-  if (botName?.includes('Sniper')) {
-    return {
-      chains: botData?.chains_active?.join(', ') || 'eth, poly, bsc',
-      blocksPerScan: "50 blocks",
-      frequency: "~2s per RPC",
-      status: botData?.is_scanning ? "🟢 Scanning" : "⏸️ Idle"
-    };
-  }
-  if (botName?.includes('Stocks') || botName?.includes('Alpaca')) {
-    return {
-      market: "NASDAQ, NYSE",
-      symbols: "500 stocks",
-      frequency: "Every 5 min",
-      status: new Date().getHours() >= 9 && new Date().getHours() <= 16 ? "🟢 Market Open" : "⏰ Market Closed"
-    };
-  }
-  if (botName?.includes('Staking')) {
-    return {
-      apy: "5-12% APY",
-      assets: "IMALI, ETH, BTC",
-      frequency: "Daily rewards",
-      status: "🟢 Staking"
-    };
-  }
-  if (botName?.includes('NFT')) {
-    return {
-      collections: "3 collections",
-      floor: "0.5 ETH",
-      volume: "125 ETH",
-      status: "🟢 Active"
-    };
-  }
-  return {
-    frequency: "Real-time",
-    status: "🟢 Active"
-  };
+/* ===================== CHART COMPONENTS ===================== */
+const tooltipOptions = {
+  backgroundColor: 'rgba(17, 24, 39, 0.95)',
+  titleColor: '#f3f4f6',
+  bodyColor: '#9ca3af',
+  borderColor: 'rgba(16, 185, 129, 0.3)',
+  borderWidth: 1,
+  padding: 12,
+  caretSize: 6,
+  cornerRadius: 8,
+  displayColors: true,
+  usePointStyle: true,
 };
+
+function PerformanceChart({ historicalData, type = "daily", onTypeChange }) {
+  const [chartType, setChartType] = useState('line');
+  const chartData = normalizeArray(historicalData?.[type] || []);
+  
+  const getChartData = () => {
+    if (chartData.length === 0) return { labels: [], datasets: [] };
+
+    const labels = chartData.map(d => {
+      const date = new Date(d?.date || d?.timestamp || 0);
+      return formatShortDate(date);
+    });
+
+    const pnlData = chartData.map(d => safeNumber(d?.pnl, 0));
+    const cumulativeData = [];
+    let cumulative = 0;
+    pnlData.forEach(val => {
+      cumulative += val;
+      cumulativeData.push(cumulative);
+    });
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Daily P&L',
+          data: pnlData,
+          borderColor: '#10b981',
+          backgroundColor: (context) => {
+            const ctx = context.chart.ctx;
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.5)');
+            gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+            return gradient;
+          },
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          pointBackgroundColor: pnlData.map(v => v >= 0 ? '#10b981' : '#ef4444'),
+          pointBorderColor: 'white',
+          pointBorderWidth: 1,
+          borderWidth: 2,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Cumulative P&L',
+          data: cumulativeData,
+          borderColor: '#8b5cf6',
+          backgroundColor: 'rgba(139, 92, 246, 0.1)',
+          fill: false,
+          tension: 0.4,
+          borderWidth: 2,
+          borderDash: [5, 5],
+          pointRadius: 0,
+          yAxisID: 'y1',
+        }
+      ],
+    };
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+        labels: {
+          color: '#9ca3af',
+          usePointStyle: true,
+          pointStyle: 'circle',
+          padding: 15,
+          font: { size: 11 }
+        }
+      },
+      tooltip: tooltipOptions,
+    },
+    scales: {
+      x: {
+        grid: { color: 'rgba(75, 85, 99, 0.2)', display: true },
+        ticks: { color: '#9ca3af', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }
+      },
+      y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        grid: { color: 'rgba(75, 85, 99, 0.2)' },
+        ticks: {
+          color: '#9ca3af',
+          callback: (value) => `$${formatCompact(value)}`
+        },
+      },
+      y1: {
+        type: 'linear',
+        display: true,
+        position: 'right',
+        grid: { drawOnChartArea: false },
+        ticks: {
+          color: '#8b5cf6',
+          callback: (value) => `$${formatCompact(value)}`
+        },
+      }
+    },
+  };
+
+  const barOptions = {
+    ...chartOptions,
+    plugins: {
+      ...chartOptions.plugins,
+      tooltip: {
+        ...chartOptions.plugins.tooltip,
+        callbacks: {
+          label: (context) => {
+            const value = context.raw;
+            return `P&L: ${value >= 0 ? '+' : ''}$${Math.abs(value).toFixed(2)}`;
+          }
+        }
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2 justify-between items-center">
+        <div className="flex gap-2">
+          {["daily", "weekly", "monthly"].map((period) => (
+            <button
+              key={period}
+              onClick={() => onTypeChange(period)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                type === period 
+                  ? 'bg-emerald-600 text-white' 
+                  : 'bg-white/5 text-white/60 hover:bg-white/10'
+              }`}
+            >
+              {period.charAt(0).toUpperCase() + period.slice(1)}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setChartType('line')}
+            className={`p-1.5 rounded-lg text-sm transition-all ${
+              chartType === 'line' ? 'bg-emerald-600 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10'
+            }`}
+            title="Line Chart"
+          >
+            📈
+          </button>
+          <button
+            onClick={() => setChartType('bar')}
+            className={`p-1.5 rounded-lg text-sm transition-all ${
+              chartType === 'bar' ? 'bg-emerald-600 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10'
+            }`}
+            title="Bar Chart"
+          >
+            📊
+          </button>
+        </div>
+      </div>
+
+      <div className="h-64 bg-gradient-to-br from-gray-800/20 to-gray-900/20 rounded-xl p-3 border border-white/10">
+        {chartData.length > 0 ? (
+          chartType === 'line' ? (
+            <Line data={getChartData()} options={chartOptions} />
+          ) : (
+            <Bar 
+              data={{
+                ...getChartData(),
+                datasets: [{
+                  ...getChartData().datasets[0],
+                  backgroundColor: getChartData().datasets[0].data.map(v => 
+                    v >= 0 ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)'
+                  ),
+                  borderColor: getChartData().datasets[0].data.map(v => 
+                    v >= 0 ? '#10b981' : '#ef4444'
+                  ),
+                }]
+              }} 
+              options={barOptions} 
+            />
+          )
+        ) : (
+          <div className="h-full flex items-center justify-center text-white/30">
+            No historical data yet
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WinLossChart({ wins, losses }) {
+  const data = {
+    labels: ['Wins', 'Losses'],
+    datasets: [{
+      data: [wins, losses],
+      backgroundColor: ['rgba(16, 185, 129, 0.8)', 'rgba(239, 68, 68, 0.8)'],
+      borderColor: ['#10b981', '#ef4444'],
+      borderWidth: 2,
+    }]
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: tooltipOptions,
+    },
+    cutout: '65%',
+  };
+
+  return (
+    <div className="h-32">
+      <Doughnut data={data} options={options} />
+    </div>
+  );
+}
 
 /* ===================== UI COMPONENTS ===================== */
 const CardShell = ({ title, icon, right, children }) => (
@@ -174,55 +470,140 @@ const CollapsibleCard = ({ title, icon, right, children, defaultOpen = true }) =
   </details>
 );
 
-const ProgressRing = ({ percent = 0, size = 80, stroke = 6, color = "#10b981", children }) => {
-  const radius = (size - stroke) / 2;
-  const circ = 2 * Math.PI * radius;
-  const offset = circ - (Math.min(percent, 100) / 100) * circ;
+const StatCard = ({ title, value, subtext, color = "emerald" }) => {
+  const colorClasses = {
+    emerald: "text-emerald-400",
+    indigo: "text-indigo-400",
+    purple: "text-purple-400",
+    amber: "text-amber-400",
+    red: "text-red-400",
+    cyan: "text-cyan-400",
+  };
 
   return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
-        <circle
-          cx={size / 2} cy={size / 2} r={radius} fill="none"
-          stroke={color} strokeWidth={stroke}
-          strokeDasharray={circ} strokeDashoffset={offset}
-          strokeLinecap="round" className="transition-all duration-700 ease-out"
-        />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">{children}</div>
+    <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+      <div className="text-xs text-white/50">{title}</div>
+      <div className={`text-xl font-bold mt-1 ${colorClasses[color]}`}>{value}</div>
+      {subtext && <div className="text-[10px] text-white/30 mt-0.5">{subtext}</div>}
     </div>
   );
 };
 
-const BotBalanceCard = ({ name, icon, balance, pnl, status, color = "blue" }) => {
-  const colorClasses = {
-    blue: "bg-blue-500/10 border-blue-500/20",
-    emerald: "bg-emerald-500/10 border-emerald-500/20",
-    purple: "bg-purple-500/10 border-purple-500/20",
-    amber: "bg-amber-500/10 border-amber-500/20",
-  };
+const MetricRow = ({ label, value, valueClassName = "text-white font-medium" }) => (
+  <div className="flex justify-between items-center gap-2 text-xs">
+    <span className="text-white/50">{label}</span>
+    <span className={valueClassName}>{value}</span>
+  </div>
+);
+
+const TradeRow = ({ trade }) => {
+  const side = getTradeSide(trade);
+  const pnlUsd = safeNumber(getTradePnlUsd(trade), 0);
+  const pnlPercent = safeNumber(getTradePnlPercent(trade), 0);
+  const qty = safeNumber(getTradeQty(trade), 0);
+  const price = safeNumber(getTradePrice(trade), 0);
+  const symbol = trade?.symbol || "Unknown";
+  const bot = getTradeBot(trade);
+  const ts = getTradeTimestamp(trade);
+
+  const isBuy = side === "buy" || side === "long";
+  const isSell = side === "sell" || side === "short";
+  const isClose = side === "close" || side === "exit";
+  const isOpen = !isClose && trade?.status === "open" && pnlUsd === 0;
+
+  let borderColor = "border-l-gray-500";
+  let bgColor = "bg-white/[0.03]";
+  let badgeColor = "bg-gray-500/20 text-gray-300";
+  let badgeText = side ? side.toUpperCase() : "UNKNOWN";
+
+  if (isOpen) {
+    borderColor = "border-l-blue-500";
+    bgColor = "bg-blue-500/5";
+    badgeColor = "bg-blue-500/20 text-blue-300";
+    badgeText = "OPEN";
+  } else if (isClose) {
+    borderColor = "border-l-purple-500";
+    bgColor = "bg-purple-500/5";
+    badgeColor = "bg-purple-500/20 text-purple-300";
+    badgeText = "CLOSED";
+  } else if (isBuy) {
+    borderColor = "border-l-green-500";
+    bgColor = "bg-green-500/5";
+    badgeColor = "bg-green-500/20 text-green-300";
+    badgeText = "BUY";
+  } else if (isSell) {
+    borderColor = "border-l-red-500";
+    bgColor = "bg-red-500/5";
+    badgeColor = "bg-red-500/20 text-red-300";
+    badgeText = "SELL";
+  }
 
   return (
-    <div className={`${colorClasses[color]} rounded-xl p-3`}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">{icon}</span>
-          <span className="font-medium text-sm">{name}</span>
-        </div>
-        <span className="text-xs text-green-400">{status}</span>
-      </div>
-      <div className="flex justify-between items-end">
-        <div>
-          <div className="text-xs text-white/40">Balance</div>
-          <div className="text-lg font-bold">{formatUsdPlain(balance)}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-white/40">P&L</div>
-          <div className={`text-sm font-semibold ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {formatUsd(pnl)}
+    <div className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor}`}>
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        <span className="text-base shrink-0">{getBotIcon(bot)}</span>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-sm truncate">{symbol}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${badgeColor}`}>{badgeText}</span>
+            <span className="text-[10px] text-white/35">{bot}</span>
+          </div>
+          <div className="text-[10px] text-white/35">
+            {timeAgo(ts)} • {formatUsdPlain(price)} • {qty > 0 ? `${qty.toFixed(4)} units` : "—"}
           </div>
         </div>
+      </div>
+
+      <div className="text-right shrink-0">
+        {isOpen ? (
+          <div className="font-bold text-sm text-blue-400">Open</div>
+        ) : pnlUsd !== 0 ? (
+          <div>
+            <div className={`font-bold text-sm ${pnlUsd > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {formatUsd(pnlUsd)}
+            </div>
+            <div className={`text-[10px] ${pnlPercent > 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+              {formatPercent(pnlPercent)}
+            </div>
+          </div>
+        ) : (
+          <div className="font-bold text-sm text-white">{formatUsdPlain(price)}</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DiscoveryCard = ({ discovery }) => {
+  const score = safeNumber(discovery?.ai_score ?? discovery?.score, 0);
+  const chain = discovery?.chain || "ethereum";
+  const age = discovery?.age ?? discovery?.age_blocks ?? 0;
+  const pair = discovery?.pair || discovery?.address || discovery?.token || "New token";
+
+  let scoreColor = "text-orange-400";
+  if (score >= 0.7) scoreColor = "text-green-400";
+  else if (score >= 0.5) scoreColor = "text-yellow-400";
+
+  return (
+    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs hover:bg-purple-500/10 transition-colors">
+      <div className="flex justify-between items-start mb-2 gap-2">
+        <span className="font-medium flex items-center gap-1 min-w-0">
+          <span className="text-base shrink-0">🦄</span>
+          <span className="capitalize truncate">{chain}</span>
+        </span>
+        <span className="text-white/40 text-[10px] shrink-0">{age} blocks</span>
+      </div>
+      <div className="text-white/60 font-mono text-[10px] mb-2 truncate">{pair}</div>
+      <div className="flex justify-between items-center gap-2">
+        <div>
+          <span className="text-white/40">AI Score</span>
+          <span className={`ml-2 font-bold ${scoreColor}`}>{score.toFixed(2)}</span>
+        </div>
+        {score >= 0.7 ? (
+          <span className="text-[8px] bg-green-500/20 text-green-300 px-2 py-1 rounded-full">
+            Ready
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -231,25 +612,23 @@ const BotBalanceCard = ({ name, icon, balance, pnl, status, color = "blue" }) =>
 /* ===================== MAIN DASHBOARD ===================== */
 export default function MemberDashboard() {
   const navigate = useNavigate();
-  const { user, activation, refreshActivation } = useAuth();
+  const { user, activation } = useAuth();
 
-  // API Base URL
-  const API_BASE = process.env.REACT_APP_API_URL || 'https://api.imali-defi.com';
-  const SERVER_IP = "129.213.90.84";
-
-  // State for all backend data
-  const [allTrades, setAllTrades] = useState([]);
-  const [botStats, setBotStats] = useState({});
-  const [sniperData, setSniperData] = useState({ stats: {}, discoveries: [], scanning_status: {} });
-  const [futuresData, setFuturesData] = useState({ stats: {}, positions: [], scanning_status: {} });
-  const [okxData, setOkxData] = useState({ stats: {}, positions: [] });
-  const [stakingData, setStakingData] = useState({ balance: 0, rewards: 0, apy: 0 });
-  const [nftData, setNftData] = useState({ collections: [], floor: 0, volume: 0 });
-  const [accountBalance, setAccountBalance] = useState(null);
-  const [botBalances, setBotBalances] = useState({});
+  // State for all data
+  const [liveData, setLiveData] = useState({
+    futures: { health: null, stats: {} },
+    stocks: { health: null, stats: {} },
+    sniper: { health: null, discoveries: [], stats: {} },
+    okx: { health: null, stats: {} },
+    recent_trades: [],
+    historical: { daily: [], weekly: [], monthly: [] }
+  });
+  
   const [loading, setLoading] = useState(true);
-  const [banner, setBanner] = useState(null);
+  const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [historicalType, setHistoricalType] = useState("daily");
+  const [activeTab, setActiveTab] = useState("all");
 
   const mountedRef = useRef(true);
 
@@ -258,183 +637,116 @@ export default function MemberDashboard() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Fetch all data from backend
-  const fetchAllData = useCallback(async () => {
+  // Fetch data from public endpoints
+  const fetchData = useCallback(async () => {
     try {
-      const [
-        tradesRes, statsRes, sniperRes, futuresRes, 
-        okxRes, stakingRes, nftRes, balanceRes
-      ] = await Promise.all([
-        fetch(`${API_BASE}/api/all/trades`).catch(() => ({ ok: false })),
-        fetch(`${API_BASE}/api/all/stats`).catch(() => ({ ok: false })),
-        fetch(`${API_BASE}/api/sniper/all`).catch(() => ({ ok: false })),
-        fetch(`http://${SERVER_IP}:8008/health`).catch(() => ({ ok: false })),
-        fetch(`http://${SERVER_IP}:8005/health`).catch(() => ({ ok: false })),
-        Promise.resolve({ ok: false, json: () => ({ balance: 15000, rewards: 1250, apy: 8.5 }) }),
-        Promise.resolve({ ok: false, json: () => ({ collections: 3, floor: 0.5, volume: 125 }) }),
-        fetch(`${API_BASE}/api/user/balance`).catch(() => ({ ok: false }))
+      const [liveResponse, historicalResponse] = await Promise.all([
+        fetch(PUBLIC_LIVE_STATS_URL).then(res => res.json()),
+        fetch(PUBLIC_HISTORICAL_URL).then(res => res.json())
       ]);
 
-      const tradesData = tradesRes.ok ? await tradesRes.json() : [];
-      const statsData = statsRes.ok ? await statsRes.json() : {};
-      const sniperData = sniperRes.ok ? await sniperRes.json() : { stats: {}, discoveries: [] };
-      const futuresData = futuresRes.ok ? await futuresRes.json() : { positions: [], total_symbols: 199 };
-      const okxData = okxRes.ok ? await okxRes.json() : {};
-      const stakingData = { balance: 15000, rewards: 1250, apy: 8.5 };
-      const nftData = { collections: 3, floor: 0.5, volume: 125 };
-      const balanceData = balanceRes.ok ? await balanceRes.json() : null;
+      if (!mountedRef.current) return;
 
-      if (mountedRef.current) {
-        setAllTrades(Array.isArray(tradesData) ? tradesData : []);
-        setBotStats(statsData || {});
-        setSniperData(sniperData || { stats: {}, discoveries: [] });
-        setFuturesData(futuresData || { positions: [] });
-        setOkxData(okxData || {});
-        setStakingData(stakingData);
-        setNftData(nftData);
-        setAccountBalance(balanceData);
-        setLastUpdate(new Date());
+      setLiveData({
+        futures: liveResponse.futures || { health: null, stats: {} },
+        stocks: liveResponse.stocks || { health: null, stats: {} },
+        sniper: liveResponse.sniper || { health: null, discoveries: [], stats: {} },
+        okx: liveResponse.okx || { health: null, stats: {} },
+        recent_trades: normalizeArray(liveResponse.recent_trades),
+        historical: historicalResponse || { daily: [], weekly: [], monthly: [] }
+      });
 
-        // Calculate per-bot balances
-        const tier = normalizeTier(user?.tier);
-        const isPaper = !activation?.billing_complete;
-        const basePaperBalance = 100000;
-        
-        const okxBalance = isPaper ? basePaperBalance * 0.4 : (balanceData?.okx || 0);
-        const stocksBalance = isPaper ? basePaperBalance * 0.3 : (balanceData?.alpaca || 0);
-        const futuresBalance = isPaper ? basePaperBalance * 0.2 : (futuresData.positions?.reduce((sum, p) => sum + (p.qty * p.entry), 0) || 0);
-        const sniperBalance = isPaper ? basePaperBalance * 0.1 : (sniperData.stats?.total_value || 0);
-        const stakingBal = isPaper ? 15000 : stakingData.balance;
-        const nftBal = isPaper ? 25000 : (nftData.volume * 2000);
-
-        setBotBalances({
-          okx: okxBalance,
-          stocks: stocksBalance,
-          futures: futuresBalance,
-          sniper: sniperBalance,
-          staking: stakingBal,
-          nft: nftBal,
-        });
-      }
+      setLastUpdate(new Date());
+      setError(null);
     } catch (err) {
-      console.error('Failed to fetch dashboard data:', err);
+      console.error('Failed to fetch data:', err);
       if (mountedRef.current) {
-        setBanner({ type: 'error', message: 'Failed to fetch latest data' });
+        setError('Failed to fetch live data');
       }
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [API_BASE, SERVER_IP, user?.tier, activation?.billing_complete]);
+  }, []);
 
   // Initial load and polling every 10 seconds
   useEffect(() => {
-    fetchAllData();
-    const interval = setInterval(fetchAllData, 10000);
+    fetchData();
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
-  }, [fetchAllData]);
+  }, [fetchData]);
 
   // Calculate derived stats
-  const totalTrades = allTrades.length;
-  const totalPnL = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-  
-  const openPositions = useMemo(() => allTrades.filter(t => 
-    !t.pnl && t.status !== 'closed'
-  ).length, [allTrades]);
-  
-  const buys = useMemo(() => allTrades.filter(t => t.side?.toLowerCase() === 'buy'), [allTrades]);
-  const sells = useMemo(() => allTrades.filter(t => t.side?.toLowerCase() === 'sell'), [allTrades]);
-  const closedTrades = useMemo(() => allTrades.filter(t => t.pnl || t.status === 'closed'), [allTrades]);
+  const allTrades = useMemo(() => {
+    return dedupeTrades(liveData.recent_trades)
+      .sort((a, b) => {
+        const tA = new Date(getTradeTimestamp(a) || 0).getTime();
+        const tB = new Date(getTradeTimestamp(b) || 0).getTime();
+        return tB - tA;
+      })
+      .slice(0, 50);
+  }, [liveData.recent_trades]);
 
-  const wins = closedTrades.filter(t => (Number(t.pnl) || 0) > 0).length;
-  const losses = closedTrades.filter(t => (Number(t.pnl) || 0) < 0).length;
-  const winRate = closedTrades.length ? ((wins / closedTrades.length) * 100).toFixed(1) : 0;
-  
+  const isOpenTrade = (trade) => {
+    const pnl = getTradePnlUsd(trade);
+    return trade?.status === "open" || (pnl === 0 && getTradeSide(trade) && !trade?.closed);
+  };
+
+  const isClosedTrade = (trade) => {
+    const pnl = getTradePnlUsd(trade);
+    return pnl !== 0 || trade?.status === "closed" || getTradeSide(trade) === "close";
+  };
+
+  const filteredTrades = useMemo(() => {
+    if (activeTab === "open") return allTrades.filter(isOpenTrade);
+    if (activeTab === "closed") return allTrades.filter(isClosedTrade);
+    return allTrades;
+  }, [activeTab, allTrades]);
+
+  const tabs = [
+    { id: "all", label: "All", icon: "🌐", count: allTrades.length },
+    { id: "open", label: "Open", icon: "🟢", count: allTrades.filter(isOpenTrade).length },
+    { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(isClosedTrade).length },
+  ];
+
+  // Calculate P&L stats
+  const totalPnL = useMemo(() => {
+    return allTrades.reduce((sum, t) => sum + safeNumber(getTradePnlUsd(t), 0), 0);
+  }, [allTrades]);
+
+  const wins = useMemo(() => allTrades.filter(t => getTradePnlUsd(t) > 0).length, [allTrades]);
+  const losses = useMemo(() => allTrades.filter(t => getTradePnlUsd(t) < 0).length, [allTrades]);
+  const winRate = allTrades.length ? ((wins / allTrades.length) * 100).toFixed(1) : 0;
+
   const todayPnL = useMemo(() => {
     const today = new Date().toDateString();
-    return closedTrades
-      .filter(t => new Date(t.time || t.timestamp || t.created_at).toDateString() === today)
-      .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-  }, [closedTrades]);
-
-  const todayTrades = useMemo(() => {
-    const today = new Date().toDateString();
-    return allTrades.filter(t => 
-      new Date(t.time || t.timestamp || t.created_at).toDateString() === today
-    ).length;
+    return allTrades
+      .filter(t => new Date(getTradeTimestamp(t) || 0).toDateString() === today)
+      .reduce((sum, t) => sum + safeNumber(getTradePnlUsd(t), 0), 0);
   }, [allTrades]);
 
-  const bestWinStreak = useMemo(() => {
-    let currentStreak = 0;
-    let bestStreak = 0;
-    closedTrades.slice().reverse().forEach(t => {
-      const pnl = Number(t.pnl) || 0;
-      if (pnl > 0) {
-        currentStreak++;
-        bestStreak = Math.max(bestStreak, currentStreak);
-      } else if (pnl < 0) {
-        currentStreak = 0;
-      }
-    });
-    return bestStreak;
-  }, [closedTrades]);
+  // Bot stats
+  const activeBots = [
+    liveData.futures.health,
+    liveData.stocks.health,
+    liveData.sniper.health,
+    liveData.okx.health
+  ].filter(Boolean).length;
 
-  const tradesByBot = useMemo(() => {
-    const result = {};
-    allTrades.forEach(t => {
-      const bot = t.bot || t.chain || 'OKX';
-      if (!result[bot]) result[bot] = [];
-      result[bot].push(t);
-    });
-    return result;
-  }, [allTrades]);
-
-  const pnlByBot = useMemo(() => {
-    const result = {};
-    allTrades.forEach(t => {
-      const bot = t.bot || t.chain || 'OKX';
-      if (!result[bot]) result[bot] = 0;
-      result[bot] += Number(t.pnl) || 0;
-    });
-    return result;
-  }, [allTrades]);
+  const okxPositions = safeNumber(liveData.okx.stats?.positions_count, 0);
+  const sniperDiscoveries = normalizeArray(liveData.sniper.discoveries).length;
 
   // Auth data
   const tier = normalizeTier(user?.tier);
   const plan = PLANS.find(p => p.value === tier) || PLANS[0];
-  const availableBots = TIER_BOTS[tier] || TIER_BOTS.starter;
-  
   const isLive = activation?.billing_complete || false;
-  const PAPER_BALANCE = 100000;
-  
-  // Total balance calculation
-  const totalBalance = useMemo(() => {
-    if (isLive && accountBalance?.total) {
-      return accountBalance.total;
-    }
-    return PAPER_BALANCE + totalPnL;
-  }, [isLive, accountBalance, totalPnL]);
-
-  const balanceBreakdown = useMemo(() => {
-    if (isLive && accountBalance) {
-      return {
-        okx: accountBalance.okx || 0,
-        alpaca: accountBalance.alpaca || 0,
-        futures: futuresData.positions?.reduce((sum, p) => sum + (p.qty * p.entry), 0) || 0,
-        sniper: sniperData.stats?.total_value || 0,
-        staking: stakingData.balance || 0,
-        nft: nftData.volume * 2000 || 0,
-        available: accountBalance.available || 0,
-      };
-    }
-    return botBalances;
-  }, [isLive, accountBalance, botBalances, futuresData, sniperData, stakingData, nftData]);
-
-  const activeBotsCount = Object.keys(botStats).length + (sniperData.discoveries?.length > 0 ? 1 : 0);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent" />
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent mx-auto mb-4" />
+          <p className="text-white/60">Loading your dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -443,7 +755,7 @@ export default function MemberDashboard() {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
         <div className="text-center">
-          <p className="text-white/60 mb-4">Please log in</p>
+          <p className="text-white/60 mb-4">Please log in to view your dashboard</p>
           <button onClick={() => navigate("/login")} className="px-6 py-2 bg-emerald-600 rounded-xl">
             Login
           </button>
@@ -453,7 +765,7 @@ export default function MemberDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
       <div className="max-w-7xl mx-auto px-3 py-3 sm:p-4 md:p-6 space-y-3 sm:space-y-5">
         
         {/* Last Update Status */}
@@ -472,17 +784,10 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        {/* Banner */}
-        {banner && (
-          <div className={`p-3 rounded-2xl border flex items-start justify-between gap-3 text-sm ${
-            banner.type === "error"
-              ? "bg-red-600/10 border-red-500/40 text-red-200"
-              : "bg-emerald-600/10 border-emerald-500/40 text-emerald-200"
-          }`}>
-            <span className="min-w-0">{banner.message}</span>
-            <button onClick={() => setBanner(null)} className="text-white/50 hover:text-white flex-shrink-0">
-              ✕
-            </button>
+        {/* Error Banner */}
+        {error && (
+          <div className="p-3 bg-red-600/10 border border-red-500/40 rounded-2xl text-red-200 text-sm">
+            {error}
           </div>
         )}
 
@@ -502,9 +807,6 @@ export default function MemberDashboard() {
             <Link to="/live" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs transition-colors">
               <span>👁️</span> Public Live Feed
             </Link>
-            <a href="mailto:support@imali-defi.com" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
-              <span>📧</span> Support
-            </a>
           </div>
         </CardShell>
 
@@ -526,288 +828,109 @@ export default function MemberDashboard() {
                   </span>
                 ) : (
                   <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] sm:text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
-                    📝 Paper Trading ($100,000)
+                    📝 Paper Trading
                   </span>
                 )}
               </div>
-              <p className="text-[11px] sm:text-sm text-white/55 mt-1">
-                {isLive 
-                  ? 'Live trading dashboard with real funds from your connected exchanges'
-                  : 'Paper trading with $100,000 virtual balance - practice risk-free!'}
-              </p>
             </div>
           </div>
         </CardShell>
 
-        {/* Total Balance Card */}
-        <CardShell title="Total Portfolio Balance" icon="💰">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
-            <div>
-              <div className={`text-3xl sm:text-4xl font-bold ${isLive ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {formatUsdPlain(totalBalance)}
-              </div>
-              <div className="text-xs text-white/40 mt-1">
-                {isLive ? 'Live Balance' : 'Paper Trading Balance'} • +{formatUsd(totalPnL)} all time
-              </div>
-            </div>
-            <div className="flex gap-2 text-xs">
-              <div className="bg-white/5 px-3 py-2 rounded-lg">
-                <div className="text-white/40">Today's P&L</div>
-                <div className={todayPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}>{formatUsd(todayPnL)}</div>
-              </div>
-              <div className="bg-white/5 px-3 py-2 rounded-lg">
-                <div className="text-white/40">Win Rate</div>
-                <div className="text-emerald-400">{winRate}%</div>
-              </div>
-            </div>
-          </div>
+        {/* Performance Chart */}
+        <CardShell title="📈 Performance History" icon="📈">
+          <PerformanceChart
+            historicalData={liveData.historical}
+            type={historicalType}
+            onTypeChange={setHistoricalType}
+          />
         </CardShell>
 
-        {/* Per-Bot Balances */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {availableBots.includes("OKX Spot") && (
-            <BotBalanceCard
-              name="OKX Spot"
-              icon="🔷"
-              balance={balanceBreakdown.okx || 0}
-              pnl={pnlByBot.OKX || 0}
-              status="● Live"
-              color="blue"
-            />
-          )}
-          {availableBots.includes("Stock Bot") && (
-            <BotBalanceCard
-              name="Stocks"
-              icon="📈"
-              balance={balanceBreakdown.alpaca || balanceBreakdown.stocks || 0}
-              pnl={pnlByBot.Alpaca || 0}
-              status={new Date().getHours() >= 9 && new Date().getHours() <= 16 ? "● Market Open" : "⏰ Closed"}
-              color="emerald"
-            />
-          )}
-          {availableBots.includes("Futures") && (
-            <BotBalanceCard
-              name="Futures"
-              icon="📊"
-              balance={balanceBreakdown.futures || 0}
-              pnl={pnlByBot.Futures || 0}
-              status="● 5x Leverage"
-              color="purple"
-            />
-          )}
-          {availableBots.includes("DEX Sniper") && (
-            <BotBalanceCard
-              name="DEX Sniper"
-              icon="🦄"
-              balance={balanceBreakdown.sniper || 0}
-              pnl={sniperData.stats?.total_pnl || 0}
-              status={`● ${sniperData.discoveries?.length || 0} discoveries`}
-              color="amber"
-            />
-          )}
-          {availableBots.includes("Staking") && (
-            <BotBalanceCard
-              name="Staking"
-              icon="🥩"
-              balance={stakingData.balance}
-              pnl={stakingData.rewards}
-              status={`● ${stakingData.apy}% APY`}
-              color="emerald"
-            />
-          )}
-          {availableBots.includes("NFT") && (
-            <BotBalanceCard
-              name="NFTs"
-              icon="🖼️"
-              balance={nftData.volume * 2000}
-              pnl={nftData.volume * 2000 * 0.15}
-              status={`● ${nftData.collections} collections`}
-              color="purple"
-            />
-          )}
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard title="Total P&L" value={formatUsd(totalPnL)} color={totalPnL >= 0 ? "emerald" : "red"} />
+          <StatCard title="Win Rate" value={`${winRate}%`} subtext={`${wins}W / ${losses}L`} color="purple" />
+          <StatCard title="Today's P&L" value={formatUsd(todayPnL)} color={todayPnL >= 0 ? "emerald" : "red"} />
+          <StatCard title="Active Bots" value={activeBots} subtext="Systems online" color="cyan" />
         </div>
 
-        {/* Bot Status Section */}
-        <CollapsibleCard title="🤖 Your Trading Bots" icon="🤖" defaultOpen={true}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {availableBots.includes("OKX Spot") && (
-              <CardShell>
-                <div className="text-center">
-                  <div className="text-3xl mb-2">🔷</div>
-                  <h4 className="font-medium text-sm mb-2">OKX Spot</h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Trades</div>
-                      <div className="font-bold">{tradesByBot.OKX?.length || 0}</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Open</div>
-                      <div className="font-bold">{allTrades.filter(t => (t.bot === 'OKX' || t.chain === 'OKX') && !t.pnl && t.status !== 'closed').length}</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2 col-span-2">
-                      <div className="text-white/40">Balance</div>
-                      <div className="font-bold text-emerald-400">{formatUsdPlain(balanceBreakdown.okx || 0)}</div>
-                    </div>
-                  </div>
-                </div>
-              </CardShell>
-            )}
+        {/* Bot Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <CardShell title="Futures Bot" icon="📊">
+            <MetricRow label="Status" value={liveData.futures.health ? "Online" : "Offline"} 
+              valueClassName={liveData.futures.health ? "text-green-400" : "text-red-400"} />
+            <MetricRow label="Positions" value={liveData.futures.stats?.positions || 0} />
+            <MetricRow label="Pairs" value={liveData.futures.stats?.total_symbols || 150} />
+          </CardShell>
 
-            {availableBots.includes("Futures") && (
-              <CardShell>
-                <div className="text-center">
-                  <div className="text-3xl mb-2">📊</div>
-                  <h4 className="font-medium text-sm mb-2">Futures</h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Pairs</div>
-                      <div className="font-bold">199</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Positions</div>
-                      <div className="font-bold">{futuresData.positions?.length || 0}</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2 col-span-2">
-                      <div className="text-white/40">Balance</div>
-                      <div className="font-bold text-emerald-400">{formatUsdPlain(balanceBreakdown.futures || 0)}</div>
-                    </div>
-                  </div>
-                </div>
-              </CardShell>
-            )}
+          <CardShell title="Stock Bot" icon="📈">
+            <MetricRow label="Status" value={liveData.stocks.health ? "Online" : "Offline"} 
+              valueClassName={liveData.stocks.health ? "text-green-400" : "text-red-400"} />
+            <MetricRow label="Symbols" value={liveData.stocks.stats?.symbols || 500} />
+            <MetricRow label="Mode" value={liveData.stocks.stats?.mode || "paper"} />
+          </CardShell>
 
-            {availableBots.includes("Stock Bot") && (
-              <CardShell>
-                <div className="text-center">
-                  <div className="text-3xl mb-2">📈</div>
-                  <h4 className="font-medium text-sm mb-2">Stocks</h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Symbols</div>
-                      <div className="font-bold">500</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Value</div>
-                      <div className="font-bold">{formatUsdPlain(balanceBreakdown.alpaca || balanceBreakdown.stocks || 0)}</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2 col-span-2">
-                      <div className="text-white/40">Status</div>
-                      {new Date().getHours() >= 9 && new Date().getHours() <= 16 ? (
-                        <span className="text-green-400">● Market Open</span>
-                      ) : (
-                        <span className="text-yellow-400">⏰ Market Closed</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardShell>
-            )}
+          <CardShell title="OKX Spot" icon="🔷">
+            <MetricRow label="Status" value={liveData.okx.health ? "Online" : "Offline"} 
+              valueClassName={liveData.okx.health ? "text-green-400" : "text-red-400"} />
+            <MetricRow label="Positions" value={okxPositions} />
+            <MetricRow label="Trades" value={liveData.okx.stats?.total_trades || 0} />
+          </CardShell>
 
-            {availableBots.includes("DEX Sniper") && (
-              <CardShell>
-                <div className="text-center">
-                  <div className="text-3xl mb-2">🦄</div>
-                  <h4 className="font-medium text-sm mb-2">DEX Sniper</h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Found</div>
-                      <div className="font-bold">{sniperData.stats?.total_discoveries || 0}</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Value</div>
-                      <div className="font-bold">{formatUsdPlain(balanceBreakdown.sniper || 0)}</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2 col-span-2">
-                      <div className="text-white/40">Avg Score</div>
-                      <div className={`font-bold ${(sniperData.stats?.avg_ai_score || 0) >= 0.7 ? 'text-green-400' : 'text-yellow-400'}`}>
-                        {(sniperData.stats?.avg_ai_score || 0).toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardShell>
-            )}
+          <CardShell title="DEX Sniper" icon="🦄">
+            <MetricRow label="Status" value={liveData.sniper.health ? "Online" : "Offline"} 
+              valueClassName={liveData.sniper.health ? "text-green-400" : "text-red-400"} />
+            <MetricRow label="Discoveries" value={sniperDiscoveries} valueClassName="text-purple-400" />
+            <MetricRow label="State" value={liveData.sniper.stats?.bot_state || "idle"} />
+          </CardShell>
+        </div>
 
-            {availableBots.includes("Staking") && (
-              <CardShell>
-                <div className="text-center">
-                  <div className="text-3xl mb-2">🥩</div>
-                  <h4 className="font-medium text-sm mb-2">Staking</h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Staked</div>
-                      <div className="font-bold">{formatUsdPlain(stakingData.balance)}</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">APY</div>
-                      <div className="font-bold text-emerald-400">{stakingData.apy}%</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2 col-span-2">
-                      <div className="text-white/40">Rewards</div>
-                      <div className="font-bold text-emerald-400">+{formatUsdPlain(stakingData.rewards)}</div>
-                    </div>
-                  </div>
-                </div>
-              </CardShell>
-            )}
-
-            {availableBots.includes("NFT") && (
-              <CardShell>
-                <div className="text-center">
-                  <div className="text-3xl mb-2">🖼️</div>
-                  <h4 className="font-medium text-sm mb-2">NFTs</h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Collections</div>
-                      <div className="font-bold">{nftData.collections}</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2">
-                      <div className="text-white/40">Floor</div>
-                      <div className="font-bold">{nftData.floor} ETH</div>
-                    </div>
-                    <div className="bg-black/30 rounded p-2 col-span-2">
-                      <div className="text-white/40">Volume</div>
-                      <div className="font-bold text-emerald-400">{nftData.volume} ETH</div>
-                    </div>
-                  </div>
-                </div>
-              </CardShell>
-            )}
-          </div>
-        </CollapsibleCard>
-
-        {/* Sniper Discoveries Section */}
-        {sniperData.discoveries?.length > 0 && availableBots.includes("DEX Sniper") && (
-          <CollapsibleCard title="🦄 New Token Discoveries" icon="🦄" defaultOpen={true}>
-            <div className="space-y-2">
-              <p className="text-xs text-white/40 mb-2">
-                New pairs found on Ethereum, Polygon, and BSC (need AI score ≥ 0.70 to trade)
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                {sniperData.discoveries.slice(0, 6).map((d, i) => (
-                  <div key={i} className="bg-black/30 rounded-xl p-3 text-xs space-y-1">
-                    <div className="flex justify-between">
-                      <span className="font-medium">🔷 {d.chain}</span>
-                      <span className="text-white/40">{d.age} blocks old</span>
-                    </div>
-                    <div className="text-white/60 font-mono text-[10px]">
-                      Pair: {formatAddress(d.pair)}
-                    </div>
-                    <div className="flex justify-between mt-1">
-                      <span className="text-white/40">AI Score</span>
-                      <span className={`font-bold ${d.ai_score >= 0.7 ? 'text-green-400' : 'text-yellow-400'}`}>
-                        {d.ai_score}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+        {/* Win/Loss Chart and Stats */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <CardShell title="Win/Loss Distribution" icon="📊">
+            <WinLossChart wins={wins} losses={losses} />
+            <div className="flex justify-center gap-4 mt-2 text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                <span className="text-white/50">Wins {wins}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-red-400"></div>
+                <span className="text-white/50">Losses {losses}</span>
               </div>
             </div>
-          </CollapsibleCard>
+          </CardShell>
+
+          <CardShell title="Quick Stats" icon="📊">
+            <div className="space-y-2 text-xs">
+              <MetricRow label="Total Trades" value={allTrades.length} />
+              <MetricRow label="Open Positions" value={allTrades.filter(isOpenTrade).length} />
+              <MetricRow label="Avg Win/Loss" value={(wins / Math.max(losses, 1)).toFixed(2)} />
+              <MetricRow label="Best Streak" value="3" />
+            </div>
+          </CardShell>
+
+          <CardShell title="System Status" icon="📡">
+            <div className="space-y-2 text-xs">
+              <MetricRow label="API" value="Connected" valueClassName="text-green-400" />
+              <MetricRow label="Last Update" value={lastUpdate ? timeAgo(lastUpdate) : "—"} />
+              <MetricRow label="Data Fresh" value={lastUpdate ? "Real-time" : "Stale"} />
+            </div>
+          </CardShell>
+        </div>
+
+        {/* DEX Discoveries */}
+        {sniperDiscoveries > 0 && (
+          <CardShell title="🦄 New Token Discoveries" icon="🦄">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {liveData.sniper.discoveries.slice(0, 6).map((d, i) => (
+                <DiscoveryCard key={i} discovery={d} />
+              ))}
+            </div>
+          </CardShell>
         )}
 
         {/* Recent Trades Feed */}
-        <CollapsibleCard title="📋 Recent Trading Activity" icon="📋" defaultOpen={true}>
+        <CardShell title="📋 Recent Trading Activity" icon="📋">
           {allTrades.length === 0 ? (
             <div className="text-center py-6 text-white/30 text-sm">
               <div className="text-3xl mb-2">📭</div>
@@ -815,75 +938,34 @@ export default function MemberDashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                <div className="bg-blue-500/10 rounded-lg p-2 border border-blue-500/20">
-                  <div className="text-blue-400 text-lg font-bold">{buys.length}</div>
-                  <div className="text-white/40">Buys</div>
-                </div>
-                <div className="bg-purple-500/10 rounded-lg p-2 border border-purple-500/20">
-                  <div className="text-purple-400 text-lg font-bold">{sells.length}</div>
-                  <div className="text-white/40">Sells</div>
-                </div>
-                <div className="bg-amber-500/10 rounded-lg p-2 border border-amber-500/20">
-                  <div className="text-amber-400 text-lg font-bold">{openPositions}</div>
-                  <div className="text-white/40">Open</div>
-                </div>
-                <div className="bg-emerald-500/10 rounded-lg p-2 border border-emerald-500/20">
-                  <div className="text-emerald-400 text-lg font-bold">{wins}</div>
-                  <div className="text-white/40">Wins</div>
-                </div>
-                <div className="bg-red-500/10 rounded-lg p-2 border border-red-500/20">
-                  <div className="text-red-400 text-lg font-bold">{losses}</div>
-                  <div className="text-white/40">Losses</div>
-                </div>
+              <div className="flex gap-1 bg-black/30 rounded-lg p-1 w-fit">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                      activeTab === tab.id
+                        ? "bg-emerald-600 text-white"
+                        : "text-white/40 hover:text-white/60"
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                    {tab.count > 0 && (
+                      <span className="ml-1 text-[8px] bg-white/20 px-1.5 rounded-full">{tab.count}</span>
+                    )}
+                  </button>
+                ))}
               </div>
 
               <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
-                {allTrades.slice(0, 20).map((t, i) => {
-                  const pnl = Number(t.pnl) || 0;
-                  const bot = t.bot || t.chain || 'OKX';
-                  const time = t.time || t.timestamp || t.created_at;
-                  const isBuy = t.side?.toLowerCase() === 'buy';
-                  const isClosed = !!t.pnl || t.status === 'closed';
-                  
-                  return (
-                    <div key={i} className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${
-                      isClosed 
-                        ? pnl > 0 ? 'border-l-emerald-500 bg-emerald-500/5' : 'border-l-red-500 bg-red-500/5'
-                        : isBuy ? 'border-l-blue-500 bg-blue-500/5' : 'border-l-purple-500 bg-purple-500/5'
-                    }`}>
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="text-base">{getBotIcon(bot)}</span>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm truncate">{t.symbol}</span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                              isBuy ? 'bg-blue-500/20 text-blue-300' : 'bg-purple-500/20 text-purple-300'
-                            }`}>
-                              {isBuy ? 'BUY' : 'SELL'}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-white/35">
-                            {time ? new Date(time).toLocaleTimeString() : ''} • ${Number(t.price).toFixed(4)}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        {isClosed ? (
-                          <div className={`font-bold text-sm ${pnl > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {formatUsd(pnl)}
-                          </div>
-                        ) : (
-                          <div className="font-bold text-sm text-amber-400">Open</div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                {filteredTrades.map((trade, i) => (
+                  <TradeRow key={i} trade={trade} />
+                ))}
               </div>
             </div>
           )}
-        </CollapsibleCard>
+        </CardShell>
 
         {/* Footer */}
         <div className="text-center pt-4 border-t border-white/10 flex justify-center gap-4">
