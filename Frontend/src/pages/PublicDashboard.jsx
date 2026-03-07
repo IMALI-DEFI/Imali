@@ -1,35 +1,7 @@
 // src/pages/PublicDashboard.jsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-  ArcElement,
-} from 'chart.js';
-import { Line, Bar, Doughnut } from 'react-chartjs-2';
-
-// Register ChartJS components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-  ArcElement
-);
 
 /* =====================================================
    CONFIG
@@ -41,30 +13,36 @@ const API_BASE =
 
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
-const CONTROL_URL = `${API_BASE}/api/public/control`;
-
-const EMPTY_HISTORICAL = { daily: [], weekly: [], monthly: [] };
 
 const DEFAULT_STATE = {
-  futures: { health: null, positions: [], trades: [], stats: null },
-  stocks: { health: null, positions: [], trades: [], stats: null },
-  sniper: { health: null, discoveries: [], stats: null, positions: [] },
-  okx: {
-    health: null,
-    positions: [],
-    trades: [],
-    stats: {
-      total_trades: 0,
-      total_pnl: 0,
-      positions_count: 0,
-      mode: "unknown",
+  futures: { 
+    health: null, 
+    stats: { total_symbols: 0, status: 'unknown', daily_realized: {} } 
+  },
+  stocks: { 
+    health: null, 
+    stats: { symbols: 0, mode: 'paper', running: false, lastRefresh: null } 
+  },
+  sniper: { 
+    health: null, 
+    discoveries: [], 
+    stats: { status: 'idle', active_trades: 0, chains: [] } 
+  },
+  okx: { 
+    health: null, 
+    stats: { 
+      positions_count: 0, 
+      total_trades: 0, 
+      total_pnl: 0, 
+      mode: 'dry_run',
       scan_count: 0,
       last_scan_time: null,
-    },
+      last_candidate_count: 0,
+      last_signal_count: 0
+    } 
   },
   recent_trades: [],
-  recent_activity: [],
-  historical: EMPTY_HISTORICAL,
+  historical: { daily: [], weekly: [], monthly: [] },
   loading: true,
   error: null,
   lastUpdate: null,
@@ -82,7 +60,13 @@ function safeNumber(value, fallback = 0) {
 }
 
 function formatCurrency(value, digits = 2) {
-  return `$${safeNumber(value).toFixed(digits)}`;
+  const num = safeNumber(value);
+  return num >= 0 ? `$${num.toFixed(digits)}` : `-$${Math.abs(num).toFixed(digits)}`;
+}
+
+function formatCurrencyWithSign(value, digits = 2) {
+  const num = safeNumber(value);
+  return `${num >= 0 ? "+" : "-"}$${Math.abs(num).toFixed(digits)}`;
 }
 
 function formatPercent(value, digits = 2) {
@@ -90,11 +74,27 @@ function formatPercent(value, digits = 2) {
   return `${num >= 0 ? "+" : ""}${num.toFixed(digits)}%`;
 }
 
-function formatCompactNumber(value) {
-  const num = safeNumber(value);
-  if (Math.abs(num) >= 1e6) return `${(num / 1e6).toFixed(1)}M`;
-  if (Math.abs(num) >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
-  return num.toFixed(0);
+function formatNumber(value) {
+  return safeNumber(value).toLocaleString();
+}
+
+function timeAgo(timestamp) {
+  if (!timestamp) return "—";
+  try {
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    if (diffMs < 0) return "just now";
+    const sec = Math.floor(diffMs / 1000);
+    const min = Math.floor(sec / 60);
+    const hr = Math.floor(min / 60);
+    const day = Math.floor(hr / 24);
+    if (sec < 30) return "just now";
+    if (sec < 60) return `${sec}s ago`;
+    if (min < 60) return `${min}m ago`;
+    if (hr < 24) return `${hr}h ago`;
+    return `${day}d ago`;
+  } catch {
+    return "—";
+  }
 }
 
 function formatClock(timestamp) {
@@ -113,39 +113,6 @@ function formatDate(timestamp) {
   } catch {
     return "—";
   }
-}
-
-function timeAgo(timestamp) {
-  if (!timestamp) return "—";
-  try {
-    const diffMs = Date.now() - new Date(timestamp).getTime();
-    if (diffMs < 0) return "just now";
-    const sec = Math.floor(diffMs / 1000);
-    const min = Math.floor(sec / 60);
-    const hr = Math.floor(min / 60);
-    const day = Math.floor(hr / 24);
-
-    if (sec < 30) return "just now";
-    if (sec < 60) return `${sec}s ago`;
-    if (min < 60) return `${min}m ago`;
-    if (hr < 24) return `${hr}h ago`;
-    return `${day}d ago`;
-  } catch {
-    return "—";
-  }
-}
-
-function normalizeArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function normalizeHistorical(value) {
-  if (!value || typeof value !== "object") return EMPTY_HISTORICAL;
-  return {
-    daily: normalizeArray(value.daily),
-    weekly: normalizeArray(value.weekly),
-    monthly: normalizeArray(value.monthly),
-  };
 }
 
 function getTradeTimestamp(trade) {
@@ -176,87 +143,105 @@ function getTradePrice(trade) {
   return trade?.price ?? trade?.entry_price ?? 0;
 }
 
-// Helper function to get week number
-Date.prototype.getWeek = function() {
-  const date = new Date(this.getTime());
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
-  const week1 = new Date(date.getFullYear(), 0, 4);
-  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-};
+function normalizeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
 
 /* =====================================================
-   DATA MERGING
+   DATA MERGING - Properly maps API response to component state
 ===================================================== */
 
 function mergeLiveStatsPayload(payload = {}) {
+  console.log("API Payload:", payload); // Debug log
+  
+  // Extract data from payload
   const futures = payload?.futures || {};
   const stocks = payload?.stocks || {};
   const sniper = payload?.sniper || {};
   const okx = payload?.okx || {};
+  const recentTrades = normalizeArray(payload?.recent_trades || []);
 
-  const positionsCount = typeof okx?.positions === "number" ? okx.positions : 0;
-  const okxPositions = Array.from({ length: positionsCount }, (_, i) => ({
-    id: `okx-pos-${i}`,
-    placeholder: true,
-  }));
+  // Process OKX data - positions is a number, not an array
+  const okxStats = {
+    positions_count: typeof okx?.positions === 'number' ? okx.positions : 0,
+    total_trades: okx?.total_trades || 0,
+    total_pnl: okx?.total_pnl || 0,
+    mode: okx?.mode || 'dry_run',
+    scan_count: okx?.scan_count || 0,
+    last_scan_time: okx?.last_scan_time || null,
+    last_candidate_count: okx?.last_candidate_count || 0,
+    last_signal_count: okx?.last_signal_count || 0
+  };
 
-  const recentTrades =
-    Array.isArray(payload?.recent_trades) ? payload.recent_trades : [];
+  // Process Futures data
+  const futuresStats = {
+    total_symbols: futures?.total_symbols || 199,
+    status: futures?.status || 'running',
+    daily_realized: futures?.daily_realized || {},
+    cex_enabled: futures?.cex_enabled || false,
+    dry_run: futures?.dry_run || false,
+    db_connected: futures?.db_connected || false
+  };
+
+  // Process Stocks data
+  const stocksStats = {
+    symbols: stocks?.symbols || 500,
+    mode: stocks?.mode || 'paper',
+    running: stocks?.running || false,
+    lastRefresh: stocks?.lastRefresh || null
+  };
+
+  // Process Sniper data
+  const sniperStats = {
+    status: sniper?.status || 'idle',
+    active_trades: sniper?.active_trades || 0,
+    bot_state: sniper?.bot_state || 'idle',
+    last_heartbeat: sniper?.last_heartbeat || null
+  };
+
+  // Get discoveries (might be in different places)
+  const discoveries = normalizeArray(
+    sniper?.discoveries || 
+    payload?.discoveries || 
+    []
+  );
 
   return {
     futures: {
       health: futures,
-      positions: normalizeArray(futures?.positions),
-      trades: normalizeArray(futures?.trades),
-      stats: futures,
+      stats: futuresStats
     },
     stocks: {
       health: stocks,
-      positions: normalizeArray(stocks?.positions),
-      trades: normalizeArray(stocks?.trades),
-      stats: stocks,
+      stats: stocksStats
     },
     sniper: {
       health: sniper,
-      discoveries: normalizeArray(sniper?.discoveries || payload?.discoveries),
-      stats: sniper,
-      positions: normalizeArray(sniper?.positions),
+      discoveries: discoveries,
+      stats: sniperStats
     },
     okx: {
       health: okx,
-      positions: okxPositions,
-      trades: normalizeArray(okx?.trades),
-      stats: {
-        total_trades: safeNumber(okx?.total_trades, 0),
-        total_pnl: safeNumber(okx?.total_pnl, 0),
-        positions_count: positionsCount,
-        mode: okx?.mode || "dry_run",
-        scan_count: safeNumber(okx?.scan_count, 0),
-        last_scan_time: okx?.last_scan_time || null,
-      },
+      stats: okxStats
     },
     recent_trades: recentTrades,
-    recent_activity: normalizeArray(payload?.recent_activity),
-    historical: normalizeHistorical(payload?.historical),
+    historical: payload?.historical || { daily: [], weekly: [], monthly: [] }
   };
 }
 
 /* =====================================================
-   HEARTBEAT
+   HEARTBEAT COMPONENT
 ===================================================== */
 
 function Heartbeat({ active = true }) {
   const [beat, setBeat] = useState(false);
 
   useEffect(() => {
-    if (!active) return undefined;
-
+    if (!active) return;
     const interval = setInterval(() => {
       setBeat(true);
       setTimeout(() => setBeat(false), 300);
     }, 1400);
-
     return () => clearInterval(interval);
   }, [active]);
 
@@ -290,10 +275,11 @@ function Heartbeat({ active = true }) {
         strokeWidth={beat ? "2.5" : "2"}
         strokeLinecap="round"
         strokeLinejoin="round"
+        className="transition-all duration-150"
       />
       <circle
         cx={beat ? "43" : "70"}
-        cy="20"
+        cy={beat ? "20" : "20"}
         r="3"
         fill={beat ? "#34d399" : "#10b981"}
         className="transition-all duration-300"
@@ -303,10 +289,10 @@ function Heartbeat({ active = true }) {
 }
 
 /* =====================================================
-   UI COMPONENTS
+   STAT CARD COMPONENT
 ===================================================== */
 
-function StatCard({ title, value, icon, subtext, color = "emerald" }) {
+function StatCard({ title, value, icon, subtext, color = "emerald", trend = null }) {
   const colorClasses = {
     emerald: "text-emerald-400",
     indigo: "text-indigo-400",
@@ -317,14 +303,23 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
   };
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm hover:bg-white/10 transition-all">
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 hover:bg-white/10 transition-all">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs sm:text-sm text-white/50">{title}</p>
           <p className={`text-xl sm:text-2xl md:text-3xl font-bold mt-1 ${colorClasses[color]}`}>
             {value}
           </p>
-          {subtext ? <p className="text-[10px] sm:text-xs text-white/30 mt-1">{subtext}</p> : null}
+          {subtext && (
+            <p className="text-[10px] sm:text-xs text-white/30 mt-1 flex items-center gap-1">
+              {trend && (
+                <span className={trend > 0 ? "text-green-400" : trend < 0 ? "text-red-400" : "text-white/30"}>
+                  {trend > 0 ? "↑" : trend < 0 ? "↓" : "→"}
+                </span>
+              )}
+              {subtext}
+            </p>
+          )}
         </div>
         <div className="text-2xl sm:text-3xl opacity-60 shrink-0">{icon}</div>
       </div>
@@ -332,10 +327,14 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
   );
 }
 
+/* =====================================================
+   BOT CARD COMPONENT
+===================================================== */
+
 function BotCard({ name, icon, health, stats, accent = "indigo" }) {
   const isOnline = !!health;
 
-  const borderMap = {
+  const accentColors = {
     indigo: "border-indigo-500/20 bg-indigo-500/10",
     emerald: "border-emerald-500/20 bg-emerald-500/10",
     purple: "border-purple-500/20 bg-purple-500/10",
@@ -346,58 +345,82 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
   const getDisplayStats = () => {
     if (name === "OKX Spot") {
       return [
-        `Positions: ${stats?.positions_count || 0}`,
-        `Trades: ${stats?.total_trades || 0}`,
-        `Mode: ${stats?.mode || "dry_run"}`,
+        { label: "Positions", value: stats?.positions_count || 0, color: "text-emerald-400" },
+        { label: "Total Trades", value: stats?.total_trades || 0, color: "text-blue-400" },
+        { 
+          label: "Total P&L", 
+          value: formatCurrencyWithSign(stats?.total_pnl || 0), 
+          color: (stats?.total_pnl || 0) >= 0 ? "text-emerald-400" : "text-red-400" 
+        },
+        { label: "Mode", value: stats?.mode || 'dry_run', color: "text-yellow-400" },
+        { label: "Scan Count", value: formatNumber(stats?.scan_count || 0), color: "text-white/70" }
       ];
     }
-    return [`Status: ${isOnline ? "Online" : "Offline"}`];
+    if (name === "Futures Bot") {
+      return [
+        { label: "Pairs", value: stats?.total_symbols || 199, color: "text-indigo-400" },
+        { label: "Status", value: stats?.status || 'running', color: stats?.status === 'running' ? "text-green-400" : "text-yellow-400" },
+        { label: "CEX Enabled", value: stats?.cex_enabled ? "Yes" : "No", color: stats?.cex_enabled ? "text-green-400" : "text-white/50" },
+        { label: "Dry Run", value: stats?.dry_run ? "Yes" : "No", color: stats?.dry_run ? "text-yellow-400" : "text-red-400" }
+      ];
+    }
+    if (name === "Stock Bot") {
+      return [
+        { label: "Symbols", value: stats?.symbols || 500, color: "text-emerald-400" },
+        { label: "Mode", value: stats?.mode || 'paper', color: stats?.mode === 'paper' ? "text-yellow-400" : "text-green-400" },
+        { label: "Running", value: stats?.running ? "Yes" : "No", color: stats?.running ? "text-green-400" : "text-white/50" },
+        { label: "Last Refresh", value: stats?.lastRefresh ? timeAgo(stats.lastRefresh) : "—", color: "text-white/70" }
+      ];
+    }
+    if (name === "Sniper Bot") {
+      return [
+        { label: "Status", value: stats?.status || 'idle', color: stats?.status === 'OK' ? "text-green-400" : "text-yellow-400" },
+        { label: "Active Trades", value: stats?.active_trades || 0, color: "text-purple-400" },
+        { label: "Bot State", value: stats?.bot_state || 'idle', color: "text-white/70" }
+      ];
+    }
+    return [];
   };
 
   return (
-    <div className={`border rounded-xl p-3 sm:p-4 backdrop-blur-sm ${borderMap[accent] ?? borderMap.indigo}`}>
-      <div className="flex items-center justify-between mb-2 gap-2">
+    <div className={`border rounded-xl p-3 sm:p-4 ${accentColors[accent]}`}>
+      <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">{icon}</span>
           <span className="font-semibold text-sm sm:text-base truncate">{name}</span>
         </div>
-        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
-          {isOnline ? "● Online" : "○ Offline"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
+            {isOnline ? "● Online" : "○ Offline"}
+          </span>
+        </div>
       </div>
 
       {isOnline ? (
-        <div className="text-xs space-y-1 text-white/65">
-          {getDisplayStats().map((line, idx) => {
-            const parts = line.split(":");
-            return (
-              <div key={idx} className="flex justify-between gap-2">
-                <span>{parts[0]}:</span>
-                <span className="text-white">{parts.slice(1).join(":").trim()}</span>
-              </div>
-            );
-          })}
+        <div className="text-xs space-y-2">
+          {getDisplayStats().map((stat, idx) => (
+            <div key={idx} className="flex justify-between items-center">
+              <span className="text-white/50">{stat.label}</span>
+              <span className={`font-medium ${stat.color}`}>{stat.value}</span>
+            </div>
+          ))}
         </div>
       ) : (
-        <div className="text-xs text-white/30 py-1">Waiting for connection...</div>
+        <div className="text-xs text-white/30 py-2 text-center">Waiting for connection...</div>
       )}
     </div>
   );
 }
 
-function SniperCard({ health, discoveries, positions }) {
-  const isOnline = !!health;
-  const discCount = normalizeArray(discoveries).length;
-  const posCount = normalizeArray(positions).length;
-  const chains = health?.chains
-    ? Array.isArray(health.chains)
-      ? health.chains.join(", ")
-      : health.chains
-    : "—";
-  const isDryRun = health?.dry_run;
+/* =====================================================
+   SNIPER CARD COMPONENT
+===================================================== */
 
-  const prevDiscRef = useRef(discCount);
+function SniperCard({ health, discoveries, stats }) {
+  const isOnline = !!health;
+  const discCount = discoveries.length;
   const [pinged, setPinged] = useState(false);
+  const prevDiscRef = useRef(discCount);
 
   useEffect(() => {
     if (discCount > prevDiscRef.current) {
@@ -407,12 +430,11 @@ function SniperCard({ health, discoveries, positions }) {
       return () => clearTimeout(t);
     }
     prevDiscRef.current = discCount;
-    return undefined;
   }, [discCount]);
 
   return (
     <div
-      className={`border rounded-xl p-3 sm:p-4 transition-all duration-300 border-purple-500/30 bg-purple-500/10 backdrop-blur-sm ${
+      className={`border rounded-xl p-3 sm:p-4 transition-all duration-300 border-purple-500/30 bg-purple-500/10 ${
         pinged ? "ring-2 ring-purple-400/60" : ""
       }`}
     >
@@ -431,38 +453,46 @@ function SniperCard({ health, discoveries, positions }) {
       </div>
 
       {isOnline ? (
-        <div className="text-xs space-y-1 text-white/65">
+        <div className="text-xs space-y-2">
           <div className="flex justify-between">
-            <span>Discoveries</span>
-            <span className={discCount > 0 ? "text-purple-300 font-semibold" : "text-white/40"}>
+            <span className="text-white/50">Discoveries</span>
+            <span className={`font-semibold ${discCount > 0 ? "text-purple-300" : "text-white/40"}`}>
               {discCount}
             </span>
           </div>
           <div className="flex justify-between">
-            <span>Positions</span>
-            <span className={posCount > 0 ? "text-green-300" : "text-white/40"}>{posCount}</span>
+            <span className="text-white/50">Active Trades</span>
+            <span className={stats?.active_trades > 0 ? "text-green-300" : "text-white/40"}>
+              {stats?.active_trades || 0}
+            </span>
           </div>
           <div className="flex justify-between">
-            <span>Dry Run</span>
-            <span>{isDryRun ? "Yes" : "No"}</span>
+            <span className="text-white/50">Status</span>
+            <span className={stats?.status === 'OK' ? "text-green-400" : "text-yellow-400"}>
+              {stats?.status || 'idle'}
+            </span>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="shrink-0">Chains</span>
-            <span className="text-right truncate text-white/50">{chains}</span>
+          <div className="flex justify-between">
+            <span className="text-white/50">Bot State</span>
+            <span className="text-white/70">{stats?.bot_state || 'idle'}</span>
           </div>
         </div>
       ) : (
-        <div className="text-xs text-white/30 py-1 text-center">Waiting for connection...</div>
+        <div className="text-xs text-white/30 py-2 text-center">Waiting for connection...</div>
       )}
 
-      {pinged ? (
+      {pinged && (
         <div className="mt-2 text-center text-[10px] text-purple-300 bg-purple-500/20 rounded-full py-0.5 animate-pulse">
           ✨ New discovery detected
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
+
+/* =====================================================
+   TRADE ROW COMPONENT
+===================================================== */
 
 function TradeRow({ trade }) {
   const side = getTradeSide(trade);
@@ -508,7 +538,7 @@ function TradeRow({ trade }) {
 
   return (
     <div
-      className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor} hover:bg-white/5 transition-all`}
+      className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor} hover:bg-opacity-80 transition-all`}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <span className="text-base shrink-0">📊</span>
@@ -530,8 +560,7 @@ function TradeRow({ trade }) {
         ) : pnlUsd !== 0 ? (
           <div>
             <div className={`font-bold text-sm ${pnlUsd > 0 ? "text-emerald-400" : "text-red-400"}`}>
-              {pnlUsd > 0 ? "+" : ""}
-              {formatCurrency(pnlUsd)}
+              {pnlUsd > 0 ? "+" : ""}{formatCurrency(pnlUsd)}
             </div>
             <div className={`text-[10px] ${pnlPercent > 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
               {formatPercent(pnlPercent)}
@@ -545,470 +574,116 @@ function TradeRow({ trade }) {
   );
 }
 
+/* =====================================================
+   DISCOVERY CARD COMPONENT
+===================================================== */
+
 function DiscoveryCard({ discovery }) {
   const score = safeNumber(discovery?.ai_score ?? discovery?.score, 0);
   const chain = discovery?.chain || "ethereum";
   const age = discovery?.age ?? discovery?.age_blocks ?? 0;
   const pair = discovery?.pair || discovery?.address || discovery?.token || "New token";
+  const symbol = discovery?.symbol || pair.slice(0, 10) + "...";
 
   let scoreColor = "text-orange-400";
-  if (score >= 0.7) scoreColor = "text-green-400";
-  else if (score >= 0.5) scoreColor = "text-yellow-400";
+  let scoreBg = "bg-orange-500/20";
+  if (score >= 0.7) {
+    scoreColor = "text-green-400";
+    scoreBg = "bg-green-500/20";
+  } else if (score >= 0.5) {
+    scoreColor = "text-yellow-400";
+    scoreBg = "bg-yellow-500/20";
+  }
 
   return (
-    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs hover:bg-purple-500/10 transition-colors backdrop-blur-sm">
+    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs hover:bg-purple-500/10 transition-all">
       <div className="flex justify-between items-start mb-2 gap-2">
-        <span className="font-medium flex items-center gap-1 min-w-0">
+        <div className="flex items-center gap-1 min-w-0">
           <span className="text-base shrink-0">🦄</span>
-          <span className="capitalize truncate">{chain}</span>
-        </span>
-        <span className="text-white/40 text-[10px] shrink-0">{age} blocks</span>
-      </div>
-      <div className="text-white/60 font-mono text-[10px] mb-2 truncate">{pair}</div>
-      <div className="flex justify-between items-center gap-2">
-        <div>
-          <span className="text-white/40">AI Score</span>
-          <span className={`ml-2 font-bold ${scoreColor}`}>{score.toFixed(2)}</span>
+          <div className="min-w-0">
+            <span className="font-medium capitalize block truncate">{chain}</span>
+            <span className="text-white/30 text-[8px] font-mono truncate">{symbol}</span>
+          </div>
         </div>
-        {score >= 0.7 ? (
-          <span className="text-[8px] bg-green-500/20 text-green-300 px-2 py-1 rounded-full">
+        <span className="text-white/40 text-[8px] shrink-0 whitespace-nowrap">{age} blocks</span>
+      </div>
+
+      <div className="flex justify-between items-center mt-2">
+        <div className="flex items-center gap-1">
+          <span className="text-white/40 text-[8px]">AI</span>
+          <span className={`text-[10px] font-bold ${scoreColor} px-1.5 py-0.5 rounded ${scoreBg}`}>
+            {score.toFixed(2)}
+          </span>
+        </div>
+        {score >= 0.7 && (
+          <span className="text-[8px] bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">
             Ready
           </span>
-        ) : null}
+        )}
       </div>
     </div>
   );
 }
 
 /* =====================================================
-   ENHANCED HISTORICAL CHART with Chart.js
+   HISTORICAL CHART COMPONENT
 ===================================================== */
 
-function EnhancedHistoricalChart({ data, type = "daily", onTypeChange }) {
-  const [chartType, setChartType] = useState('line');
-  const [timeRange, setTimeRange] = useState('30d');
-  const chartData = normalizeArray(data?.[type] || []);
-  
-  // Custom tooltip styling
-  const tooltipOptions = {
-    backgroundColor: 'rgba(17, 24, 39, 0.95)',
-    titleColor: '#f3f4f6',
-    bodyColor: '#9ca3af',
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    borderWidth: 1,
-    padding: 12,
-    caretSize: 6,
-    cornerRadius: 8,
-    displayColors: true,
-    usePointStyle: true,
-  };
+function HistoricalChart({ data, type = "daily" }) {
+  const chartData = data[type] || [];
+  const maxValue = Math.max(...chartData.map((d) => Math.abs(d.pnl || 0)), 1);
 
-  // Process data for different time ranges
-  const getFilteredData = () => {
-    if (chartData.length === 0) return [];
-    
-    const now = Date.now();
-    const ranges = {
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      '30d': 30 * 24 * 60 * 60 * 1000,
-      '90d': 90 * 24 * 60 * 60 * 1000,
-      'all': Infinity
-    };
-    
-    const msRange = ranges[timeRange] || ranges['30d'];
-    
-    return chartData.filter(d => {
-      const date = new Date(d?.date || d?.timestamp || 0).getTime();
-      return now - date <= msRange;
-    });
-  };
-
-  const filteredData = getFilteredData();
-  
-  // Calculate summary statistics
-  const totalPnl = filteredData.reduce((sum, d) => sum + safeNumber(d?.pnl, 0), 0);
-  const avgPnl = filteredData.length > 0 ? totalPnl / filteredData.length : 0;
-  const winningDays = filteredData.filter(d => safeNumber(d?.pnl, 0) > 0).length;
-  const losingDays = filteredData.filter(d => safeNumber(d?.pnl, 0) < 0).length;
-  const winRate = filteredData.length > 0 ? (winningDays / filteredData.length) * 100 : 0;
-  const bestDay = Math.max(...filteredData.map(d => safeNumber(d?.pnl, 0)), 0);
-  const worstDay = Math.min(...filteredData.map(d => safeNumber(d?.pnl, 0)), 0);
-  
-  // Calculate cumulative PnL
-  const cumulativeData = [];
-  let cumulative = 0;
-  filteredData.forEach(d => {
-    cumulative += safeNumber(d?.pnl, 0);
-    cumulativeData.push(cumulative);
-  });
-
-  // Prepare chart data
-  const labels = filteredData.map(d => {
-    const date = new Date(d?.date || d?.timestamp || 0);
-    if (type === 'daily') return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    if (type === 'weekly') return `Week ${date.getWeek()}`;
-    return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-  });
-
-  // Line/Bar chart data
-  const mainChartData = {
-    labels,
-    datasets: [
-      {
-        label: 'Daily P&L',
-        data: filteredData.map(d => safeNumber(d?.pnl, 0)),
-        borderColor: '#10b981',
-        backgroundColor: (context) => {
-          const ctx = context.chart.ctx;
-          const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-          gradient.addColorStop(0, 'rgba(16, 185, 129, 0.5)');
-          gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
-          return gradient;
-        },
-        fill: true,
-        tension: 0.4,
-        pointRadius: 4,
-        pointHoverRadius: 8,
-        pointBackgroundColor: (context) => {
-          const value = context.raw;
-          return value >= 0 ? '#10b981' : '#ef4444';
-        },
-        pointBorderColor: 'white',
-        pointBorderWidth: 2,
-        borderWidth: 2,
-      },
-      {
-        label: 'Cumulative P&L',
-        data: cumulativeData,
-        borderColor: '#8b5cf6',
-        backgroundColor: 'rgba(139, 92, 246, 0.1)',
-        fill: false,
-        tension: 0.4,
-        borderWidth: 2,
-        borderDash: [5, 5],
-        pointRadius: 0,
-        yAxisID: 'y1',
-      }
-    ],
-  };
-
-  // Chart options
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: 'index',
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top',
-        labels: {
-          color: '#9ca3af',
-          usePointStyle: true,
-          pointStyle: 'circle',
-          padding: 20,
-          font: { size: 12 }
-        }
-      },
-      title: {
-        display: true,
-        text: `Trading Performance - ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-        color: '#f3f4f6',
-        font: { size: 16, weight: 'bold' },
-        padding: { bottom: 30 }
-      },
-      tooltip: tooltipOptions,
-    },
-    scales: {
-      x: {
-        grid: { color: 'rgba(75, 85, 99, 0.2)', display: true },
-        ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 45 }
-      },
-      y: {
-        type: 'linear',
-        display: true,
-        position: 'left',
-        grid: { color: 'rgba(75, 85, 99, 0.2)' },
-        ticks: {
-          color: '#9ca3af',
-          callback: (value) => `$${formatCompactNumber(value)}`
-        },
-        title: {
-          display: true,
-          text: 'Daily P&L ($)',
-          color: '#9ca3af'
-        }
-      },
-      y1: {
-        type: 'linear',
-        display: true,
-        position: 'right',
-        grid: { drawOnChartArea: false },
-        ticks: {
-          color: '#8b5cf6',
-          callback: (value) => `$${formatCompactNumber(value)}`
-        },
-        title: {
-          display: true,
-          text: 'Cumulative ($)',
-          color: '#8b5cf6'
-        }
-      }
-    },
-  };
-
-  // Win/Loss doughnut chart data
-  const doughnutData = {
-    labels: ['Winning Days', 'Losing Days', 'Breakeven'],
-    datasets: [{
-      data: [
-        winningDays,
-        losingDays,
-        filteredData.length - winningDays - losingDays
-      ],
-      backgroundColor: [
-        'rgba(16, 185, 129, 0.8)',
-        'rgba(239, 68, 68, 0.8)',
-        'rgba(156, 163, 175, 0.5)',
-      ],
-      borderColor: [
-        '#10b981',
-        '#ef4444',
-        '#6b7280',
-      ],
-      borderWidth: 2,
-    }]
+  const getChartColor = (pnl) => {
+    return pnl >= 0 ? "bg-emerald-500/50" : "bg-red-500/50";
   };
 
   return (
-    <div className="space-y-6">
-      {/* Controls */}
-      <div className="flex flex-wrap gap-3 justify-between items-center">
-        <div className="flex gap-2">
-          {["daily", "weekly", "monthly"].map((period) => (
-            <button
-              key={period}
-              type="button"
-              onClick={() => onTypeChange(period)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                type === period 
-                  ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 text-white shadow-lg shadow-emerald-500/20' 
-                  : 'bg-white/5 text-white/70 hover:bg-white/10'
-              }`}
-            >
-              {period.charAt(0).toUpperCase() + period.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex gap-2">
-          {["7d", "30d", "90d", "all"].map((range) => (
-            <button
-              key={range}
-              type="button"
-              onClick={() => setTimeRange(range)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                timeRange === range
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white/5 text-white/50 hover:bg-white/10'
-              }`}
-            >
-              {range === 'all' ? 'All' : range}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex gap-2">
+    <div className="space-y-3">
+      <div className="flex gap-2 text-xs">
+        {["daily", "weekly", "monthly"].map((period) => (
           <button
-            type="button"
-            onClick={() => setChartType('line')}
-            className={`p-2 rounded-lg transition-all ${
-              chartType === 'line' ? 'bg-emerald-600 text-white' : 'bg-white/5 text-white/50 hover:bg-white/10'
+            key={period}
+            className={`px-3 py-1 rounded-lg capitalize transition-all ${
+              type === period 
+                ? "bg-indigo-600 text-white" 
+                : "bg-white/5 text-white/50 hover:bg-white/10"
             }`}
-            title="Line Chart"
           >
-            📈
+            {period}
           </button>
-          <button
-            type="button"
-            onClick={() => setChartType('bar')}
-            className={`p-2 rounded-lg transition-all ${
-              chartType === 'bar' ? 'bg-emerald-600 text-white' : 'bg-white/5 text-white/50 hover:bg-white/10'
-            }`}
-            title="Bar Chart"
-          >
-            📊
-          </button>
-        </div>
+        ))}
       </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 backdrop-blur-sm">
-          <p className="text-xs text-emerald-400/70">Total P&L</p>
-          <p className={`text-xl font-bold ${totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {totalPnl >= 0 ? '+' : ''}{formatCurrency(totalPnl)}
-          </p>
-          <p className="text-[10px] text-white/30">{filteredData.length} periods</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-indigo-500/10 to-indigo-500/5 border border-indigo-500/20 rounded-xl p-3 backdrop-blur-sm">
-          <p className="text-xs text-indigo-400/70">Win Rate</p>
-          <p className="text-xl font-bold text-indigo-400">{winRate.toFixed(1)}%</p>
-          <p className="text-[10px] text-white/30">{winningDays} wins / {losingDays} losses</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border border-purple-500/20 rounded-xl p-3 backdrop-blur-sm">
-          <p className="text-xs text-purple-400/70">Avg Daily</p>
-          <p className={`text-xl font-bold ${avgPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {avgPnl >= 0 ? '+' : ''}{formatCurrency(avgPnl)}
-          </p>
-          <p className="text-[10px] text-white/30">per trading day</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 backdrop-blur-sm">
-          <p className="text-xs text-amber-400/70">Best / Worst</p>
-          <p className="text-sm font-bold">
-            <span className="text-emerald-400">+{formatCurrency(bestDay)}</span>
-            {' / '}
-            <span className="text-red-400">{formatCurrency(worstDay)}</span>
-          </p>
-        </div>
-      </div>
-
-      {/* Main Chart */}
-      <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-2xl p-4 border border-white/10 backdrop-blur-sm">
-        <div className="h-80">
-          {filteredData.length > 0 ? (
-            chartType === 'line' ? (
-              <Line data={mainChartData} options={chartOptions} />
-            ) : (
-              <Bar 
-                data={{
-                  ...mainChartData,
-                  datasets: [{
-                    ...mainChartData.datasets[0],
-                    backgroundColor: mainChartData.datasets[0].data.map(v => 
-                      v >= 0 ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)'
-                    ),
-                    borderColor: mainChartData.datasets[0].data.map(v => 
-                      v >= 0 ? '#10b981' : '#ef4444'
-                    ),
-                  }]
-                }} 
-                options={chartOptions} 
-              />
-            )
-          ) : (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-4xl mb-3">📊</div>
-                <p className="text-white/40">No historical data for this period</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Secondary Charts Row */}
-      {filteredData.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Win/Loss Distribution */}
-          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl p-4 border border-white/10 backdrop-blur-sm">
-            <h3 className="text-sm font-medium text-white/70 mb-3">Win/Loss Distribution</h3>
-            <div className="h-40">
-              <Doughnut 
-                data={doughnutData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { display: false },
-                    tooltip: tooltipOptions,
-                  },
-                  cutout: '65%',
-                }}
-              />
-            </div>
-            <div className="flex justify-center gap-4 mt-2 text-xs">
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
-                <span className="text-white/50">Wins {winningDays}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-red-400"></div>
-                <span className="text-white/50">Losses {losingDays}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Monthly Performance Sparkline */}
-          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl p-4 border border-white/10 backdrop-blur-sm">
-            <h3 className="text-sm font-medium text-white/70 mb-3">Recent Trend</h3>
-            <div className="h-20 flex items-end gap-1">
-              {filteredData.slice(-7).map((d, i) => {
-                const pnl = safeNumber(d?.pnl, 0);
-                const maxAbs = Math.max(Math.abs(bestDay), Math.abs(worstDay));
-                const height = maxAbs > 0 ? (Math.abs(pnl) / maxAbs) * 100 : 0;
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center group">
-                    <div className="relative w-full">
-                      <div 
-                        className={`w-full rounded-t transition-all duration-300 group-hover:opacity-80 ${
-                          pnl >= 0 ? 'bg-emerald-500' : 'bg-red-500'
-                        }`}
-                        style={{ height: `${Math.max(height, 5)}%` }}
-                      />
-                      <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-[8px] px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                        {formatCurrency(pnl)}
-                      </div>
+      
+      {chartData.length > 0 ? (
+        <div className="h-32 flex items-end gap-1">
+          {chartData.slice(-10).map((d, i) => {
+            const height = (Math.abs(d.pnl || 0) / maxValue) * 100;
+            const isPositive = (d.pnl || 0) >= 0;
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center group relative">
+                <div
+                  className={`w-full rounded-t relative group-hover:opacity-80 transition-all ${
+                    isPositive ? "bg-emerald-500/50" : "bg-red-500/50"
+                  }`}
+                  style={{ height: `${Math.max(height, 5)}%` }}
+                >
+                  <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-800 text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 border border-white/10">
+                    <div className="font-medium">{formatDate(d.date)}</div>
+                    <div className={isPositive ? "text-emerald-400" : "text-red-400"}>
+                      {formatCurrencyWithSign(d.pnl)} ({formatPercent(d.pnlPercent)})
                     </div>
                   </div>
-                );
-              })}
-            </div>
-            <div className="flex justify-between mt-2 text-[8px] text-white/30">
-              <span>{(totalPnl / 1000).toFixed(1)}k</span>
-              <span>Current</span>
-            </div>
-          </div>
-
-          {/* Quick Stats */}
-          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl p-4 border border-white/10 backdrop-blur-sm">
-            <h3 className="text-sm font-medium text-white/70 mb-2">Quick Stats</h3>
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-white/40">Sharpe Ratio</span>
-                <span className="text-emerald-400">{(winRate / 20).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-white/40">Max Drawdown</span>
-                <span className="text-red-400">
-                  {Math.abs(worstDay / Math.max(...cumulativeData, 1) * 100).toFixed(1)}%
+                </div>
+                <span className="text-[8px] text-white/30 mt-1 rotate-45 origin-left">
+                  {formatDate(d.date).slice(5)}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-white/40">Profit Factor</span>
-                <span className="text-emerald-400">
-                  {(winningDays / Math.max(losingDays, 1)).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-white/40">Avg Win/Loss</span>
-                <span className="text-emerald-400">
-                  {(Math.abs(bestDay) / Math.max(Math.abs(worstDay), 1)).toFixed(1)}x
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-white/40">Consistency</span>
-                <span className={winRate > 50 ? "text-emerald-400" : "text-amber-400"}>
-                  {winRate > 50 ? 'Good' : 'Needs Work'}
-                </span>
-              </div>
-            </div>
-          </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="h-32 flex items-center justify-center text-white/30 text-sm">
+          No historical data available
         </div>
       )}
     </div>
@@ -1026,20 +701,17 @@ function useLiveData() {
   const abortRef = useRef(null);
   const mountedRef = useRef(true);
   const backoffRef = useRef(30000);
-  const fetchRef = useRef(null);
+  const retryCountRef = useRef(0);
 
-  const fetchHistorical = useCallback(async () => {
+  const fetchHistorical = async () => {
     try {
-      const response = await axios.get(HISTORICAL_URL, {
-        timeout: 5000,
-        headers: { "Cache-Control": "no-cache" },
-      });
-      return normalizeHistorical(response.data);
+      const response = await axios.get(HISTORICAL_URL, { timeout: 5000 });
+      return response.data;
     } catch (err) {
-      console.warn("Failed to fetch historical data:", err);
-      return EMPTY_HISTORICAL;
+      console.warn("Historical data unavailable:", err.message);
+      return { daily: [], weekly: [], monthly: [] };
     }
-  }, []);
+  };
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1050,15 +722,12 @@ function useLiveData() {
     };
 
     const scheduleNext = (ms) => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
-        if (fetchRef.current) fetchRef.current();
-      }, ms);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(fetchLiveStats, ms);
     };
 
     const fetchLiveStats = async () => {
       if (!mountedRef.current) return;
-
       if (document.hidden) {
         scheduleNext(Math.max(backoffRef.current, 30000));
         return;
@@ -1068,7 +737,7 @@ function useLiveData() {
         abortRef.current?.abort();
         abortRef.current = new AbortController();
 
-        const [liveResponse, historicalData] = await Promise.all([
+        const [liveResponse, historicalData] = await Promise.allSettled([
           axios.get(LIVE_STATS_URL, {
             timeout: 10000,
             signal: abortRef.current.signal,
@@ -1079,18 +748,32 @@ function useLiveData() {
 
         if (!mountedRef.current) return;
 
-        const normalized = mergeLiveStatsPayload(liveResponse.data);
-        const now = new Date();
+        let normalized = { ...DEFAULT_STATE };
+        let historical = { daily: [], weekly: [], monthly: [] };
+        let now = new Date();
+        let hasError = false;
+
+        if (liveResponse.status === 'fulfilled' && liveResponse.value) {
+          normalized = mergeLiveStatsPayload(liveResponse.value.data);
+          retryCountRef.current = 0;
+        } else {
+          hasError = true;
+          console.warn("Live stats fetch failed:", liveResponse.reason);
+        }
+
+        if (historicalData && !historicalData.error) {
+          historical = historicalData;
+        }
 
         backoffRef.current = 30000;
 
         setData({
           ...normalized,
-          historical: historicalData,
+          historical,
           loading: false,
-          error: null,
+          error: hasError ? "Live data temporarily unavailable" : null,
           lastUpdate: now,
-          lastSuccessAt: now,
+          lastSuccessAt: hasError ? data.lastSuccessAt : now,
           rateLimitedUntil: null,
         });
 
@@ -1099,46 +782,28 @@ function useLiveData() {
         if (!mountedRef.current) return;
         if (axios.isCancel(err)) return;
 
-        const status = err?.response?.status;
-        const retryAfterHeader = err?.response?.headers?.["retry-after"];
-        const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : null;
-
-        if (status === 429) {
-          const nextDelay =
-            Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-              ? retryAfterSeconds * 1000
-              : Math.min(backoffRef.current * 2, 120000);
-
-          backoffRef.current = nextDelay;
-
-          setData((prev) => ({
-            ...prev,
-            loading: false,
-            error: `Rate limited. Retrying in ${Math.ceil(nextDelay / 1000)}s...`,
-            rateLimitedUntil: new Date(Date.now() + nextDelay),
-          }));
-
-          scheduleNext(nextDelay);
-          return;
-        }
-
+        console.error("Fetch error:", err);
+        
+        retryCountRef.current++;
+        const nextDelay = Math.min(30000 * Math.pow(1.5, retryCountRef.current), 120000);
+        
         setData((prev) => ({
           ...prev,
           loading: false,
-          error: "Live data unavailable",
+          error: "Connection issue - retrying...",
+          lastUpdate: new Date(),
         }));
 
-        backoffRef.current = Math.min(backoffRef.current + 10000, 120000);
-        scheduleNext(backoffRef.current);
+        scheduleNext(nextDelay);
       }
     };
 
-    fetchRef.current = fetchLiveStats;
     timerRef.current = setTimeout(fetchLiveStats, 250);
 
     const onVisibility = () => {
       if (!document.hidden) {
         clearPending();
+        retryCountRef.current = 0;
         backoffRef.current = 30000;
         timerRef.current = setTimeout(fetchLiveStats, 500);
       }
@@ -1151,20 +816,9 @@ function useLiveData() {
       document.removeEventListener("visibilitychange", onVisibility);
       clearPending();
     };
-  }, [fetchHistorical]);
-
-  const sendControl = useCallback(async (bot, action) => {
-    try {
-      await axios.post(CONTROL_URL, { bot, action }, { timeout: 5000 });
-      if (fetchRef.current) {
-        setTimeout(() => fetchRef.current(), 1000);
-      }
-    } catch (err) {
-      console.error("Control action failed:", err);
-    }
   }, []);
 
-  return { data, sendControl };
+  return data;
 }
 
 /* =====================================================
@@ -1172,7 +826,7 @@ function useLiveData() {
 ===================================================== */
 
 export default function PublicDashboard() {
-  const { data } = useLiveData();
+  const data = useLiveData();
   const [activeTab, setActiveTab] = useState("all");
   const [clock, setClock] = useState(new Date());
   const [historicalType, setHistoricalType] = useState("daily");
@@ -1182,6 +836,7 @@ export default function PublicDashboard() {
     return () => clearInterval(timer);
   }, []);
 
+  // Calculate derived stats
   const hasConnection = !!(
     data.futures.health ||
     data.stocks.health ||
@@ -1193,30 +848,9 @@ export default function PublicDashboard() {
     ? Math.floor((Date.now() - new Date(data.lastSuccessAt).getTime()) / 1000) > 90
     : false;
 
+  // Process trades
   const allTrades = useMemo(() => {
-    const merged = [...normalizeArray(data.recent_trades)];
-
-    const seen = new Set();
-    const unique = [];
-
-    for (const trade of merged) {
-      const key = [
-        trade?.id || "",
-        trade?.symbol || "",
-        trade?.side || "",
-        getTradeTimestamp(trade) || "",
-        trade?.price || "",
-        getTradeQty(trade) || "",
-        getTradeBot(trade) || "",
-      ].join("|");
-
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(trade);
-      }
-    }
-
-    return unique
+    return data.recent_trades
       .sort((a, b) => {
         const tA = new Date(getTradeTimestamp(a) || 0).getTime();
         const tB = new Date(getTradeTimestamp(b) || 0).getTime();
@@ -1225,6 +859,7 @@ export default function PublicDashboard() {
       .slice(0, 50);
   }, [data.recent_trades]);
 
+  // Trade filters
   const isOpenTrade = (t) => {
     const pnl = getTradePnlUsd(t);
     return t?.status === "open" || (pnl === 0 && t?.side && !t?.closed);
@@ -1235,37 +870,21 @@ export default function PublicDashboard() {
     return pnl !== 0 || t?.status === "closed" || t?.side === "close";
   };
 
-  const isDexTrade = (t) => {
-    const bot = String(getTradeBot(t)).toLowerCase();
-    return bot.includes("sniper") || bot.includes("dex") || bot.includes("🦄");
-  };
-
-  const isCexTrade = (t) => {
-    const bot = String(getTradeBot(t)).toLowerCase();
-    return (
-      bot.includes("okx") ||
-      bot.includes("stock") ||
-      bot.includes("futures") ||
-      bot.includes("spot")
-    );
-  };
-
+  // Filter trades by tab
   const filteredTrades = useMemo(() => {
     if (activeTab === "open") return allTrades.filter(isOpenTrade);
     if (activeTab === "closed") return allTrades.filter(isClosedTrade);
-    if (activeTab === "dex") return allTrades.filter(isDexTrade);
-    if (activeTab === "cex") return allTrades.filter(isCexTrade);
     return allTrades;
   }, [activeTab, allTrades]);
 
+  // Tab counts
   const tabs = [
     { id: "all", label: "All", icon: "🌐", count: allTrades.length },
     { id: "open", label: "Open", icon: "🟢", count: allTrades.filter(isOpenTrade).length },
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(isClosedTrade).length },
-    { id: "dex", label: "DEX", icon: "🦄", count: allTrades.filter(isDexTrade).length },
-    { id: "cex", label: "CEX", icon: "🏦", count: allTrades.filter(isCexTrade).length },
   ];
 
+  // Aggregated stats
   const activeBots = [
     data.futures.health,
     data.stocks.health,
@@ -1274,43 +893,34 @@ export default function PublicDashboard() {
   ].filter(Boolean).length;
 
   const totalPnL = useMemo(() => {
-    let total = 0;
-
-    if (data.okx.stats?.total_pnl) {
-      total += safeNumber(data.okx.stats.total_pnl, 0);
-    }
-
-    normalizeArray(data.recent_trades).forEach((t) => {
+    let total = data.okx.stats?.total_pnl || 0;
+    data.recent_trades.forEach((t) => {
       const pnl = getTradePnlUsd(t);
-      if (pnl !== 0 && !String(t?.id || "").includes("dry_")) {
-        total += safeNumber(pnl, 0);
-      }
+      if (pnl !== 0) total += pnl;
     });
-
     return total;
-  }, [data.okx.stats, data.recent_trades]);
+  }, [data.okx.stats?.total_pnl, data.recent_trades]);
 
   const totalPnLPercent = useMemo(() => {
     const totalInvested = 100000;
     return (totalPnL / totalInvested) * 100;
   }, [totalPnL]);
 
-  const openPositionsCount =
-    safeNumber(data.okx.stats?.positions_count, 0) +
-    normalizeArray(data.sniper.positions).length;
+  const openPositionsCount = data.okx.stats?.positions_count || 0;
 
-  const totalTradesCount =
-    safeNumber(data.okx.stats?.total_trades, 0) + allTrades.length;
+  const totalTradesCount = (data.okx.stats?.total_trades || 0) + allTrades.length;
 
   const winsCount = useMemo(
     () => allTrades.filter((t) => getTradePnlUsd(t) > 0).length,
     [allTrades]
   );
+
   const lossesCount = useMemo(
     () => allTrades.filter((t) => getTradePnlUsd(t) < 0).length,
     [allTrades]
   );
 
+  // Loading state
   if (data.loading && !data.lastSuccessAt) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white flex items-center justify-center">
@@ -1324,6 +934,7 @@ export default function PublicDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
+      {/* Header */}
       <header className="border-b border-white/10 bg-black/20 backdrop-blur sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -1346,7 +957,6 @@ export default function PublicDashboard() {
                 {hasConnection ? (isStale ? "STALE" : "LIVE") : "CONNECTING"}
               </span>
             </div>
-
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2 text-xs text-white/40">
                 <span
@@ -1361,16 +971,13 @@ export default function PublicDashboard() {
                 <span>
                   {data.rateLimitedUntil
                     ? `Backoff until ${formatClock(data.rateLimitedUntil)}`
-                    : "Adaptive refresh"}
+                    : "Updates every 30s"}
                 </span>
               </div>
-
               <div className="text-xs text-white/40">
-                Last good: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
+                Last: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
               </div>
-
               <div className="text-xs text-white/40">{clock.toLocaleTimeString()}</div>
-
               <Link
                 to="/signup"
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-xs sm:text-sm font-semibold transition-all"
@@ -1382,24 +989,34 @@ export default function PublicDashboard() {
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {data.error ? (
+        {/* Error Banner */}
+        {data.error && (
           <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
             <p className="text-amber-300 text-sm">⚠️ {data.error}</p>
           </div>
-        ) : null}
+        )}
 
+        {/* Hero */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3">
-            Live Trading Dashboard 🚀
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">
+            Live Trading Dashboard
           </h1>
           <p className="text-white/60 max-w-2xl mx-auto">
-            Watch our trading stack scan, discover, and execute in real time.
+            Watch our AI-powered trading stack scan, discover opportunities, and execute trades in real-time across multiple markets.
           </p>
         </div>
 
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <StatCard title="Active Bots" value={activeBots} icon="🤖" color="indigo" subtext="Online" />
+          <StatCard
+            title="Active Bots"
+            value={activeBots}
+            icon="🤖"
+            color="indigo"
+            subtext={`${activeBots}/4 online`}
+          />
           <StatCard
             title="Total Trades"
             value={totalTradesCount}
@@ -1409,10 +1026,11 @@ export default function PublicDashboard() {
           />
           <StatCard
             title="Total P&L"
-            value={`${totalPnL >= 0 ? "+" : ""}${formatCurrency(Math.abs(totalPnL))}`}
+            value={formatCurrencyWithSign(totalPnL)}
             icon="💰"
             color={totalPnL >= 0 ? "emerald" : "red"}
             subtext={formatPercent(totalPnLPercent)}
+            trend={totalPnL}
           />
           <StatCard
             title="Open Positions"
@@ -1423,22 +1041,26 @@ export default function PublicDashboard() {
           />
           <StatCard
             title="Discoveries"
-            value={normalizeArray(data.sniper.discoveries).length}
+            value={data.sniper.discoveries.length}
             icon="🦄"
             color="amber"
             subtext="New tokens found"
           />
         </div>
 
-        <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
-          <h2 className="font-bold text-lg mb-3 flex items-center gap-2">📈 Historical Performance</h2>
-          <EnhancedHistoricalChart
-            data={data.historical}
+        {/* Historical Performance */}
+        <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+          <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+            <span>📈</span>
+            Historical Performance
+          </h2>
+          <HistoricalChart 
+            data={data.historical} 
             type={historicalType}
-            onTypeChange={setHistoricalType}
           />
         </div>
 
+        {/* Bot Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <BotCard
             name="Futures Bot"
@@ -1457,7 +1079,7 @@ export default function PublicDashboard() {
           <SniperCard
             health={data.sniper.health}
             discoveries={data.sniper.discoveries}
-            positions={data.sniper.positions}
+            stats={data.sniper.stats}
           />
           <BotCard
             name="OKX Spot"
@@ -1468,20 +1090,23 @@ export default function PublicDashboard() {
           />
         </div>
 
+        {/* Trade Feed and Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Trade Feed */}
           <div className="lg:col-span-2">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
                 <h2 className="font-bold text-lg flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                   Live Trade Feed
+                  <span className="text-xs text-white/30 ml-2">
+                    {allTrades.length} trades
+                  </span>
                 </h2>
-
                 <div className="flex gap-1 bg-black/30 rounded-lg p-1 flex-wrap">
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}
-                      type="button"
                       onClick={() => setActiveTab(tab.id)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
                         activeTab === tab.id
@@ -1491,17 +1116,17 @@ export default function PublicDashboard() {
                     >
                       <span>{tab.icon}</span>
                       <span className="hidden sm:inline">{tab.label}</span>
-                      {tab.count > 0 ? (
+                      {tab.count > 0 && (
                         <span className="ml-1 text-[8px] bg-white/20 px-1.5 rounded-full">
                           {tab.count}
                         </span>
-                      ) : null}
+                      )}
                     </button>
                   ))}
                 </div>
               </div>
-
-              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1 custom-scrollbar">
+              
+              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
                 {filteredTrades.length > 0 ? (
                   filteredTrades.map((trade, i) => (
                     <TradeRow
@@ -1519,27 +1144,25 @@ export default function PublicDashboard() {
             </div>
           </div>
 
+          {/* Sidebar */}
           <div className="space-y-4">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
+            {/* DEX Discoveries */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
                 <span>🦄</span>
                 DEX Discoveries
-                {normalizeArray(data.sniper.discoveries).length > 0 ? (
+                {data.sniper.discoveries.length > 0 && (
                   <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
-                    {normalizeArray(data.sniper.discoveries).length} new
+                    {data.sniper.discoveries.length} new
                   </span>
-                ) : null}
+                )}
               </h2>
-
-              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 custom-scrollbar">
-                {normalizeArray(data.sniper.discoveries).length > 0 ? (
-                  normalizeArray(data.sniper.discoveries)
+              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                {data.sniper.discoveries.length > 0 ? (
+                  data.sniper.discoveries
                     .slice(0, 10)
                     .map((d, i) => (
-                      <DiscoveryCard
-                        key={d?.pair || d?.address || d?.token || i}
-                        discovery={d}
-                      />
+                      <DiscoveryCard key={d?.pair || d?.address || i} discovery={d} />
                     ))
                 ) : (
                   <div className="text-center py-8 text-white/30 text-sm">
@@ -1550,67 +1173,79 @@ export default function PublicDashboard() {
               </div>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
+            {/* System Status */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
                 <span>📡</span>
-                System Snapshot
+                System Status
               </h2>
-
-              <div className="space-y-2 text-xs text-white/65">
-                <div className="flex justify-between gap-3">
-                  <span>API</span>
-                  <span className="text-white/40 truncate">{API_BASE}</span>
+              <div className="space-y-3 text-xs">
+                <div className="flex justify-between items-center pb-2 border-b border-white/10">
+                  <span className="text-white/50">API Endpoint</span>
+                  <span className="text-white/40 font-mono text-[10px]">{API_BASE}</span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span>Connection</span>
+                <div className="flex justify-between">
+                  <span className="text-white/50">Connection</span>
                   <span className={hasConnection ? "text-green-400" : "text-yellow-400"}>
                     {hasConnection ? (isStale ? "Stale" : "Live") : "Connecting"}
                   </span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span>Last good update</span>
+                <div className="flex justify-between">
+                  <span className="text-white/50">Last Update</span>
                   <span>{data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}</span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span>Open positions</span>
-                  <span>{openPositionsCount}</span>
+                <div className="flex justify-between">
+                  <span className="text-white/50">Open Positions</span>
+                  <span className="text-emerald-400">{openPositionsCount}</span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span>Total trades</span>
+                <div className="flex justify-between">
+                  <span className="text-white/50">Total Trades</span>
                   <span>{totalTradesCount}</span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span>Win/Loss</span>
+                <div className="flex justify-between">
+                  <span className="text-white/50">Win/Loss</span>
                   <span className={winsCount >= lossesCount ? "text-green-400" : "text-red-400"}>
                     {winsCount}/{lossesCount}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/50">OKX Mode</span>
+                  <span className={data.okx.stats?.mode === 'live' ? "text-green-400" : "text-yellow-400"}>
+                    {data.okx.stats?.mode || 'dry_run'}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-center backdrop-blur-sm">
+            {/* CTA */}
+            <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-5 text-center">
+              <h3 className="font-bold text-lg mb-2">Ready to Start?</h3>
+              <p className="text-xs text-white/60 mb-4">
+                Join thousands of traders using our AI-powered platform
+              </p>
               <Link
                 to="/signup"
                 className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all"
               >
                 Start Trading Free →
               </Link>
-              <p className="text-[10px] text-white/30 mt-2">No credit card required</p>
+              <p className="text-[10px] text-white/30 mt-3">No credit card required • Cancel anytime</p>
             </div>
           </div>
         </div>
 
+        {/* Footer */}
         <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
           <p>
-            Adaptive polling with rate-limit backoff.
+            Data updates every 30 seconds with adaptive rate-limiting.
             <br />
-            <Link to="/" className="text-indigo-400 hover:underline">
-              Home
-            </Link>
+            <Link to="/" className="text-indigo-400 hover:underline">Home</Link>
             {" • "}
-            <Link to="/dashboard" className="text-indigo-400 hover:underline">
-              Member Dashboard
-            </Link>
+            <Link to="/dashboard" className="text-indigo-400 hover:underline">Member Dashboard</Link>
+            {" • "}
+            <Link to="/privacy" className="text-indigo-400 hover:underline">Privacy</Link>
+            {" • "}
+            <Link to="/terms" className="text-indigo-400 hover:underline">Terms</Link>
           </p>
         </div>
       </main>
