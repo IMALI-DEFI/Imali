@@ -1,5 +1,5 @@
 // src/pages/PublicDashboard.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 
@@ -14,35 +14,59 @@ const API_BASE =
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
 
+const DEFAULT_HISTORICAL = { daily: [], weekly: [], monthly: [] };
+
 const DEFAULT_STATE = {
-  futures: { 
-    health: null, 
-    stats: { total_symbols: 0, status: 'unknown', daily_realized: {} } 
+  futures: {
+    health: null,
+    stats: {
+      total_symbols: 0,
+      status: "unknown",
+      daily_realized: {},
+      cex_enabled: false,
+      dry_run: true,
+      db_connected: false,
+      positions: 0,
+    },
   },
-  stocks: { 
-    health: null, 
-    stats: { symbols: 0, mode: 'paper', running: false, lastRefresh: null } 
+  stocks: {
+    health: null,
+    stats: {
+      symbols: 0,
+      mode: "paper",
+      running: false,
+      lastRefresh: null,
+    },
   },
-  sniper: { 
-    health: null, 
-    discoveries: [], 
-    stats: { status: 'idle', active_trades: 0, chains: [] } 
+  sniper: {
+    health: null,
+    discoveries: [],
+    stats: {
+      status: "idle",
+      active_trades: 0,
+      bot_state: "idle",
+      last_heartbeat: null,
+      active_networks: [],
+    },
   },
-  okx: { 
-    health: null, 
-    stats: { 
-      positions_count: 0, 
-      total_trades: 0, 
-      total_pnl: 0, 
-      mode: 'dry_run',
+  okx: {
+    health: null,
+    stats: {
+      positions_count: 0,
+      total_trades: 0,
+      total_pnl: 0,
+      mode: "dry_run",
       scan_count: 0,
       last_scan_time: null,
       last_candidate_count: 0,
-      last_signal_count: 0
-    } 
+      last_signal_count: 0,
+      symbols_loaded: 0,
+      max_positions: 0,
+      min_ai_score: 0,
+    },
   },
   recent_trades: [],
-  historical: { daily: [], weekly: [], monthly: [] },
+  historical: DEFAULT_HISTORICAL,
   loading: true,
   error: null,
   lastUpdate: null,
@@ -59,22 +83,29 @@ function safeNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function formatCurrency(value, digits = 2) {
-  const num = safeNumber(value);
-  return num >= 0 ? `$${num.toFixed(digits)}` : `-$${Math.abs(num).toFixed(digits)}`;
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
-function formatCurrencyWithSign(value, digits = 2) {
-  const num = safeNumber(value);
-  return `${num >= 0 ? "+" : "-"}$${Math.abs(num).toFixed(digits)}`;
+function hasObjectData(value) {
+  return !!value && typeof value === "object" && Object.keys(value).length > 0;
+}
+
+function formatCurrency(value, digits = 2) {
+  return `$${safeNumber(value).toFixed(digits)}`;
+}
+
+function formatCurrencySigned(value, digits = 2) {
+  const n = safeNumber(value);
+  return `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(digits)}`;
 }
 
 function formatPercent(value, digits = 2) {
-  const num = safeNumber(value);
-  return `${num >= 0 ? "+" : ""}${num.toFixed(digits)}%`;
+  const n = safeNumber(value);
+  return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}%`;
 }
 
-function formatNumber(value) {
+function formatCompact(value) {
   return safeNumber(value).toLocaleString();
 }
 
@@ -124,7 +155,7 @@ function getTradeQty(trade) {
 }
 
 function getTradePnlUsd(trade) {
-  return trade?.pnl_usd ?? trade?.pnl ?? trade?.realized_pnl_eth ?? 0;
+  return trade?.pnl_usd ?? trade?.pnl ?? 0;
 }
 
 function getTradePnlPercent(trade) {
@@ -136,101 +167,277 @@ function getTradeSide(trade) {
 }
 
 function getTradeBot(trade) {
-  return trade?.bot || trade?.source || trade?.exchange || "Unknown";
+  return trade?.bot || trade?.source || trade?.exchange || trade?.chain || "Unknown";
 }
 
 function getTradePrice(trade) {
-  return trade?.price ?? trade?.entry_price ?? 0;
+  return trade?.price ?? trade?.entry_price ?? trade?.exit_price ?? 0;
 }
 
-function normalizeArray(value) {
-  return Array.isArray(value) ? value : [];
+function normalizeHistoricalShape(value) {
+  if (!value || typeof value !== "object") return DEFAULT_HISTORICAL;
+  return {
+    daily: safeArray(value.daily),
+    weekly: safeArray(value.weekly),
+    monthly: safeArray(value.monthly),
+  };
+}
+
+function dedupeTrades(trades) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const trade of safeArray(trades)) {
+    const key = [
+      trade?.id || "",
+      trade?.symbol || "",
+      getTradeSide(trade),
+      getTradeTimestamp(trade) || "",
+      getTradePrice(trade),
+      getTradeQty(trade),
+      getTradeBot(trade),
+    ].join("|");
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(trade);
+    }
+  }
+
+  return unique;
 }
 
 /* =====================================================
-   DATA MERGING - Properly maps API response to component state
+   PAYLOAD NORMALIZATION
 ===================================================== */
 
-function mergeLiveStatsPayload(payload = {}) {
-  console.log("API Payload:", payload); // Debug log
-  
-  // Extract data from payload
-  const futures = payload?.futures || {};
-  const stocks = payload?.stocks || {};
-  const sniper = payload?.sniper || {};
-  const okx = payload?.okx || {};
-  const recentTrades = normalizeArray(payload?.recent_trades || []);
+function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTORICAL) {
+  const futures = hasObjectData(payload?.futures) ? payload.futures : {};
+  const stocks = hasObjectData(payload?.stocks) ? payload.stocks : {};
+  const sniper = hasObjectData(payload?.sniper) ? payload.sniper : {};
+  const okx = hasObjectData(payload?.okx) ? payload.okx : {};
 
-  // Process OKX data - positions is a number, not an array
-  const okxStats = {
-    positions_count: typeof okx?.positions === 'number' ? okx.positions : 0,
-    total_trades: okx?.total_trades || 0,
-    total_pnl: okx?.total_pnl || 0,
-    mode: okx?.mode || 'dry_run',
-    scan_count: okx?.scan_count || 0,
-    last_scan_time: okx?.last_scan_time || null,
-    last_candidate_count: okx?.last_candidate_count || 0,
-    last_signal_count: okx?.last_signal_count || 0
-  };
+  const recentTrades = safeArray(payload?.recent_trades);
+  const discoveries = safeArray(sniper?.discoveries || payload?.discoveries);
 
-  // Process Futures data
-  const futuresStats = {
-    total_symbols: futures?.total_symbols || 199,
-    status: futures?.status || 'running',
-    daily_realized: futures?.daily_realized || {},
-    cex_enabled: futures?.cex_enabled || false,
-    dry_run: futures?.dry_run || false,
-    db_connected: futures?.db_connected || false
-  };
-
-  // Process Stocks data
-  const stocksStats = {
-    symbols: stocks?.symbols || 500,
-    mode: stocks?.mode || 'paper',
-    running: stocks?.running || false,
-    lastRefresh: stocks?.lastRefresh || null
-  };
-
-  // Process Sniper data
-  const sniperStats = {
-    status: sniper?.status || 'idle',
-    active_trades: sniper?.active_trades || 0,
-    bot_state: sniper?.bot_state || 'idle',
-    last_heartbeat: sniper?.last_heartbeat || null
-  };
-
-  // Get discoveries (might be in different places)
-  const discoveries = normalizeArray(
-    sniper?.discoveries || 
-    payload?.discoveries || 
-    []
-  );
+  const incomingHistorical = normalizeHistoricalShape(payload?.historical);
+  const hasIncomingHistorical =
+    incomingHistorical.daily.length > 0 ||
+    incomingHistorical.weekly.length > 0 ||
+    incomingHistorical.monthly.length > 0;
 
   return {
     futures: {
-      health: futures,
-      stats: futuresStats
+      health: hasObjectData(futures) ? futures : null,
+      stats: {
+        total_symbols: safeNumber(futures?.total_symbols, 199),
+        status: futures?.status || "unknown",
+        daily_realized: futures?.daily_realized || {},
+        cex_enabled: !!futures?.cex_enabled,
+        dry_run: !!futures?.dry_run,
+        db_connected: !!futures?.db_connected,
+        positions: safeNumber(futures?.positions, 0),
+      },
     },
     stocks: {
-      health: stocks,
-      stats: stocksStats
+      health: hasObjectData(stocks) ? stocks : null,
+      stats: {
+        symbols: safeNumber(stocks?.symbols, 0),
+        mode: stocks?.mode || "paper",
+        running: !!stocks?.running,
+        lastRefresh: stocks?.lastRefresh || null,
+      },
     },
     sniper: {
-      health: sniper,
-      discoveries: discoveries,
-      stats: sniperStats
+      health: hasObjectData(sniper) ? sniper : null,
+      discoveries,
+      stats: {
+        status: sniper?.status || "idle",
+        active_trades: safeNumber(sniper?.active_trades, 0),
+        bot_state: sniper?.bot_state || "idle",
+        last_heartbeat: sniper?.last_heartbeat || sniper?.timestamp || null,
+        active_networks: safeArray(sniper?.active_networks),
+      },
     },
     okx: {
-      health: okx,
-      stats: okxStats
+      health: hasObjectData(okx) ? okx : null,
+      stats: {
+        positions_count: typeof okx?.positions === "number" ? okx.positions : safeNumber(okx?.positions_count, 0),
+        total_trades: safeNumber(okx?.total_trades, 0),
+        total_pnl: safeNumber(okx?.total_pnl, 0),
+        mode: okx?.mode || "dry_run",
+        scan_count: safeNumber(okx?.scan_count, 0),
+        last_scan_time: okx?.last_scan_time || null,
+        last_candidate_count: safeNumber(okx?.last_candidate_count, 0),
+        last_signal_count: safeNumber(okx?.last_signal_count, 0),
+        symbols_loaded: safeNumber(okx?.symbols_loaded, 0),
+        max_positions: safeNumber(okx?.max_positions, 0),
+        min_ai_score: safeNumber(okx?.min_ai_score, 0),
+      },
     },
-    recent_trades: recentTrades,
-    historical: payload?.historical || { daily: [], weekly: [], monthly: [] }
+    recent_trades: dedupeTrades(recentTrades),
+    historical: hasIncomingHistorical ? incomingHistorical : existingHistorical,
   };
 }
 
 /* =====================================================
-   HEARTBEAT COMPONENT
+   DATA HOOK
+===================================================== */
+
+function useLiveData() {
+  const [data, setData] = useState(DEFAULT_STATE);
+
+  const timerRef = useRef(null);
+  const abortRef = useRef(null);
+  const mountedRef = useRef(false);
+  const stateRef = useRef(DEFAULT_STATE);
+  const backoffRef = useRef(30000);
+
+  useEffect(() => {
+    stateRef.current = data;
+  }, [data]);
+
+  const fetchHistorical = useCallback(async () => {
+    try {
+      const response = await axios.get(HISTORICAL_URL, {
+        timeout: 6000,
+        headers: { "Cache-Control": "no-cache" },
+      });
+      const normalized = normalizeHistoricalShape(response.data);
+      const hasAny =
+        normalized.daily.length > 0 ||
+        normalized.weekly.length > 0 ||
+        normalized.monthly.length > 0;
+      return hasAny ? normalized : null;
+    } catch (err) {
+      console.warn("Historical fetch failed:", err?.message || err);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    const clearPending = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (abortRef.current) abortRef.current.abort();
+    };
+
+    const scheduleNext = (ms) => {
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(fetchLiveStats, ms);
+    };
+
+    const fetchLiveStats = async () => {
+      if (!mountedRef.current) return;
+
+      if (document.hidden) {
+        scheduleNext(Math.max(backoffRef.current, 30000));
+        return;
+      }
+
+      try {
+        abortRef.current?.abort();
+        abortRef.current = new AbortController();
+
+        const [liveResponse, historicalResponse] = await Promise.allSettled([
+          axios.get(LIVE_STATS_URL, {
+            timeout: 10000,
+            signal: abortRef.current.signal,
+            headers: { "Cache-Control": "no-cache" },
+          }),
+          fetchHistorical(),
+        ]);
+
+        if (!mountedRef.current) return;
+
+        const now = new Date();
+        const previous = stateRef.current;
+        let nextState = { ...previous };
+        let hadLiveError = false;
+
+        if (liveResponse.status === "fulfilled") {
+          nextState = {
+            ...previous,
+            ...mergeLiveStatsPayload(liveResponse.value.data, previous.historical),
+          };
+          backoffRef.current = 30000;
+        } else {
+          hadLiveError = true;
+          const status = liveResponse.reason?.response?.status;
+
+          if (status === 429) {
+            const retryAfterHeader = liveResponse.reason?.response?.headers?.["retry-after"];
+            const retryAfterSeconds = Number(retryAfterHeader);
+            backoffRef.current =
+              Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                ? retryAfterSeconds * 1000
+                : Math.min(backoffRef.current * 2, 120000);
+          } else {
+            backoffRef.current = Math.min(backoffRef.current + 10000, 120000);
+          }
+        }
+
+        if (historicalResponse.status === "fulfilled" && historicalResponse.value) {
+          nextState.historical = historicalResponse.value;
+        }
+
+        setData({
+          ...nextState,
+          loading: false,
+          error: hadLiveError
+            ? `Live data unavailable. Retrying in ${Math.ceil(backoffRef.current / 1000)}s...`
+            : null,
+          lastUpdate: now,
+          lastSuccessAt: hadLiveError ? previous.lastSuccessAt : now,
+          rateLimitedUntil: hadLiveError
+            ? new Date(Date.now() + backoffRef.current)
+            : null,
+        });
+
+        scheduleNext(backoffRef.current);
+      } catch (err) {
+        if (!mountedRef.current) return;
+        if (axios.isCancel(err)) return;
+
+        backoffRef.current = Math.min(backoffRef.current + 10000, 120000);
+
+        setData((prev) => ({
+          ...prev,
+          loading: false,
+          error: `Connection issue. Retrying in ${Math.ceil(backoffRef.current / 1000)}s...`,
+          lastUpdate: new Date(),
+          rateLimitedUntil: new Date(Date.now() + backoffRef.current),
+        }));
+
+        scheduleNext(backoffRef.current);
+      }
+    };
+
+    timerRef.current = setTimeout(fetchLiveStats, 250);
+
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        clearPending();
+        backoffRef.current = 30000;
+        timerRef.current = setTimeout(fetchLiveStats, 500);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      mountedRef.current = false;
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearPending();
+    };
+  }, [fetchHistorical]);
+
+  return data;
+}
+
+/* =====================================================
+   UI COMPONENTS
 ===================================================== */
 
 function Heartbeat({ active = true }) {
@@ -263,9 +470,7 @@ function Heartbeat({ active = true }) {
   return (
     <svg
       viewBox="0 0 100 40"
-      className={`w-24 h-8 transition-all duration-150 ${
-        beat ? "drop-shadow-[0_0_6px_rgba(52,211,153,0.9)]" : ""
-      }`}
+      className={`w-24 h-8 transition-all duration-150 ${beat ? "drop-shadow-[0_0_6px_rgba(52,211,153,0.9)]" : ""}`}
       xmlns="http://www.w3.org/2000/svg"
     >
       <polyline
@@ -275,24 +480,13 @@ function Heartbeat({ active = true }) {
         strokeWidth={beat ? "2.5" : "2"}
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="transition-all duration-150"
       />
-      <circle
-        cx={beat ? "43" : "70"}
-        cy={beat ? "20" : "20"}
-        r="3"
-        fill={beat ? "#34d399" : "#10b981"}
-        className="transition-all duration-300"
-      />
+      <circle cx={beat ? "43" : "70"} cy="20" r="3" fill={beat ? "#34d399" : "#10b981"} />
     </svg>
   );
 }
 
-/* =====================================================
-   STAT CARD COMPONENT
-===================================================== */
-
-function StatCard({ title, value, icon, subtext, color = "emerald", trend = null }) {
+function StatCard({ title, value, icon, subtext, color = "emerald" }) {
   const colorClasses = {
     emerald: "text-emerald-400",
     indigo: "text-indigo-400",
@@ -310,16 +504,7 @@ function StatCard({ title, value, icon, subtext, color = "emerald", trend = null
           <p className={`text-xl sm:text-2xl md:text-3xl font-bold mt-1 ${colorClasses[color]}`}>
             {value}
           </p>
-          {subtext && (
-            <p className="text-[10px] sm:text-xs text-white/30 mt-1 flex items-center gap-1">
-              {trend && (
-                <span className={trend > 0 ? "text-green-400" : trend < 0 ? "text-red-400" : "text-white/30"}>
-                  {trend > 0 ? "↑" : trend < 0 ? "↓" : "→"}
-                </span>
-              )}
-              {subtext}
-            </p>
-          )}
+          {subtext ? <p className="text-[10px] sm:text-xs text-white/30 mt-1">{subtext}</p> : null}
         </div>
         <div className="text-2xl sm:text-3xl opacity-60 shrink-0">{icon}</div>
       </div>
@@ -327,14 +512,10 @@ function StatCard({ title, value, icon, subtext, color = "emerald", trend = null
   );
 }
 
-/* =====================================================
-   BOT CARD COMPONENT
-===================================================== */
-
 function BotCard({ name, icon, health, stats, accent = "indigo" }) {
-  const isOnline = !!health;
+  const isOnline = hasObjectData(health);
 
-  const accentColors = {
+  const accentMap = {
     indigo: "border-indigo-500/20 bg-indigo-500/10",
     emerald: "border-emerald-500/20 bg-emerald-500/10",
     purple: "border-purple-500/20 bg-purple-500/10",
@@ -342,66 +523,47 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
     cyan: "border-cyan-500/20 bg-cyan-500/10",
   };
 
-  const getDisplayStats = () => {
-    if (name === "OKX Spot") {
-      return [
-        { label: "Positions", value: stats?.positions_count || 0, color: "text-emerald-400" },
-        { label: "Total Trades", value: stats?.total_trades || 0, color: "text-blue-400" },
-        { 
-          label: "Total P&L", 
-          value: formatCurrencyWithSign(stats?.total_pnl || 0), 
-          color: (stats?.total_pnl || 0) >= 0 ? "text-emerald-400" : "text-red-400" 
-        },
-        { label: "Mode", value: stats?.mode || 'dry_run', color: "text-yellow-400" },
-        { label: "Scan Count", value: formatNumber(stats?.scan_count || 0), color: "text-white/70" }
-      ];
-    }
-    if (name === "Futures Bot") {
-      return [
-        { label: "Pairs", value: stats?.total_symbols || 199, color: "text-indigo-400" },
-        { label: "Status", value: stats?.status || 'running', color: stats?.status === 'running' ? "text-green-400" : "text-yellow-400" },
-        { label: "CEX Enabled", value: stats?.cex_enabled ? "Yes" : "No", color: stats?.cex_enabled ? "text-green-400" : "text-white/50" },
-        { label: "Dry Run", value: stats?.dry_run ? "Yes" : "No", color: stats?.dry_run ? "text-yellow-400" : "text-red-400" }
-      ];
-    }
-    if (name === "Stock Bot") {
-      return [
-        { label: "Symbols", value: stats?.symbols || 500, color: "text-emerald-400" },
-        { label: "Mode", value: stats?.mode || 'paper', color: stats?.mode === 'paper' ? "text-yellow-400" : "text-green-400" },
-        { label: "Running", value: stats?.running ? "Yes" : "No", color: stats?.running ? "text-green-400" : "text-white/50" },
-        { label: "Last Refresh", value: stats?.lastRefresh ? timeAgo(stats.lastRefresh) : "—", color: "text-white/70" }
-      ];
-    }
-    if (name === "Sniper Bot") {
-      return [
-        { label: "Status", value: stats?.status || 'idle', color: stats?.status === 'OK' ? "text-green-400" : "text-yellow-400" },
-        { label: "Active Trades", value: stats?.active_trades || 0, color: "text-purple-400" },
-        { label: "Bot State", value: stats?.bot_state || 'idle', color: "text-white/70" }
-      ];
-    }
-    return [];
-  };
+  let lines = [];
+
+  if (name === "Futures Bot") {
+    lines = [
+      ["Pairs", stats?.total_symbols || 0],
+      ["Status", stats?.status || "unknown"],
+      ["DB", stats?.db_connected ? "connected" : "disconnected"],
+    ];
+  } else if (name === "Stock Bot") {
+    lines = [
+      ["Symbols", stats?.symbols || 0],
+      ["Mode", stats?.mode || "paper"],
+      ["Refresh", stats?.lastRefresh ? timeAgo(stats.lastRefresh) : "—"],
+    ];
+  } else if (name === "OKX Spot") {
+    lines = [
+      ["Positions", stats?.positions_count || 0],
+      ["Trades", stats?.total_trades || 0],
+      ["Mode", stats?.mode || "dry_run"],
+      ["Candidates", stats?.last_candidate_count || 0],
+    ];
+  }
 
   return (
-    <div className={`border rounded-xl p-3 sm:p-4 ${accentColors[accent]}`}>
+    <div className={`border rounded-xl p-3 sm:p-4 ${accentMap[accent] || accentMap.indigo}`}>
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">{icon}</span>
           <span className="font-semibold text-sm sm:text-base truncate">{name}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
-            {isOnline ? "● Online" : "○ Offline"}
-          </span>
-        </div>
+        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
+          {isOnline ? "● Online" : "○ Offline"}
+        </span>
       </div>
 
       {isOnline ? (
         <div className="text-xs space-y-2">
-          {getDisplayStats().map((stat, idx) => (
+          {lines.map(([label, value], idx) => (
             <div key={idx} className="flex justify-between items-center">
-              <span className="text-white/50">{stat.label}</span>
-              <span className={`font-medium ${stat.color}`}>{stat.value}</span>
+              <span className="text-white/50">{label}</span>
+              <span className="text-white font-medium">{value}</span>
             </div>
           ))}
         </div>
@@ -412,25 +574,21 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
   );
 }
 
-/* =====================================================
-   SNIPER CARD COMPONENT
-===================================================== */
-
 function SniperCard({ health, discoveries, stats }) {
-  const isOnline = !!health;
-  const discCount = discoveries.length;
+  const isOnline = hasObjectData(health);
+  const discoveryCount = safeArray(discoveries).length;
   const [pinged, setPinged] = useState(false);
-  const prevDiscRef = useRef(discCount);
+  const prevRef = useRef(discoveryCount);
 
   useEffect(() => {
-    if (discCount > prevDiscRef.current) {
+    if (discoveryCount > prevRef.current) {
       setPinged(true);
       const t = setTimeout(() => setPinged(false), 1200);
-      prevDiscRef.current = discCount;
+      prevRef.current = discoveryCount;
       return () => clearTimeout(t);
     }
-    prevDiscRef.current = discCount;
-  }, [discCount]);
+    prevRef.current = discoveryCount;
+  }, [discoveryCount]);
 
   return (
     <div
@@ -456,43 +614,33 @@ function SniperCard({ health, discoveries, stats }) {
         <div className="text-xs space-y-2">
           <div className="flex justify-between">
             <span className="text-white/50">Discoveries</span>
-            <span className={`font-semibold ${discCount > 0 ? "text-purple-300" : "text-white/40"}`}>
-              {discCount}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-white/50">Active Trades</span>
-            <span className={stats?.active_trades > 0 ? "text-green-300" : "text-white/40"}>
-              {stats?.active_trades || 0}
-            </span>
+            <span className="text-purple-300 font-semibold">{discoveryCount}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-white/50">Status</span>
-            <span className={stats?.status === 'OK' ? "text-green-400" : "text-yellow-400"}>
-              {stats?.status || 'idle'}
-            </span>
+            <span className="text-white">{stats?.status || "idle"}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-white/50">Bot State</span>
-            <span className="text-white/70">{stats?.bot_state || 'idle'}</span>
+            <span className="text-white/50">State</span>
+            <span className="text-white">{stats?.bot_state || "idle"}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-white/50">Heartbeat</span>
+            <span className="text-white truncate">{stats?.last_heartbeat ? timeAgo(stats.last_heartbeat) : "—"}</span>
           </div>
         </div>
       ) : (
         <div className="text-xs text-white/30 py-2 text-center">Waiting for connection...</div>
       )}
 
-      {pinged && (
+      {pinged ? (
         <div className="mt-2 text-center text-[10px] text-purple-300 bg-purple-500/20 rounded-full py-0.5 animate-pulse">
           ✨ New discovery detected
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
-
-/* =====================================================
-   TRADE ROW COMPONENT
-===================================================== */
 
 function TradeRow({ trade }) {
   const side = getTradeSide(trade);
@@ -537,9 +685,7 @@ function TradeRow({ trade }) {
   }
 
   return (
-    <div
-      className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor} hover:bg-opacity-80 transition-all`}
-    >
+    <div className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor}`}>
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <span className="text-base shrink-0">📊</span>
         <div className="min-w-0">
@@ -560,7 +706,7 @@ function TradeRow({ trade }) {
         ) : pnlUsd !== 0 ? (
           <div>
             <div className={`font-bold text-sm ${pnlUsd > 0 ? "text-emerald-400" : "text-red-400"}`}>
-              {pnlUsd > 0 ? "+" : ""}{formatCurrency(pnlUsd)}
+              {formatCurrencySigned(pnlUsd)}
             </div>
             <div className={`text-[10px] ${pnlPercent > 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
               {formatPercent(pnlPercent)}
@@ -574,68 +720,68 @@ function TradeRow({ trade }) {
   );
 }
 
-/* =====================================================
-   DISCOVERY CARD COMPONENT
-===================================================== */
-
 function DiscoveryCard({ discovery }) {
   const score = safeNumber(discovery?.ai_score ?? discovery?.score, 0);
   const chain = discovery?.chain || "ethereum";
   const age = discovery?.age ?? discovery?.age_blocks ?? 0;
   const pair = discovery?.pair || discovery?.address || discovery?.token || "New token";
-  const symbol = discovery?.symbol || pair.slice(0, 10) + "...";
 
   let scoreColor = "text-orange-400";
-  let scoreBg = "bg-orange-500/20";
-  if (score >= 0.7) {
-    scoreColor = "text-green-400";
-    scoreBg = "bg-green-500/20";
-  } else if (score >= 0.5) {
-    scoreColor = "text-yellow-400";
-    scoreBg = "bg-yellow-500/20";
-  }
+  if (score >= 0.7) scoreColor = "text-green-400";
+  else if (score >= 0.5) scoreColor = "text-yellow-400";
 
   return (
-    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs hover:bg-purple-500/10 transition-all">
+    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs hover:bg-purple-500/10 transition-colors">
       <div className="flex justify-between items-start mb-2 gap-2">
-        <div className="flex items-center gap-1 min-w-0">
+        <span className="font-medium flex items-center gap-1 min-w-0">
           <span className="text-base shrink-0">🦄</span>
-          <div className="min-w-0">
-            <span className="font-medium capitalize block truncate">{chain}</span>
-            <span className="text-white/30 text-[8px] font-mono truncate">{symbol}</span>
-          </div>
-        </div>
-        <span className="text-white/40 text-[8px] shrink-0 whitespace-nowrap">{age} blocks</span>
+          <span className="capitalize truncate">{chain}</span>
+        </span>
+        <span className="text-white/40 text-[10px] shrink-0">{age} blocks</span>
       </div>
-
-      <div className="flex justify-between items-center mt-2">
-        <div className="flex items-center gap-1">
-          <span className="text-white/40 text-[8px]">AI</span>
-          <span className={`text-[10px] font-bold ${scoreColor} px-1.5 py-0.5 rounded ${scoreBg}`}>
-            {score.toFixed(2)}
-          </span>
+      <div className="text-white/60 font-mono text-[10px] mb-2 truncate">{pair}</div>
+      <div className="flex justify-between items-center gap-2">
+        <div>
+          <span className="text-white/40">AI Score</span>
+          <span className={`ml-2 font-bold ${scoreColor}`}>{score.toFixed(2)}</span>
         </div>
-        {score >= 0.7 && (
-          <span className="text-[8px] bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">
+        {score >= 0.7 ? (
+          <span className="text-[8px] bg-green-500/20 text-green-300 px-2 py-1 rounded-full">
             Ready
           </span>
-        )}
+        ) : null}
       </div>
     </div>
   );
 }
 
-/* =====================================================
-   HISTORICAL CHART COMPONENT
-===================================================== */
+function HistoricalChart({ data, type, onChangeType }) {
+  const chartData = safeArray(data?.[type]);
+  const maxValue = Math.max(...chartData.map((d) => Math.abs(safeNumber(d?.pnl))), 1);
 
-function HistoricalChart({ data, type = "daily" }) {
-  const chartData = data[type] || [];
-  const maxValue = Math.max(...chartData.map((d) => Math.abs(d.pnl || 0)), 1);
-
-  const getChartColor = (pnl) => {
-    return pnl >= 0 ? "bg-emerald-500/50" : "bg-red-500/50";
-  };
+  if (!chartData.length) {
+    return (
+      <div className="space-y-3">
+        <div className="flex gap-2 text-xs">
+          {["daily", "weekly", "monthly"].map((period) => (
+            <button
+              key={period}
+              type="button"
+              onClick={() => onChangeType(period)}
+              className={`px-3 py-1 rounded-lg capitalize transition-all ${
+                type === period ? "bg-indigo-600 text-white" : "bg-white/5 text-white/50 hover:bg-white/10"
+              }`}
+            >
+              {period}
+            </button>
+          ))}
+        </div>
+        <div className="h-32 flex items-center justify-center text-white/30 text-sm">
+          No historical data yet
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -643,182 +789,122 @@ function HistoricalChart({ data, type = "daily" }) {
         {["daily", "weekly", "monthly"].map((period) => (
           <button
             key={period}
+            type="button"
+            onClick={() => onChangeType(period)}
             className={`px-3 py-1 rounded-lg capitalize transition-all ${
-              type === period 
-                ? "bg-indigo-600 text-white" 
-                : "bg-white/5 text-white/50 hover:bg-white/10"
+              type === period ? "bg-indigo-600 text-white" : "bg-white/5 text-white/50 hover:bg-white/10"
             }`}
           >
             {period}
           </button>
         ))}
       </div>
-      
-      {chartData.length > 0 ? (
-        <div className="h-32 flex items-end gap-1">
-          {chartData.slice(-10).map((d, i) => {
-            const height = (Math.abs(d.pnl || 0) / maxValue) * 100;
-            const isPositive = (d.pnl || 0) >= 0;
-            return (
-              <div key={i} className="flex-1 flex flex-col items-center group relative">
-                <div
-                  className={`w-full rounded-t relative group-hover:opacity-80 transition-all ${
-                    isPositive ? "bg-emerald-500/50" : "bg-red-500/50"
-                  }`}
-                  style={{ height: `${Math.max(height, 5)}%` }}
-                >
-                  <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-800 text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 border border-white/10">
-                    <div className="font-medium">{formatDate(d.date)}</div>
-                    <div className={isPositive ? "text-emerald-400" : "text-red-400"}>
-                      {formatCurrencyWithSign(d.pnl)} ({formatPercent(d.pnlPercent)})
-                    </div>
+
+      <div className="h-32 flex items-end gap-1">
+        {chartData.slice(-10).map((d, i) => {
+          const pnl = safeNumber(d?.pnl);
+          const pnlPercent = safeNumber(d?.pnlPercent);
+          const height = (Math.abs(pnl) / maxValue) * 100;
+          const positive = pnl >= 0;
+
+          return (
+            <div key={`${d?.date || i}`} className="flex-1 flex flex-col items-center group relative">
+              <div
+                className={`w-full rounded-t relative group-hover:opacity-80 transition-all ${
+                  positive ? "bg-emerald-500/50" : "bg-red-500/50"
+                }`}
+                style={{ height: `${Math.max(height, 5)}%` }}
+              >
+                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 border border-white/10">
+                  <div className="font-medium">{formatDate(d?.date)}</div>
+                  <div className={positive ? "text-emerald-400" : "text-red-400"}>
+                    {formatCurrencySigned(pnl)} ({formatPercent(pnlPercent)})
                   </div>
                 </div>
-                <span className="text-[8px] text-white/30 mt-1 rotate-45 origin-left">
-                  {formatDate(d.date).slice(5)}
-                </span>
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="h-32 flex items-center justify-center text-white/30 text-sm">
-          No historical data available
-        </div>
-      )}
+              <span className="text-[8px] text-white/30 mt-1">{formatDate(d?.date).slice(0, 5)}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-/* =====================================================
-   DATA HOOK
-===================================================== */
+function InvestorPanel({ data, totalPnL, totalTradesCount, activeBots, discoveryCount }) {
+  const marketCoverage =
+    safeNumber(data.futures.stats?.total_symbols) +
+    safeNumber(data.stocks.stats?.symbols) +
+    safeNumber(data.okx.stats?.symbols_loaded);
 
-function useLiveData() {
-  const [data, setData] = useState(DEFAULT_STATE);
+  const stackMode = [
+    data.okx.stats?.mode || "dry_run",
+    data.stocks.stats?.mode || "paper",
+    data.futures.stats?.dry_run ? "dry_run" : "live-ready",
+  ];
 
-  const timerRef = useRef(null);
-  const abortRef = useRef(null);
-  const mountedRef = useRef(true);
-  const backoffRef = useRef(30000);
-  const retryCountRef = useRef(0);
+  const headline = totalPnL >= 0 ? "Revenue-oriented bot infrastructure" : "Multi-bot live monitoring stack";
 
-  const fetchHistorical = async () => {
-    try {
-      const response = await axios.get(HISTORICAL_URL, { timeout: 5000 });
-      return response.data;
-    } catch (err) {
-      console.warn("Historical data unavailable:", err.message);
-      return { daily: [], weekly: [], monthly: [] };
-    }
-  };
+  return (
+    <div className="bg-gradient-to-br from-indigo-600/15 to-emerald-600/10 border border-indigo-500/20 rounded-2xl p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div>
+          <h2 className="font-bold text-lg">Investor Snapshot</h2>
+          <p className="text-xs text-white/50 mt-1">{headline}</p>
+        </div>
+        <span className="text-[10px] px-2 py-1 rounded-full bg-white/10 text-white/70">
+          Public-facing metrics
+        </span>
+      </div>
 
-  useEffect(() => {
-    mountedRef.current = true;
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs mb-4">
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40">Bot Coverage</div>
+          <div className="text-white font-semibold mt-1">{activeBots}/4 active</div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40">Tracked Trades</div>
+          <div className="text-white font-semibold mt-1">{formatCompact(totalTradesCount)}</div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40">Aggregate P&amp;L</div>
+          <div className={`font-semibold mt-1 ${totalPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {formatCurrencySigned(totalPnL)}
+          </div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40">Discovery Engine</div>
+          <div className="text-white font-semibold mt-1">{discoveryCount} findings</div>
+        </div>
+      </div>
 
-    const clearPending = () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (abortRef.current) abortRef.current.abort();
-    };
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40 mb-2">Operational profile</div>
+          <div className="space-y-2">
+            <div className="flex justify-between"><span>Tracked universe</span><span>{formatCompact(marketCoverage)}</span></div>
+            <div className="flex justify-between"><span>OKX scan count</span><span>{formatCompact(data.okx.stats?.scan_count || 0)}</span></div>
+            <div className="flex justify-between"><span>Candidate flow</span><span>{data.okx.stats?.last_candidate_count || 0} / scan</span></div>
+            <div className="flex justify-between"><span>Signal flow</span><span>{data.okx.stats?.last_signal_count || 0} / scan</span></div>
+          </div>
+        </div>
 
-    const scheduleNext = (ms) => {
-      clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(fetchLiveStats, ms);
-    };
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40 mb-2">Commercial positioning</div>
+          <div className="space-y-2 text-white/70">
+            <div>• public live dashboard for trust and conversion</div>
+            <div>• multi-bot architecture across CEX, stocks, futures, and DEX discovery</div>
+            <div>• investor-ready visibility into uptime, scanning cadence, and signal production</div>
+            <div>• clear path to premium tiers, managed signals, and execution subscriptions</div>
+          </div>
+        </div>
+      </div>
 
-    const fetchLiveStats = async () => {
-      if (!mountedRef.current) return;
-      if (document.hidden) {
-        scheduleNext(Math.max(backoffRef.current, 30000));
-        return;
-      }
-
-      try {
-        abortRef.current?.abort();
-        abortRef.current = new AbortController();
-
-        const [liveResponse, historicalData] = await Promise.allSettled([
-          axios.get(LIVE_STATS_URL, {
-            timeout: 10000,
-            signal: abortRef.current.signal,
-            headers: { "Cache-Control": "no-cache" },
-          }),
-          fetchHistorical(),
-        ]);
-
-        if (!mountedRef.current) return;
-
-        let normalized = { ...DEFAULT_STATE };
-        let historical = { daily: [], weekly: [], monthly: [] };
-        let now = new Date();
-        let hasError = false;
-
-        if (liveResponse.status === 'fulfilled' && liveResponse.value) {
-          normalized = mergeLiveStatsPayload(liveResponse.value.data);
-          retryCountRef.current = 0;
-        } else {
-          hasError = true;
-          console.warn("Live stats fetch failed:", liveResponse.reason);
-        }
-
-        if (historicalData && !historicalData.error) {
-          historical = historicalData;
-        }
-
-        backoffRef.current = 30000;
-
-        setData({
-          ...normalized,
-          historical,
-          loading: false,
-          error: hasError ? "Live data temporarily unavailable" : null,
-          lastUpdate: now,
-          lastSuccessAt: hasError ? data.lastSuccessAt : now,
-          rateLimitedUntil: null,
-        });
-
-        scheduleNext(backoffRef.current);
-      } catch (err) {
-        if (!mountedRef.current) return;
-        if (axios.isCancel(err)) return;
-
-        console.error("Fetch error:", err);
-        
-        retryCountRef.current++;
-        const nextDelay = Math.min(30000 * Math.pow(1.5, retryCountRef.current), 120000);
-        
-        setData((prev) => ({
-          ...prev,
-          loading: false,
-          error: "Connection issue - retrying...",
-          lastUpdate: new Date(),
-        }));
-
-        scheduleNext(nextDelay);
-      }
-    };
-
-    timerRef.current = setTimeout(fetchLiveStats, 250);
-
-    const onVisibility = () => {
-      if (!document.hidden) {
-        clearPending();
-        retryCountRef.current = 0;
-        backoffRef.current = 30000;
-        timerRef.current = setTimeout(fetchLiveStats, 500);
-      }
-    };
-
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      mountedRef.current = false;
-      document.removeEventListener("visibilitychange", onVisibility);
-      clearPending();
-    };
-  }, []);
-
-  return data;
+      <div className="mt-4 text-[11px] text-white/35">
+        Stack modes: {stackMode.join(" • ")}
+      </div>
+    </div>
+  );
 }
 
 /* =====================================================
@@ -836,7 +922,6 @@ export default function PublicDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Calculate derived stats
   const hasConnection = !!(
     data.futures.health ||
     data.stocks.health ||
@@ -848,9 +933,8 @@ export default function PublicDashboard() {
     ? Math.floor((Date.now() - new Date(data.lastSuccessAt).getTime()) / 1000) > 90
     : false;
 
-  // Process trades
   const allTrades = useMemo(() => {
-    return data.recent_trades
+    return dedupeTrades(data.recent_trades)
       .sort((a, b) => {
         const tA = new Date(getTradeTimestamp(a) || 0).getTime();
         const tB = new Date(getTradeTimestamp(b) || 0).getTime();
@@ -859,32 +943,28 @@ export default function PublicDashboard() {
       .slice(0, 50);
   }, [data.recent_trades]);
 
-  // Trade filters
-  const isOpenTrade = (t) => {
-    const pnl = getTradePnlUsd(t);
-    return t?.status === "open" || (pnl === 0 && t?.side && !t?.closed);
+  const isOpenTrade = (trade) => {
+    const pnl = getTradePnlUsd(trade);
+    return trade?.status === "open" || (pnl === 0 && getTradeSide(trade) && !trade?.closed);
   };
 
-  const isClosedTrade = (t) => {
-    const pnl = getTradePnlUsd(t);
-    return pnl !== 0 || t?.status === "closed" || t?.side === "close";
+  const isClosedTrade = (trade) => {
+    const pnl = getTradePnlUsd(trade);
+    return pnl !== 0 || trade?.status === "closed" || getTradeSide(trade) === "close";
   };
 
-  // Filter trades by tab
   const filteredTrades = useMemo(() => {
     if (activeTab === "open") return allTrades.filter(isOpenTrade);
     if (activeTab === "closed") return allTrades.filter(isClosedTrade);
     return allTrades;
   }, [activeTab, allTrades]);
 
-  // Tab counts
   const tabs = [
     { id: "all", label: "All", icon: "🌐", count: allTrades.length },
     { id: "open", label: "Open", icon: "🟢", count: allTrades.filter(isOpenTrade).length },
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(isClosedTrade).length },
   ];
 
-  // Aggregated stats
   const activeBots = [
     data.futures.health,
     data.stocks.health,
@@ -893,34 +973,27 @@ export default function PublicDashboard() {
   ].filter(Boolean).length;
 
   const totalPnL = useMemo(() => {
-    let total = data.okx.stats?.total_pnl || 0;
-    data.recent_trades.forEach((t) => {
-      const pnl = getTradePnlUsd(t);
-      if (pnl !== 0) total += pnl;
-    });
-    return total;
-  }, [data.okx.stats?.total_pnl, data.recent_trades]);
+    return safeNumber(data.okx.stats?.total_pnl, 0);
+  }, [data.okx.stats?.total_pnl]);
 
   const totalPnLPercent = useMemo(() => {
-    const totalInvested = 100000;
-    return (totalPnL / totalInvested) * 100;
+    const baseline = 100000;
+    return (safeNumber(totalPnL) / baseline) * 100;
   }, [totalPnL]);
 
-  const openPositionsCount = data.okx.stats?.positions_count || 0;
+  const openPositionsCount =
+    safeNumber(data.okx.stats?.positions_count, 0) +
+    safeNumber(data.futures.stats?.positions, 0) +
+    safeNumber(data.sniper.stats?.active_trades, 0);
 
-  const totalTradesCount = (data.okx.stats?.total_trades || 0) + allTrades.length;
-
-  const winsCount = useMemo(
-    () => allTrades.filter((t) => getTradePnlUsd(t) > 0).length,
-    [allTrades]
+  const totalTradesCount = Math.max(
+    safeNumber(data.okx.stats?.total_trades, 0),
+    allTrades.length
   );
 
-  const lossesCount = useMemo(
-    () => allTrades.filter((t) => getTradePnlUsd(t) < 0).length,
-    [allTrades]
-  );
+  const winsCount = useMemo(() => allTrades.filter((t) => getTradePnlUsd(t) > 0).length, [allTrades]);
+  const lossesCount = useMemo(() => allTrades.filter((t) => getTradePnlUsd(t) < 0).length, [allTrades]);
 
-  // Loading state
   if (data.loading && !data.lastSuccessAt) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white flex items-center justify-center">
@@ -934,15 +1007,11 @@ export default function PublicDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
-      {/* Header */}
       <header className="border-b border-white/10 bg-black/20 backdrop-blur sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <Link
-                to="/"
-                className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent"
-              >
+              <Link to="/" className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">
                 IMALI
               </Link>
               <span
@@ -957,6 +1026,7 @@ export default function PublicDashboard() {
                 {hasConnection ? (isStale ? "STALE" : "LIVE") : "CONNECTING"}
               </span>
             </div>
+
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2 text-xs text-white/40">
                 <span
@@ -971,11 +1041,11 @@ export default function PublicDashboard() {
                 <span>
                   {data.rateLimitedUntil
                     ? `Backoff until ${formatClock(data.rateLimitedUntil)}`
-                    : "Updates every 30s"}
+                    : "Adaptive refresh"}
                 </span>
               </div>
               <div className="text-xs text-white/40">
-                Last: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
+                Last good: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
               </div>
               <div className="text-xs text-white/40">{clock.toLocaleTimeString()}</div>
               <Link
@@ -989,78 +1059,52 @@ export default function PublicDashboard() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {/* Error Banner */}
-        {data.error && (
+        {data.error ? (
           <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
             <p className="text-amber-300 text-sm">⚠️ {data.error}</p>
           </div>
-        )}
+        ) : null}
 
-        {/* Hero */}
         <div className="text-center mb-8">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">
             Live Trading Dashboard
           </h1>
           <p className="text-white/60 max-w-2xl mx-auto">
-            Watch our AI-powered trading stack scan, discover opportunities, and execute trades in real-time across multiple markets.
+            Watch IMALI’s multi-bot stack scan markets, surface opportunities, and show live operational proof.
           </p>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <StatCard
-            title="Active Bots"
-            value={activeBots}
-            icon="🤖"
-            color="indigo"
-            subtext={`${activeBots}/4 online`}
-          />
-          <StatCard
-            title="Total Trades"
-            value={totalTradesCount}
-            icon="📊"
-            color="purple"
-            subtext={`${winsCount} wins · ${lossesCount} losses`}
-          />
-          <StatCard
-            title="Total P&L"
-            value={formatCurrencyWithSign(totalPnL)}
-            icon="💰"
-            color={totalPnL >= 0 ? "emerald" : "red"}
-            subtext={formatPercent(totalPnLPercent)}
-            trend={totalPnL}
-          />
-          <StatCard
-            title="Open Positions"
-            value={openPositionsCount}
-            icon="📌"
-            color="cyan"
-            subtext="Across all bots"
-          />
-          <StatCard
-            title="Discoveries"
-            value={data.sniper.discoveries.length}
-            icon="🦄"
-            color="amber"
-            subtext="New tokens found"
+          <StatCard title="Active Bots" value={activeBots} icon="🤖" color="indigo" subtext={`${activeBots}/4 online`} />
+          <StatCard title="Total Trades" value={formatCompact(totalTradesCount)} icon="📊" color="purple" subtext={`${winsCount} wins · ${lossesCount} losses`} />
+          <StatCard title="Total P&L" value={formatCurrencySigned(totalPnL)} icon="💰" color={totalPnL >= 0 ? "emerald" : "red"} subtext={formatPercent(totalPnLPercent)} />
+          <StatCard title="Open Positions" value={formatCompact(openPositionsCount)} icon="📌" color="cyan" subtext="Across all systems" />
+          <StatCard title="Discoveries" value={formatCompact(data.sniper.discoveries.length)} icon="🦄" color="amber" subtext="DEX opportunities found" />
+        </div>
+
+        <div className="mb-6">
+          <InvestorPanel
+            data={data}
+            totalPnL={totalPnL}
+            totalTradesCount={totalTradesCount}
+            activeBots={activeBots}
+            discoveryCount={data.sniper.discoveries.length}
           />
         </div>
 
-        {/* Historical Performance */}
         <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
           <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
             <span>📈</span>
             Historical Performance
           </h2>
-          <HistoricalChart 
-            data={data.historical} 
+          <HistoricalChart
+            data={data.historical}
             type={historicalType}
+            onChangeType={setHistoricalType}
           />
         </div>
 
-        {/* Bot Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <BotCard
             name="Futures Bot"
@@ -1090,49 +1134,40 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Trade Feed and Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Trade Feed */}
           <div className="lg:col-span-2">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
                 <h2 className="font-bold text-lg flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                   Live Trade Feed
-                  <span className="text-xs text-white/30 ml-2">
-                    {allTrades.length} trades
-                  </span>
+                  <span className="text-xs text-white/30 ml-2">{allTrades.length} rows</span>
                 </h2>
+
                 <div className="flex gap-1 bg-black/30 rounded-lg p-1 flex-wrap">
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}
+                      type="button"
                       onClick={() => setActiveTab(tab.id)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
-                        activeTab === tab.id
-                          ? "bg-emerald-600 text-white"
-                          : "text-white/40 hover:text-white/60"
+                        activeTab === tab.id ? "bg-emerald-600 text-white" : "text-white/40 hover:text-white/60"
                       }`}
                     >
                       <span>{tab.icon}</span>
                       <span className="hidden sm:inline">{tab.label}</span>
-                      {tab.count > 0 && (
-                        <span className="ml-1 text-[8px] bg-white/20 px-1.5 rounded-full">
-                          {tab.count}
-                        </span>
-                      )}
+                      {tab.count > 0 ? (
+                        <span className="ml-1 text-[8px] bg-white/20 px-1.5 rounded-full">{tab.count}</span>
+                      ) : null}
                     </button>
                   ))}
                 </div>
               </div>
-              
+
               <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
                 {filteredTrades.length > 0 ? (
                   filteredTrades.map((trade, i) => (
-                    <TradeRow
-                      key={`${getTradeTimestamp(trade)}-${trade?.symbol}-${i}`}
-                      trade={trade}
-                    />
+                    <TradeRow key={`${getTradeTimestamp(trade)}-${trade?.symbol}-${i}`} trade={trade} />
                   ))
                 ) : (
                   <div className="text-center py-12 text-white/30">
@@ -1144,26 +1179,23 @@ export default function PublicDashboard() {
             </div>
           </div>
 
-          {/* Sidebar */}
           <div className="space-y-4">
-            {/* DEX Discoveries */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
                 <span>🦄</span>
                 DEX Discoveries
-                {data.sniper.discoveries.length > 0 && (
+                {data.sniper.discoveries.length > 0 ? (
                   <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
                     {data.sniper.discoveries.length} new
                   </span>
-                )}
+                ) : null}
               </h2>
+
               <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                 {data.sniper.discoveries.length > 0 ? (
                   data.sniper.discoveries
                     .slice(0, 10)
-                    .map((d, i) => (
-                      <DiscoveryCard key={d?.pair || d?.address || i} discovery={d} />
-                    ))
+                    .map((d, i) => <DiscoveryCard key={d?.pair || d?.address || i} discovery={d} />)
                 ) : (
                   <div className="text-center py-8 text-white/30 text-sm">
                     <div className="text-2xl mb-2">🔍</div>
@@ -1173,79 +1205,79 @@ export default function PublicDashboard() {
               </div>
             </div>
 
-            {/* System Status */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
                 <span>📡</span>
                 System Status
               </h2>
-              <div className="space-y-3 text-xs">
-                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                  <span className="text-white/50">API Endpoint</span>
-                  <span className="text-white/40 font-mono text-[10px]">{API_BASE}</span>
+
+              <div className="space-y-2 text-xs text-white/65">
+                <div className="flex justify-between gap-3">
+                  <span>API</span>
+                  <span className="text-white/40 truncate">{API_BASE}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-white/50">Connection</span>
+                <div className="flex justify-between gap-3">
+                  <span>Connection</span>
                   <span className={hasConnection ? "text-green-400" : "text-yellow-400"}>
                     {hasConnection ? (isStale ? "Stale" : "Live") : "Connecting"}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-white/50">Last Update</span>
+                <div className="flex justify-between gap-3">
+                  <span>Last good update</span>
                   <span>{data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-white/50">Open Positions</span>
-                  <span className="text-emerald-400">{openPositionsCount}</span>
+                <div className="flex justify-between gap-3">
+                  <span>Open positions</span>
+                  <span>{openPositionsCount}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-white/50">Total Trades</span>
+                <div className="flex justify-between gap-3">
+                  <span>Total trades</span>
                   <span>{totalTradesCount}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-white/50">Win/Loss</span>
+                <div className="flex justify-between gap-3">
+                  <span>Win/Loss</span>
                   <span className={winsCount >= lossesCount ? "text-green-400" : "text-red-400"}>
                     {winsCount}/{lossesCount}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-white/50">OKX Mode</span>
-                  <span className={data.okx.stats?.mode === 'live' ? "text-green-400" : "text-yellow-400"}>
-                    {data.okx.stats?.mode || 'dry_run'}
-                  </span>
+                <div className="flex justify-between gap-3">
+                  <span>OKX mode</span>
+                  <span>{data.okx.stats?.mode || "dry_run"}</span>
                 </div>
               </div>
             </div>
 
-            {/* CTA */}
-            <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-5 text-center">
-              <h3 className="font-bold text-lg mb-2">Ready to Start?</h3>
+            <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-5">
+              <h3 className="font-bold text-lg mb-2">For investors and partners</h3>
               <p className="text-xs text-white/60 mb-4">
-                Join thousands of traders using our AI-powered platform
+                IMALI combines public live proof, multi-bot operations, and a clear subscription path for retail and premium users.
               </p>
+              <div className="space-y-2 text-xs text-white/70 mb-4">
+                <div>• live dashboard credibility</div>
+                <div>• modular bot architecture</div>
+                <div>• CEX + stocks + futures + DEX discovery</div>
+                <div>• monetizable signal and managed-access tiers</div>
+              </div>
               <Link
                 to="/signup"
-                className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all"
+                className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all text-center"
               >
                 Start Trading Free →
               </Link>
-              <p className="text-[10px] text-white/30 mt-3">No credit card required • Cancel anytime</p>
+              <p className="text-[10px] text-white/30 mt-3">No credit card required</p>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
         <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
           <p>
-            Data updates every 30 seconds with adaptive rate-limiting.
+            Adaptive polling with preserved historical state and rate-limit backoff.
             <br />
             <Link to="/" className="text-indigo-400 hover:underline">Home</Link>
             {" • "}
             <Link to="/dashboard" className="text-indigo-400 hover:underline">Member Dashboard</Link>
             {" • "}
-            <Link to="/privacy" className="text-indigo-400 hover:underline">Privacy</Link>
-            {" • "}
-            <Link to="/terms" className="text-indigo-400 hover:underline">Terms</Link>
+            <Link to="/pricing" className="text-indigo-400 hover:underline">Pricing</Link>
           </p>
         </div>
       </main>
