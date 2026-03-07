@@ -1,11 +1,5 @@
 // src/pages/PublicDashboard.jsx
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 
@@ -17,17 +11,8 @@ const API_BASE =
   process.env.REACT_APP_API_BASE?.replace(/\/+$/, "") ||
   "https://api.imali-defi.com";
 
-const LIVE_STATS_URL  = API_BASE + "/api/public/live-stats";
-const HISTORICAL_URL  = API_BASE + "/api/public/historical";
-
-const LIVE_INTERVAL       = 30_000;
-const HISTORICAL_INTERVAL = 600_000;
-const MAX_BACKOFF         = 300_000;
-const JITTER_MAX          = 3_000;
-
-/* =====================================================
-   DEFAULT STATE
-===================================================== */
+const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
+const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
 
 const DEFAULT_HISTORICAL = { daily: [], weekly: [], monthly: [] };
 
@@ -46,7 +31,12 @@ const DEFAULT_STATE = {
   },
   stocks: {
     health: null,
-    stats: { symbols: 0, mode: "paper", running: false, lastRefresh: null },
+    stats: {
+      symbols: 0,
+      mode: "paper",
+      running: false,
+      lastRefresh: null,
+    },
   },
   sniper: {
     health: null,
@@ -88,209 +78,206 @@ const DEFAULT_STATE = {
    HELPERS
 ===================================================== */
 
-function safeNum(value, fallback = 0) {
+function safeNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 }
 
-function safeArr(value) {
+function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function isLiveObject(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  for (const k in value) {
-    if (Object.prototype.hasOwnProperty.call(value, k)) return true;
-  }
-  return false;
+function hasObjectData(value) {
+  return !!value && typeof value === "object" && Object.keys(value).length > 0;
 }
 
-function jitter() {
-  return Math.floor(Math.random() * JITTER_MAX);
+function formatCurrency(value, digits = 2) {
+  return `$${safeNumber(value).toFixed(digits)}`;
 }
 
-function expBackoff(retries) {
-  let v = LIVE_INTERVAL;
-  for (let i = 0; i < retries; i++) v = v * 2;
-  return Math.min(v, MAX_BACKOFF);
+function formatCurrencySigned(value, digits = 2) {
+  const n = safeNumber(value);
+  return `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(digits)}`;
 }
 
-function fmtCurrency(value, digits = 2) {
-  return "$" + safeNum(value).toFixed(digits);
+function formatPercent(value, digits = 2) {
+  const n = safeNumber(value);
+  return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}%`;
 }
 
-function fmtSigned(value, digits = 2) {
-  const n = safeNum(value);
-  return (n >= 0 ? "+" : "-") + "$" + Math.abs(n).toFixed(digits);
+function formatCompact(value) {
+  return safeNumber(value).toLocaleString();
 }
 
-function fmtPct(value, digits = 2) {
-  const n = safeNum(value);
-  return (n >= 0 ? "+" : "") + n.toFixed(digits) + "%";
-}
-
-function fmtCompact(value) {
-  return safeNum(value).toLocaleString();
-}
-
-function timeAgo(ts) {
-  if (!ts) return "—";
+function timeAgo(timestamp) {
+  if (!timestamp) return "—";
   try {
-    const d = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-    if (d < 0)    return "just now";
-    if (d < 30)   return "just now";
-    if (d < 60)   return d + "s ago";
-    if (d < 3600) return Math.floor(d / 60) + "m ago";
-    if (d < 86400) return Math.floor(d / 3600) + "h ago";
-    return Math.floor(d / 86400) + "d ago";
-  } catch { return "—"; }
-}
-
-function fmtClock(ts) {
-  if (!ts) return "—";
-  try { return new Date(ts).toLocaleTimeString(); }
-  catch { return "—"; }
-}
-
-function fmtDate(ts) {
-  if (!ts) return "—";
-  try { return new Date(ts).toLocaleDateString(); }
-  catch { return "—"; }
-}
-
-function tradeTs(t)     { return t?.created_at || t?.timestamp || t?.time || t?.received_at || null; }
-function tradeQty(t)    { return t?.qty ?? t?.quantity ?? 0; }
-function tradePnl(t)    { return t?.pnl_usd ?? t?.pnl ?? 0; }
-function tradePnlPct(t) { return t?.pnl_percentage ?? t?.pnl_pct ?? t?.return_percent ?? 0; }
-function tradeSide(t)   { return String(t?.side || t?.action || "").toLowerCase(); }
-function tradeBot(t)    { return t?.bot || t?.source || t?.exchange || t?.chain || "Unknown"; }
-function tradePrice(t)  { return t?.price ?? t?.entry_price ?? t?.exit_price ?? 0; }
-
-function dedupe(trades) {
-  const seen = new Set();
-  const out  = [];
-  for (const t of safeArr(trades)) {
-    const k = [
-      t?.id || "",
-      t?.symbol || "",
-      tradeSide(t),
-      tradeTs(t) || "",
-      tradePrice(t),
-      tradeQty(t),
-      tradeBot(t),
-    ].join("|");
-    if (!seen.has(k)) { seen.add(k); out.push(t); }
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    if (diffMs < 0) return "just now";
+    const sec = Math.floor(diffMs / 1000);
+    const min = Math.floor(sec / 60);
+    const hr = Math.floor(min / 60);
+    const day = Math.floor(hr / 24);
+    if (sec < 30) return "just now";
+    if (sec < 60) return `${sec}s ago`;
+    if (min < 60) return `${min}m ago`;
+    if (hr < 24) return `${hr}h ago`;
+    return `${day}d ago`;
+  } catch {
+    return "—";
   }
-  return out;
 }
 
-/* =====================================================
-   PAYLOAD NORMALIZER
-===================================================== */
+function formatClock(timestamp) {
+  if (!timestamp) return "—";
+  try {
+    return new Date(timestamp).toLocaleTimeString();
+  } catch {
+    return "—";
+  }
+}
 
-function normalizeHistorical(raw) {
-  if (!raw || typeof raw !== "object") return DEFAULT_HISTORICAL;
+function formatDate(timestamp) {
+  if (!timestamp) return "—";
+  try {
+    return new Date(timestamp).toLocaleDateString();
+  } catch {
+    return "—";
+  }
+}
+
+function getTradeTimestamp(trade) {
+  return trade?.created_at || trade?.timestamp || trade?.time || trade?.received_at || null;
+}
+
+function getTradeQty(trade) {
+  return trade?.qty ?? trade?.quantity ?? 0;
+}
+
+function getTradePnlUsd(trade) {
+  return trade?.pnl_usd ?? trade?.pnl ?? 0;
+}
+
+function getTradePnlPercent(trade) {
+  return trade?.pnl_percentage ?? trade?.pnl_pct ?? trade?.return_percent ?? 0;
+}
+
+function getTradeSide(trade) {
+  return String(trade?.side || trade?.action || "").toLowerCase();
+}
+
+function getTradeBot(trade) {
+  return trade?.bot || trade?.source || trade?.exchange || trade?.chain || "Unknown";
+}
+
+function getTradePrice(trade) {
+  return trade?.price ?? trade?.entry_price ?? trade?.exit_price ?? 0;
+}
+
+function normalizeHistoricalShape(value) {
+  if (!value || typeof value !== "object") return DEFAULT_HISTORICAL;
   return {
-    daily:   safeArr(raw.daily),
-    weekly:  safeArr(raw.weekly),
-    monthly: safeArr(raw.monthly),
+    daily: safeArray(value.daily),
+    weekly: safeArray(value.weekly),
+    monthly: safeArray(value.monthly),
   };
 }
 
-function normalizePayload(raw = {}, prevHistorical = DEFAULT_HISTORICAL) {
-  const f = isLiveObject(raw?.futures) ? raw.futures : null;
-  const s = isLiveObject(raw?.stocks)  ? raw.stocks  : null;
-  const n = isLiveObject(raw?.sniper)  ? raw.sniper  : null;
-  const o = isLiveObject(raw?.okx)     ? raw.okx     : null;
+function dedupeTrades(trades) {
+  const seen = new Set();
+  const unique = [];
 
-  const hist = normalizeHistorical(raw?.historical);
-  const histHasData =
-    hist.daily.length > 0 || hist.weekly.length > 0 || hist.monthly.length > 0;
+  for (const trade of safeArray(trades)) {
+    const key = [
+      trade?.id || "",
+      trade?.symbol || "",
+      getTradeSide(trade),
+      getTradeTimestamp(trade) || "",
+      getTradePrice(trade),
+      getTradeQty(trade),
+      getTradeBot(trade),
+    ].join("|");
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(trade);
+    }
+  }
+
+  return unique;
+}
+
+/* =====================================================
+   PAYLOAD NORMALIZATION
+===================================================== */
+
+function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTORICAL) {
+  const futures = hasObjectData(payload?.futures) ? payload.futures : {};
+  const stocks = hasObjectData(payload?.stocks) ? payload.stocks : {};
+  const sniper = hasObjectData(payload?.sniper) ? payload.sniper : {};
+  const okx = hasObjectData(payload?.okx) ? payload.okx : {};
+
+  const recentTrades = safeArray(payload?.recent_trades);
+  const discoveries = safeArray(sniper?.discoveries || payload?.discoveries);
+
+  const incomingHistorical = normalizeHistoricalShape(payload?.historical);
+  const hasIncomingHistorical =
+    incomingHistorical.daily.length > 0 ||
+    incomingHistorical.weekly.length > 0 ||
+    incomingHistorical.monthly.length > 0;
 
   return {
     futures: {
-      health: f,
+      health: hasObjectData(futures) ? futures : null,
       stats: {
-        total_symbols:  safeNum(f?.total_symbols, 0),
-        status:         f?.status || "unknown",
-        daily_realized: f?.daily_realized || {},
-        cex_enabled:    !!f?.cex_enabled,
-        dry_run:        f?.dry_run !== false,
-        db_connected:   !!f?.db_connected,
-        positions:      safeNum(f?.positions, 0),
+        total_symbols: safeNumber(futures?.total_symbols, 199),
+        status: futures?.status || "unknown",
+        daily_realized: futures?.daily_realized || {},
+        cex_enabled: !!futures?.cex_enabled,
+        dry_run: !!futures?.dry_run,
+        db_connected: !!futures?.db_connected,
+        positions: safeNumber(futures?.positions, 0),
       },
     },
     stocks: {
-      health: s,
+      health: hasObjectData(stocks) ? stocks : null,
       stats: {
-        symbols:     safeNum(s?.symbols, 0),
-        mode:        s?.mode || "paper",
-        running:     !!s?.running,
-        lastRefresh: s?.lastRefresh || null,
+        symbols: safeNumber(stocks?.symbols, 0),
+        mode: stocks?.mode || "paper",
+        running: !!stocks?.running,
+        lastRefresh: stocks?.lastRefresh || null,
       },
     },
     sniper: {
-      health:      n,
-      discoveries: safeArr(n?.discoveries || raw?.discoveries),
+      health: hasObjectData(sniper) ? sniper : null,
+      discoveries,
       stats: {
-        status:          n?.status || "idle",
-        active_trades:   safeNum(n?.active_trades, 0),
-        bot_state:       n?.bot_state || "idle",
-        last_heartbeat:  n?.last_heartbeat || n?.timestamp || null,
-        active_networks: safeArr(n?.active_networks),
+        status: sniper?.status || "idle",
+        active_trades: safeNumber(sniper?.active_trades, 0),
+        bot_state: sniper?.bot_state || "idle",
+        last_heartbeat: sniper?.last_heartbeat || sniper?.timestamp || null,
+        active_networks: safeArray(sniper?.active_networks),
       },
     },
     okx: {
-      health: o,
+      health: hasObjectData(okx) ? okx : null,
       stats: {
-        positions_count:      safeNum(o?.positions ?? o?.positions_count, 0),
-        total_trades:         safeNum(o?.total_trades, 0),
-        total_pnl:            safeNum(o?.total_pnl, 0),
-        mode:                 o?.mode || "dry_run",
-        scan_count:           safeNum(o?.scan_count, 0),
-        last_scan_time:       o?.last_scan_time || null,
-        last_candidate_count: safeNum(o?.last_candidate_count, 0),
-        last_signal_count:    safeNum(o?.last_signal_count, 0),
-        symbols_loaded:       safeNum(o?.symbols_loaded, 0),
-        max_positions:        safeNum(o?.max_positions, 0),
-        min_ai_score:         safeNum(o?.min_ai_score, 0),
+        positions_count: typeof okx?.positions === "number" ? okx.positions : safeNumber(okx?.positions_count, 0),
+        total_trades: safeNumber(okx?.total_trades, 0),
+        total_pnl: safeNumber(okx?.total_pnl, 0),
+        mode: okx?.mode || "dry_run",
+        scan_count: safeNumber(okx?.scan_count, 0),
+        last_scan_time: okx?.last_scan_time || null,
+        last_candidate_count: safeNumber(okx?.last_candidate_count, 0),
+        last_signal_count: safeNumber(okx?.last_signal_count, 0),
+        symbols_loaded: safeNumber(okx?.symbols_loaded, 0),
+        max_positions: safeNumber(okx?.max_positions, 0),
+        min_ai_score: safeNumber(okx?.min_ai_score, 0),
       },
     },
-    recent_trades: dedupe(safeArr(raw?.recent_trades)),
-    historical:    histHasData ? hist : prevHistorical,
+    recent_trades: dedupeTrades(recentTrades),
+    historical: hasIncomingHistorical ? incomingHistorical : existingHistorical,
   };
-}
-
-/* =====================================================
-   ✅ AXIOS INSTANCES — no custom headers that trigger CORS preflight
-===================================================== */
-
-/*
-  Root cause of the CORS error:
-    The "Pragma" header (and sometimes "Cache-Control") is NOT in the
-    server's Access-Control-Allow-Headers list.
-    Sending ANY non-simple header forces a preflight OPTIONS request,
-    which the server rejects.
-
-  Fix:
-    Use plain axios instances with NO extra headers.
-    The browser's built-in HTTP cache is fine for public read-only endpoints.
-    Append a timestamp query param to bust the cache without headers.
-*/
-
-const liveAxios = axios.create({
-  timeout: 10_000,
-  // ✅ no custom headers — avoids CORS preflight
-});
-
-const histAxios = axios.create({
-  timeout: 8_000,
-  // ✅ no custom headers
-});
-
-/* Cache-bust via query param instead of headers */
-function cacheBustUrl(url) {
-  return url + "?_t=" + Date.now();
 }
 
 /* =====================================================
@@ -298,158 +285,159 @@ function cacheBustUrl(url) {
 ===================================================== */
 
 function useLiveData() {
-  const [state, setState] = useState(DEFAULT_STATE);
+  const [data, setData] = useState(DEFAULT_STATE);
 
-  const mountedRef  = useRef(false);
-  const liveTimer   = useRef(null);
-  const histTimer   = useRef(null);
-  const abortRef    = useRef(null);
-  const backoffRef  = useRef(LIVE_INTERVAL);
-  const retriesRef  = useRef(0);
-  const prevRef     = useRef(DEFAULT_STATE);
+  const timerRef = useRef(null);
+  const abortRef = useRef(null);
+  const mountedRef = useRef(false);
+  const stateRef = useRef(DEFAULT_STATE);
+  const backoffRef = useRef(30000);
 
-  useEffect(() => { prevRef.current = state; }, [state]);
+  useEffect(() => {
+    stateRef.current = data;
+  }, [data]);
 
-  /* ---- historical: once on mount, then every 10 min ---- */
   const fetchHistorical = useCallback(async () => {
     try {
-      const res  = await histAxios.get(cacheBustUrl(HISTORICAL_URL));
-      const hist = normalizeHistorical(res.data);
-      const has  =
-        hist.daily.length > 0 || hist.weekly.length > 0 || hist.monthly.length > 0;
-      if (has && mountedRef.current) {
-        setState(prev => ({ ...prev, historical: hist }));
-      }
-    } catch (_) {
-      /* historical is optional — silent fail */
+      const response = await axios.get(HISTORICAL_URL, {
+        timeout: 6000,
+        headers: { "Cache-Control": "no-cache" },
+      });
+      const normalized = normalizeHistoricalShape(response.data);
+      const hasAny =
+        normalized.daily.length > 0 ||
+        normalized.weekly.length > 0 ||
+        normalized.monthly.length > 0;
+      return hasAny ? normalized : null;
+    } catch (err) {
+      console.warn("Historical fetch failed:", err?.message || err);
+      return null;
     }
   }, []);
 
-  /* ---- live stats loop ---- */
   useEffect(() => {
     mountedRef.current = true;
 
-    const cancelAbort = () => {
-      if (abortRef.current) {
-        try { abortRef.current.abort(); } catch (_) {}
-        abortRef.current = null;
-      }
+    const clearPending = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (abortRef.current) abortRef.current.abort();
     };
 
-    const clearLive = () => {
-      if (liveTimer.current) { clearTimeout(liveTimer.current); liveTimer.current = null; }
+    const scheduleNext = (ms) => {
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(fetchLiveStats, ms);
     };
 
-    const schedule = (ms) => {
-      clearLive();
-      liveTimer.current = setTimeout(tick, ms + jitter());
-    };
-
-    const tick = async () => {
+    const fetchLiveStats = async () => {
       if (!mountedRef.current) return;
 
-      if (document.hidden) { schedule(LIVE_INTERVAL); return; }
-
-      cancelAbort();
-      abortRef.current = new AbortController();
+      if (document.hidden) {
+        scheduleNext(Math.max(backoffRef.current, 30000));
+        return;
+      }
 
       try {
-        /*
-          ✅ No custom headers — only the AbortController signal.
-          Cache bust via query param.
-        */
-        const res = await liveAxios.get(cacheBustUrl(LIVE_STATS_URL), {
-          signal: abortRef.current.signal,
-        });
+        abortRef.current?.abort();
+        abortRef.current = new AbortController();
+
+        const [liveResponse, historicalResponse] = await Promise.allSettled([
+          axios.get(LIVE_STATS_URL, {
+            timeout: 10000,
+            signal: abortRef.current.signal,
+            headers: { "Cache-Control": "no-cache" },
+          }),
+          fetchHistorical(),
+        ]);
 
         if (!mountedRef.current) return;
 
-        const now  = new Date();
-        const norm = normalizePayload(res.data, prevRef.current.historical);
+        const now = new Date();
+        const previous = stateRef.current;
+        let nextState = { ...previous };
+        let hadLiveError = false;
 
-        retriesRef.current = 0;
-        backoffRef.current = LIVE_INTERVAL;
-
-        setState(prev => ({
-          ...prev,
-          ...norm,
-          loading:          false,
-          error:            null,
-          lastUpdate:       now,
-          lastSuccessAt:    now,
-          rateLimitedUntil: null,
-        }));
-
-        schedule(LIVE_INTERVAL);
-
-      } catch (err) {
-        if (!mountedRef.current) return;
-        if (axios.isCancel(err))  return;
-
-        const status     = err?.response?.status;
-        const retryAfter = err?.response?.headers?.["retry-after"];
-
-        let delay = LIVE_INTERVAL;
-
-        if (status === 429) {
-          retriesRef.current += 1;
-          if (retryAfter && !isNaN(parseInt(retryAfter, 10))) {
-            delay = parseInt(retryAfter, 10) * 1000;
-          } else {
-            delay = expBackoff(retriesRef.current);
-          }
+        if (liveResponse.status === "fulfilled") {
+          nextState = {
+            ...previous,
+            ...mergeLiveStatsPayload(liveResponse.value.data, previous.historical),
+          };
+          backoffRef.current = 30000;
         } else {
-          retriesRef.current = 0;
-          delay = Math.min(backoffRef.current + 10_000, MAX_BACKOFF);
+          hadLiveError = true;
+          const status = liveResponse.reason?.response?.status;
+
+          if (status === 429) {
+            const retryAfterHeader = liveResponse.reason?.response?.headers?.["retry-after"];
+            const retryAfterSeconds = Number(retryAfterHeader);
+            backoffRef.current =
+              Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                ? retryAfterSeconds * 1000
+                : Math.min(backoffRef.current * 2, 120000);
+          } else {
+            backoffRef.current = Math.min(backoffRef.current + 10000, 120000);
+          }
         }
 
-        backoffRef.current = delay;
+        if (historicalResponse.status === "fulfilled" && historicalResponse.value) {
+          nextState.historical = historicalResponse.value;
+        }
 
-        const secs = Math.ceil(delay / 1000);
-        const msg  = status === 429
-          ? "Rate limited — retrying in " + secs + "s"
-          : "Connection issue — retrying in " + secs + "s";
+        setData({
+          ...nextState,
+          loading: false,
+          error: hadLiveError
+            ? `Live data unavailable. Retrying in ${Math.ceil(backoffRef.current / 1000)}s...`
+            : null,
+          lastUpdate: now,
+          lastSuccessAt: hadLiveError ? previous.lastSuccessAt : now,
+          rateLimitedUntil: hadLiveError
+            ? new Date(Date.now() + backoffRef.current)
+            : null,
+        });
 
-        setState(prev => ({
+        scheduleNext(backoffRef.current);
+      } catch (err) {
+        if (!mountedRef.current) return;
+        if (axios.isCancel(err)) return;
+
+        backoffRef.current = Math.min(backoffRef.current + 10000, 120000);
+
+        setData((prev) => ({
           ...prev,
-          loading:          false,
-          error:            msg,
-          rateLimitedUntil: new Date(Date.now() + delay),
+          loading: false,
+          error: `Connection issue. Retrying in ${Math.ceil(backoffRef.current / 1000)}s...`,
+          lastUpdate: new Date(),
+          rateLimitedUntil: new Date(Date.now() + backoffRef.current),
         }));
 
-        schedule(delay);
+        scheduleNext(backoffRef.current);
       }
     };
 
-    fetchHistorical();
-    liveTimer.current  = setTimeout(tick, 250);
-    histTimer.current  = setInterval(fetchHistorical, HISTORICAL_INTERVAL);
+    timerRef.current = setTimeout(fetchLiveStats, 250);
 
-    const onVisible = () => {
+    const handleVisibility = () => {
       if (!document.hidden) {
-        clearLive();
-        retriesRef.current = 0;
-        backoffRef.current = LIVE_INTERVAL;
-        liveTimer.current  = setTimeout(tick, 500 + jitter());
+        clearPending();
+        backoffRef.current = 30000;
+        timerRef.current = setTimeout(fetchLiveStats, 500);
       }
     };
 
-    document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       mountedRef.current = false;
-      clearLive();
-      cancelAbort();
-      clearInterval(histTimer.current);
-      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearPending();
     };
   }, [fetchHistorical]);
 
-  return state;
+  return data;
 }
 
 /* =====================================================
-   HEARTBEAT
+   UI COMPONENTS
 ===================================================== */
 
 function Heartbeat({ active = true }) {
@@ -457,19 +445,24 @@ function Heartbeat({ active = true }) {
 
   useEffect(() => {
     if (!active) return;
-    const id = setInterval(() => {
+    const interval = setInterval(() => {
       setBeat(true);
       setTimeout(() => setBeat(false), 300);
     }, 1400);
-    return () => clearInterval(id);
+    return () => clearInterval(interval);
   }, [active]);
 
   if (!active) {
     return (
-      <svg viewBox="0 0 100 40" className="w-24 h-8 opacity-20"
-        xmlns="http://www.w3.org/2000/svg">
-        <polyline points="0,20 100,20" fill="none" stroke="#6b7280"
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <svg viewBox="0 0 100 40" className="w-24 h-8 opacity-20" xmlns="http://www.w3.org/2000/svg">
+        <polyline
+          points="0,20 30,20 35,20 40,20 45,20 50,20 100,20"
+          fill="none"
+          stroke="#6b7280"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     );
   }
@@ -477,9 +470,8 @@ function Heartbeat({ active = true }) {
   return (
     <svg
       viewBox="0 0 100 40"
+      className={`w-24 h-8 transition-all duration-150 ${beat ? "drop-shadow-[0_0_6px_rgba(52,211,153,0.9)]" : ""}`}
       xmlns="http://www.w3.org/2000/svg"
-      className={"w-24 h-8 transition-all duration-150 " +
-        (beat ? "drop-shadow-[0_0_6px_rgba(52,211,153,0.9)]" : "")}
     >
       <polyline
         points="0,20 28,20 33,5 38,34 43,20 55,20 60,14 65,26 70,20 100,20"
@@ -489,156 +481,128 @@ function Heartbeat({ active = true }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx={beat ? "43" : "70"} cy="20" r="3"
-        fill={beat ? "#34d399" : "#10b981"} />
+      <circle cx={beat ? "43" : "70"} cy="20" r="3" fill={beat ? "#34d399" : "#10b981"} />
     </svg>
   );
 }
 
-/* =====================================================
-   STAT CARD
-===================================================== */
-
 function StatCard({ title, value, icon, subtext, color = "emerald" }) {
-  const colors = {
+  const colorClasses = {
     emerald: "text-emerald-400",
-    indigo:  "text-indigo-400",
-    purple:  "text-purple-400",
-    amber:   "text-amber-400",
-    red:     "text-red-400",
-    cyan:    "text-cyan-400",
+    indigo: "text-indigo-400",
+    purple: "text-purple-400",
+    amber: "text-amber-400",
+    red: "text-red-400",
+    cyan: "text-cyan-400",
   };
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5
-      hover:bg-white/[0.08] transition-all group">
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 hover:bg-white/10 transition-all">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] sm:text-xs text-white/50 uppercase tracking-wider">
-            {title}
-          </p>
-          <p className={"text-xl sm:text-2xl md:text-3xl font-bold mt-1 " +
-            (colors[color] || colors.emerald)}>
+          <p className="text-xs sm:text-sm text-white/50">{title}</p>
+          <p className={`text-xl sm:text-2xl md:text-3xl font-bold mt-1 ${colorClasses[color]}`}>
             {value}
           </p>
-          {subtext
-            ? <p className="text-[10px] sm:text-xs text-white/30 mt-1">{subtext}</p>
-            : null}
+          {subtext ? <p className="text-[10px] sm:text-xs text-white/30 mt-1">{subtext}</p> : null}
         </div>
-        <div className="text-2xl sm:text-3xl opacity-50 group-hover:opacity-80
-          transition-opacity shrink-0">
-          {icon}
-        </div>
+        <div className="text-2xl sm:text-3xl opacity-60 shrink-0">{icon}</div>
       </div>
     </div>
   );
 }
 
-/* =====================================================
-   BOT CARD
-===================================================== */
-
 function BotCard({ name, icon, health, stats, accent = "indigo" }) {
-  const isOnline = isLiveObject(health);
+  const isOnline = hasObjectData(health);
 
-  const borders = {
-    indigo:  "border-indigo-500/20  bg-indigo-500/10  hover:border-indigo-500/40",
-    emerald: "border-emerald-500/20 bg-emerald-500/10 hover:border-emerald-500/40",
-    amber:   "border-amber-500/20   bg-amber-500/10   hover:border-amber-500/40",
-    cyan:    "border-cyan-500/20    bg-cyan-500/10    hover:border-cyan-500/40",
+  const accentMap = {
+    indigo: "border-indigo-500/20 bg-indigo-500/10",
+    emerald: "border-emerald-500/20 bg-emerald-500/10",
+    purple: "border-purple-500/20 bg-purple-500/10",
+    amber: "border-amber-500/20 bg-amber-500/10",
+    cyan: "border-cyan-500/20 bg-cyan-500/10",
   };
 
-  const rows = useMemo(() => {
-    if (name === "Futures Bot") return [
-      ["Pairs",     stats?.total_symbols ?? 0],
-      ["Status",    stats?.status        || "—"],
-      ["Positions", stats?.positions     ?? 0],
-      ["DB",        stats?.db_connected  ? "✓ connected" : "✗ off"],
+  let lines = [];
+
+  if (name === "Futures Bot") {
+    lines = [
+      ["Pairs", stats?.total_symbols || 0],
+      ["Status", stats?.status || "unknown"],
+      ["DB", stats?.db_connected ? "connected" : "disconnected"],
     ];
-    if (name === "Stock Bot") return [
-      ["Symbols",   stats?.symbols      ?? 0],
-      ["Mode",      stats?.mode         || "paper"],
-      ["Running",   stats?.running      ? "Yes" : "No"],
-      ["Refresh",   stats?.lastRefresh  ? timeAgo(stats.lastRefresh) : "—"],
+  } else if (name === "Stock Bot") {
+    lines = [
+      ["Symbols", stats?.symbols || 0],
+      ["Mode", stats?.mode || "paper"],
+      ["Refresh", stats?.lastRefresh ? timeAgo(stats.lastRefresh) : "—"],
     ];
-    if (name === "OKX Spot") return [
-      ["Positions",  stats?.positions_count      ?? 0],
-      ["Trades",     stats?.total_trades         ?? 0],
-      ["P&L",        fmtSigned(stats?.total_pnl  ?? 0)],
-      ["Mode",       stats?.mode                 || "dry_run"],
-      ["Candidates", stats?.last_candidate_count ?? 0],
+  } else if (name === "OKX Spot") {
+    lines = [
+      ["Positions", stats?.positions_count || 0],
+      ["Trades", stats?.total_trades || 0],
+      ["Mode", stats?.mode || "dry_run"],
+      ["Candidates", stats?.last_candidate_count || 0],
     ];
-    return [];
-  }, [name, stats]);
+  }
 
   return (
-    <div className={"border rounded-xl p-3 sm:p-4 transition-all " +
-      (borders[accent] || borders.indigo)}>
-
+    <div className={`border rounded-xl p-3 sm:p-4 ${accentMap[accent] || accentMap.indigo}`}>
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">{icon}</span>
           <span className="font-semibold text-sm sm:text-base truncate">{name}</span>
         </div>
-        <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
-          (isOnline
-            ? "bg-emerald-500/20 text-emerald-300"
-            : "bg-red-500/20 text-red-300")}>
-          {isOnline ? "● LIVE" : "○ OFFLINE"}
+        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
+          {isOnline ? "● Online" : "○ Offline"}
         </span>
       </div>
 
       {isOnline ? (
-        <div className="space-y-1.5">
-          {rows.map(([label, val]) => (
-            <div key={label} className="flex justify-between items-center text-xs">
-              <span className="text-white/45">{label}</span>
-              <span className="text-white font-medium">{val}</span>
+        <div className="text-xs space-y-2">
+          {lines.map(([label, value], idx) => (
+            <div key={idx} className="flex justify-between items-center">
+              <span className="text-white/50">{label}</span>
+              <span className="text-white font-medium">{value}</span>
             </div>
           ))}
         </div>
       ) : (
-        <p className="text-xs text-white/30 py-2 text-center">Waiting for connection…</p>
+        <div className="text-xs text-white/30 py-2 text-center">Waiting for connection...</div>
       )}
     </div>
   );
 }
 
-/* =====================================================
-   SNIPER CARD
-===================================================== */
-
 function SniperCard({ health, discoveries, stats }) {
-  const isOnline  = isLiveObject(health);
-  const discCount = safeArr(discoveries).length;
-  const prevRef   = useRef(discCount);
+  const isOnline = hasObjectData(health);
+  const discoveryCount = safeArray(discoveries).length;
   const [pinged, setPinged] = useState(false);
+  const prevRef = useRef(discoveryCount);
 
   useEffect(() => {
-    if (discCount > prevRef.current) {
+    if (discoveryCount > prevRef.current) {
       setPinged(true);
       const t = setTimeout(() => setPinged(false), 1200);
-      prevRef.current = discCount;
+      prevRef.current = discoveryCount;
       return () => clearTimeout(t);
     }
-    prevRef.current = discCount;
-  }, [discCount]);
+    prevRef.current = discoveryCount;
+  }, [discoveryCount]);
 
   return (
-    <div className={"border rounded-xl p-3 sm:p-4 transition-all duration-300 " +
-      "border-purple-500/30 bg-purple-500/10 hover:border-purple-500/50 " +
-      (pinged ? "ring-2 ring-purple-400/60" : "")}>
-
+    <div
+      className={`border rounded-xl p-3 sm:p-4 transition-all duration-300 border-purple-500/30 bg-purple-500/10 ${
+        pinged ? "ring-2 ring-purple-400/60" : ""
+      }`}
+    >
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">🦄</span>
           <span className="font-semibold text-sm sm:text-base truncate">Sniper Bot</span>
         </div>
-        <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
-          (isOnline
-            ? "bg-emerald-500/20 text-emerald-300"
-            : "bg-red-500/20 text-red-300")}>
-          {isOnline ? "● LIVE" : "○ OFFLINE"}
+        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
+          {isOnline ? "● Online" : "○ Offline"}
         </span>
       </div>
 
@@ -647,370 +611,358 @@ function SniperCard({ health, discoveries, stats }) {
       </div>
 
       {isOnline ? (
-        <div className="space-y-1.5">
-          {[
-            ["Discoveries",   discCount],
-            ["Status",        stats?.status         || "idle"],
-            ["Active Trades", stats?.active_trades  ?? 0],
-            ["Networks",      (stats?.active_networks?.length ?? 0) + " active"],
-          ].map(([label, val]) => (
-            <div key={label} className="flex justify-between items-center text-xs">
-              <span className="text-white/45">{label}</span>
-              <span className={"font-medium " +
-                (label === "Discoveries" && discCount > 0
-                  ? "text-purple-300 text-base"
-                  : "text-white")}>
-                {val}
-              </span>
-            </div>
-          ))}
+        <div className="text-xs space-y-2">
+          <div className="flex justify-between">
+            <span className="text-white/50">Discoveries</span>
+            <span className="text-purple-300 font-semibold">{discoveryCount}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-white/50">Status</span>
+            <span className="text-white">{stats?.status || "idle"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-white/50">State</span>
+            <span className="text-white">{stats?.bot_state || "idle"}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-white/50">Heartbeat</span>
+            <span className="text-white truncate">{stats?.last_heartbeat ? timeAgo(stats.last_heartbeat) : "—"}</span>
+          </div>
         </div>
       ) : (
-        <p className="text-xs text-white/30 py-2 text-center">Waiting for connection…</p>
+        <div className="text-xs text-white/30 py-2 text-center">Waiting for connection...</div>
       )}
 
-      {pinged && (
-        <div className="mt-2 text-center text-[10px] text-purple-300
-          bg-purple-500/20 rounded-full py-0.5 animate-pulse">
+      {pinged ? (
+        <div className="mt-2 text-center text-[10px] text-purple-300 bg-purple-500/20 rounded-full py-0.5 animate-pulse">
           ✨ New discovery detected
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
-/* =====================================================
-   TRADE ROW
-===================================================== */
-
 function TradeRow({ trade }) {
-  const side   = tradeSide(trade);
-  const pnl    = safeNum(tradePnl(trade), 0);
-  const pnlPct = safeNum(tradePnlPct(trade), 0);
-  const qty    = safeNum(tradeQty(trade), 0);
-  const price  = safeNum(tradePrice(trade), 0);
+  const side = getTradeSide(trade);
+  const pnlUsd = safeNumber(getTradePnlUsd(trade), 0);
+  const pnlPercent = safeNumber(getTradePnlPercent(trade), 0);
+  const qty = safeNumber(getTradeQty(trade), 0);
+  const price = safeNumber(getTradePrice(trade), 0);
   const symbol = trade?.symbol || "Unknown";
-  const bot    = tradeBot(trade);
-  const ts     = tradeTs(trade);
+  const bot = getTradeBot(trade);
+  const ts = getTradeTimestamp(trade);
 
-  const isBuy   = side === "buy"   || side === "long";
-  const isSell  = side === "sell"  || side === "short";
+  const isBuy = side === "buy" || side === "long";
+  const isSell = side === "sell" || side === "short";
   const isClose = side === "close" || side === "exit";
-  const isOpen  = !isClose && trade?.status === "open" && pnl === 0;
+  const isOpen = !isClose && trade?.status === "open" && pnlUsd === 0;
 
-  let border = "border-l-gray-500";
-  let bg     = "bg-white/[0.03]";
-  let badge  = "bg-gray-500/20 text-gray-300";
-  let label  = side ? side.toUpperCase() : "UNKNOWN";
+  let borderColor = "border-l-gray-500";
+  let bgColor = "bg-white/[0.03]";
+  let badgeColor = "bg-gray-500/20 text-gray-300";
+  let badgeText = side ? side.toUpperCase() : "UNKNOWN";
 
-  if (isOpen)       { border = "border-l-blue-500";   bg = "bg-blue-500/5";   badge = "bg-blue-500/20 text-blue-300";     label = "OPEN";   }
-  else if (isClose) { border = "border-l-purple-500"; bg = "bg-purple-500/5"; badge = "bg-purple-500/20 text-purple-300"; label = "CLOSED"; }
-  else if (isBuy)   { border = "border-l-green-500";  bg = "bg-green-500/5";  badge = "bg-green-500/20 text-green-300";   label = "BUY";    }
-  else if (isSell)  { border = "border-l-red-500";    bg = "bg-red-500/5";    badge = "bg-red-500/20 text-red-300";       label = "SELL";   }
+  if (isOpen) {
+    borderColor = "border-l-blue-500";
+    bgColor = "bg-blue-500/5";
+    badgeColor = "bg-blue-500/20 text-blue-300";
+    badgeText = "OPEN";
+  } else if (isClose) {
+    borderColor = "border-l-purple-500";
+    bgColor = "bg-purple-500/5";
+    badgeColor = "bg-purple-500/20 text-purple-300";
+    badgeText = "CLOSED";
+  } else if (isBuy) {
+    borderColor = "border-l-green-500";
+    bgColor = "bg-green-500/5";
+    badgeColor = "bg-green-500/20 text-green-300";
+    badgeText = "BUY";
+  } else if (isSell) {
+    borderColor = "border-l-red-500";
+    bgColor = "bg-red-500/5";
+    badgeColor = "bg-red-500/20 text-red-300";
+    badgeText = "SELL";
+  }
 
   return (
-    <div className={"flex items-center justify-between gap-3 px-3 py-2 " +
-      "rounded-xl text-sm border-l-4 " + border + " " + bg}>
+    <div className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor}`}>
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <span className="text-base shrink-0">📊</span>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-sm truncate">{symbol}</span>
-            <span className={"text-[10px] px-1.5 py-0.5 rounded " + badge}>{label}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${badgeColor}`}>{badgeText}</span>
             <span className="text-[10px] text-white/35">{bot}</span>
           </div>
           <div className="text-[10px] text-white/35">
-            {timeAgo(ts)} {" · "} {fmtCurrency(price)} {" · "}
-            {qty > 0 ? qty.toFixed(4) + " units" : "—"}
+            {timeAgo(ts)} • {formatCurrency(price)} • {qty > 0 ? `${qty.toFixed(4)} units` : "—"}
           </div>
         </div>
       </div>
 
       <div className="text-right shrink-0">
         {isOpen ? (
-          <span className="font-bold text-sm text-blue-400">Open</span>
-        ) : pnl !== 0 ? (
-          <>
-            <div className={"font-bold text-sm " + (pnl > 0 ? "text-emerald-400" : "text-red-400")}>
-              {fmtSigned(pnl)}
+          <div className="font-bold text-sm text-blue-400">Open</div>
+        ) : pnlUsd !== 0 ? (
+          <div>
+            <div className={`font-bold text-sm ${pnlUsd > 0 ? "text-emerald-400" : "text-red-400"}`}>
+              {formatCurrencySigned(pnlUsd)}
             </div>
-            <div className={"text-[10px] " + (pnlPct > 0 ? "text-emerald-400/70" : "text-red-400/70")}>
-              {fmtPct(pnlPct)}
+            <div className={`text-[10px] ${pnlPercent > 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
+              {formatPercent(pnlPercent)}
             </div>
-          </>
+          </div>
         ) : (
-          <span className="font-bold text-sm text-white">{fmtCurrency(price)}</span>
+          <div className="font-bold text-sm text-white">{formatCurrency(price)}</div>
         )}
       </div>
     </div>
   );
 }
 
-/* =====================================================
-   DISCOVERY CARD
-===================================================== */
-
 function DiscoveryCard({ discovery }) {
-  const score = safeNum(discovery?.ai_score ?? discovery?.score, 0);
+  const score = safeNumber(discovery?.ai_score ?? discovery?.score, 0);
   const chain = discovery?.chain || "ethereum";
-  const age   = discovery?.age   ?? discovery?.age_blocks ?? 0;
-  const pair  = discovery?.pair  || discovery?.address || discovery?.token || "New token";
+  const age = discovery?.age ?? discovery?.age_blocks ?? 0;
+  const pair = discovery?.pair || discovery?.address || discovery?.token || "New token";
 
-  const scoreColor =
-    score >= 0.7 ? "text-green-400" :
-    score >= 0.5 ? "text-yellow-400" :
-    "text-orange-400";
+  let scoreColor = "text-orange-400";
+  if (score >= 0.7) scoreColor = "text-green-400";
+  else if (score >= 0.5) scoreColor = "text-yellow-400";
 
   return (
-    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs
-      hover:bg-purple-500/10 transition-colors">
+    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs hover:bg-purple-500/10 transition-colors">
       <div className="flex justify-between items-start mb-2 gap-2">
-        <span className="flex items-center gap-1 font-medium min-w-0">
-          <span className="shrink-0">🦄</span>
+        <span className="font-medium flex items-center gap-1 min-w-0">
+          <span className="text-base shrink-0">🦄</span>
           <span className="capitalize truncate">{chain}</span>
         </span>
-        <span className="text-white/40 shrink-0">{age} blocks</span>
+        <span className="text-white/40 text-[10px] shrink-0">{age} blocks</span>
       </div>
       <div className="text-white/60 font-mono text-[10px] mb-2 truncate">{pair}</div>
       <div className="flex justify-between items-center gap-2">
-        <span className="text-white/40">
-          AI Score
-          <span className={"ml-2 font-bold " + scoreColor}>{score.toFixed(2)}</span>
-        </span>
-        {score >= 0.7
-          ? <span className="text-[8px] bg-green-500/20 text-green-300 px-2 py-1 rounded-full">Ready</span>
-          : null}
+        <div>
+          <span className="text-white/40">AI Score</span>
+          <span className={`ml-2 font-bold ${scoreColor}`}>{score.toFixed(2)}</span>
+        </div>
+        {score >= 0.7 ? (
+          <span className="text-[8px] bg-green-500/20 text-green-300 px-2 py-1 rounded-full">
+            Ready
+          </span>
+        ) : null}
       </div>
     </div>
   );
 }
 
-/* =====================================================
-   HISTORICAL CHART
-===================================================== */
-
 function HistoricalChart({ data, type, onChangeType }) {
-  const PERIODS = ["daily", "weekly", "monthly"];
-  const rows    = safeArr(data?.[type]);
+  const chartData = safeArray(data?.[type]);
+  const maxValue = Math.max(...chartData.map((d) => Math.abs(safeNumber(d?.pnl))), 1);
 
-  const getVal  = (d) => safeNum(d?.pnl || d?.value || d?.pnl_usd, 0);
-  const getDate = (d) => d?.date || d?.timestamp || d?.day || "";
-
-  const maxAbs = useMemo(() => {
-    let m = 1;
-    for (const d of rows) {
-      const v = Math.abs(getVal(d));
-      if (v > m) m = v;
-    }
-    return m;
-  }, [rows]);
+  if (!chartData.length) {
+    return (
+      <div className="space-y-3">
+        <div className="flex gap-2 text-xs">
+          {["daily", "weekly", "monthly"].map((period) => (
+            <button
+              key={period}
+              type="button"
+              onClick={() => onChangeType(period)}
+              className={`px-3 py-1 rounded-lg capitalize transition-all ${
+                type === period ? "bg-indigo-600 text-white" : "bg-white/5 text-white/50 hover:bg-white/10"
+              }`}
+            >
+              {period}
+            </button>
+          ))}
+        </div>
+        <div className="h-32 flex items-center justify-center text-white/30 text-sm">
+          No historical data yet
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
       <div className="flex gap-2 text-xs">
-        {PERIODS.map(p => (
-          <button key={p} type="button" onClick={() => onChangeType(p)}
-            className={"px-3 py-1 rounded-lg capitalize transition-all " +
-              (type === p
-                ? "bg-indigo-600 text-white"
-                : "bg-white/5 text-white/50 hover:bg-white/10")}>
-            {p}
+        {["daily", "weekly", "monthly"].map((period) => (
+          <button
+            key={period}
+            type="button"
+            onClick={() => onChangeType(period)}
+            className={`px-3 py-1 rounded-lg capitalize transition-all ${
+              type === period ? "bg-indigo-600 text-white" : "bg-white/5 text-white/50 hover:bg-white/10"
+            }`}
+          >
+            {period}
           </button>
         ))}
       </div>
 
-      {rows.length === 0 ? (
-        <div className="h-32 flex items-center justify-center text-white/30 text-sm">
-          No historical data yet
-        </div>
-      ) : (
-        <div className="h-32 flex items-end gap-1">
-          {rows.slice(-12).map((d, i) => {
-            const val  = getVal(d);
-            const pct  = (Math.abs(val) / maxAbs) * 100;
-            const pos  = val >= 0;
-            const date = getDate(d);
-            return (
-              <div key={date || i}
-                className="flex-1 flex flex-col items-center group relative">
-                <div
-                  className={"w-full rounded-t transition-all group-hover:opacity-70 " +
-                    (pos ? "bg-emerald-500/50" : "bg-red-500/50")}
-                  style={{ height: Math.max(pct, 4) + "%" }}
-                >
-                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2
-                    bg-gray-800 border border-white/10 text-[10px] px-2 py-1 rounded
-                    opacity-0 group-hover:opacity-100 transition-opacity
-                    whitespace-nowrap z-10 pointer-events-none">
-                    <div className="font-medium">{date ? fmtDate(date) : "—"}</div>
-                    <div className={pos ? "text-emerald-400" : "text-red-400"}>
-                      {fmtSigned(val)}
-                    </div>
+      <div className="h-32 flex items-end gap-1">
+        {chartData.slice(-10).map((d, i) => {
+          const pnl = safeNumber(d?.pnl);
+          const pnlPercent = safeNumber(d?.pnlPercent);
+          const height = (Math.abs(pnl) / maxValue) * 100;
+          const positive = pnl >= 0;
+
+          return (
+            <div key={`${d?.date || i}`} className="flex-1 flex flex-col items-center group relative">
+              <div
+                className={`w-full rounded-t relative group-hover:opacity-80 transition-all ${
+                  positive ? "bg-emerald-500/50" : "bg-red-500/50"
+                }`}
+                style={{ height: `${Math.max(height, 5)}%` }}
+              >
+                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 border border-white/10">
+                  <div className="font-medium">{formatDate(d?.date)}</div>
+                  <div className={positive ? "text-emerald-400" : "text-red-400"}>
+                    {formatCurrencySigned(pnl)} ({formatPercent(pnlPercent)})
                   </div>
                 </div>
-                <span className="text-[8px] text-white/25 mt-1 truncate w-full text-center">
-                  {date ? fmtDate(date).slice(0, 5) : "—"}
-                </span>
               </div>
-            );
-          })}
-        </div>
-      )}
+              <span className="text-[8px] text-white/30 mt-1">{formatDate(d?.date).slice(0, 5)}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-/* =====================================================
-   INVESTOR PANEL
-===================================================== */
+function InvestorPanel({ data, totalPnL, totalTradesCount, activeBots, discoveryCount }) {
+  const marketCoverage =
+    safeNumber(data.futures.stats?.total_symbols) +
+    safeNumber(data.stocks.stats?.symbols) +
+    safeNumber(data.okx.stats?.symbols_loaded);
 
-function InvestorPanel({ data, totalPnL, totalTrades, activeBots, discCount }) {
-  const wins  = useMemo(
-    () => safeArr(data.recent_trades).filter(t => tradePnl(t) > 0).length,
-    [data.recent_trades]
-  );
-  const total = safeArr(data.recent_trades).length;
-  const wr    = total > 0 ? ((wins / total) * 100).toFixed(1) : "0.0";
-
-  const coverage =
-    safeNum(data.futures.stats?.total_symbols) +
-    safeNum(data.stocks.stats?.symbols)        +
-    safeNum(data.okx.stats?.symbols_loaded);
-
-  const bots = [
-    { label: "Futures Bot", online: isLiveObject(data.futures.health) },
-    { label: "Stock Bot",   online: isLiveObject(data.stocks.health)  },
-    { label: "Sniper Bot",  online: isLiveObject(data.sniper.health)  },
-    { label: "OKX Spot",    online: isLiveObject(data.okx.health)     },
+  const stackMode = [
+    data.okx.stats?.mode || "dry_run",
+    data.stocks.stats?.mode || "paper",
+    data.futures.stats?.dry_run ? "dry_run" : "live-ready",
   ];
 
+  const headline = totalPnL >= 0 ? "Revenue-oriented bot infrastructure" : "Multi-bot live monitoring stack";
+
   return (
-    <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30
-      border border-indigo-500/30 rounded-2xl p-5 sm:p-6">
-
-      <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
+    <div className="bg-gradient-to-br from-indigo-600/15 to-emerald-600/10 border border-indigo-500/20 rounded-2xl p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r
-            from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-            Investment Dashboard
-          </h2>
-          <p className="text-xs text-white/40 mt-1">
-            Real-time performance · Institutional-grade monitoring
-          </p>
+          <h2 className="font-bold text-lg">Investor Snapshot</h2>
+          <p className="text-xs text-white/50 mt-1">{headline}</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <div className="text-[10px] text-white/40">Composite P&amp;L</div>
-            <div className={"text-lg font-bold " +
-              (totalPnL >= 0 ? "text-emerald-400" : "text-red-400")}>
-              {fmtSigned(totalPnL)}
-            </div>
+        <span className="text-[10px] px-2 py-1 rounded-full bg-white/10 text-white/70">
+          Public-facing metrics
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs mb-4">
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40">Bot Coverage</div>
+          <div className="text-white font-semibold mt-1">{activeBots}/4 active</div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40">Tracked Trades</div>
+          <div className="text-white font-semibold mt-1">{formatCompact(totalTradesCount)}</div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40">Aggregate P&amp;L</div>
+          <div className={`font-semibold mt-1 ${totalPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {formatCurrencySigned(totalPnL)}
           </div>
-          <div className="h-8 w-px bg-white/10" />
-          <div className="text-right">
-            <div className="text-[10px] text-white/40">Win Rate</div>
-            <div className="text-lg font-bold text-emerald-400">{wr}%</div>
-          </div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40">Discovery Engine</div>
+          <div className="text-white font-semibold mt-1">{discoveryCount} findings</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        {[
-          ["Active Strategies", activeBots + "/4",        "Systems online"],
-          ["Total Trades",      fmtCompact(totalTrades),  "Lifetime trades"],
-          ["Market Coverage",   fmtCompact(coverage),     "Symbols tracked"],
-          ["Discovery Engine",  fmtCompact(discCount),    "Opportunities"],
-        ].map(([title, val, sub]) => (
-          <div key={title} className="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div className="text-[10px] text-white/40 mb-1">{title}</div>
-            <div className="text-xl font-bold">{val}</div>
-            <div className="text-[10px] text-white/30 mt-0.5">{sub}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-sm">
-        <div className="lg:col-span-2 bg-white/5 rounded-xl p-4 border border-white/10">
-          <div className="text-white/40 text-xs mb-3">Investment Thesis</div>
-          <p className="text-white/75 text-sm leading-relaxed">
-            IMALI operates diversified multi-bot infrastructure across centralized
-            exchanges, equities, futures, and DEX discovery — providing institutional-grade
-            market coverage and transparent risk distribution.
-          </p>
-          <div className="flex flex-wrap gap-4 text-xs mt-3 text-white/60">
-            <span><span className="text-emerald-400">●</span> Live Proof-of-Execution</span>
-            <span><span className="text-indigo-400">●</span> Transparent Performance</span>
-            <span><span className="text-purple-400">●</span> Real-time Risk Monitoring</span>
-          </div>
-        </div>
-        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-          <div className="text-white/40 text-xs mb-3">Operational Status</div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40 mb-2">Operational profile</div>
           <div className="space-y-2">
-            {bots.map(({ label, online }) => (
-              <div key={label} className="flex justify-between text-xs">
-                <span className="text-white/50">{label}</span>
-                <span className={online ? "text-emerald-400" : "text-white/30"}>
-                  {online ? "Operational" : "Standby"}
-                </span>
-              </div>
-            ))}
+            <div className="flex justify-between"><span>Tracked universe</span><span>{formatCompact(marketCoverage)}</span></div>
+            <div className="flex justify-between"><span>OKX scan count</span><span>{formatCompact(data.okx.stats?.scan_count || 0)}</span></div>
+            <div className="flex justify-between"><span>Candidate flow</span><span>{data.okx.stats?.last_candidate_count || 0} / scan</span></div>
+            <div className="flex justify-between"><span>Signal flow</span><span>{data.okx.stats?.last_signal_count || 0} / scan</span></div>
           </div>
         </div>
+
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-white/40 mb-2">Commercial positioning</div>
+          <div className="space-y-2 text-white/70">
+            <div>• public live dashboard for trust and conversion</div>
+            <div>• multi-bot architecture across CEX, stocks, futures, and DEX discovery</div>
+            <div>• investor-ready visibility into uptime, scanning cadence, and signal production</div>
+            <div>• clear path to premium tiers, managed signals, and execution subscriptions</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 text-[11px] text-white/35">
+        Stack modes: {stackMode.join(" • ")}
       </div>
     </div>
   );
 }
 
 /* =====================================================
-   MAIN
+   MAIN COMPONENT
 ===================================================== */
 
 export default function PublicDashboard() {
   const data = useLiveData();
-
-  const [activeTab,      setActiveTab]      = useState("all");
+  const [activeTab, setActiveTab] = useState("all");
+  const [clock, setClock] = useState(new Date());
   const [historicalType, setHistoricalType] = useState("daily");
-  const [clock,          setClock]          = useState(new Date());
 
   useEffect(() => {
-    const t = setInterval(() => setClock(new Date()), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const hasConnection = !!(
-    isLiveObject(data.futures.health) ||
-    isLiveObject(data.stocks.health)  ||
-    isLiveObject(data.sniper.health)  ||
-    isLiveObject(data.okx.health)
+    data.futures.health ||
+    data.stocks.health ||
+    data.sniper.health ||
+    data.okx.health
   );
 
   const isStale = data.lastSuccessAt
-    ? (Date.now() - new Date(data.lastSuccessAt).getTime()) / 1000 > 90
+    ? Math.floor((Date.now() - new Date(data.lastSuccessAt).getTime()) / 1000) > 90
     : false;
 
-  const allTrades = useMemo(() =>
-    dedupe(data.recent_trades)
-      .sort((a, b) =>
-        new Date(tradeTs(b) || 0).getTime() -
-        new Date(tradeTs(a) || 0).getTime()
-      )
-      .slice(0, 50),
-    [data.recent_trades]
-  );
+  const allTrades = useMemo(() => {
+    return dedupeTrades(data.recent_trades)
+      .sort((a, b) => {
+        const tA = new Date(getTradeTimestamp(a) || 0).getTime();
+        const tB = new Date(getTradeTimestamp(b) || 0).getTime();
+        return tB - tA;
+      })
+      .slice(0, 50);
+  }, [data.recent_trades]);
 
-  const isOpenFn   = t => t?.status === "open" || (tradePnl(t) === 0 && !t?.closed);
-  const isClosedFn = t => tradePnl(t) !== 0 || t?.status === "closed" || tradeSide(t) === "close";
+  const isOpenTrade = (trade) => {
+    const pnl = getTradePnlUsd(trade);
+    return trade?.status === "open" || (pnl === 0 && getTradeSide(trade) && !trade?.closed);
+  };
 
-  const filtered = useMemo(() => {
-    if (activeTab === "open")   return allTrades.filter(isOpenFn);
-    if (activeTab === "closed") return allTrades.filter(isClosedFn);
+  const isClosedTrade = (trade) => {
+    const pnl = getTradePnlUsd(trade);
+    return pnl !== 0 || trade?.status === "closed" || getTradeSide(trade) === "close";
+  };
+
+  const filteredTrades = useMemo(() => {
+    if (activeTab === "open") return allTrades.filter(isOpenTrade);
+    if (activeTab === "closed") return allTrades.filter(isClosedTrade);
     return allTrades;
   }, [activeTab, allTrades]);
 
   const tabs = [
-    { id: "all",    icon: "🌐", label: "All",    count: allTrades.length },
-    { id: "open",   icon: "🟢", label: "Open",   count: allTrades.filter(isOpenFn).length },
-    { id: "closed", icon: "✅", label: "Closed", count: allTrades.filter(isClosedFn).length },
+    { id: "all", label: "All", icon: "🌐", count: allTrades.length },
+    { id: "open", label: "Open", icon: "🟢", count: allTrades.filter(isOpenTrade).length },
+    { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(isClosedTrade).length },
   ];
 
   const activeBots = [
@@ -1018,142 +970,134 @@ export default function PublicDashboard() {
     data.stocks.health,
     data.sniper.health,
     data.okx.health,
-  ].filter(isLiveObject).length;
+  ].filter(Boolean).length;
 
-  const totalPnL    = safeNum(data.okx.stats?.total_pnl, 0);
-  const totalTrades = Math.max(safeNum(data.okx.stats?.total_trades), allTrades.length);
-  const discCount   = safeArr(data.sniper.discoveries).length;
+  const totalPnL = useMemo(() => {
+    return safeNumber(data.okx.stats?.total_pnl, 0);
+  }, [data.okx.stats?.total_pnl]);
 
-  const openPos =
-    safeNum(data.okx.stats?.positions_count) +
-    safeNum(data.futures.stats?.positions)   +
-    safeNum(data.sniper.stats?.active_trades);
+  const totalPnLPercent = useMemo(() => {
+    const baseline = 100000;
+    return (safeNumber(totalPnL) / baseline) * 100;
+  }, [totalPnL]);
 
-  const wins   = useMemo(() => allTrades.filter(t => tradePnl(t) > 0).length, [allTrades]);
-  const losses = useMemo(() => allTrades.filter(t => tradePnl(t) < 0).length, [allTrades]);
+  const openPositionsCount =
+    safeNumber(data.okx.stats?.positions_count, 0) +
+    safeNumber(data.futures.stats?.positions, 0) +
+    safeNumber(data.sniper.stats?.active_trades, 0);
 
-  const [badgeClass, badgeText] = hasConnection
-    ? isStale
-      ? ["bg-amber-500/20 text-amber-300",   "STALE"]
-      : ["bg-emerald-500/20 text-emerald-300", "LIVE"]
-    : data.historical.daily.length > 0
-      ? ["bg-blue-500/20 text-blue-300",     "HISTORICAL"]
-      : ["bg-yellow-500/20 text-yellow-300", "CONNECTING"];
+  const totalTradesCount = Math.max(
+    safeNumber(data.okx.stats?.total_trades, 0),
+    allTrades.length
+  );
 
-  if (data.loading && !data.lastSuccessAt && !data.historical.daily.length) {
+  const winsCount = useMemo(() => allTrades.filter((t) => getTradePnlUsd(t) > 0).length, [allTrades]);
+  const lossesCount = useMemo(() => allTrades.filter((t) => getTradePnlUsd(t) < 0).length, [allTrades]);
+
+  if (data.loading && !data.lastSuccessAt) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900
-        to-indigo-950 text-white flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="animate-spin h-12 w-12 border-4 border-emerald-500
-            border-t-transparent rounded-full mx-auto" />
-          <p className="text-white/60">Initialising trading dashboard…</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-white/60">Connecting to trading bots...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900
-      to-indigo-950 text-white">
-
-      {/* HEADER */}
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
       <header className="border-b border-white/10 bg-black/20 backdrop-blur sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <Link to="/" className="text-xl font-bold bg-gradient-to-r from-indigo-400
-                to-emerald-400 bg-clip-text text-transparent">
+              <Link to="/" className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">
                 IMALI
               </Link>
-              <span className={"text-xs px-2 py-1 rounded-full " + badgeClass}>
-                {badgeText}
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  hasConnection
+                    ? isStale
+                      ? "bg-amber-500/20 text-amber-300"
+                      : "bg-emerald-500/20 text-emerald-300"
+                    : "bg-yellow-500/20 text-yellow-300"
+                }`}
+              >
+                {hasConnection ? (isStale ? "STALE" : "LIVE") : "CONNECTING"}
               </span>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap text-xs text-white/40">
-              <div className="flex items-center gap-1.5">
-                <span className={"w-2 h-2 rounded-full " + (
-                  hasConnection
-                    ? isStale ? "bg-amber-400" : "bg-green-400 animate-pulse"
-                    : "bg-yellow-400"
-                )} />
-                {data.rateLimitedUntil
-                  ? "Rate limited until " + fmtClock(data.rateLimitedUntil)
-                  : hasConnection ? "Real-time" : "Connecting…"}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2 text-xs text-white/40">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    hasConnection
+                      ? isStale
+                        ? "bg-amber-400"
+                        : "bg-green-400 animate-pulse"
+                      : "bg-yellow-400"
+                  }`}
+                />
+                <span>
+                  {data.rateLimitedUntil
+                    ? `Backoff until ${formatClock(data.rateLimitedUntil)}`
+                    : "Adaptive refresh"}
+                </span>
               </div>
-              <span>
-                {data.lastSuccessAt ? "Last: " + fmtClock(data.lastSuccessAt) : "No data yet"}
-              </span>
-              <span>{clock.toLocaleTimeString()}</span>
-              <Link to="/signup"
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600
-                  to-purple-600 hover:from-indigo-500 hover:to-purple-500
-                  font-semibold text-white transition-all">
-                Access Premium →
+              <div className="text-xs text-white/40">
+                Last good: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
+              </div>
+              <div className="text-xs text-white/40">{clock.toLocaleTimeString()}</div>
+              <Link
+                to="/signup"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-xs sm:text-sm font-semibold transition-all"
+              >
+                Sign Up Free →
               </Link>
             </div>
           </div>
         </div>
       </header>
 
-      {/* MAIN */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {data.error ? (
-          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
-            <p className="text-amber-300 text-sm">{"⚠️ " + data.error}</p>
-            <p className="text-[10px] text-white/30 mt-1">Showing cached data where available</p>
+          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
+            <p className="text-amber-300 text-sm">⚠️ {data.error}</p>
           </div>
         ) : null}
 
-        {/* hero */}
-        <div className="text-center">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold bg-gradient-to-r
-            from-indigo-400 to-emerald-400 bg-clip-text text-transparent mb-3">
-            Institutional Trading Infrastructure
+        <div className="text-center mb-8">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">
+            Live Trading Dashboard
           </h1>
-          <p className="text-white/55 max-w-2xl mx-auto text-sm sm:text-base">
-            Live multi-bot execution · Transparent performance · Real-time discovery
+          <p className="text-white/60 max-w-2xl mx-auto">
+            Watch IMALI’s multi-bot stack scan markets, surface opportunities, and show live operational proof.
           </p>
         </div>
 
-        {/* stat cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-          <StatCard title="Active Bots"    value={activeBots}              icon="🤖" color="indigo"
-            subtext={activeBots + "/4 online"} />
-          <StatCard title="Total Trades"   value={fmtCompact(totalTrades)} icon="📊" color="purple"
-            subtext={wins + " wins · " + losses + " losses"} />
-          <StatCard title="Total P&L"      value={fmtSigned(totalPnL)}     icon="💰"
-            color={totalPnL >= 0 ? "emerald" : "red"}
-            subtext={totalPnL >= 0 ? "Net profit" : "Net loss"} />
-          <StatCard title="Open Positions" value={fmtCompact(openPos)}     icon="📌" color="cyan"
-            subtext="Current exposure" />
-          <StatCard title="Discoveries"    value={fmtCompact(discCount)}   icon="🦄" color="amber"
-            subtext="DEX opportunities" />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
+          <StatCard title="Active Bots" value={activeBots} icon="🤖" color="indigo" subtext={`${activeBots}/4 online`} />
+          <StatCard title="Total Trades" value={formatCompact(totalTradesCount)} icon="📊" color="purple" subtext={`${winsCount} wins · ${lossesCount} losses`} />
+          <StatCard title="Total P&L" value={formatCurrencySigned(totalPnL)} icon="💰" color={totalPnL >= 0 ? "emerald" : "red"} subtext={formatPercent(totalPnLPercent)} />
+          <StatCard title="Open Positions" value={formatCompact(openPositionsCount)} icon="📌" color="cyan" subtext="Across all systems" />
+          <StatCard title="Discoveries" value={formatCompact(data.sniper.discoveries.length)} icon="🦄" color="amber" subtext="DEX opportunities found" />
         </div>
 
-        {/* investor panel */}
-        <InvestorPanel
-          data={data}
-          totalPnL={totalPnL}
-          totalTrades={totalTrades}
-          activeBots={activeBots}
-          discCount={discCount}
-        />
+        <div className="mb-6">
+          <InvestorPanel
+            data={data}
+            totalPnL={totalPnL}
+            totalTradesCount={totalTradesCount}
+            activeBots={activeBots}
+            discoveryCount={data.sniper.discoveries.length}
+          />
+        </div>
 
-        {/* historical */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-lg flex items-center gap-2">
-              <span>📈</span> Historical Performance
-            </h2>
-            <span className="text-xs text-white/30">
-              {data.historical.daily.length > 0
-                ? data.historical.daily.length + " data points"
-                : "No data yet"}
-            </span>
-          </div>
+        <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+          <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+            <span>📈</span>
+            Historical Performance
+          </h2>
           <HistoricalChart
             data={data.historical}
             type={historicalType}
@@ -1161,152 +1105,180 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* bot cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <BotCard name="Futures Bot" icon="📊"
-            health={data.futures.health} stats={data.futures.stats} accent="indigo" />
-          <BotCard name="Stock Bot"   icon="📈"
-            health={data.stocks.health}  stats={data.stocks.stats}  accent="emerald" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <BotCard
+            name="Futures Bot"
+            icon="📊"
+            health={data.futures.health}
+            stats={data.futures.stats}
+            accent="indigo"
+          />
+          <BotCard
+            name="Stock Bot"
+            icon="📈"
+            health={data.stocks.health}
+            stats={data.stocks.stats}
+            accent="emerald"
+          />
           <SniperCard
             health={data.sniper.health}
             discoveries={data.sniper.discoveries}
             stats={data.sniper.stats}
           />
-          <BotCard name="OKX Spot"    icon="🔷"
-            health={data.okx.health}     stats={data.okx.stats}     accent="amber" />
+          <BotCard
+            name="OKX Spot"
+            icon="🔷"
+            health={data.okx.health}
+            stats={data.okx.stats}
+            accent="amber"
+          />
         </div>
 
-        {/* feed + sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-              <h2 className="font-bold text-lg flex items-center gap-2">
-                <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                Live Execution Feed
-                <span className="text-xs text-white/30">{allTrades.length} trades</span>
-              </h2>
-              <div className="flex gap-1 bg-black/30 rounded-lg p-1">
-                {tabs.map(tab => (
-                  <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-                    className={"px-3 py-1.5 rounded-lg text-xs font-medium transition-all " +
-                      "flex items-center gap-1 " +
-                      (activeTab === tab.id
-                        ? "bg-emerald-600 text-white"
-                        : "text-white/40 hover:text-white/60")}>
-                    <span>{tab.icon}</span>
-                    <span className="hidden sm:inline">{tab.label}</span>
-                    {tab.count > 0
-                      ? <span className="ml-1 text-[8px] bg-white/20 px-1.5 rounded-full">
-                          {tab.count}
-                        </span>
-                      : null}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="lg:col-span-2">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                <h2 className="font-bold text-lg flex items-center gap-2">
+                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                  Live Trade Feed
+                  <span className="text-xs text-white/30 ml-2">{allTrades.length} rows</span>
+                </h2>
 
-            <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-              {filtered.length > 0
-                ? filtered.map((t, i) => (
-                    <TradeRow
-                      key={(tradeTs(t) || "") + "-" + (t?.symbol || "") + "-" + i}
-                      trade={t}
-                    />
+                <div className="flex gap-1 bg-black/30 rounded-lg p-1 flex-wrap">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                        activeTab === tab.id ? "bg-emerald-600 text-white" : "text-white/40 hover:text-white/60"
+                      }`}
+                    >
+                      <span>{tab.icon}</span>
+                      <span className="hidden sm:inline">{tab.label}</span>
+                      {tab.count > 0 ? (
+                        <span className="ml-1 text-[8px] bg-white/20 px-1.5 rounded-full">{tab.count}</span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                {filteredTrades.length > 0 ? (
+                  filteredTrades.map((trade, i) => (
+                    <TradeRow key={`${getTradeTimestamp(trade)}-${trade?.symbol}-${i}`} trade={trade} />
                   ))
-                : (
+                ) : (
                   <div className="text-center py-12 text-white/30">
                     <div className="text-4xl mb-3">📭</div>
                     <p className="text-sm">No trades match this filter</p>
                   </div>
                 )}
+              </div>
             </div>
           </div>
 
           <div className="space-y-4">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
-                <span>🦄</span> DEX Discovery Engine
-                {discCount > 0
-                  ? <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
-                      {discCount + " new"}
-                    </span>
-                  : null}
+                <span>🦄</span>
+                DEX Discoveries
+                {data.sniper.discoveries.length > 0 ? (
+                  <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
+                    {data.sniper.discoveries.length} new
+                  </span>
+                ) : null}
               </h2>
+
               <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                {discCount > 0
-                  ? safeArr(data.sniper.discoveries).slice(0, 10).map((d, i) => (
-                      <DiscoveryCard key={d?.pair || d?.address || i} discovery={d} />
-                    ))
-                  : (
-                    <div className="text-center py-8 text-white/30 text-sm">
-                      <div className="text-2xl mb-2">🔍</div>
-                      Scanning for new opportunities…
-                    </div>
-                  )}
+                {data.sniper.discoveries.length > 0 ? (
+                  data.sniper.discoveries
+                    .slice(0, 10)
+                    .map((d, i) => <DiscoveryCard key={d?.pair || d?.address || i} discovery={d} />)
+                ) : (
+                  <div className="text-center py-8 text-white/30 text-sm">
+                    <div className="text-2xl mb-2">🔍</div>
+                    Scanning for new tokens...
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
-                <span>📡</span> System Status
+                <span>📡</span>
+                System Status
               </h2>
-              <div className="space-y-2.5 text-sm">
-                {[
-                  ["API",           hasConnection ? "● Connected" : "○ Limited",
-                                    hasConnection ? "text-emerald-400" : "text-yellow-400"],
-                  ["Last Update",   data.lastSuccessAt ? timeAgo(data.lastSuccessAt) : "—", ""],
-                  ["Open Positions",openPos, ""],
-                  ["Win / Loss",
-                    losses > 0
-                      ? (wins / losses).toFixed(2)
-                      : wins > 0 ? "∞" : "0.00",
-                    wins >= losses ? "text-emerald-400" : "text-red-400"],
-                  ["OKX Mode",      data.okx.stats?.mode || "dry_run", "capitalize"],
-                ].map(([lbl, val, cls]) => (
-                  <div key={lbl} className="flex justify-between items-center">
-                    <span className="text-white/50">{lbl}</span>
-                    <span className={"font-medium " + cls}>{val}</span>
-                  </div>
-                ))}
-                {data.rateLimitedUntil ? (
-                  <div className="flex justify-between items-center text-amber-400 text-xs">
-                    <span className="text-white/50">Rate Limited</span>
-                    <span>{"Until " + fmtClock(data.rateLimitedUntil)}</span>
-                  </div>
-                ) : null}
+
+              <div className="space-y-2 text-xs text-white/65">
+                <div className="flex justify-between gap-3">
+                  <span>API</span>
+                  <span className="text-white/40 truncate">{API_BASE}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Connection</span>
+                  <span className={hasConnection ? "text-green-400" : "text-yellow-400"}>
+                    {hasConnection ? (isStale ? "Stale" : "Live") : "Connecting"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Last good update</span>
+                  <span>{data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Open positions</span>
+                  <span>{openPositionsCount}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Total trades</span>
+                  <span>{totalTradesCount}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Win/Loss</span>
+                  <span className={winsCount >= lossesCount ? "text-green-400" : "text-red-400"}>
+                    {winsCount}/{lossesCount}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>OKX mode</span>
+                  <span>{data.okx.stats?.mode || "dry_run"}</span>
+                </div>
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20
-              border border-indigo-500/30 rounded-2xl p-5">
-              <h3 className="font-bold text-lg mb-2">Institutional Access</h3>
-              <p className="text-sm text-white/55 mb-4">
-                Full API · Real-time signals · Priority support
+            <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-5">
+              <h3 className="font-bold text-lg mb-2">For investors and partners</h3>
+              <p className="text-xs text-white/60 mb-4">
+                IMALI combines public live proof, multi-bot operations, and a clear subscription path for retail and premium users.
               </p>
-              <div className="space-y-1.5 text-sm text-white/65 mb-4">
-                {["WebSocket feeds", "Historical exports", "White-label options"].map(f => (
-                  <div key={f} className="flex items-center gap-2">
-                    <span className="text-emerald-400">✓</span>{f}
-                  </div>
-                ))}
+              <div className="space-y-2 text-xs text-white/70 mb-4">
+                <div>• live dashboard credibility</div>
+                <div>• modular bot architecture</div>
+                <div>• CEX + stocks + futures + DEX discovery</div>
+                <div>• monetizable signal and managed-access tiers</div>
               </div>
-              <Link to="/signup"
-                className="inline-block w-full py-3 rounded-xl bg-gradient-to-r
-                  from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500
-                  font-semibold text-sm text-center transition-all">
-                Schedule Demo →
+              <Link
+                to="/signup"
+                className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all text-center"
+              >
+                Start Trading Free →
               </Link>
+              <p className="text-[10px] text-white/30 mt-3">No credit card required</p>
             </div>
           </div>
         </div>
 
-        {/* footer */}
-        <div className="text-center text-xs text-white/25 border-t border-white/10 pt-6 pb-2">
-          Institutional trading infrastructure · Real-time monitoring · Transparent execution
-          <br />
-          <Link to="/"          className="text-indigo-400 hover:underline mx-2">Home</Link>
-          <Link to="/dashboard" className="text-indigo-400 hover:underline mx-2">Member Dashboard</Link>
-          <Link to="/pricing"   className="text-indigo-400 hover:underline mx-2">Pricing</Link>
+        <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
+          <p>
+            Adaptive polling with preserved historical state and rate-limit backoff.
+            <br />
+            <Link to="/" className="text-indigo-400 hover:underline">Home</Link>
+            {" • "}
+            <Link to="/dashboard" className="text-indigo-400 hover:underline">Member Dashboard</Link>
+            {" • "}
+            <Link to="/pricing" className="text-indigo-400 hover:underline">Pricing</Link>
+          </p>
         </div>
       </main>
     </div>
