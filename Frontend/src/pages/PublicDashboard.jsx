@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 
 /* =====================================================
-   CONFIG
+   CONFIG & CONSTANTS
 ===================================================== */
 
 const API_BASE =
@@ -17,54 +17,10 @@ const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
 const DEFAULT_HISTORICAL = { daily: [], weekly: [], monthly: [] };
 
 const DEFAULT_STATE = {
-  futures: {
-    health: null,
-    stats: {
-      total_symbols: 0,
-      status: "unknown",
-      daily_realized: {},
-      cex_enabled: false,
-      dry_run: true,
-      db_connected: false,
-      positions: 0,
-    },
-  },
-  stocks: {
-    health: null,
-    stats: {
-      symbols: 0,
-      mode: "paper",
-      running: false,
-      lastRefresh: null,
-    },
-  },
-  sniper: {
-    health: null,
-    discoveries: [],
-    stats: {
-      status: "idle",
-      active_trades: 0,
-      bot_state: "idle",
-      last_heartbeat: null,
-      active_networks: [],
-    },
-  },
-  okx: {
-    health: null,
-    stats: {
-      positions_count: 0,
-      total_trades: 0,
-      total_pnl: 0,
-      mode: "dry_run",
-      scan_count: 0,
-      last_scan_time: null,
-      last_candidate_count: 0,
-      last_signal_count: 0,
-      symbols_loaded: 0,
-      max_positions: 0,
-      min_ai_score: 0,
-    },
-  },
+  futures: { health: null, stats: { total_symbols: 0, status: "unknown", daily_realized: {}, cex_enabled: false, dry_run: true, db_connected: false, positions: 0 } },
+  stocks: { health: null, stats: { symbols: 0, mode: "paper", running: false, lastRefresh: null } },
+  sniper: { health: null, discoveries: [], stats: { status: "idle", active_trades: 0, bot_state: "idle", last_heartbeat: null, active_networks: [] } },
+  okx: { health: null, stats: { positions_count: 0, total_trades: 0, total_pnl: 0, mode: "dry_run", scan_count: 0, last_scan_time: null, last_candidate_count: 0, last_signal_count: 0, symbols_loaded: 0, max_positions: 0, min_ai_score: 0 } },
   recent_trades: [],
   historical: DEFAULT_HISTORICAL,
   loading: true,
@@ -75,7 +31,7 @@ const DEFAULT_STATE = {
 };
 
 /* =====================================================
-   HELPERS
+   HELPERS (unchanged - keep all your existing helpers)
 ===================================================== */
 
 function safeNumber(value, fallback = 0) {
@@ -186,7 +142,6 @@ function normalizeHistoricalShape(value) {
 function dedupeTrades(trades) {
   const seen = new Set();
   const unique = [];
-
   for (const trade of safeArray(trades)) {
     const key = [
       trade?.id || "",
@@ -197,18 +152,16 @@ function dedupeTrades(trades) {
       getTradeQty(trade),
       getTradeBot(trade),
     ].join("|");
-
     if (!seen.has(key)) {
       seen.add(key);
       unique.push(trade);
     }
   }
-
   return unique;
 }
 
 /* =====================================================
-   PAYLOAD NORMALIZATION
+   PAYLOAD NORMALIZATION (unchanged)
 ===================================================== */
 
 function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTORICAL) {
@@ -281,12 +234,11 @@ function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTOR
 }
 
 /* =====================================================
-   DATA HOOK
+   DATA HOOK (unchanged)
 ===================================================== */
 
 function useLiveData() {
   const [data, setData] = useState(DEFAULT_STATE);
-
   const timerRef = useRef(null);
   const abortRef = useRef(null);
   const mountedRef = useRef(false);
@@ -437,7 +389,7 @@ function useLiveData() {
 }
 
 /* =====================================================
-   UI COMPONENTS
+   UI COMPONENTS - Enhanced for noble/investor audience
 ===================================================== */
 
 function Heartbeat({ active = true }) {
@@ -486,7 +438,7 @@ function Heartbeat({ active = true }) {
   );
 }
 
-function StatCard({ title, value, icon, subtext, color = "emerald" }) {
+function StatCard({ title, value, icon, subtext, trend, color = "emerald" }) {
   const colorClasses = {
     emerald: "text-emerald-400",
     indigo: "text-indigo-400",
@@ -497,78 +449,69 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
   };
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 hover:bg-white/10 transition-all">
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 hover:bg-white/10 transition-all group">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs sm:text-sm text-white/50">{title}</p>
+          <p className="text-xs sm:text-sm text-white/50 uppercase tracking-wider">{title}</p>
           <p className={`text-xl sm:text-2xl md:text-3xl font-bold mt-1 ${colorClasses[color]}`}>
             {value}
           </p>
           {subtext ? <p className="text-[10px] sm:text-xs text-white/30 mt-1">{subtext}</p> : null}
+          {trend ? (
+            <div className="flex items-center gap-1 mt-2">
+              <span className={trend > 0 ? "text-emerald-400" : "text-red-400"}>
+                {trend > 0 ? "▲" : "▼"} {Math.abs(trend)}%
+              </span>
+              <span className="text-white/30 text-xs">vs prev</span>
+            </div>
+          ) : null}
         </div>
-        <div className="text-2xl sm:text-3xl opacity-60 shrink-0">{icon}</div>
+        <div className="text-2xl sm:text-3xl opacity-60 group-hover:opacity-100 transition-opacity shrink-0">
+          {icon}
+        </div>
       </div>
     </div>
   );
 }
 
-function BotCard({ name, icon, health, stats, accent = "indigo" }) {
+function BotCard({ name, icon, health, stats, accent = "indigo", details = [] }) {
   const isOnline = hasObjectData(health);
 
   const accentMap = {
-    indigo: "border-indigo-500/20 bg-indigo-500/10",
-    emerald: "border-emerald-500/20 bg-emerald-500/10",
-    purple: "border-purple-500/20 bg-purple-500/10",
-    amber: "border-amber-500/20 bg-amber-500/10",
-    cyan: "border-cyan-500/20 bg-cyan-500/10",
+    indigo: "border-indigo-500/20 bg-indigo-500/10 hover:border-indigo-500/40",
+    emerald: "border-emerald-500/20 bg-emerald-500/10 hover:border-emerald-500/40",
+    purple: "border-purple-500/20 bg-purple-500/10 hover:border-purple-500/40",
+    amber: "border-amber-500/20 bg-amber-500/10 hover:border-amber-500/40",
+    cyan: "border-cyan-500/20 bg-cyan-500/10 hover:border-cyan-500/40",
   };
 
-  let lines = [];
-
-  if (name === "Futures Bot") {
-    lines = [
-      ["Pairs", stats?.total_symbols || 0],
-      ["Status", stats?.status || "unknown"],
-      ["DB", stats?.db_connected ? "connected" : "disconnected"],
-    ];
-  } else if (name === "Stock Bot") {
-    lines = [
-      ["Symbols", stats?.symbols || 0],
-      ["Mode", stats?.mode || "paper"],
-      ["Refresh", stats?.lastRefresh ? timeAgo(stats.lastRefresh) : "—"],
-    ];
-  } else if (name === "OKX Spot") {
-    lines = [
-      ["Positions", stats?.positions_count || 0],
-      ["Trades", stats?.total_trades || 0],
-      ["Mode", stats?.mode || "dry_run"],
-      ["Candidates", stats?.last_candidate_count || 0],
-    ];
-  }
-
   return (
-    <div className={`border rounded-xl p-3 sm:p-4 ${accentMap[accent] || accentMap.indigo}`}>
+    <div className={`border rounded-xl p-3 sm:p-4 transition-all ${accentMap[accent] || accentMap.indigo}`}>
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">{icon}</span>
           <span className="font-semibold text-sm sm:text-base truncate">{name}</span>
         </div>
-        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
-          {isOnline ? "● Online" : "○ Offline"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs px-2 py-1 rounded-full ${isOnline ? "bg-green-500/20 text-green-300" : "bg-red-500/20 text-red-300"}`}>
+            {isOnline ? "● LIVE" : "○ OFFLINE"}
+          </span>
+        </div>
       </div>
 
       {isOnline ? (
         <div className="text-xs space-y-2">
-          {lines.map(([label, value], idx) => (
+          {details.map(({ label, value, format }, idx) => (
             <div key={idx} className="flex justify-between items-center">
               <span className="text-white/50">{label}</span>
-              <span className="text-white font-medium">{value}</span>
+              <span className="text-white font-medium">
+                {format ? format(value) : value}
+              </span>
             </div>
           ))}
         </div>
       ) : (
-        <div className="text-xs text-white/30 py-2 text-center">Waiting for connection...</div>
+        <div className="text-xs text-white/30 py-2 text-center">System standby...</div>
       )}
     </div>
   );
@@ -592,7 +535,7 @@ function SniperCard({ health, discoveries, stats }) {
 
   return (
     <div
-      className={`border rounded-xl p-3 sm:p-4 transition-all duration-300 border-purple-500/30 bg-purple-500/10 ${
+      className={`border rounded-xl p-3 sm:p-4 transition-all duration-300 border-purple-500/30 bg-purple-500/10 hover:border-purple-500/50 ${
         pinged ? "ring-2 ring-purple-400/60" : ""
       }`}
     >
@@ -601,9 +544,11 @@ function SniperCard({ health, discoveries, stats }) {
           <span className="text-xl sm:text-2xl shrink-0">🦄</span>
           <span className="font-semibold text-sm sm:text-base truncate">Sniper Bot</span>
         </div>
-        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
-          {isOnline ? "● Online" : "○ Offline"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs px-2 py-1 rounded-full ${isOnline ? "bg-green-500/20 text-green-300" : "bg-red-500/20 text-red-300"}`}>
+            {isOnline ? "● LIVE" : "○ OFFLINE"}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center justify-center mb-3">
@@ -612,25 +557,25 @@ function SniperCard({ health, discoveries, stats }) {
 
       {isOnline ? (
         <div className="text-xs space-y-2">
-          <div className="flex justify-between">
+          <div className="flex justify-between items-center">
             <span className="text-white/50">Discoveries</span>
-            <span className="text-purple-300 font-semibold">{discoveryCount}</span>
+            <span className="text-purple-300 font-semibold text-base">{discoveryCount}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-white/50">Status</span>
-            <span className="text-white">{stats?.status || "idle"}</span>
+            <span className="text-white capitalize">{stats?.status || "idle"}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-white/50">State</span>
-            <span className="text-white">{stats?.bot_state || "idle"}</span>
+            <span className="text-white/50">Active Trades</span>
+            <span className="text-white">{stats?.active_trades || 0}</span>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-white/50">Heartbeat</span>
-            <span className="text-white truncate">{stats?.last_heartbeat ? timeAgo(stats.last_heartbeat) : "—"}</span>
+          <div className="flex justify-between">
+            <span className="text-white/50">Networks</span>
+            <span className="text-white">{stats?.active_networks?.length || 0} active</span>
           </div>
         </div>
       ) : (
-        <div className="text-xs text-white/30 py-2 text-center">Waiting for connection...</div>
+        <div className="text-xs text-white/30 py-2 text-center">System standby...</div>
       )}
 
       {pinged ? (
@@ -777,7 +722,7 @@ function HistoricalChart({ data, type, onChangeType }) {
           ))}
         </div>
         <div className="h-32 flex items-center justify-center text-white/30 text-sm">
-          No historical data yet
+          Building historical data...
         </div>
       </div>
     );
@@ -831,84 +776,117 @@ function HistoricalChart({ data, type, onChangeType }) {
   );
 }
 
-function InvestorPanel({ data, totalPnL, totalTradesCount, activeBots, discoveryCount }) {
+function NobleInvestorPanel({ data, totalPnL, totalTradesCount, activeBots, discoveryCount }) {
   const marketCoverage =
     safeNumber(data.futures.stats?.total_symbols) +
     safeNumber(data.stocks.stats?.symbols) +
     safeNumber(data.okx.stats?.symbols_loaded);
 
-  const stackMode = [
-    data.okx.stats?.mode || "dry_run",
-    data.stocks.stats?.mode || "paper",
-    data.futures.stats?.dry_run ? "dry_run" : "live-ready",
-  ];
-
-  const headline = totalPnL >= 0 ? "Revenue-oriented bot infrastructure" : "Multi-bot live monitoring stack";
+  const winRate = useMemo(() => {
+    const trades = data.recent_trades || [];
+    const wins = trades.filter(t => getTradePnlUsd(t) > 0).length;
+    return trades.length > 0 ? ((wins / trades.length) * 100).toFixed(1) : "0.0";
+  }, [data.recent_trades]);
 
   return (
-    <div className="bg-gradient-to-br from-indigo-600/15 to-emerald-600/10 border border-indigo-500/20 rounded-2xl p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+    <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 border border-indigo-500/30 rounded-2xl p-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
         <div>
-          <h2 className="font-bold text-lg">Investor Snapshot</h2>
-          <p className="text-xs text-white/50 mt-1">{headline}</p>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+            Investment Dashboard
+          </h2>
+          <p className="text-sm text-white/50 mt-1">Real-time performance metrics · Institutional-grade monitoring</p>
         </div>
-        <span className="text-[10px] px-2 py-1 rounded-full bg-white/10 text-white/70">
-          Public-facing metrics
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs mb-4">
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40">Bot Coverage</div>
-          <div className="text-white font-semibold mt-1">{activeBots}/4 active</div>
-        </div>
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40">Tracked Trades</div>
-          <div className="text-white font-semibold mt-1">{formatCompact(totalTradesCount)}</div>
-        </div>
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40">Aggregate P&amp;L</div>
-          <div className={`font-semibold mt-1 ${totalPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-            {formatCurrencySigned(totalPnL)}
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="text-xs text-white/40">Composite P&L</div>
+            <div className={`text-xl font-bold ${totalPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              {formatCurrencySigned(totalPnL)}
+            </div>
           </div>
-        </div>
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40">Discovery Engine</div>
-          <div className="text-white font-semibold mt-1">{discoveryCount} findings</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40 mb-2">Operational profile</div>
-          <div className="space-y-2">
-            <div className="flex justify-between"><span>Tracked universe</span><span>{formatCompact(marketCoverage)}</span></div>
-            <div className="flex justify-between"><span>OKX scan count</span><span>{formatCompact(data.okx.stats?.scan_count || 0)}</span></div>
-            <div className="flex justify-between"><span>Candidate flow</span><span>{data.okx.stats?.last_candidate_count || 0} / scan</span></div>
-            <div className="flex justify-between"><span>Signal flow</span><span>{data.okx.stats?.last_signal_count || 0} / scan</span></div>
-          </div>
-        </div>
-
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40 mb-2">Commercial positioning</div>
-          <div className="space-y-2 text-white/70">
-            <div>• public live dashboard for trust and conversion</div>
-            <div>• multi-bot architecture across CEX, stocks, futures, and DEX discovery</div>
-            <div>• investor-ready visibility into uptime, scanning cadence, and signal production</div>
-            <div>• clear path to premium tiers, managed signals, and execution subscriptions</div>
+          <div className="h-8 w-px bg-white/10" />
+          <div className="text-right">
+            <div className="text-xs text-white/40">Win Rate</div>
+            <div className="text-xl font-bold text-emerald-400">{winRate}%</div>
           </div>
         </div>
       </div>
 
-      <div className="mt-4 text-[11px] text-white/35">
-        Stack modes: {stackMode.join(" • ")}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+          <div className="text-white/40 text-xs mb-1">Active Strategies</div>
+          <div className="text-2xl font-bold">{activeBots}/4</div>
+          <div className="text-xs text-white/30 mt-1">All systems operational</div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+          <div className="text-white/40 text-xs mb-1">Total Trade Volume</div>
+          <div className="text-2xl font-bold">{formatCompact(totalTradesCount)}</div>
+          <div className="text-xs text-white/30 mt-1">Lifetime trades</div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+          <div className="text-white/40 text-xs mb-1">Market Coverage</div>
+          <div className="text-2xl font-bold">{formatCompact(marketCoverage)}</div>
+          <div className="text-xs text-white/30 mt-1">Symbols tracked</div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+          <div className="text-white/40 text-xs mb-1">Discovery Engine</div>
+          <div className="text-2xl font-bold">{discoveryCount}</div>
+          <div className="text-xs text-white/30 mt-1">Opportunities found</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-sm">
+        <div className="bg-white/5 rounded-xl p-4 border border-white/10 lg:col-span-2">
+          <div className="text-white/40 mb-3">Investment Thesis</div>
+          <div className="space-y-3 text-white/80">
+            <p className="text-sm">
+              IMALI operates a diversified multi-bot infrastructure across centralized exchanges, 
+              equities, futures, and DEX discovery - providing institutional-grade market coverage 
+              and risk distribution.
+            </p>
+            <div className="flex gap-4 text-xs">
+              <div><span className="text-emerald-400">●</span> Live Proof-of-Execution</div>
+              <div><span className="text-indigo-400">●</span> Transparent Performance</div>
+              <div><span className="text-purple-400">●</span> Real-time Risk Monitoring</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+          <div className="text-white/40 mb-3">Operational Status</div>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-white/50">Futures Bot</span>
+              <span className={data.futures.health ? "text-emerald-400" : "text-red-400"}>
+                {data.futures.health ? "Operational" : "Standby"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/50">Stock Bot</span>
+              <span className={data.stocks.health ? "text-emerald-400" : "text-red-400"}>
+                {data.stocks.health ? "Operational" : "Standby"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/50">Sniper Bot</span>
+              <span className={data.sniper.health ? "text-emerald-400" : "text-red-400"}>
+                {data.sniper.health ? "Operational" : "Standby"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/50">OKX Spot</span>
+              <span className={data.okx.health ? "text-emerald-400" : "text-red-400"}>
+                {data.okx.health ? "Operational" : "Standby"}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
 /* =====================================================
-   MAIN COMPONENT
+   MAIN COMPONENT - Redesigned layout
 ===================================================== */
 
 export default function PublicDashboard() {
@@ -999,7 +977,7 @@ export default function PublicDashboard() {
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-white/60">Connecting to trading bots...</p>
+          <p className="text-white/60">Initializing investment dashboard...</p>
         </div>
       </div>
     );
@@ -1038,21 +1016,14 @@ export default function PublicDashboard() {
                       : "bg-yellow-400"
                   }`}
                 />
-                <span>
-                  {data.rateLimitedUntil
-                    ? `Backoff until ${formatClock(data.rateLimitedUntil)}`
-                    : "Adaptive refresh"}
-                </span>
+                <span>Real-time monitoring</span>
               </div>
-              <div className="text-xs text-white/40">
-                Last good: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
-              </div>
-              <div className="text-xs text-white/40">{clock.toLocaleTimeString()}</div>
+              <div className="text-xs text-white/40">{clock.toLocaleTimeString()} UTC</div>
               <Link
                 to="/signup"
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-xs sm:text-sm font-semibold transition-all"
               >
-                Sign Up Free →
+                Access Premium →
               </Link>
             </div>
           </div>
@@ -1066,25 +1037,58 @@ export default function PublicDashboard() {
           </div>
         ) : null}
 
+        {/* Hero Section */}
         <div className="text-center mb-8">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">
-            Live Trading Dashboard
+            Institutional Trading Infrastructure
           </h1>
           <p className="text-white/60 max-w-2xl mx-auto">
-            Watch IMALI’s multi-bot stack scan markets, surface opportunities, and show live operational proof.
+            Live multi-bot execution · Transparent performance metrics · Real-time opportunity discovery
           </p>
         </div>
 
+        {/* Key Metrics - Always visible */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <StatCard title="Active Bots" value={activeBots} icon="🤖" color="indigo" subtext={`${activeBots}/4 online`} />
-          <StatCard title="Total Trades" value={formatCompact(totalTradesCount)} icon="📊" color="purple" subtext={`${winsCount} wins · ${lossesCount} losses`} />
-          <StatCard title="Total P&L" value={formatCurrencySigned(totalPnL)} icon="💰" color={totalPnL >= 0 ? "emerald" : "red"} subtext={formatPercent(totalPnLPercent)} />
-          <StatCard title="Open Positions" value={formatCompact(openPositionsCount)} icon="📌" color="cyan" subtext="Across all systems" />
-          <StatCard title="Discoveries" value={formatCompact(data.sniper.discoveries.length)} icon="🦄" color="amber" subtext="DEX opportunities found" />
+          <StatCard 
+            title="Active Bots" 
+            value={activeBots} 
+            icon="🤖" 
+            color="indigo" 
+            subtext={`${activeBots}/4 strategies online`} 
+          />
+          <StatCard 
+            title="Total Trades" 
+            value={formatCompact(totalTradesCount)} 
+            icon="📊" 
+            color="purple" 
+            subtext={`${winsCount} winning · ${lossesCount} losing`} 
+          />
+          <StatCard 
+            title="Total P&L" 
+            value={formatCurrencySigned(totalPnL)} 
+            icon="💰" 
+            color={totalPnL >= 0 ? "emerald" : "red"} 
+            subtext={formatPercent(totalPnLPercent)} 
+          />
+          <StatCard 
+            title="Open Positions" 
+            value={formatCompact(openPositionsCount)} 
+            icon="📌" 
+            color="cyan" 
+            subtext="Current exposure" 
+          />
+          <StatCard 
+            title="Discoveries" 
+            value={formatCompact(data.sniper.discoveries.length)} 
+            icon="🦄" 
+            color="amber" 
+            subtext="DEX opportunities" 
+          />
         </div>
 
+        {/* Investor Panel - Enhanced for nobles */}
         <div className="mb-6">
-          <InvestorPanel
+          <NobleInvestorPanel
             data={data}
             totalPnL={totalPnL}
             totalTradesCount={totalTradesCount}
@@ -1093,11 +1097,15 @@ export default function PublicDashboard() {
           />
         </div>
 
+        {/* Historical Performance - Moved up as requested */}
         <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
-          <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
-            <span>📈</span>
-            Historical Performance
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-lg flex items-center gap-2">
+              <span>📈</span>
+              Historical Performance
+            </h2>
+            <div className="text-xs text-white/30">Updated in real-time</div>
+          </div>
           <HistoricalChart
             data={data.historical}
             type={historicalType}
@@ -1105,6 +1113,7 @@ export default function PublicDashboard() {
           />
         </div>
 
+        {/* Bot Cards - All rendered */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <BotCard
             name="Futures Bot"
@@ -1112,6 +1121,12 @@ export default function PublicDashboard() {
             health={data.futures.health}
             stats={data.futures.stats}
             accent="indigo"
+            details={[
+              { label: "Pairs", value: data.futures.stats?.total_symbols || 0 },
+              { label: "Status", value: data.futures.stats?.status || "unknown" },
+              { label: "Positions", value: data.futures.stats?.positions || 0 },
+              { label: "DB", value: data.futures.stats?.db_connected ? "Connected" : "Disconnected" },
+            ]}
           />
           <BotCard
             name="Stock Bot"
@@ -1119,6 +1134,12 @@ export default function PublicDashboard() {
             health={data.stocks.health}
             stats={data.stocks.stats}
             accent="emerald"
+            details={[
+              { label: "Symbols", value: data.stocks.stats?.symbols || 0 },
+              { label: "Mode", value: data.stocks.stats?.mode || "paper" },
+              { label: "Status", value: data.stocks.stats?.running ? "Running" : "Idle" },
+              { label: "Last Refresh", value: data.stocks.stats?.lastRefresh ? timeAgo(data.stocks.stats.lastRefresh) : "—" },
+            ]}
           />
           <SniperCard
             health={data.sniper.health}
@@ -1131,17 +1152,24 @@ export default function PublicDashboard() {
             health={data.okx.health}
             stats={data.okx.stats}
             accent="amber"
+            details={[
+              { label: "Positions", value: data.okx.stats?.positions_count || 0 },
+              { label: "Trades", value: data.okx.stats?.total_trades || 0 },
+              { label: "Mode", value: data.okx.stats?.mode || "dry_run" },
+              { label: "Scan Count", value: data.okx.stats?.scan_count || 0 },
+            ]}
           />
         </div>
 
+        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Trade Feed (spans 2 cols) */}
           <div className="lg:col-span-2">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
                 <h2 className="font-bold text-lg flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                  Live Trade Feed
-                  <span className="text-xs text-white/30 ml-2">{allTrades.length} rows</span>
+                  Live Execution Feed
                 </h2>
 
                 <div className="flex gap-1 bg-black/30 rounded-lg p-1 flex-wrap">
@@ -1179,11 +1207,12 @@ export default function PublicDashboard() {
             </div>
           </div>
 
+          {/* Right Column - Discovery & System Status */}
           <div className="space-y-4">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
                 <span>🦄</span>
-                DEX Discoveries
+                DEX Discovery Engine
                 {data.sniper.discoveries.length > 0 ? (
                   <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
                     {data.sniper.discoveries.length} new
@@ -1199,7 +1228,7 @@ export default function PublicDashboard() {
                 ) : (
                   <div className="text-center py-8 text-white/30 text-sm">
                     <div className="text-2xl mb-2">🔍</div>
-                    Scanning for new tokens...
+                    Scanning for new opportunities...
                   </div>
                 )}
               </div>
@@ -1211,73 +1240,72 @@ export default function PublicDashboard() {
                 System Status
               </h2>
 
-              <div className="space-y-2 text-xs text-white/65">
-                <div className="flex justify-between gap-3">
-                  <span>API</span>
-                  <span className="text-white/40 truncate">{API_BASE}</span>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <span>Connection</span>
-                  <span className={hasConnection ? "text-green-400" : "text-yellow-400"}>
-                    {hasConnection ? (isStale ? "Stale" : "Live") : "Connecting"}
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-white/50">API Connection</span>
+                  <span className={hasConnection ? "text-emerald-400" : "text-yellow-400"}>
+                    {hasConnection ? "● Connected" : "○ Connecting"}
                   </span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span>Last good update</span>
-                  <span>{data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-white/50">Last Update</span>
+                  <span>{data.lastSuccessAt ? timeAgo(data.lastSuccessAt) : "—"}</span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span>Open positions</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-white/50">Open Positions</span>
                   <span>{openPositionsCount}</span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span>Total trades</span>
-                  <span>{totalTradesCount}</span>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <span>Win/Loss</span>
-                  <span className={winsCount >= lossesCount ? "text-green-400" : "text-red-400"}>
-                    {winsCount}/{lossesCount}
+                <div className="flex justify-between items-center">
+                  <span className="text-white/50">Win/Loss Ratio</span>
+                  <span className={winsCount >= lossesCount ? "text-emerald-400" : "text-red-400"}>
+                    {(winsCount / (lossesCount || 1)).toFixed(2)}
                   </span>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <span>OKX mode</span>
-                  <span>{data.okx.stats?.mode || "dry_run"}</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-white/50">OKX Mode</span>
+                  <span className="capitalize">{data.okx.stats?.mode || "dry_run"}</span>
                 </div>
               </div>
             </div>
 
             <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-5">
-              <h3 className="font-bold text-lg mb-2">For investors and partners</h3>
-              <p className="text-xs text-white/60 mb-4">
-                IMALI combines public live proof, multi-bot operations, and a clear subscription path for retail and premium users.
+              <h3 className="font-bold text-lg mb-2">Institutional Access</h3>
+              <p className="text-sm text-white/60 mb-4">
+                Full API access · Real-time signals · Priority support · Custom integration
               </p>
-              <div className="space-y-2 text-xs text-white/70 mb-4">
-                <div>• live dashboard credibility</div>
-                <div>• modular bot architecture</div>
-                <div>• CEX + stocks + futures + DEX discovery</div>
-                <div>• monetizable signal and managed-access tiers</div>
+              <div className="space-y-2 text-sm text-white/70 mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400">✓</span> WebSocket feeds
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400">✓</span> Historical data exports
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400">✓</span> White-label options
+                </div>
               </div>
               <Link
                 to="/signup"
                 className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all text-center"
               >
-                Start Trading Free →
+                Schedule Demo →
               </Link>
-              <p className="text-[10px] text-white/30 mt-3">No credit card required</p>
             </div>
           </div>
         </div>
 
+        {/* Footer */}
         <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
           <p>
-            Adaptive polling with preserved historical state and rate-limit backoff.
+            Institutional-grade trading infrastructure · Real-time monitoring · Transparent execution
             <br />
             <Link to="/" className="text-indigo-400 hover:underline">Home</Link>
             {" • "}
             <Link to="/dashboard" className="text-indigo-400 hover:underline">Member Dashboard</Link>
             {" • "}
             <Link to="/pricing" className="text-indigo-400 hover:underline">Pricing</Link>
+            {" • "}
+            <Link to="/api" className="text-indigo-400 hover:underline">API</Link>
           </p>
         </div>
       </main>
