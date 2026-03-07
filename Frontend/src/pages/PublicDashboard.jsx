@@ -20,10 +20,10 @@ const API_BASE =
 const LIVE_STATS_URL  = API_BASE + "/api/public/live-stats";
 const HISTORICAL_URL  = API_BASE + "/api/public/historical";
 
-const LIVE_INTERVAL       = 30_000;   // 30 s normal poll
-const HISTORICAL_INTERVAL = 600_000;  // 10 min historical re-fetch
-const MAX_BACKOFF         = 300_000;  // 5 min max back-off
-const JITTER_MAX          = 3_000;    // up to 3 s random jitter
+const LIVE_INTERVAL       = 30_000;
+const HISTORICAL_INTERVAL = 600_000;
+const MAX_BACKOFF         = 300_000;
+const JITTER_MAX          = 3_000;
 
 /* =====================================================
    DEFAULT STATE
@@ -85,8 +85,7 @@ const DEFAULT_STATE = {
 };
 
 /* =====================================================
-   HELPERS  (no Math.pow / Object.keys / Object.values
-             so SES doesn't complain)
+   HELPERS
 ===================================================== */
 
 function safeNum(value, fallback = 0) {
@@ -98,10 +97,9 @@ function safeArr(value) {
   return Array.isArray(value) ? value : [];
 }
 
-/** True only when value is a plain, non-empty object that came from the API */
 function isLiveObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  for (const k in value) {               // safe for-in instead of Object.keys
+  for (const k in value) {
     if (Object.prototype.hasOwnProperty.call(value, k)) return true;
   }
   return false;
@@ -112,13 +110,10 @@ function jitter() {
 }
 
 function expBackoff(retries) {
-  // 30 s * 2^retries, capped at MAX_BACKOFF  — no Math.pow needed
   let v = LIVE_INTERVAL;
   for (let i = 0; i < retries; i++) v = v * 2;
   return Math.min(v, MAX_BACKOFF);
 }
-
-/* ---- formatting ---- */
 
 function fmtCurrency(value, digits = 2) {
   return "$" + safeNum(value).toFixed(digits);
@@ -142,9 +137,9 @@ function timeAgo(ts) {
   if (!ts) return "—";
   try {
     const d = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-    if (d < 0)   return "just now";
-    if (d < 30)  return "just now";
-    if (d < 60)  return d + "s ago";
+    if (d < 0)    return "just now";
+    if (d < 30)   return "just now";
+    if (d < 60)   return d + "s ago";
     if (d < 3600) return Math.floor(d / 60) + "m ago";
     if (d < 86400) return Math.floor(d / 3600) + "h ago";
     return Math.floor(d / 86400) + "d ago";
@@ -163,15 +158,13 @@ function fmtDate(ts) {
   catch { return "—"; }
 }
 
-/* ---- trade field getters ---- */
-
-function tradeTs(t)      { return t?.created_at || t?.timestamp || t?.time || t?.received_at || null; }
-function tradeQty(t)     { return t?.qty ?? t?.quantity ?? 0; }
-function tradePnl(t)     { return t?.pnl_usd ?? t?.pnl ?? 0; }
-function tradePnlPct(t)  { return t?.pnl_percentage ?? t?.pnl_pct ?? t?.return_percent ?? 0; }
-function tradeSide(t)    { return String(t?.side || t?.action || "").toLowerCase(); }
-function tradeBot(t)     { return t?.bot || t?.source || t?.exchange || t?.chain || "Unknown"; }
-function tradePrice(t)   { return t?.price ?? t?.entry_price ?? t?.exit_price ?? 0; }
+function tradeTs(t)     { return t?.created_at || t?.timestamp || t?.time || t?.received_at || null; }
+function tradeQty(t)    { return t?.qty ?? t?.quantity ?? 0; }
+function tradePnl(t)    { return t?.pnl_usd ?? t?.pnl ?? 0; }
+function tradePnlPct(t) { return t?.pnl_percentage ?? t?.pnl_pct ?? t?.return_percent ?? 0; }
+function tradeSide(t)   { return String(t?.side || t?.action || "").toLowerCase(); }
+function tradeBot(t)    { return t?.bot || t?.source || t?.exchange || t?.chain || "Unknown"; }
+function tradePrice(t)  { return t?.price ?? t?.entry_price ?? t?.exit_price ?? 0; }
 
 function dedupe(trades) {
   const seen = new Set();
@@ -250,17 +243,17 @@ function normalizePayload(raw = {}, prevHistorical = DEFAULT_HISTORICAL) {
     okx: {
       health: o,
       stats: {
-        positions_count:       safeNum(o?.positions ?? o?.positions_count, 0),
-        total_trades:          safeNum(o?.total_trades, 0),
-        total_pnl:             safeNum(o?.total_pnl, 0),
-        mode:                  o?.mode || "dry_run",
-        scan_count:            safeNum(o?.scan_count, 0),
-        last_scan_time:        o?.last_scan_time || null,
-        last_candidate_count:  safeNum(o?.last_candidate_count, 0),
-        last_signal_count:     safeNum(o?.last_signal_count, 0),
-        symbols_loaded:        safeNum(o?.symbols_loaded, 0),
-        max_positions:         safeNum(o?.max_positions, 0),
-        min_ai_score:          safeNum(o?.min_ai_score, 0),
+        positions_count:      safeNum(o?.positions ?? o?.positions_count, 0),
+        total_trades:         safeNum(o?.total_trades, 0),
+        total_pnl:            safeNum(o?.total_pnl, 0),
+        mode:                 o?.mode || "dry_run",
+        scan_count:           safeNum(o?.scan_count, 0),
+        last_scan_time:       o?.last_scan_time || null,
+        last_candidate_count: safeNum(o?.last_candidate_count, 0),
+        last_signal_count:    safeNum(o?.last_signal_count, 0),
+        symbols_loaded:       safeNum(o?.symbols_loaded, 0),
+        max_positions:        safeNum(o?.max_positions, 0),
+        min_ai_score:         safeNum(o?.min_ai_score, 0),
       },
     },
     recent_trades: dedupe(safeArr(raw?.recent_trades)),
@@ -269,42 +262,73 @@ function normalizePayload(raw = {}, prevHistorical = DEFAULT_HISTORICAL) {
 }
 
 /* =====================================================
-   DATA HOOK  — single fetch loop, historical once
+   ✅ AXIOS INSTANCES — no custom headers that trigger CORS preflight
+===================================================== */
+
+/*
+  Root cause of the CORS error:
+    The "Pragma" header (and sometimes "Cache-Control") is NOT in the
+    server's Access-Control-Allow-Headers list.
+    Sending ANY non-simple header forces a preflight OPTIONS request,
+    which the server rejects.
+
+  Fix:
+    Use plain axios instances with NO extra headers.
+    The browser's built-in HTTP cache is fine for public read-only endpoints.
+    Append a timestamp query param to bust the cache without headers.
+*/
+
+const liveAxios = axios.create({
+  timeout: 10_000,
+  // ✅ no custom headers — avoids CORS preflight
+});
+
+const histAxios = axios.create({
+  timeout: 8_000,
+  // ✅ no custom headers
+});
+
+/* Cache-bust via query param instead of headers */
+function cacheBustUrl(url) {
+  return url + "?_t=" + Date.now();
+}
+
+/* =====================================================
+   DATA HOOK
 ===================================================== */
 
 function useLiveData() {
   const [state, setState] = useState(DEFAULT_STATE);
 
-  /* stable refs — never stale in closures */
   const mountedRef  = useRef(false);
   const liveTimer   = useRef(null);
   const histTimer   = useRef(null);
   const abortRef    = useRef(null);
   const backoffRef  = useRef(LIVE_INTERVAL);
   const retriesRef  = useRef(0);
-  const prevRef     = useRef(DEFAULT_STATE);   // latest state without re-render dep
+  const prevRef     = useRef(DEFAULT_STATE);
 
-  /* keep prevRef in sync */
   useEffect(() => { prevRef.current = state; }, [state]);
 
-  /* ---- historical: fetch once on mount, then every 10 min ---- */
+  /* ---- historical: once on mount, then every 10 min ---- */
   const fetchHistorical = useCallback(async () => {
     try {
-      const res  = await axios.get(HISTORICAL_URL, { timeout: 8000 });
+      const res  = await histAxios.get(cacheBustUrl(HISTORICAL_URL));
       const hist = normalizeHistorical(res.data);
-      const hasData =
+      const has  =
         hist.daily.length > 0 || hist.weekly.length > 0 || hist.monthly.length > 0;
-      if (hasData && mountedRef.current) {
+      if (has && mountedRef.current) {
         setState(prev => ({ ...prev, historical: hist }));
       }
-    } catch (_) { /* silent — historical is optional */ }
+    } catch (_) {
+      /* historical is optional — silent fail */
+    }
   }, []);
 
-  /* ---- live stats: main loop ---- */
+  /* ---- live stats loop ---- */
   useEffect(() => {
     mountedRef.current = true;
 
-    /* ---- cleanup helpers ---- */
     const cancelAbort = () => {
       if (abortRef.current) {
         try { abortRef.current.abort(); } catch (_) {}
@@ -321,21 +345,21 @@ function useLiveData() {
       liveTimer.current = setTimeout(tick, ms + jitter());
     };
 
-    /* ---- single tick ---- */
     const tick = async () => {
       if (!mountedRef.current) return;
 
-      /* skip while tab hidden — reschedule when it comes back */
       if (document.hidden) { schedule(LIVE_INTERVAL); return; }
 
       cancelAbort();
       abortRef.current = new AbortController();
 
       try {
-        const res = await axios.get(LIVE_STATS_URL, {
-          timeout: 10_000,
-          signal:  abortRef.current.signal,
-          headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+        /*
+          ✅ No custom headers — only the AbortController signal.
+          Cache bust via query param.
+        */
+        const res = await liveAxios.get(cacheBustUrl(LIVE_STATS_URL), {
+          signal: abortRef.current.signal,
         });
 
         if (!mountedRef.current) return;
@@ -397,22 +421,19 @@ function useLiveData() {
       }
     };
 
-    /* ---- kick off ---- */
     fetchHistorical();
-    liveTimer.current = setTimeout(tick, 250);
+    liveTimer.current  = setTimeout(tick, 250);
+    histTimer.current  = setInterval(fetchHistorical, HISTORICAL_INTERVAL);
 
-    /* ---- historical refresh every 10 min ---- */
-    histTimer.current = setInterval(fetchHistorical, HISTORICAL_INTERVAL);
-
-    /* ---- wake on tab focus ---- */
     const onVisible = () => {
       if (!document.hidden) {
         clearLive();
         retriesRef.current = 0;
         backoffRef.current = LIVE_INTERVAL;
-        liveTimer.current  = setTimeout(tick, 500);
+        liveTimer.current  = setTimeout(tick, 500 + jitter());
       }
     };
+
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
@@ -428,7 +449,7 @@ function useLiveData() {
 }
 
 /* =====================================================
-   HEARTBEAT SVG
+   HEARTBEAT
 ===================================================== */
 
 function Heartbeat({ active = true }) {
@@ -514,11 +535,10 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
 }
 
 /* =====================================================
-   BOT CARD  — strictly online only when health object present
+   BOT CARD
 ===================================================== */
 
 function BotCard({ name, icon, health, stats, accent = "indigo" }) {
-  /* ✅ FIXED: bot is online ONLY when the API returned a health object */
   const isOnline = isLiveObject(health);
 
   const borders = {
@@ -530,23 +550,23 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
 
   const rows = useMemo(() => {
     if (name === "Futures Bot") return [
-      ["Pairs",    stats?.total_symbols ?? 0],
-      ["Status",   stats?.status        || "—"],
-      ["Positions",stats?.positions     ?? 0],
-      ["DB",       stats?.db_connected  ? "✓ connected" : "✗ off"],
+      ["Pairs",     stats?.total_symbols ?? 0],
+      ["Status",    stats?.status        || "—"],
+      ["Positions", stats?.positions     ?? 0],
+      ["DB",        stats?.db_connected  ? "✓ connected" : "✗ off"],
     ];
     if (name === "Stock Bot") return [
-      ["Symbols",  stats?.symbols       ?? 0],
-      ["Mode",     stats?.mode          || "paper"],
-      ["Running",  stats?.running       ? "Yes" : "No"],
-      ["Refresh",  stats?.lastRefresh   ? timeAgo(stats.lastRefresh) : "—"],
+      ["Symbols",   stats?.symbols      ?? 0],
+      ["Mode",      stats?.mode         || "paper"],
+      ["Running",   stats?.running      ? "Yes" : "No"],
+      ["Refresh",   stats?.lastRefresh  ? timeAgo(stats.lastRefresh) : "—"],
     ];
     if (name === "OKX Spot") return [
-      ["Positions", stats?.positions_count     ?? 0],
-      ["Trades",    stats?.total_trades        ?? 0],
-      ["P&L",       fmtSigned(stats?.total_pnl ?? 0)],
-      ["Mode",      stats?.mode                || "dry_run"],
-      ["Candidates",stats?.last_candidate_count ?? 0],
+      ["Positions",  stats?.positions_count      ?? 0],
+      ["Trades",     stats?.total_trades         ?? 0],
+      ["P&L",        fmtSigned(stats?.total_pnl  ?? 0)],
+      ["Mode",       stats?.mode                 || "dry_run"],
+      ["Candidates", stats?.last_candidate_count ?? 0],
     ];
     return [];
   }, [name, stats]);
@@ -555,7 +575,6 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
     <div className={"border rounded-xl p-3 sm:p-4 transition-all " +
       (borders[accent] || borders.indigo)}>
 
-      {/* header */}
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">{icon}</span>
@@ -569,7 +588,6 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
         </span>
       </div>
 
-      {/* stats rows */}
       {isOnline ? (
         <div className="space-y-1.5">
           {rows.map(([label, val]) => (
@@ -591,9 +609,9 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
 ===================================================== */
 
 function SniperCard({ health, discoveries, stats }) {
-  const isOnline   = isLiveObject(health);
-  const discCount  = safeArr(discoveries).length;
-  const prevRef    = useRef(discCount);
+  const isOnline  = isLiveObject(health);
+  const discCount = safeArr(discoveries).length;
+  const prevRef   = useRef(discCount);
   const [pinged, setPinged] = useState(false);
 
   useEffect(() => {
@@ -611,7 +629,6 @@ function SniperCard({ health, discoveries, stats }) {
       "border-purple-500/30 bg-purple-500/10 hover:border-purple-500/50 " +
       (pinged ? "ring-2 ring-purple-400/60" : "")}>
 
-      {/* header */}
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xl sm:text-2xl shrink-0">🦄</span>
@@ -625,7 +642,6 @@ function SniperCard({ health, discoveries, stats }) {
         </span>
       </div>
 
-      {/* heartbeat */}
       <div className="flex items-center justify-center mb-3">
         <Heartbeat active={isOnline} />
       </div>
@@ -633,10 +649,10 @@ function SniperCard({ health, discoveries, stats }) {
       {isOnline ? (
         <div className="space-y-1.5">
           {[
-            ["Discoveries",  discCount],
-            ["Status",       stats?.status        || "idle"],
-            ["Active Trades",stats?.active_trades ?? 0],
-            ["Networks",     (stats?.active_networks?.length ?? 0) + " active"],
+            ["Discoveries",   discCount],
+            ["Status",        stats?.status         || "idle"],
+            ["Active Trades", stats?.active_trades  ?? 0],
+            ["Networks",      (stats?.active_networks?.length ?? 0) + " active"],
           ].map(([label, val]) => (
             <div key={label} className="flex justify-between items-center text-xs">
               <span className="text-white/45">{label}</span>
@@ -668,17 +684,17 @@ function SniperCard({ health, discoveries, stats }) {
 ===================================================== */
 
 function TradeRow({ trade }) {
-  const side    = tradeSide(trade);
-  const pnl     = safeNum(tradePnl(trade), 0);
-  const pnlPct  = safeNum(tradePnlPct(trade), 0);
-  const qty     = safeNum(tradeQty(trade), 0);
-  const price   = safeNum(tradePrice(trade), 0);
-  const symbol  = trade?.symbol || "Unknown";
-  const bot     = tradeBot(trade);
-  const ts      = tradeTs(trade);
+  const side   = tradeSide(trade);
+  const pnl    = safeNum(tradePnl(trade), 0);
+  const pnlPct = safeNum(tradePnlPct(trade), 0);
+  const qty    = safeNum(tradeQty(trade), 0);
+  const price  = safeNum(tradePrice(trade), 0);
+  const symbol = trade?.symbol || "Unknown";
+  const bot    = tradeBot(trade);
+  const ts     = tradeTs(trade);
 
-  const isBuy   = side === "buy"  || side === "long";
-  const isSell  = side === "sell" || side === "short";
+  const isBuy   = side === "buy"   || side === "long";
+  const isSell  = side === "sell"  || side === "short";
   const isClose = side === "close" || side === "exit";
   const isOpen  = !isClose && trade?.status === "open" && pnl === 0;
 
@@ -687,15 +703,14 @@ function TradeRow({ trade }) {
   let badge  = "bg-gray-500/20 text-gray-300";
   let label  = side ? side.toUpperCase() : "UNKNOWN";
 
-  if (isOpen)  { border = "border-l-blue-500";   bg = "bg-blue-500/5";   badge = "bg-blue-500/20 text-blue-300";     label = "OPEN";   }
+  if (isOpen)       { border = "border-l-blue-500";   bg = "bg-blue-500/5";   badge = "bg-blue-500/20 text-blue-300";     label = "OPEN";   }
   else if (isClose) { border = "border-l-purple-500"; bg = "bg-purple-500/5"; badge = "bg-purple-500/20 text-purple-300"; label = "CLOSED"; }
-  else if (isBuy)  { border = "border-l-green-500";  bg = "bg-green-500/5";  badge = "bg-green-500/20 text-green-300";   label = "BUY";    }
-  else if (isSell) { border = "border-l-red-500";    bg = "bg-red-500/5";    badge = "bg-red-500/20 text-red-300";       label = "SELL";   }
+  else if (isBuy)   { border = "border-l-green-500";  bg = "bg-green-500/5";  badge = "bg-green-500/20 text-green-300";   label = "BUY";    }
+  else if (isSell)  { border = "border-l-red-500";    bg = "bg-red-500/5";    badge = "bg-red-500/20 text-red-300";       label = "SELL";   }
 
   return (
     <div className={"flex items-center justify-between gap-3 px-3 py-2 " +
       "rounded-xl text-sm border-l-4 " + border + " " + bg}>
-
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <span className="text-base shrink-0">📊</span>
         <div className="min-w-0">
@@ -705,10 +720,7 @@ function TradeRow({ trade }) {
             <span className="text-[10px] text-white/35">{bot}</span>
           </div>
           <div className="text-[10px] text-white/35">
-            {timeAgo(ts)}
-            {" · "}
-            {fmtCurrency(price)}
-            {" · "}
+            {timeAgo(ts)} {" · "} {fmtCurrency(price)} {" · "}
             {qty > 0 ? qty.toFixed(4) + " units" : "—"}
           </div>
         </div>
@@ -719,12 +731,10 @@ function TradeRow({ trade }) {
           <span className="font-bold text-sm text-blue-400">Open</span>
         ) : pnl !== 0 ? (
           <>
-            <div className={"font-bold text-sm " +
-              (pnl > 0 ? "text-emerald-400" : "text-red-400")}>
+            <div className={"font-bold text-sm " + (pnl > 0 ? "text-emerald-400" : "text-red-400")}>
               {fmtSigned(pnl)}
             </div>
-            <div className={"text-[10px] " +
-              (pnlPct > 0 ? "text-emerald-400/70" : "text-red-400/70")}>
+            <div className={"text-[10px] " + (pnlPct > 0 ? "text-emerald-400/70" : "text-red-400/70")}>
               {fmtPct(pnlPct)}
             </div>
           </>
@@ -797,18 +807,13 @@ function HistoricalChart({ data, type, onChangeType }) {
 
   return (
     <div className="space-y-3">
-      {/* period buttons */}
       <div className="flex gap-2 text-xs">
         {PERIODS.map(p => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => onChangeType(p)}
+          <button key={p} type="button" onClick={() => onChangeType(p)}
             className={"px-3 py-1 rounded-lg capitalize transition-all " +
               (type === p
                 ? "bg-indigo-600 text-white"
-                : "bg-white/5 text-white/50 hover:bg-white/10")}
-          >
+                : "bg-white/5 text-white/50 hover:bg-white/10")}>
             {p}
           </button>
         ))}
@@ -825,7 +830,6 @@ function HistoricalChart({ data, type, onChangeType }) {
             const pct  = (Math.abs(val) / maxAbs) * 100;
             const pos  = val >= 0;
             const date = getDate(d);
-
             return (
               <div key={date || i}
                 className="flex-1 flex flex-col items-center group relative">
@@ -834,10 +838,10 @@ function HistoricalChart({ data, type, onChangeType }) {
                     (pos ? "bg-emerald-500/50" : "bg-red-500/50")}
                   style={{ height: Math.max(pct, 4) + "%" }}
                 >
-                  {/* tooltip */}
                   <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2
                     bg-gray-800 border border-white/10 text-[10px] px-2 py-1 rounded
-                    opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                    opacity-0 group-hover:opacity-100 transition-opacity
+                    whitespace-nowrap z-10 pointer-events-none">
                     <div className="font-medium">{date ? fmtDate(date) : "—"}</div>
                     <div className={pos ? "text-emerald-400" : "text-red-400"}>
                       {fmtSigned(val)}
@@ -861,7 +865,7 @@ function HistoricalChart({ data, type, onChangeType }) {
 ===================================================== */
 
 function InvestorPanel({ data, totalPnL, totalTrades, activeBots, discCount }) {
-  const wins = useMemo(
+  const wins  = useMemo(
     () => safeArr(data.recent_trades).filter(t => tradePnl(t) > 0).length,
     [data.recent_trades]
   );
@@ -884,7 +888,6 @@ function InvestorPanel({ data, totalPnL, totalTrades, activeBots, discCount }) {
     <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30
       border border-indigo-500/30 rounded-2xl p-5 sm:p-6">
 
-      {/* top row */}
       <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
         <div>
           <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r
@@ -911,16 +914,14 @@ function InvestorPanel({ data, totalPnL, totalTrades, activeBots, discCount }) {
         </div>
       </div>
 
-      {/* metric grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         {[
-          ["Active Strategies", activeBots + "/4",           "Systems online"],
-          ["Total Trades",      fmtCompact(totalTrades),     "Lifetime trades"],
-          ["Market Coverage",   fmtCompact(coverage),        "Symbols tracked"],
-          ["Discovery Engine",  fmtCompact(discCount),       "Opportunities"],
+          ["Active Strategies", activeBots + "/4",        "Systems online"],
+          ["Total Trades",      fmtCompact(totalTrades),  "Lifetime trades"],
+          ["Market Coverage",   fmtCompact(coverage),     "Symbols tracked"],
+          ["Discovery Engine",  fmtCompact(discCount),    "Opportunities"],
         ].map(([title, val, sub]) => (
-          <div key={title}
-            className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div key={title} className="bg-white/5 rounded-xl p-3 border border-white/10">
             <div className="text-[10px] text-white/40 mb-1">{title}</div>
             <div className="text-xl font-bold">{val}</div>
             <div className="text-[10px] text-white/30 mt-0.5">{sub}</div>
@@ -928,7 +929,6 @@ function InvestorPanel({ data, totalPnL, totalTrades, activeBots, discCount }) {
         ))}
       </div>
 
-      {/* thesis + status */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-sm">
         <div className="lg:col-span-2 bg-white/5 rounded-xl p-4 border border-white/10">
           <div className="text-white/40 text-xs mb-3">Investment Thesis</div>
@@ -943,7 +943,6 @@ function InvestorPanel({ data, totalPnL, totalTrades, activeBots, discCount }) {
             <span><span className="text-purple-400">●</span> Real-time Risk Monitoring</span>
           </div>
         </div>
-
         <div className="bg-white/5 rounded-xl p-4 border border-white/10">
           <div className="text-white/40 text-xs mb-3">Operational Status</div>
           <div className="space-y-2">
@@ -968,6 +967,7 @@ function InvestorPanel({ data, totalPnL, totalTrades, activeBots, discCount }) {
 
 export default function PublicDashboard() {
   const data = useLiveData();
+
   const [activeTab,      setActiveTab]      = useState("all");
   const [historicalType, setHistoricalType] = useState("daily");
   const [clock,          setClock]          = useState(new Date());
@@ -988,7 +988,6 @@ export default function PublicDashboard() {
     ? (Date.now() - new Date(data.lastSuccessAt).getTime()) / 1000 > 90
     : false;
 
-  /* trades */
   const allTrades = useMemo(() =>
     dedupe(data.recent_trades)
       .sort((a, b) =>
@@ -999,22 +998,21 @@ export default function PublicDashboard() {
     [data.recent_trades]
   );
 
-  const isOpen   = t => t?.status === "open"   || (tradePnl(t) === 0 && !t?.closed);
-  const isClosed = t => tradePnl(t) !== 0 || t?.status === "closed" || tradeSide(t) === "close";
+  const isOpenFn   = t => t?.status === "open" || (tradePnl(t) === 0 && !t?.closed);
+  const isClosedFn = t => tradePnl(t) !== 0 || t?.status === "closed" || tradeSide(t) === "close";
 
   const filtered = useMemo(() => {
-    if (activeTab === "open")   return allTrades.filter(isOpen);
-    if (activeTab === "closed") return allTrades.filter(isClosed);
+    if (activeTab === "open")   return allTrades.filter(isOpenFn);
+    if (activeTab === "closed") return allTrades.filter(isClosedFn);
     return allTrades;
   }, [activeTab, allTrades]);
 
   const tabs = [
     { id: "all",    icon: "🌐", label: "All",    count: allTrades.length },
-    { id: "open",   icon: "🟢", label: "Open",   count: allTrades.filter(isOpen).length },
-    { id: "closed", icon: "✅", label: "Closed", count: allTrades.filter(isClosed).length },
+    { id: "open",   icon: "🟢", label: "Open",   count: allTrades.filter(isOpenFn).length },
+    { id: "closed", icon: "✅", label: "Closed", count: allTrades.filter(isClosedFn).length },
   ];
 
-  /* aggregates */
   const activeBots = [
     data.futures.health,
     data.stocks.health,
@@ -1022,28 +1020,26 @@ export default function PublicDashboard() {
     data.okx.health,
   ].filter(isLiveObject).length;
 
-  const totalPnL   = safeNum(data.okx.stats?.total_pnl, 0);
+  const totalPnL    = safeNum(data.okx.stats?.total_pnl, 0);
   const totalTrades = Math.max(safeNum(data.okx.stats?.total_trades), allTrades.length);
-  const discCount  = safeArr(data.sniper.discoveries).length;
+  const discCount   = safeArr(data.sniper.discoveries).length;
 
   const openPos =
-    safeNum(data.okx.stats?.positions_count)  +
-    safeNum(data.futures.stats?.positions)    +
+    safeNum(data.okx.stats?.positions_count) +
+    safeNum(data.futures.stats?.positions)   +
     safeNum(data.sniper.stats?.active_trades);
 
   const wins   = useMemo(() => allTrades.filter(t => tradePnl(t) > 0).length, [allTrades]);
   const losses = useMemo(() => allTrades.filter(t => tradePnl(t) < 0).length, [allTrades]);
 
-  /* status badge */
   const [badgeClass, badgeText] = hasConnection
     ? isStale
-      ? ["bg-amber-500/20 text-amber-300", "STALE"]
+      ? ["bg-amber-500/20 text-amber-300",   "STALE"]
       : ["bg-emerald-500/20 text-emerald-300", "LIVE"]
     : data.historical.daily.length > 0
-      ? ["bg-blue-500/20 text-blue-300", "HISTORICAL"]
+      ? ["bg-blue-500/20 text-blue-300",     "HISTORICAL"]
       : ["bg-yellow-500/20 text-yellow-300", "CONNECTING"];
 
-  /* loading splash */
   if (data.loading && !data.lastSuccessAt && !data.historical.daily.length) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900
@@ -1061,16 +1057,13 @@ export default function PublicDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900
       to-indigo-950 text-white">
 
-      {/* ── HEADER ── */}
-      <header className="border-b border-white/10 bg-black/20 backdrop-blur
-        sticky top-0 z-50">
+      {/* HEADER */}
+      <header className="border-b border-white/10 bg-black/20 backdrop-blur sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-
             <div className="flex items-center gap-3">
-              <Link to="/"
-                className="text-xl font-bold bg-gradient-to-r from-indigo-400
-                  to-emerald-400 bg-clip-text text-transparent">
+              <Link to="/" className="text-xl font-bold bg-gradient-to-r from-indigo-400
+                to-emerald-400 bg-clip-text text-transparent">
                 IMALI
               </Link>
               <span className={"text-xs px-2 py-1 rounded-full " + badgeClass}>
@@ -1090,15 +1083,13 @@ export default function PublicDashboard() {
                   : hasConnection ? "Real-time" : "Connecting…"}
               </div>
               <span>
-                {data.lastSuccessAt
-                  ? "Last: " + fmtClock(data.lastSuccessAt)
-                  : "No data yet"}
+                {data.lastSuccessAt ? "Last: " + fmtClock(data.lastSuccessAt) : "No data yet"}
               </span>
               <span>{clock.toLocaleTimeString()}</span>
               <Link to="/signup"
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600
                   to-purple-600 hover:from-indigo-500 hover:to-purple-500
-                  font-semibold text-white text-xs sm:text-sm transition-all">
+                  font-semibold text-white transition-all">
                 Access Premium →
               </Link>
             </div>
@@ -1106,17 +1097,13 @@ export default function PublicDashboard() {
         </div>
       </header>
 
-      {/* ── MAIN ── */}
+      {/* MAIN */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
 
-        {/* error banner */}
         {data.error ? (
-          <div className="p-4 bg-amber-500/10 border border-amber-500/30
-            rounded-xl text-center">
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
             <p className="text-amber-300 text-sm">{"⚠️ " + data.error}</p>
-            <p className="text-[10px] text-white/30 mt-1">
-              Showing cached data where available
-            </p>
+            <p className="text-[10px] text-white/30 mt-1">Showing cached data where available</p>
           </div>
         ) : null}
 
@@ -1133,7 +1120,7 @@ export default function PublicDashboard() {
 
         {/* stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-          <StatCard title="Active Bots"    value={activeBots}             icon="🤖" color="indigo"
+          <StatCard title="Active Bots"    value={activeBots}              icon="🤖" color="indigo"
             subtext={activeBots + "/4 online"} />
           <StatCard title="Total Trades"   value={fmtCompact(totalTrades)} icon="📊" color="purple"
             subtext={wins + " wins · " + losses + " losses"} />
@@ -1155,11 +1142,11 @@ export default function PublicDashboard() {
           discCount={discCount}
         />
 
-        {/* historical chart */}
+        {/* historical */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-lg flex items-center gap-2">
-              <span>📈</span>Historical Performance
+              <span>📈</span> Historical Performance
             </h2>
             <span className="text-xs text-white/30">
               {data.historical.daily.length > 0
@@ -1191,8 +1178,6 @@ export default function PublicDashboard() {
 
         {/* feed + sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* trade feed */}
           <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
               <h2 className="font-bold text-lg flex items-center gap-2">
@@ -1200,13 +1185,11 @@ export default function PublicDashboard() {
                 Live Execution Feed
                 <span className="text-xs text-white/30">{allTrades.length} trades</span>
               </h2>
-
               <div className="flex gap-1 bg-black/30 rounded-lg p-1">
                 {tabs.map(tab => (
-                  <button key={tab.id} type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={"px-3 py-1.5 rounded-lg text-xs font-medium " +
-                      "transition-all flex items-center gap-1 " +
+                  <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
+                    className={"px-3 py-1.5 rounded-lg text-xs font-medium transition-all " +
+                      "flex items-center gap-1 " +
                       (activeTab === tab.id
                         ? "bg-emerald-600 text-white"
                         : "text-white/40 hover:text-white/60")}>
@@ -1239,21 +1222,16 @@ export default function PublicDashboard() {
             </div>
           </div>
 
-          {/* sidebar */}
           <div className="space-y-4">
-
-            {/* discoveries */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
-                <span>🦄</span>
-                DEX Discovery Engine
+                <span>🦄</span> DEX Discovery Engine
                 {discCount > 0
                   ? <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
                       {discCount + " new"}
                     </span>
                   : null}
               </h2>
-
               <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                 {discCount > 0
                   ? safeArr(data.sniper.discoveries).slice(0, 10).map((d, i) => (
@@ -1268,27 +1246,25 @@ export default function PublicDashboard() {
               </div>
             </div>
 
-            {/* system status */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
               <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
-                <span>📡</span>System Status
+                <span>📡</span> System Status
               </h2>
-
               <div className="space-y-2.5 text-sm">
                 {[
-                  ["API",          hasConnection ? "● Connected" : "○ Limited",
-                                   hasConnection ? "text-emerald-400" : "text-yellow-400"],
-                  ["Last Update",  data.lastSuccessAt ? timeAgo(data.lastSuccessAt) : "—", ""],
-                  ["Open Positions", openPos, ""],
-                  ["Win/Loss",
+                  ["API",           hasConnection ? "● Connected" : "○ Limited",
+                                    hasConnection ? "text-emerald-400" : "text-yellow-400"],
+                  ["Last Update",   data.lastSuccessAt ? timeAgo(data.lastSuccessAt) : "—", ""],
+                  ["Open Positions",openPos, ""],
+                  ["Win / Loss",
                     losses > 0
                       ? (wins / losses).toFixed(2)
                       : wins > 0 ? "∞" : "0.00",
                     wins >= losses ? "text-emerald-400" : "text-red-400"],
-                  ["OKX Mode",     data.okx.stats?.mode || "dry_run", "capitalize"],
-                ].map(([label, val, cls]) => (
-                  <div key={label} className="flex justify-between items-center">
-                    <span className="text-white/50">{label}</span>
+                  ["OKX Mode",      data.okx.stats?.mode || "dry_run", "capitalize"],
+                ].map(([lbl, val, cls]) => (
+                  <div key={lbl} className="flex justify-between items-center">
+                    <span className="text-white/50">{lbl}</span>
                     <span className={"font-medium " + cls}>{val}</span>
                   </div>
                 ))}
@@ -1301,12 +1277,11 @@ export default function PublicDashboard() {
               </div>
             </div>
 
-            {/* CTA */}
             <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20
               border border-indigo-500/30 rounded-2xl p-5">
               <h3 className="font-bold text-lg mb-2">Institutional Access</h3>
               <p className="text-sm text-white/55 mb-4">
-                Full API access · Real-time signals · Priority support
+                Full API · Real-time signals · Priority support
               </p>
               <div className="space-y-1.5 text-sm text-white/65 mb-4">
                 {["WebSocket feeds", "Historical exports", "White-label options"].map(f => (
@@ -1326,7 +1301,7 @@ export default function PublicDashboard() {
         </div>
 
         {/* footer */}
-        <div className="text-center text-xs text-white/25 border-t border-white/10 pt-6">
+        <div className="text-center text-xs text-white/25 border-t border-white/10 pt-6 pb-2">
           Institutional trading infrastructure · Real-time monitoring · Transparent execution
           <br />
           <Link to="/"          className="text-indigo-400 hover:underline mx-2">Home</Link>
