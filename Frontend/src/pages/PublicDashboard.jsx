@@ -17,10 +17,54 @@ const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
 const DEFAULT_HISTORICAL = { daily: [], weekly: [], monthly: [] };
 
 const DEFAULT_STATE = {
-  futures: { health: null, stats: { total_symbols: 0, status: "unknown", daily_realized: {}, cex_enabled: false, dry_run: true, db_connected: false, positions: 0 } },
-  stocks: { health: null, stats: { symbols: 0, mode: "paper", running: false, lastRefresh: null } },
-  sniper: { health: null, discoveries: [], stats: { status: "idle", active_trades: 0, bot_state: "idle", last_heartbeat: null, active_networks: [] } },
-  okx: { health: null, stats: { positions_count: 0, total_trades: 0, total_pnl: 0, mode: "dry_run", scan_count: 0, last_scan_time: null, last_candidate_count: 0, last_signal_count: 0, symbols_loaded: 0, max_positions: 0, min_ai_score: 0 } },
+  futures: { 
+    health: null, 
+    stats: { 
+      total_symbols: 0, 
+      status: "unknown", 
+      daily_realized: {}, 
+      cex_enabled: false, 
+      dry_run: true, 
+      db_connected: false, 
+      positions: 0 
+    } 
+  },
+  stocks: { 
+    health: null, 
+    stats: { 
+      symbols: 0, 
+      mode: "paper", 
+      running: false, 
+      lastRefresh: null 
+    } 
+  },
+  sniper: { 
+    health: null, 
+    discoveries: [], 
+    stats: { 
+      status: "idle", 
+      active_trades: 0, 
+      bot_state: "idle", 
+      last_heartbeat: null, 
+      active_networks: [] 
+    } 
+  },
+  okx: { 
+    health: null, 
+    stats: { 
+      positions_count: 0, 
+      total_trades: 0, 
+      total_pnl: 0, 
+      mode: "dry_run", 
+      scan_count: 0, 
+      last_scan_time: null, 
+      last_candidate_count: 0, 
+      last_signal_count: 0, 
+      symbols_loaded: 0, 
+      max_positions: 0, 
+      min_ai_score: 0 
+    } 
+  },
   recent_trades: [],
   historical: DEFAULT_HISTORICAL,
   loading: true,
@@ -234,7 +278,7 @@ function mergeLiveStatsPayload(payload = {}, existingHistorical = DEFAULT_HISTOR
 }
 
 /* =====================================================
-   DATA HOOK
+   DATA HOOK - With improved error handling for 429
 ===================================================== */
 
 function useLiveData() {
@@ -244,6 +288,7 @@ function useLiveData() {
   const mountedRef = useRef(false);
   const stateRef = useRef(DEFAULT_STATE);
   const backoffRef = useRef(30000);
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
     stateRef.current = data;
@@ -271,107 +316,129 @@ function useLiveData() {
     mountedRef.current = true;
 
     const clearPending = () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (abortRef.current) abortRef.current.abort();
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
     };
 
     const scheduleNext = (ms) => {
       clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(fetchLiveStats, ms);
+      timerRef.current = setTimeout(() => {
+        if (mountedRef.current) {
+          fetchLiveStats();
+        }
+      }, ms);
     };
 
     const fetchLiveStats = async () => {
       if (!mountedRef.current) return;
 
-      if (document.hidden) {
-        scheduleNext(Math.max(backoffRef.current, 30000));
-        return;
+      // Always try to fetch historical data first to ensure charts show something
+      const historicalData = await fetchHistorical();
+      
+      if (historicalData && mountedRef.current) {
+        setData(prev => ({
+          ...prev,
+          historical: historicalData,
+          loading: false
+        }));
       }
 
+      // Then try to fetch live stats
       try {
         abortRef.current?.abort();
         abortRef.current = new AbortController();
 
-        const [liveResponse, historicalResponse] = await Promise.allSettled([
-          axios.get(LIVE_STATS_URL, {
-            timeout: 10000,
-            signal: abortRef.current.signal,
-            headers: { "Cache-Control": "no-cache" },
-          }),
-          fetchHistorical(),
-        ]);
+        const response = await axios.get(LIVE_STATS_URL, {
+          timeout: 10000,
+          signal: abortRef.current.signal,
+          headers: { "Cache-Control": "no-cache" },
+        });
 
         if (!mountedRef.current) return;
 
         const now = new Date();
         const previous = stateRef.current;
-        let nextState = { ...previous };
-        let hadLiveError = false;
 
-        if (liveResponse.status === "fulfilled") {
-          nextState = {
-            ...previous,
-            ...mergeLiveStatsPayload(liveResponse.value.data, previous.historical),
-          };
-          backoffRef.current = 30000;
-        } else {
-          hadLiveError = true;
-          const status = liveResponse.reason?.response?.status;
-
-          if (status === 429) {
-            const retryAfterHeader = liveResponse.reason?.response?.headers?.["retry-after"];
-            const retryAfterSeconds = Number(retryAfterHeader);
-            backoffRef.current =
-              Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-                ? retryAfterSeconds * 1000
-                : Math.min(backoffRef.current * 2, 120000);
-          } else {
-            backoffRef.current = Math.min(backoffRef.current + 10000, 120000);
-          }
-        }
-
-        if (historicalResponse.status === "fulfilled" && historicalResponse.value) {
-          nextState.historical = historicalResponse.value;
-        }
-
+        // Merge new data with existing historical
+        const mergedData = mergeLiveStatsPayload(response.data, previous.historical);
+        
         setData({
-          ...nextState,
+          ...previous,
+          ...mergedData,
           loading: false,
-          error: hadLiveError
-            ? `Live data unavailable. Retrying in ${Math.ceil(backoffRef.current / 1000)}s...`
-            : null,
+          error: null,
           lastUpdate: now,
-          lastSuccessAt: hadLiveError ? previous.lastSuccessAt : now,
-          rateLimitedUntil: hadLiveError
-            ? new Date(Date.now() + backoffRef.current)
-            : null,
+          lastSuccessAt: now,
+          rateLimitedUntil: null,
         });
 
+        // Reset backoff on success
+        backoffRef.current = 30000;
+        retryCountRef.current = 0;
+        
+        // Schedule next update
         scheduleNext(backoffRef.current);
+
       } catch (err) {
         if (!mountedRef.current) return;
         if (axios.isCancel(err)) return;
 
-        backoffRef.current = Math.min(backoffRef.current + 10000, 120000);
+        const now = new Date();
+        const previous = stateRef.current;
+        const status = err?.response?.status;
 
-        setData((prev) => ({
-          ...prev,
+        let errorMessage = "Connection issue";
+        let backoffTime = backoffRef.current;
+
+        if (status === 429) {
+          errorMessage = "Rate limited by API";
+          // Exponential backoff for rate limiting
+          retryCountRef.current++;
+          const retryAfter = err?.response?.headers?.["retry-after"];
+          
+          if (retryAfter && !isNaN(parseInt(retryAfter))) {
+            backoffTime = parseInt(retryAfter) * 1000;
+          } else {
+            // Exponential backoff: 30s, 60s, 120s, 300s max
+            backoffTime = Math.min(30000 * Math.pow(2, retryCountRef.current), 300000);
+          }
+        } else {
+          // Non-rate-limit errors
+          retryCountRef.current = 0;
+          backoffTime = Math.min(backoffRef.current + 10000, 120000);
+        }
+
+        backoffRef.current = backoffTime;
+
+        setData({
+          ...previous,
           loading: false,
-          error: `Connection issue. Retrying in ${Math.ceil(backoffRef.current / 1000)}s...`,
-          lastUpdate: new Date(),
-          rateLimitedUntil: new Date(Date.now() + backoffRef.current),
-        }));
+          error: `${errorMessage}. Retrying in ${Math.ceil(backoffTime / 1000)}s...`,
+          lastUpdate: now,
+          // Keep existing historical data
+          historical: previous.historical,
+          rateLimitedUntil: new Date(Date.now() + backoffTime),
+        });
 
-        scheduleNext(backoffRef.current);
+        // Schedule retry
+        scheduleNext(backoffTime);
       }
     };
 
+    // Initial fetch
     timerRef.current = setTimeout(fetchLiveStats, 250);
 
     const handleVisibility = () => {
       if (!document.hidden) {
         clearPending();
         backoffRef.current = 30000;
+        retryCountRef.current = 0;
         timerRef.current = setTimeout(fetchLiveStats, 500);
       }
     };
@@ -474,9 +541,10 @@ function StatCard({ title, value, icon, subtext, trend, color = "emerald" }) {
   );
 }
 
-// Fixed BotCard - Now uses stats directly instead of details prop
 function BotCard({ name, icon, health, stats, accent = "indigo" }) {
-  const isOnline = hasObjectData(health);
+  // Consider bot online if we have any meaningful stats
+  const hasStats = stats && Object.values(stats).some(v => v && v !== 0 && v !== "unknown" && v !== "paper");
+  const isOnline = hasObjectData(health) || hasStats;
 
   const accentMap = {
     indigo: "border-indigo-500/20 bg-indigo-500/10 hover:border-indigo-500/40",
@@ -492,18 +560,21 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
       return [
         ["Pairs", stats?.total_symbols || 0],
         ["Status", stats?.status || "unknown"],
+        ["Positions", stats?.positions || 0],
         ["DB", stats?.db_connected ? "connected" : "disconnected"],
       ];
     } else if (name === "Stock Bot") {
       return [
         ["Symbols", stats?.symbols || 0],
         ["Mode", stats?.mode || "paper"],
+        ["Running", stats?.running ? "Yes" : "No"],
         ["Refresh", stats?.lastRefresh ? timeAgo(stats.lastRefresh) : "—"],
       ];
     } else if (name === "OKX Spot") {
       return [
         ["Positions", stats?.positions_count || 0],
         ["Trades", stats?.total_trades || 0],
+        ["P&L", formatCurrencySigned(stats?.total_pnl || 0)],
         ["Mode", stats?.mode || "dry_run"],
         ["Candidates", stats?.last_candidate_count || 0],
       ];
@@ -525,24 +596,23 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
         </div>
       </div>
 
-      {isOnline ? (
-        <div className="text-xs space-y-2">
-          {getStatsLines().map(([label, value], idx) => (
-            <div key={idx} className="flex justify-between items-center">
-              <span className="text-white/50">{label}</span>
-              <span className="text-white font-medium">{value}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-xs text-white/30 py-2 text-center">System standby...</div>
-      )}
+      <div className="text-xs space-y-2">
+        {getStatsLines().map(([label, value], idx) => (
+          <div key={idx} className="flex justify-between items-center">
+            <span className="text-white/50">{label}</span>
+            <span className="text-white font-medium">{value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 function SniperCard({ health, discoveries, stats }) {
-  const isOnline = hasObjectData(health);
+  const hasDiscoveries = safeArray(discoveries).length > 0;
+  const hasStats = stats && (stats.active_trades > 0 || stats.status !== "idle");
+  const isOnline = hasObjectData(health) || hasDiscoveries || hasStats;
+  
   const discoveryCount = safeArray(discoveries).length;
   const [pinged, setPinged] = useState(false);
   const prevRef = useRef(discoveryCount);
@@ -579,28 +649,24 @@ function SniperCard({ health, discoveries, stats }) {
         <Heartbeat active={isOnline} />
       </div>
 
-      {isOnline ? (
-        <div className="text-xs space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-white/50">Discoveries</span>
-            <span className="text-purple-300 font-semibold text-base">{discoveryCount}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-white/50">Status</span>
-            <span className="text-white capitalize">{stats?.status || "idle"}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-white/50">Active Trades</span>
-            <span className="text-white">{stats?.active_trades || 0}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-white/50">Networks</span>
-            <span className="text-white">{stats?.active_networks?.length || 0} active</span>
-          </div>
+      <div className="text-xs space-y-2">
+        <div className="flex justify-between items-center">
+          <span className="text-white/50">Discoveries</span>
+          <span className="text-purple-300 font-semibold text-base">{discoveryCount}</span>
         </div>
-      ) : (
-        <div className="text-xs text-white/30 py-2 text-center">System standby...</div>
-      )}
+        <div className="flex justify-between">
+          <span className="text-white/50">Status</span>
+          <span className="text-white capitalize">{stats?.status || "idle"}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-white/50">Active Trades</span>
+          <span className="text-white">{stats?.active_trades || 0}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-white/50">Networks</span>
+          <span className="text-white">{stats?.active_networks?.length || 0} active</span>
+        </div>
+      </div>
 
       {pinged ? (
         <div className="mt-2 text-center text-[10px] text-purple-300 bg-purple-500/20 rounded-full py-0.5 animate-pulse">
@@ -724,16 +790,16 @@ function DiscoveryCard({ discovery }) {
   );
 }
 
-// Fixed HistoricalChart - Now properly shows lines
 function HistoricalChart({ data, type, onChangeType }) {
   const chartData = safeArray(data?.[type]);
   
-  // Calculate max value for scaling
-  const maxValue = Math.max(...chartData.map((d) => Math.abs(safeNumber(d?.pnl || d?.value || 0)), 1));
-  
-  // Get the appropriate label based on data structure
+  // Get the appropriate value based on data structure
   const getValue = (item) => safeNumber(item?.pnl || item?.value || item?.pnl_usd || 0);
   const getDate = (item) => item?.date || item?.timestamp || item?.day || "";
+
+  // Calculate max value for scaling
+  const values = chartData.map(d => Math.abs(getValue(d)));
+  const maxValue = values.length > 0 ? Math.max(...values, 1) : 1;
 
   if (!chartData.length) {
     return (
@@ -779,7 +845,7 @@ function HistoricalChart({ data, type, onChangeType }) {
       <div className="h-32 flex items-end gap-1">
         {chartData.slice(-10).map((d, i) => {
           const value = getValue(d);
-          const height = maxValue > 0 ? (Math.abs(value) / maxValue) * 100 : 0;
+          const height = (Math.abs(value) / maxValue) * 100;
           const positive = value >= 0;
           const date = getDate(d);
 
@@ -792,7 +858,7 @@ function HistoricalChart({ data, type, onChangeType }) {
                 style={{ height: `${Math.max(height, 5)}%` }}
               >
                 <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 border border-white/10">
-                  <div className="font-medium">{date ? formatDate(date) : formatDate(new Date())}</div>
+                  <div className="font-medium">{date ? formatDate(date) : "—"}</div>
                   <div className={positive ? "text-emerald-400" : "text-red-400"}>
                     {formatCurrencySigned(value)}
                   </div>
@@ -849,10 +915,10 @@ function NobleInvestorPanel({ data, totalPnL, totalTradesCount, activeBots, disc
         <div className="bg-white/5 rounded-xl p-4 border border-white/10">
           <div className="text-white/40 text-xs mb-1">Active Strategies</div>
           <div className="text-2xl font-bold">{activeBots}/4</div>
-          <div className="text-xs text-white/30 mt-1">All systems operational</div>
+          <div className="text-xs text-white/30 mt-1">Systems online</div>
         </div>
         <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-          <div className="text-white/40 text-xs mb-1">Total Trade Volume</div>
+          <div className="text-white/40 text-xs mb-1">Total Trades</div>
           <div className="text-2xl font-bold">{formatCompact(totalTradesCount)}</div>
           <div className="text-xs text-white/30 mt-1">Lifetime trades</div>
         </div>
@@ -889,25 +955,25 @@ function NobleInvestorPanel({ data, totalPnL, totalTradesCount, activeBots, disc
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
               <span className="text-white/50">Futures Bot</span>
-              <span className={data.futures.health ? "text-emerald-400" : "text-red-400"}>
+              <span className={data.futures.health ? "text-emerald-400" : "text-white/50"}>
                 {data.futures.health ? "Operational" : "Standby"}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/50">Stock Bot</span>
-              <span className={data.stocks.health ? "text-emerald-400" : "text-red-400"}>
+              <span className={data.stocks.health ? "text-emerald-400" : "text-white/50"}>
                 {data.stocks.health ? "Operational" : "Standby"}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/50">Sniper Bot</span>
-              <span className={data.sniper.health ? "text-emerald-400" : "text-red-400"}>
+              <span className={data.sniper.health ? "text-emerald-400" : "text-white/50"}>
                 {data.sniper.health ? "Operational" : "Standby"}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/50">OKX Spot</span>
-              <span className={data.okx.health ? "text-emerald-400" : "text-red-400"}>
+              <span className={data.okx.health ? "text-emerald-400" : "text-white/50"}>
                 {data.okx.health ? "Operational" : "Standby"}
               </span>
             </div>
@@ -1005,7 +1071,7 @@ export default function PublicDashboard() {
   const winsCount = useMemo(() => allTrades.filter((t) => getTradePnlUsd(t) > 0).length, [allTrades]);
   const lossesCount = useMemo(() => allTrades.filter((t) => getTradePnlUsd(t) < 0).length, [allTrades]);
 
-  if (data.loading && !data.lastSuccessAt) {
+  if (data.loading && !data.lastSuccessAt && !data.historical.daily.length) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white flex items-center justify-center">
         <div className="text-center">
@@ -1031,10 +1097,16 @@ export default function PublicDashboard() {
                     ? isStale
                       ? "bg-amber-500/20 text-amber-300"
                       : "bg-emerald-500/20 text-emerald-300"
-                    : "bg-yellow-500/20 text-yellow-300"
+                    : data.historical.daily.length > 0
+                      ? "bg-blue-500/20 text-blue-300"
+                      : "bg-yellow-500/20 text-yellow-300"
                 }`}
               >
-                {hasConnection ? (isStale ? "STALE" : "LIVE") : "CONNECTING"}
+                {hasConnection 
+                  ? (isStale ? "STALE" : "LIVE") 
+                  : data.historical.daily.length > 0 
+                    ? "HISTORICAL ONLY" 
+                    : "CONNECTING"}
               </span>
             </div>
 
@@ -1046,10 +1118,18 @@ export default function PublicDashboard() {
                       ? isStale
                         ? "bg-amber-400"
                         : "bg-green-400 animate-pulse"
-                      : "bg-yellow-400"
+                      : data.historical.daily.length > 0
+                        ? "bg-blue-400"
+                        : "bg-yellow-400"
                   }`}
                 />
-                <span>Real-time monitoring</span>
+                <span>
+                  {data.rateLimitedUntil 
+                    ? `Rate limited until ${formatClock(data.rateLimitedUntil)}`
+                    : hasConnection 
+                      ? "Real-time monitoring" 
+                      : "Showing historical data"}
+                </span>
               </div>
               <div className="text-xs text-white/40">{clock.toLocaleTimeString()} UTC</div>
               <Link
@@ -1067,6 +1147,7 @@ export default function PublicDashboard() {
         {data.error ? (
           <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
             <p className="text-amber-300 text-sm">⚠️ {data.error}</p>
+            <p className="text-xs text-white/40 mt-1">Showing cached data where available</p>
           </div>
         ) : null}
 
@@ -1137,7 +1218,9 @@ export default function PublicDashboard() {
               <span>📈</span>
               Historical Performance
             </h2>
-            <div className="text-xs text-white/30">Updated in real-time</div>
+            <div className="text-xs text-white/30">
+              {data.historical.daily.length > 0 ? `${data.historical.daily.length} data points` : "No data yet"}
+            </div>
           </div>
           <HistoricalChart
             data={data.historical}
@@ -1185,6 +1268,9 @@ export default function PublicDashboard() {
                 <h2 className="font-bold text-lg flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                   Live Execution Feed
+                  {allTrades.length > 0 && (
+                    <span className="text-xs text-white/30 ml-2">{allTrades.length} trades</span>
+                  )}
                 </h2>
 
                 <div className="flex gap-1 bg-black/30 rounded-lg p-1 flex-wrap">
@@ -1259,7 +1345,7 @@ export default function PublicDashboard() {
                 <div className="flex justify-between items-center">
                   <span className="text-white/50">API Connection</span>
                   <span className={hasConnection ? "text-emerald-400" : "text-yellow-400"}>
-                    {hasConnection ? "● Connected" : "○ Connecting"}
+                    {hasConnection ? "● Connected" : "○ Limited"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -1273,13 +1359,19 @@ export default function PublicDashboard() {
                 <div className="flex justify-between items-center">
                   <span className="text-white/50">Win/Loss Ratio</span>
                   <span className={winsCount >= lossesCount ? "text-emerald-400" : "text-red-400"}>
-                    {(winsCount / (lossesCount || 1)).toFixed(2)}
+                    {lossesCount > 0 ? (winsCount / lossesCount).toFixed(2) : winsCount > 0 ? "∞" : "0.00"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-white/50">OKX Mode</span>
                   <span className="capitalize">{data.okx.stats?.mode || "dry_run"}</span>
                 </div>
+                {data.rateLimitedUntil && (
+                  <div className="flex justify-between items-center text-amber-400">
+                    <span className="text-white/50">Rate Limited</span>
+                    <span>Until {formatClock(data.rateLimitedUntil)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
