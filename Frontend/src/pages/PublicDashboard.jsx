@@ -1,5 +1,5 @@
 // src/pages/PublicDashboard.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 
@@ -15,14 +15,28 @@ const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
 const CONTROL_URL = `${API_BASE}/api/public/control`;
 
+const EMPTY_HISTORICAL = { daily: [], weekly: [], monthly: [] };
+
 const DEFAULT_STATE = {
   futures: { health: null, positions: [], trades: [], stats: null },
   stocks: { health: null, positions: [], trades: [], stats: null },
   sniper: { health: null, discoveries: [], stats: null, positions: [] },
-  okx: { health: null, positions: [], trades: [], stats: { total_trades: 0, total_pnl: 0, positions_count: 0, mode: 'unknown' } },
+  okx: {
+    health: null,
+    positions: [],
+    trades: [],
+    stats: {
+      total_trades: 0,
+      total_pnl: 0,
+      positions_count: 0,
+      mode: "unknown",
+      scan_count: 0,
+      last_scan_time: null,
+    },
+  },
   recent_trades: [],
   recent_activity: [],
-  historical: { daily: [], weekly: [], monthly: [] },
+  historical: EMPTY_HISTORICAL,
   loading: true,
   error: null,
   lastUpdate: null,
@@ -48,29 +62,6 @@ function formatPercent(value, digits = 2) {
   return `${num >= 0 ? "+" : ""}${num.toFixed(digits)}%`;
 }
 
-function formatNumber(value) {
-  return safeNumber(value).toLocaleString();
-}
-
-function timeAgo(timestamp) {
-  if (!timestamp) return "—";
-  try {
-    const diffMs = Date.now() - new Date(timestamp).getTime();
-    if (diffMs < 0) return "just now";
-    const sec = Math.floor(diffMs / 1000);
-    const min = Math.floor(sec / 60);
-    const hr = Math.floor(min / 60);
-    const day = Math.floor(hr / 24);
-    if (sec < 30) return "just now";
-    if (sec < 60) return `${sec}s ago`;
-    if (min < 60) return `${min}m ago`;
-    if (hr < 24) return `${hr}h ago`;
-    return `${day}d ago`;
-  } catch {
-    return "—";
-  }
-}
-
 function formatClock(timestamp) {
   if (!timestamp) return "—";
   try {
@@ -87,6 +78,39 @@ function formatDate(timestamp) {
   } catch {
     return "—";
   }
+}
+
+function timeAgo(timestamp) {
+  if (!timestamp) return "—";
+  try {
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    if (diffMs < 0) return "just now";
+    const sec = Math.floor(diffMs / 1000);
+    const min = Math.floor(sec / 60);
+    const hr = Math.floor(min / 60);
+    const day = Math.floor(hr / 24);
+
+    if (sec < 30) return "just now";
+    if (sec < 60) return `${sec}s ago`;
+    if (min < 60) return `${min}m ago`;
+    if (hr < 24) return `${hr}h ago`;
+    return `${day}d ago`;
+  } catch {
+    return "—";
+  }
+}
+
+function normalizeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeHistorical(value) {
+  if (!value || typeof value !== "object") return EMPTY_HISTORICAL;
+  return {
+    daily: normalizeArray(value.daily),
+    weekly: normalizeArray(value.weekly),
+    monthly: normalizeArray(value.monthly),
+  };
 }
 
 function getTradeTimestamp(trade) {
@@ -117,82 +141,78 @@ function getTradePrice(trade) {
   return trade?.price ?? trade?.entry_price ?? 0;
 }
 
-function normalizeArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
 /* =====================================================
-   FIXED DATA MERGING - Properly maps API response
+   DATA MERGING
 ===================================================== */
 
 function mergeLiveStatsPayload(payload = {}) {
-  // Extract data with proper mapping
   const futures = payload?.futures || {};
   const stocks = payload?.stocks || {};
   const sniper = payload?.sniper || {};
   const okx = payload?.okx || {};
 
-  // Create positions array from count if needed
-  const okxPositions = [];
-  const positionsCount = typeof okx?.positions === 'number' ? okx.positions : 0;
-  for (let i = 0; i < positionsCount; i++) {
-    okxPositions.push({ id: `pos-${i}`, placeholder: true });
-  }
+  const positionsCount = typeof okx?.positions === "number" ? okx.positions : 0;
+  const okxPositions = Array.from({ length: positionsCount }, (_, i) => ({
+    id: `okx-pos-${i}`,
+    placeholder: true,
+  }));
 
-  // Get trades count
-  const tradesCount = okx?.total_trades || 0;
+  const recentTrades =
+    Array.isArray(payload?.recent_trades) ? payload.recent_trades : [];
 
   return {
     futures: {
       health: futures,
-      positions: normalizeArray(futures?.positions || []),
-      trades: normalizeArray(futures?.trades || []),
+      positions: normalizeArray(futures?.positions),
+      trades: normalizeArray(futures?.trades),
       stats: futures,
     },
     stocks: {
       health: stocks,
-      positions: normalizeArray(stocks?.positions || []),
-      trades: normalizeArray(stocks?.trades || []),
+      positions: normalizeArray(stocks?.positions),
+      trades: normalizeArray(stocks?.trades),
       stats: stocks,
     },
     sniper: {
       health: sniper,
-      discoveries: normalizeArray(sniper?.discoveries || payload?.discoveries || []),
+      discoveries: normalizeArray(sniper?.discoveries || payload?.discoveries),
       stats: sniper,
-      positions: normalizeArray(sniper?.positions || []),
+      positions: normalizeArray(sniper?.positions),
     },
     okx: {
       health: okx,
       positions: okxPositions,
-      trades: [],
+      trades: normalizeArray(okx?.trades),
       stats: {
-        total_trades: tradesCount,
-        total_pnl: okx?.total_pnl || 0,
+        total_trades: safeNumber(okx?.total_trades, 0),
+        total_pnl: safeNumber(okx?.total_pnl, 0),
         positions_count: positionsCount,
-        mode: okx?.mode || 'dry_run',
-        scan_count: okx?.scan_count || 0,
+        mode: okx?.mode || "dry_run",
+        scan_count: safeNumber(okx?.scan_count, 0),
         last_scan_time: okx?.last_scan_time || null,
       },
     },
-    recent_trades: normalizeArray(payload?.recent_trades || []),
-    recent_activity: normalizeArray(payload?.recent_activity || []),
-    historical: payload?.historical || { daily: [], weekly: [], monthly: [] },
+    recent_trades: recentTrades,
+    recent_activity: normalizeArray(payload?.recent_activity),
+    historical: normalizeHistorical(payload?.historical),
   };
 }
 
 /* =====================================================
-   HEARTBEAT COMPONENT
+   HEARTBEAT
 ===================================================== */
 
 function Heartbeat({ active = true }) {
   const [beat, setBeat] = useState(false);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) return undefined;
+
     const interval = setInterval(() => {
       setBeat(true);
       setTimeout(() => setBeat(false), 300);
     }, 1400);
+
     return () => clearInterval(interval);
   }, [active]);
 
@@ -226,11 +246,10 @@ function Heartbeat({ active = true }) {
         strokeWidth={beat ? "2.5" : "2"}
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="transition-all duration-150"
       />
       <circle
         cx={beat ? "43" : "70"}
-        cy={beat ? "20" : "20"}
+        cy="20"
         r="3"
         fill={beat ? "#34d399" : "#10b981"}
         className="transition-all duration-300"
@@ -240,7 +259,7 @@ function Heartbeat({ active = true }) {
 }
 
 /* =====================================================
-   UI PIECES
+   UI
 ===================================================== */
 
 function StatCard({ title, value, icon, subtext, color = "emerald" }) {
@@ -273,11 +292,11 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
   const isOnline = !!health;
 
   const borderMap = {
-    indigo: "border-indigo-500/20  bg-indigo-500/10",
+    indigo: "border-indigo-500/20 bg-indigo-500/10",
     emerald: "border-emerald-500/20 bg-emerald-500/10",
-    purple: "border-purple-500/20  bg-purple-500/10",
-    amber: "border-amber-500/20   bg-amber-500/10",
-    cyan: "border-cyan-500/20    bg-cyan-500/10",
+    purple: "border-purple-500/20 bg-purple-500/10",
+    amber: "border-amber-500/20 bg-amber-500/10",
+    cyan: "border-cyan-500/20 bg-cyan-500/10",
   };
 
   const getDisplayStats = () => {
@@ -285,12 +304,10 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
       return [
         `Positions: ${stats?.positions_count || 0}`,
         `Trades: ${stats?.total_trades || 0}`,
-        `Mode: ${stats?.mode || 'dry_run'}`,
+        `Mode: ${stats?.mode || "dry_run"}`,
       ];
     }
-    return [
-      `Status: ${isOnline ? 'Online' : 'Offline'}`,
-    ];
+    return [`Status: ${isOnline ? "Online" : "Offline"}`];
   };
 
   return (
@@ -307,12 +324,15 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
 
       {isOnline ? (
         <div className="text-xs space-y-1 text-white/65">
-          {getDisplayStats().map((line, idx) => (
-            <div key={idx} className="flex justify-between">
-              <span>{line.split(':')[0]}:</span>
-              <span className="text-white">{line.split(':')[1]}</span>
-            </div>
-          ))}
+          {getDisplayStats().map((line, idx) => {
+            const parts = line.split(":");
+            return (
+              <div key={idx} className="flex justify-between gap-2">
+                <span>{parts[0]}:</span>
+                <span className="text-white">{parts.slice(1).join(":").trim()}</span>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="text-xs text-white/30 py-1">Waiting for connection...</div>
@@ -343,6 +363,7 @@ function SniperCard({ health, discoveries, positions }) {
       return () => clearTimeout(t);
     }
     prevDiscRef.current = discCount;
+    return undefined;
   }, [discCount]);
 
   return (
@@ -390,11 +411,11 @@ function SniperCard({ health, discoveries, positions }) {
         <div className="text-xs text-white/30 py-1 text-center">Waiting for connection...</div>
       )}
 
-      {pinged && (
+      {pinged ? (
         <div className="mt-2 text-center text-[10px] text-purple-300 bg-purple-500/20 rounded-full py-0.5 animate-pulse">
           ✨ New discovery detected
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -515,9 +536,9 @@ function DiscoveryCard({ discovery }) {
   );
 }
 
-function HistoricalChart({ data, type = "daily" }) {
-  const chartData = data[type] || [];
-  const maxValue = Math.max(...chartData.map((d) => Math.abs(d.pnl || 0)), 1);
+function HistoricalChart({ data, type = "daily", onTypeChange }) {
+  const chartData = normalizeArray(data?.[type]);
+  const maxValue = Math.max(...chartData.map((d) => Math.abs(safeNumber(d?.pnl, 0))), 1);
 
   return (
     <div className="space-y-2">
@@ -525,38 +546,52 @@ function HistoricalChart({ data, type = "daily" }) {
         {["daily", "weekly", "monthly"].map((period) => (
           <button
             key={period}
+            type="button"
+            onClick={() => onTypeChange?.(period)}
             className={`px-2 py-1 rounded ${
-              type === period ? "bg-indigo-600" : "bg-white/5"
+              type === period ? "bg-indigo-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10"
             }`}
           >
             {period.charAt(0).toUpperCase() + period.slice(1)}
           </button>
         ))}
       </div>
-      <div className="h-32 flex items-end gap-1">
-        {chartData.slice(-10).map((d, i) => {
-          const height = (Math.abs(d.pnl || 0) / maxValue) * 100;
-          return (
-            <div key={i} className="flex-1 flex flex-col items-center group relative">
-              <div
-                className="w-full bg-white/5 rounded-t relative group-hover:bg-white/10 transition-all"
-                style={{ height: `${Math.max(height, 5)}%` }}
-              >
-                <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                  {formatCurrency(d.pnl)} ({formatPercent(d.pnlPercent)})
+
+      {chartData.length === 0 ? (
+        <div className="h-32 flex items-center justify-center text-sm text-white/35 bg-black/10 rounded-xl">
+          No historical data yet
+        </div>
+      ) : (
+        <div className="h-32 flex items-end gap-1">
+          {chartData.slice(-10).map((d, i) => {
+            const pnl = safeNumber(d?.pnl, 0);
+            const pnlPercent = safeNumber(d?.pnlPercent, 0);
+            const height = (Math.abs(pnl) / maxValue) * 100;
+
+            return (
+              <div key={`${d?.date || i}-${i}`} className="flex-1 flex flex-col items-center group relative">
+                <div
+                  className={`w-full rounded-t relative group-hover:opacity-90 transition-all ${
+                    pnl >= 0 ? "bg-emerald-500/40" : "bg-red-500/40"
+                  }`}
+                  style={{ height: `${Math.max(height, 5)}%` }}
+                >
+                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-gray-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                    {formatCurrency(pnl)} ({formatPercent(pnlPercent)})
+                  </div>
                 </div>
+                <span className="text-[8px] text-white/30 mt-1">{formatDate(d?.date)}</span>
               </div>
-              <span className="text-[8px] text-white/30 mt-1">{formatDate(d.date)}</span>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
 /* =====================================================
-   FIXED DATA HOOK
+   DATA HOOK
 ===================================================== */
 
 function useLiveData() {
@@ -566,25 +601,20 @@ function useLiveData() {
   const abortRef = useRef(null);
   const mountedRef = useRef(true);
   const backoffRef = useRef(30000);
+  const fetchRef = useRef(null);
 
-  const fetchHistorical = async () => {
+  const fetchHistorical = useCallback(async () => {
     try {
-      const response = await axios.get(HISTORICAL_URL, { timeout: 5000 });
-      return response.data;
+      const response = await axios.get(HISTORICAL_URL, {
+        timeout: 5000,
+        headers: { "Cache-Control": "no-cache" },
+      });
+      return normalizeHistorical(response.data);
     } catch (err) {
       console.warn("Failed to fetch historical data:", err);
-      return { daily: [], weekly: [], monthly: [] };
+      return EMPTY_HISTORICAL;
     }
-  };
-
-  const sendControl = async (bot, action) => {
-    try {
-      await axios.post(CONTROL_URL, { bot, action }, { timeout: 5000 });
-      setTimeout(fetchLiveStats, 1000);
-    } catch (err) {
-      console.error("Control action failed:", err);
-    }
-  };
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -595,12 +625,15 @@ function useLiveData() {
     };
 
     const scheduleNext = (ms) => {
-      clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(fetchLiveStats, ms);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        if (fetchRef.current) fetchRef.current();
+      }, ms);
     };
 
     const fetchLiveStats = async () => {
       if (!mountedRef.current) return;
+
       if (document.hidden) {
         scheduleNext(Math.max(backoffRef.current, 30000));
         return;
@@ -675,6 +708,7 @@ function useLiveData() {
       }
     };
 
+    fetchRef.current = fetchLiveStats;
     timerRef.current = setTimeout(fetchLiveStats, 250);
 
     const onVisibility = () => {
@@ -692,6 +726,17 @@ function useLiveData() {
       document.removeEventListener("visibilitychange", onVisibility);
       clearPending();
     };
+  }, [fetchHistorical]);
+
+  const sendControl = useCallback(async (bot, action) => {
+    try {
+      await axios.post(CONTROL_URL, { bot, action }, { timeout: 5000 });
+      if (fetchRef.current) {
+        setTimeout(() => fetchRef.current(), 1000);
+      }
+    } catch (err) {
+      console.error("Control action failed:", err);
+    }
   }, []);
 
   return { data, sendControl };
@@ -702,7 +747,7 @@ function useLiveData() {
 ===================================================== */
 
 export default function PublicDashboard() {
-  const { data, sendControl } = useLiveData();
+  const { data } = useLiveData();
   const [activeTab, setActiveTab] = useState("all");
   const [clock, setClock] = useState(new Date());
   const [historicalType, setHistoricalType] = useState("daily");
@@ -724,9 +769,7 @@ export default function PublicDashboard() {
     : false;
 
   const allTrades = useMemo(() => {
-    const merged = [
-      ...normalizeArray(data.recent_trades),
-    ];
+    const merged = [...normalizeArray(data.recent_trades)];
 
     const seen = new Set();
     const unique = [];
@@ -755,7 +798,7 @@ export default function PublicDashboard() {
         return tB - tA;
       })
       .slice(0, 50);
-  }, [data]);
+  }, [data.recent_trades]);
 
   const isOpenTrade = (t) => {
     const pnl = getTradePnlUsd(t);
@@ -807,31 +850,32 @@ export default function PublicDashboard() {
 
   const totalPnL = useMemo(() => {
     let total = 0;
-    
-    // Add OKX P&L from stats
+
     if (data.okx.stats?.total_pnl) {
-      total += data.okx.stats.total_pnl;
+      total += safeNumber(data.okx.stats.total_pnl, 0);
     }
-    
-    // Add recent trades P&L
-    data.recent_trades.forEach((t) => {
+
+    normalizeArray(data.recent_trades).forEach((t) => {
       const pnl = getTradePnlUsd(t);
-      if (pnl !== 0 && !t?.id?.includes("dry_")) total += pnl;
+      if (pnl !== 0 && !String(t?.id || "").includes("dry_")) {
+        total += safeNumber(pnl, 0);
+      }
     });
-    
+
     return total;
-  }, [data]);
+  }, [data.okx.stats, data.recent_trades]);
 
   const totalPnLPercent = useMemo(() => {
     const totalInvested = 100000;
     return (totalPnL / totalInvested) * 100;
   }, [totalPnL]);
 
-  const openPositionsCount = 
-    (data.okx.stats?.positions_count || 0) +
+  const openPositionsCount =
+    safeNumber(data.okx.stats?.positions_count, 0) +
     normalizeArray(data.sniper.positions).length;
 
-  const totalTradesCount = (data.okx.stats?.total_trades || 0) + allTrades.length;
+  const totalTradesCount =
+    safeNumber(data.okx.stats?.total_trades, 0) + allTrades.length;
 
   const winsCount = useMemo(
     () => allTrades.filter((t) => getTradePnlUsd(t) > 0).length,
@@ -877,6 +921,7 @@ export default function PublicDashboard() {
                 {hasConnection ? (isStale ? "STALE" : "LIVE") : "CONNECTING"}
               </span>
             </div>
+
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2 text-xs text-white/40">
                 <span
@@ -894,10 +939,13 @@ export default function PublicDashboard() {
                     : "Adaptive refresh"}
                 </span>
               </div>
+
               <div className="text-xs text-white/40">
                 Last good: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}
               </div>
+
               <div className="text-xs text-white/40">{clock.toLocaleTimeString()}</div>
+
               <Link
                 to="/signup"
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-xs sm:text-sm font-semibold transition-all"
@@ -925,15 +973,8 @@ export default function PublicDashboard() {
           </p>
         </div>
 
-        {/* Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <StatCard
-            title="Active Bots"
-            value={activeBots}
-            icon="🤖"
-            color="indigo"
-            subtext="Online"
-          />
+          <StatCard title="Active Bots" value={activeBots} icon="🤖" color="indigo" subtext="Online" />
           <StatCard
             title="Total Trades"
             value={totalTradesCount}
@@ -964,13 +1005,15 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Historical Performance */}
         <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
           <h2 className="font-bold text-lg mb-3 flex items-center gap-2">📈 Historical Performance</h2>
-          <HistoricalChart data={data.historical} type={historicalType} />
+          <HistoricalChart
+            data={data.historical}
+            type={historicalType}
+            onTypeChange={setHistoricalType}
+          />
         </div>
 
-        {/* Bot Cards with Controls */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <BotCard
             name="Futures Bot"
@@ -1000,7 +1043,6 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Trade Feed + Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
@@ -1009,10 +1051,12 @@ export default function PublicDashboard() {
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                   Live Trade Feed
                 </h2>
+
                 <div className="flex gap-1 bg-black/30 rounded-lg p-1 flex-wrap">
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}
+                      type="button"
                       onClick={() => setActiveTab(tab.id)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
                         activeTab === tab.id
@@ -1031,6 +1075,7 @@ export default function PublicDashboard() {
                   ))}
                 </div>
               </div>
+
               <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
                 {filteredTrades.length > 0 ? (
                   filteredTrades.map((trade, i) => (
@@ -1060,11 +1105,17 @@ export default function PublicDashboard() {
                   </span>
                 ) : null}
               </h2>
+
               <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                 {normalizeArray(data.sniper.discoveries).length > 0 ? (
                   normalizeArray(data.sniper.discoveries)
                     .slice(0, 10)
-                    .map((d, i) => <DiscoveryCard key={d?.pair || d?.address || i} discovery={d} />)
+                    .map((d, i) => (
+                      <DiscoveryCard
+                        key={d?.pair || d?.address || d?.token || i}
+                        discovery={d}
+                      />
+                    ))
                 ) : (
                   <div className="text-center py-8 text-white/30 text-sm">
                     <div className="text-2xl mb-2">🔍</div>
@@ -1079,6 +1130,7 @@ export default function PublicDashboard() {
                 <span>📡</span>
                 System Snapshot
               </h2>
+
               <div className="space-y-2 text-xs text-white/65">
                 <div className="flex justify-between gap-3">
                   <span>API</span>
