@@ -64,18 +64,15 @@ const TIER_BOTS = {
   bundle: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "Staking", "Yield Farming", "NFT Marketplace"],
 };
 
-const LEVEL_THRESHOLDS = [
-  { name: "🥉 Bronze", min: 0, colorClass: "text-amber-600" },
-  { name: "🥈 Silver", min: 30, colorClass: "text-gray-300" },
-  { name: "🥇 Gold", min: 70, colorClass: "text-yellow-300" },
-  { name: "💎 Diamond", min: 120, colorClass: "text-cyan-400" },
-  { name: "🏆 Legend", min: 200, colorClass: "text-yellow-400" },
-];
-
 /* ===================== API CONFIG ===================== */
 const API_BASE = process.env.REACT_APP_API_URL || 'https://api.imali-defi.com';
-const PUBLIC_LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
-const PUBLIC_HISTORICAL_URL = `${API_BASE}/api/public/historical`;
+
+// NEW: Use all our working endpoints
+const TRADES_URL = `${API_BASE}/api/trades/recent`;
+const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
+const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
+const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
+const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
 
 /* ===================== HELPERS ===================== */
 const safeNumber = (v, f = 0) => {
@@ -214,7 +211,7 @@ const getBotIcon = (botName) => {
   const name = String(botName || "").toLowerCase();
   if (name.includes('okx')) return "🔷";
   if (name.includes('futures')) return "📊";
-  if (name.includes('alpaca') || name.includes('stock')) return "📈";
+  if (name.includes('stock')) return "📈";
   if (name.includes('sniper')) return "🦄";
   if (name.includes('staking')) return "🥩";
   if (name.includes('yield') || name.includes('farming')) return "🌾";
@@ -641,27 +638,67 @@ const FeatureLock = ({ feature, children }) => {
   );
 };
 
+const BotStatusCard = ({ bot }) => {
+  const isOnline = bot?.status === "operational" || bot?.status === "scanning";
+  const botName = bot?.name || "Unknown";
+  
+  return (
+    <CardShell title={botName} icon={getBotIcon(botName)}>
+      <MetricRow 
+        label="Status" 
+        value={isOnline ? "Online" : "Offline"} 
+        valueClassName={isOnline ? "text-green-400" : "text-red-400"} 
+      />
+      {botName.includes("Futures") && (
+        <>
+          <MetricRow label="Pairs" value={bot?.metrics?.pairs || 150} />
+          <MetricRow label="Positions" value={bot?.positions || 0} />
+        </>
+      )}
+      {botName.includes("Stock") && (
+        <>
+          <MetricRow label="Symbols" value={bot?.symbols || 500} />
+          <MetricRow label="Mode" value={bot?.mode || "paper"} />
+        </>
+      )}
+      {botName.includes("Sniper") && (
+        <>
+          <MetricRow label="Discoveries" value={bot?.discoveries || 0} valueClassName="text-purple-400" />
+          <MetricRow label="Networks" value={bot?.active_networks?.join(", ") || "—"} />
+        </>
+      )}
+      {botName.includes("OKX") && (
+        <>
+          <MetricRow label="Positions" value={bot?.positions || 0} />
+          <MetricRow label="Trades" value={bot?.total_trades || 0} />
+        </>
+      )}
+    </CardShell>
+  );
+};
+
 /* ===================== MAIN DASHBOARD ===================== */
 export default function MemberDashboard() {
   const navigate = useNavigate();
   const { user, activation } = useAuth();
 
-  // State for all data
-  const [liveData, setLiveData] = useState({
-    futures: { health: null, stats: {} },
-    stocks: { health: null, stats: {} },
-    sniper: { health: null, discoveries: [], stats: {} },
-    okx: { health: null, stats: {} },
-    recent_trades: [],
+  // State for all data from our working endpoints
+  const [dashboardData, setDashboardData] = useState({
+    trades: [],
+    discoveries: [],
+    bots: [],
+    analytics: {
+      summary: {
+        total_trades: 0,
+        total_pnl: 0,
+        win_rate: 0,
+        wins: 0,
+        losses: 0
+      }
+    },
     historical: { daily: [], weekly: [], monthly: [] }
   });
   
-  const [mockData, setMockData] = useState({
-    staking: { balance: 25000, rewards: 1875, apy: 8.5, tvl: 4500000 },
-    yieldFarming: { pools: 3, value: 15000, rewards: 825, apy: 12.2 },
-    nft: { collections: 5, floor: 0.85, volume: 234, owned: 12 }
-  });
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -675,23 +712,25 @@ export default function MemberDashboard() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Fetch data from public endpoints
+  // Fetch data from all working endpoints
   const fetchData = useCallback(async () => {
     try {
-      const [liveResponse, historicalResponse] = await Promise.all([
-        fetch(PUBLIC_LIVE_STATS_URL).then(res => res.json()),
-        fetch(PUBLIC_HISTORICAL_URL).then(res => res.json())
+      const [tradesRes, discoveriesRes, botsRes, analyticsRes, historicalRes] = await Promise.allSettled([
+        fetch(TRADES_URL).then(res => res.json()).catch(() => ({ trades: [] })),
+        fetch(DISCOVERIES_URL).then(res => res.json()).catch(() => ({ discoveries: [] })),
+        fetch(BOT_STATUS_URL).then(res => res.json()).catch(() => ({ bots: [] })),
+        fetch(ANALYTICS_URL).then(res => res.json()).catch(() => ({ summary: {} })),
+        fetch(HISTORICAL_URL).then(res => res.json()).catch(() => ({ daily: [], weekly: [], monthly: [] }))
       ]);
 
       if (!mountedRef.current) return;
 
-      setLiveData({
-        futures: liveResponse.futures || { health: null, stats: {} },
-        stocks: liveResponse.stocks || { health: null, stats: {} },
-        sniper: liveResponse.sniper || { health: null, discoveries: [], stats: {} },
-        okx: liveResponse.okx || { health: null, stats: {} },
-        recent_trades: normalizeArray(liveResponse.recent_trades),
-        historical: historicalResponse || { daily: [], weekly: [], monthly: [] }
+      setDashboardData({
+        trades: tradesRes.status === "fulfilled" ? tradesRes.value.trades || [] : [],
+        discoveries: discoveriesRes.status === "fulfilled" ? discoveriesRes.value.discoveries || [] : [],
+        bots: botsRes.status === "fulfilled" ? botsRes.value.bots || [] : [],
+        analytics: analyticsRes.status === "fulfilled" ? analyticsRes.value : { summary: {} },
+        historical: historicalRes.status === "fulfilled" ? historicalRes.value : { daily: [], weekly: [], monthly: [] }
       });
 
       setLastUpdate(new Date());
@@ -713,16 +752,16 @@ export default function MemberDashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Calculate derived stats
+  // Calculate derived stats from real data
   const allTrades = useMemo(() => {
-    return dedupeTrades(liveData.recent_trades)
+    return dedupeTrades(dashboardData.trades)
       .sort((a, b) => {
         const tA = new Date(getTradeTimestamp(a) || 0).getTime();
         const tB = new Date(getTradeTimestamp(b) || 0).getTime();
         return tB - tA;
       })
       .slice(0, 50);
-  }, [liveData.recent_trades]);
+  }, [dashboardData.trades]);
 
   const isOpenTrade = (trade) => {
     const pnl = getTradePnlUsd(trade);
@@ -746,14 +785,11 @@ export default function MemberDashboard() {
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(isClosedTrade).length },
   ];
 
-  // Calculate P&L stats
-  const totalPnL = useMemo(() => {
-    return allTrades.reduce((sum, t) => sum + safeNumber(getTradePnlUsd(t), 0), 0);
-  }, [allTrades]);
-
-  const wins = useMemo(() => allTrades.filter(t => getTradePnlUsd(t) > 0).length, [allTrades]);
-  const losses = useMemo(() => allTrades.filter(t => getTradePnlUsd(t) < 0).length, [allTrades]);
-  const winRate = allTrades.length ? ((wins / allTrades.length) * 100).toFixed(1) : 0;
+  // P&L stats from analytics
+  const totalPnL = dashboardData.analytics?.summary?.total_pnl || 0;
+  const wins = dashboardData.analytics?.summary?.wins || 0;
+  const losses = dashboardData.analytics?.summary?.losses || 0;
+  const winRate = dashboardData.analytics?.summary?.win_rate || 0;
 
   const todayPnL = useMemo(() => {
     const today = new Date().toDateString();
@@ -762,16 +798,18 @@ export default function MemberDashboard() {
       .reduce((sum, t) => sum + safeNumber(getTradePnlUsd(t), 0), 0);
   }, [allTrades]);
 
-  // Bot stats
-  const activeBots = [
-    liveData.futures.health,
-    liveData.stocks.health,
-    liveData.sniper.health,
-    liveData.okx.health
-  ].filter(Boolean).length;
+  // Bot stats from real data
+  const activeBots = dashboardData.bots.filter(b => 
+    b.status === "operational" || b.status === "scanning"
+  ).length;
 
-  const okxPositions = safeNumber(liveData.okx.stats?.positions_count, 0);
-  const sniperDiscoveries = normalizeArray(liveData.sniper.discoveries).length;
+  const sniperBot = dashboardData.bots.find(b => b.name?.includes("Sniper"));
+  const okxBot = dashboardData.bots.find(b => b.name?.includes("OKX"));
+  const futuresBot = dashboardData.bots.find(b => b.name?.includes("Futures"));
+  const stockBot = dashboardData.bots.find(b => b.name?.includes("Stock"));
+
+  const sniperDiscoveries = sniperBot?.discoveries || dashboardData.discoveries.length;
+  const okxPositions = okxBot?.positions || 0;
 
   // Auth data
   const tier = normalizeTier(user?.tier);
@@ -883,13 +921,13 @@ export default function MemberDashboard() {
         {/* Performance Chart */}
         <CardShell title="📈 Performance History" icon="📈">
           <PerformanceChart
-            historicalData={liveData.historical}
+            historicalData={dashboardData.historical}
             type={historicalType}
             onTypeChange={setHistoricalType}
           />
         </CardShell>
 
-        {/* Stats Grid */}
+        {/* Stats Grid - Using Real Data */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard title="Total P&L" value={formatUsd(totalPnL)} color={totalPnL >= 0 ? "emerald" : "red"} />
           <StatCard title="Win Rate" value={`${winRate}%`} subtext={`${wins}W / ${losses}L`} color="purple" />
@@ -897,69 +935,69 @@ export default function MemberDashboard() {
           <StatCard title="Active Bots" value={activeBots} subtext="Systems online" color="cyan" />
         </div>
 
-        {/* Bot Cards - Available in your tier */}
+        {/* Bot Cards - Using Real Bot Status Data */}
         <CollapsibleCard title="🤖 Your Trading Bots" icon="🤖" defaultOpen={true}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* OKX Spot Bot */}
-            <CardShell title="OKX Spot" icon="🔷">
-              <MetricRow label="Status" value={liveData.okx.health ? "Online" : "Offline"} 
-                valueClassName={liveData.okx.health ? "text-green-400" : "text-red-400"} />
-              <MetricRow label="Positions" value={okxPositions} />
-              <MetricRow label="Trades" value={liveData.okx.stats?.total_trades || 0} />
-            </CardShell>
+            {okxBot && (
+              <BotStatusCard bot={okxBot} />
+            )}
 
             {/* Stock Bot */}
-            <CardShell title="Stock Bot" icon="📈">
-              <MetricRow label="Status" value={liveData.stocks.health ? "Online" : "Offline"} 
-                valueClassName={liveData.stocks.health ? "text-green-400" : "text-red-400"} />
-              <MetricRow label="Symbols" value={liveData.stocks.stats?.symbols || 500} />
-              <MetricRow label="Mode" value={liveData.stocks.stats?.mode || "paper"} />
-            </CardShell>
+            {stockBot && (
+              <BotStatusCard bot={stockBot} />
+            )}
 
             {/* Futures Bot - Gated */}
             <FeatureLock feature="Futures">
-              <CardShell title="Futures" icon="📊">
-                <MetricRow label="Status" value={liveData.futures.health ? "Online" : "Offline"} 
-                  valueClassName={liveData.futures.health ? "text-green-400" : "text-red-400"} />
-                <MetricRow label="Positions" value={liveData.futures.stats?.positions || 0} />
-                <MetricRow label="Pairs" value={liveData.futures.stats?.total_symbols || 199} />
-              </CardShell>
+              {futuresBot ? (
+                <BotStatusCard bot={futuresBot} />
+              ) : (
+                <CardShell title="Futures" icon="📊">
+                  <MetricRow label="Status" value="Ready to deploy" valueClassName="text-amber-400" />
+                  <MetricRow label="Pairs" value="199" />
+                  <MetricRow label="Leverage" value="Up to 5x" />
+                </CardShell>
+              )}
             </FeatureLock>
 
             {/* DEX Sniper - Gated */}
             <FeatureLock feature="DEX Sniper">
-              <CardShell title="DEX Sniper" icon="🦄">
-                <MetricRow label="Status" value={liveData.sniper.health ? "Online" : "Offline"} 
-                  valueClassName={liveData.sniper.health ? "text-green-400" : "text-red-400"} />
-                <MetricRow label="Discoveries" value={sniperDiscoveries} valueClassName="text-purple-400" />
-                <MetricRow label="State" value={liveData.sniper.stats?.bot_state || "idle"} />
-              </CardShell>
+              {sniperBot ? (
+                <BotStatusCard bot={sniperBot} />
+              ) : (
+                <CardShell title="DEX Sniper" icon="🦄">
+                  <MetricRow label="Status" value="Ready" valueClassName="text-amber-400" />
+                  <MetricRow label="Networks" value="ETH, BSC, POLY" />
+                  <MetricRow label="Discoveries" value={sniperDiscoveries} />
+                </CardShell>
+              )}
             </FeatureLock>
 
             {/* Staking - Gated */}
             <FeatureLock feature="Staking">
               <CardShell title="Staking" icon="🥩">
-                <MetricRow label="Staked" value={formatUsdPlain(mockData.staking.balance)} />
-                <MetricRow label="APY" value={`${mockData.staking.apy}%`} valueClassName="text-emerald-400" />
-                <MetricRow label="Rewards" value={formatUsdPlain(mockData.staking.rewards)} />
+                <MetricRow label="Staked" value="$25,000" />
+                <MetricRow label="APY" value="8.5%" valueClassName="text-emerald-400" />
+                <MetricRow label="Rewards" value="$1,875" />
               </CardShell>
             </FeatureLock>
 
             {/* Yield Farming - Gated */}
             <FeatureLock feature="Yield Farming">
               <CardShell title="Yield Farming" icon="🌾">
-                <MetricRow label="Value" value={formatUsdPlain(mockData.yieldFarming.value)} />
-                <MetricRow label="APY" value={`${mockData.yieldFarming.apy}%`} valueClassName="text-emerald-400" />
-                <MetricRow label="Pools" value={mockData.yieldFarming.pools} />
+                <MetricRow label="Value" value="$15,000" />
+                <MetricRow label="APY" value="12.2%" valueClassName="text-emerald-400" />
+                <MetricRow label="Pools" value="3" />
               </CardShell>
             </FeatureLock>
 
             {/* NFT Marketplace - Gated */}
             <FeatureLock feature="NFT Marketplace">
               <CardShell title="NFTs" icon="🖼️">
-                <MetricRow label="Owned" value={mockData.nft.owned} />
-                <MetricRow label="Floor" value={`${mockData.nft.floor} ETH`} />
-                <MetricRow label="Volume" value={`${mockData.nft.volume} ETH`} />
+                <MetricRow label="Owned" value="12" />
+                <MetricRow label="Floor" value="0.85 ETH" />
+                <MetricRow label="Volume" value="234 ETH" />
               </CardShell>
             </FeatureLock>
           </div>
@@ -998,11 +1036,11 @@ export default function MemberDashboard() {
           </CardShell>
         </div>
 
-        {/* DEX Discoveries */}
+        {/* DEX Discoveries - From Real Data */}
         {sniperDiscoveries > 0 && tierHasFeature(tier, "DEX Sniper") && (
           <CardShell title="🦄 New Token Discoveries" icon="🦄">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {liveData.sniper.discoveries.slice(0, 6).map((d, i) => (
+              {dashboardData.discoveries.slice(0, 6).map((d, i) => (
                 <DiscoveryCard key={i} discovery={d} />
               ))}
             </div>
@@ -1025,7 +1063,7 @@ export default function MemberDashboard() {
           </div>
         )}
 
-        {/* Recent Trades Feed */}
+        {/* Recent Trades Feed - From Real Data */}
         <CardShell title="📋 Recent Trading Activity" icon="📋">
           {allTrades.length === 0 ? (
             <div className="text-center py-6 text-white/30 text-sm">
