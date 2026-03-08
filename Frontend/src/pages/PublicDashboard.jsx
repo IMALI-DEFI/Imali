@@ -474,6 +474,195 @@ function useLiveData() {
 }
 
 /* =====================================================
+   CREATIVE CHART COMPONENTS
+===================================================== */
+
+function JourneyTimelineChart() {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    if (chartRef.current) {
+      chartRef.current.destroy();
+    }
+
+    const ctx = canvas.getContext("2d");
+    
+    // Create a gradient background
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, "rgba(16, 185, 129, 0.2)");
+    gradient.addColorStop(0.6, "rgba(99, 102, 241, 0.1)");
+    gradient.addColorStop(1, "rgba(139, 92, 246, 0.05)");
+
+    chartRef.current = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: ["Launch", "Week 1", "Week 2", "Week 3", "Week 4", "Month 2", "Month 3"],
+        datasets: [
+          {
+            label: "Projected Journey",
+            data: [0, 15, 35, 60, 100, 250, 500],
+            borderColor: "#10b981",
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.4,
+            borderWidth: 3,
+            pointRadius: 6,
+            pointBackgroundColor: "#10b981",
+            pointBorderColor: "white",
+            pointBorderWidth: 2,
+          },
+          {
+            label: "Current Progress",
+            data: [0, 0, 0, 0, 0, null, null],
+            borderColor: "#f59e0b",
+            borderDash: [5, 5],
+            borderWidth: 2,
+            pointRadius: 8,
+            pointBackgroundColor: "#f59e0b",
+            pointBorderColor: "white",
+            pointBorderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: "top",
+            labels: { color: "#9ca3af", usePointStyle: true },
+          },
+          tooltip: {
+            backgroundColor: "rgba(17,24,39,0.95)",
+            titleColor: "#fff",
+            bodyColor: "#9ca3af",
+            borderColor: "rgba(16,185,129,0.3)",
+            borderWidth: 1,
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(255,255,255,0.05)" },
+            ticks: { 
+              color: "#9ca3af",
+              callback: (value) => `${value} trades`,
+            },
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: "#9ca3af" },
+          },
+        },
+      },
+    });
+
+    return () => {
+      if (chartRef.current) chartRef.current.destroy();
+    };
+  }, []);
+
+  return (
+    <div className="relative">
+      <div className="h-64">
+        <canvas ref={canvasRef} />
+      </div>
+      <div className="absolute top-2 right-2 bg-amber-500/20 text-amber-300 px-3 py-1 rounded-full text-xs border border-amber-500/30">
+        🚀 You Are Here
+      </div>
+    </div>
+  );
+}
+
+function ReadinessMeter({ percentage, label, color = "emerald" }) {
+  const colorClasses = {
+    emerald: "bg-emerald-500",
+    indigo: "bg-indigo-500",
+    purple: "bg-purple-500",
+    amber: "bg-amber-500",
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs">
+        <span className="text-white/60">{label}</span>
+        <span className="text-white font-medium">{percentage}%</span>
+      </div>
+      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+        <div 
+          className={`h-full ${colorClasses[color]} rounded-full transition-all duration-1000`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MilestoneCard({ icon, title, description, eta, status = "upcoming" }) {
+  const statusColors = {
+    completed: "border-emerald-500/30 bg-emerald-500/10",
+    in_progress: "border-amber-500/30 bg-amber-500/10",
+    upcoming: "border-white/10 bg-white/5",
+  };
+
+  const statusText = {
+    completed: "✅ Completed",
+    in_progress: "🔄 In Progress",
+    upcoming: "⏳ Upcoming",
+  };
+
+  return (
+    <div className={`border rounded-xl p-4 ${statusColors[status]}`}>
+      <div className="flex items-start gap-3">
+        <div className="text-3xl">{icon}</div>
+        <div className="flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-semibold">{title}</h3>
+            <span className="text-[10px] px-2 py-1 rounded-full bg-white/10">
+              {statusText[status]}
+            </span>
+          </div>
+          <p className="text-xs text-white/60 mt-1">{description}</p>
+          {eta && <p className="text-[10px] text-white/40 mt-2">ETA: {eta}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EndpointStatus({ name, path, status = "missing", description }) {
+  const statusColors = {
+    live: "text-emerald-400",
+    missing: "text-amber-400",
+    planned: "text-blue-400",
+  };
+
+  const statusDots = {
+    live: "🟢",
+    missing: "🟡",
+    planned: "🔵",
+  };
+
+  return (
+    <div className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+      <div className="text-lg">{statusDots[status]}</div>
+      <div className="flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <code className="text-xs bg-black/30 px-2 py-1 rounded font-mono">{path}</code>
+          <span className={`text-[10px] ${statusColors[status]}`}>{status.toUpperCase()}</span>
+        </div>
+        <p className="text-xs text-white/50 mt-1">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
    UI COMPONENTS
 ===================================================== */
 
@@ -523,7 +712,7 @@ function Heartbeat({ active = true }) {
   );
 }
 
-function StatCard({ title, value, icon, subtext, color = "emerald" }) {
+function StatCard({ title, value, icon, subtext, color = "emerald", badge }) {
   const colorClasses = {
     emerald: "text-emerald-400",
     indigo: "text-indigo-400",
@@ -531,10 +720,16 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
     amber: "text-amber-400",
     red: "text-red-400",
     cyan: "text-cyan-400",
+    blue: "text-blue-400",
   };
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:bg-white/10 transition-all">
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:bg-white/10 transition-all relative">
+      {badge && (
+        <div className="absolute -top-2 -right-2 bg-amber-500 text-black text-[8px] px-2 py-1 rounded-full font-bold">
+          {badge}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs text-white/50">{title}</p>
@@ -556,7 +751,7 @@ function MetricRow({ label, value, valueClassName = "text-white font-medium" }) 
   );
 }
 
-function BotCard({ name, icon, health, stats, accent = "indigo" }) {
+function BotCard({ name, icon, health, stats, accent = "indigo", readiness = 75 }) {
   const isOnline = hasObjectData(health);
 
   const accentMap = {
@@ -573,12 +768,10 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
       <div className="text-xs space-y-2">
         <MetricRow label="Pairs" value={formatCompact(stats?.total_symbols || 0)} />
         <MetricRow label="Status" value={stats?.status || "unknown"} />
-        <MetricRow label="Positions" value={formatCompact(stats?.positions || 0)} />
-        <MetricRow
-          label="Daily P&L"
-          value={formatCurrencySigned(dailyRealized)}
-          valueClassName={dailyRealized >= 0 ? "text-emerald-400 font-medium" : "text-red-400 font-medium"}
-        />
+        <MetricRow label="Readiness" value={`${readiness}%`} valueClassName="text-amber-400" />
+        <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden mt-1">
+          <div className="h-full bg-amber-400" style={{ width: `${readiness}%` }} />
+        </div>
       </div>
     );
   } else if (name === "Stock Bot") {
@@ -586,8 +779,10 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
       <div className="text-xs space-y-2">
         <MetricRow label="Symbols" value={formatCompact(stats?.symbols || 0)} />
         <MetricRow label="Mode" value={stats?.mode || "paper"} />
-        <MetricRow label="Running" value={stats?.running ? "Yes" : "No"} />
-        <MetricRow label="Refresh" value={stats?.lastRefresh ? timeAgo(stats.lastRefresh) : "—"} />
+        <MetricRow label="Readiness" value={`${readiness}%`} valueClassName="text-amber-400" />
+        <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden mt-1">
+          <div className="h-full bg-amber-400" style={{ width: `${readiness}%` }} />
+        </div>
       </div>
     );
   } else if (name === "OKX Spot") {
@@ -595,13 +790,11 @@ function BotCard({ name, icon, health, stats, accent = "indigo" }) {
     content = (
       <div className="text-xs space-y-2">
         <MetricRow label="Positions" value={formatCompact(stats?.positions_count || 0)} />
-        <MetricRow label="Trades" value={formatCompact(stats?.total_trades || 0)} />
-        <MetricRow
-          label="P&L"
-          value={formatCurrencySigned(pnl)}
-          valueClassName={pnl >= 0 ? "text-emerald-400 font-medium" : "text-red-400 font-medium"}
-        />
-        <MetricRow label="Mode" value={stats?.mode || "dry_run"} />
+        <MetricRow label="Scan Count" value={formatCompact(stats?.scan_count || 0)} />
+        <MetricRow label="Readiness" value={`${readiness}%`} valueClassName="text-amber-400" />
+        <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden mt-1">
+          <div className="h-full bg-amber-400" style={{ width: `${readiness}%` }} />
+        </div>
       </div>
     );
   }
@@ -639,6 +832,8 @@ function SniperCard({ health, discoveries, stats }) {
     prevRef.current = discoveryCount;
   }, [discoveryCount]);
 
+  const readiness = Math.min(40 + discoveryCount * 5, 85);
+
   return (
     <div
       className={`border rounded-xl p-4 transition-all duration-300 border-purple-500/30 bg-purple-500/10 ${
@@ -663,9 +858,11 @@ function SniperCard({ health, discoveries, stats }) {
         <div className="text-xs space-y-2">
           <MetricRow label="Discoveries" value={formatCompact(discoveryCount)} valueClassName="text-purple-300 font-semibold" />
           <MetricRow label="Status" value={stats?.status || "idle"} />
-          <MetricRow label="State" value={stats?.bot_state || "idle"} />
-          <MetricRow label="Heartbeat" value={stats?.last_heartbeat ? timeAgo(stats.last_heartbeat) : "—"} />
           <MetricRow label="Networks" value={networks.length ? networks.join(", ") : "—"} />
+          <MetricRow label="Readiness" value={`${readiness}%`} valueClassName="text-amber-400" />
+          <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden mt-1">
+            <div className="h-full bg-amber-400" style={{ width: `${readiness}%` }} />
+          </div>
         </div>
       ) : (
         <div className="text-xs text-white/30 py-2 text-center">Waiting for connection...</div>
@@ -979,7 +1176,11 @@ function HistoricalChart({ data, type, onChangeType }) {
           ))}
         </div>
         <div className="h-[280px] sm:h-[320px] rounded-3xl border border-white/10 bg-black/20 flex items-center justify-center text-white/30 text-sm">
-          No historical data yet
+          <div className="text-center">
+            <div className="text-4xl mb-3">📊</div>
+            <p>Historical data coming soon</p>
+            <p className="text-xs text-white/20 mt-2">First trades expected within days</p>
+          </div>
         </div>
       </div>
     );
@@ -1047,62 +1248,232 @@ function InvestorPanel({ data, totalPnL, totalTradesCount, activeBots, discovery
     `Futures: ${data.futures.stats?.dry_run ? "dry_run" : "live-ready"}`,
   ];
 
+  // Calculate readiness scores
+  const infrastructureReadiness = activeBots * 25; // 4 bots = 100%
+  const tradingReadiness = Math.min(totalTradesCount > 0 ? 50 + (totalTradesCount / 10) : 25, 90);
+  const discoveryReadiness = Math.min(discoveryCount * 10, 80);
+  const overallReadiness = Math.round((infrastructureReadiness + tradingReadiness + discoveryReadiness) / 3);
+
   return (
     <div className="bg-gradient-to-br from-indigo-600/15 to-emerald-600/10 border border-indigo-500/20 rounded-2xl p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div>
-          <h2 className="font-bold text-lg">Investor Snapshot</h2>
-          <p className="text-xs text-white/50 mt-1">Public-facing operational proof for IMALI’s trading stack</p>
+          <h2 className="font-bold text-lg">Building in Public</h2>
+          <p className="text-xs text-white/50 mt-1">Watch our trading infrastructure come to life, in real-time</p>
         </div>
-        <span className="text-[10px] px-2 py-1 rounded-full bg-white/10 text-white/70">
-          Live public metrics
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+            🚀 Launch Phase
+          </span>
+          <span className="text-[10px] px-2 py-1 rounded-full bg-white/10 text-white/70">
+            {overallReadiness}% Ready
+          </span>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40">Bot Coverage</div>
-          <div className="text-white font-semibold mt-1">{activeBots}/4 active</div>
-        </div>
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40">Tracked Trades</div>
-          <div className="text-white font-semibold mt-1">{formatCompact(totalTradesCount)}</div>
-        </div>
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40">Aggregate P&L</div>
-          <div className={`font-semibold mt-1 ${totalPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-            {formatCurrencySigned(totalPnL)}
+          <div className="text-xs text-white/40 mb-1">Infrastructure</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xl font-bold text-white">{infrastructureReadiness}%</div>
+            <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-400" style={{ width: `${infrastructureReadiness}%` }} />
+            </div>
           </div>
+          <div className="text-[10px] text-white/30 mt-1">4/4 bots online</div>
         </div>
+
         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40">Discovery Engine</div>
-          <div className="text-white font-semibold mt-1">{discoveryCount} findings</div>
+          <div className="text-xs text-white/40 mb-1">Trading Engine</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xl font-bold text-white">{tradingReadiness}%</div>
+            <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-amber-400" style={{ width: `${tradingReadiness}%` }} />
+            </div>
+          </div>
+          <div className="text-[10px] text-white/30 mt-1">{totalTradesCount} trades ready</div>
+        </div>
+
+        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+          <div className="text-xs text-white/40 mb-1">Discovery Engine</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xl font-bold text-white">{discoveryReadiness}%</div>
+            <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-purple-400" style={{ width: `${discoveryReadiness}%` }} />
+            </div>
+          </div>
+          <div className="text-[10px] text-white/30 mt-1">{discoveryCount} findings</div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40 mb-2">Operational profile</div>
+          <div className="text-white/40 mb-2">Current Status</div>
           <div className="space-y-2">
-            <MetricRow label="Tracked universe" value={formatCompact(marketCoverage)} />
-            <MetricRow label="OKX scan count" value={formatCompact(data.okx.stats?.scan_count || 0)} />
-            <MetricRow label="Candidate flow" value={`${data.okx.stats?.last_candidate_count || 0} / scan`} />
-            <MetricRow label="Signal flow" value={`${data.okx.stats?.last_signal_count || 0} / scan`} />
+            <MetricRow label="Bots Online" value={`${activeBots}/4`} valueClassName={activeBots === 4 ? "text-green-400" : "text-amber-400"} />
+            <MetricRow label="Market Coverage" value={formatCompact(marketCoverage)} />
+            <MetricRow label="OKX Scans" value={formatCompact(data.okx.stats?.scan_count || 0)} />
+            <MetricRow label="Signal Flow" value={`${data.okx.stats?.last_signal_count || 0} / scan`} />
           </div>
         </div>
 
         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40 mb-2">Commercial positioning</div>
-          <div className="space-y-2 text-white/70">
-            <div>• live dashboard credibility</div>
-            <div>• modular stack across CEX, stocks, futures, and DEX discovery</div>
-            <div>• visible uptime, scan cadence, and signal production</div>
-            <div>• path to premium tiers and managed access</div>
+          <div className="text-white/40 mb-2">Next Milestones</div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+              <span className="flex-1">First live trade</span>
+              <span className="text-white/40">⏳ Any day</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-amber-400"></div>
+              <span className="flex-1">10 trades milestone</span>
+              <span className="text-white/40">📅 Week 2</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-purple-400"></div>
+              <span className="flex-1">First profitable week</span>
+              <span className="text-white/40">📅 Week 3-4</span>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="mt-4 text-[11px] text-white/35">Stack modes: {stackModes.join(" • ")}</div>
+    </div>
+  );
+}
+
+/* =====================================================
+   MISSING ENDPOINTS LIST
+===================================================== */
+
+function MissingEndpoints() {
+  const endpoints = [
+    {
+      name: "Trading History",
+      path: "/api/trades",
+      status: "missing",
+      description: "Real trade data will appear here once our bots start executing",
+    },
+    {
+      name: "P&L History",
+      path: "/api/pnl/history",
+      status: "missing",
+      description: "Profit and loss tracking across all strategies",
+    },
+    {
+      name: "Discovery Feed",
+      path: "/api/discoveries",
+      status: "planned",
+      description: "Real-time DEX token discoveries with AI scores",
+    },
+    {
+      name: "Performance Analytics",
+      path: "/api/analytics",
+      status: "planned",
+      description: "Sharpe ratio, win rate, and advanced metrics",
+    },
+    {
+      name: "User Dashboard",
+      path: "/api/user/stats",
+      status: "planned",
+      description: "Personalized trading statistics",
+    },
+  ];
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <h3 className="font-bold text-lg">🔮 Coming Soon</h3>
+        <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/20 text-amber-300">
+          In Development
+        </span>
+      </div>
+      <p className="text-xs text-white/50 mb-4">
+        We're building these endpoints right now. Follow our progress in real-time.
+      </p>
+      <div className="space-y-1">
+        {endpoints.map((ep, i) => (
+          <EndpointStatus key={i} {...ep} />
+        ))}
+      </div>
+      <div className="mt-4 text-center">
+        <div className="inline-flex items-center gap-2 text-xs text-white/30">
+          <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
+          <span>First endpoint live in: ~3 days</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
+   ROADMAP SECTION
+===================================================== */
+
+function RoadmapSection() {
+  const milestones = [
+    {
+      icon: "🚀",
+      title: "Launch Day",
+      description: "All bots online, infrastructure ready, waiting for first signals",
+      eta: "NOW",
+      status: "in_progress",
+    },
+    {
+      icon: "📊",
+      title: "First 10 Trades",
+      description: "Initial trading data appears on dashboard",
+      eta: "Week 1-2",
+      status: "upcoming",
+    },
+    {
+      icon: "💰",
+      title: "First Profitable Week",
+      description: "Positive P&L for 7 consecutive days",
+      eta: "Week 3-4",
+      status: "upcoming",
+    },
+    {
+      icon: "🦄",
+      title: "DEX Discovery Live",
+      description: "Real-time token scanning with AI scores",
+      eta: "Week 4-5",
+      status: "upcoming",
+    },
+    {
+      icon: "📈",
+      title: "Analytics Suite",
+      description: "Sharpe ratio, drawdown, win rate metrics",
+      eta: "Month 2",
+      status: "upcoming",
+    },
+    {
+      icon: "🎯",
+      title: "100 Trades Milestone",
+      description: "Statistical significance achieved",
+      eta: "Month 2-3",
+      status: "upcoming",
+    },
+  ];
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <h3 className="font-bold text-lg">🗺️ Public Roadmap</h3>
+        <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300">
+          Live Updates
+        </span>
+      </div>
+      <p className="text-xs text-white/50 mb-4">
+        We're building in public. Every milestone is tracked here in real-time.
+      </p>
+      <div className="space-y-3">
+        {milestones.map((m, i) => (
+          <MilestoneCard key={i} {...m} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -1239,7 +1610,7 @@ export default function PublicDashboard() {
                 <span>
                   {data.rateLimitedUntil
                     ? `Backoff until ${formatClock(data.rateLimitedUntil)}`
-                    : "Adaptive refresh"}
+                    : "Building in public"}
                 </span>
               </div>
               <div>Last good: {data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"}</div>
@@ -1248,7 +1619,7 @@ export default function PublicDashboard() {
                 to="/signup"
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-sm font-semibold text-white transition-all"
               >
-                Sign Up Free →
+                Join the Journey →
               </Link>
             </div>
           </div>
@@ -1264,34 +1635,98 @@ export default function PublicDashboard() {
 
         <div className="text-center mb-6 sm:mb-8">
           <h1 className="text-3xl sm:text-5xl font-bold mb-3 bg-gradient-to-r from-indigo-400 to-emerald-400 bg-clip-text text-transparent">
-            Live Trading Dashboard
+            Building in Public
           </h1>
           <p className="text-white/60 max-w-2xl mx-auto text-sm sm:text-base">
-            Watch IMALI’s multi-bot stack scan markets, surface opportunities, and display live operational proof.
+            Watch our multi-bot trading infrastructure come to life. Every trade, every discovery, every milestone — in real-time.
           </p>
         </div>
 
-        {/* Chart moved higher */}
+        {/* Hero Chart - The Journey Timeline */}
         <div className="mb-6 bg-white/5 border border-white/10 rounded-3xl p-4 sm:p-5">
-          <h2 className="font-bold text-xl mb-4 flex items-center gap-2">
-            <span>📈</span>
-            Historical Performance
-          </h2>
-          <HistoricalChart
-            data={data.historical}
-            type={historicalType}
-            onChangeType={setHistoricalType}
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <h2 className="font-bold text-xl flex items-center gap-2">
+              <span>🗺️</span>
+              Our Journey to 500 Trades
+            </h2>
+            <div className="text-xs bg-amber-500/20 text-amber-300 px-3 py-1 rounded-full border border-amber-500/30">
+              Day 1 of Public Launch
+            </div>
+          </div>
+          <JourneyTimelineChart />
+          <div className="grid grid-cols-3 gap-2 mt-4 text-center text-xs">
+            <div className="bg-white/5 rounded-lg p-2">
+              <div className="text-emerald-400 font-bold">0</div>
+              <div className="text-white/40">Trades Today</div>
+            </div>
+            <div className="bg-white/5 rounded-lg p-2">
+              <div className="text-amber-400 font-bold">500</div>
+              <div className="text-white/40">Goal</div>
+            </div>
+            <div className="bg-white/5 rounded-lg p-2">
+              <div className="text-purple-400 font-bold">0%</div>
+              <div className="text-white/40">Complete</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Readiness Meters */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+            <ReadinessMeter percentage={activeBots * 25} label="Infrastructure Ready" color="emerald" />
+            <p className="text-[10px] text-white/30 mt-2">4/4 bots online</p>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+            <ReadinessMeter percentage={Math.min(totalTradesCount * 2, 40)} label="Trading Data" color="amber" />
+            <p className="text-[10px] text-white/30 mt-2">Waiting for first trade</p>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+            <ReadinessMeter percentage={Math.min(data.sniper.discoveries.length * 5, 30)} label="Discovery Engine" color="purple" />
+            <p className="text-[10px] text-white/30 mt-2">Scanning for tokens</p>
+          </div>
+        </div>
+
+        {/* Stats Cards - Reframed */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
+          <StatCard 
+            title="Infrastructure" 
+            value={`${activeBots}/4`} 
+            icon="🤖" 
+            color="emerald" 
+            subtext="bots online" 
+            badge="LIVE"
+          />
+          <StatCard 
+            title="Trades" 
+            value={totalTradesCount} 
+            icon="📊" 
+            color={totalTradesCount > 0 ? "purple" : "amber"} 
+            subtext={totalTradesCount > 0 ? `${winsCount} wins · ${lossesCount} losses` : "awaiting first trade"} 
+          />
+          <StatCard 
+            title="P&L" 
+            value={formatCurrencySigned(totalPnL)} 
+            icon="💰" 
+            color={totalPnL >= 0 ? "emerald" : "red"} 
+            subtext={totalPnL !== 0 ? formatPercent(totalPnLPercent) : "tracking starts soon"} 
+          />
+          <StatCard 
+            title="Positions" 
+            value={openPositionsCount} 
+            icon="📌" 
+            color="cyan" 
+            subtext="open across bots" 
+          />
+          <StatCard 
+            title="Discoveries" 
+            value={data.sniper.discoveries.length || "🔍"} 
+            icon="🦄" 
+            color="amber" 
+            subtext={data.sniper.discoveries.length ? "new tokens" : "scanning..."} 
           />
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <StatCard title="Active Bots" value={activeBots} icon="🤖" color="indigo" subtext={`${activeBots}/4 online`} />
-          <StatCard title="Total Trades" value={formatCompact(totalTradesCount)} icon="📊" color="purple" subtext={`${winsCount} wins · ${lossesCount} losses`} />
-          <StatCard title="Total P&L" value={formatCurrencySigned(totalPnL)} icon="💰" color={totalPnL >= 0 ? "emerald" : "red"} subtext={formatPercent(totalPnLPercent)} />
-          <StatCard title="Open Positions" value={formatCompact(openPositionsCount)} icon="📌" color="cyan" subtext="Across all systems" />
-          <StatCard title="Discoveries" value={formatCompact(data.sniper.discoveries.length)} icon="🦄" color="amber" subtext="DEX opportunities found" />
-        </div>
-
+        {/* Investor Panel - Reframed as "Building in Public" */}
         <div className="mb-6">
           <InvestorPanel
             data={data}
@@ -1302,6 +1737,7 @@ export default function PublicDashboard() {
           />
         </div>
 
+        {/* Bot Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <BotCard
             name="Futures Bot"
@@ -1309,6 +1745,7 @@ export default function PublicDashboard() {
             health={data.futures.health}
             stats={data.futures.stats}
             accent="indigo"
+            readiness={85}
           />
           <BotCard
             name="Stock Bot"
@@ -1316,6 +1753,7 @@ export default function PublicDashboard() {
             health={data.stocks.health}
             stats={data.stocks.stats}
             accent="emerald"
+            readiness={90}
           />
           <SniperCard
             health={data.sniper.health}
@@ -1328,136 +1766,83 @@ export default function PublicDashboard() {
             health={data.okx.health}
             stats={data.okx.stats}
             accent="amber"
+            readiness={75}
           />
         </div>
 
+        {/* Three Column Layout - Trades, Roadmap, Coming Soon */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+          {/* Live Trade Feed */}
+          <div className="lg:col-span-1">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 h-full">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
                 <h2 className="font-bold text-lg flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                   Live Trade Feed
-                  <span className="text-xs text-white/30 ml-2">{allTrades.length} rows</span>
                 </h2>
-
-                <div className="flex gap-1 bg-black/30 rounded-lg p-1 flex-wrap">
-                  {tabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
-                        activeTab === tab.id ? "bg-emerald-600 text-white" : "text-white/40 hover:text-white/60"
-                      }`}
-                    >
-                      <span>{tab.icon}</span>
-                      <span>{tab.label}</span>
-                      {tab.count > 0 ? (
-                        <span className="ml-1 text-[8px] bg-white/20 px-1.5 rounded-full">{tab.count}</span>
-                      ) : null}
-                    </button>
-                  ))}
+                <div className="text-xs bg-amber-500/20 text-amber-300 px-2 py-1 rounded-full">
+                  {allTrades.length} total
                 </div>
               </div>
 
-              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+              <div className="flex gap-1 bg-black/30 rounded-lg p-1 mb-4">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                      activeTab === tab.id ? "bg-emerald-600 text-white" : "text-white/40 hover:text-white/60"
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                    {tab.count > 0 ? (
+                      <span className="ml-1 text-[8px] bg-white/20 px-1.5 rounded-full">{tab.count}</span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
                 {filteredTrades.length > 0 ? (
                   filteredTrades.map((trade, i) => (
                     <TradeRow key={`${getTradeTimestamp(trade)}-${trade?.symbol}-${i}`} trade={trade} />
                   ))
                 ) : (
-                  <div className="text-center py-12 text-white/30">
-                    <div className="text-4xl mb-3">📭</div>
-                    <p className="text-sm">No trades match this filter</p>
+                  <div className="text-center py-8 text-white/30">
+                    <div className="text-4xl mb-3">⏳</div>
+                    <p className="text-sm">Waiting for first trade</p>
+                    <p className="text-xs text-white/20 mt-2">Bots are scanning markets now</p>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
-              <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
-                <span>🦄</span>
-                DEX Discoveries
-                {data.sniper.discoveries.length > 0 ? (
-                  <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
-                    {data.sniper.discoveries.length} new
-                  </span>
-                ) : null}
-              </h2>
+          {/* Roadmap */}
+          <div className="lg:col-span-1">
+            <RoadmapSection />
+          </div>
 
-              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                {data.sniper.discoveries.length > 0 ? (
-                  data.sniper.discoveries
-                    .slice(0, 10)
-                    .map((d, i) => <DiscoveryCard key={d?.pair || d?.address || i} discovery={d} />)
-                ) : (
-                  <div className="text-center py-8 text-white/30 text-sm">
-                    <div className="text-2xl mb-2">🔍</div>
-                    Scanning for new tokens...
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
-              <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
-                <span>📡</span>
-                System Status
-              </h2>
-
-              <div className="space-y-2 text-xs text-white/65">
-                <MetricRow label="API" value={API_BASE} valueClassName="text-white/40 truncate max-w-[160px]" />
-                <MetricRow
-                  label="Connection"
-                  value={hasConnection ? (isStale ? "Stale" : "Live") : "Connecting"}
-                  valueClassName={hasConnection ? "text-green-400" : "text-yellow-400"}
-                />
-                <MetricRow label="Last good update" value={data.lastSuccessAt ? formatClock(data.lastSuccessAt) : "—"} />
-                <MetricRow label="Open positions" value={openPositionsCount} />
-                <MetricRow label="Total trades" value={totalTradesCount} />
-                <MetricRow
-                  label="Win/Loss"
-                  value={`${winsCount}/${lossesCount}`}
-                  valueClassName={winsCount >= lossesCount ? "text-green-400" : "text-red-400"}
-                />
-                <MetricRow label="OKX mode" value={data.okx.stats?.mode || "dry_run"} />
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-5">
-              <h3 className="font-bold text-lg mb-2">For investors and partners</h3>
-              <p className="text-xs text-white/60 mb-4">
-                IMALI combines public live proof, multi-bot operations, and a clear subscription path for retail and premium users.
-              </p>
-              <div className="space-y-2 text-xs text-white/70 mb-4">
-                <div>• live dashboard credibility</div>
-                <div>• modular bot architecture</div>
-                <div>• CEX + stocks + futures + DEX discovery</div>
-                <div>• monetizable signal and managed-access tiers</div>
-              </div>
-              <Link
-                to="/signup"
-                className="inline-block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-semibold text-sm transition-all text-center"
-              >
-                Start Trading Free →
-              </Link>
-              <p className="text-[10px] text-white/30 mt-3">No credit card required</p>
-            </div>
+          {/* Coming Soon Endpoints */}
+          <div className="lg:col-span-1">
+            <MissingEndpoints />
           </div>
         </div>
 
+        {/* Footer */}
         <div className="mt-8 text-center text-xs text-white/30 border-t border-white/10 pt-6">
           <p>
-            Adaptive polling with preserved historical state and rate-limit backoff.
+            Building in public • Real-time infrastructure • Every milestone visible
             <br />
             <Link to="/" className="text-indigo-400 hover:underline">Home</Link>
             {" • "}
             <Link to="/dashboard" className="text-indigo-400 hover:underline">Member Dashboard</Link>
             {" • "}
             <Link to="/pricing" className="text-indigo-400 hover:underline">Pricing</Link>
+            {" • "}
+            <span className="text-amber-400">Next milestone: First trade</span>
           </p>
         </div>
       </main>
