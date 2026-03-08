@@ -36,8 +36,13 @@ const API_BASE =
   process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
   "https://api.imali-defi.com";
 
-const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
+// Use the same endpoints as the live dashboard
+const TRADES_URL = `${API_BASE}/api/trades/recent`;
+const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
+const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
+const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
 const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
+const PROMO_URL = `${API_BASE}/api/promo/status`;
 
 /* ============================
 HELPERS
@@ -60,6 +65,11 @@ const formatCurrency = (value) => {
   }).format(num);
 };
 
+const formatCurrencySigned = (value) => {
+  const num = safeNumber(value);
+  return `${num >= 0 ? '+' : '-'}$${Math.abs(num).toFixed(0)}`;
+};
+
 const formatCompactNumber = (value) => {
   const num = safeNumber(value);
   if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
@@ -78,17 +88,20 @@ const formatShortDate = (timestamp) => {
 };
 
 /* ============================
-LIVE DATA HOOK
+LIVE DATA HOOK - Using all dashboard endpoints
 ============================ */
 
-function useLiveActivity() {
+function useLiveData() {
   const [state, setState] = useState({
     trades: [],
+    discoveries: [],
     bots: [],
-    stats: {
-      totalRevenue: 284500,
-      activeBots: 0,
-      totalTrades: 15243
+    analytics: {
+      total_trades: 0,
+      total_pnl: 0,
+      win_rate: 0,
+      wins: 0,
+      losses: 0
     },
     historicalData: [],
     loading: true,
@@ -98,46 +111,66 @@ function useLiveActivity() {
   useEffect(() => {
     let mounted = true;
 
-    const load = async () => {
+    const fetchData = async () => {
       try {
-        const [liveRes, historicalRes] = await Promise.all([
-          axios.get(LIVE_STATS_URL),
-          axios.get(HISTORICAL_URL)
+        const [tradesRes, discoveriesRes, botsRes, analyticsRes, historicalRes] = await Promise.allSettled([
+          axios.get(TRADES_URL, { timeout: 5000 }),
+          axios.get(DISCOVERIES_URL, { timeout: 5000 }),
+          axios.get(BOT_STATUS_URL, { timeout: 5000 }),
+          axios.get(ANALYTICS_URL, { timeout: 5000 }),
+          axios.get(HISTORICAL_URL, { timeout: 5000 })
         ]);
 
         if (!mounted) return;
 
-        const liveData = liveRes.data || {};
-        const historicalData = historicalRes.data || {};
+        // Process trades
+        let trades = [];
+        if (tradesRes.status === "fulfilled") {
+          trades = tradesRes.value.data.trades || [];
+        }
 
-        const trades = normalizeArray(liveData.recent_trades).slice(0, 10);
+        // Process discoveries
+        let discoveries = [];
+        if (discoveriesRes.status === "fulfilled") {
+          discoveries = discoveriesRes.value.data.discoveries || [];
+        }
 
-        const bots = Object.keys(liveData).filter((k) =>
-          ["futures", "stocks", "sniper", "okx"].includes(k)
-        ).map(k => ({
-          name: k,
-          online: !!liveData[k]?.health
-        }));
+        // Process bots
+        let bots = [];
+        if (botsRes.status === "fulfilled") {
+          bots = botsRes.value.data.bots || [];
+        }
 
-        // Get daily historical data for chart
-        const dailyHistorical = normalizeArray(historicalData.daily || []).slice(-14);
+        // Process analytics
+        let analytics = {
+          total_trades: 0,
+          total_pnl: 0,
+          win_rate: 0,
+          wins: 0,
+          losses: 0
+        };
+        if (analyticsRes.status === "fulfilled") {
+          analytics = analyticsRes.value.data.summary || analytics;
+        }
+
+        // Process historical data
+        let historicalData = [];
+        if (historicalRes.status === "fulfilled") {
+          historicalData = normalizeArray(historicalRes.value.data.daily || []).slice(-14);
+        }
 
         setState({
-          trades,
+          trades: trades.slice(0, 5), // Show last 5 trades
+          discoveries: discoveries.slice(0, 5), // Show last 5 discoveries
           bots,
-          stats: {
-            totalRevenue: 284500 + (liveData.okx?.stats?.total_pnl || 0),
-            activeBots: bots.filter(b => b.online).length,
-            totalTrades: 15243 + (liveData.okx?.stats?.total_trades || 0)
-          },
-          historicalData: dailyHistorical,
+          analytics,
+          historicalData,
           loading: false,
           error: null
         });
-      } catch {
+      } catch (err) {
         if (!mounted) return;
-
-        setState((prev) => ({
+        setState(prev => ({
           ...prev,
           loading: false,
           error: "Live data unavailable"
@@ -145,13 +178,12 @@ function useLiveActivity() {
       }
     };
 
-    load();
-
-    const id = setInterval(load, 30000);
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
 
     return () => {
       mounted = false;
-      clearInterval(id);
+      clearInterval(interval);
     };
   }, []);
 
@@ -173,11 +205,9 @@ function usePromoStatus() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/api/promo/status`);
-
+        const res = await axios.get(PROMO_URL);
         const limit = safeNumber(res.data.limit, 50);
         const claimed = safeNumber(res.data.claimed, 0);
-
         setPromo({
           limit,
           claimed,
@@ -185,10 +215,9 @@ function usePromoStatus() {
           loading: false
         });
       } catch {
-        setPromo((p) => ({ ...p, loading: false }));
+        setPromo(p => ({ ...p, loading: false }));
       }
     };
-
     load();
   }, []);
 
@@ -196,7 +225,7 @@ function usePromoStatus() {
 }
 
 /* ============================
-HISTORICAL CHART
+MINI HISTORICAL CHART
 ============================ */
 
 function MiniHistoricalChart({ data }) {
@@ -237,10 +266,7 @@ function MiniHistoricalChart({ data }) {
         borderWidth: 1,
         padding: 8,
         callbacks: {
-          label: (context) => {
-            const value = context.raw;
-            return `P&L: ${value >= 0 ? '+' : ''}$${Math.abs(value).toFixed(2)}`;
-          }
+          label: (context) => `P&L: ${formatCurrencySigned(context.raw)}`
         }
       }
     },
@@ -261,32 +287,96 @@ function MiniHistoricalChart({ data }) {
 STAT CARD
 ============================ */
 
-function StatCard({ label, value, subtext }) {
+function StatCard({ label, value, subtext, color = "white" }) {
+  const colorClasses = {
+    emerald: "text-emerald-400",
+    amber: "text-amber-400",
+    purple: "text-purple-400",
+    white: "text-white"
+  };
+
   return (
     <div className="bg-white/5 rounded-xl p-4 border border-white/10">
       <div className="text-sm text-white/50">{label}</div>
-      <div className="text-2xl font-bold mt-1">{value}</div>
+      <div className={`text-2xl font-bold mt-1 ${colorClasses[color] || colorClasses.white}`}>{value}</div>
       {subtext && <div className="text-xs text-white/40 mt-1">{subtext}</div>}
     </div>
   );
 }
 
 /* ============================
-LIVE WIDGET
+TRADE ROW (Mini version)
 ============================ */
 
-function LiveActivityWidget({ activity }) {
-  if (activity.loading)
+function MiniTradeRow({ trade }) {
+  const side = trade?.side || "buy";
+  const pnl = safeNumber(trade?.pnl_usd || trade?.pnl, 0);
+  const symbol = trade?.symbol || "Unknown";
+  const isBuy = side === "buy" || side === "long";
+  
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+      <div className="flex items-center gap-2">
+        <span className={`text-xs ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
+          {isBuy ? '▲' : '▼'}
+        </span>
+        <span className="text-sm font-medium">{symbol}</span>
+      </div>
+      <span className={`text-xs font-medium ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+        {pnl >= 0 ? '+' : ''}{formatCurrencySigned(pnl)}
+      </span>
+    </div>
+  );
+}
+
+/* ============================
+DISCOVERY ROW (Mini version)
+============================ */
+
+function MiniDiscoveryRow({ discovery }) {
+  const score = safeNumber(discovery?.ai_score, 0);
+  const chain = discovery?.chain || "ethereum";
+  const pair = discovery?.pair || "New token";
+  
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-purple-400">🦄</span>
+        <span className="text-sm font-medium truncate max-w-[100px]">{pair}</span>
+      </div>
+      <span className={`text-xs font-medium ${score >= 0.7 ? 'text-green-400' : 'text-yellow-400'}`}>
+        {score.toFixed(2)}
+      </span>
+    </div>
+  );
+}
+
+/* ============================
+LIVE WIDGET - Shows real dashboard data
+============================ */
+
+function LiveActivityWidget({ data }) {
+  const { trades, discoveries, bots, analytics, historicalData, loading, error } = data;
+  
+  const activeBots = bots.filter(b => b.status === "operational" || b.status === "scanning").length;
+  const totalTrades = analytics.total_trades || trades.length;
+  const totalPnl = analytics.total_pnl || 0;
+  const winRate = analytics.win_rate || 0;
+  const discoveriesCount = discoveries.length;
+
+  if (loading) {
     return (
       <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
-        Loading live activity...
+        <div className="animate-spin h-8 w-8 border-2 border-emerald-500 border-t-transparent rounded-full mx-auto mb-3" />
+        <p className="text-white/60">Loading live data...</p>
       </div>
     );
+  }
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
       <div className="flex justify-between items-center mb-3">
-        <h3 className="font-bold text-lg">Live Trading Activity</h3>
+        <h3 className="font-bold text-lg">Live Trading Dashboard</h3>
         <Link
           to="/live"
           className="text-xs text-emerald-400 hover:text-emerald-300"
@@ -295,43 +385,83 @@ function LiveActivityWidget({ activity }) {
         </Link>
       </div>
 
-      <MiniHistoricalChart data={activity.historicalData} />
+      {/* Mini Chart */}
+      <MiniHistoricalChart data={historicalData} />
 
+      {/* Key Metrics */}
       <div className="grid grid-cols-2 gap-3 mt-4">
         <StatCard 
           label="Active Bots" 
-          value={activity.stats.activeBots} 
+          value={activeBots} 
+          subtext={`${bots.length} total`}
+          color="emerald"
         />
         <StatCard 
           label="Total Trades" 
-          value={formatCompactNumber(activity.stats.totalTrades)} 
+          value={formatCompactNumber(totalTrades)} 
+          subtext={`${winRate}% win rate`}
+          color="purple"
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 mt-3">
+      <div className="grid grid-cols-2 gap-3 mt-3">
         <StatCard 
-          label="Total Revenue" 
-          value={formatCurrency(activity.stats.totalRevenue)} 
+          label="Total P&L" 
+          value={formatCurrencySigned(totalPnl)} 
+          subtext={totalPnl >= 0 ? 'Profitable' : 'Loss'}
+          color={totalPnl >= 0 ? "emerald" : "amber"}
+        />
+        <StatCard 
+          label="Discoveries" 
+          value={discoveriesCount} 
+          subtext="new tokens"
+          color="purple"
         />
       </div>
 
+      {/* Recent Activity Feed */}
+      <div className="mt-4 space-y-3">
+        {trades.length > 0 && (
+          <div>
+            <h4 className="text-xs font-medium text-white/40 mb-2">📊 Recent Trades</h4>
+            <div className="bg-black/30 rounded-lg p-2">
+              {trades.map((trade, i) => (
+                <MiniTradeRow key={i} trade={trade} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {discoveries.length > 0 && (
+          <div>
+            <h4 className="text-xs font-medium text-white/40 mb-2">🦄 New Discoveries</h4>
+            <div className="bg-black/30 rounded-lg p-2">
+              {discoveries.map((disc, i) => (
+                <MiniDiscoveryRow key={i} discovery={disc} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bot Status Tags */}
       <div className="flex flex-wrap gap-1 mt-4">
-        {activity.bots.map((b) => (
+        {bots.slice(0, 4).map((bot, i) => (
           <span
-            key={b.name}
+            key={i}
             className={`text-[10px] px-2 py-0.5 rounded-full border ${
-              b.online 
-                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" 
+              bot.status === "operational" || bot.status === "scanning"
+                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
                 : "bg-gray-500/20 text-gray-400 border-gray-500/30"
             }`}
           >
-            {b.online ? '●' : '○'} {b.name}
+            {bot.status === "operational" || bot.status === "scanning" ? '●' : '○'} {bot.name}
           </span>
         ))}
       </div>
 
-      {activity.error && (
-        <div className="text-xs text-red-400 mt-2">{activity.error}</div>
+      {error && (
+        <div className="text-xs text-red-400 mt-2">{error}</div>
       )}
     </div>
   );
@@ -352,14 +482,12 @@ function PromoMeter({ claimed, limit, spotsLeft }) {
           {spotsLeft} remaining
         </span>
       </div>
-
       <div className="h-3 bg-white/10 rounded-full overflow-hidden">
         <div
           className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500"
           style={{ width: `${pct}%` }}
         />
       </div>
-
       <p className="text-xs text-white/40 mt-1">
         First 50 customers get 5% performance fee for 90 days
       </p>
@@ -410,7 +538,7 @@ PAGE
 ============================ */
 
 export default function Home() {
-  const activity = useLiveActivity();
+  const liveData = useLiveData();
   const promo = usePromoStatus();
 
   const [email, setEmail] = useState("");
@@ -477,29 +605,11 @@ export default function Home() {
         </div>
       </section>
 
-      {/* STATS SECTION */}
-      <section className="max-w-6xl mx-auto px-6 mb-16">
-        <div className="grid md:grid-cols-3 gap-4">
-          <StatCard 
-            label="Total Revenue" 
-            value={formatCurrency(activity.stats.totalRevenue)} 
-          />
-          <StatCard 
-            label="Active Bots" 
-            value={activity.stats.activeBots} 
-          />
-          <StatCard 
-            label="Total Trades" 
-            value={formatCompactNumber(activity.stats.totalTrades)} 
-          />
-        </div>
-      </section>
-
       {/* MAIN CONTENT GRID */}
       <section className="max-w-6xl mx-auto px-6 mb-16 grid lg:grid-cols-2 gap-6">
-        {/* Live Activity */}
+        {/* Live Activity Widget - Now with REAL data */}
         <div>
-          <LiveActivityWidget activity={activity} />
+          <LiveActivityWidget data={liveData} />
         </div>
 
         {/* NFT Showcase */}
@@ -556,6 +666,7 @@ export default function Home() {
           <Link to="/privacy" className="hover:text-white/50">Privacy</Link>
           <Link to="/pricing" className="hover:text-white/50">Pricing</Link>
           <Link to="/demo" className="hover:text-white/50">Demo</Link>
+          <Link to="/live" className="hover:text-emerald-400">Live Dashboard</Link>
         </div>
       </footer>
     </div>
