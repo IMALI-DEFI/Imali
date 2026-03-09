@@ -1,0 +1,214 @@
+// src/hooks/useAdmin.js
+import { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import BotAPI from '../utils/BotAPI';
+
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+
+export function useAdmin() {
+  const navigate = useNavigate();
+  const { user, token, isAuthenticated } = useAuth();
+  
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [error, setError] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [busyAction, setBusyAction] = useState(false);
+
+  // Toast helper
+  const showToast = useCallback((message, type = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 5000);
+  }, []);
+
+  // Get auth token (uses token from useAuth)
+  const getToken = useCallback(() => {
+    return token || BotAPI.getToken?.() || localStorage.getItem('token');
+  }, [token]);
+
+  // Admin fetch helper
+  const adminFetch = useCallback(async (endpoint, options = {}) => {
+    const authToken = getToken();
+    if (!authToken) {
+      throw new Error("No authentication token found");
+    }
+    
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${authToken}`,
+        ...options.headers,
+      },
+    });
+    
+    const data = await response.json().catch(() => ({}));
+    
+    if (!response.ok) {
+      throw new Error(data.message || data.error || `Request failed (${response.status})`);
+    }
+    
+    return data;
+  }, [getToken]);
+
+  // Check admin status
+  const checkAdminStatus = useCallback(async () => {
+    try {
+      setChecking(true);
+      
+      if (!isAuthenticated || !user) {
+        setIsAdmin(false);
+        setError("Please log in to continue.");
+        return false;
+      }
+
+      // First check via /api/admin/check
+      try {
+        const data = await adminFetch("/api/admin/check");
+        const admin = data?.is_admin === true;
+        
+        setIsAdmin(admin);
+        if (!admin) {
+          setError("You don't have admin privileges.");
+        }
+        return admin;
+      } catch (error) {
+        console.warn("[useAdmin] Admin check endpoint failed:", error);
+        
+        // Fallback: Check if email is in owner list (from your useOwner logic)
+        const ownerEmails = [
+          'wayne@imali-defi.com',
+          'admin@imali-defi.com'
+        ];
+        
+        const userEmail = user?.email?.toLowerCase();
+        const isOwner = ownerEmails.includes(userEmail);
+        
+        if (isOwner) {
+          setIsAdmin(true);
+          setError(null);
+          return true;
+        }
+        
+        // Final fallback: check user role from user object
+        const hasAdminRole = user?.role === 'admin' || user?.is_admin === true;
+        setIsAdmin(hasAdminRole);
+        
+        if (!hasAdminRole) {
+          setError("You don't have admin privileges.");
+        }
+        
+        return hasAdminRole;
+      }
+    } catch (error) {
+      console.error("[useAdmin] Admin check failed:", error);
+      setError("Failed to verify admin access.");
+      setIsAdmin(false);
+      return false;
+    } finally {
+      setChecking(false);
+    }
+  }, [adminFetch, isAuthenticated, user]);
+
+  // Action handler for mutations
+  const handleAction = useCallback(async (endpoint, method = "POST", body = {}, actionName = "Action") => {
+    try {
+      setBusyAction(true);
+      const data = await adminFetch(endpoint, {
+        method,
+        body: JSON.stringify(body),
+      });
+      showToast(`✅ ${actionName} completed successfully`);
+      return data;
+    } catch (err) {
+      showToast(err?.message || `${actionName} failed`, "error");
+      throw err;
+    } finally {
+      setBusyAction(false);
+    }
+  }, [adminFetch, showToast]);
+
+  // Fetch dashboard stats
+  const fetchStats = useCallback(async () => {
+    if (!isAdmin) return;
+    
+    try {
+      const [users, withdrawals, tickets, promos, waitlist, automation] = await Promise.allSettled([
+        adminFetch("/api/admin/users?limit=1").catch(() => ({ users: [] })),
+        adminFetch("/api/admin/withdrawals?status=pending").catch(() => ({ withdrawals: [] })),
+        adminFetch("/api/admin/support/tickets?status=open").catch(() => ({ tickets: [] })),
+        adminFetch("/api/admin/promo/list").catch(() => ({ promos: [] })),
+        adminFetch("/api/admin/waitlist").catch(() => ({ waitlist: [] })),
+        adminFetch("/api/admin/automation/jobs").catch(() => ({ stats: {} })),
+      ]);
+
+      const automationData = automation.status === "fulfilled" ? automation.value : { stats: {} };
+      
+      const newStats = {
+        totalUsers: users.status === "fulfilled" ? (users.value?.users?.length || 0) : 0,
+        pendingWithdrawals: withdrawals.status === "fulfilled" ? (withdrawals.value?.withdrawals?.length || 0) : 0,
+        openTickets: tickets.status === "fulfilled" ? (tickets.value?.tickets?.length || 0) : 0,
+        activePromos: promos.status === "fulfilled" ? (promos.value?.promos?.filter(p => p.active)?.length || 0) : 0,
+        waitlistCount: waitlist.status === "fulfilled" ? (waitlist.value?.waitlist?.length || 0) : 0,
+        activeJobs: automationData.stats?.active_jobs || 0,
+        totalPosts: automationData.stats?.total_posts || 0,
+      };
+      
+      setStats(newStats);
+      return newStats;
+    } catch (err) {
+      console.error("[useAdmin] Stats fetch error:", err);
+    }
+  }, [adminFetch, isAdmin]);
+
+  // Auto-refresh stats when admin
+  useEffect(() => {
+    if (!isAdmin) return;
+    
+    fetchStats();
+    const interval = setInterval(fetchStats, 30000);
+    return () => clearInterval(interval);
+  }, [isAdmin, fetchStats]);
+
+  // Re-check when user changes
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      checkAdminStatus();
+    } else {
+      setIsAdmin(false);
+      setChecking(false);
+    }
+  }, [isAuthenticated, user, checkAdminStatus]);
+
+  // Clear toast helper
+  const clearToast = useCallback(() => {
+    setToast(null);
+  }, []);
+
+  return {
+    // State
+    isAdmin,
+    checking,
+    error,
+    stats,
+    toast,
+    busyAction,
+    
+    // Functions
+    showToast,
+    clearToast,
+    adminFetch,
+    checkAdminStatus,
+    handleAction,
+    fetchStats,
+    getToken,
+    API_BASE,
+    
+    // Auth context passthrough (convenience)
+    user,
+    isAuthenticated,
+    token
+  };
+}
