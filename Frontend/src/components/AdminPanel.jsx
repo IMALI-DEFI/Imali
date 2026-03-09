@@ -1,5 +1,5 @@
 // src/components/AdminPanel.jsx
-import React, { useEffect, useMemo, useState, useCallback, Suspense, lazy } from "react";
+import React, { useEffect, useState, useCallback, Suspense, lazy } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import BotAPI from "../utils/BotAPI";
@@ -24,17 +24,17 @@ class TabErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-6 text-center">
-          <div className="text-4xl mb-3">💥</div>
-          <h3 className="text-lg font-bold text-red-300 mb-2">
-            "{this.props.tabName}" failed to load
+        <div className="p-4 sm:p-6 text-center">
+          <div className="text-5xl mb-4">💥</div>
+          <h3 className="text-lg font-bold text-red-300 mb-3">
+            "{this.props.tabName}" couldn't load
           </h3>
-          <p className="text-sm text-white/50 mb-4 max-w-md mx-auto">
-            {this.state.error?.message || "An unexpected error occurred"}
+          <p className="text-sm text-white/60 mb-5 max-w-md mx-auto">
+            {this.state.error?.message || "Something went wrong loading this section"}
           </p>
           <button
             onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition-colors"
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition-colors"
           >
             🔄 Try Again
           </button>
@@ -47,8 +47,8 @@ class TabErrorBoundary extends React.Component {
 
 /* -------------------- Loading Fallback -------------------- */
 const TabLoader = ({ name }) => (
-  <div className="p-8 text-center">
-    <div className="animate-spin h-8 w-8 border-3 border-emerald-500 border-t-transparent rounded-full mx-auto mb-3" />
+  <div className="flex flex-col items-center justify-center py-12">
+    <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
     <p className="text-sm text-white/50">Loading {name}…</p>
   </div>
 );
@@ -75,15 +75,7 @@ const CexManagement = lazy(() => import("../admin/CexManagement.jsx"));
 const StocksManagement = lazy(() => import("../admin/StocksManagement.jsx"));
 
 /* -------------------- Env Helpers -------------------- */
-const IS_BROWSER = typeof window !== "undefined";
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
-
-const E = (k, fb = "") => {
-  if (typeof process !== "undefined" && process.env && process.env[k] !== undefined) {
-    return process.env[k] || fb;
-  }
-  return fb;
-};
 
 /* -------------------- API Helper -------------------- */
 const adminFetch = async (endpoint, options = {}) => {
@@ -113,105 +105,81 @@ const adminFetch = async (endpoint, options = {}) => {
 /* -------------------- Admin Check Function -------------------- */
 const checkAdminStatus = async () => {
   try {
-    // Try the admin check endpoint first
     const data = await adminFetch("/api/admin/check");
     return data?.is_admin === true;
   } catch (error) {
     console.warn("[AdminPanel] Admin check failed:", error);
-    
-    // Fallback: check if user is in owner list via me endpoint
-    try {
-      const me = await adminFetch("/api/me");
-      return me?.user?.is_admin === true || me?.user?.role === 'admin';
-    } catch (e) {
-      return false;
-    }
+    return false;
   }
 };
 
 /* ==================================================================
-   TAB CATEGORIES - Organized by function with descriptions
+   SIMPLIFIED TAB CATEGORIES - Grouped for beginners
 ================================================================== */
 
-const TAB_CATEGORIES = [
+const TAB_SECTIONS = [
   {
-    name: "📊 CORE OPERATIONS",
-    description: "Essential platform management",
+    name: "📊 Dashboard",
+    description: "Platform overview",
+    color: "from-blue-500 to-indigo-500",
     tabs: [
-      { key: "overview", label: "Overview", emoji: "✨", component: DashboardOverview, description: "Platform metrics and quick actions" },
-      { key: "users", label: "Users", emoji: "👥", component: UserManagement, description: "Manage user accounts and permissions" },
-      { key: "withdrawals", label: "Withdrawals", emoji: "💰", component: WithdrawalManagement, description: "Process and review withdrawal requests" },
-      { key: "tickets", label: "Support", emoji: "🎫", component: SupportTickets, description: "Customer support tickets" },
+      { key: "overview", label: "Overview", emoji: "✨", component: DashboardOverview, description: "Key metrics at a glance" },
+      { key: "health", label: "System Health", emoji: "🏥", component: SystemHealth, description: "Check if everything is running" },
     ]
   },
   {
-    name: "🎯 MARKETING & GROWTH",
-    description: "User acquisition and engagement",
+    name: "👥 Users",
+    description: "Manage people",
+    color: "from-emerald-500 to-teal-500",
     tabs: [
-      { key: "automation", label: "🤖 Automation", emoji: "🤖", component: MarketingAutomation, description: "Automated marketing campaigns and social posting" },
-      { key: "promos", label: "Promos", emoji: "🎟️", component: PromoManagement, description: "Create and manage promotional codes" },
-      { key: "referrals", label: "Referrals", emoji: "🧲", component: ReferralAnalytics, description: "Referral program analytics" },
-      { key: "waitlist", label: "Waitlist", emoji: "⏳", component: WaitlistManagement, description: "Manage waitlist and early access" },
-      { key: "social", label: "Social", emoji: "📣", component: SocialManager, description: "Social media management" },
-      { key: "announcements", label: "Announce", emoji: "📢", component: Announcements, description: "Platform announcements" },
+      { key: "users", label: "All Users", emoji: "👥", component: UserManagement, description: "View and edit user accounts" },
+      { key: "tickets", label: "Support", emoji: "🎫", component: SupportTickets, description: "Help your users" },
+      { key: "waitlist", label: "Waitlist", emoji: "⏳", component: WaitlistManagement, description: "People waiting to join" },
     ]
   },
   {
-    name: "💰 FINANCIAL",
-    description: "Treasury and financial operations",
+    name: "💰 Money",
+    description: "Financial stuff",
+    color: "from-amber-500 to-orange-500",
     tabs: [
-      { key: "treasury", label: "Treasury", emoji: "🏦", component: TreasuryManagement, description: "Manage platform treasury" },
-      { key: "fees", label: "Fee Distributor", emoji: "💸", component: FeeDistributor, description: "Process and distribute fees" },
-      { key: "buyback", label: "Buyback", emoji: "♻️", component: BuyBackDashboard, description: "Token buyback operations" },
-      { key: "token", label: "Token Mgmt", emoji: "🪙", component: TokenManagement, description: "Token minting and burning" },
+      { key: "withdrawals", label: "Withdrawals", emoji: "💰", component: WithdrawalManagement, description: "Approve money requests" },
+      { key: "fees", label: "Fees", emoji: "💸", component: FeeDistributor, description: "Process trading fees" },
+      { key: "treasury", label: "Treasury", emoji: "🏦", component: TreasuryManagement, description: "Platform money" },
     ]
   },
   {
-    name: "📈 TRADING OPERATIONS",
-    description: "Bot and trading management",
+    name: "📢 Marketing",
+    description: "Grow your platform",
+    color: "from-purple-500 to-pink-500",
     tabs: [
-      { key: "cex", label: "CEX Funding", emoji: "🏧", component: CexManagement, description: "Centralized exchange funding" },
-      { key: "stocks", label: "Stocks", emoji: "📈", component: StocksManagement, description: "Stock trading operations" },
-      { key: "nfts", label: "NFTs", emoji: "🧬", component: NFTManagement, description: "NFT marketplace management" },
+      { key: "automation", label: "Auto Posts", emoji: "🤖", component: MarketingAutomation, description: "Schedule social media" },
+      { key: "promos", label: "Promo Codes", emoji: "🎟️", component: PromoManagement, description: "Create discounts" },
+      { key: "announcements", label: "Announce", emoji: "📢", component: Announcements, description: "Tell users stuff" },
+      { key: "referrals", label: "Referrals", emoji: "🧲", component: ReferralAnalytics, description: "Track invites" },
+      { key: "social", label: "Social", emoji: "📣", component: SocialManager, description: "Manage social media" },
     ]
   },
   {
-    name: "🔧 SYSTEM",
-    description: "Platform administration",
+    name: "⚙️ Advanced",
+    description: "Expert settings",
+    color: "from-gray-600 to-gray-700",
     tabs: [
-      { key: "access", label: "Access Control", emoji: "🔐", component: AccessControl, description: "Admin permissions and roles" },
-      { key: "audit", label: "Audit Logs", emoji: "📋", component: AuditLogs, description: "System audit trail" },
-      { key: "health", label: "System", emoji: "🏥", component: SystemHealth, description: "System health monitoring" },
+      { key: "token", label: "Token", emoji: "🪙", component: TokenManagement, description: "Mint & burn tokens" },
+      { key: "buyback", label: "Buyback", emoji: "♻️", component: BuyBackDashboard, description: "Token buybacks" },
+      { key: "nfts", label: "NFTs", emoji: "🧬", component: NFTManagement, description: "Manage NFTs" },
+      { key: "cex", label: "CEX", emoji: "🏧", component: CexManagement, description: "Exchange funding" },
+      { key: "stocks", label: "Stocks", emoji: "📈", component: StocksManagement, description: "Stock trading" },
+      { key: "access", label: "Permissions", emoji: "🔐", component: AccessControl, description: "Who can do what" },
+      { key: "audit", label: "Audit Logs", emoji: "📋", component: AuditLogs, description: "See what happened" },
     ]
   }
 ];
 
-// Flatten tabs for easy access
-const ALL_TABS = TAB_CATEGORIES.flatMap(cat => cat.tabs);
+// Flatten for quick access
+const ALL_TABS = TAB_SECTIONS.flatMap(section => section.tabs);
 
 /* ==================================================================
-   QUICK ACTION CARDS
-================================================================== */
-const QuickActionCard = ({ icon, title, description, onClick, badge }) => (
-  <button
-    onClick={onClick}
-    className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 text-left transition-all hover:scale-[1.02]"
-  >
-    <div className="flex items-start justify-between">
-      <span className="text-2xl mb-2">{icon}</span>
-      {badge && (
-        <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300">
-          {badge}
-        </span>
-      )}
-    </div>
-    <h4 className="font-semibold text-sm mb-1">{title}</h4>
-    <p className="text-xs text-white/50">{description}</p>
-  </button>
-);
-
-/* ==================================================================
-   MAIN ADMIN PANEL
+   MAIN ADMIN PANEL - Mobile & Novice Friendly
 ================================================================== */
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
@@ -225,10 +193,11 @@ export default function AdminPanel({ forceOwner = false }) {
   const [busyAction, setBusyAction] = useState("");
   const [stats, setStats] = useState(null);
   const [toast, setToast] = useState(null);
-  const [showQuickGuide, setShowQuickGuide] = useState(true);
+  const [showGuide, setShowGuide] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isDevelopment = process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
-  const BYPASS = isDevelopment && (E("REACT_APP_BYPASS_OWNER") === "1");
+  const BYPASS = isDevelopment && (process.env.REACT_APP_BYPASS_OWNER === "1");
   const TEST_BYPASS = location.pathname.startsWith("/test/admin");
 
   /* -------------------- Toast helper -------------------- */
@@ -250,39 +219,30 @@ export default function AdminPanel({ forceOwner = false }) {
           return;
         }
 
-        // Check if user is logged in
+        // Check if logged in
         const token = BotAPI.getToken?.() || localStorage.getItem('token');
         if (!token) {
-          if (mounted) {
-            setError("Please log in to continue.");
-            setIsAdmin(false);
-          }
+          if (mounted) setError("Please log in first");
           setChecking(false);
           return;
         }
 
         // Check admin status
         const admin = await checkAdminStatus();
-        
         if (mounted) {
           setIsAdmin(admin);
-          if (!admin) {
-            setError("You don't have admin privileges.");
-          }
+          if (!admin) setError("You're not an admin");
         }
       } catch (e) {
-        console.error("[AdminPanel] Access check error:", e);
-        if (mounted) {
-          setError(e?.message || "Failed to verify admin access.");
-          setIsAdmin(false);
-        }
+        console.error("Access check error:", e);
+        if (mounted) setError("Couldn't verify permissions");
       } finally {
         if (mounted) setChecking(false);
       }
     };
 
     checkAccess();
-  }, [account, forceOwner, BYPASS, TEST_BYPASS]);
+  }, [forceOwner, BYPASS, TEST_BYPASS]);
 
   /* -------------------- Fetch dashboard stats -------------------- */
   useEffect(() => {
@@ -293,35 +253,24 @@ export default function AdminPanel({ forceOwner = false }) {
 
     const fetchStats = async () => {
       try {
-        const [users, withdrawals, tickets, promos, waitlist, automation] = await Promise.allSettled([
-          adminFetch("/api/admin/users?limit=1").catch(() => ({ users: [] })),
-          adminFetch("/api/admin/withdrawals?status=pending").catch(() => ({ withdrawals: [] })),
-          adminFetch("/api/admin/support/tickets?status=open").catch(() => ({ tickets: [] })),
-          adminFetch("/api/admin/promo/list").catch(() => ({ promos: [] })),
-          adminFetch("/api/admin/waitlist").catch(() => ({ waitlist: [] })),
-          adminFetch("/api/admin/automation/jobs").catch(() => ({ stats: {} })),
-        ]);
+        const data = await adminFetch("/api/admin/metrics").catch(() => null);
+        if (!mounted || !data) return;
 
-        if (!mounted) return;
-
-        const automationData = automation.status === "fulfilled" ? automation.value : { stats: {} };
-        
         setStats({
-          totalUsers: users.status === "fulfilled" ? (users.value?.users?.length || 0) : 0,
-          pendingWithdrawals: withdrawals.status === "fulfilled" ? (withdrawals.value?.withdrawals?.length || 0) : 0,
-          openTickets: tickets.status === "fulfilled" ? (tickets.value?.tickets?.length || 0) : 0,
-          activePromos: promos.status === "fulfilled" ? (promos.value?.promos?.filter(p => p.active)?.length || 0) : 0,
-          waitlistCount: waitlist.status === "fulfilled" ? (waitlist.value?.waitlist?.length || 0) : 0,
-          activeJobs: automationData.stats?.active_jobs || 0,
-          totalPosts: automationData.stats?.total_posts || 0,
+          totalUsers: data.users?.total || 0,
+          pendingWithdrawals: data.withdrawals?.pending || 0,
+          openTickets: data.tickets?.open || 0,
+          activePromos: data.promos?.active || 0,
+          waitlistCount: data.waitlist?.total || 0,
+          activeJobs: data.automation?.active_jobs || 0,
         });
       } catch (err) {
-        console.error("[AdminPanel] Stats fetch error:", err);
+        console.error("Stats fetch error:", err);
       }
     };
 
     fetchStats();
-    const interval = setInterval(fetchStats, 30000);
+    const interval = setInterval(fetchStats, 60000); // Update every minute
 
     return () => {
       mounted = false;
@@ -330,34 +279,11 @@ export default function AdminPanel({ forceOwner = false }) {
   }, [isAdmin, forceOwner, BYPASS, TEST_BYPASS]);
 
   /* -------------------- Action handlers -------------------- */
-  const handleProcessFees = useCallback(async (dryRun = true) => {
-    try {
-      setBusyAction("fees");
-      const data = await adminFetch("/api/admin/process-pending-fees", {
-        method: "POST",
-        body: JSON.stringify({ dry_run: dryRun, limit: 100 }),
-      });
-      
-      if (dryRun) {
-        showToast(`📊 Dry run: ${data.processed} fees → $${data.total_amount.toFixed(2)}`);
-      } else {
-        showToast(`✅ Processed ${data.processed} fees → $${data.total_amount.toFixed(2)}`);
-      }
-    } catch (err) {
-      showToast(err?.message || "Fee processing failed", "error");
-    } finally {
-      setBusyAction("");
-    }
-  }, [showToast]);
-
   const handleAction = useCallback(async (endpoint, method = "POST", body = {}, actionName = "Action") => {
     try {
       setBusyAction(actionName);
-      const data = await adminFetch(endpoint, {
-        method,
-        body: JSON.stringify(body),
-      });
-      showToast(`✅ ${actionName} completed successfully`);
+      const data = await adminFetch(endpoint, { method, body: JSON.stringify(body) });
+      showToast(`✅ ${actionName} completed!`, "success");
       return data;
     } catch (err) {
       showToast(err?.message || `${actionName} failed`, "error");
@@ -369,7 +295,8 @@ export default function AdminPanel({ forceOwner = false }) {
 
   const navigateToTab = useCallback((tabKey) => {
     setActive(tabKey);
-    setShowQuickGuide(false);
+    setMobileMenuOpen(false);
+    setShowGuide(false);
   }, []);
 
   /* -------------------- Tab renderer -------------------- */
@@ -377,10 +304,7 @@ export default function AdminPanel({ forceOwner = false }) {
     const commonProps = {
       apiBase: API_BASE,
       account,
-      onAction: () => {
-        // Refresh data instead of full reload
-        window.location.reload();
-      },
+      onAction: () => window.location.reload(),
       showToast,
       busyAction,
       handleAction,
@@ -388,7 +312,7 @@ export default function AdminPanel({ forceOwner = false }) {
 
     const Component = tab.component;
     return (
-      <TabErrorBoundary tabName={tab.label} key={tab.key}>
+      <TabErrorBoundary tabName={tab.label}>
         <Suspense fallback={<TabLoader name={tab.label} />}>
           <Component {...commonProps} />
         </Suspense>
@@ -396,42 +320,35 @@ export default function AdminPanel({ forceOwner = false }) {
     );
   }, [account, busyAction, handleAction, showToast]);
 
-  /* -------------------- Access control -------------------- */
-  const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdmin;
-
-  if (checking && !allowAccess) {
+  /* -------------------- Loading state -------------------- */
+  if (checking && !(forceOwner || BYPASS || TEST_BYPASS || isAdmin)) {
     return (
-      <div className="min-h-screen grid place-items-center bg-gray-950 text-white">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-black p-4">
         <div className="text-center">
-          <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
-          <h2 className="text-xl font-bold mb-2">Verifying admin access…</h2>
-          <p className="text-sm text-white/40 mt-2">Checking permissions</p>
+          <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Checking access...</h2>
+          <p className="text-sm text-white/50">Making sure you're allowed in</p>
         </div>
       </div>
     );
   }
 
-  if (!allowAccess) {
+  /* -------------------- Access denied -------------------- */
+  if (!(forceOwner || BYPASS || TEST_BYPASS || isAdmin)) {
     return (
-      <div className="min-h-screen grid place-items-center bg-gray-950 text-white px-6">
-        <div className="max-w-md text-center">
-          <div className="text-6xl mb-4">🔒</div>
-          <h2 className="text-2xl font-extrabold mb-2">403 — Admin Only</h2>
-          <p className="text-white/70 mb-6">{error || "This area is restricted to administrators."}</p>
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={() => navigate("/")}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold transition-colors"
-            >
-              Go Home
-            </button>
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold transition-colors"
-            >
-              Dashboard
-            </button>
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-black p-6">
+        <div className="max-w-sm text-center">
+          <div className="text-7xl mb-4">🔒</div>
+          <h2 className="text-2xl font-bold mb-2">Admin Only</h2>
+          <p className="text-white/60 mb-6">
+            {error || "This area is just for platform administrators"}
+          </p>
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-medium transition-colors w-full"
+          >
+            Back to Dashboard
+          </button>
         </div>
       </div>
     );
@@ -440,24 +357,18 @@ export default function AdminPanel({ forceOwner = false }) {
   const activeTab = ALL_TABS.find(t => t.key === active);
 
   return (
-    <div className="relative min-h-screen overflow-hidden text-white">
-      {/* Background effects */}
-      <div className="absolute inset-0 bg-gradient-to-b from-gray-900 via-gray-950 to-black" />
-      <div className="pointer-events-none absolute -top-24 -left-24 h-80 w-80 rounded-full blur-3xl opacity-25 bg-cyan-500/30" />
-      <div className="pointer-events-none absolute top-20 -right-16 h-96 w-96 rounded-full blur-3xl opacity-20 bg-purple-500/30" />
-
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
+      
       {/* Toast notifications */}
       {toast && (
-        <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl border shadow-xl text-sm max-w-sm animate-in slide-in-from-right ${
-            toast.type === "error"
-              ? "bg-red-600/90 border-red-500/50 text-white"
-              : "bg-emerald-600/90 border-emerald-500/50 text-white"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <span>{toast.message}</span>
-            <button onClick={() => setToast(null)} className="text-white/60 hover:text-white flex-shrink-0">
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl border shadow-lg text-sm max-w-[90vw] animate-slide-in ${
+          toast.type === "error" 
+            ? "bg-red-600/90 border-red-500/50" 
+            : "bg-emerald-600/90 border-emerald-500/50"
+        }`}>
+          <div className="flex items-center gap-3">
+            <span className="flex-1">{toast.message}</span>
+            <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100">
               ✕
             </button>
           </div>
@@ -465,207 +376,246 @@ export default function AdminPanel({ forceOwner = false }) {
       )}
 
       {/* Header */}
-      <header className="relative z-10 border-b border-white/10 backdrop-blur bg-black/10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl sm:text-2xl font-extrabold bg-gradient-to-r from-emerald-300 to-purple-300 bg-clip-text text-transparent">
-                IMALI Admin
-              </h1>
-              {stats && (
-                <div className="hidden lg:flex items-center gap-2 text-xs">
-                  <span className="px-2 py-1 bg-blue-500/20 rounded-full text-blue-300" title="Total Users">
-                    👥 {stats.totalUsers}
-                  </span>
-                  <span className="px-2 py-1 bg-purple-500/20 rounded-full text-purple-300" title="Active Jobs">
-                    🤖 {stats.activeJobs}
-                  </span>
-                  {stats.openTickets > 0 && (
-                    <span className="px-2 py-1 bg-red-500/20 rounded-full text-red-300" title="Open Tickets">
-                      🎫 {stats.openTickets}
-                    </span>
-                  )}
-                  {stats.pendingWithdrawals > 0 && (
-                    <span className="px-2 py-1 bg-orange-500/20 rounded-full text-orange-300" title="Pending Withdrawals">
-                      💰 {stats.pendingWithdrawals}
-                    </span>
-                  )}
-                </div>
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-gray-900/80 backdrop-blur">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="lg:hidden p-2 hover:bg-white/10 rounded-lg"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-purple-400 bg-clip-text text-transparent">
+              Admin
+            </h1>
+          </div>
+          
+          {/* Quick stats for desktop */}
+          {stats && (
+            <div className="hidden lg:flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 bg-blue-500/20 rounded-full text-blue-300">
+                👥 {stats.totalUsers}
+              </span>
+              <span className="px-2 py-1 bg-purple-500/20 rounded-full text-purple-300">
+                🤖 {stats.activeJobs}
+              </span>
+              {stats.openTickets > 0 && (
+                <span className="px-2 py-1 bg-red-500/20 rounded-full text-red-300">
+                  🎫 {stats.openTickets}
+                </span>
               )}
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate("/dashboard")}
-                className="text-sm text-white/60 hover:text-white transition-colors"
-              >
-                ← Dashboard
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Stats Bar */}
-          {stats && (
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              <span className="text-white/40">Quick stats:</span>
-              <span className="text-emerald-400">📊 {stats.totalPosts || 0} posts</span>
-              <span className="text-yellow-400">⏳ {stats.waitlistCount} waitlist</span>
-              <span className="text-blue-400">🎟️ {stats.activePromos} promos</span>
-            </div>
           )}
+
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="text-sm text-white/60 hover:text-white"
+          >
+            ← Exit
+          </button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 py-6 sm:py-8">
-        
-        {/* Quick Guide - Collapsible */}
-        {showQuickGuide && (
-          <div className="mb-6 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
-                  <span>🚀</span> Welcome to the Admin Panel
-                </h3>
-                <p className="text-sm text-white/70 mb-3">
-                  Use the categorized tabs below to manage different aspects of the platform:
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
-                  <div className="bg-white/5 rounded-lg p-2">
-                    <span className="text-emerald-400 font-bold">📊 Core Operations</span>
-                    <p className="text-white/50 mt-1">User management, withdrawals, support tickets</p>
-                  </div>
-                  <div className="bg-white/5 rounded-lg p-2">
-                    <span className="text-purple-400 font-bold">🎯 Marketing & Growth</span>
-                    <p className="text-white/50 mt-1">Automated campaigns, promos, referrals, social media</p>
-                  </div>
-                  <div className="bg-white/5 rounded-lg p-2">
-                    <span className="text-yellow-400 font-bold">💰 Financial</span>
-                    <p className="text-white/50 mt-1">Treasury, fee distribution, buybacks</p>
-                  </div>
+      {/* Mobile menu */}
+      {mobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-30 bg-gray-900 pt-16">
+          <div className="p-4 overflow-y-auto max-h-[calc(100vh-4rem)]">
+            {TAB_SECTIONS.map((section) => (
+              <div key={section.name} className="mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="font-medium">{section.name}</h3>
+                  <span className="text-xs text-white/40">{section.description}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {section.tabs.map((tab) => {
+                    const isActive = active === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => navigateToTab(tab.key)}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          isActive
+                            ? "bg-emerald-600/20 border-emerald-500/50"
+                            : "bg-white/5 border-white/10 hover:bg-white/10"
+                        }`}
+                      >
+                        <div className="text-2xl mb-1">{tab.emoji}</div>
+                        <div className="font-medium text-sm">{tab.label}</div>
+                        <div className="text-xs text-white/40 truncate">{tab.description}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              <button
-                onClick={() => setShowQuickGuide(false)}
-                className="text-white/40 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Category Navigation */}
-        <div className="mb-6 space-y-4">
-          {TAB_CATEGORIES.map((category) => (
-            <div key={category.name} className="space-y-2">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-white/70">{category.name}</h2>
-                <span className="text-[10px] text-white/30">{category.description}</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {category.tabs.map((tab) => {
-                  const isActive = active === tab.key;
-                  let badge = null;
-                  if (tab.key === "tickets" && stats?.openTickets > 0) {
-                    badge = stats.openTickets;
-                  } else if (tab.key === "withdrawals" && stats?.pendingWithdrawals > 0) {
-                    badge = stats.pendingWithdrawals;
-                  } else if (tab.key === "automation" && stats?.activeJobs > 0) {
-                    badge = `${stats.activeJobs} jobs`;
-                  }
-
-                  return (
-                    <button
-                      key={tab.key}
-                      onClick={() => setActive(tab.key)}
-                      className={`group relative px-3 py-2 rounded-xl border text-xs font-medium transition-all
-                        ${isActive
-                          ? "bg-white/15 border-white/30 shadow-lg"
-                          : "bg-white/5 border-white/10 hover:bg-white/10"
+      <div className="flex">
+        {/* Desktop sidebar */}
+        <div className="hidden lg:block w-64 shrink-0 border-r border-white/10 bg-black/20 p-4">
+          <div className="space-y-6">
+            {TAB_SECTIONS.map((section) => (
+              <div key={section.name}>
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="text-sm font-medium">{section.name}</h3>
+                  <span className="text-[10px] text-white/30">{section.description}</span>
+                </div>
+                <div className="space-y-1">
+                  {section.tabs.map((tab) => {
+                    const isActive = active === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => navigateToTab(tab.key)}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all ${
+                          isActive
+                            ? "bg-emerald-600/20 border border-emerald-500/30"
+                            : "hover:bg-white/5"
                         }`}
-                      title={tab.description}
-                    >
-                      <span className="mr-1">{tab.emoji}</span>
-                      <span>{tab.label}</span>
-                      {badge && (
-                        <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-red-500 text-[8px] font-bold text-white">
-                          {badge}
-                        </span>
-                      )}
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 rounded text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-white/10">
-                        {tab.description}
-                      </div>
-                    </button>
-                  );
-                })}
+                        title={tab.description}
+                      >
+                        <span className="text-lg">{tab.emoji}</span>
+                        <span className="flex-1 text-left">{tab.label}</span>
+                        {tab.key === "tickets" && stats?.openTickets > 0 && (
+                          <span className="text-xs bg-red-500/20 text-red-300 px-1.5 rounded-full">
+                            {stats.openTickets}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
-        {/* Active Tab Panel */}
-        <section className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-4 sm:p-6 shadow-xl min-h-[500px]">
+        {/* Main content */}
+        <main className="flex-1 min-w-0 p-4 lg:p-6">
+          
+          {/* Welcome guide for first-time users */}
+          {showGuide && (
+            <div className="mb-6 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-5">
+              <div className="flex items-start gap-3">
+                <div className="text-3xl">👋</div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg mb-1">Welcome to the Admin Panel</h3>
+                  <p className="text-sm text-white/70 mb-3">
+                    Here's where you manage everything. The sidebar has all the tools you need.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    <div className="bg-white/5 rounded-lg p-2">
+                      <span className="text-emerald-400 font-medium block mb-1">👥 Users</span>
+                      Manage accounts, handle support
+                    </div>
+                    <div className="bg-white/5 rounded-lg p-2">
+                      <span className="text-purple-400 font-medium block mb-1">💰 Money</span>
+                      Withdrawals, fees, treasury
+                    </div>
+                    <div className="bg-white/5 rounded-lg p-2">
+                      <span className="text-amber-400 font-medium block mb-1">📢 Marketing</span>
+                      Promos, social posts, announcements
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowGuide(false)}
+                  className="text-white/40 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Quick stats for mobile */}
+          {stats && (
+            <div className="lg:hidden grid grid-cols-4 gap-2 mb-4 text-xs">
+              <div className="bg-blue-500/10 rounded-lg p-2 text-center">
+                <div className="text-blue-400 font-bold">{stats.totalUsers}</div>
+                <div className="text-white/40">Users</div>
+              </div>
+              <div className="bg-purple-500/10 rounded-lg p-2 text-center">
+                <div className="text-purple-400 font-bold">{stats.activeJobs}</div>
+                <div className="text-white/40">Jobs</div>
+              </div>
+              <div className="bg-amber-500/10 rounded-lg p-2 text-center">
+                <div className="text-amber-400 font-bold">{stats.waitlistCount}</div>
+                <div className="text-white/40">Waitlist</div>
+              </div>
+              <div className="bg-emerald-500/10 rounded-lg p-2 text-center">
+                <div className="text-emerald-400 font-bold">{stats.activePromos}</div>
+                <div className="text-white/40">Promos</div>
+              </div>
+            </div>
+          )}
+
+          {/* Active tab */}
           {activeTab && (
-            <>
-              <div className="flex items-center gap-2 mb-4 pb-2 border-b border-white/10">
-                <span className="text-2xl">{activeTab.emoji}</span>
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-6">
+              <div className="flex items-center gap-3 mb-4 pb-3 border-b border-white/10">
+                <span className="text-3xl">{activeTab.emoji}</span>
                 <div>
                   <h2 className="text-xl font-bold">{activeTab.label}</h2>
                   <p className="text-xs text-white/50">{activeTab.description}</p>
                 </div>
               </div>
               {renderTab(activeTab)}
-            </>
+            </div>
           )}
-        </section>
 
-        {/* Quick Actions */}
-        <div className="mt-8">
-          <h3 className="text-sm font-medium text-white/50 mb-3">⚡ Quick Actions</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <QuickActionCard
-              icon="💰"
-              title="Process Fees"
-              description="Run fee distribution (dry run first)"
-              onClick={() => handleProcessFees(true)}
-            />
-            <QuickActionCard
-              icon="🤖"
-              title="Run Automation"
-              description="Trigger marketing campaigns"
-              onClick={() => navigateToTab("automation")}
-              badge={stats?.activeJobs ? `${stats.activeJobs} active` : null}
-            />
-            <QuickActionCard
-              icon="📢"
-              title="New Announcement"
-              description="Create platform announcement"
-              onClick={() => navigateToTab("announcements")}
-            />
-            <QuickActionCard
-              icon="🎟️"
-              title="Create Promo"
-              description="Generate promo code"
+          {/* Quick action buttons - common tasks */}
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <button
+              onClick={() => navigateToTab("withdrawals")}
+              className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center"
+            >
+              <div className="text-2xl mb-1">💰</div>
+              <div className="text-sm font-medium">Withdrawals</div>
+              {stats?.pendingWithdrawals > 0 && (
+                <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full mt-1 inline-block">
+                  {stats.pendingWithdrawals} pending
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => navigateToTab("tickets")}
+              className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center"
+            >
+              <div className="text-2xl mb-1">🎫</div>
+              <div className="text-sm font-medium">Support</div>
+              {stats?.openTickets > 0 && (
+                <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full mt-1 inline-block">
+                  {stats.openTickets} open
+                </span>
+              )}
+            </button>
+            <button
               onClick={() => navigateToTab("promos")}
-            />
+              className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center"
+            >
+              <div className="text-2xl mb-1">🎟️</div>
+              <div className="text-sm font-medium">New Promo</div>
+            </button>
+            <button
+              onClick={() => navigateToTab("announcements")}
+              className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center"
+            >
+              <div className="text-2xl mb-1">📢</div>
+              <div className="text-sm font-medium">Announce</div>
+            </button>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="mt-6 flex flex-wrap gap-3 justify-between items-center text-[10px] text-white/30">
-          <div className="flex gap-2">
-            <span>API: {API_BASE}</span>
-            <span>•</span>
-            <span>Last updated: {new Date().toLocaleTimeString()}</span>
+          {/* Footer */}
+          <div className="mt-6 text-center text-[10px] text-white/20">
+            Admin Panel • v1.0 • {new Date().toLocaleDateString()}
           </div>
-          <button
-            onClick={() => window.location.reload()}
-            className="hover:text-white/50 transition-colors"
-          >
-            🔄 Refresh
-          </button>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
