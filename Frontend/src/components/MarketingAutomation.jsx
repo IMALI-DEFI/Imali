@@ -1,6 +1,6 @@
 // src/pages/admin/MarketingAutomation.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAdmin } from '../hooks/useAdmin';
+import useAdmin from '../hooks/useAdmin';
 
 const AUTOMATION_JOBS = [
   {
