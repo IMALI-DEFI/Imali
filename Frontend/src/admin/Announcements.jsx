@@ -1,6 +1,6 @@
 // src/admin/Announcements.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAdmin } from '../hooks/useAdmin';
+import useAdmin from '../hooks/useAdmin';
 
 export default function Announcements({ apiBase, showToast, handleAction, busyAction }) {
   const { adminFetch } = useAdmin();
