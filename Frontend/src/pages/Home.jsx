@@ -739,7 +739,7 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-emerald-50/40 text-slate-900">
       {/* HERO */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
+        <div className="pointer-events-none absolute inset-0">
           <div className="absolute -top-24 left-[-80px] h-72 w-72 rounded-full bg-cyan-200/30 blur-3xl" />
           <div className="absolute right-[-60px] top-10 h-72 w-72 rounded-full bg-emerald-200/30 blur-3xl" />
           <div className="absolute bottom-0 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-violet-200/20 blur-3xl" />
@@ -802,14 +802,14 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="relative">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-xl">
-                <div className="mb-4 flex items-center justify-between">
+            <div className="w-full">
+              <div className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-xl lg:ml-auto lg:mr-0">
+                <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-slate-900">Early Access Promo</div>
                     <div className="text-xs text-slate-500">{promoText}</div>
                   </div>
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
                     Limited
                   </span>
                 </div>
@@ -853,22 +853,6 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-
-              <img
-                src={StarterNFT}
-                alt=""
-                className="pointer-events-none absolute -left-8 -top-8 hidden w-20 opacity-70 md:block"
-              />
-              <img
-                src={ProNFT}
-                alt=""
-                className="pointer-events-none absolute -right-8 top-8 hidden w-24 opacity-70 md:block"
-              />
-              <img
-                src={EliteNFT}
-                alt=""
-                className="pointer-events-none absolute bottom-[-20px] left-1/2 hidden w-24 -translate-x-1/2 opacity-70 md:block"
-              />
             </div>
           </div>
         </div>
