@@ -9,7 +9,7 @@ import MarketingAutomation from "../admin/MarketingAutomation";
 class TabErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, retryCount: 0 };
   }
 
   static getDerivedStateFromError(error) {
@@ -21,25 +21,25 @@ class TabErrorBoundary extends React.Component {
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, retryCount: this.state.retryCount + 1 });
   };
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
-          <div className="mb-3 text-5xl">💥</div>
-          <h3 className="mb-2 text-lg font-bold text-red-300">
-            {this.props.tabName} could not load
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-8 text-center">
+          <div className="mb-4 text-6xl animate-pulse">💥</div>
+          <h3 className="mb-3 text-xl font-bold text-red-300">
+            {this.props.tabName} failed to load
           </h3>
-          <p className="mx-auto mb-4 max-w-md text-sm text-white/70">
-            {this.state.error?.message || "Something went wrong while loading this section."}
+          <p className="mx-auto mb-6 max-w-md text-sm text-white/70">
+            {this.state.error?.message || "An unexpected error occurred while loading this section."}
           </p>
           <button
             onClick={this.handleReset}
-            className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium transition hover:bg-indigo-500"
+            className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-medium transition hover:bg-indigo-500"
           >
-            Try Again
+            Try Again ({this.state.retryCount}/3)
           </button>
         </div>
       );
@@ -51,8 +51,8 @@ class TabErrorBoundary extends React.Component {
 
 /* -------------------- Loading Fallback -------------------- */
 const TabLoader = ({ name }) => (
-  <div className="flex min-h-[260px] flex-col items-center justify-center py-12">
-    <div className="mb-3 h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+  <div className="flex min-h-[300px] flex-col items-center justify-center py-12">
+    <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
     <p className="text-sm text-white/60">Loading {name}...</p>
   </div>
 );
@@ -81,32 +81,46 @@ const StocksManagement = lazy(() => import("../admin/StocksManagement.jsx"));
 /* -------------------- Config -------------------- */
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
-/* -------------------- API Helper -------------------- */
-const adminFetch = async (endpoint, options = {}) => {
+/* -------------------- API Helper with Retry Logic -------------------- */
+const adminFetch = async (endpoint, options = {}, retries = 2) => {
   const token = BotAPI.getToken?.() || localStorage.getItem("token");
 
   if (!token) {
     throw new Error("No authentication token found");
   }
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...options.headers,
-    },
-  });
+  let lastError;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          ...options.headers,
+        },
+      });
 
-  const data = await response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({}));
 
-  if (!response.ok) {
-    throw new Error(data.message || data.error || `Request failed (${response.status})`);
+      if (!response.ok) {
+        throw new Error(data.message || data.error || `Request failed (${response.status})`);
+      }
+
+      return data;
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
+      }
+    }
   }
 
-  return data;
+  throw lastError;
 };
 
+/* -------------------- Admin Status Check -------------------- */
 const checkAdminStatus = async () => {
   try {
     const data = await adminFetch("/api/admin/check");
@@ -117,7 +131,7 @@ const checkAdminStatus = async () => {
   }
 };
 
-/* -------------------- Sections -------------------- */
+/* -------------------- Sections with Full Functionality -------------------- */
 const TAB_SECTIONS = [
   {
     id: "dashboard",
@@ -131,7 +145,8 @@ const TAB_SECTIONS = [
         emoji: "✨",
         component: DashboardOverview,
         description: "Main numbers and summary cards.",
-        help: "Start here first. This page gives you the big picture of what is happening on your platform."
+        help: "Start here first. This page gives you the big picture of what is happening on your platform.",
+        actions: ["refresh", "export"]
       },
       {
         key: "health",
@@ -139,7 +154,8 @@ const TAB_SECTIONS = [
         emoji: "🏥",
         component: SystemHealth,
         description: "Check if services are running correctly.",
-        help: "Use this when you want to make sure the backend, bots, and connected services are healthy."
+        help: "Use this when you want to make sure the backend, bots, and connected services are healthy.",
+        actions: ["refresh", "diagnose"]
       },
     ],
   },
@@ -155,7 +171,8 @@ const TAB_SECTIONS = [
         emoji: "👥",
         component: UserManagement,
         description: "View and manage user accounts.",
-        help: "Use this to search for users, review accounts, and make account-related changes."
+        help: "Use this to search for users, review accounts, and make account-related changes.",
+        actions: ["search", "filter", "export"]
       },
       {
         key: "tickets",
@@ -163,7 +180,8 @@ const TAB_SECTIONS = [
         emoji: "🎫",
         component: SupportTickets,
         description: "Handle support issues and questions.",
-        help: "Open this when users need help or when you want to review unresolved issues."
+        help: "Open this when users need help or when you want to review unresolved issues.",
+        actions: ["reply", "close", "assign"]
       },
       {
         key: "waitlist",
@@ -171,7 +189,8 @@ const TAB_SECTIONS = [
         emoji: "⏳",
         component: WaitlistManagement,
         description: "Review people waiting to join.",
-        help: "Use this to track interest before a user has full access to the platform."
+        help: "Use this to track interest before a user has full access to the platform.",
+        actions: ["approve", "email", "export"]
       },
     ],
   },
@@ -187,7 +206,8 @@ const TAB_SECTIONS = [
         emoji: "💰",
         component: WithdrawalManagement,
         description: "Approve or review withdrawal requests.",
-        help: "Go here when you need to review money leaving the platform."
+        help: "Go here when you need to review money leaving the platform.",
+        actions: ["approve", "reject", "review"]
       },
       {
         key: "fees",
@@ -195,7 +215,8 @@ const TAB_SECTIONS = [
         emoji: "💸",
         component: FeeDistributor,
         description: "Manage fee flows and distributions.",
-        help: "Use this to understand how collected fees are being split or routed."
+        help: "Use this to understand how collected fees are being split or routed.",
+        actions: ["distribute", "calculate", "history"]
       },
       {
         key: "treasury",
@@ -203,7 +224,8 @@ const TAB_SECTIONS = [
         emoji: "🏦",
         component: TreasuryManagement,
         description: "Manage platform-held funds.",
-        help: "This is the place for treasury balances, reserves, and fund movement controls."
+        help: "This is the place for treasury balances, reserves, and fund movement controls.",
+        actions: ["transfer", "withdraw", "history"]
       },
     ],
   },
@@ -219,7 +241,8 @@ const TAB_SECTIONS = [
         emoji: "🤖",
         component: MarketingAutomation,
         description: "Schedule automated marketing posts.",
-        help: "Use this to plan recurring content instead of posting everything manually."
+        help: "Use this to plan recurring content instead of posting everything manually.",
+        actions: ["schedule", "pause", "test"]
       },
       {
         key: "promos",
@@ -227,7 +250,8 @@ const TAB_SECTIONS = [
         emoji: "🎟️",
         component: PromoManagement,
         description: "Create and manage discount codes.",
-        help: "Open this when you want to run a special offer, referral code, or limited-time discount."
+        help: "Open this when you want to run a special offer, referral code, or limited-time discount.",
+        actions: ["create", "activate", "deactivate"]
       },
       {
         key: "announcements",
@@ -235,7 +259,8 @@ const TAB_SECTIONS = [
         emoji: "📣",
         component: Announcements,
         description: "Send updates to users.",
-        help: "Use this to share important news, updates, feature launches, or maintenance notices."
+        help: "Use this to share important news, updates, feature launches, or maintenance notices.",
+        actions: ["create", "schedule", "send"]
       },
       {
         key: "referrals",
@@ -243,7 +268,8 @@ const TAB_SECTIONS = [
         emoji: "🧲",
         component: ReferralAnalytics,
         description: "Track user invite performance.",
-        help: "This helps you see who is bringing in users and how referrals are performing."
+        help: "This helps you see who is bringing in users and how referrals are performing.",
+        actions: ["export", "reward", "analyze"]
       },
       {
         key: "social",
@@ -251,7 +277,8 @@ const TAB_SECTIONS = [
         emoji: "📱",
         component: SocialManager,
         description: "Manage social media activity.",
-        help: "Use this to organize social channels and keep marketing activity in one place."
+        help: "Use this to organize social channels and keep marketing activity in one place.",
+        actions: ["post", "schedule", "analytics"]
       },
     ],
   },
@@ -267,7 +294,8 @@ const TAB_SECTIONS = [
         emoji: "🪙",
         component: TokenManagement,
         description: "Mint, burn, and manage token actions.",
-        help: "Use this for token supply and token-related admin controls."
+        help: "Use this for token supply and token-related admin controls.",
+        actions: ["mint", "burn", "transfer"]
       },
       {
         key: "buyback",
@@ -275,7 +303,8 @@ const TAB_SECTIONS = [
         emoji: "♻️",
         component: BuyBackDashboard,
         description: "Manage token buybacks.",
-        help: "This area is for buyback settings, monitoring, and execution."
+        help: "This area is for buyback settings, monitoring, and execution.",
+        actions: ["execute", "schedule", "history"]
       },
       {
         key: "nfts",
@@ -283,7 +312,8 @@ const TAB_SECTIONS = [
         emoji: "🧬",
         component: NFTManagement,
         description: "Manage NFT tiers and NFT items.",
-        help: "Go here when you need to manage NFT access or NFT-related rewards."
+        help: "Go here when you need to manage NFT access or NFT-related rewards.",
+        actions: ["mint", "burn", "transfer"]
       },
       {
         key: "cex",
@@ -291,7 +321,8 @@ const TAB_SECTIONS = [
         emoji: "🏧",
         component: CexManagement,
         description: "Manage centralized exchange controls.",
-        help: "Use this for exchange-related settings, balances, or connected exchange actions."
+        help: "Use this for exchange-related settings, balances, or connected exchange actions.",
+        actions: ["deposit", "withdraw", "balance"]
       },
       {
         key: "stocks",
@@ -299,7 +330,8 @@ const TAB_SECTIONS = [
         emoji: "📈",
         component: StocksManagement,
         description: "Manage stock-related trading tools.",
-        help: "This page is for stock-side operations if your platform supports them."
+        help: "This page is for stock-side operations if your platform supports them.",
+        actions: ["trade", "position", "history"]
       },
       {
         key: "access",
@@ -307,7 +339,8 @@ const TAB_SECTIONS = [
         emoji: "🔐",
         component: AccessControl,
         description: "Control admin access and roles.",
-        help: "Use this to decide who can see or do certain things in the admin system."
+        help: "Use this to decide who can see or do certain things in the admin system.",
+        actions: ["add", "remove", "update"]
       },
       {
         key: "audit",
@@ -315,7 +348,8 @@ const TAB_SECTIONS = [
         emoji: "📋",
         component: AuditLogs,
         description: "Review admin actions and events.",
-        help: "Open this when you want to see what changes were made and by whom."
+        help: "Open this when you want to see what changes were made and by whom.",
+        actions: ["filter", "export", "search"]
       },
     ],
   },
@@ -323,8 +357,9 @@ const TAB_SECTIONS = [
 
 const ALL_TABS = TAB_SECTIONS.flatMap((section) => section.tabs);
 
+/* -------------------- Section Badge Component -------------------- */
 const SectionBadge = ({ emoji, name, description }) => (
-  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+  <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-4 hover:border-white/20 transition">
     <div className="mb-2 flex items-center gap-2">
       <span className="text-2xl">{emoji}</span>
       <h3 className="font-semibold">{name}</h3>
@@ -333,15 +368,18 @@ const SectionBadge = ({ emoji, name, description }) => (
   </div>
 );
 
-function SidebarButton({ tab, isActive, onClick, badge }) {
+/* -------------------- Sidebar Button with Full Functionality -------------------- */
+function SidebarButton({ tab, isActive, onClick, badge, busy }) {
   return (
     <button
       onClick={onClick}
+      disabled={busy}
       className={[
-        "w-full rounded-xl border px-3 py-3 text-left transition",
+        "w-full rounded-xl border px-3 py-3 text-left transition-all duration-200",
         isActive
-          ? "border-emerald-500/40 bg-emerald-500/15 shadow-[0_0_0_1px_rgba(16,185,129,0.12)]"
+          ? "border-emerald-500/40 bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
           : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5",
+        busy ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
       ].join(" ")}
       title={tab.description}
     >
@@ -351,18 +389,81 @@ function SidebarButton({ tab, isActive, onClick, badge }) {
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{tab.label}</span>
             {badge ? (
-              <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-medium text-red-300">
+              <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-medium text-red-300 animate-pulse">
                 {badge}
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-xs text-white/45">{tab.description}</p>
+          <p className="mt-1 text-xs text-white/45 line-clamp-2">{tab.description}</p>
         </div>
       </div>
     </button>
   );
 }
 
+/* -------------------- Action Button Component -------------------- */
+const ActionButton = ({ action, onClick, busy }) => {
+  const actionLabels = {
+    refresh: { icon: "🔄", label: "Refresh" },
+    export: { icon: "📥", label: "Export" },
+    search: { icon: "🔍", label: "Search" },
+    filter: { icon: "🎯", label: "Filter" },
+    approve: { icon: "✅", label: "Approve" },
+    reject: { icon: "❌", label: "Reject" },
+    create: { icon: "➕", label: "Create" },
+    edit: { icon: "✏️", label: "Edit" },
+    delete: { icon: "🗑️", label: "Delete" },
+    send: { icon: "📤", label: "Send" },
+    schedule: { icon: "⏰", label: "Schedule" },
+    test: { icon: "🧪", label: "Test" },
+    pause: { icon: "⏸️", label: "Pause" },
+    resume: { icon: "▶️", label: "Resume" },
+    diagnose: { icon: "🔬", label: "Diagnose" },
+    distribute: { icon: "📊", label: "Distribute" },
+    calculate: { icon: "🧮", label: "Calculate" },
+    history: { icon: "📜", label: "History" },
+    transfer: { icon: "💸", label: "Transfer" },
+    withdraw: { icon: "💰", label: "Withdraw" },
+    deposit: { icon: "📥", label: "Deposit" },
+    balance: { icon: "⚖️", label: "Balance" },
+    trade: { icon: "📈", label: "Trade" },
+    position: { icon: "📊", label: "Position" },
+    mint: { icon: "🪙", label: "Mint" },
+    burn: { icon: "🔥", label: "Burn" },
+    execute: { icon: "⚡", label: "Execute" },
+    reward: { icon: "🎁", label: "Reward" },
+    analyze: { icon: "📊", label: "Analyze" },
+    post: { icon: "📱", label: "Post" },
+    analytics: { icon: "📈", label: "Analytics" },
+    reply: { icon: "💬", label: "Reply" },
+    close: { icon: "🔒", label: "Close" },
+    assign: { icon: "👤", label: "Assign" },
+    email: { icon: "📧", label: "Email" },
+    review: { icon: "👁️", label: "Review" },
+    add: { icon: "➕", label: "Add" },
+    remove: { icon: "➖", label: "Remove" },
+    update: { icon: "🔄", label: "Update" }
+  };
+
+  const label = actionLabels[action] || { icon: "🔘", label: action };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium transition hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {busy ? (
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+      ) : (
+        <span>{label.icon}</span>
+      )}
+      <span>{label.label}</span>
+    </button>
+  );
+};
+
+/* -------------------- Main AdminPanel Component -------------------- */
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
   const navigate = useNavigate();
@@ -372,11 +473,12 @@ export default function AdminPanel({ forceOwner = false }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState("");
   const [active, setActive] = useState("overview");
-  const [busyAction, setBusyAction] = useState("");
+  const [busyAction, setBusyAction] = useState({});
   const [stats, setStats] = useState(null);
   const [toast, setToast] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showHelpPanel, setShowHelpPanel] = useState(true);
+  const [actionHistory, setActionHistory] = useState([]);
 
   const isDevelopment =
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
@@ -389,12 +491,30 @@ export default function AdminPanel({ forceOwner = false }) {
     return ALL_TABS.find((tab) => tab.key === active) || ALL_TABS[0];
   }, [active]);
 
-  const showToast = useCallback((message, type = "success") => {
-    setToast({ message, type });
-    window.clearTimeout(window.__imaliToastTimer);
-    window.__imaliToastTimer = window.setTimeout(() => setToast(null), 4500);
+  /* -------------------- Toast with Auto-hide -------------------- */
+  const showToast = useCallback((message, type = "success", duration = 4500) => {
+    setToast({ message, type, duration });
+    if (window.__imaliToastTimer) {
+      window.clearTimeout(window.__imaliToastTimer);
+    }
+    window.__imaliToastTimer = window.setTimeout(() => setToast(null), duration);
   }, []);
 
+  /* -------------------- Log Action to History -------------------- */
+  const logAction = useCallback((actionName, status, details = {}) => {
+    setActionHistory(prev => [
+      {
+        id: Date.now(),
+        action: actionName,
+        status,
+        timestamp: new Date().toISOString(),
+        details
+      },
+      ...prev.slice(0, 49) // Keep last 50 actions
+    ]);
+  }, []);
+
+  /* -------------------- Admin Access Check -------------------- */
   useEffect(() => {
     let mounted = true;
 
@@ -431,6 +551,7 @@ export default function AdminPanel({ forceOwner = false }) {
     };
   }, [forceOwner, BYPASS, TEST_BYPASS]);
 
+  /* -------------------- Fetch Dashboard Stats -------------------- */
   useEffect(() => {
     if (!allowAccess) return;
 
@@ -448,6 +569,8 @@ export default function AdminPanel({ forceOwner = false }) {
           activePromos: data.promos?.active || 0,
           waitlistCount: data.waitlist?.total || 0,
           activeJobs: data.automation?.active_jobs || 0,
+          totalRevenue: data.revenue?.total || 0,
+          activeBots: data.bots?.active || 0
         });
       } catch (err) {
         console.error("[AdminPanel] Stats fetch error:", err);
@@ -463,37 +586,53 @@ export default function AdminPanel({ forceOwner = false }) {
     };
   }, [allowAccess]);
 
+  /* -------------------- Universal Action Handler -------------------- */
   const handleAction = useCallback(
     async (endpoint, method = "POST", body = {}, actionName = "Action") => {
+      const actionId = `${actionName}-${Date.now()}`;
+      
       try {
-        setBusyAction(actionName);
+        setBusyAction(prev => ({ ...prev, [actionId]: true }));
+        logAction(actionName, "started", { endpoint, method, body });
+        
         const data = await adminFetch(endpoint, {
           method,
           body: JSON.stringify(body),
         });
+        
+        logAction(actionName, "success", { endpoint, response: data });
         showToast(`${actionName} completed successfully.`, "success");
+        
         return data;
       } catch (err) {
-        showToast(err?.message || `${actionName} failed.`, "error");
+        const errorMessage = err?.message || `${actionName} failed.`;
+        logAction(actionName, "error", { endpoint, error: errorMessage });
+        showToast(errorMessage, "error");
         throw err;
       } finally {
-        setBusyAction("");
+        setBusyAction(prev => {
+          const newState = { ...prev };
+          delete newState[actionId];
+          return newState;
+        });
       }
     },
-    [showToast]
+    [showToast, logAction]
   );
 
+  /* -------------------- Tab Navigation -------------------- */
   const navigateToTab = useCallback((tabKey) => {
     setActive(tabKey);
     setMobileMenuOpen(false);
   }, []);
 
+  /* -------------------- Tab Renderer -------------------- */
   const renderTab = useCallback(
     (tab) => {
       const Component = tab.component;
 
       return (
-        <TabErrorBoundary tabName={tab.label}>
+        <TabErrorBoundary tabName={tab.label} key={`${tab.key}-${Date.now()}`}>
           <Suspense fallback={<TabLoader name={tab.label} />}>
             <Component
               apiBase={API_BASE}
@@ -501,15 +640,23 @@ export default function AdminPanel({ forceOwner = false }) {
               busyAction={busyAction}
               showToast={showToast}
               handleAction={handleAction}
-              onAction={() => {}}
+              onAction={(action, data) => handleAction(
+                data?.endpoint || `/api/admin/${tab.key}/${action}`,
+                data?.method || "POST",
+                data?.body || {},
+                `${tab.label} ${action}`
+              )}
+              stats={stats}
+              actions={tab.actions || []}
             />
           </Suspense>
         </TabErrorBoundary>
       );
     },
-    [account, busyAction, handleAction, showToast]
+    [account, busyAction, handleAction, showToast, stats]
   );
 
+  /* -------------------- Loading State -------------------- */
   if (checking && !allowAccess) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-4 text-white">
@@ -522,6 +669,7 @@ export default function AdminPanel({ forceOwner = false }) {
     );
   }
 
+  /* -------------------- Access Denied State -------------------- */
   if (!allowAccess) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-6 text-white">
@@ -542,13 +690,14 @@ export default function AdminPanel({ forceOwner = false }) {
     );
   }
 
+  /* -------------------- Main Render -------------------- */
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-950 to-black text-white">
-      {/* Toast */}
+      {/* Toast Notification */}
       {toast ? (
         <div
           className={[
-            "fixed right-4 top-4 z-[70] max-w-[92vw] rounded-xl border px-4 py-3 shadow-lg backdrop-blur",
+            "fixed right-4 top-4 z-[70] max-w-[92vw] animate-in slide-in-from-right rounded-xl border px-4 py-3 shadow-lg backdrop-blur",
             toast.type === "error"
               ? "border-red-500/40 bg-red-600/90"
               : "border-emerald-500/40 bg-emerald-600/90",
@@ -600,7 +749,7 @@ export default function AdminPanel({ forceOwner = false }) {
                   🤖 {stats.activeJobs} jobs
                 </span>
                 {stats.openTickets > 0 ? (
-                  <span className="rounded-full bg-red-500/15 px-2.5 py-1 text-xs text-red-300">
+                  <span className="rounded-full bg-red-500/15 px-2.5 py-1 text-xs text-red-300 animate-pulse">
                     🎫 {stats.openTickets} tickets
                   </span>
                 ) : null}
@@ -617,9 +766,12 @@ export default function AdminPanel({ forceOwner = false }) {
         </div>
       </header>
 
-      {/* Mobile menu overlay */}
+      {/* Mobile Menu Overlay */}
       {mobileMenuOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" onClick={() => setMobileMenuOpen(false)}>
+        <div 
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" 
+          onClick={() => setMobileMenuOpen(false)}
+        >
           <aside
             className="absolute left-0 top-0 h-full w-[88%] max-w-sm overflow-y-auto border-r border-white/10 bg-gray-950 px-4 pb-6 pt-20 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -657,6 +809,7 @@ export default function AdminPanel({ forceOwner = false }) {
                             ? stats.openTickets
                             : null
                         }
+                        busy={busyAction[`${tab.key}-loading`]}
                       />
                     ))}
                   </div>
@@ -667,8 +820,9 @@ export default function AdminPanel({ forceOwner = false }) {
         </div>
       ) : null}
 
+      {/* Main Content */}
       <div className="mx-auto flex max-w-[1600px]">
-        {/* Desktop sidebar */}
+        {/* Desktop Sidebar */}
         <aside className="hidden min-h-[calc(100vh-65px)] w-[300px] shrink-0 border-r border-white/10 bg-white/[0.03] lg:block">
           <div className="sticky top-[65px] h-[calc(100vh-65px)] overflow-y-auto p-4">
             <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
@@ -702,6 +856,7 @@ export default function AdminPanel({ forceOwner = false }) {
                             ? stats.openTickets
                             : null
                         }
+                        busy={busyAction[`${tab.key}-loading`]}
                       />
                     ))}
                   </div>
@@ -711,9 +866,9 @@ export default function AdminPanel({ forceOwner = false }) {
           </div>
         </aside>
 
-        {/* Main content */}
+        {/* Main Content Area */}
         <main className="min-w-0 flex-1 px-4 py-4 lg:px-6 lg:py-6">
-          {/* Mobile stats */}
+          {/* Mobile Stats */}
           {stats ? (
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden">
               <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 text-center">
@@ -735,11 +890,11 @@ export default function AdminPanel({ forceOwner = false }) {
             </div>
           ) : null}
 
-          {/* Beginner guide */}
+          {/* Beginner Guide */}
           <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-5">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold">Beginner guide</h2>
+                <h2 className="text-xl font-bold">Beginner Guide</h2>
                 <p className="mt-1 text-sm text-white/65">
                   This panel is organized so you can find things faster without guessing.
                 </p>
@@ -767,7 +922,7 @@ export default function AdminPanel({ forceOwner = false }) {
             ) : null}
           </section>
 
-          {/* Active tab header + help */}
+          {/* Active Tab Content */}
           <section className="rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
             <div className="mb-5 flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="flex items-start gap-3">
@@ -784,11 +939,33 @@ export default function AdminPanel({ forceOwner = false }) {
               </div>
             </div>
 
+            {/* Tab Actions */}
+            {activeTab.actions && activeTab.actions.length > 0 && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {activeTab.actions.map((action) => (
+                  <ActionButton
+                    key={action}
+                    action={action}
+                    onClick={() => handleAction(
+                      `/api/admin/${activeTab.key}/${action}`,
+                      "POST",
+                      {},
+                      `${activeTab.label} ${action}`
+                    )}
+                    busy={busyAction[`${activeTab.key}-${action}`]}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Tab Content */}
             {renderTab(activeTab)}
           </section>
 
+          {/* Footer */}
           <div className="mt-6 text-center text-[11px] text-white/25">
-            Admin Panel • {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : "No wallet connected"}
+            Admin Panel • {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : "No wallet connected"} • 
+            Last updated: {new Date().toLocaleTimeString()}
           </div>
         </main>
       </div>
