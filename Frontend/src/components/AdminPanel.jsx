@@ -87,12 +87,16 @@ const E = (k, fb = "") => {
 
 /* -------------------- API Helper -------------------- */
 const adminFetch = async (endpoint, options = {}) => {
-  const token = BotAPI.getToken();
+  const token = BotAPI.getToken?.() || localStorage.getItem('token');
+  if (!token) {
+    throw new Error("No authentication token found");
+  }
+  
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      "Authorization": `Bearer ${token}`,
       ...options.headers,
     },
   });
@@ -104,6 +108,25 @@ const adminFetch = async (endpoint, options = {}) => {
   }
   
   return data;
+};
+
+/* -------------------- Admin Check Function -------------------- */
+const checkAdminStatus = async () => {
+  try {
+    // Try the admin check endpoint first
+    const data = await adminFetch("/api/admin/check");
+    return data?.is_admin === true;
+  } catch (error) {
+    console.warn("[AdminPanel] Admin check failed:", error);
+    
+    // Fallback: check if user is in owner list via me endpoint
+    try {
+      const me = await adminFetch("/api/me");
+      return me?.user?.is_admin === true || me?.user?.role === 'admin';
+    } catch (e) {
+      return false;
+    }
+  }
 };
 
 /* ==================================================================
@@ -218,42 +241,47 @@ export default function AdminPanel({ forceOwner = false }) {
   useEffect(() => {
     let mounted = true;
 
-    const checkAdminStatus = async () => {
+    const checkAccess = async () => {
       try {
+        // Development bypass
         if (forceOwner || BYPASS || TEST_BYPASS) {
           if (mounted) setIsAdmin(true);
           setChecking(false);
           return;
         }
 
-        try {
-          const adminCheck = await BotAPI.adminCheck();
-          if (adminCheck?.is_admin) {
-            if (mounted) setIsAdmin(true);
-            setChecking(false);
-            return;
+        // Check if user is logged in
+        const token = BotAPI.getToken?.() || localStorage.getItem('token');
+        if (!token) {
+          if (mounted) {
+            setError("Please log in to continue.");
+            setIsAdmin(false);
           }
-        } catch (apiErr) {
-          console.warn("[AdminPanel] API admin check failed:", apiErr);
-        }
-
-        if (!account) {
-          if (mounted) setError("Connect your wallet to continue.");
           setChecking(false);
           return;
         }
 
-        if (mounted) setIsAdmin(false);
-        setChecking(false);
-      } catch (e) {
+        // Check admin status
+        const admin = await checkAdminStatus();
+        
         if (mounted) {
-          setError(e?.message || "Admin check failed.");
-          setChecking(false);
+          setIsAdmin(admin);
+          if (!admin) {
+            setError("You don't have admin privileges.");
+          }
         }
+      } catch (e) {
+        console.error("[AdminPanel] Access check error:", e);
+        if (mounted) {
+          setError(e?.message || "Failed to verify admin access.");
+          setIsAdmin(false);
+        }
+      } finally {
+        if (mounted) setChecking(false);
       }
     };
 
-    checkAdminStatus();
+    checkAccess();
   }, [account, forceOwner, BYPASS, TEST_BYPASS]);
 
   /* -------------------- Fetch dashboard stats -------------------- */
@@ -266,12 +294,12 @@ export default function AdminPanel({ forceOwner = false }) {
     const fetchStats = async () => {
       try {
         const [users, withdrawals, tickets, promos, waitlist, automation] = await Promise.allSettled([
-          BotAPI.adminGetUsers({ limit: 1 }),
-          adminFetch("/api/admin/withdrawals?status=pending"),
-          adminFetch("/api/admin/support/tickets?status=open"),
-          BotAPI.adminListPromos(),
-          adminFetch("/api/admin/waitlist"),
-          adminFetch("/api/admin/automation/jobs"),
+          adminFetch("/api/admin/users?limit=1").catch(() => ({ users: [] })),
+          adminFetch("/api/admin/withdrawals?status=pending").catch(() => ({ withdrawals: [] })),
+          adminFetch("/api/admin/support/tickets?status=open").catch(() => ({ tickets: [] })),
+          adminFetch("/api/admin/promo/list").catch(() => ({ promos: [] })),
+          adminFetch("/api/admin/waitlist").catch(() => ({ waitlist: [] })),
+          adminFetch("/api/admin/automation/jobs").catch(() => ({ stats: {} })),
         ]);
 
         if (!mounted) return;
@@ -350,7 +378,8 @@ export default function AdminPanel({ forceOwner = false }) {
       apiBase: API_BASE,
       account,
       onAction: () => {
-        setTimeout(() => window.location.reload(), 1000);
+        // Refresh data instead of full reload
+        window.location.reload();
       },
       showToast,
       busyAction,
@@ -376,7 +405,7 @@ export default function AdminPanel({ forceOwner = false }) {
         <div className="text-center">
           <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
           <h2 className="text-xl font-bold mb-2">Verifying admin access…</h2>
-          <p className="text-sm text-white/40 mt-2">Checking API and contract permissions</p>
+          <p className="text-sm text-white/40 mt-2">Checking permissions</p>
         </div>
       </div>
     );
@@ -465,11 +494,6 @@ export default function AdminPanel({ forceOwner = false }) {
               )}
             </div>
             <div className="flex items-center gap-3">
-              {account && (
-                <div className="hidden sm:block text-xs text-white/70 bg-white/5 px-3 py-1 rounded-full">
-                  {account.slice(0, 6)}…{account.slice(-4)}
-                </div>
-              )}
               <button
                 onClick={() => navigate("/dashboard")}
                 className="text-sm text-white/60 hover:text-white transition-colors"
