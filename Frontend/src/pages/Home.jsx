@@ -1,5 +1,5 @@
 // src/pages/Home.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 
@@ -14,9 +14,8 @@ import {
   LinearScale,
   CategoryScale,
   Tooltip,
-  Filler
+  Filler,
 } from "chart.js";
-
 import { Line } from "react-chartjs-2";
 
 ChartJS.register(
@@ -36,13 +35,13 @@ const API_BASE =
   process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
   "https://api.imali-defi.com";
 
-// Use the same endpoints as the live dashboard
 const TRADES_URL = `${API_BASE}/api/trades/recent`;
 const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
 const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
 const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
 const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
 const PROMO_URL = `${API_BASE}/api/promo/status`;
+const ANNOUNCEMENTS_URL = `${API_BASE}/api/announcements/public`;
 
 /* ============================
 HELPERS
@@ -57,24 +56,25 @@ const normalizeArray = (v) => (Array.isArray(v) ? v : []);
 
 const formatCurrency = (value) => {
   const num = safeNumber(value);
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0
+    maximumFractionDigits: 0,
   }).format(num);
 };
 
 const formatCurrencySigned = (value) => {
   const num = safeNumber(value);
-  return `${num >= 0 ? '+' : '-'}$${Math.abs(num).toFixed(0)}`;
+  const abs = Math.abs(num).toFixed(0);
+  return `${num >= 0 ? "+" : "-"}$${abs}`;
 };
 
 const formatCompactNumber = (value) => {
   const num = safeNumber(value);
   if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
   if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-  return num.toString();
+  return `${num}`;
 };
 
 const formatShortDate = (timestamp) => {
@@ -87,8 +87,21 @@ const formatShortDate = (timestamp) => {
   }
 };
 
+const formatFullDate = (timestamp) => {
+  if (!timestamp) return "—";
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(timestamp));
+  } catch {
+    return "—";
+  }
+};
+
 /* ============================
-LIVE DATA HOOK - Using all dashboard endpoints
+LIVE DATA HOOK
 ============================ */
 
 function useLiveData() {
@@ -101,11 +114,11 @@ function useLiveData() {
       total_pnl: 0,
       win_rate: 0,
       wins: 0,
-      losses: 0
+      losses: 0,
     },
     historicalData: [],
     loading: true,
-    error: null
+    error: null,
   });
 
   useEffect(() => {
@@ -113,67 +126,63 @@ function useLiveData() {
 
     const fetchData = async () => {
       try {
-        const [tradesRes, discoveriesRes, botsRes, analyticsRes, historicalRes] = await Promise.allSettled([
-          axios.get(TRADES_URL, { timeout: 5000 }),
-          axios.get(DISCOVERIES_URL, { timeout: 5000 }),
-          axios.get(BOT_STATUS_URL, { timeout: 5000 }),
-          axios.get(ANALYTICS_URL, { timeout: 5000 }),
-          axios.get(HISTORICAL_URL, { timeout: 5000 })
-        ]);
+        const [tradesRes, discoveriesRes, botsRes, analyticsRes, historicalRes] =
+          await Promise.allSettled([
+            axios.get(TRADES_URL, { timeout: 5000 }),
+            axios.get(DISCOVERIES_URL, { timeout: 5000 }),
+            axios.get(BOT_STATUS_URL, { timeout: 5000 }),
+            axios.get(ANALYTICS_URL, { timeout: 5000 }),
+            axios.get(HISTORICAL_URL, { timeout: 5000 }),
+          ]);
 
         if (!mounted) return;
 
-        // Process trades
         let trades = [];
         if (tradesRes.status === "fulfilled") {
-          trades = tradesRes.value.data.trades || [];
+          trades = tradesRes.value?.data?.trades || [];
         }
 
-        // Process discoveries
         let discoveries = [];
         if (discoveriesRes.status === "fulfilled") {
-          discoveries = discoveriesRes.value.data.discoveries || [];
+          discoveries = discoveriesRes.value?.data?.discoveries || [];
         }
 
-        // Process bots
         let bots = [];
         if (botsRes.status === "fulfilled") {
-          bots = botsRes.value.data.bots || [];
+          bots = botsRes.value?.data?.bots || [];
         }
 
-        // Process analytics
         let analytics = {
           total_trades: 0,
           total_pnl: 0,
           win_rate: 0,
           wins: 0,
-          losses: 0
+          losses: 0,
         };
         if (analyticsRes.status === "fulfilled") {
-          analytics = analyticsRes.value.data.summary || analytics;
+          analytics = analyticsRes.value?.data?.summary || analytics;
         }
 
-        // Process historical data
         let historicalData = [];
         if (historicalRes.status === "fulfilled") {
-          historicalData = normalizeArray(historicalRes.value.data.daily || []).slice(-14);
+          historicalData = normalizeArray(historicalRes.value?.data?.daily || []).slice(-14);
         }
 
         setState({
-          trades: trades.slice(0, 5), // Show last 5 trades
-          discoveries: discoveries.slice(0, 5), // Show last 5 discoveries
+          trades: trades.slice(0, 5),
+          discoveries: discoveries.slice(0, 5),
           bots,
           analytics,
           historicalData,
           loading: false,
-          error: null
+          error: null,
         });
-      } catch (err) {
+      } catch {
         if (!mounted) return;
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           loading: false,
-          error: "Live data unavailable"
+          error: "Live data unavailable",
         }));
       }
     };
@@ -199,25 +208,27 @@ function usePromoStatus() {
     limit: 50,
     claimed: 0,
     spotsLeft: 50,
-    loading: true
+    loading: true,
   });
 
   useEffect(() => {
     const load = async () => {
       try {
         const res = await axios.get(PROMO_URL);
-        const limit = safeNumber(res.data.limit, 50);
-        const claimed = safeNumber(res.data.claimed, 0);
+        const limit = safeNumber(res.data?.limit, 50);
+        const claimed = safeNumber(res.data?.claimed, 0);
+
         setPromo({
           limit,
           claimed,
           spotsLeft: Math.max(0, limit - claimed),
-          loading: false
+          loading: false,
         });
       } catch {
-        setPromo(p => ({ ...p, loading: false }));
+        setPromo((prev) => ({ ...prev, loading: false }));
       }
     };
+
     load();
   }, []);
 
@@ -225,140 +236,296 @@ function usePromoStatus() {
 }
 
 /* ============================
-MINI HISTORICAL CHART
+ANNOUNCEMENTS HOOK
+============================ */
+
+function useAnnouncements() {
+  const [state, setState] = useState({
+    items: [],
+    loading: true,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        const res = await axios.get(ANNOUNCEMENTS_URL, { timeout: 5000 });
+        if (!mounted) return;
+
+        const items = normalizeArray(
+          res.data?.announcements || res.data?.items || res.data || []
+        ).slice(0, 3);
+
+        setState({
+          items,
+          loading: false,
+        });
+      } catch {
+        if (!mounted) return;
+
+        setState({
+          items: [
+            {
+              title: "Telegram trade alerts available",
+              body: "Get faster updates and trading notifications directly on Telegram.",
+              created_at: new Date().toISOString(),
+            },
+            {
+              title: "Live dashboard is active",
+              body: "Track recent trades, discoveries, and bot status in one place.",
+              created_at: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+        });
+      }
+    };
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return state;
+}
+
+/* ============================
+CHART
 ============================ */
 
 function MiniHistoricalChart({ data }) {
   if (!data || data.length === 0) {
     return (
-      <div className="h-24 bg-white/5 rounded-xl flex items-center justify-center text-white/30 text-xs">
-        No historical data
+      <div className="flex h-28 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xs text-slate-400">
+        No historical data yet
       </div>
     );
   }
 
   const chartData = {
-    labels: data.map(d => formatShortDate(d.date)),
+    labels: data.map((d) => formatShortDate(d.date)),
     datasets: [
       {
-        data: data.map(d => safeNumber(d.pnl, 0)),
-        borderColor: "#34d399",
-        backgroundColor: "rgba(52,211,153,0.1)",
-        tension: 0.3,
+        data: data.map((d) => safeNumber(d.pnl, 0)),
+        borderColor: "#10b981",
+        backgroundColor: "rgba(16,185,129,0.12)",
+        tension: 0.35,
         fill: true,
         pointRadius: 0,
         pointHoverRadius: 4,
-        borderWidth: 2
-      }
-    ]
+        borderWidth: 2,
+      },
+    ],
   };
 
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { 
+    plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(17, 24, 39, 0.95)',
-        titleColor: '#f3f4f6',
-        bodyColor: '#9ca3af',
-        borderColor: 'rgba(16, 185, 129, 0.3)',
+        backgroundColor: "rgba(15, 23, 42, 0.96)",
+        titleColor: "#ffffff",
+        bodyColor: "#cbd5e1",
+        borderColor: "rgba(16, 185, 129, 0.25)",
         borderWidth: 1,
-        padding: 8,
+        padding: 10,
         callbacks: {
-          label: (context) => `P&L: ${formatCurrencySigned(context.raw)}`
-        }
-      }
+          label: (context) => `P&L: ${formatCurrencySigned(context.raw)}`,
+        },
+      },
     },
     scales: {
       x: { display: false },
-      y: { display: false }
-    }
+      y: { display: false },
+    },
   };
 
   return (
-    <div className="h-24">
+    <div className="h-28">
       <Line data={chartData} options={options} />
     </div>
   );
 }
 
 /* ============================
-STAT CARD
+UI PIECES
 ============================ */
 
-function StatCard({ label, value, subtext, color = "white" }) {
+function StatCard({ label, value, subtext, color = "slate" }) {
   const colorClasses = {
-    emerald: "text-emerald-400",
-    amber: "text-amber-400",
-    purple: "text-purple-400",
-    white: "text-white"
+    emerald: "text-emerald-600",
+    amber: "text-amber-600",
+    purple: "text-violet-600",
+    slate: "text-slate-900",
   };
 
   return (
-    <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-      <div className="text-sm text-white/50">{label}</div>
-      <div className={`text-2xl font-bold mt-1 ${colorClasses[color] || colorClasses.white}`}>{value}</div>
-      {subtext && <div className="text-xs text-white/40 mt-1">{subtext}</div>}
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="text-sm text-slate-500">{label}</div>
+      <div className={`mt-1 text-2xl font-bold ${colorClasses[color] || colorClasses.slate}`}>
+        {value}
+      </div>
+      {subtext ? <div className="mt-1 text-xs text-slate-400">{subtext}</div> : null}
     </div>
   );
 }
-
-/* ============================
-TRADE ROW (Mini version)
-============================ */
 
 function MiniTradeRow({ trade }) {
   const side = trade?.side || "buy";
   const pnl = safeNumber(trade?.pnl_usd || trade?.pnl, 0);
   const symbol = trade?.symbol || "Unknown";
   const isBuy = side === "buy" || side === "long";
-  
+
   return (
-    <div className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+    <div className="flex items-center justify-between border-b border-slate-100 py-2 last:border-0">
       <div className="flex items-center gap-2">
-        <span className={`text-xs ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
-          {isBuy ? '▲' : '▼'}
+        <span className={`text-xs ${isBuy ? "text-emerald-500" : "text-red-500"}`}>
+          {isBuy ? "▲" : "▼"}
         </span>
-        <span className="text-sm font-medium">{symbol}</span>
+        <span className="text-sm font-medium text-slate-800">{symbol}</span>
       </div>
-      <span className={`text-xs font-medium ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-        {pnl >= 0 ? '+' : ''}{formatCurrencySigned(pnl)}
+      <span className={`text-xs font-semibold ${pnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+        {formatCurrencySigned(pnl)}
       </span>
     </div>
   );
 }
 
-/* ============================
-DISCOVERY ROW (Mini version)
-============================ */
-
 function MiniDiscoveryRow({ discovery }) {
   const score = safeNumber(discovery?.ai_score, 0);
-  const chain = discovery?.chain || "ethereum";
   const pair = discovery?.pair || "New token";
-  
+
   return (
-    <div className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+    <div className="flex items-center justify-between border-b border-slate-100 py-2 last:border-0">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-purple-400">🦄</span>
-        <span className="text-sm font-medium truncate max-w-[100px]">{pair}</span>
+        <span className="text-xs text-violet-500">🦄</span>
+        <span className="max-w-[130px] truncate text-sm font-medium text-slate-800">
+          {pair}
+        </span>
       </div>
-      <span className={`text-xs font-medium ${score >= 0.7 ? 'text-green-400' : 'text-yellow-400'}`}>
+      <span className={`text-xs font-semibold ${score >= 0.7 ? "text-emerald-600" : "text-amber-600"}`}>
         {score.toFixed(2)}
       </span>
     </div>
   );
 }
 
-/* ============================
-LIVE WIDGET - Shows real dashboard data
-============================ */
+function AnnouncementCard({ item }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold text-slate-900">
+          {item?.title || "Announcement"}
+        </h4>
+        <span className="text-[11px] text-slate-400">
+          {formatFullDate(item?.created_at || item?.date)}
+        </span>
+      </div>
+      <p className="text-sm leading-6 text-slate-600">
+        {item?.body || item?.message || "New update available."}
+      </p>
+    </div>
+  );
+}
+
+function PromoMeter({ claimed, limit, spotsLeft }) {
+  const safeLimit = Math.max(1, safeNumber(limit, 50));
+  const pct = Math.min(100, (safeNumber(claimed, 0) / safeLimit) * 100);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-sm text-slate-600">
+        <span>
+          {claimed} of {limit} spots claimed
+        </span>
+        <span className="font-bold text-emerald-600">{spotsLeft} remaining</span>
+      </div>
+
+      <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      <p className="text-xs text-slate-500">
+        First 50 customers get a 5% performance fee for 90 days.
+      </p>
+    </div>
+  );
+}
+
+function NFTShowcase() {
+  const tiers = [
+    {
+      name: "Starter",
+      img: StarterNFT,
+      color: "from-sky-50 to-indigo-100",
+      price: "Free",
+    },
+    {
+      name: "Pro",
+      img: ProNFT,
+      color: "from-fuchsia-50 to-violet-100",
+      price: "$19/mo",
+    },
+    {
+      name: "Elite",
+      img: EliteNFT,
+      color: "from-amber-50 to-orange-100",
+      price: "$49/mo",
+    },
+  ];
+
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4">
+        <h3 className="text-xl font-bold text-slate-900">Trading Robots</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Choose the level that matches your trading goals.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {tiers.map((tier) => (
+          <div key={tier.name} className="text-center">
+            <div className={`mb-3 rounded-2xl bg-gradient-to-br ${tier.color} p-4`}>
+              <img
+                src={tier.img}
+                alt={tier.name}
+                className="mx-auto h-28 w-full object-contain"
+              />
+            </div>
+            <div className="text-sm font-semibold text-slate-900">{tier.name}</div>
+            <div className="text-xs text-slate-500">{tier.price}</div>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-4 text-sm leading-6 text-slate-600">
+        Each robot supports different markets such as crypto, stocks, and DeFi.
+      </p>
+
+      <Link
+        to="/pricing"
+        className="mt-4 inline-flex items-center text-sm font-medium text-emerald-600 hover:text-emerald-500"
+      >
+        View pricing and features →
+      </Link>
+    </div>
+  );
+}
 
 function LiveActivityWidget({ data }) {
   const { trades, discoveries, bots, analytics, historicalData, loading, error } = data;
-  
-  const activeBots = bots.filter(b => b.status === "operational" || b.status === "scanning").length;
+
+  const activeBots = bots.filter(
+    (b) => b.status === "operational" || b.status === "scanning"
+  ).length;
+
   const totalTrades = analytics.total_trades || trades.length;
   const totalPnl = analytics.total_pnl || 0;
   const winRate = analytics.win_rate || 0;
@@ -366,169 +533,171 @@ function LiveActivityWidget({ data }) {
 
   if (loading) {
     return (
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
-        <div className="animate-spin h-8 w-8 border-2 border-emerald-500 border-t-transparent rounded-full mx-auto mb-3" />
-        <p className="text-white/60">Loading live data...</p>
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        <p className="text-slate-500">Loading live data...</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="font-bold text-lg">Live Trading Dashboard</h3>
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">Live Trading Dashboard</h3>
+          <p className="text-sm text-slate-500">
+            Real activity pulled from your public dashboard endpoints.
+          </p>
+        </div>
         <Link
           to="/live"
-          className="text-xs text-emerald-400 hover:text-emerald-300"
+          className="shrink-0 text-sm font-medium text-emerald-600 hover:text-emerald-500"
         >
-          View Full Dashboard →
+          View full dashboard →
         </Link>
       </div>
 
-      {/* Mini Chart */}
       <MiniHistoricalChart data={historicalData} />
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-2 gap-3 mt-4">
-        <StatCard 
-          label="Active Bots" 
-          value={activeBots} 
-          subtext={`${bots.length} total`}
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <StatCard
+          label="Active Bots"
+          value={activeBots}
+          subtext={`${bots.length} total bots`}
           color="emerald"
         />
-        <StatCard 
-          label="Total Trades" 
-          value={formatCompactNumber(totalTrades)} 
+        <StatCard
+          label="Total Trades"
+          value={formatCompactNumber(totalTrades)}
           subtext={`${winRate}% win rate`}
           color="purple"
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 mt-3">
-        <StatCard 
-          label="Total P&L" 
-          value={formatCurrencySigned(totalPnl)} 
-          subtext={totalPnl >= 0 ? 'Profitable' : 'Loss'}
+        <StatCard
+          label="Total P&L"
+          value={formatCurrencySigned(totalPnl)}
+          subtext={totalPnl >= 0 ? "Profitable" : "Currently negative"}
           color={totalPnl >= 0 ? "emerald" : "amber"}
         />
-        <StatCard 
-          label="Discoveries" 
-          value={discoveriesCount} 
-          subtext="new tokens"
+        <StatCard
+          label="Discoveries"
+          value={discoveriesCount}
+          subtext="recent token discoveries"
           color="purple"
         />
       </div>
 
-      {/* Recent Activity Feed */}
-      <div className="mt-4 space-y-3">
-        {trades.length > 0 && (
-          <div>
-            <h4 className="text-xs font-medium text-white/40 mb-2">📊 Recent Trades</h4>
-            <div className="bg-black/30 rounded-lg p-2">
-              {trades.map((trade, i) => (
-                <MiniTradeRow key={i} trade={trade} />
-              ))}
-            </div>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <div>
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Recent Trades
+          </h4>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            {trades.length > 0 ? (
+              trades.map((trade, i) => <MiniTradeRow key={i} trade={trade} />)
+            ) : (
+              <div className="text-sm text-slate-400">No recent trades</div>
+            )}
           </div>
-        )}
+        </div>
 
-        {discoveries.length > 0 && (
-          <div>
-            <h4 className="text-xs font-medium text-white/40 mb-2">🦄 New Discoveries</h4>
-            <div className="bg-black/30 rounded-lg p-2">
-              {discoveries.map((disc, i) => (
+        <div>
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            New Discoveries
+          </h4>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            {discoveries.length > 0 ? (
+              discoveries.map((disc, i) => (
                 <MiniDiscoveryRow key={i} discovery={disc} />
-              ))}
-            </div>
+              ))
+            ) : (
+              <div className="text-sm text-slate-400">No recent discoveries</div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Bot Status Tags */}
-      <div className="flex flex-wrap gap-1 mt-4">
-        {bots.slice(0, 4).map((bot, i) => (
-          <span
-            key={i}
-            className={`text-[10px] px-2 py-0.5 rounded-full border ${
-              bot.status === "operational" || bot.status === "scanning"
-                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                : "bg-gray-500/20 text-gray-400 border-gray-500/30"
-            }`}
-          >
-            {bot.status === "operational" || bot.status === "scanning" ? '●' : '○'} {bot.name}
-          </span>
-        ))}
+      {bots.length > 0 ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {bots.slice(0, 5).map((bot, i) => {
+            const live = bot.status === "operational" || bot.status === "scanning";
+            return (
+              <span
+                key={i}
+                className={`rounded-full border px-2.5 py-1 text-[11px] ${
+                  live
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-slate-200 bg-slate-100 text-slate-500"
+                }`}
+              >
+                {live ? "●" : "○"} {bot.name}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {error ? <div className="mt-3 text-xs text-red-500">{error}</div> : null}
+    </div>
+  );
+}
+
+function AnnouncementSection({ items, loading }) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4">
+        <h3 className="text-xl font-bold text-slate-900">Announcements</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Important updates, new features, and platform notices.
+        </p>
       </div>
 
-      {error && (
-        <div className="text-xs text-red-400 mt-2">{error}</div>
+      {loading ? (
+        <div className="text-sm text-slate-400">Loading announcements...</div>
+      ) : items.length > 0 ? (
+        <div className="space-y-3">
+          {items.map((item, index) => (
+            <AnnouncementCard key={index} item={item} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-slate-400">No announcements yet.</div>
       )}
     </div>
   );
 }
 
-/* ============================
-PROMO BAR
-============================ */
-
-function PromoMeter({ claimed, limit, spotsLeft }) {
-  const pct = (claimed / limit) * 100;
-
+function TelegramPrompt() {
   return (
-    <div className="space-y-2">
-      <div className="flex justify-between text-sm">
-        <span>{claimed} of {limit} spots claimed</span>
-        <span className="text-emerald-400 font-bold">
-          {spotsLeft} remaining
-        </span>
-      </div>
-      <div className="h-3 bg-white/10 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <p className="text-xs text-white/40 mt-1">
-        First 50 customers get 5% performance fee for 90 days
-      </p>
-    </div>
-  );
-}
-
-/* ============================
-NFT SHOWCASE
-============================ */
-
-function NFTShowcase() {
-  const tiers = [
-    { name: "Starter", img: StarterNFT, color: "from-sky-500/20 to-indigo-500/20", price: "Free" },
-    { name: "Pro", img: ProNFT, color: "from-fuchsia-500/20 to-purple-500/20", price: "$19/mo" },
-    { name: "Elite", img: EliteNFT, color: "from-amber-500/20 to-orange-500/20", price: "$49/mo" },
-  ];
-
-  return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-      <h3 className="font-bold text-lg mb-4">Trading Robots</h3>
-      <div className="grid grid-cols-3 gap-3">
-        {tiers.map((tier, i) => (
-          <div key={i} className="text-center">
-            <div className={`rounded-xl bg-gradient-to-br ${tier.color} p-3 mb-2`}>
-              <img src={tier.img} alt={tier.name} className="w-full h-24 object-contain" />
-            </div>
-            <div className="font-semibold text-sm">{tier.name}</div>
-            <div className="text-xs text-white/40">{tier.price}</div>
+    <div className="rounded-3xl border border-cyan-200 bg-gradient-to-r from-cyan-50 to-emerald-50 p-6 shadow-sm">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="mb-2 inline-flex rounded-full bg-cyan-100 px-3 py-1 text-xs font-semibold text-cyan-700">
+            Telegram Trade Alerts
           </div>
-        ))}
+          <h3 className="text-2xl font-bold text-slate-900">
+            Start on Telegram for faster alerts
+          </h3>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Get trade alerts, updates, and account notifications in a more direct way.
+            Telegram is one of the easiest places to start if you want signals quickly.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            to="/signup"
+            className="rounded-xl bg-emerald-600 px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-emerald-500"
+          >
+            Start Free
+          </Link>
+          <Link
+            to="/support"
+            className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Get Telegram Help
+          </Link>
+        </div>
       </div>
-      <p className="text-sm text-white/60 mt-4">
-        Each robot specializes in different markets including crypto, stocks, and DeFi.
-      </p>
-      <Link 
-        to="/pricing" 
-        className="inline-block mt-3 text-xs text-emerald-400 hover:text-emerald-300"
-      >
-        View all robots →
-      </Link>
     </div>
   );
 }
@@ -540,133 +709,245 @@ PAGE
 export default function Home() {
   const liveData = useLiveData();
   const promo = usePromoStatus();
+  const announcements = useAnnouncements();
 
   const [email, setEmail] = useState("");
   const [success, setSuccess] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+
+  const promoText = useMemo(() => {
+    if (promo.loading) return "Loading promo status...";
+    if (promo.spotsLeft > 0) return `${promo.spotsLeft} promo spots left`;
+    return "Promo spots are currently full";
+  }, [promo]);
 
   const claimSpot = async (e) => {
     e.preventDefault();
     try {
+      setClaiming(true);
       await axios.post(`${API_BASE}/api/promo/claim`, { email });
       setSuccess(true);
+      setEmail("");
     } catch (err) {
       console.error("Claim failed:", err);
+    } finally {
+      setClaiming(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
-      {/* HERO SECTION */}
-      <section className="relative max-w-6xl mx-auto px-6 pt-24 pb-16 text-center">
-        {/* Background NFTs for visual flair */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <img src={StarterNFT} className="absolute left-10 top-16 w-32 opacity-20" alt="" />
-          <img src={ProNFT} className="absolute right-10 top-32 w-36 opacity-20" alt="" />
-          <img src={EliteNFT} className="absolute left-1/2 bottom-0 w-40 opacity-20 transform -translate-x-1/2" alt="" />
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-emerald-50/40 text-slate-900">
+      {/* HERO */}
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-24 left-[-80px] h-72 w-72 rounded-full bg-cyan-200/30 blur-3xl" />
+          <div className="absolute right-[-60px] top-10 h-72 w-72 rounded-full bg-emerald-200/30 blur-3xl" />
+          <div className="absolute bottom-0 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-violet-200/20 blur-3xl" />
         </div>
 
-        <h1 className="text-4xl md:text-6xl font-extrabold bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-400 bg-clip-text text-transparent">
-          Automated Trading Robots
-        </h1>
+        <div className="relative mx-auto max-w-6xl px-6 pb-14 pt-20 md:pt-24">
+          <div className="grid items-center gap-10 lg:grid-cols-[1.2fr_0.8fr]">
+            <div>
+              <div className="mb-4 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                Automated crypto, stock, and DeFi trading
+              </div>
 
-        <p className="text-white/60 mt-4 max-w-2xl mx-auto text-lg">
-          Connect your accounts and let our automated bots execute strategies across crypto, 
-          stocks, and DeFi markets — all while you maintain full custody of your funds.
-        </p>
+              <h1 className="max-w-4xl text-4xl font-extrabold leading-tight text-slate-900 md:text-6xl">
+                Automated Trading Robots for{" "}
+                <span className="bg-gradient-to-r from-emerald-600 via-cyan-600 to-violet-600 bg-clip-text text-transparent">
+                  real-time market action
+                </span>
+              </h1>
 
-        <div className="mt-8 flex flex-wrap justify-center gap-4">
-          <Link
-            to="/signup"
-            className="px-8 py-4 rounded-full bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 font-bold text-lg transition-all"
-          >
-            Start Trading Free
-          </Link>
-          <Link
-            to="/demo"
-            className="px-8 py-4 rounded-full bg-white/10 hover:bg-white/20 font-bold text-lg transition-all border border-white/10"
-          >
-            Try Demo →
-          </Link>
-        </div>
+              <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600 md:text-lg">
+                Connect your accounts and let IMALI monitor opportunities across
+                crypto, stocks, and DeFi. You stay in control while the system helps
+                automate decisions, tracking, and alerts.
+              </p>
 
-        <div className="mt-12 grid grid-cols-3 gap-6 max-w-2xl mx-auto">
-          <div className="text-center">
-            <div className="text-3xl font-bold text-emerald-400">$0</div>
-            <div className="text-xs text-white/40">Starting Cost</div>
-          </div>
-          <div className="text-center">
-            <div className="text-3xl font-bold text-emerald-400">4+</div>
-            <div className="text-xs text-white/40">Active Strategies</div>
-          </div>
-          <div className="text-center">
-            <div className="text-3xl font-bold text-emerald-400">24/7</div>
-            <div className="text-xs text-white/40">Automated Trading</div>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  to="/signup"
+                  className="rounded-xl bg-emerald-600 px-7 py-4 text-center text-base font-bold text-white transition hover:bg-emerald-500"
+                >
+                  Start Trading Free
+                </Link>
+                <Link
+                  to="/demo"
+                  className="rounded-xl border border-slate-300 bg-white px-7 py-4 text-center text-base font-bold text-slate-800 transition hover:bg-slate-50"
+                >
+                  Try Demo
+                </Link>
+                <Link
+                  to="/live"
+                  className="rounded-xl border border-cyan-200 bg-cyan-50 px-7 py-4 text-center text-base font-bold text-cyan-700 transition hover:bg-cyan-100"
+                >
+                  View Live Dashboard
+                </Link>
+              </div>
+
+              <div className="mt-8 grid max-w-2xl grid-cols-3 gap-3 sm:gap-6">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
+                  <div className="text-2xl font-bold text-emerald-600">$0</div>
+                  <div className="mt-1 text-xs text-slate-500">Starting Cost</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
+                  <div className="text-2xl font-bold text-violet-600">4+</div>
+                  <div className="mt-1 text-xs text-slate-500">Active Strategies</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
+                  <div className="text-2xl font-bold text-cyan-600">24/7</div>
+                  <div className="mt-1 text-xs text-slate-500">Automation</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-xl">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Early Access Promo</div>
+                    <div className="text-xs text-slate-500">{promoText}</div>
+                  </div>
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    Limited
+                  </span>
+                </div>
+
+                <PromoMeter
+                  claimed={promo.claimed}
+                  limit={promo.limit}
+                  spotsLeft={promo.spotsLeft}
+                />
+
+                {!success ? (
+                  <form onSubmit={claimSpot} className="mt-5 space-y-3">
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Enter your email"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+                    />
+                    <button
+                      type="submit"
+                      disabled={claiming}
+                      className="w-full rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      {claiming ? "Claiming..." : "Claim Promo Spot"}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+                    ✅ Spot reserved. Check your email for confirmation.
+                  </div>
+                )}
+
+                <div className="mt-5 rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
+                  <div className="text-sm font-semibold text-cyan-800">
+                    Want faster trade alerts?
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-cyan-700">
+                    Start on Telegram to receive trading updates and notifications more directly.
+                  </p>
+                </div>
+              </div>
+
+              <img
+                src={StarterNFT}
+                alt=""
+                className="pointer-events-none absolute -left-8 -top-8 hidden w-20 opacity-70 md:block"
+              />
+              <img
+                src={ProNFT}
+                alt=""
+                className="pointer-events-none absolute -right-8 top-8 hidden w-24 opacity-70 md:block"
+              />
+              <img
+                src={EliteNFT}
+                alt=""
+                className="pointer-events-none absolute bottom-[-20px] left-1/2 hidden w-24 -translate-x-1/2 opacity-70 md:block"
+              />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* MAIN CONTENT GRID */}
-      <section className="max-w-6xl mx-auto px-6 mb-16 grid lg:grid-cols-2 gap-6">
-        {/* Live Activity Widget - Now with REAL data */}
-        <div>
-          <LiveActivityWidget data={liveData} />
-        </div>
+      {/* TELEGRAM PROMPT */}
+      <section className="mx-auto mb-8 max-w-6xl px-6">
+        <TelegramPrompt />
+      </section>
 
-        {/* NFT Showcase */}
-        <div>
+      {/* ANNOUNCEMENTS */}
+      <section className="mx-auto mb-8 max-w-6xl px-6">
+        <AnnouncementSection
+          items={announcements.items}
+          loading={announcements.loading}
+        />
+      </section>
+
+      {/* MAIN CONTENT */}
+      <section className="mx-auto mb-16 max-w-6xl px-6">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <LiveActivityWidget data={liveData} />
           <NFTShowcase />
         </div>
       </section>
 
-      {/* PROMO SECTION */}
-      <section className="max-w-4xl mx-auto px-6 mb-20">
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
-          <h2 className="text-3xl font-bold mb-3">Early Access Promo</h2>
-          <p className="text-white/60 mb-6 max-w-xl mx-auto">
-            Be among the first 50 traders to get reduced fees for 90 days.
-          </p>
+      {/* SIMPLE WHY IMALI SECTION */}
+      <section className="mx-auto mb-16 max-w-6xl px-6">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-3 text-2xl">🧠</div>
+            <h3 className="text-lg font-bold text-slate-900">Built for clarity</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              A simpler way to understand automated trading without needing to be an expert.
+            </p>
+          </div>
 
-          <PromoMeter
-            claimed={promo.claimed}
-            limit={promo.limit}
-            spotsLeft={promo.spotsLeft}
-          />
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-3 text-2xl">📡</div>
+            <h3 className="text-lg font-bold text-slate-900">Live monitoring</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Watch discoveries, bot activity, recent trades, and performance from one place.
+            </p>
+          </div>
 
-          {!success && (
-            <form onSubmit={claimSpot} className="mt-6 flex max-w-md mx-auto gap-2">
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-              <button className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-semibold transition-all">
-                Claim Spot
-              </button>
-            </form>
-          )}
-
-          {success && (
-            <div className="mt-6 p-4 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400">
-              ✅ Spot reserved! Check your email for confirmation.
-            </div>
-          )}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-3 text-2xl">📲</div>
+            <h3 className="text-lg font-bold text-slate-900">Telegram-friendly</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Get alerts where you are already active so you can react faster and stay informed.
+            </p>
+          </div>
         </div>
       </section>
 
       {/* FOOTER */}
-      <footer className="max-w-6xl mx-auto px-6 pb-8 text-center text-xs text-white/30 border-t border-white/10 pt-8">
-        <p>
-          © 2024 IMALI. All rights reserved. Trading involves risk. Past performance does not guarantee future results.
-        </p>
-        <div className="flex justify-center gap-4 mt-3">
-          <Link to="/terms" className="hover:text-white/50">Terms</Link>
-          <Link to="/privacy" className="hover:text-white/50">Privacy</Link>
-          <Link to="/pricing" className="hover:text-white/50">Pricing</Link>
-          <Link to="/demo" className="hover:text-white/50">Demo</Link>
-          <Link to="/live" className="hover:text-emerald-400">Live Dashboard</Link>
+      <footer className="border-t border-slate-200 bg-white/70">
+        <div className="mx-auto max-w-6xl px-6 py-8 text-center">
+          <p className="text-xs leading-6 text-slate-500">
+            © 2026 IMALI. All rights reserved. Trading involves risk. Past performance does not guarantee future results.
+          </p>
+
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-sm text-slate-500">
+            <Link to="/terms" className="hover:text-slate-800">
+              Terms
+            </Link>
+            <Link to="/privacy" className="hover:text-slate-800">
+              Privacy
+            </Link>
+            <Link to="/pricing" className="hover:text-slate-800">
+              Pricing
+            </Link>
+            <Link to="/demo" className="hover:text-slate-800">
+              Demo
+            </Link>
+            <Link to="/live" className="font-medium text-emerald-600 hover:text-emerald-500">
+              Live Dashboard
+            </Link>
+          </div>
         </div>
       </footer>
     </div>
