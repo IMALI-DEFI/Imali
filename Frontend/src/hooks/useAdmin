@@ -6,7 +6,7 @@ import BotAPI from '../utils/BotAPI';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
-export function useAdmin() {
+function useAdmin() {
   const navigate = useNavigate();
   const { user, token, isAuthenticated } = useAuth();
   
@@ -21,6 +21,11 @@ export function useAdmin() {
   const showToast = useCallback((message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 5000);
+  }, []);
+
+  // Clear toast
+  const clearToast = useCallback(() => {
+    setToast(null);
   }, []);
 
   // Get auth token (uses token from useAuth)
@@ -77,7 +82,7 @@ export function useAdmin() {
       } catch (error) {
         console.warn("[useAdmin] Admin check endpoint failed:", error);
         
-        // Fallback: Check if email is in owner list (from your useOwner logic)
+        // Fallback: Check if email is in owner list
         const ownerEmails = [
           'wayne@imali-defi.com',
           'admin@imali-defi.com'
@@ -182,11 +187,6 @@ export function useAdmin() {
     }
   }, [isAuthenticated, user, checkAdminStatus]);
 
-  // Clear toast helper
-  const clearToast = useCallback(() => {
-    setToast(null);
-  }, []);
-
   return {
     // State
     isAdmin,
@@ -212,3 +212,7 @@ export function useAdmin() {
     token
   };
 }
+
+// Export both ways to support different import styles
+export { useAdmin };
+export default useAdmin;
