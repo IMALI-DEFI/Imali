@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback, Suspense, lazy } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import BotAPI from "../utils/BotAPI";
-import MarketingAutomation from './MarketingAutomation';
+import MarketingAutomation from '../admin/MarketingAutomation';
 
 /* -------------------- Error Boundary -------------------- */
 class TabErrorBoundary extends React.Component {
