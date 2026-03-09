@@ -1,378 +1,199 @@
 // src/admin/Announcements.jsx
-import React, { useState, useEffect } from 'react';
-import {
-  FiMegaphone,
-  FiPlus,
-  FiEdit2,
-  FiTrash2,
-  FiEye,
-  FiCalendar,
-  FiUsers,
-  FiAlertCircle,
-  FiCheckCircle,
-  FiXCircle,
-  FiRefreshCw,
-  FiSend
-} from 'react-icons/fi';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAdmin } from '../hooks/useAdmin';
 
-import api from '../services/api';
-
-const Announcements = () => {
+export default function Announcements({ apiBase, showToast, handleAction, busyAction }) {
+  const { adminFetch } = useAdmin();
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({
+    title: '',
+    content: '',
+    priority: 'normal',
+    target_users: '',
+    scheduled_date: ''
+  });
 
-  useEffect(() => {
-    fetchAnnouncements();
-  }, []);
-
-  const fetchAnnouncements = async () => {
+  const fetchAnnouncements = useCallback(async () => {
     try {
-      setLoading(true);
-      const response = await api.get('/admin/announcements');
-      setAnnouncements(response.data.announcements);
+      const data = await adminFetch('/api/admin/announcements');
+      setAnnouncements(data.announcements || []);
     } catch (error) {
       console.error('Failed to fetch announcements:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [adminFetch]);
 
-  const handleCreateAnnouncement = async (announcementData) => {
+  useEffect(() => {
+    fetchAnnouncements();
+    const interval = setInterval(fetchAnnouncements, 30000);
+    return () => clearInterval(interval);
+  }, [fetchAnnouncements]);
+
+  const handleCreateAnnouncement = async (e) => {
+    e.preventDefault();
     try {
-      await api.post('/admin/announcements', announcementData);
-      setShowCreateModal(false);
+      const payload = {
+        ...formData,
+        target_users: formData.target_users ? formData.target_users.split(',').map(u => u.trim()) : []
+      };
+      await handleAction('/api/admin/announcements', 'POST', payload, 'Create Announcement');
+      setShowForm(false);
+      setFormData({ title: '', content: '', priority: 'normal', target_users: '', scheduled_date: '' });
       fetchAnnouncements();
     } catch (error) {
       console.error('Failed to create announcement:', error);
-      alert('Failed to create announcement');
-    }
-  };
-
-  const handleDeleteAnnouncement = async (announcementId) => {
-    if (!window.confirm('Are you sure you want to delete this announcement?')) {
-      return;
-    }
-    
-    try {
-      await api.delete(`/admin/announcements/${announcementId}`);
-      fetchAnnouncements();
-    } catch (error) {
-      console.error('Failed to delete announcement:', error);
-      alert('Failed to delete announcement');
     }
   };
 
   const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'high':
-        return 'text-red-600 bg-red-100';
-      case 'medium':
-        return 'text-yellow-600 bg-yellow-100';
-      case 'low':
-        return 'text-green-600 bg-green-100';
-      default:
-        return 'text-gray-600 bg-gray-100';
+    switch(priority) {
+      case 'high': return 'bg-red-500/20 text-red-300 border-red-500/30';
+      case 'medium': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
+      default: return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
     }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <FiRefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
+        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-3">
-          <Megaphone className="w-8 h-8 text-indigo-600" />
-          <h1 className="text-2xl font-bold">Announcements</h1>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <span>📢</span> Announcements
+          </h3>
+          <p className="text-sm text-white/50">Create and manage platform announcements</p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+          onClick={() => setShowForm(!showForm)}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium transition-colors"
         >
-          <Plus className="w-4 h-4" />
-          New Announcement
+          {showForm ? 'Cancel' : '+ New Announcement'}
         </button>
       </div>
 
-      {/* Announcements List */}
-      <div className="space-y-4">
-        {announcements.map((announcement) => (
-          <div key={announcement.id} className="bg-white rounded-lg shadow p-6">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-lg font-semibold">{announcement.title}</h3>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPriorityColor(announcement.priority)}`}>
-                    {announcement.priority}
-                  </span>
-                  {!announcement.active && (
-                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                      Inactive
-                    </span>
-                  )}
-                </div>
-                <p className="text-gray-600 line-clamp-2">{announcement.content}</p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setSelectedAnnouncement(announcement);
-                    setShowPreviewModal(true);
-                  }}
-                  className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
-                  title="Preview"
-                >
-                  <Eye className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => handleDeleteAnnouncement(announcement.id)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                  title="Delete"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4 text-sm text-gray-500">
-              <div className="flex items-center gap-1">
-                <Calendar className="w-4 h-4" />
-                {new Date(announcement.created_at).toLocaleDateString()}
-              </div>
-              {announcement.expires_at && (
-                <div className="flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4" />
-                  Expires: {new Date(announcement.expires_at).toLocaleDateString()}
-                </div>
-              )}
-              <div className="flex items-center gap-1">
-                <Users className="w-4 h-4" />
-                {announcement.read_by?.length || 0} reads
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {announcements.length === 0 && (
-          <div className="text-center py-12 bg-white rounded-lg">
-            <Megaphone className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No announcements</h3>
-            <p className="text-gray-500">Create your first announcement to notify users</p>
-          </div>
-        )}
-      </div>
-
-      {/* Create Announcement Modal */}
-      {showCreateModal && (
-        <CreateAnnouncementModal
-          onClose={() => setShowCreateModal(false)}
-          onCreate={handleCreateAnnouncement}
-        />
-      )}
-
-      {/* Preview Modal */}
-      {showPreviewModal && selectedAnnouncement && (
-        <PreviewAnnouncementModal
-          announcement={selectedAnnouncement}
-          onClose={() => {
-            setShowPreviewModal(false);
-            setSelectedAnnouncement(null);
-          }}
-        />
-      )}
-    </div>
-  );
-};
-
-// Create Announcement Modal Component
-const CreateAnnouncementModal = ({ onClose, onCreate }) => {
-  const [formData, setFormData] = useState({
-    title: '',
-    content: '',
-    priority: 'normal',
-    target_users: 'all',
-    expires_at: ''
-  });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const data = {
-      ...formData,
-      target_users: formData.target_users === 'all' ? [] : formData.target_users.split(',').map(u => u.trim())
-    };
-    onCreate(data);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg w-full max-w-2xl p-6">
-        <h2 className="text-xl font-bold mb-4">Create Announcement</h2>
-        
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4">
+      {/* Create Form */}
+      {showForm && (
+        <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+          <h4 className="font-semibold mb-4">Create New Announcement</h4>
+          <form onSubmit={handleCreateAnnouncement} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Title
-              </label>
+              <label className="block text-xs text-white/50 mb-1">Title</label>
               <input
                 type="text"
-                required
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Announcement title"
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                required
               />
             </div>
-            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Content
-              </label>
+              <label className="block text-xs text-white/50 mb-1">Content</label>
               <textarea
-                required
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                rows="6"
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Write your announcement here..."
+                rows="4"
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                required
               />
             </div>
-            
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Priority
-                </label>
+                <label className="block text-xs text-white/50 mb-1">Priority</label>
                 <select
                   value={formData.priority}
                   onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
                 >
-                  <option value="low">Low</option>
                   <option value="normal">Normal</option>
+                  <option value="medium">Medium</option>
                   <option value="high">High</option>
                 </select>
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Expires At (Optional)
-                </label>
+                <label className="block text-xs text-white/50 mb-1">Target Users (comma separated)</label>
+                <input
+                  type="text"
+                  value={formData.target_users}
+                  onChange={(e) => setFormData({ ...formData, target_users: e.target.value })}
+                  placeholder="user@example.com, user2@example.com"
+                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/50 mb-1">Schedule (optional)</label>
                 <input
                   type="datetime-local"
-                  value={formData.expires_at}
-                  onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={formData.scheduled_date}
+                  onChange={(e) => setFormData({ ...formData, scheduled_date: e.target.value })}
+                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
                 />
               </div>
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Target Users
-              </label>
-              <select
-                value={formData.target_users}
-                onChange={(e) => setFormData({ ...formData, target_users: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="all">All Users</option>
-                <option value="starter">Starter Tier Only</option>
-                <option value="pro">Pro Tier Only</option>
-                <option value="elite">Elite Tier Only</option>
-                <option value="custom">Custom (Comma-separated emails)</option>
-              </select>
-              {formData.target_users === 'custom' && (
-                <input
-                  type="text"
-                  placeholder="Enter email addresses separated by commas"
-                  className="w-full mt-2 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  onChange={(e) => setFormData({ ...formData, target_users: e.target.value })}
-                />
-              )}
-            </div>
-          </div>
-          
-          <div className="flex gap-3 mt-6">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2"
+              disabled={busyAction === 'Create Announcement'}
+              className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
             >
-              <Send className="w-4 h-4" />
-              Publish
+              {busyAction === 'Create Announcement' ? 'Creating...' : 'Publish Announcement'}
             </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-// Preview Announcement Modal Component
-const PreviewAnnouncementModal = ({ announcement, onClose }) => {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg w-full max-w-2xl p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Preview Announcement</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-            <XCircle className="w-6 h-6" />
-          </button>
+          </form>
         </div>
-        
-        <div className="border rounded-lg p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Megaphone className="w-6 h-6 text-indigo-600" />
-            <h3 className="text-lg font-semibold">{announcement.title}</h3>
-            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-              announcement.priority === 'high' ? 'bg-red-100 text-red-600' :
-              announcement.priority === 'normal' ? 'bg-yellow-100 text-yellow-600' :
-              'bg-green-100 text-green-600'
-            }`}>
-              {announcement.priority}
-            </span>
+      )}
+
+      {/* Announcements List */}
+      <div className="space-y-4">
+        {announcements.length === 0 ? (
+          <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center text-white/40">
+            No announcements yet
           </div>
-          
-          <div className="prose max-w-none">
-            <p className="whitespace-pre-wrap">{announcement.content}</p>
-          </div>
-          
-          <div className="mt-6 pt-4 border-t text-sm text-gray-500">
-            <div className="flex justify-between">
-              <span>Posted: {new Date(announcement.created_at).toLocaleString()}</span>
-              {announcement.expires_at && (
-                <span>Expires: {new Date(announcement.expires_at).toLocaleString()}</span>
-              )}
+        ) : (
+          announcements.map((announcement) => (
+            <div key={announcement.id} className="bg-white/5 border border-white/10 rounded-xl p-5">
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h4 className="font-semibold">{announcement.title}</h4>
+                    <span className={`text-xs px-2 py-1 rounded-full border ${getPriorityColor(announcement.priority)}`}>
+                      {announcement.priority}
+                    </span>
+                    {announcement.scheduled_time && (
+                      <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-1 rounded-full">
+                        Scheduled
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-white/80 whitespace-pre-wrap">{announcement.content}</p>
+                  <div className="flex items-center gap-4 mt-3 text-xs text-white/30">
+                    <span>Created: {new Date(announcement.created_at).toLocaleDateString()}</span>
+                    {announcement.scheduled_time && (
+                      <span>Schedule: {new Date(announcement.scheduled_time).toLocaleString()}</span>
+                    )}
+                    {announcement.target_users?.length > 0 && (
+                      <span>Targeted: {announcement.target_users.length} users</span>
+                    )}
+                  </div>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                  announcement.read_by?.length > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-500/20 text-gray-300'
+                }`}>
+                  {announcement.read_by?.length || 0} read
+                </span>
+              </div>
             </div>
-          </div>
-        </div>
-        
-        <div className="flex justify-end mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Close
-          </button>
-        </div>
+          ))
+        )}
       </div>
     </div>
   );
-};
-
-export default Announcements;
+}
