@@ -5,7 +5,8 @@ import axios from 'axios';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
-export const useAdmin = () => {
+// This is a DEFAULT export
+const useAdmin = () => {
   const { user, token } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -52,7 +53,6 @@ export const useAdmin = () => {
   }, [adminFetch]);
 
   const showToast = useCallback((message, type = 'success') => {
-    // This will be implemented by the component that uses this hook
     console.log(`[Toast] ${type}: ${message}`);
   }, []);
 
@@ -65,3 +65,5 @@ export const useAdmin = () => {
     API_BASE,
   };
 };
+
+export default useAdmin; // <-- DEFAULT EXPORT
