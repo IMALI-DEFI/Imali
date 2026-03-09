@@ -1,6 +1,6 @@
 // src/admin/UserManagement.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAdmin } from '../hooks/useAdmin';
+import useAdmin from '../hooks/useAdmin';
 
 export default function UserManagement({ apiBase, showToast, handleAction, busyAction }) {
   const { adminFetch } = useAdmin();
