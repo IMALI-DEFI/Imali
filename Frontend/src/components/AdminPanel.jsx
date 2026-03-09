@@ -112,7 +112,7 @@ const adminFetch = async (endpoint, options = {}, retries = 2) => {
     } catch (error) {
       lastError = error;
       if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
       }
     }
   }
@@ -131,7 +131,7 @@ const checkAdminStatus = async () => {
   }
 };
 
-/* -------------------- Sections with Full Functionality -------------------- */
+/* -------------------- Sections -------------------- */
 const TAB_SECTIONS = [
   {
     id: "dashboard",
@@ -146,7 +146,6 @@ const TAB_SECTIONS = [
         component: DashboardOverview,
         description: "Main numbers and summary cards.",
         help: "Start here first. This page gives you the big picture of what is happening on your platform.",
-        actions: ["refresh", "export"]
       },
       {
         key: "health",
@@ -155,7 +154,6 @@ const TAB_SECTIONS = [
         component: SystemHealth,
         description: "Check if services are running correctly.",
         help: "Use this when you want to make sure the backend, bots, and connected services are healthy.",
-        actions: ["refresh", "diagnose"]
       },
     ],
   },
@@ -172,7 +170,6 @@ const TAB_SECTIONS = [
         component: UserManagement,
         description: "View and manage user accounts.",
         help: "Use this to search for users, review accounts, and make account-related changes.",
-        actions: ["search", "filter", "export"]
       },
       {
         key: "tickets",
@@ -181,7 +178,6 @@ const TAB_SECTIONS = [
         component: SupportTickets,
         description: "Handle support issues and questions.",
         help: "Open this when users need help or when you want to review unresolved issues.",
-        actions: ["reply", "close", "assign"]
       },
       {
         key: "waitlist",
@@ -190,7 +186,6 @@ const TAB_SECTIONS = [
         component: WaitlistManagement,
         description: "Review people waiting to join.",
         help: "Use this to track interest before a user has full access to the platform.",
-        actions: ["approve", "email", "export"]
       },
     ],
   },
@@ -207,7 +202,6 @@ const TAB_SECTIONS = [
         component: WithdrawalManagement,
         description: "Approve or review withdrawal requests.",
         help: "Go here when you need to review money leaving the platform.",
-        actions: ["approve", "reject", "review"]
       },
       {
         key: "fees",
@@ -216,7 +210,6 @@ const TAB_SECTIONS = [
         component: FeeDistributor,
         description: "Manage fee flows and distributions.",
         help: "Use this to understand how collected fees are being split or routed.",
-        actions: ["distribute", "calculate", "history"]
       },
       {
         key: "treasury",
@@ -225,7 +218,6 @@ const TAB_SECTIONS = [
         component: TreasuryManagement,
         description: "Manage platform-held funds.",
         help: "This is the place for treasury balances, reserves, and fund movement controls.",
-        actions: ["transfer", "withdraw", "history"]
       },
     ],
   },
@@ -242,7 +234,6 @@ const TAB_SECTIONS = [
         component: MarketingAutomation,
         description: "Schedule automated marketing posts.",
         help: "Use this to plan recurring content instead of posting everything manually.",
-        actions: ["schedule", "pause", "test"]
       },
       {
         key: "promos",
@@ -251,7 +242,6 @@ const TAB_SECTIONS = [
         component: PromoManagement,
         description: "Create and manage discount codes.",
         help: "Open this when you want to run a special offer, referral code, or limited-time discount.",
-        actions: ["create", "activate", "deactivate"]
       },
       {
         key: "announcements",
@@ -260,7 +250,6 @@ const TAB_SECTIONS = [
         component: Announcements,
         description: "Send updates to users.",
         help: "Use this to share important news, updates, feature launches, or maintenance notices.",
-        actions: ["create", "schedule", "send"]
       },
       {
         key: "referrals",
@@ -269,7 +258,6 @@ const TAB_SECTIONS = [
         component: ReferralAnalytics,
         description: "Track user invite performance.",
         help: "This helps you see who is bringing in users and how referrals are performing.",
-        actions: ["export", "reward", "analyze"]
       },
       {
         key: "social",
@@ -278,7 +266,6 @@ const TAB_SECTIONS = [
         component: SocialManager,
         description: "Manage social media activity.",
         help: "Use this to organize social channels and keep marketing activity in one place.",
-        actions: ["post", "schedule", "analytics"]
       },
     ],
   },
@@ -295,7 +282,6 @@ const TAB_SECTIONS = [
         component: TokenManagement,
         description: "Mint, burn, and manage token actions.",
         help: "Use this for token supply and token-related admin controls.",
-        actions: ["mint", "burn", "transfer"]
       },
       {
         key: "buyback",
@@ -304,7 +290,6 @@ const TAB_SECTIONS = [
         component: BuyBackDashboard,
         description: "Manage token buybacks.",
         help: "This area is for buyback settings, monitoring, and execution.",
-        actions: ["execute", "schedule", "history"]
       },
       {
         key: "nfts",
@@ -313,7 +298,6 @@ const TAB_SECTIONS = [
         component: NFTManagement,
         description: "Manage NFT tiers and NFT items.",
         help: "Go here when you need to manage NFT access or NFT-related rewards.",
-        actions: ["mint", "burn", "transfer"]
       },
       {
         key: "cex",
@@ -322,7 +306,6 @@ const TAB_SECTIONS = [
         component: CexManagement,
         description: "Manage centralized exchange controls.",
         help: "Use this for exchange-related settings, balances, or connected exchange actions.",
-        actions: ["deposit", "withdraw", "balance"]
       },
       {
         key: "stocks",
@@ -331,7 +314,6 @@ const TAB_SECTIONS = [
         component: StocksManagement,
         description: "Manage stock-related trading tools.",
         help: "This page is for stock-side operations if your platform supports them.",
-        actions: ["trade", "position", "history"]
       },
       {
         key: "access",
@@ -340,7 +322,6 @@ const TAB_SECTIONS = [
         component: AccessControl,
         description: "Control admin access and roles.",
         help: "Use this to decide who can see or do certain things in the admin system.",
-        actions: ["add", "remove", "update"]
       },
       {
         key: "audit",
@@ -349,7 +330,6 @@ const TAB_SECTIONS = [
         component: AuditLogs,
         description: "Review admin actions and events.",
         help: "Open this when you want to see what changes were made and by whom.",
-        actions: ["filter", "export", "search"]
       },
     ],
   },
@@ -368,7 +348,7 @@ const SectionBadge = ({ emoji, name, description }) => (
   </div>
 );
 
-/* -------------------- Sidebar Button with Full Functionality -------------------- */
+/* -------------------- Sidebar Button -------------------- */
 function SidebarButton({ tab, isActive, onClick, badge, busy }) {
   return (
     <button
@@ -463,6 +443,25 @@ const ActionButton = ({ action, onClick, busy }) => {
   );
 };
 
+/* -------------------- Test Automation Function -------------------- */
+const testSocialPost = async (platform, message) => {
+  try {
+    const response = await fetch(`${API_BASE}/api/admin/social/test`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BotAPI.getToken?.() || localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ platform, message })
+    });
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error(`Failed to test ${platform} post:`, error);
+    throw error;
+  }
+};
+
 /* -------------------- Main AdminPanel Component -------------------- */
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
@@ -477,8 +476,9 @@ export default function AdminPanel({ forceOwner = false }) {
   const [stats, setStats] = useState(null);
   const [toast, setToast] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showHelpPanel, setShowHelpPanel] = useState(true);
+  const [showHelpPanel, setShowHelpPanel] = useState(false); // Help panel starts collapsed
   const [actionHistory, setActionHistory] = useState([]);
+  const [testMessage, setTestMessage] = useState("");
 
   const isDevelopment =
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
@@ -510,7 +510,7 @@ export default function AdminPanel({ forceOwner = false }) {
         timestamp: new Date().toISOString(),
         details
       },
-      ...prev.slice(0, 49) // Keep last 50 actions
+      ...prev.slice(0, 49)
     ]);
   }, []);
 
@@ -620,6 +620,27 @@ export default function AdminPanel({ forceOwner = false }) {
     [showToast, logAction]
   );
 
+  /* -------------------- Test Social Post -------------------- */
+  const handleTestSocial = useCallback(async (platform) => {
+    try {
+      setBusyAction(prev => ({ ...prev, testSocial: true }));
+      const defaultMessage = `Test post from IMALI Admin Panel at ${new Date().toLocaleString()}`;
+      const message = testMessage || defaultMessage;
+      
+      const result = await testSocialPost(platform, message);
+      
+      if (result.success) {
+        showToast(`✅ Test post sent to ${platform}`, "success");
+      } else {
+        showToast(`❌ Failed to send to ${platform}: ${result.error}`, "error");
+      }
+    } catch (error) {
+      showToast(`❌ Error sending to ${platform}: ${error.message}`, "error");
+    } finally {
+      setBusyAction(prev => ({ ...prev, testSocial: false }));
+    }
+  }, [testMessage, showToast]);
+
   /* -------------------- Tab Navigation -------------------- */
   const navigateToTab = useCallback((tabKey) => {
     setActive(tabKey);
@@ -647,7 +668,6 @@ export default function AdminPanel({ forceOwner = false }) {
                 `${tab.label} ${action}`
               )}
               stats={stats}
-              actions={tab.actions || []}
             />
           </Suspense>
         </TabErrorBoundary>
@@ -825,14 +845,6 @@ export default function AdminPanel({ forceOwner = false }) {
         {/* Desktop Sidebar */}
         <aside className="hidden min-h-[calc(100vh-65px)] w-[300px] shrink-0 border-r border-white/10 bg-white/[0.03] lg:block">
           <div className="sticky top-[65px] h-[calc(100vh-65px)] overflow-y-auto p-4">
-            <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-              <h2 className="mb-1 text-sm font-semibold text-emerald-300">Quick tip</h2>
-              <p className="text-xs leading-5 text-white/65">
-                Start with <span className="font-medium text-white">Overview</span>, then move to
-                Users, Money, Marketing, or Advanced depending on what you need to manage.
-              </p>
-            </div>
-
             <div className="space-y-6">
               {TAB_SECTIONS.map((section) => (
                 <div key={section.id}>
@@ -890,16 +902,93 @@ export default function AdminPanel({ forceOwner = false }) {
             </div>
           ) : null}
 
-          {/* Beginner Guide */}
-          <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-5">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-bold">Beginner Guide</h2>
-                <p className="mt-1 text-sm text-white/65">
-                  This panel is organized so you can find things faster without guessing.
-                </p>
+          {/* Selected Tab Header - MOVED TO TOP */}
+          <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="text-4xl">{activeTab.emoji}</span>
+                <div>
+                  <h2 className="text-2xl font-bold">{activeTab.label}</h2>
+                  <p className="mt-1 text-sm text-white/55">{activeTab.description}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Tab Content */}
+          <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
+            {renderTab(activeTab)}
+          </section>
+
+          {/* Quick Test Panel - For Automation */}
+          {activeTab.key === "automation" && (
+            <section className="mb-6 rounded-3xl border border-cyan-500/20 bg-cyan-500/5 p-4 sm:p-6">
+              <h3 className="mb-3 text-lg font-semibold text-cyan-300">Quick Test</h3>
+              <p className="mb-4 text-sm text-white/70">
+                Send a test message to your connected platforms to verify they're working.
+              </p>
+              
+              <div className="mb-4">
+                <label className="mb-2 block text-sm text-white/50">Test Message (optional)</label>
+                <textarea
+                  value={testMessage}
+                  onChange={(e) => setTestMessage(e.target.value)}
+                  placeholder="Leave empty for default test message..."
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-sm"
+                  rows="3"
+                />
               </div>
 
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleTestSocial("telegram")}
+                  disabled={busyAction.testSocial}
+                  className="flex items-center gap-2 rounded-lg bg-[#26A5E4] px-4 py-2 text-sm font-medium transition hover:bg-[#1E8BC3] disabled:opacity-50"
+                >
+                  {busyAction.testSocial ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : (
+                    <span>📱</span>
+                  )}
+                  Test Telegram
+                </button>
+                
+                <button
+                  onClick={() => handleTestSocial("twitter")}
+                  disabled={busyAction.testSocial}
+                  className="flex items-center gap-2 rounded-lg bg-[#1DA1F2] px-4 py-2 text-sm font-medium transition hover:bg-[#0C7ABF] disabled:opacity-50"
+                >
+                  {busyAction.testSocial ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : (
+                    <span>𝕏</span>
+                  )}
+                  Test Twitter/X
+                </button>
+                
+                <button
+                  onClick={() => handleTestSocial("discord")}
+                  disabled={busyAction.testSocial}
+                  className="flex items-center gap-2 rounded-lg bg-[#5865F2] px-4 py-2 text-sm font-medium transition hover:bg-[#4752C4] disabled:opacity-50"
+                >
+                  {busyAction.testSocial ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : (
+                    <span>💬</span>
+                  )}
+                  Test Discord
+                </button>
+              </div>
+            </section>
+          )}
+
+          {/* Help Section - MOVED TO BOTTOM */}
+          <section className="rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">❓</span>
+                <h3 className="text-lg font-semibold">How to use this page</h3>
+              </div>
               <button
                 onClick={() => setShowHelpPanel((prev) => !prev)}
                 className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs transition hover:bg-white/10"
@@ -909,57 +998,21 @@ export default function AdminPanel({ forceOwner = false }) {
             </div>
 
             {showHelpPanel ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-                {TAB_SECTIONS.map((section) => (
-                  <SectionBadge
-                    key={section.id}
-                    emoji={section.emoji}
-                    name={section.name}
-                    description={section.description}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </section>
-
-          {/* Active Tab Content */}
-          <section className="rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
-            <div className="mb-5 flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex items-start gap-3">
-                <span className="text-4xl">{activeTab.emoji}</span>
-                <div>
-                  <h2 className="text-2xl font-bold">{activeTab.label}</h2>
-                  <p className="mt-1 text-sm text-white/55">{activeTab.description}</p>
+              <div className="space-y-3">
+                <p className="text-sm leading-6 text-white/70">{activeTab.help}</p>
+                
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  {TAB_SECTIONS.map((section) => (
+                    <SectionBadge
+                      key={section.id}
+                      emoji={section.emoji}
+                      name={section.name}
+                      description={section.description}
+                    />
+                  ))}
                 </div>
               </div>
-
-              <div className="max-w-xl rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
-                <h3 className="mb-1 text-sm font-semibold text-cyan-300">How to use this page</h3>
-                <p className="text-sm leading-6 text-white/70">{activeTab.help}</p>
-              </div>
-            </div>
-
-            {/* Tab Actions */}
-            {activeTab.actions && activeTab.actions.length > 0 && (
-              <div className="mb-4 flex flex-wrap gap-2">
-                {activeTab.actions.map((action) => (
-                  <ActionButton
-                    key={action}
-                    action={action}
-                    onClick={() => handleAction(
-                      `/api/admin/${activeTab.key}/${action}`,
-                      "POST",
-                      {},
-                      `${activeTab.label} ${action}`
-                    )}
-                    busy={busyAction[`${activeTab.key}-${action}`]}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Tab Content */}
-            {renderTab(activeTab)}
+            ) : null}
           </section>
 
           {/* Footer */}
