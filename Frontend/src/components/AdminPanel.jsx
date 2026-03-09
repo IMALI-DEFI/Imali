@@ -1,15 +1,15 @@
 // src/components/AdminPanel.jsx
-import React, { useEffect, useState, useCallback, Suspense, lazy } from "react";
+import React, { useEffect, useState, useCallback, Suspense, lazy, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import BotAPI from "../utils/BotAPI";
-import MarketingAutomation from '../admin/MarketingAutomation';
+import MarketingAutomation from "../admin/MarketingAutomation";
 
 /* -------------------- Error Boundary -------------------- */
 class TabErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -18,38 +18,42 @@ class TabErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error(`[AdminPanel] Tab "${this.props.tabName}" crashed:`, error, errorInfo);
-    this.setState({ errorInfo });
   }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-4 sm:p-6 text-center">
-          <div className="text-5xl mb-4">💥</div>
-          <h3 className="text-lg font-bold text-red-300 mb-3">
-            "{this.props.tabName}" couldn't load
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
+          <div className="mb-3 text-5xl">💥</div>
+          <h3 className="mb-2 text-lg font-bold text-red-300">
+            {this.props.tabName} could not load
           </h3>
-          <p className="text-sm text-white/60 mb-5 max-w-md mx-auto">
-            {this.state.error?.message || "Something went wrong loading this section"}
+          <p className="mx-auto mb-4 max-w-md text-sm text-white/70">
+            {this.state.error?.message || "Something went wrong while loading this section."}
           </p>
           <button
-            onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
-            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition-colors"
+            onClick={this.handleReset}
+            className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium transition hover:bg-indigo-500"
           >
-            🔄 Try Again
+            Try Again
           </button>
         </div>
       );
     }
+
     return this.props.children;
   }
 }
 
 /* -------------------- Loading Fallback -------------------- */
 const TabLoader = ({ name }) => (
-  <div className="flex flex-col items-center justify-center py-12">
-    <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
-    <p className="text-sm text-white/50">Loading {name}…</p>
+  <div className="flex min-h-[260px] flex-col items-center justify-center py-12">
+    <div className="mb-3 h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+    <p className="text-sm text-white/60">Loading {name}...</p>
   </div>
 );
 
@@ -74,35 +78,35 @@ const TreasuryManagement = lazy(() => import("../admin/TreasuryManagement.jsx"))
 const CexManagement = lazy(() => import("../admin/CexManagement.jsx"));
 const StocksManagement = lazy(() => import("../admin/StocksManagement.jsx"));
 
-/* -------------------- Env Helpers -------------------- */
+/* -------------------- Config -------------------- */
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
 /* -------------------- API Helper -------------------- */
 const adminFetch = async (endpoint, options = {}) => {
-  const token = BotAPI.getToken?.() || localStorage.getItem('token');
+  const token = BotAPI.getToken?.() || localStorage.getItem("token");
+
   if (!token) {
     throw new Error("No authentication token found");
   }
-  
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       ...options.headers,
     },
   });
-  
+
   const data = await response.json().catch(() => ({}));
-  
+
   if (!response.ok) {
     throw new Error(data.message || data.error || `Request failed (${response.status})`);
   }
-  
+
   return data;
 };
 
-/* -------------------- Admin Check Function -------------------- */
 const checkAdminStatus = async () => {
   try {
     const data = await adminFetch("/api/admin/check");
@@ -113,74 +117,252 @@ const checkAdminStatus = async () => {
   }
 };
 
-/* ==================================================================
-   SIMPLIFIED TAB CATEGORIES - Grouped for beginners
-================================================================== */
-
+/* -------------------- Sections -------------------- */
 const TAB_SECTIONS = [
   {
-    name: "📊 Dashboard",
-    description: "Platform overview",
-    color: "from-blue-500 to-indigo-500",
+    id: "dashboard",
+    name: "Dashboard",
+    emoji: "📊",
+    description: "See the health and activity of your platform.",
     tabs: [
-      { key: "overview", label: "Overview", emoji: "✨", component: DashboardOverview, description: "Key metrics at a glance" },
-      { key: "health", label: "System Health", emoji: "🏥", component: SystemHealth, description: "Check if everything is running" },
-    ]
+      {
+        key: "overview",
+        label: "Overview",
+        emoji: "✨",
+        component: DashboardOverview,
+        description: "Main numbers and summary cards.",
+        help: "Start here first. This page gives you the big picture of what is happening on your platform."
+      },
+      {
+        key: "health",
+        label: "System Health",
+        emoji: "🏥",
+        component: SystemHealth,
+        description: "Check if services are running correctly.",
+        help: "Use this when you want to make sure the backend, bots, and connected services are healthy."
+      },
+    ],
   },
   {
-    name: "👥 Users",
-    description: "Manage people",
-    color: "from-emerald-500 to-teal-500",
+    id: "users",
+    name: "Users",
+    emoji: "👥",
+    description: "Manage accounts and help people using the platform.",
     tabs: [
-      { key: "users", label: "All Users", emoji: "👥", component: UserManagement, description: "View and edit user accounts" },
-      { key: "tickets", label: "Support", emoji: "🎫", component: SupportTickets, description: "Help your users" },
-      { key: "waitlist", label: "Waitlist", emoji: "⏳", component: WaitlistManagement, description: "People waiting to join" },
-    ]
+      {
+        key: "users",
+        label: "All Users",
+        emoji: "👥",
+        component: UserManagement,
+        description: "View and manage user accounts.",
+        help: "Use this to search for users, review accounts, and make account-related changes."
+      },
+      {
+        key: "tickets",
+        label: "Support",
+        emoji: "🎫",
+        component: SupportTickets,
+        description: "Handle support issues and questions.",
+        help: "Open this when users need help or when you want to review unresolved issues."
+      },
+      {
+        key: "waitlist",
+        label: "Waitlist",
+        emoji: "⏳",
+        component: WaitlistManagement,
+        description: "Review people waiting to join.",
+        help: "Use this to track interest before a user has full access to the platform."
+      },
+    ],
   },
   {
-    name: "💰 Money",
-    description: "Financial stuff",
-    color: "from-amber-500 to-orange-500",
+    id: "money",
+    name: "Money",
+    emoji: "💰",
+    description: "Handle payments, treasury, and financial actions.",
     tabs: [
-      { key: "withdrawals", label: "Withdrawals", emoji: "💰", component: WithdrawalManagement, description: "Approve money requests" },
-      { key: "fees", label: "Fees", emoji: "💸", component: FeeDistributor, description: "Process trading fees" },
-      { key: "treasury", label: "Treasury", emoji: "🏦", component: TreasuryManagement, description: "Platform money" },
-    ]
+      {
+        key: "withdrawals",
+        label: "Withdrawals",
+        emoji: "💰",
+        component: WithdrawalManagement,
+        description: "Approve or review withdrawal requests.",
+        help: "Go here when you need to review money leaving the platform."
+      },
+      {
+        key: "fees",
+        label: "Fees",
+        emoji: "💸",
+        component: FeeDistributor,
+        description: "Manage fee flows and distributions.",
+        help: "Use this to understand how collected fees are being split or routed."
+      },
+      {
+        key: "treasury",
+        label: "Treasury",
+        emoji: "🏦",
+        component: TreasuryManagement,
+        description: "Manage platform-held funds.",
+        help: "This is the place for treasury balances, reserves, and fund movement controls."
+      },
+    ],
   },
   {
-    name: "📢 Marketing",
-    description: "Grow your platform",
-    color: "from-purple-500 to-pink-500",
+    id: "marketing",
+    name: "Marketing",
+    emoji: "📢",
+    description: "Promote the platform and grow your audience.",
     tabs: [
-      { key: "automation", label: "Auto Posts", emoji: "🤖", component: MarketingAutomation, description: "Schedule social media" },
-      { key: "promos", label: "Promo Codes", emoji: "🎟️", component: PromoManagement, description: "Create discounts" },
-      { key: "announcements", label: "Announce", emoji: "📢", component: Announcements, description: "Tell users stuff" },
-      { key: "referrals", label: "Referrals", emoji: "🧲", component: ReferralAnalytics, description: "Track invites" },
-      { key: "social", label: "Social", emoji: "📣", component: SocialManager, description: "Manage social media" },
-    ]
+      {
+        key: "automation",
+        label: "Auto Posts",
+        emoji: "🤖",
+        component: MarketingAutomation,
+        description: "Schedule automated marketing posts.",
+        help: "Use this to plan recurring content instead of posting everything manually."
+      },
+      {
+        key: "promos",
+        label: "Promo Codes",
+        emoji: "🎟️",
+        component: PromoManagement,
+        description: "Create and manage discount codes.",
+        help: "Open this when you want to run a special offer, referral code, or limited-time discount."
+      },
+      {
+        key: "announcements",
+        label: "Announcements",
+        emoji: "📣",
+        component: Announcements,
+        description: "Send updates to users.",
+        help: "Use this to share important news, updates, feature launches, or maintenance notices."
+      },
+      {
+        key: "referrals",
+        label: "Referrals",
+        emoji: "🧲",
+        component: ReferralAnalytics,
+        description: "Track user invite performance.",
+        help: "This helps you see who is bringing in users and how referrals are performing."
+      },
+      {
+        key: "social",
+        label: "Social Manager",
+        emoji: "📱",
+        component: SocialManager,
+        description: "Manage social media activity.",
+        help: "Use this to organize social channels and keep marketing activity in one place."
+      },
+    ],
   },
   {
-    name: "⚙️ Advanced",
-    description: "Expert settings",
-    color: "from-gray-600 to-gray-700",
+    id: "advanced",
+    name: "Advanced",
+    emoji: "⚙️",
+    description: "More technical platform controls.",
     tabs: [
-      { key: "token", label: "Token", emoji: "🪙", component: TokenManagement, description: "Mint & burn tokens" },
-      { key: "buyback", label: "Buyback", emoji: "♻️", component: BuyBackDashboard, description: "Token buybacks" },
-      { key: "nfts", label: "NFTs", emoji: "🧬", component: NFTManagement, description: "Manage NFTs" },
-      { key: "cex", label: "CEX", emoji: "🏧", component: CexManagement, description: "Exchange funding" },
-      { key: "stocks", label: "Stocks", emoji: "📈", component: StocksManagement, description: "Stock trading" },
-      { key: "access", label: "Permissions", emoji: "🔐", component: AccessControl, description: "Who can do what" },
-      { key: "audit", label: "Audit Logs", emoji: "📋", component: AuditLogs, description: "See what happened" },
-    ]
-  }
+      {
+        key: "token",
+        label: "Token",
+        emoji: "🪙",
+        component: TokenManagement,
+        description: "Mint, burn, and manage token actions.",
+        help: "Use this for token supply and token-related admin controls."
+      },
+      {
+        key: "buyback",
+        label: "Buyback",
+        emoji: "♻️",
+        component: BuyBackDashboard,
+        description: "Manage token buybacks.",
+        help: "This area is for buyback settings, monitoring, and execution."
+      },
+      {
+        key: "nfts",
+        label: "NFTs",
+        emoji: "🧬",
+        component: NFTManagement,
+        description: "Manage NFT tiers and NFT items.",
+        help: "Go here when you need to manage NFT access or NFT-related rewards."
+      },
+      {
+        key: "cex",
+        label: "CEX",
+        emoji: "🏧",
+        component: CexManagement,
+        description: "Manage centralized exchange controls.",
+        help: "Use this for exchange-related settings, balances, or connected exchange actions."
+      },
+      {
+        key: "stocks",
+        label: "Stocks",
+        emoji: "📈",
+        component: StocksManagement,
+        description: "Manage stock-related trading tools.",
+        help: "This page is for stock-side operations if your platform supports them."
+      },
+      {
+        key: "access",
+        label: "Permissions",
+        emoji: "🔐",
+        component: AccessControl,
+        description: "Control admin access and roles.",
+        help: "Use this to decide who can see or do certain things in the admin system."
+      },
+      {
+        key: "audit",
+        label: "Audit Logs",
+        emoji: "📋",
+        component: AuditLogs,
+        description: "Review admin actions and events.",
+        help: "Open this when you want to see what changes were made and by whom."
+      },
+    ],
+  },
 ];
 
-// Flatten for quick access
-const ALL_TABS = TAB_SECTIONS.flatMap(section => section.tabs);
+const ALL_TABS = TAB_SECTIONS.flatMap((section) => section.tabs);
 
-/* ==================================================================
-   MAIN ADMIN PANEL - Mobile & Novice Friendly
-================================================================== */
+const SectionBadge = ({ emoji, name, description }) => (
+  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="mb-2 flex items-center gap-2">
+      <span className="text-2xl">{emoji}</span>
+      <h3 className="font-semibold">{name}</h3>
+    </div>
+    <p className="text-sm text-white/65">{description}</p>
+  </div>
+);
+
+function SidebarButton({ tab, isActive, onClick, badge }) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "w-full rounded-xl border px-3 py-3 text-left transition",
+        isActive
+          ? "border-emerald-500/40 bg-emerald-500/15 shadow-[0_0_0_1px_rgba(16,185,129,0.12)]"
+          : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5",
+      ].join(" ")}
+      title={tab.description}
+    >
+      <div className="flex items-start gap-3">
+        <span className="pt-0.5 text-xl">{tab.emoji}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium">{tab.label}</span>
+            {badge ? (
+              <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-medium text-red-300">
+                {badge}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-xs text-white/45">{tab.description}</p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
   const navigate = useNavigate();
@@ -193,60 +375,63 @@ export default function AdminPanel({ forceOwner = false }) {
   const [busyAction, setBusyAction] = useState("");
   const [stats, setStats] = useState(null);
   const [toast, setToast] = useState(null);
-  const [showGuide, setShowGuide] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showHelpPanel, setShowHelpPanel] = useState(true);
 
-  const isDevelopment = process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
-  const BYPASS = isDevelopment && (process.env.REACT_APP_BYPASS_OWNER === "1");
+  const isDevelopment =
+    process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
+  const BYPASS = isDevelopment && process.env.REACT_APP_BYPASS_OWNER === "1";
   const TEST_BYPASS = location.pathname.startsWith("/test/admin");
 
-  /* -------------------- Toast helper -------------------- */
+  const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdmin;
+
+  const activeTab = useMemo(() => {
+    return ALL_TABS.find((tab) => tab.key === active) || ALL_TABS[0];
+  }, [active]);
+
   const showToast = useCallback((message, type = "success") => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 5000);
+    window.clearTimeout(window.__imaliToastTimer);
+    window.__imaliToastTimer = window.setTimeout(() => setToast(null), 4500);
   }, []);
 
-  /* -------------------- Admin check -------------------- */
   useEffect(() => {
     let mounted = true;
 
     const checkAccess = async () => {
       try {
-        // Development bypass
         if (forceOwner || BYPASS || TEST_BYPASS) {
           if (mounted) setIsAdmin(true);
-          setChecking(false);
           return;
         }
 
-        // Check if logged in
-        const token = BotAPI.getToken?.() || localStorage.getItem('token');
+        const token = BotAPI.getToken?.() || localStorage.getItem("token");
         if (!token) {
-          if (mounted) setError("Please log in first");
-          setChecking(false);
+          if (mounted) setError("Please log in first.");
           return;
         }
 
-        // Check admin status
         const admin = await checkAdminStatus();
-        if (mounted) {
-          setIsAdmin(admin);
-          if (!admin) setError("You're not an admin");
-        }
+        if (!mounted) return;
+
+        setIsAdmin(admin);
+        if (!admin) setError("You do not have admin access.");
       } catch (e) {
-        console.error("Access check error:", e);
-        if (mounted) setError("Couldn't verify permissions");
+        console.error("[AdminPanel] Access check error:", e);
+        if (mounted) setError("Could not verify admin permissions.");
       } finally {
         if (mounted) setChecking(false);
       }
     };
 
     checkAccess();
+
+    return () => {
+      mounted = false;
+    };
   }, [forceOwner, BYPASS, TEST_BYPASS]);
 
-  /* -------------------- Fetch dashboard stats -------------------- */
   useEffect(() => {
-    const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdmin;
     if (!allowAccess) return;
 
     let mounted = true;
@@ -265,87 +450,90 @@ export default function AdminPanel({ forceOwner = false }) {
           activeJobs: data.automation?.active_jobs || 0,
         });
       } catch (err) {
-        console.error("Stats fetch error:", err);
+        console.error("[AdminPanel] Stats fetch error:", err);
       }
     };
 
     fetchStats();
-    const interval = setInterval(fetchStats, 60000); // Update every minute
+    const interval = setInterval(fetchStats, 60000);
 
     return () => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [isAdmin, forceOwner, BYPASS, TEST_BYPASS]);
+  }, [allowAccess]);
 
-  /* -------------------- Action handlers -------------------- */
-  const handleAction = useCallback(async (endpoint, method = "POST", body = {}, actionName = "Action") => {
-    try {
-      setBusyAction(actionName);
-      const data = await adminFetch(endpoint, { method, body: JSON.stringify(body) });
-      showToast(`✅ ${actionName} completed!`, "success");
-      return data;
-    } catch (err) {
-      showToast(err?.message || `${actionName} failed`, "error");
-      throw err;
-    } finally {
-      setBusyAction("");
-    }
-  }, [showToast]);
+  const handleAction = useCallback(
+    async (endpoint, method = "POST", body = {}, actionName = "Action") => {
+      try {
+        setBusyAction(actionName);
+        const data = await adminFetch(endpoint, {
+          method,
+          body: JSON.stringify(body),
+        });
+        showToast(`${actionName} completed successfully.`, "success");
+        return data;
+      } catch (err) {
+        showToast(err?.message || `${actionName} failed.`, "error");
+        throw err;
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [showToast]
+  );
 
   const navigateToTab = useCallback((tabKey) => {
     setActive(tabKey);
     setMobileMenuOpen(false);
-    setShowGuide(false);
   }, []);
 
-  /* -------------------- Tab renderer -------------------- */
-  const renderTab = useCallback((tab) => {
-    const commonProps = {
-      apiBase: API_BASE,
-      account,
-      onAction: () => window.location.reload(),
-      showToast,
-      busyAction,
-      handleAction,
-    };
+  const renderTab = useCallback(
+    (tab) => {
+      const Component = tab.component;
 
-    const Component = tab.component;
-    return (
-      <TabErrorBoundary tabName={tab.label}>
-        <Suspense fallback={<TabLoader name={tab.label} />}>
-          <Component {...commonProps} />
-        </Suspense>
-      </TabErrorBoundary>
-    );
-  }, [account, busyAction, handleAction, showToast]);
+      return (
+        <TabErrorBoundary tabName={tab.label}>
+          <Suspense fallback={<TabLoader name={tab.label} />}>
+            <Component
+              apiBase={API_BASE}
+              account={account}
+              busyAction={busyAction}
+              showToast={showToast}
+              handleAction={handleAction}
+              onAction={() => {}}
+            />
+          </Suspense>
+        </TabErrorBoundary>
+      );
+    },
+    [account, busyAction, handleAction, showToast]
+  );
 
-  /* -------------------- Loading state -------------------- */
-  if (checking && !(forceOwner || BYPASS || TEST_BYPASS || isAdmin)) {
+  if (checking && !allowAccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-black p-4">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-4 text-white">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Checking access...</h2>
-          <p className="text-sm text-white/50">Making sure you're allowed in</p>
+          <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+          <h2 className="mb-2 text-xl font-semibold">Checking access...</h2>
+          <p className="text-sm text-white/55">Making sure you are allowed into the admin panel.</p>
         </div>
       </div>
     );
   }
 
-  /* -------------------- Access denied -------------------- */
-  if (!(forceOwner || BYPASS || TEST_BYPASS || isAdmin)) {
+  if (!allowAccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-black p-6">
-        <div className="max-w-sm text-center">
-          <div className="text-7xl mb-4">🔒</div>
-          <h2 className="text-2xl font-bold mb-2">Admin Only</h2>
-          <p className="text-white/60 mb-6">
-            {error || "This area is just for platform administrators"}
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-6 text-white">
+        <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
+          <div className="mb-4 text-7xl">🔒</div>
+          <h2 className="mb-2 text-2xl font-bold">Admin Only</h2>
+          <p className="mb-6 text-white/65">
+            {error || "This area is restricted to platform administrators."}
           </p>
           <button
             onClick={() => navigate("/dashboard")}
-            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-medium transition-colors w-full"
+            className="w-full rounded-xl bg-emerald-600 px-6 py-3 font-medium transition hover:bg-emerald-500"
           >
             Back to Dashboard
           </button>
@@ -354,265 +542,253 @@ export default function AdminPanel({ forceOwner = false }) {
     );
   }
 
-  const activeTab = ALL_TABS.find(t => t.key === active);
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
-      
-      {/* Toast notifications */}
-      {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl border shadow-lg text-sm max-w-[90vw] animate-slide-in ${
-          toast.type === "error" 
-            ? "bg-red-600/90 border-red-500/50" 
-            : "bg-emerald-600/90 border-emerald-500/50"
-        }`}>
+    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-950 to-black text-white">
+      {/* Toast */}
+      {toast ? (
+        <div
+          className={[
+            "fixed right-4 top-4 z-[70] max-w-[92vw] rounded-xl border px-4 py-3 shadow-lg backdrop-blur",
+            toast.type === "error"
+              ? "border-red-500/40 bg-red-600/90"
+              : "border-emerald-500/40 bg-emerald-600/90",
+          ].join(" ")}
+        >
           <div className="flex items-center gap-3">
-            <span className="flex-1">{toast.message}</span>
-            <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100">
+            <span className="text-sm">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="text-sm opacity-70 transition hover:opacity-100"
+            >
               ✕
             </button>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-gray-900/80 backdrop-blur">
-        <div className="px-4 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-gray-950/90 backdrop-blur">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3 lg:px-6">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 hover:bg-white/10 rounded-lg"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="rounded-xl border border-white/10 bg-white/5 p-2 transition hover:bg-white/10 lg:hidden"
+              aria-label="Toggle navigation"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-purple-400 bg-clip-text text-transparent">
-              Admin
-            </h1>
-          </div>
-          
-          {/* Quick stats for desktop */}
-          {stats && (
-            <div className="hidden lg:flex items-center gap-2 text-xs">
-              <span className="px-2 py-1 bg-blue-500/20 rounded-full text-blue-300">
-                👥 {stats.totalUsers}
-              </span>
-              <span className="px-2 py-1 bg-purple-500/20 rounded-full text-purple-300">
-                🤖 {stats.activeJobs}
-              </span>
-              {stats.openTickets > 0 && (
-                <span className="px-2 py-1 bg-red-500/20 rounded-full text-red-300">
-                  🎫 {stats.openTickets}
-                </span>
-              )}
-            </div>
-          )}
 
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="text-sm text-white/60 hover:text-white"
-          >
-            ← Exit
-          </button>
+            <div>
+              <h1 className="bg-gradient-to-r from-emerald-400 to-cyan-300 bg-clip-text text-xl font-bold text-transparent">
+                IMALI Admin Panel
+              </h1>
+              <p className="hidden text-xs text-white/45 sm:block">
+                Manage users, finances, marketing, and advanced platform tools.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {stats ? (
+              <div className="hidden items-center gap-2 lg:flex">
+                <span className="rounded-full bg-blue-500/15 px-2.5 py-1 text-xs text-blue-300">
+                  👥 {stats.totalUsers} users
+                </span>
+                <span className="rounded-full bg-purple-500/15 px-2.5 py-1 text-xs text-purple-300">
+                  🤖 {stats.activeJobs} jobs
+                </span>
+                {stats.openTickets > 0 ? (
+                  <span className="rounded-full bg-red-500/15 px-2.5 py-1 text-xs text-red-300">
+                    🎫 {stats.openTickets} tickets
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
+            >
+              Exit
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Mobile menu */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-30 bg-gray-900 pt-16">
-          <div className="p-4 overflow-y-auto max-h-[calc(100vh-4rem)]">
-            {TAB_SECTIONS.map((section) => (
-              <div key={section.name} className="mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-medium">{section.name}</h3>
-                  <span className="text-xs text-white/40">{section.description}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {section.tabs.map((tab) => {
-                    const isActive = active === tab.key;
-                    return (
-                      <button
-                        key={tab.key}
-                        onClick={() => navigateToTab(tab.key)}
-                        className={`p-3 rounded-xl border text-left transition-all ${
-                          isActive
-                            ? "bg-emerald-600/20 border-emerald-500/50"
-                            : "bg-white/5 border-white/10 hover:bg-white/10"
-                        }`}
-                      >
-                        <div className="text-2xl mb-1">{tab.emoji}</div>
-                        <div className="font-medium text-sm">{tab.label}</div>
-                        <div className="text-xs text-white/40 truncate">{tab.description}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Mobile menu overlay */}
+      {mobileMenuOpen ? (
+        <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" onClick={() => setMobileMenuOpen(false)}>
+          <aside
+            className="absolute left-0 top-0 h-full w-[88%] max-w-sm overflow-y-auto border-r border-white/10 bg-gray-950 px-4 pb-6 pt-20 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Navigation</h2>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
 
-      <div className="flex">
-        {/* Desktop sidebar */}
-        <div className="hidden lg:block w-64 shrink-0 border-r border-white/10 bg-black/20 p-4">
-          <div className="space-y-6">
-            {TAB_SECTIONS.map((section) => (
-              <div key={section.name}>
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-sm font-medium">{section.name}</h3>
-                  <span className="text-[10px] text-white/30">{section.description}</span>
-                </div>
-                <div className="space-y-1">
-                  {section.tabs.map((tab) => {
-                    const isActive = active === tab.key;
-                    return (
-                      <button
-                        key={tab.key}
-                        onClick={() => navigateToTab(tab.key)}
-                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all ${
-                          isActive
-                            ? "bg-emerald-600/20 border border-emerald-500/30"
-                            : "hover:bg-white/5"
-                        }`}
-                        title={tab.description}
-                      >
-                        <span className="text-lg">{tab.emoji}</span>
-                        <span className="flex-1 text-left">{tab.label}</span>
-                        {tab.key === "tickets" && stats?.openTickets > 0 && (
-                          <span className="text-xs bg-red-500/20 text-red-300 px-1.5 rounded-full">
-                            {stats.openTickets}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Main content */}
-        <main className="flex-1 min-w-0 p-4 lg:p-6">
-          
-          {/* Welcome guide for first-time users */}
-          {showGuide && (
-            <div className="mb-6 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-5">
-              <div className="flex items-start gap-3">
-                <div className="text-3xl">👋</div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg mb-1">Welcome to the Admin Panel</h3>
-                  <p className="text-sm text-white/70 mb-3">
-                    Here's where you manage everything. The sidebar has all the tools you need.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                    <div className="bg-white/5 rounded-lg p-2">
-                      <span className="text-emerald-400 font-medium block mb-1">👥 Users</span>
-                      Manage accounts, handle support
-                    </div>
-                    <div className="bg-white/5 rounded-lg p-2">
-                      <span className="text-purple-400 font-medium block mb-1">💰 Money</span>
-                      Withdrawals, fees, treasury
-                    </div>
-                    <div className="bg-white/5 rounded-lg p-2">
-                      <span className="text-amber-400 font-medium block mb-1">📢 Marketing</span>
-                      Promos, social posts, announcements
+            <div className="space-y-6">
+              {TAB_SECTIONS.map((section) => (
+                <div key={section.id}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-xl">{section.emoji}</span>
+                    <div>
+                      <h3 className="text-sm font-semibold">{section.name}</h3>
+                      <p className="text-xs text-white/45">{section.description}</p>
                     </div>
                   </div>
+
+                  <div className="space-y-2">
+                    {section.tabs.map((tab) => (
+                      <SidebarButton
+                        key={tab.key}
+                        tab={tab}
+                        isActive={active === tab.key}
+                        onClick={() => navigateToTab(tab.key)}
+                        badge={
+                          tab.key === "tickets" && stats?.openTickets > 0
+                            ? stats.openTickets
+                            : null
+                        }
+                      />
+                    ))}
+                  </div>
                 </div>
-                <button
-                  onClick={() => setShowGuide(false)}
-                  className="text-white/40 hover:text-white"
-                >
-                  ✕
-                </button>
-              </div>
+              ))}
             </div>
-          )}
+          </aside>
+        </div>
+      ) : null}
 
-          {/* Quick stats for mobile */}
-          {stats && (
-            <div className="lg:hidden grid grid-cols-4 gap-2 mb-4 text-xs">
-              <div className="bg-blue-500/10 rounded-lg p-2 text-center">
-                <div className="text-blue-400 font-bold">{stats.totalUsers}</div>
-                <div className="text-white/40">Users</div>
-              </div>
-              <div className="bg-purple-500/10 rounded-lg p-2 text-center">
-                <div className="text-purple-400 font-bold">{stats.activeJobs}</div>
-                <div className="text-white/40">Jobs</div>
-              </div>
-              <div className="bg-amber-500/10 rounded-lg p-2 text-center">
-                <div className="text-amber-400 font-bold">{stats.waitlistCount}</div>
-                <div className="text-white/40">Waitlist</div>
-              </div>
-              <div className="bg-emerald-500/10 rounded-lg p-2 text-center">
-                <div className="text-emerald-400 font-bold">{stats.activePromos}</div>
-                <div className="text-white/40">Promos</div>
-              </div>
+      <div className="mx-auto flex max-w-[1600px]">
+        {/* Desktop sidebar */}
+        <aside className="hidden min-h-[calc(100vh-65px)] w-[300px] shrink-0 border-r border-white/10 bg-white/[0.03] lg:block">
+          <div className="sticky top-[65px] h-[calc(100vh-65px)] overflow-y-auto p-4">
+            <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+              <h2 className="mb-1 text-sm font-semibold text-emerald-300">Quick tip</h2>
+              <p className="text-xs leading-5 text-white/65">
+                Start with <span className="font-medium text-white">Overview</span>, then move to
+                Users, Money, Marketing, or Advanced depending on what you need to manage.
+              </p>
             </div>
-          )}
 
-          {/* Active tab */}
-          {activeTab && (
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-6">
-              <div className="flex items-center gap-3 mb-4 pb-3 border-b border-white/10">
-                <span className="text-3xl">{activeTab.emoji}</span>
-                <div>
-                  <h2 className="text-xl font-bold">{activeTab.label}</h2>
-                  <p className="text-xs text-white/50">{activeTab.description}</p>
+            <div className="space-y-6">
+              {TAB_SECTIONS.map((section) => (
+                <div key={section.id}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-lg">{section.emoji}</span>
+                    <div>
+                      <h3 className="text-sm font-semibold">{section.name}</h3>
+                      <p className="text-[11px] text-white/40">{section.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {section.tabs.map((tab) => (
+                      <SidebarButton
+                        key={tab.key}
+                        tab={tab}
+                        isActive={active === tab.key}
+                        onClick={() => navigateToTab(tab.key)}
+                        badge={
+                          tab.key === "tickets" && stats?.openTickets > 0
+                            ? stats.openTickets
+                            : null
+                        }
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-              {renderTab(activeTab)}
+              ))}
             </div>
-          )}
-
-          {/* Quick action buttons - common tasks */}
-          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <button
-              onClick={() => navigateToTab("withdrawals")}
-              className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center"
-            >
-              <div className="text-2xl mb-1">💰</div>
-              <div className="text-sm font-medium">Withdrawals</div>
-              {stats?.pendingWithdrawals > 0 && (
-                <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full mt-1 inline-block">
-                  {stats.pendingWithdrawals} pending
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => navigateToTab("tickets")}
-              className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center"
-            >
-              <div className="text-2xl mb-1">🎫</div>
-              <div className="text-sm font-medium">Support</div>
-              {stats?.openTickets > 0 && (
-                <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full mt-1 inline-block">
-                  {stats.openTickets} open
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => navigateToTab("promos")}
-              className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center"
-            >
-              <div className="text-2xl mb-1">🎟️</div>
-              <div className="text-sm font-medium">New Promo</div>
-            </button>
-            <button
-              onClick={() => navigateToTab("announcements")}
-              className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center"
-            >
-              <div className="text-2xl mb-1">📢</div>
-              <div className="text-sm font-medium">Announce</div>
-            </button>
           </div>
+        </aside>
 
-          {/* Footer */}
-          <div className="mt-6 text-center text-[10px] text-white/20">
-            Admin Panel • v1.0 • {new Date().toLocaleDateString()}
+        {/* Main content */}
+        <main className="min-w-0 flex-1 px-4 py-4 lg:px-6 lg:py-6">
+          {/* Mobile stats */}
+          {stats ? (
+            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden">
+              <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 text-center">
+                <div className="text-lg font-bold text-blue-300">{stats.totalUsers}</div>
+                <div className="text-xs text-white/50">Users</div>
+              </div>
+              <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-3 text-center">
+                <div className="text-lg font-bold text-purple-300">{stats.activeJobs}</div>
+                <div className="text-xs text-white/50">Jobs</div>
+              </div>
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-center">
+                <div className="text-lg font-bold text-amber-300">{stats.waitlistCount}</div>
+                <div className="text-xs text-white/50">Waitlist</div>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-center">
+                <div className="text-lg font-bold text-emerald-300">{stats.activePromos}</div>
+                <div className="text-xs text-white/50">Promos</div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Beginner guide */}
+          <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-5">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold">Beginner guide</h2>
+                <p className="mt-1 text-sm text-white/65">
+                  This panel is organized so you can find things faster without guessing.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowHelpPanel((prev) => !prev)}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs transition hover:bg-white/10"
+              >
+                {showHelpPanel ? "Hide help" : "Show help"}
+              </button>
+            </div>
+
+            {showHelpPanel ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                {TAB_SECTIONS.map((section) => (
+                  <SectionBadge
+                    key={section.id}
+                    emoji={section.emoji}
+                    name={section.name}
+                    description={section.description}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </section>
+
+          {/* Active tab header + help */}
+          <section className="rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
+            <div className="mb-5 flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="text-4xl">{activeTab.emoji}</span>
+                <div>
+                  <h2 className="text-2xl font-bold">{activeTab.label}</h2>
+                  <p className="mt-1 text-sm text-white/55">{activeTab.description}</p>
+                </div>
+              </div>
+
+              <div className="max-w-xl rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                <h3 className="mb-1 text-sm font-semibold text-cyan-300">How to use this page</h3>
+                <p className="text-sm leading-6 text-white/70">{activeTab.help}</p>
+              </div>
+            </div>
+
+            {renderTab(activeTab)}
+          </section>
+
+          <div className="mt-6 text-center text-[11px] text-white/25">
+            Admin Panel • {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : "No wallet connected"}
           </div>
         </main>
       </div>
