@@ -131,162 +131,6 @@ const checkAdminStatus = async () => {
   }
 };
 
-/* -------------------- Real Service Actions -------------------- */
-const serviceActions = {
-  // Dashboard actions
-  overview: {
-    refresh: async () => adminFetch("/api/admin/metrics"),
-    export: async () => adminFetch("/api/admin/metrics/export", { method: "POST" })
-  },
-  health: {
-    refresh: async () => adminFetch("/api/health/detailed"),
-    diagnose: async () => adminFetch("/api/admin/diagnose", { method: "POST" })
-  },
-  
-  // User actions
-  users: {
-    search: async (query) => adminFetch(`/api/admin/users?search=${encodeURIComponent(query)}`),
-    filter: async (filters) => adminFetch("/api/admin/users/filter", { method: "POST", body: JSON.stringify(filters) }),
-    export: async () => adminFetch("/api/admin/users/export", { method: "POST" })
-  },
-  tickets: {
-    reply: async (ticketId, message) => adminFetch(`/api/admin/support/tickets/${ticketId}/messages`, { 
-      method: "POST", 
-      body: JSON.stringify({ message, is_admin: true }) 
-    }),
-    close: async (ticketId) => adminFetch(`/api/admin/support/tickets/${ticketId}/status`, { 
-      method: "PUT", 
-      body: JSON.stringify({ status: "closed" }) 
-    }),
-    assign: async (ticketId, adminId) => adminFetch(`/api/admin/support/tickets/${ticketId}/assign`, { 
-      method: "POST", 
-      body: JSON.stringify({ admin_id: adminId }) 
-    })
-  },
-  waitlist: {
-    approve: async (email) => adminFetch(`/api/admin/waitlist/activate/${encodeURIComponent(email)}`, { method: "POST" }),
-    email: async (email, message) => adminFetch("/api/admin/waitlist/email", { 
-      method: "POST", 
-      body: JSON.stringify({ email, message }) 
-    }),
-    export: async () => adminFetch("/api/admin/waitlist/export", { method: "POST" })
-  },
-  
-  // Money actions
-  withdrawals: {
-    approve: async (id) => adminFetch(`/api/admin/withdrawals/${id}/approve`, { method: "POST" }),
-    reject: async (id) => adminFetch(`/api/admin/withdrawals/${id}/reject`, { method: "POST" }),
-    review: async (id) => adminFetch(`/api/admin/withdrawals/${id}`, { method: "GET" })
-  },
-  fees: {
-    distribute: async () => adminFetch("/api/admin/process-pending-fees", { method: "POST", body: JSON.stringify({ dry_run: false }) }),
-    calculate: async () => adminFetch("/api/admin/process-pending-fees", { method: "POST", body: JSON.stringify({ dry_run: true }) }),
-    history: async () => adminFetch("/api/admin/fee-history")
-  },
-  treasury: {
-    transfer: async (amount, to) => adminFetch("/api/admin/treasury/transfer", { 
-      method: "POST", 
-      body: JSON.stringify({ amount, to }) 
-    }),
-    withdraw: async (amount, address) => adminFetch("/api/admin/treasury/withdraw", { 
-      method: "POST", 
-      body: JSON.stringify({ amount, address }) 
-    }),
-    history: async () => adminFetch("/api/admin/treasury/history")
-  },
-  
-  // Marketing actions
-  automation: {
-    schedule: async (jobId, schedule) => adminFetch("/api/admin/automation/schedule", { 
-      method: "POST", 
-      body: JSON.stringify({ jobId, schedule }) 
-    }),
-    pause: async (jobId) => adminFetch("/api/admin/automation/jobs/toggle", { 
-      method: "POST", 
-      body: JSON.stringify({ jobId }) 
-    }),
-    test: async (platform, message) => adminFetch("/api/admin/social/test", { 
-      method: "POST", 
-      body: JSON.stringify({ platform, message }) 
-    })
-  },
-  promos: {
-    create: async (data) => adminFetch("/api/admin/promo/create", { method: "POST", body: JSON.stringify(data) }),
-    activate: async (id) => adminFetch(`/api/admin/promo/${id}/activate`, { method: "POST" }),
-    deactivate: async (id) => adminFetch(`/api/admin/promo/${id}/deactivate`, { method: "POST" })
-  },
-  announcements: {
-    create: async (data) => adminFetch("/api/admin/announcements", { method: "POST", body: JSON.stringify(data) }),
-    schedule: async (id, time) => adminFetch(`/api/admin/announcements/${id}/schedule`, { 
-      method: "POST", 
-      body: JSON.stringify({ scheduled_time: time }) 
-    }),
-    send: async (id) => adminFetch(`/api/admin/announcements/${id}/send`, { method: "POST" })
-  },
-  referrals: {
-    export: async () => adminFetch("/api/admin/referrals/export", { method: "POST" }),
-    reward: async (userId, amount) => adminFetch("/api/admin/referrals/reward", { 
-      method: "POST", 
-      body: JSON.stringify({ user_id: userId, amount }) 
-    }),
-    analyze: async () => adminFetch("/api/admin/referrals/analytics")
-  },
-  social: {
-    post: async (platform, content) => adminFetch("/api/admin/social/post", { 
-      method: "POST", 
-      body: JSON.stringify({ platform, content }) 
-    }),
-    schedule: async (data) => adminFetch("/api/admin/social/schedule", { method: "POST", body: JSON.stringify(data) }),
-    analytics: async () => adminFetch("/api/admin/social/analytics")
-  },
-  
-  // Advanced actions
-  token: {
-    mint: async (amount, to) => adminFetch("/api/admin/token/mint", { method: "POST", body: JSON.stringify({ amount, to }) }),
-    burn: async (amount) => adminFetch("/api/admin/token/burn", { method: "POST", body: JSON.stringify({ amount }) }),
-    transfer: async (amount, from, to) => adminFetch("/api/admin/token/transfer", { 
-      method: "POST", 
-      body: JSON.stringify({ amount, from, to }) 
-    })
-  },
-  buyback: {
-    execute: async (amount) => adminFetch("/api/admin/buyback/trigger", { method: "POST", body: JSON.stringify({ amount }) }),
-    schedule: async (data) => adminFetch("/api/admin/buyback/schedule", { method: "POST", body: JSON.stringify(data) }),
-    history: async () => adminFetch("/api/admin/buyback/history")
-  },
-  nfts: {
-    mint: async (data) => adminFetch("/api/admin/nfts/mint", { method: "POST", body: JSON.stringify(data) }),
-    burn: async (id) => adminFetch(`/api/admin/nfts/${id}/burn`, { method: "POST" }),
-    transfer: async (id, to) => adminFetch(`/api/admin/nfts/${id}/transfer`, { method: "POST", body: JSON.stringify({ to }) })
-  },
-  cex: {
-    deposit: async (amount, asset) => adminFetch("/api/admin/cex/deposit", { method: "POST", body: JSON.stringify({ amount, asset }) }),
-    withdraw: async (amount, asset, address) => adminFetch("/api/admin/cex/withdraw", { 
-      method: "POST", 
-      body: JSON.stringify({ amount, asset, address }) 
-    }),
-    balance: async () => adminFetch("/api/admin/cex/balances")
-  },
-  stocks: {
-    trade: async (symbol, action, shares) => adminFetch("/api/admin/stocks/trade", { 
-      method: "POST", 
-      body: JSON.stringify({ symbol, action, shares }) 
-    }),
-    position: async (symbol) => adminFetch(`/api/admin/stocks/positions/${symbol}`),
-    history: async () => adminFetch("/api/admin/stocks/history")
-  },
-  access: {
-    add: async (email, role) => adminFetch("/api/admin/access/add", { method: "POST", body: JSON.stringify({ email, role }) }),
-    remove: async (email) => adminFetch("/api/admin/access/remove", { method: "POST", body: JSON.stringify({ email }) }),
-    update: async (email, role) => adminFetch("/api/admin/access/update", { method: "POST", body: JSON.stringify({ email, role }) })
-  },
-  audit: {
-    filter: async (filters) => adminFetch("/api/admin/audit-logs/filter", { method: "POST", body: JSON.stringify(filters) }),
-    export: async () => adminFetch("/api/admin/audit-logs/export", { method: "POST" }),
-    search: async (query) => adminFetch(`/api/admin/audit-logs?search=${encodeURIComponent(query)}`)
-  }
-};
-
 /* -------------------- Sections -------------------- */
 const TAB_SECTIONS = [
   {
@@ -428,9 +272,8 @@ const TAB_SECTIONS = [
         component: MarketingAutomation,
         description: "Schedule automated marketing posts.",
         help: "Use this to plan recurring content instead of posting everything manually.",
+        // Only keep the test action; all job-specific controls are inside MarketingAutomation
         actions: [
-          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/automation/schedule" },
-          { id: "pause", label: "Pause", icon: "⏸️", endpoint: "/api/admin/automation/jobs/toggle" },
           { id: "test", label: "Test", icon: "🧪", endpoint: "/api/admin/social/test" }
         ]
       },
@@ -635,15 +478,10 @@ function SidebarButton({ tab, isActive, onClick, badge, busy }) {
   );
 }
 
-/* -------------------- Action Button Component - FIXED to use real services -------------------- */
+/* -------------------- Action Button Component -------------------- */
 const ActionButton = ({ action, tabKey, onAction, busy }) => {
   const handleClick = async () => {
-    if (serviceActions[tabKey]?.[action.id]) {
-      await onAction(action.id, serviceActions[tabKey][action.id]);
-    } else {
-      // Fallback to generic endpoint
-      await onAction(action.id, null, action.endpoint);
-    }
+    await onAction(action.id, null, action.endpoint);
   };
 
   return (
@@ -828,35 +666,29 @@ export default function AdminPanel({ forceOwner = false }) {
     }
   }, [activeTab.key, fetchSocialStatus]);
 
-  /* -------------------- Universal Action Handler - FIXED to use real services -------------------- */
+  /* -------------------- Universal Action Handler -------------------- */
   const handleAction = useCallback(
-    async (actionId, serviceFunction = null, endpoint = null, method = "POST", body = {}) => {
+    async (actionId, endpoint = null) => {
       const actionName = `${activeTab.label} ${actionId}`;
       const actionKey = `${activeTab.key}-${actionId}-${Date.now()}`;
       
       try {
         setBusyAction(prev => ({ ...prev, [actionKey]: true }));
-        logAction(actionName, "started", { endpoint, body });
+        logAction(actionName, "started", { endpoint });
         
         let data;
-        if (serviceFunction) {
-          // Use the real service function with appropriate parameters
-          if (actionId === "test" && activeTab.key === "automation") {
-            data = await serviceFunction("telegram", testMessage);
-          } else {
-            data = await serviceFunction(body);
-          }
+        if (actionId === "test" && activeTab.key === "automation") {
+          // Special handling for test action
+          data = await testSocialPost("telegram", testMessage);
         } else if (endpoint) {
-          // Fallback to generic endpoint
-          data = await adminFetch(endpoint, { method, body: JSON.stringify(body) });
+          data = await adminFetch(endpoint, { method: "POST" });
         } else {
-          throw new Error("No action handler defined");
+          throw new Error("No endpoint defined for this action");
         }
         
         logAction(actionName, "success", { data });
         showToast(`${actionName} completed successfully.`, "success");
         
-        // Refresh data based on tab
         if (activeTab.key === "automation") {
           fetchSocialStatus();
         }
@@ -889,7 +721,6 @@ export default function AdminPanel({ forceOwner = false }) {
       
       if (result.success) {
         showToast(`✅ Test post sent to ${platform}`, "success");
-        // Refresh social status
         fetchSocialStatus();
       } else {
         showToast(`❌ Failed to send to ${platform}: ${result.error || 'Unknown error'}`, "error");
@@ -923,10 +754,7 @@ export default function AdminPanel({ forceOwner = false }) {
               handleAction={handleAction}
               onAction={(action, data) => handleAction(
                 action,
-                serviceActions[tab.key]?.[action],
-                data?.endpoint,
-                data?.method || "POST",
-                data?.body || {}
+                data?.endpoint
               )}
               stats={stats}
             />
