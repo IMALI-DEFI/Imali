@@ -1,4 +1,3 @@
-// src/components/AdminPanel.jsx
 import React, { useEffect, useState, useCallback, Suspense, lazy, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
@@ -21,7 +20,12 @@ class TabErrorBoundary extends React.Component {
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null, retryCount: this.state.retryCount + 1 });
+    this.setState((prev) => ({
+      hasError: false,
+      error: null,
+      retryCount: prev.retryCount + 1,
+    }));
+    this.props.onReset?.();
   };
 
   render() {
@@ -39,7 +43,7 @@ class TabErrorBoundary extends React.Component {
             onClick={this.handleReset}
             className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-medium transition hover:bg-indigo-500"
           >
-            Try Again ({this.state.retryCount}/3)
+            Try Again ({this.state.retryCount})
           </button>
         </div>
       );
@@ -79,26 +83,27 @@ const CexManagement = lazy(() => import("../admin/CexManagement.jsx"));
 const StocksManagement = lazy(() => import("../admin/StocksManagement.jsx"));
 
 /* -------------------- Config -------------------- */
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
 
-/* -------------------- API Helper with Retry Logic -------------------- */
+/* -------------------- API Helper -------------------- */
+const getAuthToken = () => BotAPI.getToken?.() || localStorage.getItem("token");
+
 const adminFetch = async (endpoint, options = {}, retries = 2) => {
-  const token = BotAPI.getToken?.() || localStorage.getItem("token");
+  const token = getAuthToken();
+  if (!token) throw new Error("No authentication token found");
 
-  if (!token) {
-    throw new Error("No authentication token found");
-  }
-
+  const safeEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   let lastError;
-  
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_BASE}${safeEndpoint}`, {
+        method: options.method || "POST",
         ...options,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          ...options.headers,
+          ...(options.headers || {}),
         },
       });
 
@@ -112,7 +117,7 @@ const adminFetch = async (endpoint, options = {}, retries = 2) => {
     } catch (error) {
       lastError = error;
       if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
       }
     }
   }
@@ -120,10 +125,9 @@ const adminFetch = async (endpoint, options = {}, retries = 2) => {
   throw lastError;
 };
 
-/* -------------------- Admin Status Check -------------------- */
 const checkAdminStatus = async () => {
   try {
-    const data = await adminFetch("/api/admin/check");
+    const data = await adminFetch("/api/admin/check", { method: "GET" });
     return data?.is_admin === true;
   } catch (error) {
     console.warn("[AdminPanel] Admin check failed:", error);
@@ -147,9 +151,9 @@ const TAB_SECTIONS = [
         description: "Main numbers and summary cards.",
         help: "Start here first. This page gives you the big picture of what is happening on your platform.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/metrics" },
-          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/metrics/export" }
-        ]
+          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" },
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/metrics/export", method: "GET" },
+        ],
       },
       {
         key: "health",
@@ -159,9 +163,9 @@ const TAB_SECTIONS = [
         description: "Check if services are running correctly.",
         help: "Use this when you want to make sure the backend, bots, and connected services are healthy.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/health/detailed" },
-          { id: "diagnose", label: "Diagnose", icon: "🔬", endpoint: "/api/admin/diagnose" }
-        ]
+          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/health/detailed", method: "GET" },
+          { id: "diagnose", label: "Diagnose", icon: "🔬", endpoint: "/api/admin/diagnose", method: "POST" },
+        ],
       },
     ],
   },
@@ -179,10 +183,10 @@ const TAB_SECTIONS = [
         description: "View and manage user accounts.",
         help: "Use this to search for users, review accounts, and make account-related changes.",
         actions: [
-          { id: "search", label: "Search", icon: "🔍", endpoint: "/api/admin/users/search" },
-          { id: "filter", label: "Filter", icon: "🎯", endpoint: "/api/admin/users/filter" },
-          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/users/export" }
-        ]
+          { id: "search", label: "Search", icon: "🔍", endpoint: "/api/admin/users/search", method: "POST" },
+          { id: "filter", label: "Filter", icon: "🎯", endpoint: "/api/admin/users/filter", method: "POST" },
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/users/export", method: "GET" },
+        ],
       },
       {
         key: "tickets",
@@ -192,10 +196,10 @@ const TAB_SECTIONS = [
         description: "Handle support issues and questions.",
         help: "Open this when users need help or when you want to review unresolved issues.",
         actions: [
-          { id: "reply", label: "Reply", icon: "💬", endpoint: "/api/admin/support/tickets/reply" },
-          { id: "close", label: "Close", icon: "🔒", endpoint: "/api/admin/support/tickets/close" },
-          { id: "assign", label: "Assign", icon: "👤", endpoint: "/api/admin/support/tickets/assign" }
-        ]
+          { id: "reply", label: "Reply", icon: "💬", endpoint: "/api/admin/support/tickets/reply", method: "POST" },
+          { id: "close", label: "Close", icon: "🔒", endpoint: "/api/admin/support/tickets/close", method: "POST" },
+          { id: "assign", label: "Assign", icon: "👤", endpoint: "/api/admin/support/tickets/assign", method: "POST" },
+        ],
       },
       {
         key: "waitlist",
@@ -205,10 +209,10 @@ const TAB_SECTIONS = [
         description: "Review people waiting to join.",
         help: "Use this to track interest before a user has full access to the platform.",
         actions: [
-          { id: "approve", label: "Approve", icon: "✅", endpoint: "/api/admin/waitlist/approve" },
-          { id: "email", label: "Email", icon: "📧", endpoint: "/api/admin/waitlist/email" },
-          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/waitlist/export" }
-        ]
+          { id: "approve", label: "Approve", icon: "✅", endpoint: "/api/admin/waitlist/approve", method: "POST" },
+          { id: "email", label: "Email", icon: "📧", endpoint: "/api/admin/waitlist/email", method: "POST" },
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/waitlist/export", method: "GET" },
+        ],
       },
     ],
   },
@@ -226,10 +230,10 @@ const TAB_SECTIONS = [
         description: "Approve or review withdrawal requests.",
         help: "Go here when you need to review money leaving the platform.",
         actions: [
-          { id: "approve", label: "Approve", icon: "✅", endpoint: "/api/admin/withdrawals/approve" },
-          { id: "reject", label: "Reject", icon: "❌", endpoint: "/api/admin/withdrawals/reject" },
-          { id: "review", label: "Review", icon: "👁️", endpoint: "/api/admin/withdrawals/review" }
-        ]
+          { id: "approve", label: "Approve", icon: "✅", endpoint: "/api/admin/withdrawals/approve", method: "POST" },
+          { id: "reject", label: "Reject", icon: "❌", endpoint: "/api/admin/withdrawals/reject", method: "POST" },
+          { id: "review", label: "Review", icon: "👁️", endpoint: "/api/admin/withdrawals/review", method: "POST" },
+        ],
       },
       {
         key: "fees",
@@ -239,10 +243,10 @@ const TAB_SECTIONS = [
         description: "Manage fee flows and distributions.",
         help: "Use this to understand how collected fees are being split or routed.",
         actions: [
-          { id: "distribute", label: "Distribute", icon: "📊", endpoint: "/api/admin/process-pending-fees" },
-          { id: "calculate", label: "Calculate", icon: "🧮", endpoint: "/api/admin/process-pending-fees?dry_run=true" },
-          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/fee-history" }
-        ]
+          { id: "distribute", label: "Distribute", icon: "📊", endpoint: "/api/admin/process-pending-fees", method: "POST" },
+          { id: "calculate", label: "Calculate", icon: "🧮", endpoint: "/api/admin/process-pending-fees?dry_run=true", method: "POST" },
+          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/fee-history", method: "GET" },
+        ],
       },
       {
         key: "treasury",
@@ -252,10 +256,10 @@ const TAB_SECTIONS = [
         description: "Manage platform-held funds.",
         help: "This is the place for treasury balances, reserves, and fund movement controls.",
         actions: [
-          { id: "transfer", label: "Transfer", icon: "💸", endpoint: "/api/admin/treasury/transfer" },
-          { id: "withdraw", label: "Withdraw", icon: "💰", endpoint: "/api/admin/treasury/withdraw" },
-          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/treasury/history" }
-        ]
+          { id: "transfer", label: "Transfer", icon: "💸", endpoint: "/api/admin/treasury/transfer", method: "POST" },
+          { id: "withdraw", label: "Withdraw", icon: "💰", endpoint: "/api/admin/treasury/withdraw", method: "POST" },
+          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/treasury/history", method: "GET" },
+        ],
       },
     ],
   },
@@ -272,10 +276,10 @@ const TAB_SECTIONS = [
         component: MarketingAutomation,
         description: "Schedule automated marketing posts.",
         help: "Use this to plan recurring content instead of posting everything manually.",
-        // Only keep the test action; all job-specific controls are inside MarketingAutomation
         actions: [
-          { id: "test", label: "Test", icon: "🧪", endpoint: "/api/admin/social/test" }
-        ]
+          { id: "test", label: "Test", icon: "🧪", endpoint: "/api/admin/social/test", method: "POST" },
+          { id: "status", label: "Refresh Status", icon: "🔄", endpoint: "/api/admin/social/status", method: "GET" },
+        ],
       },
       {
         key: "promos",
@@ -285,10 +289,10 @@ const TAB_SECTIONS = [
         description: "Create and manage discount codes.",
         help: "Open this when you want to run a special offer, referral code, or limited-time discount.",
         actions: [
-          { id: "create", label: "Create", icon: "➕", endpoint: "/api/admin/promo/create" },
-          { id: "activate", label: "Activate", icon: "✅", endpoint: "/api/admin/promo/activate" },
-          { id: "deactivate", label: "Deactivate", icon: "❌", endpoint: "/api/admin/promo/deactivate" }
-        ]
+          { id: "create", label: "Create", icon: "➕", endpoint: "/api/admin/promo/create", method: "POST" },
+          { id: "activate", label: "Activate", icon: "✅", endpoint: "/api/admin/promo/activate", method: "POST" },
+          { id: "deactivate", label: "Deactivate", icon: "❌", endpoint: "/api/admin/promo/deactivate", method: "POST" },
+        ],
       },
       {
         key: "announcements",
@@ -298,10 +302,10 @@ const TAB_SECTIONS = [
         description: "Send updates to users.",
         help: "Use this to share important news, updates, feature launches, or maintenance notices.",
         actions: [
-          { id: "create", label: "Create", icon: "➕", endpoint: "/api/admin/announcements" },
-          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/announcements/schedule" },
-          { id: "send", label: "Send", icon: "📤", endpoint: "/api/admin/announcements/send" }
-        ]
+          { id: "create", label: "Create", icon: "➕", endpoint: "/api/admin/announcements", method: "POST" },
+          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/announcements/schedule", method: "POST" },
+          { id: "send", label: "Send", icon: "📤", endpoint: "/api/admin/announcements/send", method: "POST" },
+        ],
       },
       {
         key: "referrals",
@@ -311,10 +315,10 @@ const TAB_SECTIONS = [
         description: "Track user invite performance.",
         help: "This helps you see who is bringing in users and how referrals are performing.",
         actions: [
-          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/referrals/export" },
-          { id: "reward", label: "Reward", icon: "🎁", endpoint: "/api/admin/referrals/reward" },
-          { id: "analyze", label: "Analyze", icon: "📊", endpoint: "/api/admin/referrals/analytics" }
-        ]
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/referrals/export", method: "GET" },
+          { id: "reward", label: "Reward", icon: "🎁", endpoint: "/api/admin/referrals/reward", method: "POST" },
+          { id: "analyze", label: "Analyze", icon: "📊", endpoint: "/api/admin/referrals/analytics", method: "GET" },
+        ],
       },
       {
         key: "social",
@@ -324,10 +328,10 @@ const TAB_SECTIONS = [
         description: "Manage social media activity.",
         help: "Use this to organize social channels and keep marketing activity in one place.",
         actions: [
-          { id: "post", label: "Post", icon: "📱", endpoint: "/api/admin/social/post" },
-          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/social/schedule" },
-          { id: "analytics", label: "Analytics", icon: "📈", endpoint: "/api/admin/social/analytics" }
-        ]
+          { id: "post", label: "Post", icon: "📱", endpoint: "/api/admin/social/post", method: "POST" },
+          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/social/schedule", method: "POST" },
+          { id: "analytics", label: "Analytics", icon: "📈", endpoint: "/api/admin/social/analytics", method: "GET" },
+        ],
       },
     ],
   },
@@ -345,10 +349,10 @@ const TAB_SECTIONS = [
         description: "Mint, burn, and manage token actions.",
         help: "Use this for token supply and token-related admin controls.",
         actions: [
-          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/token/mint" },
-          { id: "burn", label: "Burn", icon: "🔥", endpoint: "/api/admin/token/burn" },
-          { id: "transfer", label: "Transfer", icon: "💸", endpoint: "/api/admin/token/transfer" }
-        ]
+          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/token/mint", method: "POST" },
+          { id: "burn", label: "Burn", icon: "🔥", endpoint: "/api/admin/token/burn", method: "POST" },
+          { id: "transfer", label: "Transfer", icon: "💸", endpoint: "/api/admin/token/transfer", method: "POST" },
+        ],
       },
       {
         key: "buyback",
@@ -358,10 +362,10 @@ const TAB_SECTIONS = [
         description: "Manage token buybacks.",
         help: "This area is for buyback settings, monitoring, and execution.",
         actions: [
-          { id: "execute", label: "Execute", icon: "⚡", endpoint: "/api/admin/buyback/trigger" },
-          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/buyback/schedule" },
-          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/buyback/history" }
-        ]
+          { id: "execute", label: "Execute", icon: "⚡", endpoint: "/api/admin/buyback/trigger", method: "POST" },
+          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/buyback/schedule", method: "POST" },
+          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/buyback/history", method: "GET" },
+        ],
       },
       {
         key: "nfts",
@@ -371,10 +375,10 @@ const TAB_SECTIONS = [
         description: "Manage NFT tiers and NFT items.",
         help: "Go here when you need to manage NFT access or NFT-related rewards.",
         actions: [
-          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/nfts/mint" },
-          { id: "burn", label: "Burn", icon: "🔥", endpoint: "/api/admin/nfts/burn" },
-          { id: "transfer", label: "Transfer", icon: "💸", endpoint: "/api/admin/nfts/transfer" }
-        ]
+          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/nfts/mint", method: "POST" },
+          { id: "burn", label: "Burn", icon: "🔥", endpoint: "/api/admin/nfts/burn", method: "POST" },
+          { id: "transfer", label: "Transfer", icon: "💸", endpoint: "/api/admin/nfts/transfer", method: "POST" },
+        ],
       },
       {
         key: "cex",
@@ -384,10 +388,10 @@ const TAB_SECTIONS = [
         description: "Manage centralized exchange controls.",
         help: "Use this for exchange-related settings, balances, or connected exchange actions.",
         actions: [
-          { id: "deposit", label: "Deposit", icon: "📥", endpoint: "/api/admin/cex/deposit" },
-          { id: "withdraw", label: "Withdraw", icon: "💰", endpoint: "/api/admin/cex/withdraw" },
-          { id: "balance", label: "Balance", icon: "⚖️", endpoint: "/api/admin/cex/balances" }
-        ]
+          { id: "deposit", label: "Deposit", icon: "📥", endpoint: "/api/admin/cex/deposit", method: "POST" },
+          { id: "withdraw", label: "Withdraw", icon: "💰", endpoint: "/api/admin/cex/withdraw", method: "POST" },
+          { id: "balance", label: "Balance", icon: "⚖️", endpoint: "/api/admin/cex/balances", method: "GET" },
+        ],
       },
       {
         key: "stocks",
@@ -397,10 +401,10 @@ const TAB_SECTIONS = [
         description: "Manage stock-related trading tools.",
         help: "This page is for stock-side operations if your platform supports them.",
         actions: [
-          { id: "trade", label: "Trade", icon: "📈", endpoint: "/api/admin/stocks/trade" },
-          { id: "position", label: "Position", icon: "📊", endpoint: "/api/admin/stocks/position" },
-          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/stocks/history" }
-        ]
+          { id: "trade", label: "Trade", icon: "📈", endpoint: "/api/admin/stocks/trade", method: "POST" },
+          { id: "position", label: "Position", icon: "📊", endpoint: "/api/admin/stocks/position", method: "GET" },
+          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/stocks/history", method: "GET" },
+        ],
       },
       {
         key: "access",
@@ -410,10 +414,10 @@ const TAB_SECTIONS = [
         description: "Control admin access and roles.",
         help: "Use this to decide who can see or do certain things in the admin system.",
         actions: [
-          { id: "add", label: "Add", icon: "➕", endpoint: "/api/admin/access/add" },
-          { id: "remove", label: "Remove", icon: "➖", endpoint: "/api/admin/access/remove" },
-          { id: "update", label: "Update", icon: "🔄", endpoint: "/api/admin/access/update" }
-        ]
+          { id: "add", label: "Add", icon: "➕", endpoint: "/api/admin/access/add", method: "POST" },
+          { id: "remove", label: "Remove", icon: "➖", endpoint: "/api/admin/access/remove", method: "POST" },
+          { id: "update", label: "Update", icon: "🔄", endpoint: "/api/admin/access/update", method: "POST" },
+        ],
       },
       {
         key: "audit",
@@ -423,10 +427,10 @@ const TAB_SECTIONS = [
         description: "Review admin actions and events.",
         help: "Open this when you want to see what changes were made and by whom.",
         actions: [
-          { id: "filter", label: "Filter", icon: "🎯", endpoint: "/api/admin/audit-logs/filter" },
-          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/audit-logs/export" },
-          { id: "search", label: "Search", icon: "🔍", endpoint: "/api/admin/audit-logs/search" }
-        ]
+          { id: "filter", label: "Filter", icon: "🎯", endpoint: "/api/admin/audit-logs/filter", method: "POST" },
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/audit-logs/export", method: "GET" },
+          { id: "search", label: "Search", icon: "🔍", endpoint: "/api/admin/audit-logs/search", method: "POST" },
+        ],
       },
     ],
   },
@@ -434,9 +438,9 @@ const TAB_SECTIONS = [
 
 const ALL_TABS = TAB_SECTIONS.flatMap((section) => section.tabs);
 
-/* -------------------- Section Badge Component -------------------- */
+/* -------------------- Small UI Components -------------------- */
 const SectionBadge = ({ emoji, name, description }) => (
-  <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-4 hover:border-white/20 transition">
+  <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-4 transition hover:border-white/20">
     <div className="mb-2 flex items-center gap-2">
       <span className="text-2xl">{emoji}</span>
       <h3 className="font-semibold">{name}</h3>
@@ -445,7 +449,6 @@ const SectionBadge = ({ emoji, name, description }) => (
   </div>
 );
 
-/* -------------------- Sidebar Button -------------------- */
 function SidebarButton({ tab, isActive, onClick, badge, busy }) {
   return (
     <button
@@ -456,7 +459,7 @@ function SidebarButton({ tab, isActive, onClick, badge, busy }) {
         isActive
           ? "border-emerald-500/40 bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
           : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5",
-        busy ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+        busy ? "cursor-not-allowed opacity-50" : "cursor-pointer",
       ].join(" ")}
       title={tab.description}
     >
@@ -466,29 +469,24 @@ function SidebarButton({ tab, isActive, onClick, badge, busy }) {
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{tab.label}</span>
             {badge ? (
-              <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-medium text-red-300 animate-pulse">
+              <span className="animate-pulse rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-medium text-red-300">
                 {badge}
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-xs text-white/45 line-clamp-2">{tab.description}</p>
+          <p className="mt-1 line-clamp-2 text-xs text-white/45">{tab.description}</p>
         </div>
       </div>
     </button>
   );
 }
 
-/* -------------------- Action Button Component -------------------- */
-const ActionButton = ({ action, tabKey, onAction, busy }) => {
-  const handleClick = async () => {
-    await onAction(action.id, null, action.endpoint);
-  };
-
+function ActionButton({ action, onAction, busy }) {
   return (
     <button
-      onClick={handleClick}
+      onClick={() => onAction(action)}
       disabled={busy}
-      className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium transition hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+      className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {busy ? (
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
@@ -498,34 +496,8 @@ const ActionButton = ({ action, tabKey, onAction, busy }) => {
       <span>{action.label}</span>
     </button>
   );
-};
+}
 
-/* -------------------- Test Automation Function -------------------- */
-const testSocialPost = async (platform, message) => {
-  try {
-    const response = await fetch(`${API_BASE}/api/admin/social/test`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BotAPI.getToken?.() || localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({ platform, message })
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || data.error || 'Request failed');
-    }
-    
-    return data;
-  } catch (error) {
-    console.error(`Failed to test ${platform} post:`, error);
-    throw error;
-  }
-};
-
-/* -------------------- Main AdminPanel Component -------------------- */
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
   const navigate = useNavigate();
@@ -535,6 +507,7 @@ export default function AdminPanel({ forceOwner = false }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState("");
   const [active, setActive] = useState("overview");
+  const [tabResetKey, setTabResetKey] = useState(0);
   const [busyAction, setBusyAction] = useState({});
   const [stats, setStats] = useState(null);
   const [toast, setToast] = useState(null);
@@ -555,30 +528,60 @@ export default function AdminPanel({ forceOwner = false }) {
     return ALL_TABS.find((tab) => tab.key === active) || ALL_TABS[0];
   }, [active]);
 
-  /* -------------------- Toast with Auto-hide -------------------- */
-  const showToast = useCallback((message, type = "success", duration = 4500) => {
-    setToast({ message, type, duration });
+  const showToast = useCallback((message, type = "success", duration = 4000) => {
+    setToast({ message, type });
+
     if (window.__imaliToastTimer) {
       window.clearTimeout(window.__imaliToastTimer);
     }
+
     window.__imaliToastTimer = window.setTimeout(() => setToast(null), duration);
   }, []);
 
-  /* -------------------- Log Action to History -------------------- */
   const logAction = useCallback((actionName, status, details = {}) => {
-    setActionHistory(prev => [
+    setActionHistory((prev) => [
       {
         id: Date.now(),
         action: actionName,
         status,
         timestamp: new Date().toISOString(),
-        details
+        details,
       },
-      ...prev.slice(0, 49)
+      ...prev.slice(0, 49),
     ]);
   }, []);
 
-  /* -------------------- Admin Access Check -------------------- */
+  const resetCurrentTab = useCallback(() => {
+    setTabResetKey((prev) => prev + 1);
+  }, []);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const data = await adminFetch("/api/admin/metrics", { method: "GET" });
+      setStats({
+        totalUsers: data.users?.total || 0,
+        pendingWithdrawals: data.withdrawals?.pending || 0,
+        openTickets: data.tickets?.open || 0,
+        activePromos: data.promos?.active || 0,
+        waitlistCount: data.waitlist?.total || 0,
+        activeJobs: data.automation?.active_jobs || 0,
+        totalRevenue: data.revenue?.total || 0,
+        activeBots: data.bots?.active || 0,
+      });
+    } catch (err) {
+      console.error("[AdminPanel] Stats fetch error:", err);
+    }
+  }, []);
+
+  const fetchSocialStatus = useCallback(async () => {
+    try {
+      const data = await adminFetch("/api/admin/social/status", { method: "GET" });
+      setSocialStatus(data);
+    } catch (error) {
+      console.error("[AdminPanel] Failed to fetch social status:", error);
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
@@ -589,7 +592,7 @@ export default function AdminPanel({ forceOwner = false }) {
           return;
         }
 
-        const token = BotAPI.getToken?.() || localStorage.getItem("token");
+        const token = getAuthToken();
         if (!token) {
           if (mounted) setError("Please log in first.");
           return;
@@ -615,50 +618,14 @@ export default function AdminPanel({ forceOwner = false }) {
     };
   }, [forceOwner, BYPASS, TEST_BYPASS]);
 
-  /* -------------------- Fetch Dashboard Stats -------------------- */
   useEffect(() => {
     if (!allowAccess) return;
-
-    let mounted = true;
-
-    const fetchStats = async () => {
-      try {
-        const data = await adminFetch("/api/admin/metrics").catch(() => null);
-        if (!mounted || !data) return;
-
-        setStats({
-          totalUsers: data.users?.total || 0,
-          pendingWithdrawals: data.withdrawals?.pending || 0,
-          openTickets: data.tickets?.open || 0,
-          activePromos: data.promos?.active || 0,
-          waitlistCount: data.waitlist?.total || 0,
-          activeJobs: data.automation?.active_jobs || 0,
-          totalRevenue: data.revenue?.total || 0,
-          activeBots: data.bots?.active || 0
-        });
-      } catch (err) {
-        console.error("[AdminPanel] Stats fetch error:", err);
-      }
-    };
 
     fetchStats();
     const interval = setInterval(fetchStats, 60000);
 
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, [allowAccess]);
-
-  /* -------------------- Fetch Social Status -------------------- */
-  const fetchSocialStatus = useCallback(async () => {
-    try {
-      const data = await adminFetch("/api/admin/social/status").catch(() => null);
-      setSocialStatus(data);
-    } catch (error) {
-      console.error("Failed to fetch social status:", error);
-    }
-  }, []);
+    return () => clearInterval(interval);
+  }, [allowAccess, fetchStats]);
 
   useEffect(() => {
     if (activeTab.key === "automation") {
@@ -666,33 +633,50 @@ export default function AdminPanel({ forceOwner = false }) {
     }
   }, [activeTab.key, fetchSocialStatus]);
 
-  /* -------------------- Universal Action Handler -------------------- */
   const handleAction = useCallback(
-    async (actionId, endpoint = null) => {
-      const actionName = `${activeTab.label} ${actionId}`;
-      const actionKey = `${activeTab.key}-${actionId}-${Date.now()}`;
-      
+    async (action, payload = null, overrideEndpoint = null) => {
+      const endpoint = overrideEndpoint || action?.endpoint;
+      const method = action?.method || "POST";
+      const actionKey = `${activeTab.key}:${action?.id || "custom"}`;
+      const actionName = `${activeTab.label} ${action?.label || action?.id || "Action"}`;
+
+      if (!endpoint) {
+        showToast("No endpoint defined for this action.", "error");
+        throw new Error("No endpoint defined for this action.");
+      }
+
       try {
-        setBusyAction(prev => ({ ...prev, [actionKey]: true }));
-        logAction(actionName, "started", { endpoint });
-        
+        setBusyAction((prev) => ({ ...prev, [actionKey]: true }));
+        logAction(actionName, "started", { endpoint, method, payload });
+
         let data;
-        if (actionId === "test" && activeTab.key === "automation") {
-          // Special handling for test action
-          data = await testSocialPost("telegram", testMessage);
-        } else if (endpoint) {
-          data = await adminFetch(endpoint, { method: "POST" });
+
+        if (action?.id === "test" && activeTab.key === "automation") {
+          data = await adminFetch(endpoint, {
+            method,
+            body: JSON.stringify({
+              platform: "telegram",
+              message: testMessage || `Test post from IMALI Admin Panel at ${new Date().toLocaleString()}`,
+            }),
+          });
         } else {
-          throw new Error("No endpoint defined for this action");
+          data = await adminFetch(endpoint, {
+            method,
+            ...(payload ? { body: JSON.stringify(payload) } : {}),
+          });
         }
-        
+
         logAction(actionName, "success", { data });
         showToast(`${actionName} completed successfully.`, "success");
-        
+
         if (activeTab.key === "automation") {
           fetchSocialStatus();
         }
-        
+
+        if (action?.id === "refresh") {
+          fetchStats();
+        }
+
         return data;
       } catch (err) {
         const errorMessage = err?.message || `${actionName} failed.`;
@@ -700,72 +684,83 @@ export default function AdminPanel({ forceOwner = false }) {
         showToast(errorMessage, "error");
         throw err;
       } finally {
-        setBusyAction(prev => {
-          const newState = { ...prev };
-          delete newState[actionKey];
-          return newState;
+        setBusyAction((prev) => {
+          const next = { ...prev };
+          delete next[actionKey];
+          return next;
         });
       }
     },
-    [activeTab, showToast, logAction, testMessage, fetchSocialStatus]
+    [activeTab, fetchSocialStatus, fetchStats, logAction, showToast, testMessage]
   );
 
-  /* -------------------- Test Social Post -------------------- */
-  const handleTestSocial = useCallback(async (platform) => {
-    try {
-      setBusyAction(prev => ({ ...prev, testSocial: true }));
-      const defaultMessage = `Test post from IMALI Admin Panel at ${new Date().toLocaleString()}`;
-      const message = testMessage || defaultMessage;
-      
-      const result = await testSocialPost(platform, message);
-      
-      if (result.success) {
-        showToast(`✅ Test post sent to ${platform}`, "success");
-        fetchSocialStatus();
-      } else {
-        showToast(`❌ Failed to send to ${platform}: ${result.error || 'Unknown error'}`, "error");
-      }
-    } catch (error) {
-      showToast(`❌ Error sending to ${platform}: ${error.message}`, "error");
-    } finally {
-      setBusyAction(prev => ({ ...prev, testSocial: false }));
-    }
-  }, [testMessage, showToast, fetchSocialStatus]);
+  const handleTestSocial = useCallback(
+    async (platform) => {
+      const actionKey = `testSocial:${platform}`;
 
-  /* -------------------- Tab Navigation -------------------- */
+      try {
+        setBusyAction((prev) => ({ ...prev, [actionKey]: true }));
+
+        const result = await adminFetch("/api/admin/social/test", {
+          method: "POST",
+          body: JSON.stringify({
+            platform,
+            message: testMessage || `Test post from IMALI Admin Panel at ${new Date().toLocaleString()}`,
+          }),
+        });
+
+        if (result?.success === false) {
+          throw new Error(result?.error || `Failed to send test post to ${platform}`);
+        }
+
+        showToast(`Test post sent to ${platform}.`, "success");
+        fetchSocialStatus();
+      } catch (error) {
+        showToast(error.message || `Error sending to ${platform}`, "error");
+      } finally {
+        setBusyAction((prev) => {
+          const next = { ...prev };
+          delete next[actionKey];
+          return next;
+        });
+      }
+    },
+    [fetchSocialStatus, showToast, testMessage]
+  );
+
   const navigateToTab = useCallback((tabKey) => {
     setActive(tabKey);
     setMobileMenuOpen(false);
+    setTabResetKey(0);
   }, []);
 
-  /* -------------------- Tab Renderer -------------------- */
   const renderTab = useCallback(
     (tab) => {
       const Component = tab.component;
 
       return (
-        <TabErrorBoundary tabName={tab.label} key={`${tab.key}-${Date.now()}`}>
+        <TabErrorBoundary tabName={tab.label} onReset={resetCurrentTab}>
           <Suspense fallback={<TabLoader name={tab.label} />}>
             <Component
+              key={`${tab.key}-${tabResetKey}`}
               apiBase={API_BASE}
               account={account}
               busyAction={busyAction}
               showToast={showToast}
               handleAction={handleAction}
-              onAction={(action, data) => handleAction(
-                action,
-                data?.endpoint
-              )}
+              onAction={(actionConfig, payload) => handleAction(actionConfig, payload)}
               stats={stats}
+              refreshStats={fetchStats}
+              resetTab={resetCurrentTab}
+              actionHistory={actionHistory}
             />
           </Suspense>
         </TabErrorBoundary>
       );
     },
-    [account, busyAction, handleAction, showToast, stats]
+    [account, actionHistory, busyAction, fetchStats, handleAction, resetCurrentTab, showToast, stats, tabResetKey]
   );
 
-  /* -------------------- Loading State -------------------- */
   if (checking && !allowAccess) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-4 text-white">
@@ -778,7 +773,6 @@ export default function AdminPanel({ forceOwner = false }) {
     );
   }
 
-  /* -------------------- Access Denied State -------------------- */
   if (!allowAccess) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-6 text-white">
@@ -799,14 +793,12 @@ export default function AdminPanel({ forceOwner = false }) {
     );
   }
 
-  /* -------------------- Main Render -------------------- */
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-950 to-black text-white">
-      {/* Toast Notification */}
       {toast ? (
         <div
           className={[
-            "fixed right-4 top-4 z-[70] max-w-[92vw] animate-in slide-in-from-right rounded-xl border px-4 py-3 shadow-lg backdrop-blur",
+            "fixed right-4 top-4 z-[70] max-w-[92vw] rounded-xl border px-4 py-3 shadow-lg backdrop-blur",
             toast.type === "error"
               ? "border-red-500/40 bg-red-600/90"
               : "border-emerald-500/40 bg-emerald-600/90",
@@ -824,7 +816,6 @@ export default function AdminPanel({ forceOwner = false }) {
         </div>
       ) : null}
 
-      {/* Header */}
       <header className="sticky top-0 z-50 border-b border-white/10 bg-gray-950/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3 lg:px-6">
           <div className="flex items-center gap-3">
@@ -858,7 +849,7 @@ export default function AdminPanel({ forceOwner = false }) {
                   🤖 {stats.activeJobs} jobs
                 </span>
                 {stats.openTickets > 0 ? (
-                  <span className="rounded-full bg-red-500/15 px-2.5 py-1 text-xs text-red-300 animate-pulse">
+                  <span className="animate-pulse rounded-full bg-red-500/15 px-2.5 py-1 text-xs text-red-300">
                     🎫 {stats.openTickets} tickets
                   </span>
                 ) : null}
@@ -875,10 +866,9 @@ export default function AdminPanel({ forceOwner = false }) {
         </div>
       </header>
 
-      {/* Mobile Menu Overlay */}
       {mobileMenuOpen ? (
-        <div 
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" 
+        <div
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
           onClick={() => setMobileMenuOpen(false)}
         >
           <aside
@@ -913,12 +903,8 @@ export default function AdminPanel({ forceOwner = false }) {
                         tab={tab}
                         isActive={active === tab.key}
                         onClick={() => navigateToTab(tab.key)}
-                        badge={
-                          tab.key === "tickets" && stats?.openTickets > 0
-                            ? stats.openTickets
-                            : null
-                        }
-                        busy={busyAction[`${tab.key}-loading`]}
+                        badge={tab.key === "tickets" && stats?.openTickets > 0 ? stats.openTickets : null}
+                        busy={false}
                       />
                     ))}
                   </div>
@@ -929,9 +915,7 @@ export default function AdminPanel({ forceOwner = false }) {
         </div>
       ) : null}
 
-      {/* Main Content */}
       <div className="mx-auto flex max-w-[1600px]">
-        {/* Desktop Sidebar */}
         <aside className="hidden min-h-[calc(100vh-65px)] w-[300px] shrink-0 border-r border-white/10 bg-white/[0.03] lg:block">
           <div className="sticky top-[65px] h-[calc(100vh-65px)] overflow-y-auto p-4">
             <div className="space-y-6">
@@ -952,12 +936,8 @@ export default function AdminPanel({ forceOwner = false }) {
                         tab={tab}
                         isActive={active === tab.key}
                         onClick={() => navigateToTab(tab.key)}
-                        badge={
-                          tab.key === "tickets" && stats?.openTickets > 0
-                            ? stats.openTickets
-                            : null
-                        }
-                        busy={busyAction[`${tab.key}-loading`]}
+                        badge={tab.key === "tickets" && stats?.openTickets > 0 ? stats.openTickets : null}
+                        busy={false}
                       />
                     ))}
                   </div>
@@ -967,9 +947,7 @@ export default function AdminPanel({ forceOwner = false }) {
           </div>
         </aside>
 
-        {/* Main Content Area */}
         <main className="min-w-0 flex-1 px-4 py-4 lg:px-6 lg:py-6">
-          {/* Mobile Stats */}
           {stats ? (
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden">
               <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 text-center">
@@ -991,7 +969,6 @@ export default function AdminPanel({ forceOwner = false }) {
             </div>
           ) : null}
 
-          {/* Selected Tab Header */}
           <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="flex items-start gap-3">
@@ -1001,11 +978,25 @@ export default function AdminPanel({ forceOwner = false }) {
                   <p className="mt-1 text-sm text-white/55">{activeTab.description}</p>
                 </div>
               </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={resetCurrentTab}
+                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200 transition hover:bg-amber-500/20"
+                >
+                  Reset This Tab
+                </button>
+                <button
+                  onClick={fetchStats}
+                  className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20"
+                >
+                  Refresh Panel
+                </button>
+              </div>
             </div>
           </section>
 
-          {/* Tab Actions - Now with real service functions */}
-          {activeTab.actions && activeTab.actions.length > 0 && (
+          {activeTab.actions?.length > 0 && (
             <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
               <div className="mb-3 flex items-center gap-2">
                 <span className="text-xl">⚡</span>
@@ -1016,27 +1007,33 @@ export default function AdminPanel({ forceOwner = false }) {
                   <ActionButton
                     key={action.id}
                     action={action}
-                    tabKey={activeTab.key}
                     onAction={handleAction}
-                    busy={busyAction[`${activeTab.key}-${action.id}`]}
+                    busy={busyAction[`${activeTab.key}:${action.id}`]}
                   />
                 ))}
               </div>
             </section>
           )}
 
-          {/* Tab Content */}
           <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
             {renderTab(activeTab)}
           </section>
 
-          {/* Social Media Status - Only for automation tab */}
           {activeTab.key === "automation" && socialStatus && (
             <section className="mb-6 rounded-3xl border border-cyan-500/20 bg-cyan-500/5 p-4 sm:p-6">
-              <h3 className="mb-3 text-lg font-semibold text-cyan-300">🔌 Integration Status</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-cyan-300">🔌 Integration Status</h3>
+                <button
+                  onClick={fetchSocialStatus}
+                  className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-xs transition hover:bg-cyan-500/20"
+                >
+                  Refresh Status
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="mb-2 flex items-center gap-2">
                     <span className="text-xl">📱</span>
                     <h4 className="font-medium">Telegram</h4>
                   </div>
@@ -1047,15 +1044,17 @@ export default function AdminPanel({ forceOwner = false }) {
                         {socialStatus.telegram?.configured ? "✅ Connected" : "❌ Disconnected"}
                       </span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-3">
                       <span className="text-white/50">Bot:</span>
-                      <span className="text-white/80">{socialStatus.telegram?.bot_name || "Not set"}</span>
+                      <span className="truncate text-right text-white/80">
+                        {socialStatus.telegram?.bot_name || "Not set"}
+                      </span>
                     </div>
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="mb-2 flex items-center gap-2">
                     <span className="text-xl">𝕏</span>
                     <h4 className="font-medium">Twitter/X</h4>
                   </div>
@@ -1070,7 +1069,7 @@ export default function AdminPanel({ forceOwner = false }) {
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="mb-2 flex items-center gap-2">
                     <span className="text-xl">💬</span>
                     <h4 className="font-medium">Discord</h4>
                   </div>
@@ -1087,21 +1086,30 @@ export default function AdminPanel({ forceOwner = false }) {
             </section>
           )}
 
-          {/* Quick Test Panel - For Automation */}
           {activeTab.key === "automation" && (
             <section className="mb-6 rounded-3xl border border-cyan-500/20 bg-cyan-500/5 p-4 sm:p-6">
-              <h3 className="mb-3 text-lg font-semibold text-cyan-300">Quick Test</h3>
-              <p className="mb-4 text-sm text-white/70">
-                Send a test message to your connected platforms to verify they're working.
-              </p>
-              
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-cyan-300">Quick Test</h3>
+                  <p className="text-sm text-white/70">
+                    Send a test message to verify Telegram, Twitter/X, or Discord.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setTestMessage("")}
+                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200 transition hover:bg-amber-500/20"
+                >
+                  Reset Message
+                </button>
+              </div>
+
               <div className="mb-4">
                 <label className="mb-2 block text-sm text-white/50">Test Message (optional)</label>
                 <textarea
                   value={testMessage}
                   onChange={(e) => setTestMessage(e.target.value)}
                   placeholder="Leave empty for default test message..."
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-sm"
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-cyan-400/40"
                   rows="3"
                 />
               </div>
@@ -1109,36 +1117,36 @@ export default function AdminPanel({ forceOwner = false }) {
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={() => handleTestSocial("telegram")}
-                  disabled={busyAction.testSocial}
+                  disabled={!!busyAction["testSocial:telegram"]}
                   className="flex items-center gap-2 rounded-lg bg-[#26A5E4] px-4 py-2 text-sm font-medium transition hover:bg-[#1E8BC3] disabled:opacity-50"
                 >
-                  {busyAction.testSocial ? (
+                  {busyAction["testSocial:telegram"] ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   ) : (
                     <span>📱</span>
                   )}
                   Test Telegram
                 </button>
-                
+
                 <button
                   onClick={() => handleTestSocial("twitter")}
-                  disabled={busyAction.testSocial}
+                  disabled={!!busyAction["testSocial:twitter"]}
                   className="flex items-center gap-2 rounded-lg bg-[#1DA1F2] px-4 py-2 text-sm font-medium transition hover:bg-[#0C7ABF] disabled:opacity-50"
                 >
-                  {busyAction.testSocial ? (
+                  {busyAction["testSocial:twitter"] ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   ) : (
                     <span>𝕏</span>
                   )}
                   Test Twitter/X
                 </button>
-                
+
                 <button
                   onClick={() => handleTestSocial("discord")}
-                  disabled={busyAction.testSocial}
+                  disabled={!!busyAction["testSocial:discord"]}
                   className="flex items-center gap-2 rounded-lg bg-[#5865F2] px-4 py-2 text-sm font-medium transition hover:bg-[#4752C4] disabled:opacity-50"
                 >
-                  {busyAction.testSocial ? (
+                  {busyAction["testSocial:discord"] ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   ) : (
                     <span>💬</span>
@@ -1149,7 +1157,6 @@ export default function AdminPanel({ forceOwner = false }) {
             </section>
           )}
 
-          {/* Help Section */}
           <section className="rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1167,7 +1174,7 @@ export default function AdminPanel({ forceOwner = false }) {
             {showHelpPanel ? (
               <div className="space-y-3">
                 <p className="text-sm leading-6 text-white/70">{activeTab.help}</p>
-                
+
                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
                   {TAB_SECTIONS.map((section) => (
                     <SectionBadge
@@ -1182,10 +1189,8 @@ export default function AdminPanel({ forceOwner = false }) {
             ) : null}
           </section>
 
-          {/* Footer */}
           <div className="mt-6 text-center text-[11px] text-white/25">
-            Admin Panel • {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : "No wallet connected"} • 
-            Last updated: {new Date().toLocaleTimeString()}
+            Admin Panel • {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : "No wallet connected"} • Last updated: {new Date().toLocaleTimeString()}
           </div>
         </main>
       </div>
