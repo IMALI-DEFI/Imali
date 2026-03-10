@@ -131,6 +131,162 @@ const checkAdminStatus = async () => {
   }
 };
 
+/* -------------------- Real Service Actions -------------------- */
+const serviceActions = {
+  // Dashboard actions
+  overview: {
+    refresh: async () => adminFetch("/api/admin/metrics"),
+    export: async () => adminFetch("/api/admin/metrics/export", { method: "POST" })
+  },
+  health: {
+    refresh: async () => adminFetch("/api/health/detailed"),
+    diagnose: async () => adminFetch("/api/admin/diagnose", { method: "POST" })
+  },
+  
+  // User actions
+  users: {
+    search: async (query) => adminFetch(`/api/admin/users?search=${encodeURIComponent(query)}`),
+    filter: async (filters) => adminFetch("/api/admin/users/filter", { method: "POST", body: JSON.stringify(filters) }),
+    export: async () => adminFetch("/api/admin/users/export", { method: "POST" })
+  },
+  tickets: {
+    reply: async (ticketId, message) => adminFetch(`/api/admin/support/tickets/${ticketId}/messages`, { 
+      method: "POST", 
+      body: JSON.stringify({ message, is_admin: true }) 
+    }),
+    close: async (ticketId) => adminFetch(`/api/admin/support/tickets/${ticketId}/status`, { 
+      method: "PUT", 
+      body: JSON.stringify({ status: "closed" }) 
+    }),
+    assign: async (ticketId, adminId) => adminFetch(`/api/admin/support/tickets/${ticketId}/assign`, { 
+      method: "POST", 
+      body: JSON.stringify({ admin_id: adminId }) 
+    })
+  },
+  waitlist: {
+    approve: async (email) => adminFetch(`/api/admin/waitlist/activate/${encodeURIComponent(email)}`, { method: "POST" }),
+    email: async (email, message) => adminFetch("/api/admin/waitlist/email", { 
+      method: "POST", 
+      body: JSON.stringify({ email, message }) 
+    }),
+    export: async () => adminFetch("/api/admin/waitlist/export", { method: "POST" })
+  },
+  
+  // Money actions
+  withdrawals: {
+    approve: async (id) => adminFetch(`/api/admin/withdrawals/${id}/approve`, { method: "POST" }),
+    reject: async (id) => adminFetch(`/api/admin/withdrawals/${id}/reject`, { method: "POST" }),
+    review: async (id) => adminFetch(`/api/admin/withdrawals/${id}`, { method: "GET" })
+  },
+  fees: {
+    distribute: async () => adminFetch("/api/admin/process-pending-fees", { method: "POST", body: JSON.stringify({ dry_run: false }) }),
+    calculate: async () => adminFetch("/api/admin/process-pending-fees", { method: "POST", body: JSON.stringify({ dry_run: true }) }),
+    history: async () => adminFetch("/api/admin/fee-history")
+  },
+  treasury: {
+    transfer: async (amount, to) => adminFetch("/api/admin/treasury/transfer", { 
+      method: "POST", 
+      body: JSON.stringify({ amount, to }) 
+    }),
+    withdraw: async (amount, address) => adminFetch("/api/admin/treasury/withdraw", { 
+      method: "POST", 
+      body: JSON.stringify({ amount, address }) 
+    }),
+    history: async () => adminFetch("/api/admin/treasury/history")
+  },
+  
+  // Marketing actions
+  automation: {
+    schedule: async (jobId, schedule) => adminFetch("/api/admin/automation/schedule", { 
+      method: "POST", 
+      body: JSON.stringify({ jobId, schedule }) 
+    }),
+    pause: async (jobId) => adminFetch("/api/admin/automation/jobs/toggle", { 
+      method: "POST", 
+      body: JSON.stringify({ jobId }) 
+    }),
+    test: async (platform, message) => adminFetch("/api/admin/social/test", { 
+      method: "POST", 
+      body: JSON.stringify({ platform, message }) 
+    })
+  },
+  promos: {
+    create: async (data) => adminFetch("/api/admin/promo/create", { method: "POST", body: JSON.stringify(data) }),
+    activate: async (id) => adminFetch(`/api/admin/promo/${id}/activate`, { method: "POST" }),
+    deactivate: async (id) => adminFetch(`/api/admin/promo/${id}/deactivate`, { method: "POST" })
+  },
+  announcements: {
+    create: async (data) => adminFetch("/api/admin/announcements", { method: "POST", body: JSON.stringify(data) }),
+    schedule: async (id, time) => adminFetch(`/api/admin/announcements/${id}/schedule`, { 
+      method: "POST", 
+      body: JSON.stringify({ scheduled_time: time }) 
+    }),
+    send: async (id) => adminFetch(`/api/admin/announcements/${id}/send`, { method: "POST" })
+  },
+  referrals: {
+    export: async () => adminFetch("/api/admin/referrals/export", { method: "POST" }),
+    reward: async (userId, amount) => adminFetch("/api/admin/referrals/reward", { 
+      method: "POST", 
+      body: JSON.stringify({ user_id: userId, amount }) 
+    }),
+    analyze: async () => adminFetch("/api/admin/referrals/analytics")
+  },
+  social: {
+    post: async (platform, content) => adminFetch("/api/admin/social/post", { 
+      method: "POST", 
+      body: JSON.stringify({ platform, content }) 
+    }),
+    schedule: async (data) => adminFetch("/api/admin/social/schedule", { method: "POST", body: JSON.stringify(data) }),
+    analytics: async () => adminFetch("/api/admin/social/analytics")
+  },
+  
+  // Advanced actions
+  token: {
+    mint: async (amount, to) => adminFetch("/api/admin/token/mint", { method: "POST", body: JSON.stringify({ amount, to }) }),
+    burn: async (amount) => adminFetch("/api/admin/token/burn", { method: "POST", body: JSON.stringify({ amount }) }),
+    transfer: async (amount, from, to) => adminFetch("/api/admin/token/transfer", { 
+      method: "POST", 
+      body: JSON.stringify({ amount, from, to }) 
+    })
+  },
+  buyback: {
+    execute: async (amount) => adminFetch("/api/admin/buyback/trigger", { method: "POST", body: JSON.stringify({ amount }) }),
+    schedule: async (data) => adminFetch("/api/admin/buyback/schedule", { method: "POST", body: JSON.stringify(data) }),
+    history: async () => adminFetch("/api/admin/buyback/history")
+  },
+  nfts: {
+    mint: async (data) => adminFetch("/api/admin/nfts/mint", { method: "POST", body: JSON.stringify(data) }),
+    burn: async (id) => adminFetch(`/api/admin/nfts/${id}/burn`, { method: "POST" }),
+    transfer: async (id, to) => adminFetch(`/api/admin/nfts/${id}/transfer`, { method: "POST", body: JSON.stringify({ to }) })
+  },
+  cex: {
+    deposit: async (amount, asset) => adminFetch("/api/admin/cex/deposit", { method: "POST", body: JSON.stringify({ amount, asset }) }),
+    withdraw: async (amount, asset, address) => adminFetch("/api/admin/cex/withdraw", { 
+      method: "POST", 
+      body: JSON.stringify({ amount, asset, address }) 
+    }),
+    balance: async () => adminFetch("/api/admin/cex/balances")
+  },
+  stocks: {
+    trade: async (symbol, action, shares) => adminFetch("/api/admin/stocks/trade", { 
+      method: "POST", 
+      body: JSON.stringify({ symbol, action, shares }) 
+    }),
+    position: async (symbol) => adminFetch(`/api/admin/stocks/positions/${symbol}`),
+    history: async () => adminFetch("/api/admin/stocks/history")
+  },
+  access: {
+    add: async (email, role) => adminFetch("/api/admin/access/add", { method: "POST", body: JSON.stringify({ email, role }) }),
+    remove: async (email) => adminFetch("/api/admin/access/remove", { method: "POST", body: JSON.stringify({ email }) }),
+    update: async (email, role) => adminFetch("/api/admin/access/update", { method: "POST", body: JSON.stringify({ email, role }) })
+  },
+  audit: {
+    filter: async (filters) => adminFetch("/api/admin/audit-logs/filter", { method: "POST", body: JSON.stringify(filters) }),
+    export: async () => adminFetch("/api/admin/audit-logs/export", { method: "POST" }),
+    search: async (query) => adminFetch(`/api/admin/audit-logs?search=${encodeURIComponent(query)}`)
+  }
+};
+
 /* -------------------- Sections -------------------- */
 const TAB_SECTIONS = [
   {
@@ -146,6 +302,10 @@ const TAB_SECTIONS = [
         component: DashboardOverview,
         description: "Main numbers and summary cards.",
         help: "Start here first. This page gives you the big picture of what is happening on your platform.",
+        actions: [
+          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/metrics" },
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/metrics/export" }
+        ]
       },
       {
         key: "health",
@@ -154,6 +314,10 @@ const TAB_SECTIONS = [
         component: SystemHealth,
         description: "Check if services are running correctly.",
         help: "Use this when you want to make sure the backend, bots, and connected services are healthy.",
+        actions: [
+          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/health/detailed" },
+          { id: "diagnose", label: "Diagnose", icon: "🔬", endpoint: "/api/admin/diagnose" }
+        ]
       },
     ],
   },
@@ -170,6 +334,11 @@ const TAB_SECTIONS = [
         component: UserManagement,
         description: "View and manage user accounts.",
         help: "Use this to search for users, review accounts, and make account-related changes.",
+        actions: [
+          { id: "search", label: "Search", icon: "🔍", endpoint: "/api/admin/users/search" },
+          { id: "filter", label: "Filter", icon: "🎯", endpoint: "/api/admin/users/filter" },
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/users/export" }
+        ]
       },
       {
         key: "tickets",
@@ -178,6 +347,11 @@ const TAB_SECTIONS = [
         component: SupportTickets,
         description: "Handle support issues and questions.",
         help: "Open this when users need help or when you want to review unresolved issues.",
+        actions: [
+          { id: "reply", label: "Reply", icon: "💬", endpoint: "/api/admin/support/tickets/reply" },
+          { id: "close", label: "Close", icon: "🔒", endpoint: "/api/admin/support/tickets/close" },
+          { id: "assign", label: "Assign", icon: "👤", endpoint: "/api/admin/support/tickets/assign" }
+        ]
       },
       {
         key: "waitlist",
@@ -186,6 +360,11 @@ const TAB_SECTIONS = [
         component: WaitlistManagement,
         description: "Review people waiting to join.",
         help: "Use this to track interest before a user has full access to the platform.",
+        actions: [
+          { id: "approve", label: "Approve", icon: "✅", endpoint: "/api/admin/waitlist/approve" },
+          { id: "email", label: "Email", icon: "📧", endpoint: "/api/admin/waitlist/email" },
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/waitlist/export" }
+        ]
       },
     ],
   },
@@ -202,6 +381,11 @@ const TAB_SECTIONS = [
         component: WithdrawalManagement,
         description: "Approve or review withdrawal requests.",
         help: "Go here when you need to review money leaving the platform.",
+        actions: [
+          { id: "approve", label: "Approve", icon: "✅", endpoint: "/api/admin/withdrawals/approve" },
+          { id: "reject", label: "Reject", icon: "❌", endpoint: "/api/admin/withdrawals/reject" },
+          { id: "review", label: "Review", icon: "👁️", endpoint: "/api/admin/withdrawals/review" }
+        ]
       },
       {
         key: "fees",
@@ -210,6 +394,11 @@ const TAB_SECTIONS = [
         component: FeeDistributor,
         description: "Manage fee flows and distributions.",
         help: "Use this to understand how collected fees are being split or routed.",
+        actions: [
+          { id: "distribute", label: "Distribute", icon: "📊", endpoint: "/api/admin/process-pending-fees" },
+          { id: "calculate", label: "Calculate", icon: "🧮", endpoint: "/api/admin/process-pending-fees?dry_run=true" },
+          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/fee-history" }
+        ]
       },
       {
         key: "treasury",
@@ -218,6 +407,11 @@ const TAB_SECTIONS = [
         component: TreasuryManagement,
         description: "Manage platform-held funds.",
         help: "This is the place for treasury balances, reserves, and fund movement controls.",
+        actions: [
+          { id: "transfer", label: "Transfer", icon: "💸", endpoint: "/api/admin/treasury/transfer" },
+          { id: "withdraw", label: "Withdraw", icon: "💰", endpoint: "/api/admin/treasury/withdraw" },
+          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/treasury/history" }
+        ]
       },
     ],
   },
@@ -234,6 +428,11 @@ const TAB_SECTIONS = [
         component: MarketingAutomation,
         description: "Schedule automated marketing posts.",
         help: "Use this to plan recurring content instead of posting everything manually.",
+        actions: [
+          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/automation/schedule" },
+          { id: "pause", label: "Pause", icon: "⏸️", endpoint: "/api/admin/automation/jobs/toggle" },
+          { id: "test", label: "Test", icon: "🧪", endpoint: "/api/admin/social/test" }
+        ]
       },
       {
         key: "promos",
@@ -242,6 +441,11 @@ const TAB_SECTIONS = [
         component: PromoManagement,
         description: "Create and manage discount codes.",
         help: "Open this when you want to run a special offer, referral code, or limited-time discount.",
+        actions: [
+          { id: "create", label: "Create", icon: "➕", endpoint: "/api/admin/promo/create" },
+          { id: "activate", label: "Activate", icon: "✅", endpoint: "/api/admin/promo/activate" },
+          { id: "deactivate", label: "Deactivate", icon: "❌", endpoint: "/api/admin/promo/deactivate" }
+        ]
       },
       {
         key: "announcements",
@@ -250,6 +454,11 @@ const TAB_SECTIONS = [
         component: Announcements,
         description: "Send updates to users.",
         help: "Use this to share important news, updates, feature launches, or maintenance notices.",
+        actions: [
+          { id: "create", label: "Create", icon: "➕", endpoint: "/api/admin/announcements" },
+          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/announcements/schedule" },
+          { id: "send", label: "Send", icon: "📤", endpoint: "/api/admin/announcements/send" }
+        ]
       },
       {
         key: "referrals",
@@ -258,6 +467,11 @@ const TAB_SECTIONS = [
         component: ReferralAnalytics,
         description: "Track user invite performance.",
         help: "This helps you see who is bringing in users and how referrals are performing.",
+        actions: [
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/referrals/export" },
+          { id: "reward", label: "Reward", icon: "🎁", endpoint: "/api/admin/referrals/reward" },
+          { id: "analyze", label: "Analyze", icon: "📊", endpoint: "/api/admin/referrals/analytics" }
+        ]
       },
       {
         key: "social",
@@ -266,6 +480,11 @@ const TAB_SECTIONS = [
         component: SocialManager,
         description: "Manage social media activity.",
         help: "Use this to organize social channels and keep marketing activity in one place.",
+        actions: [
+          { id: "post", label: "Post", icon: "📱", endpoint: "/api/admin/social/post" },
+          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/social/schedule" },
+          { id: "analytics", label: "Analytics", icon: "📈", endpoint: "/api/admin/social/analytics" }
+        ]
       },
     ],
   },
@@ -282,6 +501,11 @@ const TAB_SECTIONS = [
         component: TokenManagement,
         description: "Mint, burn, and manage token actions.",
         help: "Use this for token supply and token-related admin controls.",
+        actions: [
+          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/token/mint" },
+          { id: "burn", label: "Burn", icon: "🔥", endpoint: "/api/admin/token/burn" },
+          { id: "transfer", label: "Transfer", icon: "💸", endpoint: "/api/admin/token/transfer" }
+        ]
       },
       {
         key: "buyback",
@@ -290,6 +514,11 @@ const TAB_SECTIONS = [
         component: BuyBackDashboard,
         description: "Manage token buybacks.",
         help: "This area is for buyback settings, monitoring, and execution.",
+        actions: [
+          { id: "execute", label: "Execute", icon: "⚡", endpoint: "/api/admin/buyback/trigger" },
+          { id: "schedule", label: "Schedule", icon: "⏰", endpoint: "/api/admin/buyback/schedule" },
+          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/buyback/history" }
+        ]
       },
       {
         key: "nfts",
@@ -298,6 +527,11 @@ const TAB_SECTIONS = [
         component: NFTManagement,
         description: "Manage NFT tiers and NFT items.",
         help: "Go here when you need to manage NFT access or NFT-related rewards.",
+        actions: [
+          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/nfts/mint" },
+          { id: "burn", label: "Burn", icon: "🔥", endpoint: "/api/admin/nfts/burn" },
+          { id: "transfer", label: "Transfer", icon: "💸", endpoint: "/api/admin/nfts/transfer" }
+        ]
       },
       {
         key: "cex",
@@ -306,6 +540,11 @@ const TAB_SECTIONS = [
         component: CexManagement,
         description: "Manage centralized exchange controls.",
         help: "Use this for exchange-related settings, balances, or connected exchange actions.",
+        actions: [
+          { id: "deposit", label: "Deposit", icon: "📥", endpoint: "/api/admin/cex/deposit" },
+          { id: "withdraw", label: "Withdraw", icon: "💰", endpoint: "/api/admin/cex/withdraw" },
+          { id: "balance", label: "Balance", icon: "⚖️", endpoint: "/api/admin/cex/balances" }
+        ]
       },
       {
         key: "stocks",
@@ -314,6 +553,11 @@ const TAB_SECTIONS = [
         component: StocksManagement,
         description: "Manage stock-related trading tools.",
         help: "This page is for stock-side operations if your platform supports them.",
+        actions: [
+          { id: "trade", label: "Trade", icon: "📈", endpoint: "/api/admin/stocks/trade" },
+          { id: "position", label: "Position", icon: "📊", endpoint: "/api/admin/stocks/position" },
+          { id: "history", label: "History", icon: "📜", endpoint: "/api/admin/stocks/history" }
+        ]
       },
       {
         key: "access",
@@ -322,6 +566,11 @@ const TAB_SECTIONS = [
         component: AccessControl,
         description: "Control admin access and roles.",
         help: "Use this to decide who can see or do certain things in the admin system.",
+        actions: [
+          { id: "add", label: "Add", icon: "➕", endpoint: "/api/admin/access/add" },
+          { id: "remove", label: "Remove", icon: "➖", endpoint: "/api/admin/access/remove" },
+          { id: "update", label: "Update", icon: "🔄", endpoint: "/api/admin/access/update" }
+        ]
       },
       {
         key: "audit",
@@ -330,6 +579,11 @@ const TAB_SECTIONS = [
         component: AuditLogs,
         description: "Review admin actions and events.",
         help: "Open this when you want to see what changes were made and by whom.",
+        actions: [
+          { id: "filter", label: "Filter", icon: "🎯", endpoint: "/api/admin/audit-logs/filter" },
+          { id: "export", label: "Export", icon: "📥", endpoint: "/api/admin/audit-logs/export" },
+          { id: "search", label: "Search", icon: "🔍", endpoint: "/api/admin/audit-logs/search" }
+        ]
       },
     ],
   },
@@ -381,64 +635,29 @@ function SidebarButton({ tab, isActive, onClick, badge, busy }) {
   );
 }
 
-/* -------------------- Action Button Component -------------------- */
-const ActionButton = ({ action, onClick, busy }) => {
-  const actionLabels = {
-    refresh: { icon: "🔄", label: "Refresh" },
-    export: { icon: "📥", label: "Export" },
-    search: { icon: "🔍", label: "Search" },
-    filter: { icon: "🎯", label: "Filter" },
-    approve: { icon: "✅", label: "Approve" },
-    reject: { icon: "❌", label: "Reject" },
-    create: { icon: "➕", label: "Create" },
-    edit: { icon: "✏️", label: "Edit" },
-    delete: { icon: "🗑️", label: "Delete" },
-    send: { icon: "📤", label: "Send" },
-    schedule: { icon: "⏰", label: "Schedule" },
-    test: { icon: "🧪", label: "Test" },
-    pause: { icon: "⏸️", label: "Pause" },
-    resume: { icon: "▶️", label: "Resume" },
-    diagnose: { icon: "🔬", label: "Diagnose" },
-    distribute: { icon: "📊", label: "Distribute" },
-    calculate: { icon: "🧮", label: "Calculate" },
-    history: { icon: "📜", label: "History" },
-    transfer: { icon: "💸", label: "Transfer" },
-    withdraw: { icon: "💰", label: "Withdraw" },
-    deposit: { icon: "📥", label: "Deposit" },
-    balance: { icon: "⚖️", label: "Balance" },
-    trade: { icon: "📈", label: "Trade" },
-    position: { icon: "📊", label: "Position" },
-    mint: { icon: "🪙", label: "Mint" },
-    burn: { icon: "🔥", label: "Burn" },
-    execute: { icon: "⚡", label: "Execute" },
-    reward: { icon: "🎁", label: "Reward" },
-    analyze: { icon: "📊", label: "Analyze" },
-    post: { icon: "📱", label: "Post" },
-    analytics: { icon: "📈", label: "Analytics" },
-    reply: { icon: "💬", label: "Reply" },
-    close: { icon: "🔒", label: "Close" },
-    assign: { icon: "👤", label: "Assign" },
-    email: { icon: "📧", label: "Email" },
-    review: { icon: "👁️", label: "Review" },
-    add: { icon: "➕", label: "Add" },
-    remove: { icon: "➖", label: "Remove" },
-    update: { icon: "🔄", label: "Update" }
+/* -------------------- Action Button Component - FIXED to use real services -------------------- */
+const ActionButton = ({ action, tabKey, onAction, busy }) => {
+  const handleClick = async () => {
+    if (serviceActions[tabKey]?.[action.id]) {
+      await onAction(action.id, serviceActions[tabKey][action.id]);
+    } else {
+      // Fallback to generic endpoint
+      await onAction(action.id, null, action.endpoint);
+    }
   };
-
-  const label = actionLabels[action] || { icon: "🔘", label: action };
 
   return (
     <button
-      onClick={onClick}
+      onClick={handleClick}
       disabled={busy}
       className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium transition hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {busy ? (
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
       ) : (
-        <span>{label.icon}</span>
+        <span>{action.icon}</span>
       )}
-      <span>{label.label}</span>
+      <span>{action.label}</span>
     </button>
   );
 };
@@ -454,7 +673,13 @@ const testSocialPost = async (platform, message) => {
       },
       body: JSON.stringify({ platform, message })
     });
+    
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || data.error || 'Request failed');
+    }
+    
     return data;
   } catch (error) {
     console.error(`Failed to test ${platform} post:`, error);
@@ -476,9 +701,10 @@ export default function AdminPanel({ forceOwner = false }) {
   const [stats, setStats] = useState(null);
   const [toast, setToast] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showHelpPanel, setShowHelpPanel] = useState(false); // Help panel starts collapsed
+  const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [actionHistory, setActionHistory] = useState([]);
   const [testMessage, setTestMessage] = useState("");
+  const [socialStatus, setSocialStatus] = useState(null);
 
   const isDevelopment =
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
@@ -586,38 +812,70 @@ export default function AdminPanel({ forceOwner = false }) {
     };
   }, [allowAccess]);
 
-  /* -------------------- Universal Action Handler -------------------- */
+  /* -------------------- Fetch Social Status -------------------- */
+  const fetchSocialStatus = useCallback(async () => {
+    try {
+      const data = await adminFetch("/api/admin/social/status").catch(() => null);
+      setSocialStatus(data);
+    } catch (error) {
+      console.error("Failed to fetch social status:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab.key === "automation") {
+      fetchSocialStatus();
+    }
+  }, [activeTab.key, fetchSocialStatus]);
+
+  /* -------------------- Universal Action Handler - FIXED to use real services -------------------- */
   const handleAction = useCallback(
-    async (endpoint, method = "POST", body = {}, actionName = "Action") => {
-      const actionId = `${actionName}-${Date.now()}`;
+    async (actionId, serviceFunction = null, endpoint = null, method = "POST", body = {}) => {
+      const actionName = `${activeTab.label} ${actionId}`;
+      const actionKey = `${activeTab.key}-${actionId}-${Date.now()}`;
       
       try {
-        setBusyAction(prev => ({ ...prev, [actionId]: true }));
-        logAction(actionName, "started", { endpoint, method, body });
+        setBusyAction(prev => ({ ...prev, [actionKey]: true }));
+        logAction(actionName, "started", { endpoint, body });
         
-        const data = await adminFetch(endpoint, {
-          method,
-          body: JSON.stringify(body),
-        });
+        let data;
+        if (serviceFunction) {
+          // Use the real service function with appropriate parameters
+          if (actionId === "test" && activeTab.key === "automation") {
+            data = await serviceFunction("telegram", testMessage);
+          } else {
+            data = await serviceFunction(body);
+          }
+        } else if (endpoint) {
+          // Fallback to generic endpoint
+          data = await adminFetch(endpoint, { method, body: JSON.stringify(body) });
+        } else {
+          throw new Error("No action handler defined");
+        }
         
-        logAction(actionName, "success", { endpoint, response: data });
+        logAction(actionName, "success", { data });
         showToast(`${actionName} completed successfully.`, "success");
+        
+        // Refresh data based on tab
+        if (activeTab.key === "automation") {
+          fetchSocialStatus();
+        }
         
         return data;
       } catch (err) {
         const errorMessage = err?.message || `${actionName} failed.`;
-        logAction(actionName, "error", { endpoint, error: errorMessage });
+        logAction(actionName, "error", { error: errorMessage });
         showToast(errorMessage, "error");
         throw err;
       } finally {
         setBusyAction(prev => {
           const newState = { ...prev };
-          delete newState[actionId];
+          delete newState[actionKey];
           return newState;
         });
       }
     },
-    [showToast, logAction]
+    [activeTab, showToast, logAction, testMessage, fetchSocialStatus]
   );
 
   /* -------------------- Test Social Post -------------------- */
@@ -631,15 +889,17 @@ export default function AdminPanel({ forceOwner = false }) {
       
       if (result.success) {
         showToast(`✅ Test post sent to ${platform}`, "success");
+        // Refresh social status
+        fetchSocialStatus();
       } else {
-        showToast(`❌ Failed to send to ${platform}: ${result.error}`, "error");
+        showToast(`❌ Failed to send to ${platform}: ${result.error || 'Unknown error'}`, "error");
       }
     } catch (error) {
       showToast(`❌ Error sending to ${platform}: ${error.message}`, "error");
     } finally {
       setBusyAction(prev => ({ ...prev, testSocial: false }));
     }
-  }, [testMessage, showToast]);
+  }, [testMessage, showToast, fetchSocialStatus]);
 
   /* -------------------- Tab Navigation -------------------- */
   const navigateToTab = useCallback((tabKey) => {
@@ -662,10 +922,11 @@ export default function AdminPanel({ forceOwner = false }) {
               showToast={showToast}
               handleAction={handleAction}
               onAction={(action, data) => handleAction(
-                data?.endpoint || `/api/admin/${tab.key}/${action}`,
+                action,
+                serviceActions[tab.key]?.[action],
+                data?.endpoint,
                 data?.method || "POST",
-                data?.body || {},
-                `${tab.label} ${action}`
+                data?.body || {}
               )}
               stats={stats}
             />
@@ -902,7 +1163,7 @@ export default function AdminPanel({ forceOwner = false }) {
             </div>
           ) : null}
 
-          {/* Selected Tab Header - MOVED TO TOP */}
+          {/* Selected Tab Header */}
           <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="flex items-start gap-3">
@@ -915,10 +1176,88 @@ export default function AdminPanel({ forceOwner = false }) {
             </div>
           </section>
 
+          {/* Tab Actions - Now with real service functions */}
+          {activeTab.actions && activeTab.actions.length > 0 && (
+            <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="text-xl">⚡</span>
+                <h3 className="text-lg font-semibold">Quick Actions</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {activeTab.actions.map((action) => (
+                  <ActionButton
+                    key={action.id}
+                    action={action}
+                    tabKey={activeTab.key}
+                    onAction={handleAction}
+                    busy={busyAction[`${activeTab.key}-${action.id}`]}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Tab Content */}
           <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
             {renderTab(activeTab)}
           </section>
+
+          {/* Social Media Status - Only for automation tab */}
+          {activeTab.key === "automation" && socialStatus && (
+            <section className="mb-6 rounded-3xl border border-cyan-500/20 bg-cyan-500/5 p-4 sm:p-6">
+              <h3 className="mb-3 text-lg font-semibold text-cyan-300">🔌 Integration Status</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xl">📱</span>
+                    <h4 className="font-medium">Telegram</h4>
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-white/50">Status:</span>
+                      <span className={socialStatus.telegram?.configured ? "text-green-400" : "text-red-400"}>
+                        {socialStatus.telegram?.configured ? "✅ Connected" : "❌ Disconnected"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-white/50">Bot:</span>
+                      <span className="text-white/80">{socialStatus.telegram?.bot_name || "Not set"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xl">𝕏</span>
+                    <h4 className="font-medium">Twitter/X</h4>
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-white/50">Status:</span>
+                      <span className={socialStatus.twitter?.configured ? "text-green-400" : "text-red-400"}>
+                        {socialStatus.twitter?.configured ? "✅ Connected" : "❌ Disconnected"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xl">💬</span>
+                    <h4 className="font-medium">Discord</h4>
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-white/50">Status:</span>
+                      <span className={socialStatus.discord?.configured ? "text-green-400" : "text-red-400"}>
+                        {socialStatus.discord?.configured ? "✅ Connected" : "❌ Disconnected"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Quick Test Panel - For Automation */}
           {activeTab.key === "automation" && (
@@ -982,7 +1321,7 @@ export default function AdminPanel({ forceOwner = false }) {
             </section>
           )}
 
-          {/* Help Section - MOVED TO BOTTOM */}
+          {/* Help Section */}
           <section className="rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
