@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import useAdmin from '../hooks/useAdmin';
 
-const AUTOMATION_JOBS = [
+// Predefined job definitions (will be replaced by API data when available)
+const DEFAULT_JOBS = [
   {
     id: 'daily_social_summary',
     name: 'Daily Performance Summary',
@@ -123,6 +124,25 @@ const SOCIAL_CHANNELS = [
   { id: 'in_app', name: 'In-App', icon: '🖥️', color: 'bg-purple-600' }
 ];
 
+// Helper to format cron expressions for display
+const formatCron = (cron) => {
+  if (!cron) return '';
+  const map = {
+    '*/5 * * * *': 'Every 5 min',
+    '*/15 * * * *': 'Every 15 min',
+    '*/30 * * * *': 'Every 30 min',
+    '0 * * * *': 'Every hour',
+    '0 9 * * *': 'Daily 9 AM',
+    '0 12,18 * * *': '12 PM, 6 PM',
+    '0 12 * * *': 'Daily noon',
+    '0 18 * * *': 'Daily 6 PM',
+    '0 0 * * *': 'Daily midnight',
+    '0 0 * * 1': 'Weekly Monday',
+    '0 0 1 * *': 'Monthly 1st'
+  };
+  return map[cron] || cron;
+};
+
 function JobCard({ job, onToggle, onRunNow, onEdit, onViewLogs }) {
   const getStatusColor = (status) => {
     switch(status) {
@@ -131,13 +151,6 @@ function JobCard({ job, onToggle, onRunNow, onEdit, onViewLogs }) {
       case 'error': return 'bg-red-400';
       default: return 'bg-gray-400';
     }
-  };
-
-  const formatCron = (cron) => {
-    if (cron === '*/5 * * * *') return 'Every 5 min';
-    if (cron === '0 9 * * *') return 'Daily 9 AM';
-    if (cron === '0 12,18 * * *') return '12 PM, 6 PM';
-    return cron;
   };
 
   return (
@@ -174,7 +187,7 @@ function JobCard({ job, onToggle, onRunNow, onEdit, onViewLogs }) {
         </div>
         <div className="bg-black/30 rounded p-2">
           <div className="text-white/40">Next Run</div>
-          <div className="text-white">{job.nextRun || 'Calculating...'}</div>
+          <div className="text-white">{job.nextRun || '—'}</div>
         </div>
         <div className="bg-black/30 rounded p-2">
           <div className="text-white/40">Last Run</div>
@@ -239,6 +252,16 @@ function PostTemplateEditor({ job, onSave, onTest }) {
     '{dashboardUrl}', '{date}', '{botCount}', '{discoveries}'
   ];
 
+  const handleInsertVariable = (variable) => {
+    const textarea = document.querySelector('textarea');
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newText = templates[selectedChannel].substring(0, start) + variable + templates[selectedChannel].substring(end);
+    setTemplates({ ...templates, [selectedChannel]: newText });
+    // Restore cursor after update (React will reset it, but we can focus later)
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
@@ -258,6 +281,7 @@ function PostTemplateEditor({ job, onSave, onTest }) {
       </div>
 
       <textarea
+        key={selectedChannel} // force re-render when channel changes
         value={templates[selectedChannel]}
         onChange={(e) => setTemplates({ ...templates, [selectedChannel]: e.target.value })}
         rows={6}
@@ -269,13 +293,7 @@ function PostTemplateEditor({ job, onSave, onTest }) {
         {variables.map(v => (
           <button
             key={v}
-            onClick={() => {
-              const textarea = document.querySelector('textarea');
-              const start = textarea.selectionStart;
-              const end = textarea.selectionEnd;
-              const newText = templates[selectedChannel].substring(0, start) + v + templates[selectedChannel].substring(end);
-              setTemplates({ ...templates, [selectedChannel]: newText });
-            }}
+            onClick={() => handleInsertVariable(v)}
             className="text-[10px] px-2 py-1 bg-purple-500/20 text-purple-300 rounded hover:bg-purple-500/30"
           >
             {v}
@@ -354,21 +372,20 @@ export default function MarketingAutomation() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      // adminFetch returns the data directly, not a Response object
       const data = await adminFetch('/api/admin/automation/jobs');
-      
-      // Data is already parsed JSON
-      setJobs(data.jobs || AUTOMATION_JOBS);
+      // Assume API returns { jobs: [], stats: {} }
+      setJobs(data.jobs || []);
       setStats(data.stats || {
         totalPosts: 0,
         totalEmails: 0,
         conversionRate: 0,
-        activeJobs: data.jobs?.filter(j => j.status === 'active').length || 0
+        activeJobs: (data.jobs || []).filter(j => j.status === 'active').length
       });
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
-      // Fallback to mock data
-      setJobs(AUTOMATION_JOBS.map(j => ({
+      showToast('Using mock data (API unavailable)', 'warning');
+      // Fallback to default jobs with some realistic mock data
+      setJobs(DEFAULT_JOBS.map(j => ({
         ...j,
         status: j.id === 'daily_social_summary' ? 'active' : 'paused',
         lastRun: j.id === 'daily_social_summary' ? '2 hours ago' : null,
@@ -378,7 +395,7 @@ export default function MarketingAutomation() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch]);
+  }, [adminFetch, showToast]);
 
   useEffect(() => {
     fetchJobs();
@@ -388,18 +405,18 @@ export default function MarketingAutomation() {
 
   const handleToggle = async (jobId) => {
     try {
-      const data = await adminFetch('/api/admin/automation/jobs/toggle', {
+      await adminFetch('/api/admin/automation/jobs/toggle', {
         method: 'POST',
         body: JSON.stringify({ jobId })
       });
-      
-      // Update local state
-      setJobs(jobs.map(j => 
-        j.id === jobId 
-          ? { ...j, status: j.status === 'active' ? 'paused' : 'active' }
-          : j
+      // Optimistic update
+      setJobs(prev => prev.map(job =>
+        job.id === jobId
+          ? { ...job, status: job.status === 'active' ? 'paused' : 'active' }
+          : job
       ));
-      showToast(`Job ${jobs.find(j => j.id === jobId)?.name} ${jobs.find(j => j.id === jobId)?.status === 'active' ? 'paused' : 'resumed'}`, 'success');
+      const job = jobs.find(j => j.id === jobId);
+      showToast(`Job ${job?.name} ${job?.status === 'active' ? 'paused' : 'resumed'}`, 'success');
     } catch (error) {
       showToast('Failed to toggle job', 'error');
     }
@@ -407,13 +424,12 @@ export default function MarketingAutomation() {
 
   const handleRunNow = async (jobId) => {
     try {
-      const data = await adminFetch('/api/admin/automation/jobs/run', {
+      await adminFetch('/api/admin/automation/jobs/run', {
         method: 'POST',
         body: JSON.stringify({ jobId })
       });
-      
-      showToast(`Job executed successfully`, 'success');
-      fetchJobs(); // Refresh to show updated lastRun
+      showToast(`Job triggered successfully`, 'success');
+      fetchJobs(); // refresh to update lastRun
     } catch (error) {
       showToast('Failed to run job', 'error');
     }
@@ -425,12 +441,11 @@ export default function MarketingAutomation() {
 
   const handleSaveSchedule = async (jobId, schedule) => {
     try {
-      const data = await adminFetch('/api/admin/automation/schedule', {
+      await adminFetch('/api/admin/automation/schedule', {
         method: 'POST',
         body: JSON.stringify({ jobId, schedule })
       });
-      
-      setJobs(jobs.map(j => j.id === jobId ? { ...j, schedule } : j));
+      setJobs(prev => prev.map(job => job.id === jobId ? { ...job, schedule } : job));
       setEditingJob(null);
       showToast('Schedule updated', 'success');
     } catch (error) {
@@ -450,11 +465,10 @@ export default function MarketingAutomation() {
 
   const handleTestPost = async (jobId, channel, template) => {
     try {
-      const data = await adminFetch('/api/admin/automation/test', {
+      await adminFetch('/api/admin/automation/test', {
         method: 'POST',
         body: JSON.stringify({ jobId, channel, template })
       });
-      
       showToast(`Test post sent to ${channel}`, 'success');
     } catch (error) {
       showToast('Failed to send test post', 'error');
@@ -496,18 +510,24 @@ export default function MarketingAutomation() {
       </div>
 
       {/* Job Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {jobs.map(job => (
-          <JobCard
-            key={job.id}
-            job={job}
-            onToggle={handleToggle}
-            onRunNow={handleRunNow}
-            onEdit={handleEdit}
-            onViewLogs={handleViewLogs}
-          />
-        ))}
-      </div>
+      {jobs.length === 0 ? (
+        <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center">
+          <p className="text-white/50">No automation jobs found.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {jobs.map(job => (
+            <JobCard
+              key={job.id}
+              job={job}
+              onToggle={handleToggle}
+              onRunNow={handleRunNow}
+              onEdit={handleEdit}
+              onViewLogs={handleViewLogs}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Edit Schedule Modal */}
       {editingJob && (
@@ -535,11 +555,15 @@ export default function MarketingAutomation() {
                   <PostTemplateEditor
                     job={editingJob}
                     onSave={async (jobId, templates) => {
-                      await adminFetch('/api/admin/automation/templates', {
-                        method: 'POST',
-                        body: JSON.stringify({ jobId, templates })
-                      });
-                      showToast('Templates saved', 'success');
+                      try {
+                        await adminFetch('/api/admin/automation/templates', {
+                          method: 'POST',
+                          body: JSON.stringify({ jobId, templates })
+                        });
+                        showToast('Templates saved', 'success');
+                      } catch (error) {
+                        showToast('Failed to save templates', 'error');
+                      }
                     }}
                     onTest={handleTestPost}
                   />
