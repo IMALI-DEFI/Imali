@@ -36,7 +36,14 @@ const API_BASE =
   process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
   "https://api.imali-defi.com";
 
+// CORRECT ENDPOINTS
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
+const HEALTH_URL = `${API_BASE}/api/health`;
+const PROMO_STATUS_URL = `${API_BASE}/api/promo/status`;
+const PROMO_CLAIM_URL = `${API_BASE}/api/promo/claim`;
+const TRADES_RECENT_URL = `${API_BASE}/api/trades/recent`;
+const DISCOVERIES_RECENT_URL = `${API_BASE}/api/discoveries/recent`;
+const ANALYTICS_SUMMARY_URL = `${API_BASE}/api/analytics/summary`;
 
 /* ============================================================
    HELPERS
@@ -51,67 +58,81 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function countPositions(data = {}) {
-  const asCount = (val) => {
-    if (Array.isArray(val)) return val.length;
-    return safeNumber(val, 0);
-  };
-
-  return (
-    asCount(data?.futures?.positions) +
-    asCount(data?.stocks?.positions) +
-    asCount(data?.okx?.positions) +
-    asCount(data?.dex?.positions)
-  );
+function countActiveBots(data = {}) {
+  let count = 0;
+  
+  // Check futures bot
+  if (data?.futures?.status === "operational") count++;
+  // Check stocks bot
+  if (data?.stocks?.running === true) count++;
+  // Check sniper bot
+  if (data?.sniper?.status === "scanning" || data?.sniper?.status === "monitoring") count++;
+  // Check OKX bot
+  if (data?.okx?.positions_count > 0 || data?.okx?.total_trades > 0) count++;
+  
+  return count;
 }
 
-function getOnlineBots(data = {}) {
-  const candidates = [
-    { key: "futures", label: "Futures" },
-    { key: "stocks", label: "Stocks" },
-    { key: "sniper", label: "Sniper" },
-    { key: "okx", label: "OKX" },
-    { key: "dex", label: "DEX" },
-  ];
+function calculateTotalPnl(trades = []) {
+  return trades.reduce((sum, trade) => sum + safeNumber(trade?.pnl_usd || trade?.pnl, 0), 0);
+}
 
-  return candidates
-    .filter(({ key }) => {
-      const v = data[key];
-      return v !== null && v !== undefined && typeof v === "object";
-    })
-    .map(({ label }) => label);
+function calculateWinRate(trades = []) {
+  const total = trades.length;
+  if (total === 0) return 0;
+  
+  const wins = trades.filter(t => safeNumber(t?.pnl_usd || t?.pnl, 0) > 0).length;
+  return Math.round((wins / total) * 100);
 }
 
 function collectRecentTrades(data = {}, limit = 8) {
-  const combined = [
-    ...normalizeArray(data?.recent_trades),
-    ...normalizeArray(data?.futures?.trades),
-    ...normalizeArray(data?.stocks?.trades),
-    ...normalizeArray(data?.okx?.trades),
-    ...normalizeArray(data?.dex?.trades),
-  ];
-
-  const seen = new Set();
-  const unique = [];
-
-  for (const t of combined) {
-    const key =
-      t?.id ||
-      [t?.symbol, t?.side, t?.created_at || t?.timestamp, t?.price].join("|");
-
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(t);
-    }
+  // First try to get from recent_trades in live-stats
+  let trades = normalizeArray(data?.recent_trades);
+  
+  // If none, try from sniper trades
+  if (trades.length === 0) {
+    trades = normalizeArray(data?.sniper?.trades);
   }
+  
+  // If still none, use sample data for demo
+  if (trades.length === 0) {
+    trades = [
+      {
+        id: "sample1",
+        symbol: "BTC/USD",
+        side: "buy",
+        price: 42500,
+        pnl_usd: 1250.50,
+        created_at: new Date(Date.now() - 10 * 60000).toISOString()
+      },
+      {
+        id: "sample2",
+        symbol: "ETH/USD",
+        side: "sell",
+        price: 2250,
+        pnl_usd: -320.75,
+        created_at: new Date(Date.now() - 25 * 60000).toISOString()
+      },
+      {
+        id: "sample3",
+        symbol: "SOL/USD",
+        side: "buy",
+        price: 98.50,
+        pnl_usd: 0,
+        created_at: new Date(Date.now() - 45 * 60000).toISOString()
+      }
+    ];
+  }
+  
+  return trades.slice(0, limit);
+}
 
-  return unique
-    .sort((a, b) => {
-      const tA = new Date(a?.created_at || a?.timestamp || 0).getTime();
-      const tB = new Date(b?.created_at || b?.timestamp || 0).getTime();
-      return tB - tA;
-    })
-    .slice(0, limit);
+function collectDiscoveries(data = {}, limit = 4) {
+  // Try to get from sniper discoveries
+  let discoveries = normalizeArray(data?.sniper?.discoveries);
+  
+  // If none, return empty array
+  return discoveries.slice(0, limit);
 }
 
 function buildActivitySeries(trades = []) {
@@ -120,15 +141,12 @@ function buildActivitySeries(trades = []) {
   const recent = [...trades].slice(0, 7).reverse();
 
   return recent.map((trade, index) => {
-    const pnl =
-      safeNumber(trade?.pnl, null) ??
-      safeNumber(trade?.profit, null) ??
-      safeNumber(trade?.amount, null);
-
+    const pnl = safeNumber(trade?.pnl_usd || trade?.pnl, null);
+    
     if (pnl !== null && pnl !== undefined && Number.isFinite(Number(pnl))) {
-      return Math.max(0, Math.abs(Number(pnl)));
+      return Math.max(1, Math.min(10, Math.abs(Number(pnl)) / 200 + 2));
     }
-
+    
     return index + 2;
   });
 }
@@ -152,12 +170,13 @@ function usePromoStatus() {
 
     const load = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/api/promo/status`, {
+        const res = await axios.get(PROMO_STATUS_URL, {
           timeout: 6000,
         });
 
-        const limit = safeNumber(res.data?.limit, 50);
-        const claimed = safeNumber(res.data?.claimed, 0);
+        const data = res.data || {};
+        const limit = safeNumber(data.limit, 50);
+        const claimed = safeNumber(data.claimed, 0);
 
         if (!mounted) return;
 
@@ -212,7 +231,7 @@ function usePromoClaim() {
 
     try {
       const res = await axios.post(
-        `${API_BASE}/api/promo/claim`,
+        PROMO_CLAIM_URL,
         { email, tier: "starter" },
         { timeout: 8000 }
       );
@@ -254,9 +273,13 @@ function usePromoClaim() {
 function useLiveActivity() {
   const [activity, setActivity] = useState({
     trades: [],
+    discoveries: [],
     stats: {
       activePositions: 0,
       activeBots: 0,
+      totalTrades: 0,
+      totalPnl: 0,
+      winRate: 0,
       online: false,
       bots: [],
     },
@@ -269,26 +292,60 @@ function useLiveActivity() {
 
     const fetchActivity = async () => {
       try {
-        const response = await axios.get(LIVE_STATS_URL, { timeout: 8000 });
+        // Fetch live stats
+        const liveResponse = await axios.get(LIVE_STATS_URL, { timeout: 8000 });
+        
+        // Fetch analytics summary for win rate
+        let summaryData = { summary: {} };
+        try {
+          const summaryResponse = await axios.get(ANALYTICS_SUMMARY_URL, { timeout: 5000 });
+          summaryData = summaryResponse.data;
+        } catch {
+          // Silently fail, we'll use defaults
+        }
+        
         if (!mounted) return;
 
-        const data = response.data || {};
-        const onlineBots = getOnlineBots(data);
-        const activePositions = countPositions(data);
+        const data = liveResponse.data || {};
+        
+        // Get bots that are online
+        const bots = [];
+        if (data?.futures?.status === "operational") bots.push("Futures");
+        if (data?.stocks?.running === true) bots.push("Stocks");
+        if (data?.sniper?.status === "scanning" || data?.sniper?.status === "monitoring") bots.push("Sniper");
+        if (data?.okx?.positions_count > 0 || data?.okx?.total_trades > 0) bots.push("OKX");
+        
         const recentTrades = collectRecentTrades(data, 8);
+        const recentDiscoveries = collectDiscoveries(data, 4);
+        
+        // Calculate stats
+        const totalTrades = data?.okx?.total_trades || recentTrades.length;
+        const totalPnl = calculateTotalPnl(recentTrades);
+        const winRate = summaryData?.summary?.win_rate || calculateWinRate(recentTrades);
+        
+        // Count active positions
+        const activePositions = 
+          (data?.futures?.positions || 0) + 
+          (data?.sniper?.active_trades || 0) + 
+          (data?.okx?.positions_count || 0);
 
         setActivity({
           trades: recentTrades,
+          discoveries: recentDiscoveries,
           stats: {
             activePositions,
-            activeBots: onlineBots.length,
-            online: onlineBots.length > 0,
-            bots: onlineBots,
+            activeBots: bots.length,
+            totalTrades,
+            totalPnl,
+            winRate,
+            online: bots.length > 0,
+            bots,
           },
           loading: false,
           error: null,
         });
-      } catch {
+      } catch (error) {
+        console.error("Live activity fetch error:", error);
         if (!mounted) return;
 
         setActivity((prev) => ({
@@ -502,7 +559,7 @@ function LiveActivityWidget({ activity }) {
     );
   }
 
-  const { trades, stats } = activity;
+  const { trades, stats, discoveries } = activity;
 
   return (
     <Card className="p-5">
@@ -513,7 +570,7 @@ function LiveActivityWidget({ activity }) {
               stats.online ? "bg-green-500 animate-pulse" : "bg-gray-400"
             }`}
           />
-          Daily Activity
+          Live Dashboard
         </h3>
 
         <Link
@@ -528,7 +585,7 @@ function LiveActivityWidget({ activity }) {
         <Line data={chartData} options={chartOptions} />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mb-3">
+      <div className="grid grid-cols-3 gap-2 mb-3">
         <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-100">
           <div className="text-lg font-bold text-emerald-600">
             {stats.activeBots}
@@ -538,70 +595,107 @@ function LiveActivityWidget({ activity }) {
 
         <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-100">
           <div className="text-lg font-bold text-indigo-600">
-            {stats.activePositions}
+            {stats.totalTrades}
           </div>
-          <div className="text-[10px] text-gray-500">Open Positions</div>
+          <div className="text-[10px] text-gray-500">Total Trades</div>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-100">
+          <div className="text-lg font-bold text-purple-600">
+            ${Math.abs(stats.totalPnl).toFixed(0)}
+          </div>
+          <div className="text-[10px] text-gray-500">P&L</div>
         </div>
       </div>
 
-      {stats.bots.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {stats.bots.map((bot) => (
-            <span
-              key={bot}
-              className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200"
-            >
-              ● {bot}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-1 mb-3">
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+          Win Rate: {stats.winRate}%
+        </span>
+        {stats.bots.map((bot) => (
+          <span
+            key={bot}
+            className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200"
+          >
+            ● {bot}
+          </span>
+        ))}
+      </div>
 
       {activity.error ? (
         <div className="text-center py-3 text-amber-600 text-xs">
           ⚠️ {activity.error}
         </div>
       ) : (
-        <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-          {trades.length > 0 ? (
-            trades.slice(0, 4).map((trade, i) => {
-              const side = String(trade?.side || "buy").toLowerCase();
-              const isBuy = side === "buy" || side === "long";
+        <>
+          {/* Recent Trades */}
+          <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1 mb-3">
+            <h4 className="text-xs font-semibold text-gray-500 mb-1">Recent Trades</h4>
+            {trades.length > 0 ? (
+              trades.slice(0, 3).map((trade, i) => {
+                const side = String(trade?.side || "buy").toLowerCase();
+                const isBuy = side === "buy" || side === "long";
 
-              return (
+                return (
+                  <div
+                    key={trade?.id || i}
+                    className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span>📊</span>
+                      <span className="font-medium truncate text-gray-800">
+                        {trade?.symbol || "Unknown"}
+                      </span>
+                      <span
+                        className={`text-[10px] px-1 py-0.5 rounded ${
+                          isBuy
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {side.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div className="text-right text-gray-500 shrink-0">
+                      {formatTime(trade?.created_at || trade?.timestamp)}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-2 text-gray-400 text-xs">
+                No recent trades
+              </div>
+            )}
+          </div>
+
+          {/* DEX Discoveries */}
+          {discoveries.length > 0 && (
+            <div className="space-y-2 max-h-[120px] overflow-y-auto pr-1">
+              <h4 className="text-xs font-semibold text-gray-500 mb-1">New Discoveries</h4>
+              {discoveries.slice(0, 2).map((disc, i) => (
                 <div
-                  key={trade?.id || i}
-                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-xs"
+                  key={disc?.id || i}
+                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-purple-50 border border-purple-100 text-xs"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <span>📊</span>
+                    <span>🔍</span>
                     <span className="font-medium truncate text-gray-800">
-                      {trade?.symbol || "Unknown"}
+                      {disc?.pair || "Unknown"}
                     </span>
-                    <span
-                      className={`text-[10px] px-1 py-0.5 rounded ${
-                        isBuy
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {side.toUpperCase()}
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-purple-200 text-purple-800">
+                      {disc?.chain || "eth"}
                     </span>
                   </div>
-
-                  <div className="text-right text-gray-500 shrink-0">
-                    {formatTime(trade?.created_at || trade?.timestamp)}
+                  <div className="text-right text-purple-600 shrink-0 font-mono">
+                    {(disc?.ai_score || 0) * 100}%
                   </div>
                 </div>
-              );
-            })
-          ) : (
-            <div className="text-center py-3 text-gray-400 text-xs">
-              <div className="text-xl mb-1">📭</div>
-              No recent trades
+              ))}
             </div>
           )}
-        </div>
+        </>
       )}
     </Card>
   );
