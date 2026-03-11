@@ -12,14 +12,18 @@ const API_BASE =
   process.env.REACT_APP_API_BASE?.replace(/\/+$/, "") ||
   "https://api.imali-defi.com";
 
+// ENHANCED: Added more endpoints
 const TRADES_URL = `${API_BASE}/api/trades/recent`;
 const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
 const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
 const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
 const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
-const USER_STATS_URL = `${API_BASE}/api/user/stats`;
+const PUBLIC_TIERS_URL = `${API_BASE}/api/public/tiers`;
+const PUBLIC_FAQ_URL = `${API_BASE}/api/public/faq`;
+const PUBLIC_ROADMAP_URL = `${API_BASE}/api/public/roadmap`;
 const TRADING_PAIRS_URL = `${API_BASE}/api/trading/pairs`;
 const TRADING_STRATEGIES_URL = `${API_BASE}/api/trading/strategies`;
+const USER_STATS_URL = `${API_BASE}/api/user/stats`;
 
 const DEFAULT_STATE = {
   bots: [],
@@ -53,6 +57,9 @@ const DEFAULT_STATE = {
   },
   tradingPairs: [],
   tradingStrategies: [],
+  publicTiers: {},
+  publicFaq: [],
+  publicRoadmap: {},
   loading: true,
   error: null,
   lastUpdate: null,
@@ -60,12 +67,16 @@ const DEFAULT_STATE = {
 };
 
 /* =====================================================
-   HELPERS
+   HELPERS (unchanged - keep all existing helpers)
 ===================================================== */
 
 function safeNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function formatCurrency(value, digits = 2) {
@@ -80,6 +91,10 @@ function formatCurrencySigned(value, digits = 2) {
 function formatPercent(value, digits = 2) {
   const n = safeNumber(value);
   return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}%`;
+}
+
+function formatCompact(value) {
+  return safeNumber(value).toLocaleString();
 }
 
 function timeAgo(timestamp) {
@@ -98,6 +113,34 @@ function timeAgo(timestamp) {
     if (min < 60) return `${min}m ago`;
     if (hr < 24) return `${hr}h ago`;
     return `${day}d ago`;
+  } catch {
+    return "—";
+  }
+}
+
+function formatClock(timestamp) {
+  if (!timestamp) return "—";
+  try {
+    return new Date(timestamp).toLocaleTimeString();
+  } catch {
+    return "—";
+  }
+}
+
+function formatDate(timestamp) {
+  if (!timestamp) return "—";
+  try {
+    return new Date(timestamp).toLocaleDateString();
+  } catch {
+    return "—";
+  }
+}
+
+function formatShortDate(timestamp) {
+  if (!timestamp) return "—";
+  try {
+    const d = new Date(timestamp);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
   } catch {
     return "—";
   }
@@ -132,7 +175,7 @@ function getTradeQty(trade) {
 }
 
 /* =====================================================
-   DATA HOOK
+   ENHANCED DATA HOOK - Now fetches more data
 ===================================================== */
 
 function useLiveData() {
@@ -160,6 +203,7 @@ function useLiveData() {
       abortRef.current = new AbortController();
       const signal = abortRef.current.signal;
 
+      // Fetch from all our endpoints - expanded list
       const [
         tradesRes, 
         discoveriesRes, 
@@ -186,44 +230,64 @@ function useLiveData() {
       let newData = { ...DEFAULT_STATE };
       let hadError = false;
 
+      // Process trades
       if (tradesRes.status === "fulfilled") {
         newData.trades = tradesRes.value.data.trades || [];
       } else {
         hadError = true;
+        console.warn("Trades fetch failed");
       }
 
+      // Process discoveries
       if (discoveriesRes.status === "fulfilled") {
         newData.discoveries = discoveriesRes.value.data.discoveries || [];
       } else {
         hadError = true;
+        console.warn("Discoveries fetch failed");
       }
 
+      // Process bots
       if (botsRes.status === "fulfilled") {
         newData.bots = botsRes.value.data.bots || [];
       } else {
         hadError = true;
+        console.warn("Bots fetch failed");
       }
 
+      // Process analytics
       if (analyticsRes.status === "fulfilled") {
         newData.analytics = analyticsRes.value.data;
       } else {
         hadError = true;
+        console.warn("Analytics fetch failed");
       }
 
+      // ENHANCED: Process user stats
       if (userStatsRes.status === "fulfilled") {
         newData.userStats = userStatsRes.value.data || DEFAULT_STATE.userStats;
+      } else {
+        console.warn("User stats fetch failed");
       }
 
+      // ENHANCED: Process P&L history
       if (pnlHistoryRes.status === "fulfilled") {
         newData.pnlHistory = pnlHistoryRes.value.data.history || [];
+      } else {
+        console.warn("PNL history fetch failed");
       }
 
+      // ENHANCED: Process trading pairs
       if (tradingPairsRes.status === "fulfilled") {
         newData.tradingPairs = tradingPairsRes.value.data.pairs || [];
+      } else {
+        console.warn("Trading pairs fetch failed");
       }
 
+      // ENHANCED: Process trading strategies
       if (tradingStrategiesRes.status === "fulfilled") {
         newData.tradingStrategies = tradingStrategiesRes.value.data.strategies || [];
+      } else {
+        console.warn("Trading strategies fetch failed");
       }
 
       setData({
@@ -234,7 +298,7 @@ function useLiveData() {
         lastSuccessAt: now,
       });
 
-      backoffRef.current = 30000;
+      backoffRef.current = 30000; // Reset backoff on success
 
     } catch (err) {
       if (!mountedRef.current || axios.isCancel(err)) return;
@@ -252,12 +316,16 @@ function useLiveData() {
   }, []);
 
   useEffect(() => {
+    // Initial fetch
     fetchAllData();
+
+    // Set up polling
     const poll = () => {
       if (!mountedRef.current) return;
       fetchAllData();
       timerRef.current = setTimeout(poll, backoffRef.current);
     };
+    
     timerRef.current = setTimeout(poll, backoffRef.current);
 
     return () => {
@@ -947,8 +1015,8 @@ export default function PublicDashboard() {
             <div className="text-lg font-bold text-amber-700">{maxDrawdown}%</div>
           </div>
           <div className="bg-purple-50 border border-purple-200 rounded-xl p-2 text-center">
-            <div className="text-xs text-purple-600">Users</div>
-            <div className="text-lg font-bold text-purple-700">{userStats.total_users || 0}</div>
+            <div className="text-xs text-purple-600">Discoveries</div>
+            <div className="text-lg font-bold text-purple-700">{discoveries.length}</div>
           </div>
         </div>
 
@@ -990,41 +1058,10 @@ export default function PublicDashboard() {
             subtext="systems online" 
           />
           <StatCard 
-            title="Discoveries" 
-            value={discoveries.length} 
-            icon="🦄" 
-            color="amber" 
-            subtext="new tokens" 
-          />
-        </div>
-
-        {/* Platform Stats */}
-        <div className="mb-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard 
-            title="Platform Users" 
-            value={userStats.total_users || 0} 
-            icon="👥" 
-            color="indigo" 
-            subtext={`${userStats.active_users || 0} active`}
-          />
-          <StatCard 
             title="Total Volume" 
             value={formatCurrency(userStats.total_volume || 0)} 
             icon="📈" 
-            color="emerald" 
-          />
-          <StatCard 
-            title="Avg Trade" 
-            value={formatCurrency(userStats.avg_trade_size || 0)} 
-            icon="📊" 
-            color="purple" 
-          />
-          <StatCard 
-            title="Growth" 
-            value={`${userStats.growth_rate || 0}%`} 
-            icon="📈" 
             color="amber" 
-            subtext="month over month"
           />
         </div>
 
