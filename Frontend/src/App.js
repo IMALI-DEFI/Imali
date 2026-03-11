@@ -1,4 +1,3 @@
-// src/App.js
 import React from "react";
 import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
 
@@ -35,6 +34,9 @@ import FundingGuide from "./pages/FundingGuide";
 /* Public Dashboard */
 import PublicDashboard from "./pages/PublicDashboard";
 
+/* Referral Page */
+import ReferralSystem from "./components/ReferralSystem";
+
 /* Auth */
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
@@ -43,8 +45,8 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 ===================================================== */
 function LoadingSpinner() {
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black">
-      <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
     </div>
   );
 }
@@ -52,11 +54,6 @@ function LoadingSpinner() {
 /* =====================================================
    ROUTE GUARDS
 ===================================================== */
-
-/**
- * RequireAuth — user must be logged in.
- * Used for: /activation, /billing, /billing-dashboard, /admin
- */
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -76,10 +73,6 @@ function RequireAuth({ children }) {
   return children;
 }
 
-/**
- * RequireActivation — user must be logged in AND fully activated.
- * Used for: /dashboard
- */
 function RequireActivation({ children }) {
   const { user, activation, activationComplete, loading } = useAuth();
   const location = useLocation();
@@ -116,9 +109,6 @@ function RequireActivation({ children }) {
   return children;
 }
 
-/**
- * RedirectIfActivated — if user is already fully activated, redirect to dashboard.
- */
 function RedirectIfActivated({ children }) {
   const { user, activationComplete, loading } = useAuth();
 
@@ -129,7 +119,7 @@ function RedirectIfActivated({ children }) {
   }
 
   if (activationComplete) {
-    console.log("[RedirectIfActivated] Already activated, → /dashboard");
+    console.log("[RedirectIfActivated] Already activated, redirecting to /dashboard");
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -141,13 +131,13 @@ function RedirectIfActivated({ children }) {
 ===================================================== */
 function NotFound() {
   return (
-    <div className="min-h-[60vh] flex items-center justify-center text-center px-6">
+    <div className="min-h-[60vh] flex items-center justify-center px-6 text-center">
       <div>
-        <h1 className="text-3xl font-bold mb-2">Page not found</h1>
-        <p className="text-gray-500 mb-4">
-          The page you're looking for doesn't exist.
+        <h1 className="mb-2 text-3xl font-bold text-white">Page not found</h1>
+        <p className="mb-4 text-gray-400">
+          The page you&apos;re looking for doesn&apos;t exist.
         </p>
-        <Link to="/" className="underline text-blue-500">
+        <Link to="/" className="text-emerald-400 underline">
           Go home
         </Link>
       </div>
@@ -178,6 +168,7 @@ function AppContent() {
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/funding-guide" element={<FundingGuide />} />
+          <Route path="/referrals" element={<ReferralSystem />} />
 
           {/* ===== Public Demo & Live Dashboard ===== */}
           <Route path="/demo" element={<TradeDemo />} />
@@ -190,7 +181,7 @@ function AppContent() {
             element={user ? <Navigate to="/dashboard" replace /> : <Login />}
           />
 
-          {/* ===== Onboarding (auth required; activation NOT required) ===== */}
+          {/* ===== Onboarding ===== */}
           <Route
             path="/billing"
             element={
@@ -208,7 +199,7 @@ function AppContent() {
             }
           />
 
-          {/* ===== Billing Management (auth required; activation NOT required) ===== */}
+          {/* ===== Billing Management ===== */}
           <Route
             path="/billing-dashboard"
             element={
@@ -222,7 +213,7 @@ function AppContent() {
             element={<Navigate to="/billing-dashboard" replace />}
           />
 
-          {/* ===== Protected Member Dashboard (auth + activation required) ===== */}
+          {/* ===== Protected Member Dashboard ===== */}
           <Route
             path="/dashboard"
             element={
@@ -233,7 +224,7 @@ function AppContent() {
           />
           <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
-          {/* ===== Admin Panel (auth required; AdminPanel enforces admin/owner) ===== */}
+          {/* ===== Admin ===== */}
           <Route
             path="/admin"
             element={
@@ -243,7 +234,7 @@ function AppContent() {
             }
           />
 
-          {/* ===== 404 - Not Found ===== */}
+          {/* ===== 404 ===== */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
