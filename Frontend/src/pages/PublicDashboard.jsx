@@ -1058,10 +1058,11 @@ export default function PublicDashboard() {
             subtext="systems online" 
           />
           <StatCard 
-            title="Total Volume" 
-            value={formatCurrency(userStats.total_volume || 0)} 
-            icon="📈" 
+            title="Win / Loss" 
+            value={`${winsCount} / ${lossesCount}`} 
+            icon="⚔️" 
             color="amber" 
+            subtext={`${winRate}% win rate`}
           />
         </div>
 
