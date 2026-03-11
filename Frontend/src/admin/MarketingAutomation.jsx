@@ -259,7 +259,6 @@ function PostTemplateEditor({ job, onSave, onTest }) {
     const end = textarea.selectionEnd;
     const newText = templates[selectedChannel].substring(0, start) + variable + templates[selectedChannel].substring(end);
     setTemplates({ ...templates, [selectedChannel]: newText });
-    // Restore cursor after update (React will reset it, but we can focus later)
   };
 
   return (
@@ -281,7 +280,7 @@ function PostTemplateEditor({ job, onSave, onTest }) {
       </div>
 
       <textarea
-        key={selectedChannel} // force re-render when channel changes
+        key={selectedChannel}
         value={templates[selectedChannel]}
         onChange={(e) => setTemplates({ ...templates, [selectedChannel]: e.target.value })}
         rows={6}
@@ -337,11 +336,11 @@ function JobLogs({ jobId, logs, onClose }) {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-white/40">{log.timestamp}</span>
                     <span className={`px-2 py-0.5 rounded-full ${
-                      log.status === 'success' ? 'bg-green-500/20 text-green-300' :
-                      log.status === 'error' ? 'bg-red-500/20 text-red-300' :
+                      log.level === 'success' ? 'bg-green-500/20 text-green-300' :
+                      log.level === 'error' ? 'bg-red-500/20 text-red-300' :
                       'bg-amber-500/20 text-amber-300'
                     }`}>
-                      {log.status}
+                      {log.level}
                     </span>
                   </div>
                   <div className="text-white/80">{log.message}</div>
@@ -372,19 +371,25 @@ export default function MarketingAutomation() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const data = await adminFetch('/api/admin/automation/jobs');
-      // Assume API returns { jobs: [], stats: {} }
-      setJobs(data.jobs || []);
-      setStats(data.stats || {
-        totalPosts: 0,
-        totalEmails: 0,
-        conversionRate: 0,
-        activeJobs: (data.jobs || []).filter(j => j.status === 'active').length
+      // Get jobs from the automation API
+      const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
+      
+      // Transform API response to match our component's expected format
+      const apiJobs = data.jobs || [];
+      setJobs(apiJobs);
+      
+      // Update stats from API response or calculate from jobs
+      setStats({
+        totalPosts: data.stats?.total_posts || apiJobs.reduce((acc, job) => acc + (job.stats?.posts || 0), 0),
+        totalEmails: data.stats?.total_emails || apiJobs.reduce((acc, job) => acc + (job.stats?.sent || 0), 0),
+        conversionRate: data.stats?.conversion_rate || 2.5,
+        activeJobs: data.stats?.active_jobs || apiJobs.filter(j => j.status === 'active').length
       });
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
-      showToast('Using mock data (API unavailable)', 'warning');
-      // Fallback to default jobs with some realistic mock data
+      showToast('Could not load automation jobs', 'error');
+      
+      // Fallback to mock data if API fails
       setJobs(DEFAULT_JOBS.map(j => ({
         ...j,
         status: j.id === 'daily_social_summary' ? 'active' : 'paused',
@@ -405,18 +410,23 @@ export default function MarketingAutomation() {
 
   const handleToggle = async (jobId) => {
     try {
-      await adminFetch('/api/admin/automation/jobs/toggle', {
+      const result = await adminFetch('/api/admin/automation/jobs/toggle', {
         method: 'POST',
         body: JSON.stringify({ jobId })
       });
-      // Optimistic update
+      
+      // Update the job status locally
       setJobs(prev => prev.map(job =>
         job.id === jobId
           ? { ...job, status: job.status === 'active' ? 'paused' : 'active' }
           : job
       ));
+      
       const job = jobs.find(j => j.id === jobId);
       showToast(`Job ${job?.name} ${job?.status === 'active' ? 'paused' : 'resumed'}`, 'success');
+      
+      // Refresh to get updated stats
+      fetchJobs();
     } catch (error) {
       showToast('Failed to toggle job', 'error');
     }
@@ -448,6 +458,7 @@ export default function MarketingAutomation() {
       setJobs(prev => prev.map(job => job.id === jobId ? { ...job, schedule } : job));
       setEditingJob(null);
       showToast('Schedule updated', 'success');
+      fetchJobs();
     } catch (error) {
       showToast('Failed to update schedule', 'error');
     }
@@ -455,11 +466,34 @@ export default function MarketingAutomation() {
 
   const handleViewLogs = async (jobId) => {
     try {
-      const data = await adminFetch(`/api/admin/automation/logs/${jobId}`);
+      // Get logs for a specific job
+      const data = await adminFetch(`/api/admin/automation/logs/${jobId}`, { method: 'GET' });
       setLogs(data.logs || []);
       setViewingLogs(jobId);
     } catch (error) {
-      showToast('Failed to fetch logs', 'error');
+      // Try the general logs endpoint as fallback
+      try {
+        const data = await adminFetch('/api/admin/automation/logs', { 
+          method: 'GET',
+          params: { jobId }
+        });
+        setLogs(data.logs || []);
+        setViewingLogs(jobId);
+      } catch (fallbackError) {
+        showToast('Failed to fetch logs', 'error');
+      }
+    }
+  };
+
+  const handleSaveTemplates = async (jobId, templates) => {
+    try {
+      await adminFetch('/api/admin/automation/templates', {
+        method: 'POST',
+        body: JSON.stringify({ jobId, templates })
+      });
+      showToast('Templates saved', 'success');
+    } catch (error) {
+      showToast('Failed to save templates', 'error');
     }
   };
 
@@ -554,17 +588,7 @@ export default function MarketingAutomation() {
                   <label className="block text-sm text-white/50 mb-2">Post Templates</label>
                   <PostTemplateEditor
                     job={editingJob}
-                    onSave={async (jobId, templates) => {
-                      try {
-                        await adminFetch('/api/admin/automation/templates', {
-                          method: 'POST',
-                          body: JSON.stringify({ jobId, templates })
-                        });
-                        showToast('Templates saved', 'success');
-                      } catch (error) {
-                        showToast('Failed to save templates', 'error');
-                      }
-                    }}
+                    onSave={handleSaveTemplates}
                     onTest={handleTestPost}
                   />
                 </div>
