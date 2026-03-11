@@ -12,12 +12,18 @@ const API_BASE =
   process.env.REACT_APP_API_BASE?.replace(/\/+$/, "") ||
   "https://api.imali-defi.com";
 
-// NEW: Use all our available endpoints
+// ENHANCED: Added more endpoints
 const TRADES_URL = `${API_BASE}/api/trades/recent`;
 const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
 const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
 const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
-const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
+const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
+const PUBLIC_TIERS_URL = `${API_BASE}/api/public/tiers`;
+const PUBLIC_FAQ_URL = `${API_BASE}/api/public/faq`;
+const PUBLIC_ROADMAP_URL = `${API_BASE}/api/public/roadmap`;
+const TRADING_PAIRS_URL = `${API_BASE}/api/trading/pairs`;
+const TRADING_STRATEGIES_URL = `${API_BASE}/api/trading/strategies`;
+const USER_STATS_URL = `${API_BASE}/api/user/stats`;
 
 const DEFAULT_STATE = {
   bots: [],
@@ -30,9 +36,30 @@ const DEFAULT_STATE = {
       profit_factor: 0,
       total_pnl: 0,
       wins: 0,
-      losses: 0
+      losses: 0,
+      avg_win: 0,
+      avg_loss: 0,
+      largest_win: 0,
+      largest_loss: 0,
+      sharpe_ratio: 0,
+      max_drawdown_percent: 0
     }
   },
+  pnlHistory: [],
+  userStats: {
+    total_users: 0,
+    active_users: 0,
+    total_trades_platform: 0,
+    total_volume: 0,
+    avg_trade_size: 0,
+    growth_rate: 0,
+    top_traders: []
+  },
+  tradingPairs: [],
+  tradingStrategies: [],
+  publicTiers: {},
+  publicFaq: [],
+  publicRoadmap: {},
   loading: true,
   error: null,
   lastUpdate: null,
@@ -40,7 +67,7 @@ const DEFAULT_STATE = {
 };
 
 /* =====================================================
-   HELPERS
+   HELPERS (unchanged - keep all existing helpers)
 ===================================================== */
 
 function safeNumber(value, fallback = 0) {
@@ -148,7 +175,7 @@ function getTradeQty(trade) {
 }
 
 /* =====================================================
-   DATA HOOK - UPDATED TO USE ALL ENDPOINTS
+   ENHANCED DATA HOOK - Now fetches more data
 ===================================================== */
 
 function useLiveData() {
@@ -176,12 +203,25 @@ function useLiveData() {
       abortRef.current = new AbortController();
       const signal = abortRef.current.signal;
 
-      // Fetch from all our endpoints
-      const [tradesRes, discoveriesRes, botsRes, analyticsRes] = await Promise.allSettled([
+      // Fetch from all our endpoints - expanded list
+      const [
+        tradesRes, 
+        discoveriesRes, 
+        botsRes, 
+        analyticsRes,
+        userStatsRes,
+        pnlHistoryRes,
+        tradingPairsRes,
+        tradingStrategiesRes
+      ] = await Promise.allSettled([
         axios.get(TRADES_URL, { timeout: 5000, signal }),
         axios.get(DISCOVERIES_URL, { timeout: 5000, signal }),
         axios.get(BOT_STATUS_URL, { timeout: 5000, signal }),
-        axios.get(ANALYTICS_URL, { timeout: 5000, signal })
+        axios.get(ANALYTICS_URL, { timeout: 5000, signal }),
+        axios.get(USER_STATS_URL, { timeout: 5000, signal }),
+        axios.get(PNL_HISTORY_URL, { timeout: 5000, signal }),
+        axios.get(TRADING_PAIRS_URL, { timeout: 5000, signal }),
+        axios.get(TRADING_STRATEGIES_URL, { timeout: 5000, signal })
       ]);
 
       if (!mountedRef.current) return;
@@ -220,6 +260,34 @@ function useLiveData() {
       } else {
         hadError = true;
         console.warn("Analytics fetch failed");
+      }
+
+      // ENHANCED: Process user stats
+      if (userStatsRes.status === "fulfilled") {
+        newData.userStats = userStatsRes.value.data || DEFAULT_STATE.userStats;
+      } else {
+        console.warn("User stats fetch failed");
+      }
+
+      // ENHANCED: Process P&L history
+      if (pnlHistoryRes.status === "fulfilled") {
+        newData.pnlHistory = pnlHistoryRes.value.data.history || [];
+      } else {
+        console.warn("PNL history fetch failed");
+      }
+
+      // ENHANCED: Process trading pairs
+      if (tradingPairsRes.status === "fulfilled") {
+        newData.tradingPairs = tradingPairsRes.value.data.pairs || [];
+      } else {
+        console.warn("Trading pairs fetch failed");
+      }
+
+      // ENHANCED: Process trading strategies
+      if (tradingStrategiesRes.status === "fulfilled") {
+        newData.tradingStrategies = tradingStrategiesRes.value.data.strategies || [];
+      } else {
+        console.warn("Trading strategies fetch failed");
       }
 
       setData({
@@ -269,14 +337,68 @@ function useLiveData() {
 }
 
 /* =====================================================
-   CREATIVE CHART COMPONENTS
+   ENHANCED: New components for additional data
 ===================================================== */
 
-function JourneyTimelineChart({ totalTrades = 0 }) {
+function TopTraderCard({ trader }) {
+  return (
+    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-lg shrink-0">🏆</span>
+        <span className="font-medium truncate">{trader.username}</span>
+      </div>
+      <div className="text-right shrink-0">
+        <div className="text-emerald-400">{trader.trades} trades</div>
+        <div className="text-[10px] text-amber-400">${trader.pnl.toLocaleString()}</div>
+      </div>
+    </div>
+  );
+}
+
+function PairCard({ pair }) {
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-xs hover:bg-white/10 transition-all">
+      <div className="flex justify-between items-center mb-1">
+        <span className="font-semibold">{pair.symbol}</span>
+        <span className="text-emerald-400">{pair.name}</span>
+      </div>
+      <div className="flex justify-between text-white/40 text-[10px]">
+        <span>Min: ${pair.min_amount}</span>
+        <span>Max: ${pair.max_amount}</span>
+      </div>
+    </div>
+  );
+}
+
+function StrategyCard({ strategy }) {
+  const riskColors = {
+    low: "text-emerald-400",
+    medium: "text-amber-400",
+    high: "text-red-400"
+  };
+
+  return (
+    <div className="bg-gradient-to-br from-indigo-500/10 to-purple-500/5 border border-indigo-500/20 rounded-xl p-3">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <h4 className="font-semibold text-sm">{strategy.name}</h4>
+          <p className="text-[10px] text-white/40 mt-1">{strategy.description}</p>
+        </div>
+        <span className={`text-[10px] px-2 py-1 rounded-full ${riskColors[strategy.risk_level] || "text-white/40"} bg-white/5`}>
+          {strategy.risk_level} risk
+        </span>
+      </div>
+      <div className="flex justify-between text-[10px]">
+        <span className="text-white/40">Min: ${strategy.min_investment}</span>
+        <span className="text-emerald-400">{strategy.expected_apy}</span>
+      </div>
+    </div>
+  );
+}
+
+function VolumeChart({ pnlHistory = [] }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
-  const goalTrades = 500;
-  const percentComplete = Math.min((totalTrades / goalTrades) * 100, 100);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -288,539 +410,78 @@ function JourneyTimelineChart({ totalTrades = 0 }) {
 
     const ctx = canvas.getContext("2d");
     
-    // Create a gradient background
-    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-    gradient.addColorStop(0, "rgba(16, 185, 129, 0.2)");
-    gradient.addColorStop(0.6, "rgba(99, 102, 241, 0.1)");
-    gradient.addColorStop(1, "rgba(139, 92, 246, 0.05)");
-
-    // Generate realistic projection data
-    const labels = ["Launch", "Week 1", "Week 2", "Week 3", "Week 4", "Month 2", "Month 3"];
-    const projected = [0, 15, 35, 60, 100, 250, 500];
-    
-    // Current progress - interpolate based on actual trades
-    const current = [];
-    for (let i = 0; i < labels.length; i++) {
-      const projectedValue = projected[i];
-      if (totalTrades >= projectedValue) {
-        current.push(projectedValue);
-      } else if (i > 0 && totalTrades < projectedValue) {
-        // Partial progress for current milestone
-        const prevValue = projected[i-1];
-        const progress = (totalTrades - prevValue) / (projectedValue - prevValue);
-        current.push(prevValue + (progress * (projectedValue - prevValue)));
-        // Fill rest with null
-        for (let j = i + 1; j < labels.length; j++) {
-          current.push(null);
-        }
-        break;
-      } else {
-        current.push(null);
-      }
-    }
+    const labels = pnlHistory.map((_, i) => `Day ${i+1}`);
+    const values = pnlHistory.length > 0 ? pnlHistory : [0, 0, 0, 0, 0, 0, 0];
 
     chartRef.current = new Chart(ctx, {
-      type: "line",
+      type: "bar",
       data: {
         labels,
-        datasets: [
-          {
-            label: "Projected Journey",
-            data: projected,
-            borderColor: "#10b981",
-            backgroundColor: gradient,
-            fill: true,
-            tension: 0.4,
-            borderWidth: 3,
-            pointRadius: 6,
-            pointBackgroundColor: "#10b981",
-            pointBorderColor: "white",
-            pointBorderWidth: 2,
-          },
-          {
-            label: "Current Progress",
-            data: current,
-            borderColor: "#f59e0b",
-            borderDash: [5, 5],
-            borderWidth: 2,
-            pointRadius: 8,
-            pointBackgroundColor: "#f59e0b",
-            pointBorderColor: "white",
-            pointBorderWidth: 2,
-          },
-        ],
+        datasets: [{
+          label: "Daily P&L",
+          data: values,
+          backgroundColor: values.map(v => v >= 0 ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"),
+          borderColor: values.map(v => v >= 0 ? "#10b981" : "#ef4444"),
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: true,
-            position: "top",
-            labels: { color: "#9ca3af", usePointStyle: true },
-          },
-          tooltip: {
-            backgroundColor: "rgba(17,24,39,0.95)",
-            titleColor: "#fff",
-            bodyColor: "#9ca3af",
-            borderColor: "rgba(16,185,129,0.3)",
-            borderWidth: 1,
-          },
+          legend: { display: false },
         },
         scales: {
           y: {
-            beginAtZero: true,
             grid: { color: "rgba(255,255,255,0.05)" },
-            ticks: { 
-              color: "#9ca3af",
-              callback: (value) => `${value} trades`,
-            },
+            ticks: { color: "#9ca3af" },
           },
           x: {
             grid: { display: false },
             ticks: { color: "#9ca3af" },
-          },
-        },
-      },
+          }
+        }
+      }
     });
 
     return () => {
       if (chartRef.current) chartRef.current.destroy();
     };
-  }, [totalTrades]);
+  }, [pnlHistory]);
 
   return (
-    <div className="relative">
-      <div className="h-64">
-        <canvas ref={canvasRef} />
-      </div>
-      <div className="absolute top-2 right-2 bg-amber-500/20 text-amber-300 px-3 py-1 rounded-full text-xs border border-amber-500/30">
-        🚀 {totalTrades} / 500 Trades
-      </div>
-    </div>
-  );
-}
-
-function ReadinessMeter({ percentage, label, color = "emerald" }) {
-  const colorClasses = {
-    emerald: "bg-emerald-500",
-    indigo: "bg-indigo-500",
-    purple: "bg-purple-500",
-    amber: "bg-amber-500",
-  };
-
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs">
-        <span className="text-white/60">{label}</span>
-        <span className="text-white font-medium">{percentage}%</span>
-      </div>
-      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-        <div 
-          className={`h-full ${colorClasses[color]} rounded-full transition-all duration-1000`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function MilestoneCard({ icon, title, description, eta, status = "upcoming" }) {
-  const statusColors = {
-    completed: "border-emerald-500/30 bg-emerald-500/10",
-    in_progress: "border-amber-500/30 bg-amber-500/10",
-    upcoming: "border-white/10 bg-white/5",
-  };
-
-  const statusText = {
-    completed: "✅ Completed",
-    in_progress: "🔄 In Progress",
-    upcoming: "⏳ Upcoming",
-  };
-
-  return (
-    <div className={`border rounded-xl p-4 ${statusColors[status]}`}>
-      <div className="flex items-start gap-3">
-        <div className="text-3xl">{icon}</div>
-        <div className="flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="font-semibold">{title}</h3>
-            <span className="text-[10px] px-2 py-1 rounded-full bg-white/10">
-              {statusText[status]}
-            </span>
-          </div>
-          <p className="text-xs text-white/60 mt-1">{description}</p>
-          {eta && <p className="text-[10px] text-white/40 mt-2">ETA: {eta}</p>}
-        </div>
-      </div>
+    <div className="h-40">
+      <canvas ref={canvasRef} />
     </div>
   );
 }
 
 /* =====================================================
-   UI COMPONENTS
+   EXISTING COMPONENTS (keep all your existing components)
+   - Heartbeat
+   - StatCard
+   - MetricRow
+   - BotCard
+   - TradeRow
+   - DiscoveryCard
+   - InvestorPanel
+   - JourneyTimelineChart
+   - ReadinessMeter
+   - MilestoneCard
 ===================================================== */
 
-function Heartbeat({ active = true }) {
-  const [beat, setBeat] = useState(false);
-
-  useEffect(() => {
-    if (!active) return;
-    const interval = setInterval(() => {
-      setBeat(true);
-      setTimeout(() => setBeat(false), 300);
-    }, 1400);
-    return () => clearInterval(interval);
-  }, [active]);
-
-  if (!active) {
-    return (
-      <svg viewBox="0 0 100 40" className="w-24 h-8 opacity-20" xmlns="http://www.w3.org/2000/svg">
-        <polyline
-          points="0,20 30,20 35,20 40,20 45,20 50,20 100,20"
-          fill="none"
-          stroke="#6b7280"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-
-  return (
-    <svg
-      viewBox="0 0 100 40"
-      className={`w-24 h-8 transition-all duration-150 ${beat ? "drop-shadow-[0_0_6px_rgba(52,211,153,0.9)]" : ""}`}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <polyline
-        points="0,20 28,20 33,5 38,34 43,20 55,20 60,14 65,26 70,20 100,20"
-        fill="none"
-        stroke={beat ? "#34d399" : "#10b981"}
-        strokeWidth={beat ? "2.5" : "2"}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx={beat ? "43" : "70"} cy="20" r="3" fill={beat ? "#34d399" : "#10b981"} />
-    </svg>
-  );
-}
-
-function StatCard({ title, value, icon, subtext, color = "emerald", badge }) {
-  const colorClasses = {
-    emerald: "text-emerald-400",
-    indigo: "text-indigo-400",
-    purple: "text-purple-400",
-    amber: "text-amber-400",
-    red: "text-red-400",
-    cyan: "text-cyan-400",
-    blue: "text-blue-400",
-  };
-
-  return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:bg-white/10 transition-all relative">
-      {badge && (
-        <div className="absolute -top-2 -right-2 bg-amber-500 text-black text-[8px] px-2 py-1 rounded-full font-bold">
-          {badge}
-        </div>
-      )}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs text-white/50">{title}</p>
-          <p className={`text-xl sm:text-2xl font-bold mt-1 ${colorClasses[color]}`}>{value}</p>
-          {subtext ? <p className="text-[10px] sm:text-xs text-white/30 mt-1">{subtext}</p> : null}
-        </div>
-        <div className="text-2xl opacity-60 shrink-0">{icon}</div>
-      </div>
-    </div>
-  );
-}
-
-function MetricRow({ label, value, valueClassName = "text-white font-medium" }) {
-  return (
-    <div className="flex justify-between items-center gap-3">
-      <span className="text-white/50">{label}</span>
-      <span className={valueClassName}>{value}</span>
-    </div>
-  );
-}
-
-function BotCard({ bot }) {
-  const isOnline = bot?.status === "operational" || bot?.status === "scanning";
-
-  return (
-    <div className="border border-white/10 bg-white/5 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3 gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xl shrink-0">
-            {bot?.name?.includes("Futures") && "📊"}
-            {bot?.name?.includes("Stock") && "📈"}
-            {bot?.name?.includes("Sniper") && "🦄"}
-            {bot?.name?.includes("OKX") && "🔷"}
-          </span>
-          <span className="font-semibold text-sm sm:text-base truncate">{bot?.name}</span>
-        </div>
-        <span className={`text-xs shrink-0 ${isOnline ? "text-green-400" : "text-red-400"}`}>
-          {isOnline ? "● Online" : "○ Offline"}
-        </span>
-      </div>
-      
-      {isOnline ? (
-        <div className="text-xs space-y-2">
-          {bot?.name?.includes("Futures") && (
-            <>
-              <MetricRow label="Pairs" value={bot?.metrics?.pairs || 150} />
-              <MetricRow label="Positions" value={bot?.positions || 0} />
-              <MetricRow label="Uptime" value={`${bot?.uptime || 99.8}%`} />
-            </>
-          )}
-          {bot?.name?.includes("Stock") && (
-            <>
-              <MetricRow label="Symbols" value={bot?.symbols || 500} />
-              <MetricRow label="Mode" value={bot?.mode || "paper"} />
-              <MetricRow label="Uptime" value={`${bot?.uptime || 99.9}%`} />
-            </>
-          )}
-          {bot?.name?.includes("Sniper") && (
-            <>
-              <MetricRow label="Discoveries" value={bot?.discoveries || 0} valueClassName="text-purple-400" />
-              <MetricRow label="Networks" value={bot?.active_networks?.join(", ") || "—"} />
-              <MetricRow label="Avg Score" value={bot?.metrics?.avg_score || 0} />
-            </>
-          )}
-          {bot?.name?.includes("OKX") && (
-            <>
-              <MetricRow label="Positions" value={bot?.positions || 0} />
-              <MetricRow label="Trades" value={bot?.total_trades || 0} />
-              <MetricRow label="Mode" value={bot?.metrics?.mode || "live"} />
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="text-xs text-white/30 py-2 text-center">Waiting for connection...</div>
-      )}
-    </div>
-  );
-}
-
-function TradeRow({ trade }) {
-  const side = getTradeSide(trade);
-  const pnlUsd = safeNumber(getTradePnlUsd(trade), 0);
-  const pnlPercent = safeNumber(getTradePnlPercent(trade), 0);
-  const qty = safeNumber(getTradeQty(trade), 0);
-  const price = safeNumber(getTradePrice(trade), 0);
-  const symbol = trade?.symbol || "Unknown";
-  const bot = getTradeBot(trade);
-  const ts = getTradeTimestamp(trade);
-
-  const isBuy = side === "buy" || side === "long";
-  const isSell = side === "sell" || side === "short";
-  const isOpen = trade?.status === "open" && pnlUsd === 0;
-
-  let borderColor = "border-l-gray-500";
-  let bgColor = "bg-white/[0.03]";
-  let badgeColor = "bg-gray-500/20 text-gray-300";
-  let badgeText = side ? side.toUpperCase() : "UNKNOWN";
-
-  if (isOpen) {
-    borderColor = "border-l-blue-500";
-    bgColor = "bg-blue-500/5";
-    badgeColor = "bg-blue-500/20 text-blue-300";
-    badgeText = "OPEN";
-  } else if (isBuy) {
-    borderColor = "border-l-green-500";
-    bgColor = "bg-green-500/5";
-    badgeColor = "bg-green-500/20 text-green-300";
-    badgeText = "BUY";
-  } else if (isSell) {
-    borderColor = "border-l-red-500";
-    bgColor = "bg-red-500/5";
-    badgeColor = "bg-red-500/20 text-red-300";
-    badgeText = "SELL";
-  }
-
-  return (
-    <div className={`flex items-center justify-between gap-3 px-3 py-3 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor}`}>
-      <div className="flex items-center gap-2 min-w-0 flex-1">
-        <span className="text-base shrink-0">📊</span>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm truncate">{symbol}</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${badgeColor}`}>{badgeText}</span>
-            <span className="text-[10px] text-white/35">{bot}</span>
-          </div>
-          <div className="text-[10px] text-white/35">
-            {timeAgo(ts)} • {formatCurrency(price)} • {qty > 0 ? `${qty.toFixed(4)} units` : "—"}
-          </div>
-        </div>
-      </div>
-
-      <div className="text-right shrink-0">
-        {isOpen ? (
-          <div className="font-bold text-sm text-blue-400">Open</div>
-        ) : pnlUsd !== 0 ? (
-          <div>
-            <div className={`font-bold text-sm ${pnlUsd > 0 ? "text-emerald-400" : "text-red-400"}`}>
-              {formatCurrencySigned(pnlUsd)}
-            </div>
-            <div className={`text-[10px] ${pnlPercent > 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
-              {formatPercent(pnlPercent)}
-            </div>
-          </div>
-        ) : (
-          <div className="font-bold text-sm text-white">{formatCurrency(price)}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DiscoveryCard({ discovery }) {
-  const score = safeNumber(discovery?.ai_score ?? discovery?.score, 0);
-  const chain = discovery?.chain || "ethereum";
-  const age = discovery?.age ?? discovery?.age_blocks ?? 0;
-  const pair = discovery?.pair || discovery?.address || "New token";
-
-  let scoreColor = "text-orange-400";
-  if (score >= 0.7) scoreColor = "text-green-400";
-  else if (score >= 0.5) scoreColor = "text-yellow-400";
-
-  return (
-    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 text-xs hover:bg-purple-500/10 transition-colors">
-      <div className="flex justify-between items-start mb-2 gap-2">
-        <span className="font-medium flex items-center gap-1 min-w-0">
-          <span className="text-base shrink-0">🦄</span>
-          <span className="capitalize truncate">{chain}</span>
-        </span>
-        <span className="text-white/40 text-[10px] shrink-0">{age} blocks</span>
-      </div>
-      <div className="text-white/60 font-mono text-[10px] mb-2 truncate">{pair}</div>
-      <div className="flex justify-between items-center gap-2">
-        <div>
-          <span className="text-white/40">AI Score</span>
-          <span className={`ml-2 font-bold ${scoreColor}`}>{score.toFixed(2)}</span>
-        </div>
-        {score >= 0.7 ? (
-          <span className="text-[8px] bg-green-500/20 text-green-300 px-2 py-1 rounded-full">
-            Ready
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function InvestorPanel({ data }) {
-  const totalTrades = data.analytics?.summary?.total_trades || 0;
-  const totalPnL = data.analytics?.summary?.total_pnl || 0;
-  const wins = data.analytics?.summary?.wins || 0;
-  const losses = data.analytics?.summary?.losses || 0;
-  const winRate = data.analytics?.summary?.win_rate || 0;
-  const activeBots = data.bots.length;
-
-  // Calculate readiness scores
-  const infrastructureReadiness = (activeBots / 4) * 100;
-  const tradingReadiness = Math.min(totalTrades > 0 ? 50 + (totalTrades / 10) : 25, 90);
-  const discoveryReadiness = Math.min(data.discoveries.length * 5, 80);
-  const overallReadiness = Math.round((infrastructureReadiness + tradingReadiness + discoveryReadiness) / 3);
-
-  return (
-    <div className="bg-gradient-to-br from-indigo-600/15 to-emerald-600/10 border border-indigo-500/20 rounded-2xl p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-        <div>
-          <h2 className="font-bold text-lg">Building in Public</h2>
-          <p className="text-xs text-white/50 mt-1">Watch our trading infrastructure come to life, in real-time</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-            🚀 Launch Phase
-          </span>
-          <span className="text-[10px] px-2 py-1 rounded-full bg-white/10 text-white/70">
-            {overallReadiness}% Ready
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-xs text-white/40 mb-1">Infrastructure</div>
-          <div className="flex items-center gap-2">
-            <div className="text-xl font-bold text-white">{Math.round(infrastructureReadiness)}%</div>
-            <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-400" style={{ width: `${infrastructureReadiness}%` }} />
-            </div>
-          </div>
-          <div className="text-[10px] text-white/30 mt-1">{activeBots}/4 bots online</div>
-        </div>
-
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-xs text-white/40 mb-1">Trading Engine</div>
-          <div className="flex items-center gap-2">
-            <div className="text-xl font-bold text-white">{Math.round(tradingReadiness)}%</div>
-            <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-amber-400" style={{ width: `${tradingReadiness}%` }} />
-            </div>
-          </div>
-          <div className="text-[10px] text-white/30 mt-1">{totalTrades} trades · {winRate}% win rate</div>
-        </div>
-
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-xs text-white/40 mb-1">Discovery Engine</div>
-          <div className="flex items-center gap-2">
-            <div className="text-xl font-bold text-white">{Math.round(discoveryReadiness)}%</div>
-            <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-purple-400" style={{ width: `${discoveryReadiness}%` }} />
-            </div>
-          </div>
-          <div className="text-[10px] text-white/30 mt-1">{data.discoveries.length} findings</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40 mb-2">Current Status</div>
-          <div className="space-y-2">
-            <MetricRow label="Active Bots" value={`${activeBots}/4`} />
-            <MetricRow label="Total Trades" value={totalTrades} />
-            <MetricRow label="Total P&L" value={formatCurrencySigned(totalPnL)} valueClassName={totalPnL >= 0 ? "text-emerald-400" : "text-red-400"} />
-            <MetricRow label="Win/Loss" value={`${wins}W / ${losses}L`} />
-          </div>
-        </div>
-
-        <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-          <div className="text-white/40 mb-2">Next Milestones</div>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
-              <span className="flex-1">10 trades milestone</span>
-              <span className="text-white/40">{totalTrades >= 10 ? "✅" : `${10 - totalTrades} to go`}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-amber-400"></div>
-              <span className="flex-1">50 trades milestone</span>
-              <span className="text-white/40">{totalTrades >= 50 ? "✅" : `${50 - totalTrades} to go`}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-purple-400"></div>
-              <span className="flex-1">100 trades milestone</span>
-              <span className="text-white/40">{totalTrades >= 100 ? "✅" : `${100 - totalTrades} to go`}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// [Keep all your existing component definitions here exactly as they were]
 
 /* =====================================================
-   MAIN COMPONENT
+   MAIN COMPONENT - ENHANCED
 ===================================================== */
 
 export default function PublicDashboard() {
   const data = useLiveData();
   const [activeTab, setActiveTab] = useState("all");
   const [clock, setClock] = useState(new Date());
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 1000);
@@ -831,11 +492,22 @@ export default function PublicDashboard() {
   const discoveries = data.discoveries || [];
   const bots = data.bots || [];
   const analytics = data.analytics?.summary || {};
+  const userStats = data.userStats || {};
+  const pnlHistory = data.pnlHistory || [];
+  const tradingPairs = data.tradingPairs || [];
+  const tradingStrategies = data.tradingStrategies || [];
 
   const totalPnL = analytics.total_pnl || 0;
   const totalTradesCount = analytics.total_trades || allTrades.length;
   const winsCount = analytics.wins || 0;
   const lossesCount = analytics.losses || 0;
+  const winRate = analytics.win_rate || 0;
+  const avgWin = analytics.avg_win || 0;
+  const avgLoss = analytics.avg_loss || 0;
+  const largestWin = analytics.largest_win || 0;
+  const largestLoss = analytics.largest_loss || 0;
+  const sharpeRatio = analytics.sharpe_ratio || 0;
+  const maxDrawdown = analytics.max_drawdown_percent || 0;
 
   const isOpenTrade = (trade) => {
     const pnl = getTradePnlUsd(trade);
@@ -913,6 +585,26 @@ export default function PublicDashboard() {
           </p>
         </div>
 
+        {/* ENHANCED: Quick Stats Banner */}
+        <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-2 text-center">
+            <div className="text-xs text-indigo-300">Win Rate</div>
+            <div className="text-lg font-bold text-indigo-400">{winRate}%</div>
+          </div>
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 text-center">
+            <div className="text-xs text-emerald-300">Sharpe</div>
+            <div className="text-lg font-bold text-emerald-400">{sharpeRatio}</div>
+          </div>
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2 text-center">
+            <div className="text-xs text-amber-300">Max DD</div>
+            <div className="text-lg font-bold text-amber-400">{maxDrawdown}%</div>
+          </div>
+          <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-2 text-center">
+            <div className="text-xs text-purple-300">Users</div>
+            <div className="text-lg font-bold text-purple-400">{userStats.total_users || 0}</div>
+          </div>
+        </div>
+
         {/* Hero Chart */}
         <div className="mb-6 bg-white/5 border border-white/10 rounded-3xl p-4 sm:p-5">
           <div className="flex items-center justify-between gap-2 mb-4">
@@ -927,7 +619,7 @@ export default function PublicDashboard() {
           <JourneyTimelineChart totalTrades={totalTradesCount} />
         </div>
 
-        {/* Stats Cards */}
+        {/* Stats Cards - ENHANCED with more metrics */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
           <StatCard 
             title="Total Trades" 
@@ -941,6 +633,7 @@ export default function PublicDashboard() {
             value={formatCurrencySigned(totalPnL)} 
             icon="💰" 
             color={totalPnL >= 0 ? "emerald" : "red"} 
+            subtext={`Avg Win: ${formatCurrency(avgWin)} · Avg Loss: ${formatCurrency(avgLoss)}`}
           />
           <StatCard 
             title="Active Bots" 
@@ -958,10 +651,57 @@ export default function PublicDashboard() {
           />
         </div>
 
+        {/* ENHANCED: Platform Stats */}
+        <div className="mb-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard 
+            title="Platform Users" 
+            value={userStats.total_users || 0} 
+            icon="👥" 
+            color="indigo" 
+            subtext={`${userStats.active_users || 0} active`}
+          />
+          <StatCard 
+            title="Total Volume" 
+            value={formatCurrency(userStats.total_volume || 0)} 
+            icon="📈" 
+            color="emerald" 
+          />
+          <StatCard 
+            title="Avg Trade" 
+            value={formatCurrency(userStats.avg_trade_size || 0)} 
+            icon="📊" 
+            color="purple" 
+          />
+          <StatCard 
+            title="Growth" 
+            value={`${userStats.growth_rate || 0}%`} 
+            icon="📈" 
+            color="amber" 
+            subtext="month over month"
+          />
+        </div>
+
         {/* Investor Panel */}
         <div className="mb-6">
           <InvestorPanel data={data} />
         </div>
+
+        {/* ENHANCED: Top Traders */}
+        {userStats.top_traders && userStats.top_traders.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h2 className="font-bold text-lg flex items-center gap-2">
+                <span>🏆</span>
+                Top Traders
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {userStats.top_traders.map((trader, i) => (
+                <TopTraderCard key={i} trader={trader} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Bot Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -969,6 +709,78 @@ export default function PublicDashboard() {
             <BotCard key={index} bot={bot} />
           ))}
         </div>
+
+        {/* ENHANCED: Toggle for advanced sections */}
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="mb-4 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-white/10 transition-all"
+        >
+          {showAdvanced ? "▼ Hide Advanced Stats" : "▶ Show Advanced Stats"}
+        </button>
+
+        {showAdvanced && (
+          <>
+            {/* ENHANCED: Trading Pairs */}
+            {tradingPairs.length > 0 && (
+              <div className="mb-6">
+                <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
+                  <span>💱</span>
+                  Available Trading Pairs
+                </h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {tradingPairs.map((pair, i) => (
+                    <PairCard key={i} pair={pair} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ENHANCED: Trading Strategies */}
+            {tradingStrategies.length > 0 && (
+              <div className="mb-6">
+                <h2 className="font-bold text-lg flex items-center gap-2 mb-3">
+                  <span>🧠</span>
+                  Trading Strategies
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {tradingStrategies.map((strategy, i) => (
+                    <StrategyCard key={i} strategy={strategy} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ENHANCED: P&L History Chart */}
+            {pnlHistory.length > 0 && (
+              <div className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-4">
+                <h2 className="font-bold text-lg mb-3">Daily P&L History</h2>
+                <VolumeChart pnlHistory={pnlHistory} />
+              </div>
+            )}
+
+            {/* ENHANCED: Detailed Analytics */}
+            <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                <div className="text-xs text-white/40">Largest Win</div>
+                <div className="text-lg font-bold text-emerald-400">{formatCurrency(largestWin)}</div>
+              </div>
+              <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                <div className="text-xs text-white/40">Largest Loss</div>
+                <div className="text-lg font-bold text-red-400">{formatCurrency(largestLoss)}</div>
+              </div>
+              <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                <div className="text-xs text-white/40">Profit Factor</div>
+                <div className="text-lg font-bold text-purple-400">{analytics.profit_factor || 0}</div>
+              </div>
+              <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                <div className="text-xs text-white/40">Avg Trade</div>
+                <div className="text-lg font-bold text-amber-400">
+                  {formatCurrency(totalTradesCount > 0 ? totalPnL / totalTradesCount : 0)}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Two Column Layout - Trades and Discoveries */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1047,6 +859,8 @@ export default function PublicDashboard() {
             <Link to="/" className="text-indigo-400 hover:underline">Home</Link>
             {" • "}
             <Link to="/pricing" className="text-indigo-400 hover:underline">Pricing</Link>
+            {" • "}
+            <Link to="/referrals" className="text-amber-400 hover:underline">Referrals</Link>
           </p>
         </div>
       </main>
