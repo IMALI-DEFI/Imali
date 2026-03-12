@@ -391,7 +391,7 @@ export const AuthProvider = ({ children }) => {
       activationComplete,
       authError,
       isAuthenticated: !!user || BotAPI.isLoggedIn(),
-      hasToken: BotAPI.isLoggedIn,
+      hasToken: BotAPI.isLoggedIn(),
 
       setUser,
       setActivation,
