@@ -1,15 +1,18 @@
 import axios from "axios";
 
+// =========================
+// CONFIGURATION
+// =========================
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const BOT_BASE = process.env.REACT_APP_BOT_BASE_URL || "http://129.213.90.84:8011";
 const TOKEN_KEY = "imali_token";
 
-/* =========================
-   AXIOS INSTANCES
-========================= */
+// =========================
+// AXIOS INSTANCES
+// =========================
 
-// Main API (auth, billing, activation)
-const api = axios.create({
+// Main API (authentication, billing, user management) - port 8001
+const mainApi = axios.create({
   baseURL: API_BASE,
   timeout: 30000,
   headers: {
@@ -18,7 +21,7 @@ const api = axios.create({
   },
 });
 
-// Bot API (trades, stats, bot control)
+// Bot API (trading, stats, bot control) - port 8011
 const botApi = axios.create({
   baseURL: BOT_BASE,
   timeout: 15000,
@@ -28,252 +31,513 @@ const botApi = axios.create({
   },
 });
 
-/* =========================
-   TOKEN HELPERS
-========================= */
-
-const safeGet = (key) => {
-  try { return localStorage.getItem(key); } catch { return null; }
+// =========================
+// TOKEN MANAGEMENT
+// =========================
+const getStoredToken = () => {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
 };
-const safeSet = (key, value) => {
-  try { localStorage.setItem(key, value); } catch {}
-};
-const safeRemove = (key) => {
-  try { localStorage.removeItem(key); } catch {}
-};
-
-const getStoredToken = () => safeGet(TOKEN_KEY);
 
 const setStoredToken = (token) => {
   if (!token || typeof token !== "string") return;
-  safeSet(TOKEN_KEY, token);
-  api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-  botApi.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+    // Set token on both API instances
+    mainApi.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    botApi.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+  } catch {}
 };
 
 const clearStoredToken = () => {
-  safeRemove(TOKEN_KEY);
-  delete api.defaults.headers.common["Authorization"];
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+  delete mainApi.defaults.headers.common["Authorization"];
   delete botApi.defaults.headers.common["Authorization"];
 };
 
-/* =========================
-   REQUEST INTERCEPTORS
-========================= */
+// =========================
+// REQUEST INTERCEPTORS
+// =========================
 
+// Attach token to all requests if available
 const attachToken = (config) => {
   const token = getStoredToken();
-  if (token && typeof token === "string") {
+  if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 };
 
-api.interceptors.request.use(attachToken, (err) => Promise.reject(err));
-botApi.interceptors.request.use(attachToken, (err) => Promise.reject(err));
+mainApi.interceptors.request.use(attachToken);
+botApi.interceptors.request.use(attachToken);
 
-/* =========================
-   RESPONSE INTERCEPTOR (main API only)
-========================= */
+// =========================
+// RESPONSE INTERCEPTORS
+// =========================
 
-let redirecting = false;
-
-const AUTH_WHITELIST = [
-  "/login", "/signup", "/billing", "/activation",
-  "/terms", "/privacy", "/trade-demo",
-];
-
-const getPath = () => {
-  try { return window.location.pathname || "/"; } catch { return "/"; }
-};
-
-api.interceptors.response.use(
+// Main API interceptor - handles auth errors
+mainApi.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
     const url = error?.config?.url || "";
-    const path = getPath();
-
-    if (status === 429) {
-      console.warn(`[API] Rate limited on ${url}`);
-      return Promise.reject(error);
-    }
-
-    if (status >= 500) {
-      console.warn(`[API] Server error ${status} on ${url}`);
-      return Promise.reject(error);
-    }
-
-    if (error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") {
-      console.warn(`[API] Network error on ${url}`);
-      return Promise.reject(error);
-    }
-
-    const isAuthEndpoint =
-      url.includes("/api/auth/login") || url.includes("/api/signup");
-
+    
+    console.error(`[MainAPI Error] ${status} - ${url}:`, error?.response?.data || error.message);
+    
+    // Don't redirect on auth endpoints even if 401
+    const isAuthEndpoint = url.includes("/api/auth/login") || url.includes("/api/signup");
+    
     if (status === 401 && !isAuthEndpoint) {
       clearStoredToken();
-      const isWhitelisted = AUTH_WHITELIST.some((p) => path.startsWith(p));
-      if (!isWhitelisted && !redirecting) {
-        redirecting = true;
-        const next = encodeURIComponent(path);
-        window.location.href = `/login?next=${next}`;
-        setTimeout(() => { redirecting = false; }, 4000);
-      }
+      // Optional: redirect to login
+      // window.location.href = "/login";
     }
-
+    
     return Promise.reject(error);
   }
 );
 
-// Bot API interceptor — just log errors, never redirect
+// Bot API interceptor - just log errors, never redirect
 botApi.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
     const url = error?.config?.url || "";
-    console.warn(`[BotAPI] Error ${status || error.code} on ${url}`);
+    console.error(`[BotAPI Error] ${status} - ${url}:`, error?.response?.data || error.message);
     return Promise.reject(error);
   }
 );
 
-/* =========================
-   SAFE UNWRAP
-========================= */
+// =========================
+// HELPER FUNCTIONS
+// =========================
 
-const unwrap = (res) => {
-  if (!res) return null;
-  return res.data ?? null;
+const unwrap = (response) => {
+  if (!response) return null;
+  // Handle both { success: true, data: ... } and direct data responses
+  const data = response.data;
+  if (data && typeof data === 'object') {
+    // If response has success flag and data property
+    if ('success' in data && 'data' in data) {
+      return data.data || data;
+    }
+  }
+  return data;
 };
 
-const getErrMessage = (err, fallback = "Request failed") => {
+const getErrorMessage = (error, fallback = "Request failed") => {
   return (
-    err?.response?.data?.message ||
-    err?.response?.data?.error ||
-    err?.message ||
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
     fallback
   );
 };
 
-/* =========================
-   API METHODS
-========================= */
+// =========================
+// API CLIENT
+// =========================
 
-const BotAPI = {
-  /* TOKEN */
+const ApiClient = {
+  // Token management
   setToken: setStoredToken,
   getToken: getStoredToken,
   clearToken: clearStoredToken,
   isLoggedIn: () => !!getStoredToken(),
 
-  /* AUTH (main API) */
-  async signup(payload) {
-    const res = await api.post("/api/signup", payload);
-    return unwrap(res);
+  // ========================
+  // AUTHENTICATION (Main API)
+  // ========================
+  async signup(email, password, tier = "starter") {
+    try {
+      const response = await mainApi.post("/api/signup", {
+        email,
+        password,
+        tier,
+      });
+      const data = unwrap(response);
+      if (data?.token) {
+        setStoredToken(data.token);
+      }
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Signup failed"),
+        status: error?.response?.status
+      };
+    }
   },
 
-  async login(payload) {
+  async login(email, password) {
+    try {
+      const response = await mainApi.post("/api/auth/login", {
+        email,
+        password,
+      });
+      const data = unwrap(response);
+      
+      // Check if 2FA required
+      if (data?.twofa_required) {
+        return {
+          success: true,
+          twofaRequired: true,
+          tempToken: data.temp_token
+        };
+      }
+      
+      if (data?.token) {
+        setStoredToken(data.token);
+      }
+      
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Login failed"),
+        status: error?.response?.status
+      };
+    }
+  },
+
+  async verify2FA(token, tempToken) {
+    try {
+      const response = await mainApi.post("/api/auth/2fa/verify-login", {
+        token,
+        temp_token: tempToken,
+      });
+      const data = unwrap(response);
+      if (data?.token) {
+        setStoredToken(data.token);
+      }
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "2FA verification failed"),
+      };
+    }
+  },
+
+  async logout() {
     clearStoredToken();
-    const res = await api.post("/api/auth/login", payload);
-    const data = unwrap(res);
-    if (!data?.token) throw new Error("Login failed: no token returned");
-    setStoredToken(data.token);
-    return data;
+    return { success: true };
   },
 
-  async me() {
-    const res = await api.get("/api/me");
-    return unwrap(res);
+  // ========================
+  // USER PROFILE (Main API)
+  // ========================
+  async getCurrentUser() {
+    try {
+      const response = await mainApi.get("/api/me");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get user"),
+      };
+    }
   },
 
-  async activationStatus() {
-    const res = await api.get("/api/me/activation-status");
-    return unwrap(res);
+  async getActivationStatus() {
+    try {
+      const response = await mainApi.get("/api/me/activation-status");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get activation status"),
+      };
+    }
   },
 
-  /* BILLING (main API) */
-  async createSetupIntent(payload) {
-    const res = await api.post("/api/billing/setup-intent", payload);
-    return unwrap(res);
+  // ========================
+  // INTEGRATIONS (Main API)
+  // ========================
+  async connectOKX(apiKey, apiSecret, passphrase, mode = "paper") {
+    try {
+      const response = await mainApi.post("/api/integrations/okx", {
+        api_key: apiKey,
+        api_secret: apiSecret,
+        passphrase,
+        mode,
+      });
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to connect OKX"),
+      };
+    }
+  },
+
+  async connectAlpaca(apiKey, apiSecret, mode = "paper") {
+    try {
+      const response = await mainApi.post("/api/integrations/alpaca", {
+        api_key: apiKey,
+        api_secret: apiSecret,
+        mode,
+      });
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to connect Alpaca"),
+      };
+    }
+  },
+
+  async connectWallet(address) {
+    try {
+      const response = await mainApi.post("/api/integrations/wallet", {
+        wallet: address,
+      });
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to connect wallet"),
+      };
+    }
+  },
+
+  async getIntegrationStatus() {
+    try {
+      const response = await mainApi.get("/api/integrations/status");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get integration status"),
+      };
+    }
+  },
+
+  // ========================
+  // BILLING (Main API)
+  // ========================
+  async createSetupIntent() {
+    try {
+      const response = await mainApi.post("/api/billing/setup-intent");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to create setup intent"),
+      };
+    }
   },
 
   async getCardStatus() {
-    const res = await api.get("/api/billing/card-status");
-    return unwrap(res);
+    try {
+      const response = await mainApi.get("/api/billing/card-status");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get card status"),
+      };
+    }
   },
 
-  /* INTEGRATIONS (main API) */
-  async connectOKX(payload) {
-    const res = await api.post("/api/integrations/okx", payload);
-    return unwrap(res);
+  async confirmCard() {
+    try {
+      const response = await mainApi.post("/api/billing/confirm-card");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to confirm card"),
+      };
+    }
   },
 
-  async connectAlpaca(payload) {
-    const res = await api.post("/api/integrations/alpaca", payload);
-    return unwrap(res);
+  // ========================
+  // TRADING (Main API)
+  // ========================
+  async toggleTrading(enabled = true) {
+    try {
+      const response = await mainApi.post("/api/trading/enable", { enabled });
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to toggle trading"),
+      };
+    }
   },
 
-  async connectWallet(payload) {
-    const res = await api.post("/api/integrations/wallet", payload);
-    return unwrap(res);
+  async getTradingStatus() {
+    try {
+      const response = await mainApi.get("/api/trading/status");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get trading status"),
+      };
+    }
   },
 
-  /* TRADING (main API) */
-  async toggleTrading(enabled) {
-    const res = await api.post("/api/trading/enable", { enabled });
-    return unwrap(res);
-  },
-
-  /* ═══════════════════════════════════
-     BOT SERVER ENDPOINTS (port 8011)
-  ═══════════════════════════════════ */
-
-  async startBot(payload = { mode: "paper" }) {
-    const res = await botApi.post("/api/bot/start", payload);
-    return unwrap(res);
+  // ========================
+  // BOT CONTROL (Bot API - port 8011)
+  // ========================
+  async startBot(mode = "paper", strategy = "ai_weighted") {
+    try {
+      const response = await botApi.post("/api/bot/start", {
+        mode,
+        strategy,
+      });
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to start bot"),
+      };
+    }
   },
 
   async stopBot() {
-    const res = await botApi.post("/api/bot/stop");
-    return unwrap(res);
+    try {
+      const response = await botApi.post("/api/bot/stop");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to stop bot"),
+      };
+    }
   },
 
   async getBotStatus() {
-    const res = await botApi.get("/health");
-    return unwrap(res);
+    try {
+      const response = await botApi.get("/health");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get bot status"),
+      };
+    }
   },
 
-  async getTrades() {
-    const res = await botApi.get("/api/sniper/trades");
-    return unwrap(res);
-  },
-
-  async getAllTrades() {
-    const res = await botApi.get("/api/all/trades");
-    return unwrap(res);
+  // ========================
+  // TRADES & STATS (Bot API - port 8011)
+  // ========================
+  async getTrades(limit = 100) {
+    try {
+      const response = await botApi.get(`/api/sniper/trades?limit=${limit}`);
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get trades"),
+        data: { trades: [] } // Return empty array as fallback
+      };
+    }
   },
 
   async getAllStats() {
-    const res = await botApi.get("/api/all/stats");
-    return unwrap(res);
-  },
-
-  async getSniperAll() {
-    const res = await botApi.get("/api/sniper/all");
-    return unwrap(res);
+    try {
+      const response = await botApi.get("/api/all/stats");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get stats"),
+        data: {} // Return empty object as fallback
+      };
+    }
   },
 
   async getDashboardData() {
-    const res = await botApi.get("/api/all/stats");
-    return unwrap(res);
+    try {
+      const response = await botApi.get("/api/all/stats");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get dashboard data"),
+        data: {} // Return empty object as fallback
+      };
+    }
   },
 
-  /* UTIL */
-  errMessage(err, fallback) {
-    return getErrMessage(err, fallback);
+  async getDiscoveries(limit = 20) {
+    try {
+      const response = await botApi.get(`/api/sniper/discoveries?limit=${limit}`);
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get discoveries"),
+        data: { discoveries: [] }
+      };
+    }
+  },
+
+  // ========================
+  // PUBLIC ENDPOINTS (No auth required)
+  // ========================
+  async getPromoStatus() {
+    try {
+      const response = await mainApi.get("/api/promo/status");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get promo status"),
+      };
+    }
+  },
+
+  async claimPromo(email, tier = "starter", wallet = "") {
+    try {
+      const response = await mainApi.post("/api/promo/claim", {
+        email,
+        tier,
+        wallet,
+      });
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to claim promo"),
+      };
+    }
+  },
+
+  async getTiers() {
+    try {
+      const response = await mainApi.get("/api/public/tiers");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get tiers"),
+      };
+    }
+  },
+
+  async getLiveStats() {
+    try {
+      const response = await mainApi.get("/api/public/live-stats");
+      return { success: true, data: unwrap(response) };
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "Failed to get live stats"),
+        data: {} // Return empty object as fallback
+      };
+    }
   },
 };
 
-export { api, botApi };
-export default BotAPI;
+// Export both the client and individual API instances if needed
+export { mainApi, botApi };
+export default ApiClient;
