@@ -1,3 +1,4 @@
+// src/pages/Signup.jsx
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -17,7 +18,7 @@ export default function Signup() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [step, setStep] = useState(""); // '', 'creating', 'logging-in', 'redirecting'
+  const [step, setStep] = useState("");
 
   const validate = () => {
     if (!form.email.trim()) return "Email is required.";
@@ -44,14 +45,13 @@ export default function Signup() {
 
     setLoading(true);
     setError("");
+    setStep("creating");
 
     const email = form.email.trim().toLowerCase();
 
     try {
-      // ── Step 1: Create account ──
-      setStep("creating");
+      // Step 1: Create account
       console.log("[Signup] Creating account...");
-
       const signupResult = await signup({
         email,
         password: form.password,
@@ -68,10 +68,10 @@ export default function Signup() {
 
       console.log("[Signup] Account created successfully");
 
-      // Small delay between signup and login to avoid 429
+      // Small delay to avoid rate limits
       await new Promise((r) => setTimeout(r, 1000));
 
-      // ── Step 2: Log in ──
+      // Step 2: Auto-login
       setStep("logging-in");
       console.log("[Signup] Logging in...");
 
@@ -79,9 +79,7 @@ export default function Signup() {
 
       if (!loginResult.success) {
         // Login failed but account was created
-        // Send them to login page with a message
         console.warn("[Signup] Auto-login failed, redirecting to login");
-        setError("");
         navigate("/login", {
           replace: true,
           state: {
@@ -94,13 +92,11 @@ export default function Signup() {
 
       console.log("[Signup] Login successful");
 
-      // ── Step 3: Store metadata for billing page ──
+      // Step 3: Store metadata
       localStorage.setItem("IMALI_EMAIL", email);
       localStorage.setItem("IMALI_TIER", form.tier);
 
-      // ── Step 4: Navigate to billing immediately ──
-      // Don't wait for loadUserData — the token is saved,
-      // billing page will work
+      // Step 4: Navigate to billing
       setStep("redirecting");
       console.log("[Signup] Navigating to /billing...");
 
@@ -115,23 +111,7 @@ export default function Signup() {
       });
     } catch (err) {
       console.error("[Signup] Unexpected error:", err);
-
-      const status = err?.response?.status;
-
-      if (status === 409) {
-        setError("An account with this email already exists.");
-      } else if (status === 400) {
-        setError(err.response?.data?.message || "Invalid signup information.");
-      } else if (status === 429) {
-        setError("Too many attempts. Please wait a moment and try again.");
-      } else if (status === 503 || status >= 500) {
-        setError("Service temporarily unavailable. Please try again.");
-      } else if (err.message === "Network Error" || err.code === "ERR_NETWORK") {
-        setError("Unable to connect to server. Please check your connection.");
-      } else {
-        setError(err.message || "Signup failed. Please try again.");
-      }
-
+      setError(err.message || "Signup failed. Please try again.");
       setStep("");
     } finally {
       setLoading(false);
