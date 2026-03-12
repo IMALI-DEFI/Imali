@@ -55,9 +55,6 @@ const retry = async (fn, retries = 3, delay = 2000) => {
 
 /* -------------------------------------------------------
    Error Classification
-   401 = not authenticated (clear token, redirect)
-   403 = authenticated but wrong role (DON'T clear token)
-   429 = rate limited (retry)
 -------------------------------------------------------- */
 const isSessionExpired = (err) => err?.response?.status === 401;
 const isForbidden = (err) => err?.response?.status === 403;
@@ -83,9 +80,11 @@ export const AuthProvider = ({ children }) => {
 
     try {
       // The correct endpoint from your API is /api/me/activation-status
-      const raw = await retry(() => BotAPI.activationStatus());
-      // The API returns the status directly
-      const fresh = raw?.status ?? raw ?? null;
+      const response = await retry(() => BotAPI.activationStatus());
+      
+      // Your API returns { success: true, status: {...} } or { status: {...} }
+      // Based on your backend, it returns the status object directly
+      const fresh = response?.status || response || null;
 
       console.log("[AuthContext] refreshActivation →", fresh);
       setAuthError(null);
@@ -113,10 +112,13 @@ export const AuthProvider = ({ children }) => {
         setActivation((prev) =>
           prev || {
             billing_complete: false,
+            has_card_on_file: false,
+            trading_enabled: false,
+            wallet_connected: false,
             okx_connected: false,
             alpaca_connected: false,
-            wallet_connected: false,
-            trading_enabled: false,
+            tier_requirements_met: false,
+            activation_complete: false,
             _error: "forbidden",
           }
         );
@@ -135,10 +137,11 @@ export const AuthProvider = ({ children }) => {
     if (!BotAPI.isLoggedIn()) return null;
 
     try {
-      // /api/me returns user data directly
-      const raw = await retry(() => BotAPI.me());
-      // The API returns user object directly
-      const fresh = raw?.user ?? raw ?? null;
+      // /api/me returns { success: true, user: {...} }
+      const response = await retry(() => BotAPI.me());
+      
+      // Extract user data from response
+      const fresh = response?.user || response || null;
 
       console.log("[AuthContext] refreshProfile →", fresh);
 
@@ -188,9 +191,9 @@ export const AuthProvider = ({ children }) => {
       let userData = null;
       try {
         console.log("[AuthContext] loadUserData — fetching /api/me...");
-        const userRaw = await retry(() => BotAPI.me());
-        // The API returns user data directly
-        userData = userRaw?.user ?? userRaw ?? null;
+        const response = await retry(() => BotAPI.me());
+        // Your API returns { success: true, user: {...} }
+        userData = response?.user || response || null;
         setUser(userData);
         console.log("[AuthContext] /api/me OK:", userData?.email);
       } catch (meErr) {
@@ -213,9 +216,9 @@ export const AuthProvider = ({ children }) => {
       // ── Fetch /api/me/activation-status ───────────────────
       try {
         console.log("[AuthContext] loadUserData — fetching /api/me/activation-status...");
-        const activationRaw = await retry(() => BotAPI.activationStatus());
-        // The API returns activation status directly
-        const activationData = activationRaw?.status ?? activationRaw ?? null;
+        const response = await retry(() => BotAPI.activationStatus());
+        // Your API returns { success: true, status: {...} } or the status object directly
+        const activationData = response?.status || response || null;
         setActivation(activationData);
         console.log("[AuthContext] /api/me/activation-status OK:", activationData);
       } catch (actErr) {
@@ -233,10 +236,13 @@ export const AuthProvider = ({ children }) => {
           );
           setActivation({
             billing_complete: false,
+            has_card_on_file: false,
+            trading_enabled: false,
+            wallet_connected: false,
             okx_connected: false,
             alpaca_connected: false,
-            wallet_connected: false,
-            trading_enabled: false,
+            tier_requirements_met: false,
+            activation_complete: false,
             _error: "forbidden",
           });
         } else if (isRateLimited(actErr)) {
@@ -284,26 +290,28 @@ export const AuthProvider = ({ children }) => {
 
     const tier = (user.tier || "starter").toLowerCase();
 
-    if (!activation.billing_complete) return false;
+    // Check billing completion - your API uses has_card_on_file
+    const billingComplete = activation.has_card_on_file === true;
+    if (!billingComplete) return false;
 
     const needsOkx = ["starter", "pro", "bundle"].includes(tier);
     const needsAlpaca = ["starter", "bundle"].includes(tier);
     const needsWallet = ["elite", "stock", "bundle"].includes(tier);
 
-    const okxOk = !needsOkx || !!activation.okx_connected;
-    const alpacaOk = !needsAlpaca || !!activation.alpaca_connected;
-    const walletOk = !needsWallet || !!activation.wallet_connected;
-    const tradingOk = !!activation.trading_enabled;
+    const okxOk = !needsOkx || activation.okx_connected === true;
+    const alpacaOk = !needsAlpaca || activation.alpaca_connected === true;
+    const walletOk = !needsWallet || activation.wallet_connected === true;
+    const tradingOk = activation.trading_enabled === true;
 
     const complete = okxOk && alpacaOk && walletOk && tradingOk;
 
     console.log("[AuthContext] activationComplete →", complete, {
       tier,
-      billing: !!activation.billing_complete,
-      okx: `need=${needsOkx} have=${!!activation.okx_connected}`,
-      alpaca: `need=${needsAlpaca} have=${!!activation.alpaca_connected}`,
-      wallet: `need=${needsWallet} have=${!!activation.wallet_connected}`,
-      trading: tradingOk,
+      billing: billingComplete,
+      okx: `need=${needsOkx} have=${activation.okx_connected}`,
+      alpaca: `need=${needsAlpaca} have=${activation.alpaca_connected}`,
+      wallet: `need=${needsWallet} have=${activation.wallet_connected}`,
+      trading: activation.trading_enabled,
     });
 
     return complete;
@@ -316,27 +324,35 @@ export const AuthProvider = ({ children }) => {
     async (email, password) => {
       try {
         setAuthError(null);
-        const res = await BotAPI.login({ email, password });
+        console.log("[AuthContext] login attempt for:", email);
+        
+        // BotAPI.login expects { email, password } and returns { success, data } or throws
+        const result = await BotAPI.login({ email, password });
 
         console.log("[AuthContext] login success, token saved");
 
-        // Generous delay before loading data — server just authenticated us
-        await new Promise((r) => setTimeout(r, 800));
+        // Wait a bit for the server to be ready
+        await new Promise((r) => setTimeout(r, 500));
 
-        loadUserData().catch((err) => {
-          console.warn(
-            "[AuthContext] Post-login data load failed (non-blocking):",
-            err
-          );
-        });
+        // Load user data
+        await loadUserData();
 
-        return { success: true, data: res };
+        return { success: true, data: result.data };
       } catch (err) {
         console.error("[AuthContext] login error:", err);
+        
+        // Extract error message from the error object
+        let errorMessage = "Login failed";
+        if (err.response?.data?.message) {
+          errorMessage = err.response.data.message;
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
+        
         return {
           success: false,
-          error:
-            err.response?.data?.message || err.message || "Login failed",
+          error: errorMessage,
+          status: err.response?.status
         };
       }
     },
@@ -346,23 +362,34 @@ export const AuthProvider = ({ children }) => {
   /* -------------------------------------------------------
      Signup
   -------------------------------------------------------- */
-  const signup = useCallback(async (data) => {
+  const signup = useCallback(async (userData) => {
     try {
       setAuthError(null);
-      const res = await BotAPI.signup(data);
+      console.log("[AuthContext] signup attempt for:", userData.email);
+      
+      // BotAPI.signup expects the user data and returns { success, data } or throws
+      const result = await BotAPI.signup(userData);
 
-      if (res?.token) {
-        BotAPI.setToken(res.token);
+      if (result?.data?.token) {
+        BotAPI.setToken(result.data.token);
         console.log("[AuthContext] signup returned token, saved");
       }
 
-      return { success: true, data: res };
+      return { success: true, data: result.data };
     } catch (err) {
       console.error("[AuthContext] signup error:", err);
+      
+      let errorMessage = "Signup failed";
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       return {
         success: false,
-        error:
-          err.response?.data?.message || err.message || "Signup failed",
+        error: errorMessage,
+        status: err.response?.status
       };
     }
   }, []);
@@ -372,7 +399,6 @@ export const AuthProvider = ({ children }) => {
   -------------------------------------------------------- */
   const logout = useCallback(() => {
     BotAPI.clearToken();
-    BotAPI.clearCache();
     setUser(null);
     setActivation(null);
     setAuthError(null);
