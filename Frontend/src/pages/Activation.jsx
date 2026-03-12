@@ -129,6 +129,23 @@ const HelpLink = ({ href, children }) => (
 );
 
 // ────────────────────────────────────────────────────────────
+// Helper function to safely extract data
+// ────────────────────────────────────────────────────────────
+const safeData = (response, fallback = {}) => {
+  if (!response) return fallback;
+  // Handle { success: true, data: {...} }
+  if (response.data && typeof response.data === 'object') {
+    return response.data;
+  }
+  // Handle { success: true, status: {...} }
+  if (response.status && typeof response.status === 'object') {
+    return response.status;
+  }
+  // Handle direct object
+  return response;
+};
+
+// ────────────────────────────────────────────────────────────
 // Main Component
 // ────────────────────────────────────────────────────────────
 
@@ -168,9 +185,10 @@ export default function Activation() {
     [tier]
   );
 
+  // FIXED: Use correct field names from backend
   const status = useMemo(
     () => ({
-      billing: !!activation?.billing_complete,
+      billing: !!activation?.has_card_on_file,
       okx: !!activation?.okx_connected,
       alpaca: !!activation?.alpaca_connected,
       wallet: !!activation?.wallet_connected,
@@ -237,7 +255,8 @@ export default function Activation() {
         await refreshActivation();
       } else {
         const res = await BotAPI.activationStatus();
-        const fresh = res?.status ?? res?.data?.status ?? res;
+        // Handle nested response
+        const fresh = safeData(res);
         if (setActivation) setActivation(fresh);
       }
     } catch (err) {
@@ -269,7 +288,10 @@ export default function Activation() {
       setOkx({ apiKey: "", apiSecret: "", passphrase: "", isLive: false });
       await refreshAfterAction();
     } catch (err) {
-      setError(err?.response?.data?.message || "Failed to connect OKX. Please double-check your API keys.");
+      const errorMsg = err?.response?.data?.message || 
+                       err?.response?.data?.error || 
+                       "Failed to connect OKX. Please double-check your API keys.";
+      setError(errorMsg);
     } finally {
       setBusy("");
     }
@@ -297,7 +319,10 @@ export default function Activation() {
       setAlpaca({ apiKey: "", apiSecret: "", isLive: false });
       await refreshAfterAction();
     } catch (err) {
-      setError(err?.response?.data?.message || "Failed to connect Alpaca. Please double-check your API keys.");
+      const errorMsg = err?.response?.data?.message || 
+                       err?.response?.data?.error || 
+                       "Failed to connect Alpaca. Please double-check your API keys.";
+      setError(errorMsg);
     } finally {
       setBusy("");
     }
@@ -327,7 +352,10 @@ export default function Activation() {
       setWallet("");
       await refreshAfterAction();
     } catch (err) {
-      setError(err?.response?.data?.message || "Failed to connect wallet");
+      const errorMsg = err?.response?.data?.message || 
+                       err?.response?.data?.error || 
+                       "Failed to connect wallet";
+      setError(errorMsg);
     } finally {
       setBusy("");
     }
@@ -350,7 +378,10 @@ export default function Activation() {
       setSuccess(enabling ? "✅ Trading enabled! Redirecting to your dashboard…" : "Trading has been turned off");
       await refreshAfterAction();
     } catch (err) {
-      setError(err?.response?.data?.message || "Could not update trading status");
+      const errorMsg = err?.response?.data?.message || 
+                       err?.response?.data?.error || 
+                       "Could not update trading status";
+      setError(errorMsg);
     } finally {
       setBusy("");
     }
