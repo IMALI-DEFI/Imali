@@ -54,28 +54,40 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function countActiveBots(data = {}) {
-  let count = 0;
-
-  if (data?.futures?.status === "operational") count += 1;
-  if (data?.stocks?.running === true) count += 1;
-  if (data?.sniper?.status === "scanning" || data?.sniper?.status === "monitoring") count += 1;
-  if (data?.okx?.status === "running" || data?.okx?.positions_count > 0 || data?.okx?.total_trades > 0) count += 1;
-
-  return count;
-}
-
 function collectRecentTrades(data = {}, limit = 20) {
-  let trades = normalizeArray(data?.recent_trades);
+  const combined = [
+    ...normalizeArray(data?.recent_trades),
+    ...normalizeArray(data?.sniper?.trades),
+    ...normalizeArray(data?.okx?.recent_trades),
+    ...normalizeArray(data?.futures?.recent_trades),
+    ...normalizeArray(data?.stocks?.recent_trades),
+    ...normalizeArray(data?.okx?.trades),
+    ...normalizeArray(data?.futures?.trades),
+    ...normalizeArray(data?.stocks?.trades),
+  ];
 
-  if (!trades.length) trades = normalizeArray(data?.sniper?.trades);
-  if (!trades.length) trades = normalizeArray(data?.okx?.recent_trades);
-  if (!trades.length) trades = normalizeArray(data?.futures?.recent_trades);
-  if (!trades.length) trades = normalizeArray(data?.stocks?.recent_trades);
+  const seen = new Set();
+  const unique = [];
 
-  if (!trades.length) {
+  for (const trade of combined) {
+    const key =
+      trade?.id ||
+      [
+        trade?.symbol,
+        trade?.side,
+        trade?.created_at || trade?.timestamp,
+        trade?.pnl_usd || trade?.pnl || trade?.price,
+      ].join("|");
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(trade);
+    }
+  }
+
+  if (!unique.length) {
     const now = Date.now();
-    trades = [
+    return [
       {
         id: "demo-1",
         symbol: "BTC/USD",
@@ -116,73 +128,116 @@ function collectRecentTrades(data = {}, limit = 20) {
         pnl_usd: -18.64,
         created_at: new Date(now - 110 * 60000).toISOString(),
       },
-    ];
+    ].slice(0, limit);
   }
 
-  return trades.slice(0, limit);
+  return unique
+    .sort((a, b) => {
+      const tA = new Date(a?.created_at || a?.timestamp || 0).getTime();
+      const tB = new Date(b?.created_at || b?.timestamp || 0).getTime();
+      return tB - tA;
+    })
+    .slice(0, limit);
 }
 
-function calculateWinRateLast20(trades = []) {
-  const recent20 = trades.slice(0, 20);
-  if (!recent20.length) return 0;
+function getBotStatuses(data = {}) {
+  return [
+    {
+      label: "Futures",
+      live:
+        data?.futures?.status === "operational" ||
+        data?.futures?.status === "running" ||
+        safeNumber(data?.futures?.positions_count, 0) > 0 ||
+        normalizeArray(data?.futures?.trades).length > 0,
+    },
+    {
+      label: "Stocks",
+      live:
+        data?.stocks?.running === true ||
+        data?.stocks?.status === "operational" ||
+        safeNumber(data?.stocks?.positions_count, 0) > 0 ||
+        normalizeArray(data?.stocks?.trades).length > 0,
+    },
+    {
+      label: "Sniper",
+      live:
+        data?.sniper?.status === "scanning" ||
+        data?.sniper?.status === "monitoring" ||
+        data?.sniper?.status === "running" ||
+        normalizeArray(data?.sniper?.trades).length > 0,
+    },
+    {
+      label: "OKX",
+      live:
+        data?.okx?.status === "running" ||
+        safeNumber(data?.okx?.positions_count, 0) > 0 ||
+        safeNumber(data?.okx?.total_trades, 0) > 0 ||
+        normalizeArray(data?.okx?.trades).length > 0,
+    },
+  ];
+}
 
-  const wins = recent20.filter((trade) => {
-    const pct = trade?.pnl_percent;
-    const usd = trade?.pnl_usd ?? trade?.pnl;
-    if (pct !== undefined && pct !== null && Number.isFinite(Number(pct))) {
-      return Number(pct) > 0;
+function calculateTradeMetrics(trades = []) {
+  let wins = 0;
+  let losses = 0;
+  let totalPnL = 0;
+
+  for (const trade of trades) {
+    const pnl =
+      trade?.pnl_usd ??
+      trade?.pnl ??
+      trade?.profit ??
+      trade?.realized_pnl ??
+      null;
+
+    if (pnl !== null && pnl !== undefined && Number.isFinite(Number(pnl))) {
+      const n = Number(pnl);
+      totalPnL += n;
+      if (n > 0) wins += 1;
+      if (n < 0) losses += 1;
+    } else {
+      const pct = trade?.pnl_percent;
+      if (pct !== null && pct !== undefined && Number.isFinite(Number(pct))) {
+        const n = Number(pct);
+        if (n > 0) wins += 1;
+        if (n < 0) losses += 1;
+      }
     }
-    return safeNumber(usd, 0) > 0;
-  }).length;
-
-  return Math.round((wins / recent20.length) * 100);
-}
-
-function calculatePnlPercent(trades = []) {
-  const recent20 = trades.slice(0, 20);
-  if (!recent20.length) return 0;
-
-  const withPct = recent20.filter((t) =>
-    t?.pnl_percent !== undefined &&
-    t?.pnl_percent !== null &&
-    Number.isFinite(Number(t?.pnl_percent))
-  );
-
-  if (withPct.length) {
-    const total = withPct.reduce((sum, t) => sum + Number(t.pnl_percent), 0);
-    return total / withPct.length;
   }
 
-  const usdValues = recent20.map((t) => safeNumber(t?.pnl_usd ?? t?.pnl, 0));
-  const nonZero = usdValues.filter((n) => n !== 0);
+  return {
+    totalTrades: trades.length,
+    totalPnL,
+    wins,
+    losses,
+  };
+}
 
-  if (!nonZero.length) return 0;
-
-  const total = nonZero.reduce((sum, n) => sum + n, 0);
-  const avg = total / nonZero.length;
-
-  return avg / 100;
+function formatCurrency(value) {
+  const n = safeNumber(value, 0);
+  const sign = n >= 0 ? "+" : "-";
+  return `${sign}$${Math.abs(n).toFixed(2)}`;
 }
 
 function buildActivitySeries(trades = []) {
-  if (!trades.length) return [3, 4, 5, 4, 6, 5, 7];
+  if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
 
   return trades
     .slice(0, 7)
     .reverse()
     .map((trade, index) => {
-      const pct = trade?.pnl_percent;
-      const usd = trade?.pnl_usd ?? trade?.pnl;
+      const usd = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
+      const pct = trade?.pnl_percent ?? null;
 
-      if (pct !== undefined && pct !== null && Number.isFinite(Number(pct))) {
-        return Math.max(1.5, Math.min(10, Math.abs(Number(pct)) * 1.8 + 2));
+      if (usd !== null && usd !== undefined && Number.isFinite(Number(usd))) {
+        return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
       }
 
-      if (usd !== undefined && usd !== null && Number.isFinite(Number(usd))) {
-        return Math.max(1.5, Math.min(10, Math.abs(Number(usd)) / 80 + 2));
+      if (pct !== null && pct !== undefined && Number.isFinite(Number(pct))) {
+        return Math.max(2, Math.min(16, Math.abs(Number(pct)) * 2 + 3));
       }
 
-      return index + 2;
+      return index + 4;
     });
 }
 
@@ -222,7 +277,6 @@ function usePromoStatus() {
         });
       } catch {
         if (!mounted) return;
-
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -306,12 +360,19 @@ function useLiveActivity() {
   const [activity, setActivity] = useState({
     trades: [],
     stats: {
+      currentStatus: "Offline",
       activeBots: 0,
-      winRate20: 0,
-      recentTrades: 0,
-      pnlPercent: 0,
+      totalTrades: 0,
+      totalPnL: 0,
+      wins: 0,
+      losses: 0,
       online: false,
-      bots: [],
+      botStatuses: [
+        { label: "Futures", live: false },
+        { label: "Stocks", live: false },
+        { label: "Sniper", live: false },
+        { label: "OKX", live: false },
+      ],
     },
     loading: true,
     error: null,
@@ -324,12 +385,12 @@ function useLiveActivity() {
       try {
         const liveResponse = await axios.get(LIVE_STATS_URL, { timeout: 8000 });
 
-        let summaryData = { summary: {} };
+        let summaryData = {};
         try {
           const summaryResponse = await axios.get(ANALYTICS_SUMMARY_URL, {
             timeout: 5000,
           });
-          summaryData = summaryResponse.data || { summary: {} };
+          summaryData = summaryResponse.data || {};
         } catch {
           // fallback silently
         }
@@ -338,27 +399,38 @@ function useLiveActivity() {
 
         const data = liveResponse.data || {};
         const trades = collectRecentTrades(data, 20);
+        const botStatuses = getBotStatuses(data);
+        const activeBots = botStatuses.filter((b) => b.live).length;
+        const online = activeBots > 0;
 
-        const bots = [];
-        if (data?.futures?.status === "operational") bots.push("Futures");
-        if (data?.stocks?.running === true) bots.push("Stocks");
-        if (data?.sniper?.status === "scanning" || data?.sniper?.status === "monitoring") bots.push("Sniper");
-        if (data?.okx?.status === "running" || data?.okx?.positions_count > 0 || data?.okx?.total_trades > 0) {
-          bots.push("OKX");
-        }
+        const computedMetrics = calculateTradeMetrics(trades);
 
-        const summaryWinRate = safeNumber(summaryData?.summary?.win_rate, null);
-        const computedWinRate = calculateWinRateLast20(trades);
+        const summary = summaryData?.summary || summaryData || {};
+
+        const totalTrades =
+          safeNumber(summary?.total_trades, NaN);
+        const totalPnL =
+          safeNumber(summary?.total_pnl, NaN);
+        const wins =
+          safeNumber(summary?.wins, NaN);
+        const losses =
+          safeNumber(summary?.losses, NaN);
 
         setActivity({
           trades,
           stats: {
-            activeBots: countActiveBots(data),
-            winRate20: Number.isFinite(summaryWinRate) ? Math.round(summaryWinRate) : computedWinRate,
-            recentTrades: trades.length,
-            pnlPercent: calculatePnlPercent(trades),
-            online: bots.length > 0,
-            bots,
+            currentStatus: online ? "Live" : "Offline",
+            activeBots,
+            totalTrades: Number.isFinite(totalTrades)
+              ? totalTrades
+              : computedMetrics.totalTrades,
+            totalPnL: Number.isFinite(totalPnL)
+              ? totalPnL
+              : computedMetrics.totalPnL,
+            wins: Number.isFinite(wins) ? wins : computedMetrics.wins,
+            losses: Number.isFinite(losses) ? losses : computedMetrics.losses,
+            online,
+            botStatuses,
           },
           loading: false,
           error: null,
@@ -542,15 +614,19 @@ function LiveActivityWidget({ activity }) {
 
   const chartData = useMemo(
     () => ({
-      labels: ["1", "2", "3", "4", "5", "6", "7"],
+      labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
       datasets: [
         {
           data: series,
           borderColor: "#10b981",
-          backgroundColor: "rgba(16,185,129,0.12)",
+          backgroundColor: "rgba(16,185,129,0.18)",
           fill: true,
-          tension: 0.42,
-          pointRadius: 0,
+          tension: 0.45,
+          pointRadius: 4,
+          pointHoverRadius: 5,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#10b981",
+          pointBorderWidth: 2,
           borderWidth: 3,
         },
       ],
@@ -569,14 +645,22 @@ function LiveActivityWidget({ activity }) {
           backgroundColor: "#111827",
           titleColor: "#ffffff",
           bodyColor: "#d1fae5",
+          padding: 10,
         },
       },
       scales: {
-        x: { display: false, grid: { display: false } },
-        y: { display: false, grid: { display: false } },
-      },
-      elements: {
-        line: { capBezierPoints: true },
+        x: {
+          display: true,
+          grid: { display: false },
+          ticks: {
+            color: "#9ca3af",
+            font: { size: 10 },
+          },
+        },
+        y: {
+          display: false,
+          grid: { color: "rgba(229,231,235,0.5)" },
+        },
       },
     }),
     []
@@ -594,15 +678,13 @@ function LiveActivityWidget({ activity }) {
   }
 
   const { trades, stats } = activity;
-  const pnlPositive = Number(stats.pnlPercent) >= 0;
-  const pnlText = `${pnlPositive ? "+" : ""}${Number(stats.pnlPercent).toFixed(1)}%`;
 
   return (
     <Card className="p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="flex items-center gap-2 font-bold text-gray-900">
           <span
-            className={`h-2 w-2 rounded-full ${
+            className={`h-2.5 w-2.5 rounded-full ${
               stats.online ? "bg-green-500 animate-pulse" : "bg-gray-400"
             }`}
           />
@@ -617,45 +699,89 @@ function LiveActivityWidget({ activity }) {
         </Link>
       </div>
 
-      <div className="mb-4 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-3">
-        <div className="mb-2 flex items-center justify-between">
+      <div className="mb-4 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 p-4">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Live Snapshot
+              Dashboard Snapshot
             </p>
-            <p className="text-sm text-gray-500">Bot activity from recent trades</p>
+            <p className="text-sm text-gray-500">Live activity and recent performance</p>
           </div>
-          <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700 shadow-sm">
-            {stats.bots.length ? stats.bots.join(" • ") : "Waiting for activity"}
+
+          <div
+            className={`rounded-full px-3 py-1 text-xs font-semibold shadow-sm ${
+              stats.online
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-gray-100 text-gray-600"
+            }`}
+          >
+            {stats.currentStatus}
           </div>
         </div>
 
-        <div className="h-32">
+        <div className="h-40">
           <Line data={chartData} options={chartOptions} />
         </div>
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3">
         <StatMiniCard
-          title="Active Bots"
-          value={stats.activeBots}
-          valueClassName="text-emerald-600"
+          title="Current Status"
+          value={stats.currentStatus}
+          valueClassName={stats.online ? "text-emerald-600" : "text-gray-600"}
         />
         <StatMiniCard
-          title="Win Rate (Last 20)"
-          value={`${stats.winRate20}%`}
+          title="Active Bots"
+          value={stats.activeBots}
           valueClassName="text-indigo-600"
         />
         <StatMiniCard
-          title="Recent Trades"
-          value={stats.recentTrades}
+          title="Total Trades"
+          value={stats.totalTrades}
           valueClassName="text-purple-600"
         />
         <StatMiniCard
-          title="P&L Percent"
-          value={pnlText}
-          valueClassName={pnlPositive ? "text-emerald-600" : "text-red-600"}
+          title="Total P&L"
+          value={formatCurrency(stats.totalPnL)}
+          valueClassName={stats.totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}
         />
+      </div>
+
+      <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+        <div className="mb-2 text-[10px] uppercase tracking-wide text-gray-500">
+          Win/Loss
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-emerald-600">
+            Wins: {stats.wins}
+          </span>
+          <span className="text-sm font-semibold text-red-600">
+            Losses: {stats.losses}
+          </span>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <div className="mb-2 text-[10px] uppercase tracking-wide text-gray-500">
+          Bot Status
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {stats.botStatuses.map((bot) => (
+            <div
+              key={bot.label}
+              className="flex items-center justify-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs"
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  bot.live ? "bg-emerald-500" : "bg-gray-300"
+                }`}
+              />
+              <span className={bot.live ? "text-gray-800" : "text-gray-500"}>
+                {bot.label}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {activity.error ? (
@@ -670,10 +796,8 @@ function LiveActivityWidget({ activity }) {
             trades.slice(0, 4).map((trade, i) => {
               const side = String(trade?.side || "buy").toLowerCase();
               const isBuy = side === "buy" || side === "long";
-              const pctValue =
-                trade?.pnl_percent !== undefined && trade?.pnl_percent !== null
-                  ? Number(trade?.pnl_percent)
-                  : null;
+              const pnlValue =
+                trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
 
               return (
                 <div
@@ -707,16 +831,16 @@ function LiveActivityWidget({ activity }) {
 
                   <div
                     className={`shrink-0 font-semibold ${
-                      pctValue === null
+                      pnlValue === null || !Number.isFinite(Number(pnlValue))
                         ? "text-gray-500"
-                        : pctValue >= 0
+                        : Number(pnlValue) >= 0
                         ? "text-emerald-600"
                         : "text-red-600"
                     }`}
                   >
-                    {pctValue === null
+                    {pnlValue === null || !Number.isFinite(Number(pnlValue))
                       ? "—"
-                      : `${pctValue >= 0 ? "+" : ""}${pctValue.toFixed(1)}%`}
+                      : formatCurrency(Number(pnlValue))}
                   </div>
                 </div>
               );
@@ -783,10 +907,37 @@ export default function Home() {
             </Link>
           </div>
 
+          {/* moved promo/referral banner above title */}
+          <div className="mx-auto mb-8 max-w-3xl">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-left shadow-sm sm:px-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
+                    Referral Program Offer
+                  </p>
+                  <h3 className="mt-1 text-lg font-bold text-gray-900 sm:text-xl">
+                    Invite friends and earn rewards in USDC or IMALI
+                  </h3>
+                  <p className="mt-1 max-w-2xl text-sm text-gray-600">
+                    Share your referral link, bring in new members, and earn
+                    partner rewards as the IMALI ecosystem grows.
+                  </p>
+                </div>
+
+                <Link
+                  to="/referrals"
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-amber-500 px-5 py-3 font-bold text-black transition-all hover:bg-amber-400"
+                >
+                  View Referral Offer
+                </Link>
+              </div>
+            </div>
+          </div>
+
           <div className="text-center">
             <h1 className="font-extrabold leading-tight">
-              <span className="mt-2 block bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-3xl text-transparent sm:text-4xl md:text-5xl lg:text-7xl">
-                📈 Automated Trading for Stock and Crypto
+              <span className="mx-auto block max-w-5xl bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-center text-3xl text-transparent sm:text-4xl md:text-5xl lg:text-7xl">
+                Automated Trading for Stock and Crypto
               </span>
             </h1>
 
@@ -799,32 +950,6 @@ export default function Home() {
               <Pill color="emerald">✅ No experience needed</Pill>
               <Pill color="amber">🎁 Referral rewards available</Pill>
               <Pill color="purple">🦾 AI-powered trading bots</Pill>
-            </div>
-
-            <div className="mx-auto mt-6 max-w-3xl">
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-left shadow-sm sm:px-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
-                      Referral Program Offer
-                    </p>
-                    <h3 className="mt-1 text-lg font-bold text-gray-900 sm:text-xl">
-                      Invite friends and earn rewards in USDC or IMALI
-                    </h3>
-                    <p className="mt-1 max-w-2xl text-sm text-gray-600">
-                      Share your referral link, bring in new members, and earn
-                      partner rewards as the IMALI ecosystem grows.
-                    </p>
-                  </div>
-
-                  <Link
-                    to="/referrals"
-                    className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-amber-500 px-5 py-3 font-bold text-black transition-all hover:bg-amber-400"
-                  >
-                    View Referral Offer
-                  </Link>
-                </div>
-              </div>
             </div>
 
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
@@ -853,7 +978,7 @@ export default function Home() {
 
           <Card className="p-5">
             <h3 className="mb-2 text-lg font-bold text-gray-900">
-              🤖 Your Trading Bots
+              Your Trading Bots
             </h3>
             <p className="mb-4 text-sm text-gray-600">
               Choose a plan, connect your accounts, and let IMALI handle stock
@@ -930,9 +1055,9 @@ export default function Home() {
           <div className="ml-5 h-4 border-l-2 border-gray-200 sm:ml-6 sm:h-6" />
           <StepCard
             number="3"
-            emoji="📈"
+            emoji="📊"
             title="Track Live Activity"
-            description="Monitor active bots, recent trades, current win rate, and P&L performance from one place."
+            description="Monitor current status, active bots, total trades, total P&L, and win/loss performance from one place."
           />
         </div>
 
@@ -1086,7 +1211,7 @@ export default function Home() {
               title: "Live Dashboard Stats",
               pill: "indigo",
               plan: "All Plans",
-              desc: "Track active bots, current win rate from the last 20 trades, recent trade count, and P&L percent.",
+              desc: "Track current status, active bots, total trades, total P&L, and win/loss performance.",
             },
             {
               icon: "🎁",
@@ -1184,7 +1309,7 @@ export default function Home() {
             },
             {
               q: "What will I see on the dashboard?",
-              a: "You can track active bots, win rate from recent trades, recent trade count, and P&L percent from the home dashboard preview and the full live dashboard.",
+              a: "You can track current status, active bots, total trades, total P&L, and win/loss performance from the home dashboard preview and the full live dashboard.",
             },
             {
               q: "Can I earn by inviting friends?",
@@ -1234,14 +1359,14 @@ export default function Home() {
               to="/signup"
               className="rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 px-8 py-4 text-base font-bold text-white shadow-xl hover:from-indigo-500 hover:to-purple-500 sm:px-12 sm:py-5 sm:text-lg"
             >
-              🚀 Create Free Account
+              Create Free Account
             </Link>
 
             <Link
               to="/referrals"
               className="rounded-full border-2 border-amber-200 bg-white px-8 py-4 text-base font-bold text-amber-700 transition-all hover:bg-amber-50 sm:px-12 sm:py-5 sm:text-lg"
             >
-              🎁 Referral Program
+              Referral Program
             </Link>
           </div>
 
