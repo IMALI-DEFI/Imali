@@ -4,7 +4,8 @@ import axios from "axios";
 // =========================
 // CONFIGURATION
 // =========================
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || 
+  "https://api.imali-defi.com";
 const TOKEN_KEY = "imali_token";
 
 // =========================
@@ -88,7 +89,7 @@ const BotAPI = {
   getToken: getStoredToken,
   clearToken: clearStoredToken,
   isLoggedIn: () => !!getStoredToken(),
-  clearCache: () => {}, // No-op for now
+  clearCache: () => {},
 
   // ========================
   // AUTHENTICATION
@@ -96,7 +97,6 @@ const BotAPI = {
   async signup(userData) {
     try {
       const response = await api.post("/api/signup", userData);
-      // Your API returns { success: true, data: {...}, message: "..." }
       const data = response.data;
       
       if (data?.data?.token) {
@@ -112,7 +112,33 @@ const BotAPI = {
   async login(credentials) {
     try {
       const response = await api.post("/api/auth/login", credentials);
-      // Your API returns { success: true, data: {...}, message: "..." }
+      const data = response.data;
+      
+      // Check if 2FA required
+      if (data?.data?.twofa_required) {
+        return { 
+          success: true, 
+          twofaRequired: true, 
+          tempToken: data.data.temp_token 
+        };
+      }
+      
+      if (data?.data?.token) {
+        this.setToken(data.data.token);
+      }
+      
+      return { success: true, data: data.data };
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async verify2FA(token, tempToken) {
+    try {
+      const response = await api.post("/api/auth/2fa/verify-login", {
+        token,
+        temp_token: tempToken,
+      });
       const data = response.data;
       
       if (data?.data?.token) {
@@ -128,7 +154,7 @@ const BotAPI = {
   async me() {
     try {
       const response = await api.get("/api/me");
-      // Your API returns { success: true, user: {...} }
+      // Returns { success: true, user: {...} }
       return response.data;
     } catch (error) {
       throw error;
@@ -138,7 +164,136 @@ const BotAPI = {
   async activationStatus() {
     try {
       const response = await api.get("/api/me/activation-status");
-      // Your API returns { success: true, status: {...} }
+      // Returns { success: true, status: {...} }
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ========================
+  // INTEGRATIONS
+  // ========================
+  async connectOKX(payload) {
+    try {
+      const response = await api.post("/api/integrations/okx", payload);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async connectAlpaca(payload) {
+    try {
+      const response = await api.post("/api/integrations/alpaca", payload);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async connectWallet(payload) {
+    try {
+      const response = await api.post("/api/integrations/wallet", payload);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async getIntegrationStatus() {
+    try {
+      const response = await api.get("/api/integrations/status");
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ========================
+  // TRADING
+  // ========================
+  async toggleTrading(enabled) {
+    try {
+      const response = await api.post("/api/trading/enable", { enabled });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async getTradingStatus() {
+    try {
+      const response = await api.get("/api/trading/status");
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ========================
+  // BILLING
+  // ========================
+  async createSetupIntent() {
+    try {
+      const response = await api.post("/api/billing/setup-intent");
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async getCardStatus() {
+    try {
+      const response = await api.get("/api/billing/card-status");
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async confirmCard() {
+    try {
+      const response = await api.post("/api/billing/confirm-card");
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ========================
+  // PUBLIC ENDPOINTS
+  // ========================
+  async getPromoStatus() {
+    try {
+      const response = await api.get("/api/promo/status");
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async claimPromo(payload) {
+    try {
+      const response = await api.post("/api/promo/claim", payload);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async getLiveStats() {
+    try {
+      const response = await api.get("/api/public/live-stats");
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async getAnalyticsSummary() {
+    try {
+      const response = await api.get("/api/analytics/summary");
       return response.data;
     } catch (error) {
       throw error;
