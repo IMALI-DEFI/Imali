@@ -2,19 +2,129 @@
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import BotAPI from "../utils/BotAPI";
 
 function safeInternalPath(path, fallback = "/activation") {
   if (!path || typeof path !== "string") return fallback;
-
-  // Allow only internal relative paths
   if (!path.startsWith("/")) return fallback;
-
-  // Prevent protocol-based or // style redirects
   if (path.startsWith("//")) return fallback;
   if (path.includes("://")) return fallback;
-
   return path;
 }
+
+// Forgot Password Modal Component
+const ForgotPasswordModal = ({ isOpen, onClose, initialEmail }) => {
+  const [email, setEmail] = useState(initialEmail || "");
+  const [status, setStatus] = useState("idle"); // idle, loading, success, error
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+
+    setStatus("loading");
+    setMessage("");
+
+    try {
+      await BotAPI.forgotPassword(email.trim().toLowerCase());
+      setStatus("success");
+      setMessage("Password reset link sent! Check your email.");
+      
+      // Auto-close after 3 seconds on success
+      setTimeout(() => {
+        onClose();
+        setStatus("idle");
+        setEmail("");
+      }, 3000);
+    } catch (err) {
+      setStatus("error");
+      const errorMsg = err.response?.data?.message || 
+        err.message || 
+        "Failed to send reset email. Please try again.";
+      setMessage(errorMsg);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="relative w-full max-w-md bg-gray-900 rounded-2xl border border-gray-800 shadow-2xl">
+        {/* Close button */}
+        <button
+          onClick={() => {
+            onClose();
+            setStatus("idle");
+            setEmail("");
+            setMessage("");
+          }}
+          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        <div className="p-6">
+          <h2 className="text-2xl font-bold text-white mb-2">Reset Password</h2>
+          <p className="text-gray-400 text-sm mb-6">
+            Enter your email address and we'll send you a link to reset your password.
+          </p>
+
+          {message && (
+            <div className={`mb-4 p-3 rounded-xl text-sm ${
+              status === "success" 
+                ? "bg-green-500/10 border border-green-500/30 text-green-400" 
+                : "bg-red-500/10 border border-red-500/30 text-red-400"
+            }`}>
+              {message}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Your email address"
+              className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={status === "loading" || status === "success"}
+              autoFocus
+            />
+
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={status === "loading" || status === "success"}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+              >
+                {status === "loading" ? "Sending..." : "Send Reset Link"}
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  setStatus("idle");
+                  setEmail("");
+                  setMessage("");
+                }}
+                className="px-4 py-3 rounded-xl border border-gray-700 text-gray-300 hover:text-white hover:border-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+
+          <div className="mt-4 text-center text-xs text-gray-500">
+            We'll send a password reset link to your email if an account exists.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function Login() {
   const navigate = useNavigate();
@@ -25,10 +135,10 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  
+  // Forgot password modal state
+  const [showForgotModal, setShowForgotModal] = useState(false);
 
-  // Support:
-  // 1) BotAPI 401 redirect -> /login?next=/admin
-  // 2) RequireAuth redirect -> state.from
   const nextFromQuery = useMemo(() => {
     try {
       const params = new URLSearchParams(location.search || "");
@@ -40,18 +150,15 @@ export default function Login() {
 
   const fromState = useMemo(() => {
     const raw = location.state?.from;
-    // RequireAuth sets: state={{ from: location.pathname + location.search }}
-    // so it should already be a string path.
     return typeof raw === "string" ? raw : "";
   }, [location.state]);
 
   const destination = useMemo(() => {
-    // Priority: next query param > state.from > default
     const raw = nextFromQuery || fromState || "/activation";
     return safeInternalPath(raw, "/activation");
   }, [nextFromQuery, fromState]);
 
-  const submit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
 
@@ -68,11 +175,19 @@ export default function Login() {
         return;
       }
 
-      localStorage.setItem("IMALI_EMAIL", normalizedEmail);
+      // Check if 2FA required
+      if (result.twofaRequired) {
+        navigate("/2fa", {
+          state: {
+            tempToken: result.tempToken,
+            email: normalizedEmail,
+            destination,
+          },
+        });
+        return;
+      }
 
-      // Go where the app originally intended:
-      // - /admin should be allowed (AdminPanel will enforce admin/owner)
-      // - /dashboard will still be protected by activation guard
+      localStorage.setItem("IMALI_EMAIL", normalizedEmail);
       navigate(destination, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
@@ -95,7 +210,13 @@ export default function Login() {
           </div>
         )}
 
-        <form onSubmit={submit} className="space-y-4">
+        {location.state?.message && (
+          <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 text-green-200 px-4 py-2 text-sm">
+            {location.state.message}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="email"
             required
@@ -118,6 +239,17 @@ export default function Login() {
             disabled={loading}
           />
 
+          {/* Forgot Password Link */}
+          <div className="text-right">
+            <button
+              type="button"
+              onClick={() => setShowForgotModal(true)}
+              className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+            >
+              Forgot password?
+            </button>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
@@ -128,7 +260,7 @@ export default function Login() {
         </form>
 
         <div className="mt-5 text-center text-sm text-white/60">
-          Don’t have an account?{" "}
+          Don't have an account?{" "}
           <Link
             to="/signup"
             className="text-emerald-300 underline hover:text-emerald-200"
@@ -136,7 +268,19 @@ export default function Login() {
             Create one
           </Link>
         </div>
+
+        {/* Demo credentials hint (optional - remove in production) */}
+        <div className="mt-6 pt-4 border-t border-white/10 text-xs text-center text-gray-500">
+          Demo: demo@imali-defi.com / demo123
+        </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal
+        isOpen={showForgotModal}
+        onClose={() => setShowForgotModal(false)}
+        initialEmail={email}
+      />
     </div>
   );
 }
