@@ -87,7 +87,7 @@ const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.j
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
 
 /* -------------------- API Helper -------------------- */
-const getAuthToken = () => BotAPI.getToken?.()
+const getAuthToken = () => BotAPI.getToken();
 
 const adminFetch = async (endpoint, options = {}, retries = 2) => {
   const token = getAuthToken();
