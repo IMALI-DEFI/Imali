@@ -1,9 +1,21 @@
+// src/hooks/useBotWebSocket.js
 import { useState, useEffect, useCallback, useRef } from "react";
 import BotAPI from "../utils/BotAPI";
 
 // WebSocket should be on the SAME server as the bot API
 const BOT_HOST = process.env.REACT_APP_BOT_WS_URL || "ws://129.213.90.84:8011";
 const WS_PATH = "/ws/dashboard";
+
+// Helper to safely extract data from API responses
+const safeExtract = (response, fallback = null) => {
+  if (!response) return fallback;
+  // Handle { success: true, data: {...} }
+  if (response.data && typeof response.data === 'object') {
+    return response.data;
+  }
+  // Handle direct object
+  return response;
+};
 
 export default function useBotWebSocket() {
   const [botData, setBotData] = useState(null);
@@ -24,6 +36,7 @@ export default function useBotWebSocket() {
     if (!mountedRef.current) return;
 
     try {
+      // Use getAllStats and getTrades from BotAPI
       const [statsResult, tradesResult] = await Promise.allSettled([
         BotAPI.getAllStats(),
         BotAPI.getTrades(),
@@ -31,8 +44,14 @@ export default function useBotWebSocket() {
 
       if (!mountedRef.current) return;
 
-      const stats = statsResult.status === "fulfilled" ? statsResult.value : null;
-      const tradesData = tradesResult.status === "fulfilled" ? tradesResult.value : null;
+      // Handle nested responses
+      const stats = statsResult.status === "fulfilled" 
+        ? safeExtract(statsResult.value)
+        : null;
+        
+      const tradesData = tradesResult.status === "fulfilled" 
+        ? safeExtract(tradesResult.value)
+        : null;
 
       if (stats || tradesData) {
         setBotData((prev) => {
@@ -422,7 +441,7 @@ export default function useBotWebSocket() {
       // Don't set error immediately — onclose will handle reconnect
       console.warn("[WebSocket] Connection error");
     };
-  }, [startRestPolling, stopRestPolling]);
+  }, [startRestPolling, stopRestPolling, fetchViaRest]);
 
   const requestSnapshot = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
