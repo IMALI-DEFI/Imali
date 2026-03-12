@@ -1,6 +1,8 @@
+// src/pages/member/MemberDashboard.jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import BotAPI from "../../utils/BotAPI";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -64,20 +66,20 @@ const TIER_BOTS = {
   bundle: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "Staking", "Yield Farming", "NFT Marketplace"],
 };
 
-/* ===================== API CONFIG ===================== */
-const API_BASE = process.env.REACT_APP_API_URL || 'https://api.imali-defi.com';
-
-// NEW: Use all our working endpoints
-const TRADES_URL = `${API_BASE}/api/trades/recent`;
-const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
-const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
-const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
-const HISTORICAL_URL = `${API_BASE}/api/public/historical`;
-
-/* ===================== HELPERS ===================== */
+/* ===================== HELPER FUNCTIONS ===================== */
 const safeNumber = (v, f = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : f;
+};
+
+const safeExtract = (response, fallback = null) => {
+  if (!response) return fallback;
+  // Handle { success: true, data: {...} }
+  if (response.data && typeof response.data === 'object') {
+    return response.data;
+  }
+  // Handle direct object
+  return response;
 };
 
 const normalizeArray = (v) => (Array.isArray(v) ? v : []);
@@ -682,7 +684,7 @@ export default function MemberDashboard() {
   const navigate = useNavigate();
   const { user, activation } = useAuth();
 
-  // State for all data from our working endpoints
+  // State for all data from API
   const [dashboardData, setDashboardData] = useState({
     trades: [],
     discoveries: [],
@@ -712,25 +714,37 @@ export default function MemberDashboard() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Fetch data from all working endpoints
+  // Fetch data using BotAPI
   const fetchData = useCallback(async () => {
     try {
-      const [tradesRes, discoveriesRes, botsRes, analyticsRes, historicalRes] = await Promise.allSettled([
-        fetch(TRADES_URL).then(res => res.json()).catch(() => ({ trades: [] })),
-        fetch(DISCOVERIES_URL).then(res => res.json()).catch(() => ({ discoveries: [] })),
-        fetch(BOT_STATUS_URL).then(res => res.json()).catch(() => ({ bots: [] })),
-        fetch(ANALYTICS_URL).then(res => res.json()).catch(() => ({ summary: {} })),
-        fetch(HISTORICAL_URL).then(res => res.json()).catch(() => ({ daily: [], weekly: [], monthly: [] }))
+      const [tradesRes, discoveriesRes, botStatusRes, analyticsRes, historicalRes] = await Promise.allSettled([
+        // Get trades - using BotAPI
+        BotAPI.getTrades().catch(() => ({ trades: [] })),
+        // Get discoveries
+        BotAPI.getDiscoveries().catch(() => ({ discoveries: [] })),
+        // Get bot status
+        BotAPI.getBotStatus().catch(() => ({ bots: [] })),
+        // Get analytics summary
+        BotAPI.getAnalyticsSummary().catch(() => ({ summary: {} })),
+        // Get historical data (fallback to public endpoint)
+        fetch(`/api/public/historical`).then(res => res.json()).catch(() => ({ daily: [], weekly: [], monthly: [] }))
       ]);
 
       if (!mountedRef.current) return;
 
+      // Safely extract data from each response
+      const tradesData = safeExtract(tradesRes.status === "fulfilled" ? tradesRes.value : {});
+      const discoveriesData = safeExtract(discoveriesRes.status === "fulfilled" ? discoveriesRes.value : {});
+      const botStatusData = safeExtract(botStatusRes.status === "fulfilled" ? botStatusRes.value : {});
+      const analyticsData = safeExtract(analyticsRes.status === "fulfilled" ? analyticsRes.value : {});
+      const historicalData = historicalRes.status === "fulfilled" ? historicalRes.value : {};
+
       setDashboardData({
-        trades: tradesRes.status === "fulfilled" ? tradesRes.value.trades || [] : [],
-        discoveries: discoveriesRes.status === "fulfilled" ? discoveriesRes.value.discoveries || [] : [],
-        bots: botsRes.status === "fulfilled" ? botsRes.value.bots || [] : [],
-        analytics: analyticsRes.status === "fulfilled" ? analyticsRes.value : { summary: {} },
-        historical: historicalRes.status === "fulfilled" ? historicalRes.value : { daily: [], weekly: [], monthly: [] }
+        trades: tradesData?.trades || [],
+        discoveries: discoveriesData?.discoveries || [],
+        bots: botStatusData?.bots || [],
+        analytics: analyticsData,
+        historical: historicalData
       });
 
       setLastUpdate(new Date());
@@ -789,7 +803,8 @@ export default function MemberDashboard() {
   const totalPnL = dashboardData.analytics?.summary?.total_pnl || 0;
   const wins = dashboardData.analytics?.summary?.wins || 0;
   const losses = dashboardData.analytics?.summary?.losses || 0;
-  const winRate = dashboardData.analytics?.summary?.win_rate || 0;
+  const winRate = dashboardData.analytics?.summary?.win_rate || 
+    (wins + losses > 0 ? Math.round((wins / (wins + losses)) * 100) : 0);
 
   const todayPnL = useMemo(() => {
     const today = new Date().toDateString();
@@ -814,7 +829,7 @@ export default function MemberDashboard() {
   // Auth data
   const tier = normalizeTier(user?.tier);
   const plan = PLANS.find(p => p.value === tier) || PLANS[0];
-  const isLive = activation?.billing_complete || false;
+  const isLive = activation?.has_card_on_file || false;
 
   if (loading) {
     return (
@@ -871,14 +886,11 @@ export default function MemberDashboard() {
         <CardShell>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <span className="text-xs text-white/40 mr-1">Quick Links:</span>
-            <Link to="/billing-dashboard" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
+            <Link to="/billing" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
               <span>💳</span> Billing
             </Link>
             <Link to="/activation" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
               <span>⚡</span> Activation
-            </Link>
-            <Link to="/demo" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs transition-colors">
-              <span>🎮</span> Demo
             </Link>
             <Link to="/pricing" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-xs transition-colors">
               <span>⭐</span> Upgrade
@@ -1103,9 +1115,6 @@ export default function MemberDashboard() {
 
         {/* Footer */}
         <div className="text-center pt-4 border-t border-white/10 flex justify-center gap-4">
-          <Link to="/demo" className="text-[11px] text-white/40 hover:text-white/60 transition-colors">
-            🎮 Try Demo
-          </Link>
           <Link to="/pricing" className="text-[11px] text-amber-400 hover:text-amber-300 transition-colors">
             ⭐ Upgrade Plan
           </Link>
