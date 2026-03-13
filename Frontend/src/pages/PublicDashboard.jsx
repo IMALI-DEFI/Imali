@@ -12,7 +12,7 @@ const API_BASE =
   process.env.REACT_APP_API_BASE?.replace(/\/+$/, "") ||
   "https://api.imali-defi.com";
 
-// ENHANCED: Added more endpoints
+// Public endpoints (no auth required)
 const TRADES_URL = `${API_BASE}/api/trades/recent`;
 const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
 const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
@@ -21,9 +21,11 @@ const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
 const PUBLIC_TIERS_URL = `${API_BASE}/api/public/tiers`;
 const PUBLIC_FAQ_URL = `${API_BASE}/api/public/faq`;
 const PUBLIC_ROADMAP_URL = `${API_BASE}/api/public/roadmap`;
+const USER_STATS_URL = `${API_BASE}/api/user/stats`;
+
+// Auth-required endpoints (will be conditionally fetched)
 const TRADING_PAIRS_URL = `${API_BASE}/api/trading/pairs`;
 const TRADING_STRATEGIES_URL = `${API_BASE}/api/trading/strategies`;
-const USER_STATS_URL = `${API_BASE}/api/user/stats`;
 
 const DEFAULT_STATE = {
   bots: [],
@@ -64,10 +66,11 @@ const DEFAULT_STATE = {
   error: null,
   lastUpdate: null,
   lastSuccessAt: null,
+  isAuthenticated: false,
 };
 
 /* =====================================================
-   HELPERS (unchanged - keep all existing helpers)
+   HELPERS
 ===================================================== */
 
 function safeNumber(value, fallback = 0) {
@@ -175,7 +178,7 @@ function getTradeQty(trade) {
 }
 
 /* =====================================================
-   ENHANCED DATA HOOK - Now fetches more data
+   ENHANCED DATA HOOK - Now with auth detection
 ===================================================== */
 
 function useLiveData() {
@@ -203,7 +206,16 @@ function useLiveData() {
       abortRef.current = new AbortController();
       const signal = abortRef.current.signal;
 
-      // Fetch from all our endpoints - expanded list
+      // Check if user is authenticated
+      const token = localStorage.getItem('imali_token');
+      const isAuthenticated = !!token;
+
+      // Create auth headers if needed
+      const authHeaders = isAuthenticated ? {
+        headers: { Authorization: `Bearer ${token}` }
+      } : {};
+
+      // Fetch public endpoints (always try)
       const [
         tradesRes, 
         discoveriesRes, 
@@ -211,8 +223,9 @@ function useLiveData() {
         analyticsRes,
         userStatsRes,
         pnlHistoryRes,
-        tradingPairsRes,
-        tradingStrategiesRes
+        publicTiersRes,
+        publicFaqRes,
+        publicRoadmapRes
       ] = await Promise.allSettled([
         axios.get(TRADES_URL, { timeout: 5000, signal }),
         axios.get(DISCOVERIES_URL, { timeout: 5000, signal }),
@@ -220,17 +233,29 @@ function useLiveData() {
         axios.get(ANALYTICS_URL, { timeout: 5000, signal }),
         axios.get(USER_STATS_URL, { timeout: 5000, signal }),
         axios.get(PNL_HISTORY_URL, { timeout: 5000, signal }),
-        axios.get(TRADING_PAIRS_URL, { timeout: 5000, signal }),
-        axios.get(TRADING_STRATEGIES_URL, { timeout: 5000, signal })
+        axios.get(PUBLIC_TIERS_URL, { timeout: 5000, signal }),
+        axios.get(PUBLIC_FAQ_URL, { timeout: 5000, signal }),
+        axios.get(PUBLIC_ROADMAP_URL, { timeout: 5000, signal })
       ]);
+
+      // Only fetch auth-required endpoints if user is authenticated
+      let tradingPairsRes = { status: "rejected", reason: "not authenticated" };
+      let tradingStrategiesRes = { status: "rejected", reason: "not authenticated" };
+
+      if (isAuthenticated) {
+        [tradingPairsRes, tradingStrategiesRes] = await Promise.allSettled([
+          axios.get(TRADING_PAIRS_URL, { timeout: 5000, signal, ...authHeaders }),
+          axios.get(TRADING_STRATEGIES_URL, { timeout: 5000, signal, ...authHeaders })
+        ]);
+      }
 
       if (!mountedRef.current) return;
 
       const now = new Date();
-      let newData = { ...DEFAULT_STATE };
+      let newData = { ...DEFAULT_STATE, isAuthenticated };
       let hadError = false;
 
-      // Process trades
+      // Process public endpoints
       if (tradesRes.status === "fulfilled") {
         newData.trades = tradesRes.value.data.trades || [];
       } else {
@@ -238,7 +263,6 @@ function useLiveData() {
         console.warn("Trades fetch failed");
       }
 
-      // Process discoveries
       if (discoveriesRes.status === "fulfilled") {
         newData.discoveries = discoveriesRes.value.data.discoveries || [];
       } else {
@@ -246,7 +270,6 @@ function useLiveData() {
         console.warn("Discoveries fetch failed");
       }
 
-      // Process bots
       if (botsRes.status === "fulfilled") {
         newData.bots = botsRes.value.data.bots || [];
       } else {
@@ -254,7 +277,6 @@ function useLiveData() {
         console.warn("Bots fetch failed");
       }
 
-      // Process analytics
       if (analyticsRes.status === "fulfilled") {
         newData.analytics = analyticsRes.value.data;
       } else {
@@ -262,38 +284,49 @@ function useLiveData() {
         console.warn("Analytics fetch failed");
       }
 
-      // ENHANCED: Process user stats
       if (userStatsRes.status === "fulfilled") {
         newData.userStats = userStatsRes.value.data || DEFAULT_STATE.userStats;
       } else {
         console.warn("User stats fetch failed");
       }
 
-      // ENHANCED: Process P&L history
       if (pnlHistoryRes.status === "fulfilled") {
         newData.pnlHistory = pnlHistoryRes.value.data.history || [];
       } else {
         console.warn("PNL history fetch failed");
       }
 
-      // ENHANCED: Process trading pairs
-      if (tradingPairsRes.status === "fulfilled") {
-        newData.tradingPairs = tradingPairsRes.value.data.pairs || [];
-      } else {
-        console.warn("Trading pairs fetch failed");
+      if (publicTiersRes.status === "fulfilled") {
+        newData.publicTiers = publicTiersRes.value.data || {};
       }
 
-      // ENHANCED: Process trading strategies
-      if (tradingStrategiesRes.status === "fulfilled") {
-        newData.tradingStrategies = tradingStrategiesRes.value.data.strategies || [];
-      } else {
-        console.warn("Trading strategies fetch failed");
+      if (publicFaqRes.status === "fulfilled") {
+        newData.publicFaq = publicFaqRes.value.data.faqs || [];
+      }
+
+      if (publicRoadmapRes.status === "fulfilled") {
+        newData.publicRoadmap = publicRoadmapRes.value.data || {};
+      }
+
+      // Process auth-required endpoints (only if authenticated)
+      if (isAuthenticated) {
+        if (tradingPairsRes.status === "fulfilled") {
+          newData.tradingPairs = tradingPairsRes.value.data.pairs || [];
+        } else {
+          console.warn("Trading pairs fetch failed (requires auth)");
+        }
+
+        if (tradingStrategiesRes.status === "fulfilled") {
+          newData.tradingStrategies = tradingStrategiesRes.value.data.strategies || [];
+        } else {
+          console.warn("Trading strategies fetch failed (requires auth)");
+        }
       }
 
       setData({
         ...newData,
         loading: false,
-        error: hadError ? "Some data is currently unavailable" : null,
+        error: hadError ? "Some public data is currently unavailable" : null,
         lastUpdate: now,
         lastSuccessAt: now,
       });
@@ -889,6 +922,26 @@ function VolumeChart({ pnlHistory = [] }) {
 }
 
 /* =====================================================
+   AUTH REQUIRED COMPONENT (Login prompt)
+===================================================== */
+
+function AuthRequiredCard({ children, message = "Log in to view this content" }) {
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
+      <div className="text-3xl mb-3">🔒</div>
+      <h3 className="font-semibold text-blue-800 mb-2">Authentication Required</h3>
+      <p className="text-sm text-blue-600 mb-4">{message}</p>
+      <Link
+        to="/login"
+        className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+      >
+        Log In to Access
+      </Link>
+    </div>
+  );
+}
+
+/* =====================================================
    MAIN COMPONENT
 ===================================================== */
 
@@ -911,6 +964,7 @@ export default function PublicDashboard() {
   const pnlHistory = data.pnlHistory || [];
   const tradingPairs = data.tradingPairs || [];
   const tradingStrategies = data.tradingStrategies || [];
+  const isAuthenticated = data.isAuthenticated || false;
 
   const totalPnL = analytics.total_pnl || 0;
   const totalTradesCount = analytics.total_trades || allTrades.length;
@@ -973,12 +1027,21 @@ export default function PublicDashboard() {
               </div>
               <div>Last update: {data.lastUpdate ? timeAgo(data.lastUpdate) : "—"}</div>
               <div>{clock.toLocaleTimeString()}</div>
-              <Link
-                to="/signup"
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-sm font-semibold text-white transition-all"
-              >
-                Join the Journey →
-              </Link>
+              {isAuthenticated ? (
+                <Link
+                  to="/dashboard"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold text-white transition-all"
+                >
+                  Go to Dashboard →
+                </Link>
+              ) : (
+                <Link
+                  to="/signup"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-sm font-semibold text-white transition-all"
+                >
+                  Join the Journey →
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -1105,37 +1168,49 @@ export default function PublicDashboard() {
 
         {showAdvanced && (
           <>
-            {/* Trading Pairs */}
-            {tradingPairs.length > 0 && (
-              <div className="mb-6">
-                <h2 className="font-bold text-lg flex items-center gap-2 mb-3 text-gray-900">
-                  <span>💱</span>
-                  Available Trading Pairs
-                </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {tradingPairs.map((pair, i) => (
-                    <PairCard key={i} pair={pair} />
-                  ))}
+            {/* Trading Pairs - Auth Required */}
+            {isAuthenticated ? (
+              tradingPairs.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="font-bold text-lg flex items-center gap-2 mb-3 text-gray-900">
+                    <span>💱</span>
+                    Available Trading Pairs
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {tradingPairs.map((pair, i) => (
+                      <PairCard key={i} pair={pair} />
+                    ))}
+                  </div>
                 </div>
+              )
+            ) : (
+              <div className="mb-6">
+                <AuthRequiredCard message="Log in to view available trading pairs" />
               </div>
             )}
 
-            {/* Trading Strategies */}
-            {tradingStrategies.length > 0 && (
-              <div className="mb-6">
-                <h2 className="font-bold text-lg flex items-center gap-2 mb-3 text-gray-900">
-                  <span>🧠</span>
-                  Trading Strategies
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {tradingStrategies.map((strategy, i) => (
-                    <StrategyCard key={i} strategy={strategy} />
-                  ))}
+            {/* Trading Strategies - Auth Required */}
+            {isAuthenticated ? (
+              tradingStrategies.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="font-bold text-lg flex items-center gap-2 mb-3 text-gray-900">
+                    <span>🧠</span>
+                    Trading Strategies
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {tradingStrategies.map((strategy, i) => (
+                      <StrategyCard key={i} strategy={strategy} />
+                    ))}
+                  </div>
                 </div>
+              )
+            ) : (
+              <div className="mb-6">
+                <AuthRequiredCard message="Log in to view trading strategies" />
               </div>
             )}
 
-            {/* P&L History Chart */}
+            {/* P&L History Chart - Always Public */}
             {pnlHistory.length > 0 && (
               <div className="mb-6 bg-white border border-gray-200 rounded-2xl p-4">
                 <h2 className="font-bold text-lg mb-3 text-gray-900">Daily P&L History</h2>
@@ -1143,7 +1218,7 @@ export default function PublicDashboard() {
               </div>
             )}
 
-            {/* Detailed Analytics */}
+            {/* Detailed Analytics - Always Public */}
             <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-white rounded-xl p-3 border border-gray-200">
                 <div className="text-xs text-gray-500">Largest Win</div>
@@ -1167,7 +1242,7 @@ export default function PublicDashboard() {
           </>
         )}
 
-        {/* Two Column Layout - Trades and Discoveries */}
+        {/* Two Column Layout - Trades and Discoveries (Always Public) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Live Trade Feed */}
           <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5">
@@ -1211,7 +1286,7 @@ export default function PublicDashboard() {
             </div>
           </div>
 
-          {/* DEX Discoveries */}
+          {/* DEX Discoveries - Always Public */}
           <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5">
             <h2 className="font-bold text-lg flex items-center gap-2 mb-4 text-gray-900">
               <span>🦄</span>
