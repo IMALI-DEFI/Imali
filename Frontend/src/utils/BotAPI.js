@@ -32,16 +32,26 @@ const getStoredToken = () => {
 };
 
 const setStoredToken = (token) => {
-  if (!token || typeof token !== "string") return;
+  console.log("[BotAPI] setStoredToken called with token length:", token?.length);
+  if (!token || typeof token !== "string") {
+    console.log("[BotAPI] Invalid token, not saving");
+    return false;
+  }
   try {
     localStorage.setItem(TOKEN_KEY, token);
+    console.log("[BotAPI] Token saved to localStorage. Length:", token.length);
     api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-  } catch {}
+    return true;
+  } catch (e) {
+    console.error("[BotAPI] Failed to save token:", e);
+    return false;
+  }
 };
 
 const clearStoredToken = () => {
   try {
     localStorage.removeItem(TOKEN_KEY);
+    console.log("[BotAPI] Token cleared from localStorage");
   } catch {}
   delete api.defaults.headers.common["Authorization"];
 };
@@ -88,7 +98,11 @@ const BotAPI = {
   setToken: setStoredToken,
   getToken: getStoredToken,
   clearToken: clearStoredToken,
-  isLoggedIn: () => !!getStoredToken(),
+  isLoggedIn: () => {
+    const hasToken = !!getStoredToken();
+    console.log("[BotAPI] isLoggedIn check:", hasToken);
+    return hasToken;
+  },
   clearCache: () => {},
 
   // ========================
@@ -96,26 +110,42 @@ const BotAPI = {
   // ========================
   async signup(userData) {
     try {
+      console.log("[BotAPI] Signup request for:", userData.email);
       const response = await api.post("/api/signup", userData);
+      console.log("[BotAPI] Signup response:", response.data);
+      
       const data = response.data;
       
-      if (data?.data?.token) {
-        this.setToken(data.data.token);
+      // Handle different response structures
+      const token = data?.data?.token || data?.token;
+      if (token) {
+        console.log("[BotAPI] Token found in signup response");
+        this.setToken(token);
       }
       
-      return { success: true, data: data.data };
+      return { 
+        success: true, 
+        data: data.data || data,
+        token: token 
+      };
     } catch (error) {
+      console.error("[BotAPI] Signup error:", error.response?.data || error.message);
       throw error;
     }
   },
 
   async login(credentials) {
     try {
+      console.log("[BotAPI] Login request for:", credentials.email);
       const response = await api.post("/api/auth/login", credentials);
+      console.log("[BotAPI] Login response status:", response.status);
+      console.log("[BotAPI] Login response data:", response.data);
+      
       const data = response.data;
       
       // Check if 2FA required
       if (data?.data?.twofa_required) {
+        console.log("[BotAPI] 2FA required");
         return { 
           success: true, 
           twofaRequired: true, 
@@ -123,50 +153,76 @@ const BotAPI = {
         };
       }
       
-      if (data?.data?.token) {
-        this.setToken(data.data.token);
+      // Extract token from various possible locations
+      const token = data?.data?.token || data?.token;
+      
+      if (token) {
+        console.log("[BotAPI] Token found, saving...");
+        const saved = this.setToken(token);
+        console.log("[BotAPI] Token saved successfully:", saved);
+        
+        // Verify token was saved
+        const verifyToken = this.getToken();
+        console.log("[BotAPI] Verification - token in localStorage:", !!verifyToken);
+      } else {
+        console.log("[BotAPI] No token found in response");
+        console.log("[BotAPI] Response structure:", Object.keys(data));
       }
       
-      return { success: true, data: data.data };
+      return { 
+        success: true, 
+        data: data.data || data,
+        token: token 
+      };
     } catch (error) {
+      console.error("[BotAPI] Login error:", error.response?.data || error.message);
       throw error;
     }
   },
 
   async verify2FA(token, tempToken) {
     try {
+      console.log("[BotAPI] Verifying 2FA...");
       const response = await api.post("/api/auth/2fa/verify-login", {
         token,
         temp_token: tempToken,
       });
-      const data = response.data;
+      console.log("[BotAPI] 2FA verification response:", response.data);
       
-      if (data?.data?.token) {
-        this.setToken(data.data.token);
+      const data = response.data;
+      const authToken = data?.data?.token || data?.token;
+      
+      if (authToken) {
+        this.setToken(authToken);
       }
       
-      return { success: true, data: data.data };
+      return { success: true, data: data.data || data };
     } catch (error) {
+      console.error("[BotAPI] 2FA verification error:", error);
       throw error;
     }
   },
 
   async me() {
     try {
+      console.log("[BotAPI] Fetching user profile...");
       const response = await api.get("/api/me");
-      // Returns { success: true, user: {...} }
+      console.log("[BotAPI] Profile response:", response.data);
       return response.data;
     } catch (error) {
+      console.error("[BotAPI] Profile fetch error:", error);
       throw error;
     }
   },
 
   async activationStatus() {
     try {
+      console.log("[BotAPI] Fetching activation status...");
       const response = await api.get("/api/me/activation-status");
-      // Returns { success: true, status: {...} }
+      console.log("[BotAPI] Activation status response:", response.data);
       return response.data;
     } catch (error) {
+      console.error("[BotAPI] Activation status error:", error);
       throw error;
     }
   },
@@ -294,6 +350,42 @@ const BotAPI = {
   async getAnalyticsSummary() {
     try {
       const response = await api.get("/api/analytics/summary");
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ========================
+  // PASSWORD MANAGEMENT
+  // ========================
+  async forgotPassword(email) {
+    try {
+      const response = await api.post("/api/auth/forgot-password", { email });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async resetPassword(token, newPassword) {
+    try {
+      const response = await api.post("/api/auth/reset-password", {
+        token,
+        new_password: newPassword,
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async changePassword(currentPassword, newPassword) {
+    try {
+      const response = await api.post("/api/auth/change-password", {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
       return response.data;
     } catch (error) {
       throw error;
