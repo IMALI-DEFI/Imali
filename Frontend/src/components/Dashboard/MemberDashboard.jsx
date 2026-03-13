@@ -717,27 +717,95 @@ export default function MemberDashboard() {
   // Fetch data using BotAPI
   const fetchData = useCallback(async () => {
     try {
+      console.log("[MemberDashboard] Fetching dashboard data...");
+      
+      // Use Promise.allSettled to handle individual failures
       const [tradesRes, discoveriesRes, botStatusRes, analyticsRes, historicalRes] = await Promise.allSettled([
-        // Get trades - using BotAPI
-        BotAPI.getTrades().catch(() => ({ trades: [] })),
+        // Get trades - using BotAPI.getTrades() or fallback to getSniperTrades()
+        (async () => {
+          try {
+            // Try getTrades first, fallback to getSniperTrades
+            if (typeof BotAPI.getTrades === 'function') {
+              return await BotAPI.getTrades(100);
+            } else if (typeof BotAPI.getSniperTrades === 'function') {
+              return await BotAPI.getSniperTrades(100);
+            }
+            return { trades: [] };
+          } catch (e) {
+            console.warn("[MemberDashboard] Trades fetch failed:", e);
+            return { trades: [] };
+          }
+        })(),
+        
         // Get discoveries
-        BotAPI.getDiscoveries().catch(() => ({ discoveries: [] })),
+        (async () => {
+          try {
+            if (typeof BotAPI.getDiscoveries === 'function') {
+              return await BotAPI.getDiscoveries(20);
+            }
+            return { discoveries: [] };
+          } catch (e) {
+            console.warn("[MemberDashboard] Discoveries fetch failed:", e);
+            return { discoveries: [] };
+          }
+        })(),
+        
         // Get bot status
-        BotAPI.getBotStatus().catch(() => ({ bots: [] })),
+        (async () => {
+          try {
+            if (typeof BotAPI.getBotStatus === 'function') {
+              return await BotAPI.getBotStatus();
+            }
+            return { bots: [] };
+          } catch (e) {
+            console.warn("[MemberDashboard] Bot status fetch failed:", e);
+            return { bots: [] };
+          }
+        })(),
+        
         // Get analytics summary
-        BotAPI.getAnalyticsSummary().catch(() => ({ summary: {} })),
-        // Get historical data (fallback to public endpoint)
-        fetch(`/api/public/historical`).then(res => res.json()).catch(() => ({ daily: [], weekly: [], monthly: [] }))
+        (async () => {
+          try {
+            if (typeof BotAPI.getAnalyticsSummary === 'function') {
+              return await BotAPI.getAnalyticsSummary();
+            }
+            return { summary: {} };
+          } catch (e) {
+            console.warn("[MemberDashboard] Analytics fetch failed:", e);
+            return { summary: {} };
+          }
+        })(),
+        
+        // Get historical data
+        (async () => {
+          try {
+            if (typeof BotAPI.getPublicHistorical === 'function') {
+              return await BotAPI.getPublicHistorical();
+            }
+            // Fallback to fetch
+            const response = await fetch(`/api/public/historical`);
+            return await response.json();
+          } catch (e) {
+            console.warn("[MemberDashboard] Historical fetch failed:", e);
+            return { daily: [], weekly: [], monthly: [] };
+          }
+        })()
       ]);
 
       if (!mountedRef.current) return;
 
       // Safely extract data from each response
-      const tradesData = safeExtract(tradesRes.status === "fulfilled" ? tradesRes.value : {});
-      const discoveriesData = safeExtract(discoveriesRes.status === "fulfilled" ? discoveriesRes.value : {});
-      const botStatusData = safeExtract(botStatusRes.status === "fulfilled" ? botStatusRes.value : {});
-      const analyticsData = safeExtract(analyticsRes.status === "fulfilled" ? analyticsRes.value : {});
-      const historicalData = historicalRes.status === "fulfilled" ? historicalRes.value : {};
+      const tradesData = tradesRes.status === "fulfilled" ? safeExtract(tradesRes.value) : { trades: [] };
+      const discoveriesData = discoveriesRes.status === "fulfilled" ? safeExtract(discoveriesRes.value) : { discoveries: [] };
+      const botStatusData = botStatusRes.status === "fulfilled" ? safeExtract(botStatusRes.value) : { bots: [] };
+      const analyticsData = analyticsRes.status === "fulfilled" ? safeExtract(analyticsRes.value) : { summary: {} };
+      const historicalData = historicalRes.status === "fulfilled" ? historicalRes.value : { daily: [], weekly: [], monthly: [] };
+
+      console.log("[MemberDashboard] Data fetched:", {
+        trades: tradesData?.trades?.length || 0,
+        discoveries: discoveriesData?.discoveries?.length || 0,
+        bots: botStatusData?.bots?.length || 0
+      });
 
       setDashboardData({
         trades: tradesData?.trades || [],
@@ -750,7 +818,7 @@ export default function MemberDashboard() {
       setLastUpdate(new Date());
       setError(null);
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      console.error('[MemberDashboard] Failed to fetch data:', err);
       if (mountedRef.current) {
         setError('Failed to fetch live data');
       }
