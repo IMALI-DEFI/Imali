@@ -27,21 +27,38 @@ export const AuthProvider = ({ children }) => {
   const loadingLock = useRef(false);
 
   // ========================
+  // Helper to verify token status
+  // ========================
+  const verifyTokenStatus = useCallback(() => {
+    const token = BotAPI.getToken();
+    const isLoggedIn = BotAPI.isLoggedIn();
+    console.log("[AuthContext] Token status:", { 
+      hasToken: !!token, 
+      isLoggedIn,
+      tokenPreview: token ? token.substring(0, 20) + "..." : null 
+    });
+    return isLoggedIn;
+  }, []);
+
+  // ========================
   // Refresh activation status
   // ========================
   const refreshActivation = useCallback(async () => {
-    if (!BotAPI.isLoggedIn()) return null;
+    if (!verifyTokenStatus()) {
+      console.log("[AuthContext] refreshActivation - no token, skipping");
+      return null;
+    }
 
     try {
+      console.log("[AuthContext] refreshActivation - fetching...");
       const response = await BotAPI.activationStatus();
-      // API returns { success: true, status: {...} }
+      console.log("[AuthContext] refreshActivation response:", response);
+      
       const fresh = response?.status || response || null;
-
-      console.log("[AuthContext] refreshActivation →", fresh);
-      setAuthError(null);
 
       setActivation((prev) => {
         if (JSON.stringify(prev) === JSON.stringify(fresh)) return prev;
+        console.log("[AuthContext] activation updated:", fresh);
         return fresh;
       });
 
@@ -50,41 +67,34 @@ export const AuthProvider = ({ children }) => {
       console.error("[AuthContext] refreshActivation failed:", err);
 
       if (isSessionExpired(err)) {
+        console.log("[AuthContext] Session expired, clearing token");
         BotAPI.clearToken();
         setUser(null);
         setActivation(null);
-      } else if (isForbidden(err)) {
-        setAuthError("Cannot load activation status");
-        setActivation({
-          has_card_on_file: false,
-          trading_enabled: false,
-          wallet_connected: false,
-          okx_connected: false,
-          alpaca_connected: false,
-          tier_requirements_met: false,
-          activation_complete: false,
-          _error: "forbidden",
-        });
       }
       return null;
     }
-  }, []);
+  }, [verifyTokenStatus]);
 
   // ========================
   // Refresh user profile
   // ========================
   const refreshProfile = useCallback(async () => {
-    if (!BotAPI.isLoggedIn()) return null;
+    if (!verifyTokenStatus()) {
+      console.log("[AuthContext] refreshProfile - no token, skipping");
+      return null;
+    }
 
     try {
+      console.log("[AuthContext] refreshProfile - fetching...");
       const response = await BotAPI.me();
-      // API returns { success: true, user: {...} }
+      console.log("[AuthContext] refreshProfile response:", response);
+      
       const fresh = response?.user || response || null;
-
-      console.log("[AuthContext] refreshProfile →", fresh);
 
       setUser((prev) => {
         if (JSON.stringify(prev) === JSON.stringify(fresh)) return prev;
+        console.log("[AuthContext] user updated:", fresh?.email);
         return fresh;
       });
 
@@ -98,13 +108,16 @@ export const AuthProvider = ({ children }) => {
       }
       return null;
     }
-  }, []);
+  }, [verifyTokenStatus]);
 
   // ========================
   // Load all user data
   // ========================
   const loadUserData = useCallback(async () => {
-    if (!BotAPI.isLoggedIn()) {
+    console.log("[AuthContext] loadUserData started");
+    const hasToken = verifyTokenStatus();
+
+    if (!hasToken) {
       console.log("[AuthContext] loadUserData — no token, skipping");
       setUser(null);
       setActivation(null);
@@ -127,17 +140,20 @@ export const AuthProvider = ({ children }) => {
       try {
         console.log("[AuthContext] loadUserData — fetching /api/me...");
         const response = await BotAPI.me();
+        console.log("[AuthContext] /api/me response:", response);
         const userData = response?.user || response || null;
         setUser(userData);
         console.log("[AuthContext] /api/me OK:", userData?.email);
       } catch (meErr) {
+        console.error("[AuthContext] /api/me failed:", meErr);
         if (isSessionExpired(meErr)) {
           BotAPI.clearToken();
           setUser(null);
           setActivation(null);
+          setLoading(false);
+          loadingLock.current = false;
           return;
         }
-        console.warn("[AuthContext] /api/me failed:", meErr.message);
       }
 
       // Delay between calls
@@ -147,23 +163,24 @@ export const AuthProvider = ({ children }) => {
       try {
         console.log("[AuthContext] loadUserData — fetching activation status...");
         const response = await BotAPI.activationStatus();
+        console.log("[AuthContext] activation status response:", response);
         const activationData = response?.status || response || null;
         setActivation(activationData);
         console.log("[AuthContext] activation status OK:", activationData);
       } catch (actErr) {
+        console.error("[AuthContext] activation status failed:", actErr);
         if (isSessionExpired(actErr)) {
           BotAPI.clearToken();
           setUser(null);
           setActivation(null);
-          return;
         }
-        console.warn("[AuthContext] activation status failed:", actErr.message);
       }
     } finally {
       setLoading(false);
       loadingLock.current = false;
+      console.log("[AuthContext] loadUserData completed");
     }
-  }, []);
+  }, [verifyTokenStatus]);
 
   // ========================
   // Initial load
@@ -171,6 +188,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (initialLoadDone.current) return;
     initialLoadDone.current = true;
+    console.log("[AuthContext] Initial load starting");
     loadUserData();
   }, [loadUserData]);
 
@@ -209,8 +227,10 @@ export const AuthProvider = ({ children }) => {
         console.log("[AuthContext] login attempt for:", email);
 
         const result = await BotAPI.login({ email, password });
+        console.log("[AuthContext] login result:", result);
 
         if (result.twofaRequired) {
+          console.log("[AuthContext] 2FA required");
           return {
             success: true,
             twofaRequired: true,
@@ -218,7 +238,28 @@ export const AuthProvider = ({ children }) => {
           };
         }
 
+        // Verify token was saved
+        console.log("[AuthContext] Verifying token after login...");
+        const tokenCheck = verifyTokenStatus();
+        
+        if (!tokenCheck) {
+          console.error("[AuthContext] Token not saved properly!");
+          // Try one more time with a delay
+          await new Promise(resolve => setTimeout(resolve, 200));
+          const retryCheck = verifyTokenStatus();
+          if (!retryCheck) {
+            return {
+              success: false,
+              error: "Login succeeded but token not saved. Please try again.",
+            };
+          }
+        }
+
+        // Small delay to ensure token is propagated
+        await new Promise(resolve => setTimeout(resolve, 300));
+
         // Load user data after successful login
+        console.log("[AuthContext] Loading user data after login...");
         await loadUserData();
 
         return { success: true, data: result.data };
@@ -232,7 +273,6 @@ export const AuthProvider = ({ children }) => {
           errorMessage = err.message;
         }
 
-        // Handle specific error codes
         if (err.response?.status === 401) {
           errorMessage = "Invalid email or password";
         } else if (err.response?.status === 429) {
@@ -246,7 +286,7 @@ export const AuthProvider = ({ children }) => {
         };
       }
     },
-    [loadUserData]
+    [loadUserData, verifyTokenStatus]
   );
 
   // ========================
@@ -258,6 +298,7 @@ export const AuthProvider = ({ children }) => {
       console.log("[AuthContext] signup attempt for:", userData.email);
 
       const result = await BotAPI.signup(userData);
+      console.log("[AuthContext] signup result:", result);
 
       return { success: true, data: result.data };
     } catch (err) {
@@ -270,7 +311,6 @@ export const AuthProvider = ({ children }) => {
         errorCode = err.response.data?.error;
         errorMessage = err.response.data?.message || err.message;
 
-        // Handle specific error codes
         if (errorCode === "user_exists") {
           errorMessage = "An account with this email already exists. Please login instead.";
         } else if (errorCode === "password_too_short") {
@@ -299,6 +339,7 @@ export const AuthProvider = ({ children }) => {
   // Logout
   // ========================
   const logout = useCallback(() => {
+    console.log("[AuthContext] Logging out");
     BotAPI.clearToken();
     setUser(null);
     setActivation(null);
