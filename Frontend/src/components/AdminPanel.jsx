@@ -111,13 +111,19 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
 
       // Handle rate limiting with exponential backoff
       if (response.status === 429) {
-        const retryAfter = response.headers.get('Retry-After') || Math.pow(2, attempt) * 2;
+        const retryAfter = parseInt(response.headers.get('Retry-After')) || Math.pow(2, attempt) * 5;
         console.log(`Rate limited. Retry after ${retryAfter} seconds (attempt ${attempt + 1}/${retries})`);
         
         if (attempt < retries) {
           await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
           continue;
         }
+        throw new Error(`Rate limited. Please wait ${retryAfter} seconds.`);
+      }
+
+      // Handle 401 Unauthorized - might need to refresh token or re-login
+      if (response.status === 401) {
+        throw new Error("Authentication failed. Please log in again.");
       }
 
       const data = await response.json().catch(() => ({}));
@@ -129,8 +135,8 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
       return data;
     } catch (error) {
       lastError = error;
-      if (attempt < retries && !error.message.includes('429')) {
-        // Exponential backoff for non-rate-limit errors
+      if (attempt < retries && !error.message.includes('429') && !error.message.includes('401')) {
+        // Exponential backoff for network errors
         const delay = Math.pow(2, attempt) * 1000;
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
@@ -279,9 +285,9 @@ const TAB_SECTIONS = [
         description: "Schedule automated marketing posts.",
         help: "Create and manage automated posts to Telegram, Twitter, Discord, and Email. Use dynamic variables like {pnl} to insert live data. Test your integrations with the built-in test tool.",
         actions: [
-          // These endpoints exist in your backend
           { id: "refresh", label: "Refresh Jobs", icon: "🔄", endpoint: "/api/admin/automation/jobs", method: "GET" },
           { id: "process", label: "Run Scheduled", icon: "⏰", endpoint: "/api/admin/social/process-scheduled", method: "POST" },
+          { id: "test", label: "Test Telegram", icon: "📱", endpoint: "/api/admin/social/test", method: "POST" },
         ],
       },
       {
@@ -556,15 +562,18 @@ export default function AdminPanel({ forceOwner = false }) {
         totalRevenue: data.revenue?.total_fees || 0,
         activeBots: data.bots?.active || 0,
       });
-      setRateLimitRetry(0); // Reset retry count on success
+      setRateLimitRetry(0);
     } catch (err) {
       console.error("[AdminPanel] Stats fetch error:", err);
-      // Don't show toast for rate limit errors
-      if (!err.message?.includes('429')) {
+      if (err.message?.includes('401')) {
+        showToast("Session expired. Please log in again.", "error");
+        BotAPI.clearToken();
+        navigate("/login");
+      } else if (!err.message?.includes('429')) {
         showToast("Could not load metrics", "error");
       }
     }
-  }, [showToast]);
+  }, [showToast, navigate]);
 
   useEffect(() => {
     let mounted = true;
@@ -606,8 +615,7 @@ export default function AdminPanel({ forceOwner = false }) {
     if (!allowAccess) return;
 
     fetchStats();
-    // Increase polling interval to reduce rate limiting
-    const interval = setInterval(fetchStats, 120000); // 2 minutes instead of 1
+    const interval = setInterval(fetchStats, 300000); // 5 minutes
 
     return () => clearInterval(interval);
   }, [allowAccess, fetchStats]);
@@ -645,8 +653,11 @@ export default function AdminPanel({ forceOwner = false }) {
         const errorMessage = err?.message || `${actionName} failed.`;
         logAction(actionName, "error", { error: errorMessage });
         
-        // Don't show toast for rate limit errors
-        if (!errorMessage.includes('429')) {
+        if (errorMessage.includes('401')) {
+          showToast("Session expired. Please log in again.", "error");
+          BotAPI.clearToken();
+          navigate("/login");
+        } else if (!errorMessage.includes('429')) {
           showToast(errorMessage, "error");
         }
         
@@ -659,7 +670,7 @@ export default function AdminPanel({ forceOwner = false }) {
         });
       }
     },
-    [activeTab, fetchStats, logAction, showToast]
+    [activeTab, fetchStats, logAction, showToast, navigate]
   );
 
   const navigateToTab = useCallback((tabKey) => {
