@@ -63,7 +63,6 @@ function MessageEditor({ platform, value, onChange, variables }) {
     const end = textarea.selectionEnd;
     const newValue = value.substring(0, start) + varName + value.substring(end);
     onChange(newValue);
-    // Reset selection after update
     setTimeout(() => {
       textarea.focus();
       textarea.setSelectionRange(start + varName.length, start + varName.length);
@@ -72,7 +71,6 @@ function MessageEditor({ platform, value, onChange, variables }) {
 
   const generatePreview = () => {
     let previewText = value;
-    // Replace variables with sample values
     const sampleValues = {
       '{pnl}': '+$1,234',
       '{winRate}': '68%',
@@ -259,6 +257,7 @@ function JobModal({ job, onClose, onSave }) {
     status: 'active',
     icon: '📢'
   });
+  const [saving, setSaving] = useState(false);
 
   const handleChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
@@ -278,12 +277,14 @@ function JobModal({ job, onClose, onSave }) {
     setFormData({ ...formData, channels });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.name.trim()) {
       alert('Please enter a job name');
       return;
     }
-    onSave(formData);
+    setSaving(true);
+    await onSave(formData);
+    setSaving(false);
   };
 
   return (
@@ -295,7 +296,6 @@ function JobModal({ job, onClose, onSave }) {
         </div>
 
         <div className="space-y-6">
-          {/* Basic Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-white/50 mb-1">Job Name</label>
@@ -331,7 +331,6 @@ function JobModal({ job, onClose, onSave }) {
             />
           </div>
 
-          {/* Schedule */}
           <div>
             <label className="block text-sm text-white/50 mb-1">Schedule</label>
             <select
@@ -355,7 +354,6 @@ function JobModal({ job, onClose, onSave }) {
             />
           </div>
 
-          {/* Platforms */}
           <div>
             <label className="block text-sm text-white/50 mb-2">Platforms</label>
             <div className="flex flex-wrap gap-2">
@@ -375,7 +373,6 @@ function JobModal({ job, onClose, onSave }) {
             </div>
           </div>
 
-          {/* Message templates for each selected platform */}
           {formData.channels.length > 0 && (
             <div>
               <label className="block text-sm text-white/50 mb-2">Message Templates</label>
@@ -396,17 +393,18 @@ function JobModal({ job, onClose, onSave }) {
             </div>
           )}
 
-          {/* Buttons */}
           <div className="flex gap-3 pt-4">
             <button
               onClick={handleSubmit}
-              className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition"
+              disabled={saving}
+              className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition disabled:opacity-50"
             >
-              {job ? 'Save Changes' : 'Create Job'}
+              {saving ? 'Saving...' : (job ? 'Save Changes' : 'Create Job')}
             </button>
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-medium transition"
+              disabled={saving}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-medium transition disabled:opacity-50"
             >
               Cancel
             </button>
@@ -468,8 +466,9 @@ export default function MarketingAutomation() {
     activeJobs: 0,
     pendingPosts: 0
   });
+  const [retryCount, setRetryCount] = useState(0);
 
-  const fetchJobs = useCallback(async () => {
+  const fetchJobs = useCallback(async (retry = 0) => {
     try {
       const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
       setJobs(data.jobs || []);
@@ -478,31 +477,19 @@ export default function MarketingAutomation() {
         activeJobs: data.jobs?.filter(j => j.status === 'active').length || 0,
         pendingPosts: data.stats?.pending || 0
       });
+      setRetryCount(0);
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
-      // Only show toast for non-rate-limit errors
-      if (!error.message?.includes('429')) {
+      
+      if (error.message?.includes('401')) {
+        showToast('Session expired. Please log in again.', 'error');
+      } else if (error.message?.includes('429')) {
+        const newRetry = retry + 1;
+        if (newRetry <= 3) {
+          setTimeout(() => fetchJobs(newRetry), 30000 * newRetry); // 30s, 60s, 90s
+        }
+      } else {
         showToast('Could not load automation jobs', 'error');
-      }
-      // Fallback mock data for development
-      if (process.env.NODE_ENV === 'development') {
-        setJobs([
-          {
-            id: 'daily_summary',
-            name: 'Daily Performance Summary',
-            description: 'Posts daily P&L, win rate, and trading stats',
-            icon: '📊',
-            schedule: '0 9 * * *',
-            channels: ['telegram', 'twitter'],
-            status: 'active',
-            lastRun: '2 hours ago',
-            nextRun: 'in 7 hours',
-            messages: {
-              telegram: '📊 Daily Trading Summary\n\nP&L: {pnl}\nWin Rate: {winRate}%\nTrades: {trades}\n\nView live: {dashboardUrl}',
-              twitter: '📊 Daily Trading Summary\n\nP&L: {pnl}\nWin Rate: {winRate}%\nTrades: {trades}\n\n{dashboardUrl}'
-            }
-          }
-        ]);
       }
     } finally {
       setLoading(false);
@@ -511,7 +498,7 @@ export default function MarketingAutomation() {
 
   useEffect(() => {
     fetchJobs();
-    const interval = setInterval(fetchJobs, 60000); // 1 minute
+    const interval = setInterval(fetchJobs, 300000); // 5 minutes
     return () => clearInterval(interval);
   }, [fetchJobs]);
 
@@ -528,7 +515,9 @@ export default function MarketingAutomation() {
       showToast(`Job ${job?.name} ${job?.status === 'active' ? 'paused' : 'resumed'}`, 'success');
       fetchJobs();
     } catch (error) {
-      if (!error.message?.includes('429')) {
+      if (error.message?.includes('401')) {
+        showToast('Session expired. Please log in again.', 'error');
+      } else if (!error.message?.includes('429')) {
         showToast('Failed to toggle job', 'error');
       }
     }
@@ -543,7 +532,9 @@ export default function MarketingAutomation() {
       showToast('Job triggered successfully', 'success');
       fetchJobs();
     } catch (error) {
-      if (!error.message?.includes('429')) {
+      if (error.message?.includes('401')) {
+        showToast('Session expired. Please log in again.', 'error');
+      } else if (!error.message?.includes('429')) {
         showToast('Failed to run job', 'error');
       }
     }
@@ -561,7 +552,9 @@ export default function MarketingAutomation() {
       setEditingJob(null);
       fetchJobs();
     } catch (error) {
-      if (!error.message?.includes('429')) {
+      if (error.message?.includes('401')) {
+        showToast('Session expired. Please log in again.', 'error');
+      } else if (!error.message?.includes('429')) {
         showToast('Failed to save job', 'error');
       }
     }
@@ -574,7 +567,9 @@ export default function MarketingAutomation() {
       showToast('Job deleted', 'success');
       fetchJobs();
     } catch (error) {
-      if (!error.message?.includes('429')) {
+      if (error.message?.includes('401')) {
+        showToast('Session expired. Please log in again.', 'error');
+      } else if (!error.message?.includes('429')) {
         showToast('Failed to delete job', 'error');
       }
     }
@@ -586,7 +581,9 @@ export default function MarketingAutomation() {
       setLogs(data.logs || []);
       setViewingLogs(jobId);
     } catch (error) {
-      if (!error.message?.includes('429')) {
+      if (error.message?.includes('401')) {
+        showToast('Session expired. Please log in again.', 'error');
+      } else if (!error.message?.includes('429')) {
         showToast('Failed to fetch logs', 'error');
       }
     }
@@ -603,7 +600,9 @@ export default function MarketingAutomation() {
       });
       showToast(`Test sent to ${platform}`, 'success');
     } catch (error) {
-      if (!error.message?.includes('429')) {
+      if (error.message?.includes('401')) {
+        showToast('Session expired. Please log in again.', 'error');
+      } else if (!error.message?.includes('429')) {
         showToast(`Failed to send to ${platform}`, 'error');
       }
     }
@@ -619,7 +618,6 @@ export default function MarketingAutomation() {
 
   return (
     <div className="space-y-6">
-      {/* Header with stats */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Marketing Automation</h2>
@@ -633,7 +631,6 @@ export default function MarketingAutomation() {
         </button>
       </div>
 
-      {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
           <div className="text-emerald-400 text-2xl mb-1">📊</div>
@@ -652,7 +649,6 @@ export default function MarketingAutomation() {
         </div>
       </div>
 
-      {/* Job list */}
       {jobs.length === 0 ? (
         <div className="bg-white/5 border border-white/10 rounded-xl p-12 text-center">
           <p className="text-white/50 mb-4">No automation jobs yet.</p>
@@ -679,7 +675,6 @@ export default function MarketingAutomation() {
         </div>
       )}
 
-      {/* Quick test area */}
       <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-6">
         <h3 className="text-lg font-semibold text-cyan-300 mb-2">🧪 Test Your Integrations</h3>
         <p className="text-sm text-white/70 mb-4">
@@ -701,7 +696,6 @@ export default function MarketingAutomation() {
         </div>
       </div>
 
-      {/* Modals */}
       {editingJob !== null && (
         <JobModal
           job={editingJob.id ? editingJob : null}
