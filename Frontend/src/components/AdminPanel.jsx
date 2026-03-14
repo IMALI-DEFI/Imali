@@ -1,8 +1,9 @@
+// src/pages/AdminPanel.jsx
 import React, { useEffect, useState, useCallback, Suspense, lazy, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import BotAPI from "../utils/BotAPI";
-import MarketingAutomation from "../admin/MarketingAutomation"; // Already enhanced
+import MarketingAutomation from "../admin/MarketingAutomation";
 
 /* -------------------- Error Boundary -------------------- */
 class TabErrorBoundary extends React.Component {
@@ -81,16 +82,15 @@ const AuditLogs = lazy(() => import("../admin/AuditLogs.jsx"));
 const TreasuryManagement = lazy(() => import("../admin/TreasuryManagement.jsx"));
 const CexManagement = lazy(() => import("../admin/CexManagement.jsx"));
 const StocksManagement = lazy(() => import("../admin/StocksManagement.jsx"));
-// Enhanced Marketing Automation component (already rewritten)
 const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.jsx"));
 
 /* -------------------- Config -------------------- */
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
 
-/* -------------------- API Helper -------------------- */
+/* -------------------- Enhanced API Helper with Rate Limit Handling -------------------- */
 const getAuthToken = () => BotAPI.getToken();
 
-const adminFetch = async (endpoint, options = {}, retries = 2) => {
+const adminFetch = async (endpoint, options = {}, retries = 3) => {
   const token = getAuthToken();
   if (!token) throw new Error("No authentication token found");
 
@@ -104,10 +104,21 @@ const adminFetch = async (endpoint, options = {}, retries = 2) => {
         ...options,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          "Authorization": `Bearer ${token}`,
           ...(options.headers || {}),
         },
       });
+
+      // Handle rate limiting with exponential backoff
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After') || Math.pow(2, attempt) * 2;
+        console.log(`Rate limited. Retry after ${retryAfter} seconds (attempt ${attempt + 1}/${retries})`);
+        
+        if (attempt < retries) {
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          continue;
+        }
+      }
 
       const data = await response.json().catch(() => ({}));
 
@@ -118,8 +129,10 @@ const adminFetch = async (endpoint, options = {}, retries = 2) => {
       return data;
     } catch (error) {
       lastError = error;
-      if (attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+      if (attempt < retries && !error.message.includes('429')) {
+        // Exponential backoff for non-rate-limit errors
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }
@@ -137,7 +150,7 @@ const checkAdminStatus = async () => {
   }
 };
 
-/* -------------------- Sections with Enhanced Help -------------------- */
+/* -------------------- Sections with Correct Endpoints -------------------- */
 const TAB_SECTIONS = [
   {
     id: "dashboard",
@@ -266,8 +279,9 @@ const TAB_SECTIONS = [
         description: "Schedule automated marketing posts.",
         help: "Create and manage automated posts to Telegram, Twitter, Discord, and Email. Use dynamic variables like {pnl} to insert live data. Test your integrations with the built-in test tool.",
         actions: [
-          { id: "status", label: "Integration Status", icon: "🔌", endpoint: "/api/admin/social/status", method: "GET" },
-          { id: "process", label: "Run Scheduled Now", icon: "⏰", endpoint: "/api/admin/social/process-scheduled", method: "POST" },
+          // These endpoints exist in your backend
+          { id: "refresh", label: "Refresh Jobs", icon: "🔄", endpoint: "/api/admin/automation/jobs", method: "GET" },
+          { id: "process", label: "Run Scheduled", icon: "⏰", endpoint: "/api/admin/social/process-scheduled", method: "POST" },
         ],
       },
       {
@@ -314,7 +328,7 @@ const TAB_SECTIONS = [
         help: "Connect and manage multiple social accounts. View pending posts, engagement stats, and schedule one-off posts.",
         actions: [
           { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/social/posts", method: "GET" },
-          { id: "platforms", label: "Platform Status", icon: "🔌", endpoint: "/api/admin/social/platforms/status", method: "GET" },
+          { id: "status", label: "Platform Status", icon: "🔌", endpoint: "/api/admin/social/status", method: "GET" },
           { id: "stats", label: "Analytics", icon: "📊", endpoint: "/api/admin/social/stats", method: "GET" },
         ],
       },
@@ -489,6 +503,7 @@ export default function AdminPanel({ forceOwner = false }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [actionHistory, setActionHistory] = useState([]);
+  const [rateLimitRetry, setRateLimitRetry] = useState(0);
 
   const isDevelopment =
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
@@ -541,10 +556,15 @@ export default function AdminPanel({ forceOwner = false }) {
         totalRevenue: data.revenue?.total_fees || 0,
         activeBots: data.bots?.active || 0,
       });
+      setRateLimitRetry(0); // Reset retry count on success
     } catch (err) {
       console.error("[AdminPanel] Stats fetch error:", err);
+      // Don't show toast for rate limit errors
+      if (!err.message?.includes('429')) {
+        showToast("Could not load metrics", "error");
+      }
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     let mounted = true;
@@ -586,7 +606,8 @@ export default function AdminPanel({ forceOwner = false }) {
     if (!allowAccess) return;
 
     fetchStats();
-    const interval = setInterval(fetchStats, 60000);
+    // Increase polling interval to reduce rate limiting
+    const interval = setInterval(fetchStats, 120000); // 2 minutes instead of 1
 
     return () => clearInterval(interval);
   }, [allowAccess, fetchStats]);
@@ -623,7 +644,12 @@ export default function AdminPanel({ forceOwner = false }) {
       } catch (err) {
         const errorMessage = err?.message || `${actionName} failed.`;
         logAction(actionName, "error", { error: errorMessage });
-        showToast(errorMessage, "error");
+        
+        // Don't show toast for rate limit errors
+        if (!errorMessage.includes('429')) {
+          showToast(errorMessage, "error");
+        }
+        
         throw err;
       } finally {
         setBusyAction((prev) => {
