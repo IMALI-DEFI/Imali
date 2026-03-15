@@ -2,13 +2,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import useAdmin from '../hooks/useAdmin';
 
-// Platform configuration
+// Platform configuration - INCLUDING 'internal' platform
 const PLATFORMS = [
   { id: 'telegram', name: 'Telegram', icon: '📱', color: 'bg-sky-500', maxLength: 4096 },
   { id: 'twitter', name: 'Twitter/X', icon: '𝕏', color: 'bg-sky-600', maxLength: 280 },
   { id: 'discord', name: 'Discord', icon: '💬', color: 'bg-indigo-600', maxLength: 2000 },
   { id: 'email', name: 'Email', icon: '📧', color: 'bg-emerald-600', maxLength: 10000 },
-  { id: 'in_app', name: 'In-App', icon: '🖥️', color: 'bg-purple-600', maxLength: 500 }
+  { id: 'in_app', name: 'In-App', icon: '🖥️', color: 'bg-purple-600', maxLength: 500 },
+  { id: 'internal', name: 'Internal', icon: '⚙️', color: 'bg-gray-600', maxLength: 5000 }
 ];
 
 // Available template variables with descriptions
@@ -169,38 +170,59 @@ function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
     return preset ? preset.label : schedule;
   };
 
+  // Safely get platform info with fallback
+  const getPlatformInfo = (channelId) => {
+    return PLATFORMS.find(p => p.id === channelId);
+  };
+
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:border-indigo-500/30 transition-all">
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h3 className="font-semibold">{job.name}</h3>
-          <p className="text-xs text-white/50">{job.description}</p>
+          <h3 className="font-semibold">{job?.name || 'Unnamed Job'}</h3>
+          <p className="text-xs text-white/50">{job?.description || 'No description'}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${getStatusColor(job.status)}`} />
-          <span className="text-xs capitalize">{job.status}</span>
+          <span className={`w-2 h-2 rounded-full ${getStatusColor(job?.status)}`} />
+          <span className="text-xs capitalize">{job?.status || 'unknown'}</span>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs mb-3">
         <div className="bg-black/30 rounded p-2">
           <div className="text-white/40">Schedule</div>
-          <div className="font-mono text-emerald-400">{formatSchedule(job.schedule)}</div>
+          <div className="font-mono text-emerald-400">{formatSchedule(job?.schedule) || 'Not set'}</div>
         </div>
         <div className="bg-black/30 rounded p-2">
           <div className="text-white/40">Next Run</div>
-          <div className="text-white">{job.nextRun || '—'}</div>
+          <div className="text-white">{job?.nextRun || '—'}</div>
         </div>
         <div className="bg-black/30 rounded p-2">
           <div className="text-white/40">Last Run</div>
-          <div className="text-white/60">{job.lastRun || 'Never'}</div>
+          <div className="text-white/60">{job?.lastRun || 'Never'}</div>
         </div>
         <div className="bg-black/30 rounded p-2">
           <div className="text-white/40">Platforms</div>
-          <div className="flex gap-1">
-            {job.channels?.map(ch => {
-              const p = PLATFORMS.find(p => p.id === ch);
-              return p ? <span key={ch} title={p.name}>{p.icon}</span> : null;
+          <div className="flex gap-1 flex-wrap">
+            {job?.channels?.map(ch => {
+              const p = getPlatformInfo(ch);
+              return p ? (
+                <span 
+                  key={ch} 
+                  title={p.name}
+                  className={`${p.color}/20 text-${p.color.split('-')[1]}-300 px-1.5 py-0.5 rounded text-xs`}
+                >
+                  {p.icon}
+                </span>
+              ) : (
+                <span 
+                  key={ch} 
+                  title={ch}
+                  className="bg-gray-600/20 text-gray-300 px-1.5 py-0.5 rounded text-xs"
+                >
+                  🔧
+                </span>
+              );
             })}
           </div>
         </div>
@@ -208,17 +230,17 @@ function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
 
       <div className="flex gap-2">
         <button
-          onClick={() => onToggle(job.id)}
+          onClick={() => onToggle(job?.id)}
           className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-            job.status === 'active'
+            job?.status === 'active'
               ? 'bg-amber-600 hover:bg-amber-500'
               : 'bg-emerald-600 hover:bg-emerald-500'
           }`}
         >
-          {job.status === 'active' ? '⏸️ Pause' : '▶️ Resume'}
+          {job?.status === 'active' ? '⏸️ Pause' : '▶️ Resume'}
         </button>
         <button
-          onClick={() => onRunNow(job.id)}
+          onClick={() => onRunNow(job?.id)}
           className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-medium transition"
         >
           ⚡ Run Now
@@ -230,13 +252,13 @@ function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
           ✏️ Edit
         </button>
         <button
-          onClick={() => onViewLogs(job.id)}
+          onClick={() => onViewLogs(job?.id)}
           className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium transition"
         >
           📋 Logs
         </button>
         <button
-          onClick={() => onDelete(job.id)}
+          onClick={() => onDelete(job?.id)}
           className="px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-xs font-medium transition text-red-300"
         >
           🗑️
@@ -425,24 +447,24 @@ function JobLogs({ jobId, logs, onClose }) {
           <button onClick={onClose} className="text-white/60 hover:text-white">✕</button>
         </div>
         <div className="p-4 overflow-y-auto max-h-[60vh]">
-          {logs.length === 0 ? (
+          {!logs || logs.length === 0 ? (
             <div className="text-center py-8 text-white/40">No logs yet</div>
           ) : (
             <div className="space-y-2">
               {logs.map((log, i) => (
                 <div key={i} className="bg-black/30 rounded-lg p-3 text-xs font-mono">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-white/40">{log.timestamp}</span>
+                    <span className="text-white/40">{log?.timestamp || 'Unknown time'}</span>
                     <span className={`px-2 py-0.5 rounded-full ${
-                      log.level === 'success' ? 'bg-green-500/20 text-green-300' :
-                      log.level === 'error' ? 'bg-red-500/20 text-red-300' :
+                      log?.level === 'success' ? 'bg-green-500/20 text-green-300' :
+                      log?.level === 'error' ? 'bg-red-500/20 text-red-300' :
                       'bg-amber-500/20 text-amber-300'
                     }`}>
-                      {log.level}
+                      {log?.level || 'info'}
                     </span>
                   </div>
-                  <div className="text-white/80">{log.message}</div>
-                  {log.details && <pre className="text-red-400 mt-1 text-xs overflow-x-auto">{JSON.stringify(log.details, null, 2)}</pre>}
+                  <div className="text-white/80">{log?.message || 'No message'}</div>
+                  {log?.details && <pre className="text-red-400 mt-1 text-xs overflow-x-auto">{JSON.stringify(log.details, null, 2)}</pre>}
                 </div>
               ))}
             </div>
@@ -471,11 +493,11 @@ export default function MarketingAutomation() {
   const fetchJobs = useCallback(async (retry = 0) => {
     try {
       const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
-      setJobs(data.jobs || []);
+      setJobs(data?.jobs || []);
       setStats({
-        totalPosts: data.stats?.total_posts || 0,
-        activeJobs: data.jobs?.filter(j => j.status === 'active').length || 0,
-        pendingPosts: data.stats?.pending || 0
+        totalPosts: data?.stats?.total_posts || 0,
+        activeJobs: data?.jobs?.filter(j => j?.status === 'active').length || 0,
+        pendingPosts: data?.stats?.pending || 0
       });
       setRetryCount(0);
     } catch (error) {
@@ -486,7 +508,7 @@ export default function MarketingAutomation() {
       } else if (error.message?.includes('429')) {
         const newRetry = retry + 1;
         if (newRetry <= 3) {
-          setTimeout(() => fetchJobs(newRetry), 30000 * newRetry); // 30s, 60s, 90s
+          setTimeout(() => fetchJobs(newRetry), 30000 * newRetry);
         }
       } else {
         showToast('Could not load automation jobs', 'error');
@@ -498,11 +520,12 @@ export default function MarketingAutomation() {
 
   useEffect(() => {
     fetchJobs();
-    const interval = setInterval(fetchJobs, 300000); // 5 minutes
+    const interval = setInterval(fetchJobs, 300000);
     return () => clearInterval(interval);
   }, [fetchJobs]);
 
   const handleToggle = async (jobId) => {
+    if (!jobId) return;
     try {
       await adminFetch('/api/admin/automation/jobs/toggle', {
         method: 'POST',
@@ -524,6 +547,7 @@ export default function MarketingAutomation() {
   };
 
   const handleRunNow = async (jobId) => {
+    if (!jobId) return;
     try {
       await adminFetch('/api/admin/automation/jobs/run', {
         method: 'POST',
@@ -561,6 +585,7 @@ export default function MarketingAutomation() {
   };
 
   const handleDelete = async (jobId) => {
+    if (!jobId) return;
     if (!window.confirm('Are you sure you want to delete this job?')) return;
     try {
       await adminFetch(`/api/admin/automation/jobs/${jobId}`, { method: 'DELETE' });
@@ -576,9 +601,10 @@ export default function MarketingAutomation() {
   };
 
   const handleViewLogs = async (jobId) => {
+    if (!jobId) return;
     try {
       const data = await adminFetch(`/api/admin/automation/logs/${jobId}`, { method: 'GET' });
-      setLogs(data.logs || []);
+      setLogs(data?.logs || []);
       setViewingLogs(jobId);
     } catch (error) {
       if (error.message?.includes('401')) {
@@ -649,7 +675,7 @@ export default function MarketingAutomation() {
         </div>
       </div>
 
-      {jobs.length === 0 ? (
+      {!jobs || jobs.length === 0 ? (
         <div className="bg-white/5 border border-white/10 rounded-xl p-12 text-center">
           <p className="text-white/50 mb-4">No automation jobs yet.</p>
           <button
