@@ -469,9 +469,10 @@ function JobLogs({ jobId, logs = [], onClose }) {
   );
 }
 
-// Main component
+// Main component - with hooks properly ordered
 export default function MarketingAutomation() {
-  const { adminFetch, showToast, user, isLoading: userLoading, error: userError } = useAdmin();
+  // ALL HOOKS MUST BE CALLED FIRST - BEFORE ANY CONDITIONAL RETURNS
+  const { adminFetch, showToast, user, isLoading: userLoading, error: userError, hasToken } = useAdmin();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
@@ -484,52 +485,7 @@ export default function MarketingAutomation() {
     pendingPosts: 0
   });
 
-  // Handle user loading state
-  if (userLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent mx-auto mb-4" />
-          <p className="text-white/60">Loading user data...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Handle user error
-  if (userError) {
-    return (
-      <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-4">⚠️</div>
-        <h3 className="text-xl font-bold text-red-300 mb-2">Authentication Error</h3>
-        <p className="text-white/70 mb-4">{userError}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition"
-        >
-          Reload Page
-        </button>
-      </div>
-    );
-  }
-
-  // Handle no user
-  if (!user) {
-    return (
-      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-4">🔒</div>
-        <h3 className="text-xl font-bold text-amber-300 mb-2">Not Authenticated</h3>
-        <p className="text-white/70 mb-4">Please log in to access the automation panel.</p>
-        <button
-          onClick={() => window.location.href = '/login'}
-          className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition"
-        >
-          Go to Login
-        </button>
-      </div>
-    );
-  }
-
+  // Define fetchJobs
   const fetchJobs = useCallback(async () => {
     try {
       setFetchError(null);
@@ -552,12 +508,14 @@ export default function MarketingAutomation() {
     }
   }, [adminFetch, showToast]);
 
+  // useEffect for initial fetch and polling
   useEffect(() => {
     fetchJobs();
     const interval = setInterval(fetchJobs, 300000);
     return () => clearInterval(interval);
   }, [fetchJobs]);
 
+  // Event handlers
   const handleToggle = async (jobId) => {
     if (!jobId) return;
     try {
@@ -593,7 +551,6 @@ export default function MarketingAutomation() {
   const handleSaveJob = async (jobData) => {
     if (!jobData) return;
     try {
-      // Use POST for new jobs, PUT for updates (matching backend)
       const method = jobData.id ? 'PUT' : 'POST';
       const endpoint = jobData.id 
         ? `/api/admin/automation/jobs/${jobData.id}` 
@@ -658,6 +615,50 @@ export default function MarketingAutomation() {
       }
     }
   };
+
+  // Conditional returns - NOW SAFE after all hooks
+  if (userLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent mx-auto mb-4" />
+          <p className="text-white/60">Loading user data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (userError) {
+    return (
+      <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-8 text-center">
+        <div className="text-4xl mb-4">⚠️</div>
+        <h3 className="text-xl font-bold text-red-300 mb-2">Authentication Error</h3>
+        <p className="text-white/70 mb-4">{userError}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition"
+        >
+          Reload Page
+        </button>
+      </div>
+    );
+  }
+
+  if (!hasToken) {
+    return (
+      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-8 text-center">
+        <div className="text-4xl mb-4">🔒</div>
+        <h3 className="text-xl font-bold text-amber-300 mb-2">Not Logged In</h3>
+        <p className="text-white/70 mb-4">Please log in to access the automation panel.</p>
+        <button
+          onClick={() => window.location.href = '/login'}
+          className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition"
+        >
+          Go to Login
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
