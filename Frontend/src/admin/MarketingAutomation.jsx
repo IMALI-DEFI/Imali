@@ -3,16 +3,58 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import useAdmin from "../hooks/useAdmin";
 
 /* -------------------------------------------------------------------------- */
-/*                                  Config                                     */
+/*                                   Config                                   */
 /* -------------------------------------------------------------------------- */
 
 const PLATFORMS = [
-  { id: "telegram", name: "Telegram", icon: "📱", colorClass: "bg-sky-500", badgeClass: "bg-sky-500/20 text-sky-300", maxLength: 4096 },
-  { id: "twitter", name: "Twitter/X", icon: "𝕏", colorClass: "bg-sky-600", badgeClass: "bg-sky-600/20 text-sky-300", maxLength: 280 },
-  { id: "discord", name: "Discord", icon: "💬", colorClass: "bg-indigo-600", badgeClass: "bg-indigo-600/20 text-indigo-300", maxLength: 2000 },
-  { id: "email", name: "Email", icon: "📧", colorClass: "bg-emerald-600", badgeClass: "bg-emerald-600/20 text-emerald-300", maxLength: 10000 },
-  { id: "in_app", name: "In-App", icon: "🖥️", colorClass: "bg-purple-600", badgeClass: "bg-purple-600/20 text-purple-300", maxLength: 500 },
-  { id: "internal", name: "Internal", icon: "⚙️", colorClass: "bg-gray-600", badgeClass: "bg-gray-600/20 text-gray-300", maxLength: 5000 }
+  {
+    id: "telegram",
+    name: "Telegram",
+    icon: "📱",
+    colorClass: "bg-sky-500",
+    badgeClass: "bg-sky-500/20 text-sky-300",
+    maxLength: 4096,
+  },
+  {
+    id: "twitter",
+    name: "Twitter/X",
+    icon: "𝕏",
+    colorClass: "bg-sky-600",
+    badgeClass: "bg-sky-600/20 text-sky-300",
+    maxLength: 280,
+  },
+  {
+    id: "discord",
+    name: "Discord",
+    icon: "💬",
+    colorClass: "bg-indigo-600",
+    badgeClass: "bg-indigo-600/20 text-indigo-300",
+    maxLength: 2000,
+  },
+  {
+    id: "email",
+    name: "Email",
+    icon: "📧",
+    colorClass: "bg-emerald-600",
+    badgeClass: "bg-emerald-600/20 text-emerald-300",
+    maxLength: 10000,
+  },
+  {
+    id: "in_app",
+    name: "In-App",
+    icon: "🖥️",
+    colorClass: "bg-purple-600",
+    badgeClass: "bg-purple-600/20 text-purple-300",
+    maxLength: 500,
+  },
+  {
+    id: "internal",
+    name: "Internal",
+    icon: "⚙️",
+    colorClass: "bg-gray-600",
+    badgeClass: "bg-gray-600/20 text-gray-300",
+    maxLength: 5000,
+  },
 ];
 
 const TEMPLATE_VARS = [
@@ -26,7 +68,7 @@ const TEMPLATE_VARS = [
   { name: "{botCount}", description: "Active bots count" },
   { name: "{discoveries}", description: "New discoveries" },
   { name: "{user}", description: "Username" },
-  { name: "{balance}", description: "User balance" }
+  { name: "{balance}", description: "User balance" },
 ];
 
 const SCHEDULE_PRESETS = [
@@ -39,7 +81,7 @@ const SCHEDULE_PRESETS = [
   { value: "0 18 * * *", label: "Daily 6 PM", desc: "Evening recap" },
   { value: "0 0 * * *", label: "Daily midnight", desc: "End of day" },
   { value: "0 0 * * 1", label: "Weekly Monday", desc: "Weekly kickoff" },
-  { value: "0 0 1 * *", label: "Monthly 1st", desc: "Monthly summary" }
+  { value: "0 0 1 * *", label: "Monthly 1st", desc: "Monthly summary" },
 ];
 
 const DEFAULT_JOB = {
@@ -50,15 +92,15 @@ const DEFAULT_JOB = {
   channels: ["telegram"],
   messages: {},
   status: "active",
-  icon: "📢"
+  icon: "📢",
 };
 
 /* -------------------------------------------------------------------------- */
-/*                                Helpers                                      */
+/*                                  Helpers                                   */
 /* -------------------------------------------------------------------------- */
 
-function getPlatformInfo(platformId) {
-  return PLATFORMS.find((p) => p.id === platformId) || null;
+function getPlatformInfo(id) {
+  return PLATFORMS.find((p) => p.id === id) || null;
 }
 
 function isValidCron(cron) {
@@ -67,7 +109,6 @@ function isValidCron(cron) {
   if (parts.length !== 5) return false;
 
   const fieldRegex = /^(\*|\*\/\d+|\d+|\d+\-\d+|\d+(,\d+)+)$/;
-
   return parts.every((part) => fieldRegex.test(part));
 }
 
@@ -82,27 +123,27 @@ function getStatusMeta(status) {
     case "active":
       return {
         dot: "bg-green-400",
-        pill: "bg-green-500/15 text-green-300 border border-green-500/20"
+        pill: "bg-green-500/15 text-green-300 border border-green-500/20",
       };
     case "paused":
       return {
         dot: "bg-amber-400",
-        pill: "bg-amber-500/15 text-amber-300 border border-amber-500/20"
+        pill: "bg-amber-500/15 text-amber-300 border border-amber-500/20",
       };
     case "error":
       return {
         dot: "bg-red-400",
-        pill: "bg-red-500/15 text-red-300 border border-red-500/20"
+        pill: "bg-red-500/15 text-red-300 border border-red-500/20",
       };
     default:
       return {
         dot: "bg-gray-400",
-        pill: "bg-gray-500/15 text-gray-300 border border-gray-500/20"
+        pill: "bg-gray-500/15 text-gray-300 border border-gray-500/20",
       };
   }
 }
 
-function createSamplePreview(value) {
+function renderPreview(value) {
   let previewText = value || "";
   const sampleValues = {
     "{pnl}": "+$1,234",
@@ -115,19 +156,19 @@ function createSamplePreview(value) {
     "{botCount}": "5",
     "{discoveries}": "3",
     "{user}": "trader123",
-    "{balance}": "$5,678"
+    "{balance}": "$5,678",
   };
 
-  for (const [key, val] of Object.entries(sampleValues)) {
+  Object.entries(sampleValues).forEach(([key, val]) => {
     const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     previewText = previewText.replace(new RegExp(escaped, "g"), val);
-  }
+  });
 
   return previewText;
 }
 
 /* -------------------------------------------------------------------------- */
-/*                              Subcomponents                                  */
+/*                              Message Editor                                */
 /* -------------------------------------------------------------------------- */
 
 function MessageEditor({ platform, value = "", onChange, variables = [] }) {
@@ -135,29 +176,28 @@ function MessageEditor({ platform, value = "", onChange, variables = [] }) {
   const textareaRef = useRef(null);
 
   const platformInfo = getPlatformInfo(platform) || {
-    id: platform,
     name: platform,
     icon: "📱",
-    maxLength: 4096
+    maxLength: 4096,
   };
 
   const charCount = value.length;
-  const preview = useMemo(() => createSamplePreview(value), [value]);
+  const preview = useMemo(() => renderPreview(value), [value]);
 
   const insertVariable = (varName) => {
-    if (!textareaRef.current || !varName) return;
-
     const textarea = textareaRef.current;
+    if (!textarea) return;
+
     const start = textarea.selectionStart ?? value.length;
     const end = textarea.selectionEnd ?? value.length;
-
     const nextValue = value.slice(0, start) + varName + value.slice(end);
+
     onChange(nextValue);
 
     requestAnimationFrame(() => {
       textarea.focus();
-      const cursor = start + varName.length;
-      textarea.setSelectionRange(cursor, cursor);
+      const pos = start + varName.length;
+      textarea.setSelectionRange(pos, pos);
     });
   };
 
@@ -168,12 +208,7 @@ function MessageEditor({ platform, value = "", onChange, variables = [] }) {
           <span className="text-xl">{platformInfo.icon}</span>
           <h4 className="font-medium text-white">{platformInfo.name}</h4>
         </div>
-
-        <span
-          className={`text-xs ${
-            charCount > platformInfo.maxLength ? "text-red-400" : "text-white/40"
-          }`}
-        >
+        <span className={`text-xs ${charCount > platformInfo.maxLength ? "text-red-400" : "text-white/40"}`}>
           {charCount}/{platformInfo.maxLength}
         </span>
       </div>
@@ -183,9 +218,9 @@ function MessageEditor({ platform, value = "", onChange, variables = [] }) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={5}
+        maxLength={platformInfo.maxLength}
         className="w-full rounded-lg border border-white/10 bg-black/40 p-3 text-sm font-mono text-white outline-none transition focus:border-emerald-500/40"
         placeholder={`Enter ${platformInfo.name} message...`}
-        maxLength={platformInfo.maxLength}
       />
 
       <div className="flex flex-wrap gap-2">
@@ -202,18 +237,16 @@ function MessageEditor({ platform, value = "", onChange, variables = [] }) {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setShowPreview((prev) => !prev)}
-          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-500"
-        >
-          {showPreview ? "🙈 Hide Preview" : "👁️ Preview"}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setShowPreview((prev) => !prev)}
+        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-500"
+      >
+        {showPreview ? "🙈 Hide Preview" : "👁️ Preview"}
+      </button>
 
       {showPreview && (
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-sm text-white/90 whitespace-pre-wrap">
+        <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-sm whitespace-pre-wrap text-white/90">
           <div className="mb-1 text-xs text-white/40">Preview:</div>
           {preview || value || ""}
         </div>
@@ -222,7 +255,11 @@ function MessageEditor({ platform, value = "", onChange, variables = [] }) {
   );
 }
 
-function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
+/* -------------------------------------------------------------------------- */
+/*                                Job Card                                    */
+/* -------------------------------------------------------------------------- */
+
+function JobCard({ job, onEdit, onToggle, onRunNow, onViewLogs }) {
   if (!job?.id) return null;
 
   const statusMeta = getStatusMeta(job.status);
@@ -235,9 +272,7 @@ function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
             <span className="mr-2">{job.icon || "📢"}</span>
             {job.name || "Unnamed Job"}
           </h3>
-          <p className="mt-1 text-xs text-white/50">
-            {job.description || "No description"}
-          </p>
+          <p className="mt-1 text-xs text-white/50">{job.description || "No description"}</p>
         </div>
 
         <div className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs capitalize ${statusMeta.pill}`}>
@@ -249,9 +284,7 @@ function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div className="rounded-lg bg-black/30 p-3">
           <div className="text-xs text-white/40">Schedule</div>
-          <div className="mt-1 font-mono text-sm text-emerald-400">
-            {formatSchedule(job.schedule)}
-          </div>
+          <div className="mt-1 font-mono text-sm text-emerald-400">{formatSchedule(job.schedule)}</div>
         </div>
 
         <div className="rounded-lg bg-black/30 p-3">
@@ -270,19 +303,12 @@ function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
             {(job.channels || []).map((channelId) => {
               const p = getPlatformInfo(channelId);
               return p ? (
-                <span
-                  key={channelId}
-                  title={p.name}
-                  className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${p.badgeClass}`}
-                >
+                <span key={channelId} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${p.badgeClass}`}>
                   <span>{p.icon}</span>
                   <span>{p.name}</span>
                 </span>
               ) : (
-                <span
-                  key={channelId}
-                  className="rounded bg-gray-600/20 px-2 py-1 text-xs text-gray-300"
-                >
+                <span key={channelId} className="rounded bg-gray-600/20 px-2 py-1 text-xs text-gray-300">
                   {channelId}
                 </span>
               );
@@ -296,9 +322,7 @@ function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
           type="button"
           onClick={() => onToggle(job.id)}
           className={`rounded-lg px-3 py-2 text-xs font-medium text-white transition ${
-            job.status === "active"
-              ? "bg-amber-600 hover:bg-amber-500"
-              : "bg-emerald-600 hover:bg-emerald-500"
+            job.status === "active" ? "bg-amber-600 hover:bg-amber-500" : "bg-emerald-600 hover:bg-emerald-500"
           }`}
         >
           {job.status === "active" ? "⏸️ Pause" : "▶️ Resume"}
@@ -327,18 +351,14 @@ function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
         >
           📋 Logs
         </button>
-
-        <button
-          type="button"
-          onClick={() => onDelete(job.id)}
-          className="rounded-lg bg-red-600/20 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-600/40"
-        >
-          🗑️ Delete
-        </button>
       </div>
     </div>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                 Job Modal                                  */
+/* -------------------------------------------------------------------------- */
 
 function JobModal({ job, onClose, onSave }) {
   const initialData = useMemo(() => {
@@ -347,13 +367,13 @@ function JobModal({ job, onClose, onSave }) {
       ...DEFAULT_JOB,
       ...job,
       channels: Array.isArray(job.channels) && job.channels.length > 0 ? job.channels : ["telegram"],
-      messages: job.messages || {}
+      messages: job.messages || {},
     };
   }, [job]);
 
   const [formData, setFormData] = useState(initialData);
-  const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setFormData(initialData);
@@ -365,43 +385,33 @@ function JobModal({ job, onClose, onSave }) {
     setErrors((prev) => ({ ...prev, [field]: "" }));
   };
 
-  const handleMessageChange = (platform, nextValue) => {
+  const handleMessageChange = (platform, value) => {
     setFormData((prev) => ({
       ...prev,
       messages: {
         ...(prev.messages || {}),
-        [platform]: nextValue
-      }
+        [platform]: value,
+      },
     }));
   };
 
   const toggleChannel = (channelId) => {
     setFormData((prev) => {
       const current = prev.channels || [];
-      const exists = current.includes(channelId);
-
-      const nextChannels = exists
+      const nextChannels = current.includes(channelId)
         ? current.filter((c) => c !== channelId)
         : [...current, channelId];
 
-      return {
-        ...prev,
-        channels: nextChannels
-      };
+      return { ...prev, channels: nextChannels };
     });
   };
 
   const validate = () => {
     const nextErrors = {};
 
-    if (!formData.name?.trim()) {
-      nextErrors.name = "Job name is required";
-    }
-
-    if (!isValidCron(formData.schedule)) {
-      nextErrors.schedule = "Enter a valid 5-part cron expression";
-    }
-
+    if (!formData.name?.trim()) nextErrors.name = "Job name is required";
+    if (!formData.description?.trim()) nextErrors.description = "Description is required";
+    if (!isValidCron(formData.schedule)) nextErrors.schedule = "Enter a valid 5-part cron expression";
     if (!Array.isArray(formData.channels) || formData.channels.length === 0) {
       nextErrors.channels = "Select at least one platform";
     }
@@ -410,37 +420,38 @@ function JobModal({ job, onClose, onSave }) {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const submit = async () => {
     if (!validate()) return;
-
     setSaving(true);
     try {
       await onSave({
         ...formData,
         name: formData.name.trim(),
-        description: formData.description?.trim() || "",
-        icon: formData.icon?.trim() || "📢"
+        description: formData.description.trim(),
+        icon: formData.icon?.trim() || "📢",
       });
     } finally {
       setSaving(false);
     }
   };
 
+  const isEditing = Boolean(formData.id);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-sm">
       <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6">
         <div className="mb-6 flex items-center justify-between">
-          <h3 className="text-xl font-bold text-white">
-            {formData.id ? "Edit Job" : "Create New Job"}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-white/60 transition hover:text-white"
-          >
+          <h3 className="text-xl font-bold text-white">{isEditing ? "Edit Job" : "Create New Job"}</h3>
+          <button type="button" onClick={onClose} className="text-white/60 transition hover:text-white">
             ✕
           </button>
         </div>
+
+        {isEditing && (
+          <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">
+            Existing jobs use separate backend update endpoints. Name, description, icon, and channels may not persist unless you add a full update route on the backend. Schedule and message templates will save.
+          </div>
+        )}
 
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -450,7 +461,8 @@ function JobModal({ job, onClose, onSave }) {
                 type="text"
                 value={formData.name}
                 onChange={(e) => handleChange("name", e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-white outline-none transition focus:border-emerald-500/40"
+                disabled={isEditing}
+                className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-white outline-none transition focus:border-emerald-500/40 disabled:opacity-60"
                 placeholder="e.g., Daily Performance Summary"
               />
               {errors.name && <p className="mt-1 text-xs text-red-400">{errors.name}</p>}
@@ -462,9 +474,10 @@ function JobModal({ job, onClose, onSave }) {
                 type="text"
                 value={formData.icon}
                 onChange={(e) => handleChange("icon", e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-white outline-none transition focus:border-emerald-500/40"
-                placeholder="📊"
+                disabled={isEditing}
                 maxLength={4}
+                className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-white outline-none transition focus:border-emerald-500/40 disabled:opacity-60"
+                placeholder="📊"
               />
             </div>
           </div>
@@ -474,10 +487,12 @@ function JobModal({ job, onClose, onSave }) {
             <textarea
               value={formData.description}
               onChange={(e) => handleChange("description", e.target.value)}
+              disabled={isEditing}
               rows={3}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-white outline-none transition focus:border-emerald-500/40"
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-white outline-none transition focus:border-emerald-500/40 disabled:opacity-60"
               placeholder="What does this job do?"
             />
+            {errors.description && <p className="mt-1 text-xs text-red-400">{errors.description}</p>}
           </div>
 
           <div>
@@ -499,8 +514,7 @@ function JobModal({ job, onClose, onSave }) {
             </select>
 
             <p className="mt-2 text-xs text-white/40">
-              Or enter a custom cron expression like{" "}
-              <code className="rounded bg-black/30 px-1 py-0.5">0 9 * * *</code>
+              Or enter a custom cron expression like <code className="rounded bg-black/30 px-1 py-0.5">0 9 * * *</code>
             </p>
 
             <input
@@ -510,9 +524,7 @@ function JobModal({ job, onClose, onSave }) {
               className="mt-2 w-full rounded-lg border border-white/10 bg-black/40 px-4 py-2 font-mono text-white outline-none transition focus:border-emerald-500/40"
               placeholder="Custom cron expression"
             />
-            {errors.schedule && (
-              <p className="mt-1 text-xs text-red-400">{errors.schedule}</p>
-            )}
+            {errors.schedule && <p className="mt-1 text-xs text-red-400">{errors.schedule}</p>}
           </div>
 
           <div>
@@ -524,8 +536,9 @@ function JobModal({ job, onClose, onSave }) {
                   <button
                     key={p.id}
                     type="button"
+                    disabled={isEditing}
                     onClick={() => toggleChannel(p.id)}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-white transition ${
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-white transition disabled:opacity-60 ${
                       selected ? p.colorClass : "bg-white/10 hover:bg-white/20"
                     }`}
                   >
@@ -535,17 +548,14 @@ function JobModal({ job, onClose, onSave }) {
                 );
               })}
             </div>
-            {errors.channels && (
-              <p className="mt-1 text-xs text-red-400">{errors.channels}</p>
-            )}
+            {errors.channels && <p className="mt-1 text-xs text-red-400">{errors.channels}</p>}
           </div>
 
           {(formData.channels || []).length > 0 && (
             <div>
               <label className="mb-2 block text-sm text-white/50">Message Templates</label>
               <p className="mb-4 text-xs text-white/40">
-                Use variables like <code className="rounded bg-black/30 px-1 py-0.5">{`{pnl}`}</code>{" "}
-                to insert dynamic data.
+                Use variables like <code className="rounded bg-black/30 px-1 py-0.5">{`{pnl}`}</code> to insert dynamic data.
               </p>
 
               <div className="space-y-4">
@@ -554,7 +564,7 @@ function JobModal({ job, onClose, onSave }) {
                     key={channel}
                     platform={channel}
                     value={formData.messages?.[channel] || ""}
-                    onChange={(nextValue) => handleMessageChange(channel, nextValue)}
+                    onChange={(value) => handleMessageChange(channel, value)}
                     variables={TEMPLATE_VARS}
                   />
                 ))}
@@ -565,11 +575,11 @@ function JobModal({ job, onClose, onSave }) {
           <div className="flex flex-wrap gap-3 border-t border-white/10 pt-4">
             <button
               type="button"
-              onClick={handleSubmit}
+              onClick={submit}
               disabled={saving}
               className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
             >
-              {saving ? "Saving..." : formData.id ? "Save Changes" : "Create Job"}
+              {saving ? "Saving..." : isEditing ? "Save Schedule & Templates" : "Create Job"}
             </button>
 
             <button
@@ -587,6 +597,10 @@ function JobModal({ job, onClose, onSave }) {
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/*                                 Job Logs                                   */
+/* -------------------------------------------------------------------------- */
+
 function JobLogs({ jobId, logs = [], onClose }) {
   if (!jobId) return null;
 
@@ -595,11 +609,7 @@ function JobLogs({ jobId, logs = [], onClose }) {
       <div className="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-white/10 bg-gray-900">
         <div className="flex items-center justify-between border-b border-white/10 p-4">
           <h3 className="font-bold text-white">Logs for Job {jobId}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-white/60 transition hover:text-white"
-          >
+          <button type="button" onClick={onClose} className="text-white/60 transition hover:text-white">
             ✕
           </button>
         </div>
@@ -609,7 +619,7 @@ function JobLogs({ jobId, logs = [], onClose }) {
             <div className="py-8 text-center text-white/40">No logs yet</div>
           ) : (
             <div className="space-y-2">
-              {logs.map((log, index) => {
+              {logs.map((log, i) => {
                 const level = (log?.level || "info").toLowerCase();
                 const levelClass =
                   level === "success"
@@ -619,16 +629,12 @@ function JobLogs({ jobId, logs = [], onClose }) {
                     : "bg-amber-500/20 text-amber-300";
 
                 return (
-                  <div key={`${log?.timestamp || "log"}-${index}`} className="rounded-lg bg-black/30 p-3 text-xs font-mono">
+                  <div key={`${log?.timestamp || "log"}-${i}`} className="rounded-lg bg-black/30 p-3 text-xs font-mono">
                     <div className="mb-1 flex items-center gap-2">
                       <span className="text-white/40">{log?.timestamp || "Unknown time"}</span>
-                      <span className={`rounded-full px-2 py-0.5 ${levelClass}`}>
-                        {level}
-                      </span>
+                      <span className={`rounded-full px-2 py-0.5 ${levelClass}`}>{level}</span>
                     </div>
-
                     <div className="text-white/80">{log?.message || "No message"}</div>
-
                     {log?.details && (
                       <pre className="mt-2 overflow-x-auto text-xs text-red-300">
                         {JSON.stringify(log.details, null, 2)}
@@ -646,7 +652,7 @@ function JobLogs({ jobId, logs = [], onClose }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                              Main Component                                 */
+/*                              Main Component                                */
 /* -------------------------------------------------------------------------- */
 
 export default function MarketingAutomation() {
@@ -661,24 +667,15 @@ export default function MarketingAutomation() {
   const [stats, setStats] = useState({
     totalPosts: 0,
     activeJobs: 0,
-    pendingPosts: 0
+    pendingPosts: 0,
   });
-  const [componentError, setComponentError] = useState(null);
 
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
-
-    const handleWindowError = (event) => {
-      console.error("MarketingAutomation window error:", event?.error || event);
-    };
-
-    window.addEventListener("error", handleWindowError);
-
     return () => {
       mountedRef.current = false;
-      window.removeEventListener("error", handleWindowError);
     };
   }, []);
 
@@ -687,13 +684,10 @@ export default function MarketingAutomation() {
   }, [user]);
 
   const fetchJobs = useCallback(
-    async (retry = 0, silent = false) => {
+    async (silent = false) => {
       try {
-        if (silent) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
+        if (silent) setRefreshing(true);
+        else setLoading(true);
 
         const data = await adminFetch("/api/admin/automation/jobs", { method: "GET" });
         const jobsList = Array.isArray(data?.jobs) ? data.jobs : [];
@@ -701,31 +695,16 @@ export default function MarketingAutomation() {
         if (!mountedRef.current) return;
 
         setJobs(jobsList);
+
         setStats({
           totalPosts: data?.stats?.total_posts || 0,
           activeJobs: jobsList.filter((j) => j?.status === "active").length,
-          pendingPosts: data?.stats?.pending || 0
+          pendingPosts: data?.stats?.pending || 0,
         });
       } catch (error) {
         console.error("Failed to fetch jobs:", error);
-
         if (!mountedRef.current) return;
-
-        const message = error?.message || "";
-
-        if (message.includes("401")) {
-          showToast?.("Session expired. Please log in again.", "error");
-        } else if (message.includes("429")) {
-          if (retry < 3) {
-            setTimeout(() => {
-              fetchJobs(retry + 1, true);
-            }, 30000 * (retry + 1));
-          } else {
-            showToast?.("Rate limited while loading automation jobs.", "error");
-          }
-        } else {
-          showToast?.("Could not load automation jobs", "error");
-        }
+        showToast?.("Could not load automation jobs", "error");
       } finally {
         if (!mountedRef.current) return;
         setLoading(false);
@@ -736,165 +715,118 @@ export default function MarketingAutomation() {
   );
 
   useEffect(() => {
-    fetchJobs(0, false);
-
-    const interval = setInterval(() => {
-      fetchJobs(0, true);
-    }, 300000);
-
+    fetchJobs(false);
+    const interval = setInterval(() => fetchJobs(true), 300000);
     return () => clearInterval(interval);
   }, [fetchJobs]);
 
   const handleToggle = async (jobId) => {
-    if (!jobId) return;
-
     try {
       await adminFetch("/api/admin/automation/jobs/toggle", {
         method: "POST",
-        body: JSON.stringify({ jobId })
+        body: JSON.stringify({ jobId }),
       });
 
-      setJobs((prev) =>
-        prev.map((job) =>
-          job.id === jobId
-            ? { ...job, status: job.status === "active" ? "paused" : "active" }
-            : job
-        )
-      );
-
-      const targetJob = jobs.find((j) => j.id === jobId);
-      const wasActive = targetJob?.status === "active";
-      showToast?.(`Job ${targetJob?.name || ""} ${wasActive ? "paused" : "resumed"}`, "success");
-
-      fetchJobs(0, true);
+      showToast?.("Job toggled successfully", "success");
+      fetchJobs(true);
     } catch (error) {
       console.error("Failed to toggle job:", error);
-      if (!error?.message?.includes("429")) {
-        showToast?.("Failed to toggle job", "error");
-      }
+      showToast?.("Failed to toggle job", "error");
     }
   };
 
   const handleRunNow = async (jobId) => {
-    if (!jobId) return;
-
     try {
       await adminFetch("/api/admin/automation/jobs/run", {
         method: "POST",
-        body: JSON.stringify({ jobId })
+        body: JSON.stringify({ jobId }),
       });
 
       showToast?.("Job triggered successfully", "success");
-      fetchJobs(0, true);
+      fetchJobs(true);
     } catch (error) {
       console.error("Failed to run job:", error);
-      if (!error?.message?.includes("429")) {
-        showToast?.("Failed to run job", "error");
-      }
+      showToast?.("Failed to run job", "error");
     }
   };
 
   const handleSaveJob = async (jobData) => {
-    if (!jobData) return;
-
     try {
-      const isEdit = Boolean(jobData.id);
-      const endpoint = isEdit
-        ? `/api/admin/automation/jobs/${jobData.id}`
-        : "/api/admin/automation/jobs";
+      if (!jobData.id) {
+        await adminFetch("/api/admin/automation/jobs", {
+          method: "POST",
+          body: JSON.stringify({
+            name: jobData.name,
+            description: jobData.description,
+            schedule: jobData.schedule,
+            channels: jobData.channels,
+            messages: jobData.messages || {},
+            status: jobData.status || "active",
+            icon: jobData.icon || "📢",
+          }),
+        });
 
-      await adminFetch(endpoint, {
-        method: isEdit ? "PUT" : "POST",
-        body: JSON.stringify(jobData)
+        showToast?.("Job created", "success");
+        setEditingJob(null);
+        fetchJobs(true);
+        return;
+      }
+
+      await adminFetch("/api/admin/automation/schedule", {
+        method: "POST",
+        body: JSON.stringify({
+          jobId: jobData.id,
+          schedule: jobData.schedule,
+        }),
       });
 
-      showToast?.(isEdit ? "Job updated" : "Job created", "success");
+      await adminFetch("/api/admin/automation/templates", {
+        method: "POST",
+        body: JSON.stringify({
+          jobId: jobData.id,
+          templates: jobData.messages || {},
+        }),
+      });
+
+      showToast?.("Job schedule and templates updated", "success");
       setEditingJob(null);
-      fetchJobs(0, true);
+      fetchJobs(true);
     } catch (error) {
       console.error("Failed to save job:", error);
-      if (!error?.message?.includes("429")) {
-        showToast?.("Failed to save job", "error");
-      }
-    }
-  };
-
-  const handleDelete = async (jobId) => {
-    if (!jobId) return;
-
-    const confirmed = window.confirm("Are you sure you want to delete this job?");
-    if (!confirmed) return;
-
-    try {
-      await adminFetch(`/api/admin/automation/jobs/${jobId}`, {
-        method: "DELETE"
-      });
-
-      showToast?.("Job deleted", "success");
-      fetchJobs(0, true);
-    } catch (error) {
-      console.error("Failed to delete job:", error);
-      if (!error?.message?.includes("429")) {
-        showToast?.("Failed to delete job", "error");
-      }
+      showToast?.("Failed to save job", "error");
     }
   };
 
   const handleViewLogs = async (jobId) => {
-    if (!jobId) return;
-
     try {
       const data = await adminFetch(`/api/admin/automation/logs/${jobId}`, {
-        method: "GET"
+        method: "GET",
       });
 
       setLogs(Array.isArray(data?.logs) ? data.logs : []);
       setViewingLogs(jobId);
     } catch (error) {
       console.error("Failed to fetch logs:", error);
-      if (!error?.message?.includes("429")) {
-        showToast?.("Failed to fetch logs", "error");
-      }
+      showToast?.("Failed to fetch logs", "error");
     }
   };
 
   const handleTestIntegration = async (platform) => {
-    if (!platform) return;
-
     try {
       await adminFetch("/api/admin/social/test", {
         method: "POST",
         body: JSON.stringify({
           platform,
-          message: `Test from IMALI Admin at ${new Date().toLocaleString()}`
-        })
+          message: `Test from IMALI Admin at ${new Date().toLocaleString()}`,
+        }),
       });
 
       showToast?.(`Test sent to ${platform}`, "success");
     } catch (error) {
-      console.error("Failed to send test integration:", error);
-      if (!error?.message?.includes("429")) {
-        showToast?.(`Failed to send to ${platform}`, "error");
-      }
+      console.error("Failed to send test:", error);
+      showToast?.(`Failed to send to ${platform}`, "error");
     }
   };
-
-  if (componentError) {
-    return (
-      <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-8 text-center">
-        <div className="mb-4 text-4xl">⚠️</div>
-        <h3 className="mb-2 text-xl font-bold text-red-300">Something went wrong</h3>
-        <p className="mb-4 text-white/70">The automation panel encountered an error.</p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500"
-        >
-          Reload Page
-        </button>
-      </div>
-    );
-  }
 
   if (loading) {
     return (
@@ -917,15 +849,13 @@ export default function MarketingAutomation() {
           </p>
           {!user && (
             <p className="mt-1 text-xs text-amber-300">
-              User details are not loaded, but automation controls are still available.
+              User details are undefined from useAdmin(), but the panel can still work if adminFetch is valid.
             </p>
           )}
         </div>
 
         <div className="flex items-center gap-2">
-          {refreshing && (
-            <span className="text-xs text-white/40">Refreshing…</span>
-          )}
+          {refreshing && <span className="text-xs text-white/40">Refreshing…</span>}
           <button
             type="button"
             onClick={() => setEditingJob({ ...DEFAULT_JOB })}
@@ -977,7 +907,6 @@ export default function MarketingAutomation() {
               onEdit={setEditingJob}
               onToggle={handleToggle}
               onRunNow={handleRunNow}
-              onDelete={handleDelete}
               onViewLogs={handleViewLogs}
             />
           ))}
@@ -1011,19 +940,11 @@ export default function MarketingAutomation() {
       </div>
 
       {editingJob !== null && (
-        <JobModal
-          job={editingJob}
-          onClose={() => setEditingJob(null)}
-          onSave={handleSaveJob}
-        />
+        <JobModal job={editingJob} onClose={() => setEditingJob(null)} onSave={handleSaveJob} />
       )}
 
       {viewingLogs && (
-        <JobLogs
-          jobId={viewingLogs}
-          logs={logs}
-          onClose={() => setViewingLogs(null)}
-        />
+        <JobLogs jobId={viewingLogs} logs={logs} onClose={() => setViewingLogs(null)} />
       )}
     </div>
   );
