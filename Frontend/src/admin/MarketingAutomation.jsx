@@ -1,5 +1,5 @@
 // src/pages/admin/MarketingAutomation.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import useAdmin from '../hooks/useAdmin';
 
 // Platform configuration with fallback
@@ -41,16 +41,18 @@ const SCHEDULE_PRESETS = [
   { value: '0 0 1 * *', label: 'Monthly 1st', desc: 'Monthly summary' }
 ];
 
-// Helper to fetch templates for a job
-async function fetchJobTemplates(adminFetch, jobId) {
-  try {
-    const response = await adminFetch(`/api/admin/automation/templates?jobId=${jobId}`, { method: 'GET' });
-    return response?.templates || {};
-  } catch (error) {
-    console.error(`Failed to fetch templates for job ${jobId}:`, error);
-    return {};
-  }
-}
+// Simple debounce function
+const debounce = (func, wait) => {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
 
 // Message editor component with preview
 function MessageEditor({ platform, value = '', onChange, variables = [] }) {
@@ -495,13 +497,39 @@ export default function MarketingAutomation() {
     activeJobs: 0,
     pendingPosts: 0
   });
-  const [templates, setTemplates] = useState({});
+  
+  // Refs to manage rate limiting and polling
+  const fetchInProgress = useRef(false);
+  const pollIntervalRef = useRef(null);
+  const retryCountRef = useRef(0);
+  const lastFetchTimeRef = useRef(0);
 
-  // Define fetchJobs
-  const fetchJobs = useCallback(async () => {
+  // Define fetchJobs with rate limit handling
+  const fetchJobs = useCallback(async (isRetry = false) => {
+    // Prevent concurrent fetches
+    if (fetchInProgress.current && !isRetry) {
+      console.log('⏭️ Fetch already in progress, skipping...');
+      return;
+    }
+    
+    // Check if we're fetching too frequently (rate limiting)
+    const now = Date.now();
+    const timeSinceLastFetch = now - lastFetchTimeRef.current;
+    if (timeSinceLastFetch < 10000 && !isRetry) { // 10 seconds minimum between fetches
+      console.log(`⏭️ Fetch too soon (${timeSinceLastFetch}ms), skipping...`);
+      return;
+    }
+    
+    fetchInProgress.current = true;
+    
     try {
       setFetchError(null);
       const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
+      
+      // Update last fetch time on success
+      lastFetchTimeRef.current = Date.now();
+      retryCountRef.current = 0;
+      
       const jobsList = data?.jobs || [];
       setJobs(jobsList);
       setStats({
@@ -510,30 +538,65 @@ export default function MarketingAutomation() {
         pendingPosts: data?.stats?.pending || 0
       });
       
-      // Fetch templates for each job in the background
-      jobsList.forEach(async (job) => {
-        if (job?.id) {
-          const jobTemplates = await fetchJobTemplates(adminFetch, job.id);
-          setTemplates(prev => ({ ...prev, [job.id]: jobTemplates }));
-        }
-      });
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
-      setFetchError(error.message || 'Failed to load jobs');
       
-      if (error.message?.includes('401')) {
-        showToast('Session expired. Please log in again.', 'error');
+      // Handle rate limiting
+      if (error.message?.includes('429') || error.message?.includes('Too many requests')) {
+        retryCountRef.current += 1;
+        
+        if (retryCountRef.current <= 3) {
+          const waitTime = retryCountRef.current * 30000; // 30s, 60s, 90s
+          console.log(`⏳ Rate limited, retry ${retryCountRef.current}/3 in ${waitTime/1000}s`);
+          
+          showToast(`Rate limit reached. Retrying in ${waitTime/1000}s...`, 'warning');
+          
+          setTimeout(() => {
+            fetchJobs(true);
+          }, waitTime);
+        } else {
+          setFetchError('Rate limit exceeded. Please wait a few minutes and refresh.');
+          showToast('Rate limit exceeded. Please try again later.', 'error');
+          retryCountRef.current = 0;
+        }
+      } else {
+        setFetchError(error.message || 'Failed to load jobs');
+        
+        if (error.message?.includes('401')) {
+          showToast('Session expired. Please log in again.', 'error');
+        }
       }
     } finally {
+      fetchInProgress.current = false;
       setLoading(false);
     }
   }, [adminFetch, showToast]);
 
-  // useEffect for initial fetch and polling
+  // Debounced version of fetchJobs for user actions
+  const debouncedFetchJobs = useCallback(
+    debounce(() => {
+      fetchJobs();
+    }, 2000),
+    [fetchJobs]
+  );
+
+  // Initial fetch and polling setup
   useEffect(() => {
     fetchJobs();
-    const interval = setInterval(fetchJobs, 300000);
-    return () => clearInterval(interval);
+    
+    // Set up polling with longer interval (15 minutes)
+    pollIntervalRef.current = setInterval(() => {
+      // Only fetch if we're not already fetching and not recently fetched
+      if (!fetchInProgress.current && (Date.now() - lastFetchTimeRef.current) > 60000) {
+        fetchJobs();
+      }
+    }, 900000); // 15 minutes
+    
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
   }, [fetchJobs]);
 
   // Event handlers
@@ -544,11 +607,14 @@ export default function MarketingAutomation() {
         method: 'POST',
         body: JSON.stringify({ jobId })
       });
-      await fetchJobs();
       showToast('Job toggled successfully', 'success');
+      // Debounce the refetch
+      debouncedFetchJobs();
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast('Failed to toggle job', 'error');
+      } else {
+        showToast('Rate limited. Please wait a moment.', 'warning');
       }
     }
   };
@@ -561,10 +627,13 @@ export default function MarketingAutomation() {
         body: JSON.stringify({ jobId })
       });
       showToast('Job triggered successfully', 'success');
-      await fetchJobs();
+      // Debounce the refetch
+      debouncedFetchJobs();
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast('Failed to run job', 'error');
+      } else {
+        showToast('Rate limited. Please wait a moment.', 'warning');
       }
     }
   };
@@ -584,10 +653,13 @@ export default function MarketingAutomation() {
       
       showToast(jobData.id ? 'Job updated' : 'Job created', 'success');
       setEditingJob(null);
-      await fetchJobs();
+      // Debounce the refetch
+      debouncedFetchJobs();
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast('Failed to save job', 'error');
+      } else {
+        showToast('Rate limited. Please wait a moment.', 'warning');
       }
     }
   };
@@ -598,10 +670,13 @@ export default function MarketingAutomation() {
     try {
       await adminFetch(`/api/admin/automation/jobs/${jobId}`, { method: 'DELETE' });
       showToast('Job deleted', 'success');
-      await fetchJobs();
+      // Debounce the refetch
+      debouncedFetchJobs();
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast('Failed to delete job', 'error');
+      } else {
+        showToast('Rate limited. Please wait a moment.', 'warning');
       }
     }
   };
@@ -615,6 +690,8 @@ export default function MarketingAutomation() {
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast('Failed to fetch logs', 'error');
+      } else {
+        showToast('Rate limited. Please wait a moment.', 'warning');
       }
     }
   };
@@ -633,6 +710,8 @@ export default function MarketingAutomation() {
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast(`Failed to send to ${platform}`, 'error');
+      } else {
+        showToast('Rate limited. Please wait a moment.', 'warning');
       }
     }
   };
@@ -696,7 +775,11 @@ export default function MarketingAutomation() {
         <h3 className="text-xl font-bold text-red-300 mb-2">Failed to Load Jobs</h3>
         <p className="text-white/70 mb-4">{fetchError}</p>
         <button
-          onClick={fetchJobs}
+          onClick={() => {
+            setLoading(true);
+            retryCountRef.current = 0;
+            fetchJobs();
+          }}
           className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition"
         >
           Try Again
@@ -753,10 +836,7 @@ export default function MarketingAutomation() {
           {jobs.map(job => (
             <JobCard
               key={job.id}
-              job={{
-                ...job,
-                messages: templates[job.id] || {}
-              }}
+              job={job}
               onEdit={setEditingJob}
               onToggle={handleToggle}
               onRunNow={handleRunNow}
