@@ -498,66 +498,78 @@ export default function MarketingAutomation() {
     }
   }, []);
 
-  // Define fetchJobs with rate limit handling - FETCH ONLY ONCE
-  const fetchJobs = useCallback(async (isRetry = false) => {
-    // Prevent concurrent fetches
-    if (fetchInProgress.current) {
-      console.log('⏭️ Fetch already in progress, skipping...');
-      return;
-    }
+
+const fetchJobs = useCallback(async (isRetry = false) => {
+  if (fetchInProgress.current) {
+    console.log('⏭️ Fetch already in progress, skipping...');
+    return;
+  }
+  
+  clearRetryTimeout();
+  fetchInProgress.current = true;
+  
+  try {
+    setFetchError(null);
+    const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
     
-    // Clear any pending retry
-    clearRetryTimeout();
+    // Reset retry count on success
+    retryCountRef.current = 0;
     
-    fetchInProgress.current = true;
+    const jobsList = data?.jobs || [];
+    setJobs(jobsList);
+    setStats({
+      totalPosts: data?.stats?.total_posts || 0,
+      activeJobs: jobsList.filter(j => j?.status === 'active').length || 0,
+      pendingPosts: data?.stats?.pending || 0
+    });
     
-    try {
-      setFetchError(null);
-      const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
-      
-      // Reset retry count on success
-      retryCountRef.current = 0;
-      
-      const jobsList = data?.jobs || [];
-      setJobs(jobsList);
-      setStats({
-        totalPosts: data?.stats?.total_posts || 0,
-        activeJobs: jobsList.filter(j => j?.status === 'active').length || 0,
-        pendingPosts: data?.stats?.pending || 0
-      });
-      
-    } catch (error) {
-      console.error('Failed to fetch jobs:', error);
-      
-      // Handle rate limiting - only retry once after a long delay
-      if (error.message?.includes('429') || error.message?.includes('Too many requests')) {
-        if (retryCountRef.current === 0) {
-          retryCountRef.current = 1;
-          console.log('⏳ Rate limited, will retry once in 60 seconds');
-          showToast('Rate limit reached. Retrying in 60 seconds...', 'warning');
-          
-          // Store timeout for cleanup
-          retryTimeoutRef.current = setTimeout(() => {
-            fetchJobs(true);
-            retryTimeoutRef.current = null;
-          }, 60000);
-        } else {
-          setFetchError('Rate limit exceeded. Please refresh the page in a few minutes.');
-          showToast('Rate limit exceeded. Please try again later.', 'error');
-          retryCountRef.current = 0;
-        }
-      } else {
-        setFetchError(error.message || 'Failed to load jobs');
+  } catch (error) {
+    console.error('Failed to fetch jobs:', error);
+    
+    // Check if it's a rate limit (429)
+    if (error.message?.includes('429') || error.message?.includes('Too many requests')) {
+      if (retryCountRef.current === 0) {
+        retryCountRef.current = 1;
+        console.log('⏳ Rate limited, will retry once in 60 seconds');
+        showToast('Rate limit reached. Retrying in 60 seconds...', 'warning');
         
-        if (error.message?.includes('401')) {
-          showToast('Session expired. Please log in again.', 'error');
-        }
+        retryTimeoutRef.current = setTimeout(() => {
+          fetchJobs(true);
+          retryTimeoutRef.current = null;
+        }, 60000);
+      } else {
+        setFetchError('Rate limit exceeded. Please refresh the page in a few minutes.');
+        showToast('Rate limit exceeded. Please try again later.', 'error');
+        retryCountRef.current = 0;
       }
-    } finally {
-      fetchInProgress.current = false;
-      setLoading(false);
+    } 
+    // Check for authentication errors (401)
+    else if (error.message?.includes('401') || error.status === 401) {
+      setFetchError('Session expired. Please log in again.');
+      showToast('Session expired. Please log in again.', 'error');
+      // Optionally redirect to login
+      // window.location.href = '/login';
     }
-  }, [adminFetch, showToast, clearRetryTimeout]);
+    // Check for server errors (500)
+    else if (error.message?.includes('500') || error.status === 500 || error.message?.includes('Internal Server Error')) {
+      setFetchError('Server error. Please try again later.');
+      showToast('Server error. Our team has been notified.', 'error');
+    }
+    // Network errors
+    else if (error.message?.includes('Failed to fetch') || error.message?.includes('Network')) {
+      setFetchError('Network error. Please check your connection.');
+      showToast('Network error. Please check your connection.', 'error');
+    }
+    // Generic error
+    else {
+      setFetchError(error.message || 'Failed to load jobs');
+      showToast(error.message || 'Failed to load jobs', 'error');
+    }
+  } finally {
+    fetchInProgress.current = false;
+    setLoading(false);
+  }
+}, [adminFetch, showToast, clearRetryTimeout]);
 
   // Manual refresh function (for user actions)
   const refreshJobs = useCallback(() => {
