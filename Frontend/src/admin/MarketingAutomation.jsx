@@ -41,19 +41,6 @@ const SCHEDULE_PRESETS = [
   { value: '0 0 1 * *', label: 'Monthly 1st', desc: 'Monthly summary' }
 ];
 
-// Simple debounce function
-const debounce = (func, wait) => {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
-
 // Message editor component with preview
 function MessageEditor({ platform, value = '', onChange, variables = [] }) {
   const [preview, setPreview] = useState('');
@@ -498,27 +485,29 @@ export default function MarketingAutomation() {
     pendingPosts: 0
   });
   
-  // Refs to manage rate limiting and polling
+  // Refs to manage rate limiting
   const fetchInProgress = useRef(false);
-  const pollIntervalRef = useRef(null);
   const retryCountRef = useRef(0);
-  const lastFetchTimeRef = useRef(0);
+  const retryTimeoutRef = useRef(null);
 
-  // Define fetchJobs with rate limit handling
+  // Cleanup function for retry timeout
+  const clearRetryTimeout = useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Define fetchJobs with rate limit handling - FETCH ONLY ONCE
   const fetchJobs = useCallback(async (isRetry = false) => {
     // Prevent concurrent fetches
-    if (fetchInProgress.current && !isRetry) {
+    if (fetchInProgress.current) {
       console.log('⏭️ Fetch already in progress, skipping...');
       return;
     }
     
-    // Check if we're fetching too frequently (rate limiting)
-    const now = Date.now();
-    const timeSinceLastFetch = now - lastFetchTimeRef.current;
-    if (timeSinceLastFetch < 10000 && !isRetry) { // 10 seconds minimum between fetches
-      console.log(`⏭️ Fetch too soon (${timeSinceLastFetch}ms), skipping...`);
-      return;
-    }
+    // Clear any pending retry
+    clearRetryTimeout();
     
     fetchInProgress.current = true;
     
@@ -526,8 +515,7 @@ export default function MarketingAutomation() {
       setFetchError(null);
       const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
       
-      // Update last fetch time on success
-      lastFetchTimeRef.current = Date.now();
+      // Reset retry count on success
       retryCountRef.current = 0;
       
       const jobsList = data?.jobs || [];
@@ -541,21 +529,20 @@ export default function MarketingAutomation() {
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
       
-      // Handle rate limiting
+      // Handle rate limiting - only retry once after a long delay
       if (error.message?.includes('429') || error.message?.includes('Too many requests')) {
-        retryCountRef.current += 1;
-        
-        if (retryCountRef.current <= 3) {
-          const waitTime = retryCountRef.current * 30000; // 30s, 60s, 90s
-          console.log(`⏳ Rate limited, retry ${retryCountRef.current}/3 in ${waitTime/1000}s`);
+        if (retryCountRef.current === 0) {
+          retryCountRef.current = 1;
+          console.log('⏳ Rate limited, will retry once in 60 seconds');
+          showToast('Rate limit reached. Retrying in 60 seconds...', 'warning');
           
-          showToast(`Rate limit reached. Retrying in ${waitTime/1000}s...`, 'warning');
-          
-          setTimeout(() => {
+          // Store timeout for cleanup
+          retryTimeoutRef.current = setTimeout(() => {
             fetchJobs(true);
-          }, waitTime);
+            retryTimeoutRef.current = null;
+          }, 60000);
         } else {
-          setFetchError('Rate limit exceeded. Please wait a few minutes and refresh.');
+          setFetchError('Rate limit exceeded. Please refresh the page in a few minutes.');
           showToast('Rate limit exceeded. Please try again later.', 'error');
           retryCountRef.current = 0;
         }
@@ -570,36 +557,37 @@ export default function MarketingAutomation() {
       fetchInProgress.current = false;
       setLoading(false);
     }
-  }, [adminFetch, showToast]);
+  }, [adminFetch, showToast, clearRetryTimeout]);
 
-  // Debounced version of fetchJobs for user actions
-  const debouncedFetchJobs = useCallback(
-    debounce(() => {
-      fetchJobs();
-    }, 2000),
-    [fetchJobs]
-  );
+  // Manual refresh function (for user actions)
+  const refreshJobs = useCallback(() => {
+    // Clear any pending retry
+    clearRetryTimeout();
+    
+    // Reset retry count
+    retryCountRef.current = 0;
+    
+    // Don't fetch if already in progress
+    if (fetchInProgress.current) {
+      console.log('⏭️ Fetch already in progress, skipping refresh');
+      return;
+    }
+    
+    // Execute fetch immediately
+    fetchJobs();
+  }, [fetchJobs, clearRetryTimeout]);
 
-  // Initial fetch and polling setup
+  // Initial fetch ONLY - NO POLLING, NO INTERVALS
   useEffect(() => {
     fetchJobs();
     
-    // Set up polling with longer interval (15 minutes)
-    pollIntervalRef.current = setInterval(() => {
-      // Only fetch if we're not already fetching and not recently fetched
-      if (!fetchInProgress.current && (Date.now() - lastFetchTimeRef.current) > 60000) {
-        fetchJobs();
-      }
-    }, 900000); // 15 minutes
-    
+    // Cleanup on unmount
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
+      clearRetryTimeout();
     };
-  }, [fetchJobs]);
+  }, [fetchJobs, clearRetryTimeout]);
 
-  // Event handlers
+  // Event handlers with rate limit awareness
   const handleToggle = async (jobId) => {
     if (!jobId) return;
     try {
@@ -608,8 +596,8 @@ export default function MarketingAutomation() {
         body: JSON.stringify({ jobId })
       });
       showToast('Job toggled successfully', 'success');
-      // Debounce the refetch
-      debouncedFetchJobs();
+      // Refresh after a longer delay
+      setTimeout(refreshJobs, 5000);
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast('Failed to toggle job', 'error');
@@ -627,8 +615,8 @@ export default function MarketingAutomation() {
         body: JSON.stringify({ jobId })
       });
       showToast('Job triggered successfully', 'success');
-      // Debounce the refetch
-      debouncedFetchJobs();
+      // Refresh after a longer delay
+      setTimeout(refreshJobs, 5000);
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast('Failed to run job', 'error');
@@ -653,8 +641,8 @@ export default function MarketingAutomation() {
       
       showToast(jobData.id ? 'Job updated' : 'Job created', 'success');
       setEditingJob(null);
-      // Debounce the refetch
-      debouncedFetchJobs();
+      // Refresh after a longer delay
+      setTimeout(refreshJobs, 5000);
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast('Failed to save job', 'error');
@@ -670,8 +658,8 @@ export default function MarketingAutomation() {
     try {
       await adminFetch(`/api/admin/automation/jobs/${jobId}`, { method: 'DELETE' });
       showToast('Job deleted', 'success');
-      // Debounce the refetch
-      debouncedFetchJobs();
+      // Refresh after a longer delay
+      setTimeout(refreshJobs, 5000);
     } catch (error) {
       if (!error.message?.includes('429')) {
         showToast('Failed to delete job', 'error');
@@ -778,6 +766,7 @@ export default function MarketingAutomation() {
           onClick={() => {
             setLoading(true);
             retryCountRef.current = 0;
+            clearRetryTimeout();
             fetchJobs();
           }}
           className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition"
