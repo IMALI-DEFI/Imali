@@ -471,7 +471,6 @@ function JobLogs({ jobId, logs = [], onClose }) {
 
 // Main component - with hooks properly ordered
 export default function MarketingAutomation() {
-  // ALL HOOKS MUST BE CALLED FIRST - BEFORE ANY CONDITIONAL RETURNS
   const { adminFetch, showToast, user, isLoading: userLoading, error: userError, hasToken } = useAdmin();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -498,108 +497,134 @@ export default function MarketingAutomation() {
     }
   }, []);
 
-
-const fetchJobs = useCallback(async (isRetry = false) => {
-  if (fetchInProgress.current) {
-    console.log('⏭️ Fetch already in progress, skipping...');
-    return;
-  }
-  
-  clearRetryTimeout();
-  fetchInProgress.current = true;
-  
-  try {
-    setFetchError(null);
-    const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
-    
-    // Reset retry count on success
-    retryCountRef.current = 0;
-    
-    const jobsList = data?.jobs || [];
-    setJobs(jobsList);
-    setStats({
-      totalPosts: data?.stats?.total_posts || 0,
-      activeJobs: jobsList.filter(j => j?.status === 'active').length || 0,
-      pendingPosts: data?.stats?.pending || 0
-    });
-    
-  } catch (error) {
-    console.error('Failed to fetch jobs:', error);
-    
-    // Check if it's a rate limit (429)
+  // Parse error to determine type
+  const parseError = (error) => {
     if (error.message?.includes('429') || error.message?.includes('Too many requests')) {
-      if (retryCountRef.current === 0) {
-        retryCountRef.current = 1;
-        console.log('⏳ Rate limited, will retry once in 60 seconds');
-        showToast('Rate limit reached. Retrying in 60 seconds...', 'warning');
-        
-        retryTimeoutRef.current = setTimeout(() => {
-          fetchJobs(true);
-          retryTimeoutRef.current = null;
-        }, 60000);
-      } else {
-        setFetchError('Rate limit exceeded. Please refresh the page in a few minutes.');
-        showToast('Rate limit exceeded. Please try again later.', 'error');
-        retryCountRef.current = 0;
-      }
-    } 
-    // Check for authentication errors (401)
-    else if (error.message?.includes('401') || error.status === 401) {
-      setFetchError('Session expired. Please log in again.');
-      showToast('Session expired. Please log in again.', 'error');
-      // Optionally redirect to login
-      // window.location.href = '/login';
+      return 'rate_limit';
     }
-    // Check for server errors (500)
-    else if (error.message?.includes('500') || error.status === 500 || error.message?.includes('Internal Server Error')) {
-      setFetchError('Server error. Please try again later.');
-      showToast('Server error. Our team has been notified.', 'error');
+    if (error.message?.includes('401') || error.status === 401 || error.message?.includes('unauthorized')) {
+      return 'unauthorized';
     }
-    // Network errors
-    else if (error.message?.includes('Failed to fetch') || error.message?.includes('Network')) {
-      setFetchError('Network error. Please check your connection.');
-      showToast('Network error. Please check your connection.', 'error');
+    if (error.message?.includes('403') || error.status === 403) {
+      return 'forbidden';
     }
-    // Generic error
-    else {
-      setFetchError(error.message || 'Failed to load jobs');
-      showToast(error.message || 'Failed to load jobs', 'error');
+    if (error.message?.includes('404') || error.status === 404) {
+      return 'not_found';
     }
-  } finally {
-    fetchInProgress.current = false;
-    setLoading(false);
-  }
-}, [adminFetch, showToast, clearRetryTimeout]);
+    if (error.message?.includes('500') || error.status === 500 || error.message?.includes('Internal Server Error')) {
+      return 'server_error';
+    }
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('Network')) {
+      return 'network';
+    }
+    if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
+      return 'timeout';
+    }
+    return 'unknown';
+  };
 
-  // Manual refresh function (for user actions)
-  const refreshJobs = useCallback(() => {
-    // Clear any pending retry
-    clearRetryTimeout();
-    
-    // Reset retry count
-    retryCountRef.current = 0;
-    
-    // Don't fetch if already in progress
+  // Fetch jobs with improved error handling
+  const fetchJobs = useCallback(async (isRetry = false) => {
     if (fetchInProgress.current) {
-      console.log('⏭️ Fetch already in progress, skipping refresh');
+      console.log('⏭️ Fetch already in progress, skipping...');
       return;
     }
     
-    // Execute fetch immediately
-    fetchJobs();
+    clearRetryTimeout();
+    fetchInProgress.current = true;
+    setLoading(true);
+    setFetchError(null);
+    
+    try {
+      const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
+      
+      // Reset retry count on success
+      retryCountRef.current = 0;
+      
+      const jobsList = Array.isArray(data?.jobs) ? data.jobs : [];
+      setJobs(jobsList);
+      setStats({
+        totalPosts: data?.stats?.total_posts || 0,
+        activeJobs: jobsList.filter(j => j?.status === 'active').length || 0,
+        pendingPosts: data?.stats?.pending || 0
+      });
+      
+    } catch (error) {
+      console.error('Failed to fetch jobs:', error);
+      
+      const errorType = parseError(error);
+      
+      switch(errorType) {
+        case 'rate_limit':
+          if (retryCountRef.current === 0) {
+            retryCountRef.current = 1;
+            showToast('Rate limit reached. Retrying in 60 seconds...', 'warning');
+            retryTimeoutRef.current = setTimeout(() => {
+              fetchJobs(true);
+              retryTimeoutRef.current = null;
+            }, 60000);
+          } else {
+            setFetchError('Rate limit exceeded. Please wait a few minutes and refresh.');
+            showToast('Rate limit exceeded. Please try again later.', 'error');
+          }
+          break;
+          
+        case 'unauthorized':
+          setFetchError('Your session has expired. Please log in again.');
+          showToast('Session expired. Redirecting to login...', 'error');
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 2000);
+          break;
+          
+        case 'forbidden':
+          setFetchError('You do not have permission to view this page.');
+          showToast('Access denied', 'error');
+          break;
+          
+        case 'server_error':
+          setFetchError('Server error. Our team has been notified.');
+          showToast('Server error. Please try again later.', 'error');
+          break;
+          
+        case 'network':
+          setFetchError('Network error. Please check your connection.');
+          showToast('Network error. Check your internet connection.', 'error');
+          break;
+          
+        case 'timeout':
+          setFetchError('Request timed out. Please try again.');
+          showToast('Request timed out', 'error');
+          break;
+          
+        default:
+          setFetchError(error.message || 'Failed to load jobs');
+          showToast(error.message || 'Failed to load jobs', 'error');
+      }
+    } finally {
+      fetchInProgress.current = false;
+      setLoading(false);
+    }
+  }, [adminFetch, showToast, clearRetryTimeout]);
+
+  // Manual refresh function
+  const refreshJobs = useCallback(() => {
+    clearRetryTimeout();
+    retryCountRef.current = 0;
+    if (!fetchInProgress.current) {
+      fetchJobs();
+    }
   }, [fetchJobs, clearRetryTimeout]);
 
-  // Initial fetch ONLY - NO POLLING, NO INTERVALS
+  // Initial fetch
   useEffect(() => {
     fetchJobs();
-    
-    // Cleanup on unmount
     return () => {
       clearRetryTimeout();
     };
   }, [fetchJobs, clearRetryTimeout]);
 
-  // Event handlers with rate limit awareness
+  // Handle job toggle
   const handleToggle = async (jobId) => {
     if (!jobId) return;
     try {
@@ -608,17 +633,20 @@ const fetchJobs = useCallback(async (isRetry = false) => {
         body: JSON.stringify({ jobId })
       });
       showToast('Job toggled successfully', 'success');
-      // Refresh after a longer delay
-      setTimeout(refreshJobs, 5000);
+      setTimeout(refreshJobs, 2000);
     } catch (error) {
-      if (!error.message?.includes('429')) {
-        showToast('Failed to toggle job', 'error');
-      } else {
+      const errorType = parseError(error);
+      if (errorType === 'rate_limit') {
         showToast('Rate limited. Please wait a moment.', 'warning');
+      } else if (errorType === 'server_error') {
+        showToast('Server error. Please try again.', 'error');
+      } else {
+        showToast('Failed to toggle job', 'error');
       }
     }
   };
 
+  // Handle run now
   const handleRunNow = async (jobId) => {
     if (!jobId) return;
     try {
@@ -627,17 +655,18 @@ const fetchJobs = useCallback(async (isRetry = false) => {
         body: JSON.stringify({ jobId })
       });
       showToast('Job triggered successfully', 'success');
-      // Refresh after a longer delay
-      setTimeout(refreshJobs, 5000);
+      setTimeout(refreshJobs, 2000);
     } catch (error) {
-      if (!error.message?.includes('429')) {
-        showToast('Failed to run job', 'error');
-      } else {
+      const errorType = parseError(error);
+      if (errorType === 'rate_limit') {
         showToast('Rate limited. Please wait a moment.', 'warning');
+      } else {
+        showToast('Failed to run job', 'error');
       }
     }
   };
 
+  // Handle save job
   const handleSaveJob = async (jobData) => {
     if (!jobData) return;
     try {
@@ -653,49 +682,54 @@ const fetchJobs = useCallback(async (isRetry = false) => {
       
       showToast(jobData.id ? 'Job updated' : 'Job created', 'success');
       setEditingJob(null);
-      // Refresh after a longer delay
-      setTimeout(refreshJobs, 5000);
+      setTimeout(refreshJobs, 2000);
     } catch (error) {
-      if (!error.message?.includes('429')) {
-        showToast('Failed to save job', 'error');
-      } else {
+      const errorType = parseError(error);
+      if (errorType === 'rate_limit') {
         showToast('Rate limited. Please wait a moment.', 'warning');
+      } else {
+        showToast('Failed to save job', 'error');
       }
     }
   };
 
+  // Handle delete
   const handleDelete = async (jobId) => {
     if (!jobId) return;
-    if (!window.confirm('Are you sure you want to delete this job?')) return;
+    if (!window.confirm('Are you sure you want to delete this job? This action cannot be undone.')) return;
+    
     try {
       await adminFetch(`/api/admin/automation/jobs/${jobId}`, { method: 'DELETE' });
       showToast('Job deleted', 'success');
-      // Refresh after a longer delay
-      setTimeout(refreshJobs, 5000);
+      setTimeout(refreshJobs, 2000);
     } catch (error) {
-      if (!error.message?.includes('429')) {
-        showToast('Failed to delete job', 'error');
-      } else {
+      const errorType = parseError(error);
+      if (errorType === 'rate_limit') {
         showToast('Rate limited. Please wait a moment.', 'warning');
+      } else {
+        showToast('Failed to delete job', 'error');
       }
     }
   };
 
+  // Handle view logs
   const handleViewLogs = async (jobId) => {
     if (!jobId) return;
     try {
       const data = await adminFetch(`/api/admin/automation/logs/${jobId}`, { method: 'GET' });
-      setLogs(data?.logs || []);
+      setLogs(Array.isArray(data?.logs) ? data.logs : []);
       setViewingLogs(jobId);
     } catch (error) {
-      if (!error.message?.includes('429')) {
-        showToast('Failed to fetch logs', 'error');
-      } else {
+      const errorType = parseError(error);
+      if (errorType === 'rate_limit') {
         showToast('Rate limited. Please wait a moment.', 'warning');
+      } else {
+        showToast('Failed to fetch logs', 'error');
       }
     }
   };
 
+  // Handle test integration
   const handleTestIntegration = async (platform) => {
     if (!platform) return;
     try {
@@ -708,15 +742,18 @@ const fetchJobs = useCallback(async (isRetry = false) => {
       });
       showToast(`Test sent to ${platform}`, 'success');
     } catch (error) {
-      if (!error.message?.includes('429')) {
-        showToast(`Failed to send to ${platform}`, 'error');
-      } else {
+      const errorType = parseError(error);
+      if (errorType === 'rate_limit') {
         showToast('Rate limited. Please wait a moment.', 'warning');
+      } else if (errorType === 'server_error') {
+        showToast(`${platform} integration may not be configured`, 'warning');
+      } else {
+        showToast(`Failed to send to ${platform}`, 'error');
       }
     }
   };
 
-  // Conditional returns - NOW SAFE after all hooks
+  // Conditional rendering
   if (userLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -774,36 +811,56 @@ const fetchJobs = useCallback(async (isRetry = false) => {
         <div className="text-4xl mb-4">⚠️</div>
         <h3 className="text-xl font-bold text-red-300 mb-2">Failed to Load Jobs</h3>
         <p className="text-white/70 mb-4">{fetchError}</p>
-        <button
-          onClick={() => {
-            setLoading(true);
-            retryCountRef.current = 0;
-            clearRetryTimeout();
-            fetchJobs();
-          }}
-          className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition"
-        >
-          Try Again
-        </button>
+        <div className="flex gap-3 justify-center">
+          <button
+            onClick={() => {
+              setLoading(true);
+              retryCountRef.current = 0;
+              clearRetryTimeout();
+              fetchJobs();
+            }}
+            className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition"
+          >
+            Try Again
+          </button>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition"
+          >
+            Reload Page
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Marketing Automation</h2>
           <p className="text-white/60">Schedule and manage automated posts to social channels and emails.</p>
         </div>
-        <button
-          onClick={() => setEditingJob({})}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition flex items-center gap-2"
-        >
-          <span>➕</span> New Job
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={refreshJobs}
+            className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-medium transition flex items-center gap-2 text-sm"
+            disabled={fetchInProgress.current}
+          >
+            <span className={fetchInProgress.current ? 'animate-spin' : ''}>🔄</span>
+            Refresh
+          </button>
+          <button
+            onClick={() => setEditingJob({})}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition flex items-center gap-2"
+          >
+            <span>➕</span> New Job
+          </button>
+        </div>
       </div>
 
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
           <div className="text-emerald-400 text-2xl mb-1">📊</div>
@@ -822,6 +879,7 @@ const fetchJobs = useCallback(async (isRetry = false) => {
         </div>
       </div>
 
+      {/* Jobs Grid */}
       {!jobs || jobs.length === 0 ? (
         <div className="bg-white/5 border border-white/10 rounded-xl p-12 text-center">
           <p className="text-white/50 mb-4">No automation jobs yet.</p>
@@ -848,6 +906,7 @@ const fetchJobs = useCallback(async (isRetry = false) => {
         </div>
       )}
 
+      {/* Test Integrations Section */}
       <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-6">
         <h3 className="text-lg font-semibold text-cyan-300 mb-2">🧪 Test Your Integrations</h3>
         <p className="text-sm text-white/70 mb-4">
@@ -869,6 +928,7 @@ const fetchJobs = useCallback(async (isRetry = false) => {
         </div>
       </div>
 
+      {/* Modals */}
       {editingJob !== null && (
         <JobModal
           job={editingJob?.id ? editingJob : null}
