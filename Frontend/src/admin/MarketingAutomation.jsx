@@ -74,7 +74,7 @@ function MessageEditor({ platform, value = '', onChange, variables = [] }) {
       '{trades}': '42',
       '{wins}': '28',
       '{losses}': '14',
-      '{dashboardUrl}': 'https://app.imali-defi.com/dashboard',
+      '{dashboardUrl}': 'https://imali-defi.com/live',
       '{date}': new Date().toLocaleDateString(),
       '{botCount}': '5',
       '{discoveries}': '3',
