@@ -469,7 +469,7 @@ function JobLogs({ jobId, logs = [], onClose }) {
   );
 }
 
-// Main component - with hooks properly ordered
+// Main component
 export default function MarketingAutomation() {
   const { adminFetch, showToast, user, isLoading: userLoading, error: userError, hasToken } = useAdmin();
   const [jobs, setJobs] = useState([]);
@@ -523,7 +523,27 @@ export default function MarketingAutomation() {
     return 'unknown';
   };
 
-  // Fetch jobs with improved error handling
+  // Calculate stats from jobs data
+  const calculateStatsFromJobs = (jobsList) => {
+    const activeJobs = jobsList.filter(j => j?.status === 'active').length;
+    
+    // Calculate total posts from all jobs
+    const totalPosts = jobsList.reduce((sum, job) => {
+      const jobStats = job.stats || {};
+      return sum + (jobStats.posts || 0) + (jobStats.messages || 0);
+    }, 0);
+    
+    // Calculate pending posts (jobs with scheduled status or pending in stats)
+    const pendingPosts = jobsList.reduce((sum, job) => {
+      if (job.status === 'scheduled') return sum + 1;
+      const jobStats = job.stats || {};
+      return sum + (jobStats.pending || 0);
+    }, 0);
+    
+    return { totalPosts, activeJobs, pendingPosts };
+  };
+
+  // Fetch jobs only - stats are calculated from jobs data
   const fetchJobs = useCallback(async (isRetry = false) => {
     if (fetchInProgress.current) {
       console.log('⏭️ Fetch already in progress, skipping...');
@@ -543,11 +563,10 @@ export default function MarketingAutomation() {
       
       const jobsList = Array.isArray(data?.jobs) ? data.jobs : [];
       setJobs(jobsList);
-      setStats({
-        totalPosts: data?.stats?.total_posts || 0,
-        activeJobs: jobsList.filter(j => j?.status === 'active').length || 0,
-        pendingPosts: data?.stats?.pending || 0
-      });
+      
+      // Calculate stats from jobs data (no separate API call needed)
+      const newStats = calculateStatsFromJobs(jobsList);
+      setStats(newStats);
       
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
@@ -556,16 +575,19 @@ export default function MarketingAutomation() {
       
       switch(errorType) {
         case 'rate_limit':
-          if (retryCountRef.current === 0) {
-            retryCountRef.current = 1;
-            showToast('Rate limit reached. Retrying in 60 seconds...', 'warning');
+          // Don't show toast for rate limits on initial load
+          if (retryCountRef.current < 3) {
+            retryCountRef.current += 1;
+            const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
+            console.log(`Rate limited, retrying in ${delay/1000}s (attempt ${retryCountRef.current}/3)`);
+            
             retryTimeoutRef.current = setTimeout(() => {
               fetchJobs(true);
               retryTimeoutRef.current = null;
-            }, 60000);
+            }, delay);
           } else {
-            setFetchError('Rate limit exceeded. Please wait a few minutes and refresh.');
-            showToast('Rate limit exceeded. Please try again later.', 'error');
+            setFetchError('Unable to load jobs due to rate limiting. Please try again later.');
+            showToast('Rate limit exceeded. Please wait a few minutes.', 'warning');
           }
           break;
           
@@ -577,11 +599,6 @@ export default function MarketingAutomation() {
           }, 2000);
           break;
           
-        case 'forbidden':
-          setFetchError('You do not have permission to view this page.');
-          showToast('Access denied', 'error');
-          break;
-          
         case 'server_error':
           setFetchError('Server error. Our team has been notified.');
           showToast('Server error. Please try again later.', 'error');
@@ -590,11 +607,6 @@ export default function MarketingAutomation() {
         case 'network':
           setFetchError('Network error. Please check your connection.');
           showToast('Network error. Check your internet connection.', 'error');
-          break;
-          
-        case 'timeout':
-          setFetchError('Request timed out. Please try again.');
-          showToast('Request timed out', 'error');
           break;
           
         default:
@@ -613,8 +625,10 @@ export default function MarketingAutomation() {
     retryCountRef.current = 0;
     if (!fetchInProgress.current) {
       fetchJobs();
+    } else {
+      showToast('Fetch already in progress', 'info');
     }
-  }, [fetchJobs, clearRetryTimeout]);
+  }, [fetchJobs, clearRetryTimeout, showToast]);
 
   // Initial fetch
   useEffect(() => {
@@ -633,13 +647,12 @@ export default function MarketingAutomation() {
         body: JSON.stringify({ jobId })
       });
       showToast('Job toggled successfully', 'success');
-      setTimeout(refreshJobs, 2000);
+      // Refresh jobs after a short delay
+      setTimeout(refreshJobs, 1500);
     } catch (error) {
       const errorType = parseError(error);
       if (errorType === 'rate_limit') {
         showToast('Rate limited. Please wait a moment.', 'warning');
-      } else if (errorType === 'server_error') {
-        showToast('Server error. Please try again.', 'error');
       } else {
         showToast('Failed to toggle job', 'error');
       }
@@ -655,7 +668,8 @@ export default function MarketingAutomation() {
         body: JSON.stringify({ jobId })
       });
       showToast('Job triggered successfully', 'success');
-      setTimeout(refreshJobs, 2000);
+      // Refresh jobs after a short delay
+      setTimeout(refreshJobs, 1500);
     } catch (error) {
       const errorType = parseError(error);
       if (errorType === 'rate_limit') {
@@ -682,7 +696,8 @@ export default function MarketingAutomation() {
       
       showToast(jobData.id ? 'Job updated' : 'Job created', 'success');
       setEditingJob(null);
-      setTimeout(refreshJobs, 2000);
+      // Refresh jobs after a short delay
+      setTimeout(refreshJobs, 1500);
     } catch (error) {
       const errorType = parseError(error);
       if (errorType === 'rate_limit') {
@@ -701,7 +716,8 @@ export default function MarketingAutomation() {
     try {
       await adminFetch(`/api/admin/automation/jobs/${jobId}`, { method: 'DELETE' });
       showToast('Job deleted', 'success');
-      setTimeout(refreshJobs, 2000);
+      // Refresh jobs after a short delay
+      setTimeout(refreshJobs, 1500);
     } catch (error) {
       const errorType = parseError(error);
       if (errorType === 'rate_limit') {
@@ -797,7 +813,7 @@ export default function MarketingAutomation() {
     );
   }
 
-  if (loading) {
+  if (loading && !jobs.length) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent" />
@@ -860,7 +876,7 @@ export default function MarketingAutomation() {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Calculated from jobs data, no separate API call */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
           <div className="text-emerald-400 text-2xl mb-1">📊</div>
