@@ -423,7 +423,7 @@ const BotAPI = {
   async getAnalyticsSummary() {
     try {
       console.log("[BotAPI] Fetching analytics summary...");
-      const response = await api.get("/api/analytics/summary");
+      const response = await api.get("/api/analytics/get_analytics_summary");
       return response.data;
     } catch (error) {
       console.error("[BotAPI] Error fetching analytics summary:", error);
