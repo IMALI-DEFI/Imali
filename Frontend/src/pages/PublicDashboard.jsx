@@ -1,1458 +1,665 @@
-// src/pages/Home.jsx
+// src/pages/PublicDashboard.jsx
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import Chart from "chart.js/auto";
 
-import StarterNFT from "../assets/images/nfts/nft-starter.png";
-import ProNFT from "../assets/images/nfts/nft-pro.png";
-import EliteNFT from "../assets/images/nfts/nft-elite.png";
-
-import {
-  Chart as ChartJS,
-  LineElement,
-  PointElement,
-  LinearScale,
-  CategoryScale,
-  Tooltip,
-  Filler,
-} from "chart.js";
-import { Line } from "react-chartjs-2";
-
-ChartJS.register(
-  LineElement,
-  PointElement,
-  LinearScale,
-  CategoryScale,
-  Tooltip,
-  Filler
-);
-
-/* ============================================================
+/* =====================================================
    CONFIG
-============================================================ */
+===================================================== */
 
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
-  "https://api.imali-defi.com";
+const API_BASE = "https://api.imali-defi.com";
 
+const TRADES_URL = `${API_BASE}/api/trades/recent`;
+const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
+const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
+const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
+const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
-const PROMO_STATUS_URL = `${API_BASE}/api/promo/status`;
-const PROMO_CLAIM_URL = `${API_BASE}/api/promo/claim`;
-const ANALYTICS_SUMMARY_URL = `${API_BASE}/api/analytics/summary`;
+const USER_STATS_URL = `${API_BASE}/api/user/stats`;
 
-/* ============================================================
-   DEMO DATA - Used when API is unavailable
-============================================================ */
-
-const DEMO_DATA = {
-  bots: [
-    { 
-      name: "Futures Bot", 
-      status: "operational", 
-      positions: 3,
-      positions_count: 3,
-      total_trades: 47,
-      pnl: 12450.75,
-      trades: [
-        { symbol: "BTC/USD", side: "buy", pnl: 340.50, timestamp: new Date(Date.now() - 5 * 60000).toISOString() },
-        { symbol: "ETH/USD", side: "sell", pnl: -125.30, timestamp: new Date(Date.now() - 12 * 60000).toISOString() }
-      ]
-    },
-    { 
-      name: "Stocks Bot", 
-      status: "operational", 
-      running: true,
-      positions_count: 2,
-      total_trades: 23,
-      pnl: 5670.25,
-      trades: [
-        { symbol: "AAPL", side: "buy", pnl: 234.80, timestamp: new Date(Date.now() - 8 * 60000).toISOString() },
-        { symbol: "MSFT", side: "buy", pnl: 189.40, timestamp: new Date(Date.now() - 15 * 60000).toISOString() }
-      ]
-    },
-    { 
-      name: "Sniper Bot", 
-      status: "scanning", 
-      discoveries: 12,
-      trades: [
-        { symbol: "NEWTOKEN/ETH", side: "buy", pnl: 456.20, timestamp: new Date(Date.now() - 3 * 60000).toISOString() }
-      ]
-    },
-    { 
-      name: "OKX Bot", 
-      status: "running", 
-      positions_count: 2,
-      total_trades: 34,
-      pnl: 8930.50,
-      trades: [
-        { symbol: "SOL/USD", side: "sell", pnl: 567.80, timestamp: new Date(Date.now() - 20 * 60000).toISOString() }
-      ]
-    }
-  ],
-  recent_trades: [
-    { id: "trade-1", symbol: "BTC/USD", side: "buy", pnl_usd: 340.50, created_at: new Date(Date.now() - 5 * 60000).toISOString(), bot: "futures" },
-    { id: "trade-2", symbol: "ETH/USD", side: "sell", pnl_usd: -125.30, created_at: new Date(Date.now() - 12 * 60000).toISOString(), bot: "futures" },
-    { id: "trade-3", symbol: "AAPL", side: "buy", pnl_usd: 234.80, created_at: new Date(Date.now() - 8 * 60000).toISOString(), bot: "stocks" },
-    { id: "trade-4", symbol: "SOL/USD", side: "sell", pnl_usd: 567.80, created_at: new Date(Date.now() - 20 * 60000).toISOString(), bot: "okx" },
-    { id: "trade-5", symbol: "NEWTOKEN/ETH", side: "buy", pnl_usd: 456.20, created_at: new Date(Date.now() - 3 * 60000).toISOString(), bot: "sniper" }
-  ],
-  analytics: {
-    summary: {
-      total_trades: 127,
-      total_pnl: 48920.50,
-      wins: 86,
-      losses: 41,
-      win_rate: 67.7
-    }
-  }
-};
-
-/* ============================================================
+/* =====================================================
    HELPERS
-============================================================ */
+===================================================== */
 
 function safeNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 }
 
-function normalizeArray(value) {
-  return Array.isArray(value) ? value : [];
+function formatCurrency(value, digits = 2) {
+  return `$${safeNumber(value).toFixed(digits)}`;
 }
 
-function collectRecentTrades(data = {}, limit = 20) {
-  // Try to get real trades from API
-  const combined = [
-    ...normalizeArray(data?.recent_trades),
-    ...normalizeArray(data?.sniper?.trades),
-    ...normalizeArray(data?.sniper?.discoveries),
-    ...normalizeArray(data?.okx?.recent_trades),
-    ...normalizeArray(data?.okx?.trades),
-    ...normalizeArray(data?.futures?.recent_trades),
-    ...normalizeArray(data?.futures?.trades),
-    ...normalizeArray(data?.stocks?.recent_trades),
-    ...normalizeArray(data?.stocks?.trades),
-  ];
+function formatCurrencySigned(value, digits = 2) {
+  const n = safeNumber(value);
+  return `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(digits)}`;
+}
 
-  const seen = new Set();
-  const unique = [];
-
-  for (const trade of combined) {
-    if (!trade) continue;
-    
-    const key = trade?.id || `${trade?.symbol}-${trade?.side}-${trade?.timestamp || trade?.created_at}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(trade);
-    }
+function timeAgo(timestamp) {
+  if (!timestamp) return "—";
+  try {
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return `${Math.floor(diffMins / 1440)}d ago`;
+  } catch {
+    return "—";
   }
-
-  // If no trades from API, use demo data
-  if (unique.length === 0) {
-    return DEMO_DATA.recent_trades.slice(0, limit);
-  }
-
-  return unique
-    .sort((a, b) => {
-      const tA = new Date(a?.created_at || a?.timestamp || 0).getTime();
-      const tB = new Date(b?.created_at || b?.timestamp || 0).getTime();
-      return tB - tA;
-    })
-    .slice(0, limit);
 }
 
-function getBotStatuses(data = {}) {
-  // If we have real bot data from API
-  if (data?.futures || data?.stocks || data?.sniper || data?.okx) {
-    return [
-      {
-        label: "Futures",
-        live: data?.futures?.status === "operational" || 
-              data?.futures?.status === "running" ||
-              safeNumber(data?.futures?.positions_count, 0) > 0 ||
-              (data?.futures?.trades?.length > 0),
-        details: data?.futures
-      },
-      {
-        label: "Stocks",
-        live: data?.stocks?.running === true ||
-              data?.stocks?.status === "operational" ||
-              safeNumber(data?.stocks?.positions_count, 0) > 0 ||
-              (data?.stocks?.trades?.length > 0),
-        details: data?.stocks
-      },
-      {
-        label: "Sniper",
-        live: data?.sniper?.status === "scanning" ||
-              data?.sniper?.status === "monitoring" ||
-              data?.sniper?.status === "running" ||
-              (data?.sniper?.trades?.length > 0) ||
-              (data?.sniper?.discoveries?.length > 0),
-        details: data?.sniper
-      },
-      {
-        label: "OKX",
-        live: data?.okx?.status === "running" ||
-              safeNumber(data?.okx?.positions_count, 0) > 0 ||
-              safeNumber(data?.okx?.total_trades, 0) > 0 ||
-              (data?.okx?.trades?.length > 0),
-        details: data?.okx
-      },
-    ];
-  }
-  
-  // Use demo data if no API data
-  return DEMO_DATA.bots.map(bot => ({
-    label: bot.name.replace(" Bot", ""),
-    live: bot.status === "operational" || bot.status === "scanning" || bot.status === "running",
-    details: bot
-  }));
-}
+/* =====================================================
+   REAL DATA HOOK
+===================================================== */
 
-function calculateTradeMetrics(trades = []) {
-  let wins = 0;
-  let losses = 0;
-  let totalPnL = 0;
-
-  for (const trade of trades) {
-    const pnl = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
-
-    if (pnl !== null && pnl !== undefined && Number.isFinite(Number(pnl))) {
-      const n = Number(pnl);
-      totalPnL += n;
-      if (n > 0) wins += 1;
-      if (n < 0) losses += 1;
-    }
-  }
-
-  return {
-    totalTrades: trades.length,
-    totalPnL,
-    wins,
-    losses,
-  };
-}
-
-function formatCurrency(value) {
-  const n = safeNumber(value, 0);
-  const sign = n >= 0 ? "+" : "-";
-  return `${sign}$${Math.abs(n).toFixed(2)}`;
-}
-
-function formatNumber(value) {
-  const n = safeNumber(value, 0);
-  return n.toLocaleString();
-}
-
-function buildActivitySeries(trades = []) {
-  if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
-
-  return trades
-    .slice(0, 7)
-    .reverse()
-    .map((trade, index) => {
-      const usd = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
-      if (usd !== null && Number.isFinite(Number(usd))) {
-        return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
+function useLiveData() {
+  const [data, setData] = useState({
+    bots: [],
+    trades: [],
+    discoveries: [],
+    analytics: {
+      summary: {
+        total_trades: 0,
+        win_rate: 0,
+        total_pnl: 0,
+        wins: 0,
+        losses: 0,
       }
-      return index + 4;
-    });
-}
-
-/* ============================================================
-   HOOKS
-============================================================ */
-
-function usePromoStatus() {
-  const [state, setState] = useState({
-    limit: 50,
-    claimed: 12,
-    spotsLeft: 38,
-    active: true,
-    loading: false,
-    error: null,
-  });
-
-  useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      try {
-        const res = await axios.get(PROMO_STATUS_URL, { timeout: 6000 });
-        
-        if (typeof res.data === 'string' && res.data.includes('<!doctype')) {
-          throw new Error('Invalid API response');
-        }
-        
-        const data = res.data || {};
-        const limit = safeNumber(data.limit, 50);
-        const claimed = safeNumber(data.claimed, 0);
-
-        if (!mounted) return;
-
-        setState({
-          limit,
-          claimed,
-          spotsLeft: Math.max(0, limit - claimed),
-          active: claimed < limit,
-          loading: false,
-          error: null,
-        });
-      } catch (err) {
-        console.error("Failed to fetch promo status:", err);
-        if (!mounted) return;
-        
-        // Keep demo data
-        setState(prev => ({
-          ...prev,
-          loading: false,
-          error: "Demo mode - API unavailable",
-        }));
-      }
-    };
-
-    load();
-    const id = setInterval(load, 60000);
-
-    return () => {
-      mounted = false;
-      clearInterval(id);
-    };
-  }, []);
-
-  return state;
-}
-
-function usePromoClaim() {
-  const [state, setState] = useState({
-    loading: false,
-    success: false,
-    error: null,
-    data: null,
-  });
-
-  const claim = async (email) => {
-    if (!email) return false;
-
-    setState({
-      loading: true,
-      success: false,
-      error: null,
-      data: null,
-    });
-
-    try {
-      const res = await axios.post(
-        PROMO_CLAIM_URL,
-        { email, tier: "starter" },
-        { timeout: 8000 }
-      );
-
-      setState({
-        loading: false,
-        success: true,
-        error: null,
-        data: res.data,
-      });
-
-      return true;
-    } catch (err) {
-      // Simulate success in demo mode
-      setTimeout(() => {
-        setState({
-          loading: false,
-          success: true,
-          error: null,
-          data: { message: "Demo mode - claim successful" },
-        });
-      }, 1000);
-      
-      return true;
-    }
-  };
-
-  const reset = () =>
-    setState({
-      loading: false,
-      success: false,
-      error: null,
-      data: null,
-    });
-
-  return { state, claim, reset };
-}
-
-function useLiveActivity() {
-  const [activity, setActivity] = useState({
-    trades: DEMO_DATA.recent_trades,
-    stats: {
-      currentStatus: "Live",
-      activeBots: DEMO_DATA.bots.filter(b => b.status === "operational" || b.status === "scanning" || b.status === "running").length,
-      totalTrades: DEMO_DATA.analytics.summary.total_trades,
-      totalPnL: DEMO_DATA.analytics.summary.total_pnl,
-      wins: DEMO_DATA.analytics.summary.wins,
-      losses: DEMO_DATA.analytics.summary.losses,
-      online: true,
-      botStatuses: getBotStatuses({}),
     },
-    loading: false,
-    error: "Demo mode - Connect API for live data",
+    pnlHistory: [],
+    userStats: {},
+    loading: true,
+    error: null,
+    lastUpdate: null,
   });
 
   useEffect(() => {
     let mounted = true;
 
-    const fetchActivity = async () => {
+    const fetchAllData = async () => {
       try {
-        const liveResponse = await axios.get(LIVE_STATS_URL, { timeout: 8000 });
-        
-        if (typeof liveResponse.data === 'string' && liveResponse.data.includes('<!doctype')) {
-          throw new Error('Invalid API response');
-        }
-
-        let summaryData = {};
-        try {
-          const summaryResponse = await axios.get(ANALYTICS_SUMMARY_URL, {
-            timeout: 5000,
-          });
-          summaryData = summaryResponse.data || {};
-        } catch {
-          // fallback silently
-        }
+        const [
+          tradesRes,
+          discoveriesRes,
+          botsRes,
+          analyticsRes,
+          userStatsRes,
+          pnlHistoryRes,
+        ] = await Promise.allSettled([
+          axios.get(TRADES_URL, { timeout: 8000 }),
+          axios.get(DISCOVERIES_URL, { timeout: 8000 }),
+          axios.get(BOT_STATUS_URL, { timeout: 8000 }),
+          axios.get(ANALYTICS_URL, { timeout: 8000 }),
+          axios.get(USER_STATS_URL, { timeout: 8000 }),
+          axios.get(PNL_HISTORY_URL, { timeout: 8000 }),
+        ]);
 
         if (!mounted) return;
 
-        const data = liveResponse.data || {};
-        const trades = collectRecentTrades(data, 20);
-        const botStatuses = getBotStatuses(data);
-        const activeBots = botStatuses.filter((b) => b.live).length;
-        const online = activeBots > 0;
+        let newData = {
+          trades: [],
+          discoveries: [],
+          bots: [],
+          analytics: { summary: {} },
+          userStats: {},
+          pnlHistory: [],
+        };
 
-        const computedMetrics = calculateTradeMetrics(trades);
+        // Process trades
+        if (tradesRes.status === "fulfilled" && tradesRes.value.data?.trades) {
+          newData.trades = tradesRes.value.data.trades;
+        } else if (tradesRes.status === "fulfilled" && tradesRes.value.data) {
+          newData.trades = tradesRes.value.data;
+        }
 
-        const summary = summaryData?.summary || summaryData || {};
+        // Process discoveries
+        if (discoveriesRes.status === "fulfilled" && discoveriesRes.value.data?.discoveries) {
+          newData.discoveries = discoveriesRes.value.data.discoveries;
+        }
 
-        const totalTrades = safeNumber(summary?.total_trades, NaN);
-        const totalPnL = safeNumber(summary?.total_pnl, NaN);
-        const wins = safeNumber(summary?.wins, NaN);
-        const losses = safeNumber(summary?.losses, NaN);
+        // Process bots
+        if (botsRes.status === "fulfilled" && botsRes.value.data?.bots) {
+          newData.bots = botsRes.value.data.bots;
+        }
 
-        setActivity({
-          trades,
-          stats: {
-            currentStatus: online ? "Live" : "Offline",
-            activeBots,
-            totalTrades: Number.isFinite(totalTrades) ? totalTrades : computedMetrics.totalTrades,
-            totalPnL: Number.isFinite(totalPnL) ? totalPnL : computedMetrics.totalPnL,
-            wins: Number.isFinite(wins) ? wins : computedMetrics.wins,
-            losses: Number.isFinite(losses) ? losses : computedMetrics.losses,
-            online,
-            botStatuses,
-          },
+        // Process analytics
+        if (analyticsRes.status === "fulfilled" && analyticsRes.value.data?.summary) {
+          newData.analytics = analyticsRes.value.data;
+        }
+
+        // Process user stats
+        if (userStatsRes.status === "fulfilled" && userStatsRes.value.data) {
+          newData.userStats = userStatsRes.value.data;
+        }
+
+        // Process PNL history
+        if (pnlHistoryRes.status === "fulfilled" && pnlHistoryRes.value.data?.history) {
+          newData.pnlHistory = pnlHistoryRes.value.data.history;
+        }
+
+        setData({
+          ...newData,
           loading: false,
           error: null,
+          lastUpdate: new Date(),
         });
+
       } catch (error) {
-        console.error("Live activity fetch error:", error);
-        
+        console.error("Data fetch error:", error);
         if (!mounted) return;
         
-        // Keep demo data but show error
-        setActivity(prev => ({
+        setData(prev => ({
           ...prev,
           loading: false,
-          error: "Using demo data - API unavailable",
+          error: "Failed to fetch data",
+          lastUpdate: new Date(),
         }));
       }
     };
 
-    fetchActivity();
-    const id = setInterval(fetchActivity, 30000);
+    fetchAllData();
+    const interval = setInterval(fetchAllData, 30000);
 
     return () => {
       mounted = false;
-      clearInterval(id);
+      clearInterval(interval);
     };
   }, []);
 
-  return activity;
+  return data;
 }
 
-/* ============================================================
-   SMALL COMPONENTS
-============================================================ */
+/* =====================================================
+   CHART COMPONENTS
+===================================================== */
 
-function Pill({ children, color = "indigo" }) {
-  const classes = {
-    emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
-    purple: "bg-purple-50 text-purple-700 border-purple-200",
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
-  };
-
-  return (
-    <span
-      className={`inline-block rounded-full border px-3 py-1 text-[11px] font-bold sm:text-xs ${
-        classes[color] ?? classes.indigo
-      }`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Card({ children, className = "" }) {
-  return (
-    <div className={`rounded-2xl border border-gray-200 bg-white shadow-sm ${className}`}>
-      {children}
-    </div>
-  );
-}
-
-function StepCard({ number, emoji, title, description }) {
-  return (
-    <div className="flex items-start gap-4">
-      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 font-bold text-white shadow-md">
-        {number}
-      </div>
-      <div>
-        <h3 className="text-lg font-bold text-gray-900">
-          {emoji} {title}
-        </h3>
-        <p className="mt-1 text-sm leading-relaxed text-gray-600">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function FeatureRow({ icon, label }) {
-  return (
-    <div className="flex items-start gap-2 text-sm text-gray-700">
-      <span className="mt-0.5 flex-shrink-0 text-emerald-600">{icon}</span>
-      <span className="leading-snug">{label}</span>
-    </div>
-  );
-}
-
-function LiveTicker() {
-  const messages = [
-    "Daily activity updates every 30 seconds",
-    "Live bots are scanning markets now",
-    "Referral rewards are available for eligible users",
-    "Trade stats update from active bot activity",
-    "IMALI supports stock and crypto automation",
-  ];
-
-  const [index, setIndex] = useState(0);
-  const [visible, setVisible] = useState(true);
+function VolumeChart({ pnlHistory = [] }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setVisible(false);
-      setTimeout(() => {
-        setIndex((i) => (i + 1) % messages.length);
-        setVisible(true);
-      }, 220);
-    }, 3500);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    return () => clearInterval(id);
-  }, []);
-
-  return (
-    <div className="inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700 sm:text-sm">
-      <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-500 animate-pulse" />
-      <span className={`truncate transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}>
-        {messages[index]}
-      </span>
-    </div>
-  );
-}
-
-function PromoMeter({ claimed, limit, spotsLeft, loading }) {
-  const pct = limit > 0 ? (claimed / limit) * 100 : 0;
-  const urgency =
-    spotsLeft <= 10
-      ? "text-red-600"
-      : spotsLeft <= 25
-      ? "text-amber-600"
-      : "text-emerald-600";
-
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between text-xs sm:text-sm">
-        <span className="text-gray-500">
-          {loading ? "Loading..." : `${claimed} of ${limit} spots claimed`}
-        </span>
-        <span className={`font-bold ${urgency}`}>
-          {loading ? "…" : `${spotsLeft} left!`}
-        </span>
-      </div>
-
-      <div className="h-3 overflow-hidden rounded-full bg-gray-100">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-1000"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function StatMiniCard({ title, value, valueClassName = "text-gray-900" }) {
-  return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-      <div className={`text-lg font-bold ${valueClassName}`}>{value}</div>
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-gray-500">
-        {title}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   LIVE ACTIVITY WIDGET
-============================================================ */
-
-function LiveActivityWidget({ activity }) {
-  const formatTime = (ts) => {
-    if (!ts) return "";
-    try {
-      const diffMs = Date.now() - new Date(ts).getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      if (diffMins < 1) return "just now";
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-      return `${Math.floor(diffMins / 1440)}d ago`;
-    } catch {
-      return "";
+    if (chartRef.current) {
+      chartRef.current.destroy();
     }
+
+    const ctx = canvas.getContext("2d");
+    
+    const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.pnl || p) : [0, 0, 0, 0, 0, 0, 0];
+
+    chartRef.current = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: values.map((_, i) => `Day ${i+1}`),
+        datasets: [{
+          label: "Daily P&L",
+          data: values,
+          backgroundColor: values.map(v => v >= 0 ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"),
+          borderColor: values.map(v => v >= 0 ? "#10b981" : "#ef4444"),
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context) => formatCurrencySigned(context.raw)
+            }
+          }
+        },
+        scales: {
+          y: {
+            grid: { color: "rgba(0,0,0,0.05)" },
+            ticks: { 
+              color: "#6b7280",
+              callback: (value) => formatCurrency(value)
+            }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: "#6b7280" }
+          }
+        }
+      }
+    });
+
+    return () => {
+      if (chartRef.current) chartRef.current.destroy();
+    };
+  }, [pnlHistory]);
+
+  return <canvas ref={canvasRef} />;
+}
+
+/* =====================================================
+   UI COMPONENTS
+===================================================== */
+
+function StatCard({ title, value, icon, subtext, color = "emerald" }) {
+  const colorClasses = {
+    emerald: "text-emerald-600",
+    indigo: "text-indigo-600",
+    purple: "text-purple-600",
+    amber: "text-amber-600",
+    red: "text-red-600",
+    blue: "text-blue-600",
   };
 
-  const series = buildActivitySeries(activity.trades);
-
-  const chartData = useMemo(
-    () => ({
-      labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-      datasets: [
-        {
-          data: series,
-          borderColor: "#10b981",
-          backgroundColor: "rgba(16,185,129,0.18)",
-          fill: true,
-          tension: 0.45,
-          pointRadius: 4,
-          pointHoverRadius: 5,
-          pointBackgroundColor: "#ffffff",
-          pointBorderColor: "#10b981",
-          pointBorderWidth: 2,
-          borderWidth: 3,
-        },
-      ],
-    }),
-    [series]
-  );
-
-  const chartOptions = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          displayColors: false,
-          backgroundColor: "#111827",
-          titleColor: "#ffffff",
-          bodyColor: "#d1fae5",
-          padding: 10,
-        },
-      },
-      scales: {
-        x: {
-          display: true,
-          grid: { display: false },
-          ticks: {
-            color: "#9ca3af",
-            font: { size: 10 },
-          },
-        },
-        y: {
-          display: false,
-          grid: { color: "rgba(229,231,235,0.5)" },
-        },
-      },
-    }),
-    []
-  );
-
-  if (activity.loading) {
-    return (
-      <Card className="p-5">
-        <div className="flex items-center justify-center gap-2 text-gray-500">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
-          <span className="text-sm">Loading live dashboard...</span>
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-lg transition-all">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs text-gray-500">{title}</p>
+          <p className={`text-xl sm:text-2xl font-bold mt-1 ${colorClasses[color]}`}>{value}</p>
+          {subtext ? <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{subtext}</p> : null}
         </div>
-      </Card>
+        <div className="text-2xl opacity-60 shrink-0">{icon}</div>
+      </div>
+    </div>
+  );
+}
+
+function BotCard({ bot }) {
+  const isOnline = bot?.status === "operational" || bot?.status === "scanning" || bot?.status === "running";
+
+  return (
+    <div className="border border-gray-200 bg-white rounded-xl p-4 hover:shadow-md transition-all">
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xl shrink-0">
+            {bot?.name?.includes("Futures") && "📊"}
+            {bot?.name?.includes("Stock") && "📈"}
+            {bot?.name?.includes("Sniper") && "🦄"}
+            {bot?.name?.includes("OKX") && "🔷"}
+          </span>
+          <span className="font-semibold text-sm sm:text-base text-gray-900 truncate">{bot?.name || "Unknown Bot"}</span>
+        </div>
+        <span className={`text-xs shrink-0 ${isOnline ? "text-emerald-600" : "text-red-600"}`}>
+          {isOnline ? "● Online" : "○ Offline"}
+        </span>
+      </div>
+      
+      {isOnline && bot?.metrics && (
+        <div className="text-xs space-y-1 text-gray-600">
+          {bot.positions !== undefined && <div>Positions: {bot.positions}</div>}
+          {bot.discoveries !== undefined && <div>Discoveries: {bot.discoveries}</div>}
+          {bot.symbols !== undefined && <div>Symbols: {bot.symbols}</div>}
+          {bot.active_networks && <div>Networks: {bot.active_networks.join(", ")}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TradeRow({ trade }) {
+  const side = String(trade?.side || "buy").toLowerCase();
+  const pnlUsd = safeNumber(trade?.pnl_usd || trade?.pnl, 0);
+  const symbol = trade?.symbol || "Unknown";
+  const bot = trade?.bot || trade?.source || "Unknown";
+  const ts = trade?.created_at || trade?.timestamp;
+
+  const isBuy = side === "buy" || side === "long";
+  const isOpen = trade?.status === "open" && pnlUsd === 0;
+
+  let borderColor = "border-l-gray-300";
+  let bgColor = "bg-gray-50";
+  let badgeColor = "bg-gray-200 text-gray-700";
+  let badgeText = side.toUpperCase();
+
+  if (isOpen) {
+    borderColor = "border-l-blue-500";
+    bgColor = "bg-blue-50";
+    badgeColor = "bg-blue-100 text-blue-700";
+    badgeText = "OPEN";
+  } else if (isBuy) {
+    borderColor = "border-l-emerald-500";
+    bgColor = "bg-emerald-50";
+    badgeColor = "bg-emerald-100 text-emerald-700";
+    badgeText = "BUY";
+  } else if (!isBuy && !isOpen) {
+    borderColor = "border-l-red-500";
+    bgColor = "bg-red-50";
+    badgeColor = "bg-red-100 text-red-700";
+    badgeText = "SELL";
+  }
+
+  return (
+    <div className={`flex items-center justify-between gap-3 px-3 py-3 rounded-xl text-sm border-l-4 ${borderColor} ${bgColor}`}>
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        <span className="text-base shrink-0">📊</span>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-sm text-gray-900 truncate">{symbol}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${badgeColor}`}>{badgeText}</span>
+            <span className="text-[10px] text-gray-400">{bot}</span>
+          </div>
+          <div className="text-[10px] text-gray-400">
+            {timeAgo(ts)} • {formatCurrency(trade?.price || 0)}
+          </div>
+        </div>
+      </div>
+
+      <div className="text-right shrink-0">
+        {isOpen ? (
+          <div className="font-bold text-sm text-blue-600">Open</div>
+        ) : pnlUsd !== 0 ? (
+          <div className={`font-bold text-sm ${pnlUsd > 0 ? "text-emerald-600" : "text-red-600"}`}>
+            {formatCurrencySigned(pnlUsd)}
+          </div>
+        ) : (
+          <div className="font-bold text-sm text-gray-900">{formatCurrency(trade?.price || 0)}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DiscoveryCard({ discovery }) {
+  const score = safeNumber(discovery?.ai_score ?? discovery?.score, 0);
+  const chain = discovery?.chain || "ethereum";
+  const age = discovery?.age ?? discovery?.age_blocks ?? 0;
+  const pair = discovery?.pair || discovery?.address?.slice(0, 10) || "New token";
+
+  let scoreColor = "text-orange-600";
+  if (score >= 0.7) scoreColor = "text-emerald-600";
+  else if (score >= 0.5) scoreColor = "text-amber-600";
+
+  return (
+    <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs hover:shadow-md transition-colors">
+      <div className="flex justify-between items-start mb-2 gap-2">
+        <span className="font-medium flex items-center gap-1 min-w-0">
+          <span className="text-base shrink-0">🦄</span>
+          <span className="capitalize text-gray-900 truncate">{chain}</span>
+        </span>
+        <span className="text-gray-400 text-[10px] shrink-0">{age} blocks</span>
+      </div>
+      <div className="text-gray-600 font-mono text-[10px] mb-2 truncate">{pair}</div>
+      <div className="flex justify-between items-center gap-2">
+        <div>
+          <span className="text-gray-400">AI Score</span>
+          <span className={`ml-2 font-bold ${scoreColor}`}>{score.toFixed(2)}</span>
+        </div>
+        {score >= 0.7 && (
+          <span className="text-[8px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">
+            Ready
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
+   MAIN COMPONENT
+===================================================== */
+
+export default function PublicDashboard() {
+  const data = useLiveData();
+  const [activeTab, setActiveTab] = useState("all");
+  const [clock, setClock] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const allTrades = data.trades || [];
+  const discoveries = data.discoveries || [];
+  const bots = data.bots || [];
+  const analytics = data.analytics?.summary || {};
+  const userStats = data.userStats || {};
+  const pnlHistory = data.pnlHistory || [];
+
+  const totalPnL = analytics.total_pnl || 0;
+  const totalTradesCount = analytics.total_trades || allTrades.length;
+  const winsCount = analytics.wins || 0;
+  const lossesCount = analytics.losses || 0;
+  const winRate = analytics.win_rate || (totalTradesCount > 0 ? (winsCount / totalTradesCount * 100) : 0);
+
+  const isOpenTrade = (trade) => {
+    const pnl = trade?.pnl_usd || trade?.pnl || 0;
+    return trade?.status === "open" || (pnl === 0 && !trade?.pnl);
+  };
+
+  const filteredTrades = useMemo(() => {
+    if (activeTab === "open") return allTrades.filter(isOpenTrade);
+    if (activeTab === "closed") return allTrades.filter(t => !isOpenTrade(t));
+    return allTrades;
+  }, [activeTab, allTrades]);
+
+  const tabs = [
+    { id: "all", label: "All", icon: "🌐", count: allTrades.length },
+    { id: "open", label: "Open", icon: "🟢", count: allTrades.filter(isOpenTrade).length },
+    { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(t => !isOpenTrade(t)).length },
+  ];
+
+  if (data.loading && !data.lastUpdate) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-500">Loading live dashboard...</p>
+        </div>
+      </div>
     );
   }
 
-  const { trades, stats } = activity;
-
   return (
-    <Card className="p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="flex items-center gap-2 font-bold text-gray-900">
-          <span
-            className={`h-2.5 w-2.5 rounded-full ${
-              stats.online ? "bg-green-500 animate-pulse" : "bg-gray-400"
-            }`}
-          />
-          Live Dashboard
-        </h3>
-
-        <Link
-          to="/public-dashboard"
-          className="text-xs font-medium text-emerald-600 hover:text-emerald-700"
-        >
-          Full Dashboard →
-        </Link>
-      </div>
-
-      <div className="mb-4 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 p-4">
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Bot Activity
-            </p>
-            <p className="text-sm text-gray-500">
-              {stats.online ? `${stats.activeBots} bots active` : "No active bots"}
-            </p>
-          </div>
-
-          <div
-            className={`rounded-full px-3 py-1 text-xs font-semibold shadow-sm ${
-              stats.online
-                ? "bg-emerald-100 text-emerald-700"
-                : "bg-gray-100 text-gray-600"
-            }`}
-          >
-            {stats.currentStatus}
-          </div>
-        </div>
-
-        <div className="h-40">
-          <Line data={chartData} options={chartOptions} />
-        </div>
-      </div>
-
-      <div className="mb-4 grid grid-cols-2 gap-3">
-        <StatMiniCard
-          title="Active Bots"
-          value={stats.activeBots}
-          valueClassName="text-indigo-600"
-        />
-        <StatMiniCard
-          title="Total Trades"
-          value={formatNumber(stats.totalTrades)}
-          valueClassName="text-purple-600"
-        />
-        <StatMiniCard
-          title="Total P&L"
-          value={formatCurrency(stats.totalPnL)}
-          valueClassName={stats.totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}
-        />
-        <StatMiniCard
-          title="Win Rate"
-          value={stats.totalTrades > 0 ? `${((stats.wins / stats.totalTrades) * 100).toFixed(1)}%` : "0%"}
-          valueClassName="text-emerald-600"
-        />
-      </div>
-
-      <div className="mb-4">
-        <div className="mb-2 text-[10px] uppercase tracking-wide text-gray-500">
-          Bot Status
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          {stats.botStatuses.map((bot) => (
-            <div
-              key={bot.label}
-              className={`flex items-center justify-between gap-2 rounded-lg border p-3 text-xs ${
-                bot.live 
-                  ? "border-emerald-200 bg-emerald-50" 
-                  : "border-gray-200 bg-gray-50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    bot.live ? "bg-emerald-500 animate-pulse" : "bg-gray-400"
-                  }`}
-                />
-                <span className={bot.live ? "font-semibold text-gray-800" : "text-gray-500"}>
-                  {bot.label}
-                </span>
-              </div>
-              {bot.live && bot.details && (
-                <span className="text-[10px] text-emerald-600">
-                  {bot.details.positions_count > 0 && `${bot.details.positions_count} pos`}
-                  {bot.details.total_trades > 0 && ` • ${bot.details.total_trades} trades`}
-                  {bot.details.discoveries > 0 && ` • ${bot.details.discoveries} new`}
-                </span>
-              )}
+    <div className="min-h-screen bg-white text-gray-900">
+      <header className="border-b border-gray-200 bg-white/80 backdrop-blur sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Link to="/" className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-transparent">
+                IMALI
+              </Link>
+              <span className="text-xs px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700">
+                LIVE
+              </span>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {activity.error && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 py-3 text-center text-xs text-amber-700">
-          ⚠️ {activity.error}
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <h4 className="mb-1 text-xs font-semibold text-gray-500">Recent Trades</h4>
-
-        {trades.length > 0 ? (
-          trades.slice(0, 4).map((trade, i) => {
-            const side = String(trade?.side || "buy").toLowerCase();
-            const isBuy = side === "buy" || side === "long";
-            const pnlValue = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
-
-            return (
-              <div
-                key={trade?.id || i}
-                className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs"
-              >
-                <div className="min-w-0 flex items-center gap-2">
-                  <span className="text-sm">
-                    {trade?.bot === "futures" && "📈"}
-                    {trade?.bot === "okx" && "🔷"}
-                    {trade?.bot === "sniper" && "🎯"}
-                    {trade?.bot === "stocks" && "📊"}
-                    {!trade?.bot && "📊"}
-                  </span>
-
-                  <div className="min-w-0">
-                    <div className="truncate font-medium text-gray-800">
-                      {trade?.symbol || "Unknown"}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] ${
-                          isBuy
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {side.toUpperCase()}
-                      </span>
-
-                      <span className="text-[10px] text-gray-500">
-                        {formatTime(trade?.created_at || trade?.timestamp)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  className={`shrink-0 font-semibold ${
-                    pnlValue === null || !Number.isFinite(Number(pnlValue))
-                      ? "text-gray-500"
-                      : Number(pnlValue) >= 0
-                      ? "text-emerald-600"
-                      : "text-red-600"
-                  }`}
-                >
-                  {pnlValue === null || !Number.isFinite(Number(pnlValue))
-                    ? "—"
-                    : formatCurrency(Number(pnlValue))}
-                </div>
+            <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                <span>Real-time data</span>
               </div>
-            );
-          })
-        ) : (
-          <div className="py-2 text-center text-xs text-gray-400">
-            No recent trades
+              <div>Last update: {data.lastUpdate ? timeAgo(data.lastUpdate) : "—"}</div>
+              <div>{clock.toLocaleTimeString()}</div>
+              <Link
+                to="/signup"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-sm font-semibold text-white transition-all"
+              >
+                Join the Journey →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+        {data.error && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-center">
+            <p className="text-amber-600 text-sm">⚠️ {data.error}</p>
           </div>
         )}
-      </div>
-    </Card>
-  );
-}
 
-/* ============================================================
-   HOME PAGE
-============================================================ */
-
-export default function Home() {
-  const promo = usePromoStatus();
-  const promoClaim = usePromoClaim();
-  const activity = useLiveActivity();
-  const [isMuted, setIsMuted] = useState(true);
-
-  const [email, setEmail] = useState("");
-  const [showForm, setShowForm] = useState(false);
-
-  const videoId = "x6Dvj1ALs-w";
-
-  return (
-    <div className="min-h-screen overflow-x-hidden bg-white text-gray-900">
-      {/* YOUTUBE VIDEO PLAYER AT TOP */}
-      <div className="relative w-full bg-black">
-        <div className="relative pt-[56.25%]">
-          <iframe
-            className="absolute top-0 left-0 w-full h-full"
-            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&mute=${isMuted ? 1 : 0}&controls=1&modestbranding=1&rel=0&showinfo=0&playsinline=1&playlist=${videoId}`}
-            title="IMALI Trading AI Demo"
-            frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          ></iframe>
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-3xl sm:text-5xl font-bold mb-3 bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-transparent">
+            Live Trading Dashboard
+          </h1>
+          <p className="text-gray-500 max-w-2xl mx-auto text-sm sm:text-base">
+            Real-time bot activity, trades, and discoveries from our automated trading infrastructure.
+          </p>
         </div>
-        
-        <button
-          onClick={() => setIsMuted(!isMuted)}
-          className="absolute bottom-4 right-4 z-10 rounded-full bg-black/70 p-3 text-white backdrop-blur-sm transition-all hover:bg-black/90"
-          aria-label={isMuted ? "Unmute video" : "Mute video"}
-        >
-          {isMuted ? (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-            </svg>
-          )}
-        </button>
-      </div>
 
-      {/* PROMO SECTION */}
-      <section className="mx-auto max-w-3xl px-3 py-10 sm:px-4 sm:py-12">
-        <Card className="p-5 sm:p-6 shadow-xl">
-          <div className="mb-4 flex items-start gap-3 sm:items-center">
-            <span className="flex-shrink-0 text-3xl">🎁</span>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900 sm:text-2xl">
-                Early Bird Special
-              </h3>
-              <p className="text-sm text-gray-500">
-                First {promo.limit} users get a{" "}
-                <b className="text-emerald-600">special deal</b>
-              </p>
+        {/* Quick Stats Banner */}
+        <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-2 text-center">
+            <div className="text-xs text-indigo-600">Win Rate</div>
+            <div className="text-lg font-bold text-indigo-700">{Math.round(winRate)}%</div>
+          </div>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2 text-center">
+            <div className="text-xs text-emerald-600">Total P&L</div>
+            <div className="text-lg font-bold text-emerald-700">{formatCurrencySigned(totalPnL)}</div>
+          </div>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-2 text-center">
+            <div className="text-xs text-purple-600">Active Bots</div>
+            <div className="text-lg font-bold text-purple-700">{bots.length}</div>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 text-center">
+            <div className="text-xs text-amber-600">Discoveries</div>
+            <div className="text-lg font-bold text-amber-700">{discoveries.length}</div>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          <StatCard 
+            title="Total Trades" 
+            value={totalTradesCount} 
+            icon="📊" 
+            color="purple" 
+            subtext={`${winsCount} wins · ${lossesCount} losses`} 
+          />
+          <StatCard 
+            title="Total P&L" 
+            value={formatCurrencySigned(totalPnL)} 
+            icon="💰" 
+            color={totalPnL >= 0 ? "emerald" : "red"} 
+            subtext={`Win Rate: ${Math.round(winRate)}%`}
+          />
+          <StatCard 
+            title="Active Bots" 
+            value={bots.length} 
+            icon="🤖" 
+            color="emerald" 
+            subtext="systems online" 
+          />
+          <StatCard 
+            title="Win / Loss" 
+            value={`${winsCount} / ${lossesCount}`} 
+            icon="⚔️" 
+            color="amber" 
+            subtext={`${Math.round(winRate)}% win rate`}
+          />
+        </div>
+
+        {/* Bot Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          {bots.length > 0 ? (
+            bots.map((bot, index) => (
+              <BotCard key={index} bot={bot} />
+            ))
+          ) : (
+            <div className="col-span-4 text-center py-8 text-gray-400">
+              No bot data available
+            </div>
+          )}
+        </div>
+
+        {/* P&L History Chart */}
+        {pnlHistory.length > 0 && (
+          <div className="mb-6 bg-white border border-gray-200 rounded-2xl p-4">
+            <h2 className="font-bold text-lg mb-3 text-gray-900">Daily P&L History</h2>
+            <div className="h-64">
+              <VolumeChart pnlHistory={pnlHistory} />
             </div>
           </div>
+        )}
 
-          <div className="mb-4 space-y-2 rounded-xl border border-gray-100 bg-gradient-to-r from-emerald-50 to-cyan-50 p-4">
-            <FeatureRow icon="✅" label="Only 5% fee on profits over 3% (normally 30%)" />
-            <FeatureRow icon="✅" label="Locked in for 90 days" />
-            <FeatureRow icon="✅" label="Full access to all bot features" />
-            <FeatureRow icon="✅" label="Referral program available for users who invite others" />
-          </div>
+        {/* Two Column Layout - Trades and Discoveries */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Live Trade Feed */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+              <h2 className="font-bold text-lg flex items-center gap-2 text-gray-900">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                Live Trade Feed
+              </h2>
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                      activeTab === tab.id 
+                        ? "bg-emerald-600 text-white" 
+                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                    {tab.count > 0 && (
+                      <span className="ml-1 text-[8px] bg-gray-200 text-gray-700 px-1.5 rounded-full">{tab.count}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <PromoMeter
-            claimed={promo.claimed}
-            limit={promo.limit}
-            spotsLeft={promo.spotsLeft}
-            loading={promo.loading}
-          />
-
-          {promo.error && (
-            <p className="mt-2 text-xs text-amber-600">⚠ {promo.error}</p>
-          )}
-
-          {!showForm && !promoClaim.state.success && promo.active && (
-            <button
-              onClick={() => setShowForm(true)}
-              className="mt-4 w-full rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 py-4 text-base font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500"
-            >
-              🎉 Claim My Spot Now
-            </button>
-          )}
-
-          {showForm && !promoClaim.state.success && (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const ok = await promoClaim.claim(email);
-                if (ok) setShowForm(false);
-              }}
-              className="mt-4 space-y-3"
-            >
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email address"
-                className="w-full rounded-xl border border-emerald-200 bg-white px-4 py-4 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                required
-                autoFocus
-              />
-
-              {promoClaim.state.error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-                  ⚠️ {promoClaim.state.error}
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+              {filteredTrades.length > 0 ? (
+                filteredTrades.map((trade, i) => (
+                  <TradeRow key={trade.id || i} trade={trade} />
+                ))
+              ) : (
+                <div className="text-center py-12 text-gray-400">
+                  <div className="text-4xl mb-3">📭</div>
+                  <p className="text-sm">No trades yet</p>
                 </div>
               )}
-
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  disabled={promoClaim.state.loading}
-                  className="flex-1 rounded-xl bg-emerald-600 py-4 text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-500"
-                >
-                  {promoClaim.state.loading ? "Claiming..." : "✅ Confirm My Spot"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowForm(false);
-                    promoClaim.reset();
-                  }}
-                  className="px-6 text-sm text-gray-500 hover:text-gray-700"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          )}
-
-          {promoClaim.state.success && (
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
-              <div className="mb-2 text-3xl">🎉</div>
-              <p className="text-lg font-bold text-emerald-700">You're in!</p>
-              <p className="mt-1 text-sm text-gray-600">
-                Check your email, then{" "}
-                <Link to="/signup" className="text-emerald-600 underline">
-                  create your account
-                </Link>{" "}
-                to get started.
-              </p>
-            </div>
-          )}
-        </Card>
-      </section>
-
-      {/* HERO SECTION */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-white via-emerald-50/40 to-white">
-        <div className="pointer-events-none absolute inset-0 select-none">
-          <img
-            src={StarterNFT}
-            alt=""
-            className="absolute left-[4%] top-20 w-24 opacity-10 sm:w-32 md:w-40"
-            draggable="false"
-          />
-          <img
-            src={ProNFT}
-            alt=""
-            className="absolute right-[5%] top-24 w-24 opacity-10 sm:top-32 sm:w-36 md:w-44"
-            draggable="false"
-          />
-          <img
-            src={EliteNFT}
-            alt=""
-            className="absolute bottom-0 left-1/2 w-28 -translate-x-1/2 opacity-10 sm:w-40 md:w-48"
-            draggable="false"
-          />
-        </div>
-
-        <div className="relative mx-auto max-w-6xl px-4 pb-14 pt-16 sm:px-6 sm:pb-16 sm:pt-20 md:pt-24">
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <LiveTicker />
-
-            <Link
-              to="/public-dashboard"
-              className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-medium text-emerald-700 shadow-sm hover:bg-emerald-50 sm:text-sm"
-            >
-              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              <span>LIVE DASHBOARD</span>
-              <span>→</span>
-            </Link>
-          </div>
-
-          {/* Referral Banner */}
-          <div className="mx-auto mb-8 max-w-3xl">
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-left shadow-sm sm:px-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
-                    Referral Program Offer
-                  </p>
-                  <h3 className="mt-1 text-lg font-bold text-gray-900 sm:text-xl">
-                    Invite friends and earn rewards in USDC or IMALI
-                  </h3>
-                  <p className="mt-1 max-w-2xl text-sm text-gray-600">
-                    Share your referral link, bring in new members, and earn
-                    partner rewards as the IMALI ecosystem grows.
-                  </p>
-                </div>
-
-                <Link
-                  to="/referrals"
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-amber-500 px-5 py-3 font-bold text-black transition-all hover:bg-amber-400"
-                >
-                  View Referral Offer
-                </Link>
-              </div>
             </div>
           </div>
 
-          <div className="text-center">
-            <h1 className="font-extrabold leading-tight">
-              <span className="mx-auto block max-w-5xl bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-center text-3xl text-transparent sm:text-4xl md:text-5xl lg:text-7xl">
-                Automated Trading for Stock and Crypto
-              </span>
-            </h1>
-
-            <p className="mx-auto mt-4 max-w-2xl px-2 text-base leading-relaxed text-gray-600 sm:mt-6 sm:text-lg md:text-xl">
-              Built to be simple for new users and powerful enough to grow with you.
-              Follow live bot activity, recent trades, and performance in one clean dashboard.
-            </p>
-
-            <div className="mt-5 flex flex-wrap justify-center gap-2 px-2 sm:mt-6 sm:gap-3">
-              <Pill color="emerald">✅ No experience needed</Pill>
-              <Pill color="amber">🎁 Referral rewards available</Pill>
-              <Pill color="purple">🦾 AI-powered trading bots</Pill>
-            </div>
-
-            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Link
-                to="/pricing"
-                className="rounded-full bg-emerald-600 px-8 py-4 text-center font-bold text-white shadow-lg shadow-emerald-200 transition-all hover:bg-emerald-500"
-              >
-                Get Started Now →
-              </Link>
-
-              <Link
-                to="/referrals"
-                className="rounded-full border border-gray-200 bg-white px-8 py-4 text-center font-bold text-gray-800 shadow-sm hover:bg-gray-50"
-              >
-                Explore Referral Program
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* LIVE + ROBOTS */}
-      <section className="-mt-2 mx-auto mb-10 max-w-6xl px-3 sm:mb-12 sm:px-4">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveActivityWidget activity={activity} />
-
-          <Card className="p-5">
-            <h3 className="mb-2 text-lg font-bold text-gray-900">
-              Your Trading Bots
-            </h3>
-            <p className="mb-4 text-sm text-gray-600">
-              Choose a plan, connect your accounts, and let IMALI handle stock
-              and crypto automation with a simpler user experience.
-            </p>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                <img
-                  src={StarterNFT}
-                  alt="Starter bot"
-                  className="h-24 w-full object-contain sm:h-28"
-                />
-                <p className="mt-2 text-center text-xs text-gray-600">Starter</p>
-              </div>
-
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                <img
-                  src={ProNFT}
-                  alt="Pro bot"
-                  className="h-24 w-full object-contain sm:h-28"
-                />
-                <p className="mt-2 text-center text-xs text-gray-600">Pro</p>
-              </div>
-
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                <img
-                  src={EliteNFT}
-                  alt="Elite bot"
-                  className="h-24 w-full object-contain sm:h-28"
-                />
-                <p className="mt-2 text-center text-xs text-gray-600">Elite</p>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <h4 className="font-semibold text-amber-800">
-                Partner perk: referral rewards
-              </h4>
-              <p className="mt-1 text-sm text-gray-700">
-                Invite new users, track your network, and unlock extra value as
-                the IMALI ecosystem grows.
-              </p>
-            </div>
-          </Card>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS */}
-      <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
-        <div className="mb-8 text-center sm:mb-12">
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
-            How Does It Work? 🤔
-          </h2>
-          <p className="mx-auto mt-2 max-w-xl px-2 text-sm text-gray-600 sm:mt-3 sm:text-base">
-            Simple setup, live dashboard tracking, and optional referral rewards.
-          </p>
-        </div>
-
-        <div className="space-y-6 px-1 sm:space-y-8 sm:px-0">
-          <StepCard
-            number="1"
-            emoji="📝"
-            title="Sign Up"
-            description="Create your account and choose the plan that fits your goals. No advanced trading knowledge required."
-          />
-          <div className="ml-5 h-4 border-l-2 border-gray-200 sm:ml-6 sm:h-6" />
-          <StepCard
-            number="2"
-            emoji="🔗"
-            title="Connect Your Accounts"
-            description="Link your supported exchange or brokerage account and unlock your dashboard, trading tools, and automation."
-          />
-          <div className="ml-5 h-4 border-l-2 border-gray-200 sm:ml-6 sm:h-6" />
-          <StepCard
-            number="3"
-            emoji="📊"
-            title="Track Live Activity"
-            description="Monitor current status, active bots, total trades, total P&L, and win/loss performance from one place."
-          />
-        </div>
-
-        <div className="mt-8 px-4 text-center sm:mt-10 sm:px-0">
-          <Link
-            to="/pricing"
-            className="inline-block w-full rounded-full bg-emerald-600 px-8 py-4 text-center font-bold text-white shadow-lg shadow-emerald-200 hover:bg-emerald-500 sm:w-auto"
-          >
-            Let's Go! View Plans →
-          </Link>
-        </div>
-      </section>
-
-      {/* FEATURES */}
-      <section className="mx-auto max-w-6xl px-3 py-12 sm:px-4 md:px-6 sm:py-16">
-        <div className="mb-8 text-center sm:mb-12">
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
-            What's Inside Your Dashboard ✨
-          </h2>
-          <p className="mt-2 text-sm text-gray-600 sm:mt-3 sm:text-base">
-            Live stats, trade activity, automation tools, and referral rewards in one place
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            {
-              icon: "🤖",
-              title: "Automated Trading Bot",
-              pill: "emerald",
-              plan: "All Plans",
-              desc: "Bots monitor supported stock and crypto markets and react using active strategies.",
-            },
-            {
-              icon: "📊",
-              title: "Live Dashboard Stats",
-              pill: "indigo",
-              plan: "All Plans",
-              desc: "Track current status, active bots, total trades, total P&L, and win/loss performance.",
-            },
-            {
-              icon: "🎁",
-              title: "Referral Rewards",
-              pill: "amber",
-              plan: "Eligible Users",
-              desc: "Invite friends, earn rewards, and unlock partner perks as your network grows.",
-            },
-            {
-              icon: "📈",
-              title: "Stock Trading Support",
-              pill: "indigo",
-              plan: "Starter+",
-              desc: "Connect supported brokerage flows and bring stock automation into your plan.",
-            },
-            {
-              icon: "₿",
-              title: "Crypto Trading Support",
-              pill: "purple",
-              plan: "Starter+",
-              desc: "Access crypto-focused automation and strategy expansion as your plan grows.",
-            },
-            {
-              icon: "🏅",
-              title: "Partner Growth Tools",
-              pill: "amber",
-              plan: "Referral Program",
-              desc: "Build your referral network and position yourself for future ecosystem bonuses.",
-            },
-          ].map(({ icon, title, pill, plan, desc }) => (
-            <Card key={title} className="p-5">
-              <div className="mb-2 text-2xl sm:mb-3 sm:text-3xl">{icon}</div>
-              <h3 className="text-base font-bold text-gray-900 sm:text-lg">{title}</h3>
-              <p className="mt-2 text-xs leading-relaxed text-gray-600 sm:text-sm">
-                {desc}
-              </p>
-              <div className="mt-3">
-                <Pill color={pill}>{plan}</Pill>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      {/* REFERRAL CTA */}
-      <section className="mx-auto max-w-5xl px-3 py-10 sm:px-4 md:px-6 sm:py-12">
-        <div className="rounded-3xl border border-amber-200 bg-gradient-to-r from-amber-50 via-pink-50 to-purple-50 p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-700">
-                Referral Program Offer
-              </p>
-              <h2 className="mt-2 text-2xl font-bold text-gray-900 sm:text-3xl">
-                Turn your network into an extra reward stream
-              </h2>
-              <p className="mt-3 text-sm leading-relaxed text-gray-600 sm:text-base">
-                Share your IMALI link, invite new users, and qualify for rewards
-                in USDC or IMALI. Great for early users, creators, group owners,
-                and community builders.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Link
-                to="/referrals"
-                className="rounded-xl bg-amber-500 px-6 py-3 text-center font-bold text-black hover:bg-amber-400"
-              >
-                View Referral Program
-              </Link>
-
-              <Link
-                to="/pricing"
-                className="rounded-xl border border-gray-200 bg-white px-6 py-3 text-center font-semibold hover:bg-gray-50"
-              >
-                View Plans
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="mx-auto max-w-4xl px-3 py-12 sm:px-4 md:px-6 sm:py-16">
-        <div className="mb-8 text-center sm:mb-10">
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
-            Common Questions 💬
-          </h2>
-        </div>
-
-        <div className="space-y-3 sm:space-y-4">
-          {[
-            {
-              q: "Do I need to know how to trade?",
-              a: "No. IMALI is designed to be beginner friendly, with automation and a cleaner dashboard experience.",
-            },
-            {
-              q: "What will I see on the dashboard?",
-              a: "You can track current status, active bots, total trades, total P&L, and win/loss performance from the home dashboard preview and the full live dashboard.",
-            },
-            {
-              q: "Can I earn by inviting friends?",
-              a: "Yes. The referral program lets eligible users share their link and earn rewards when referred users join and activate.",
-            },
-            {
-              q: "Can I stop anytime?",
-              a: "Yes. You can pause or stop participating depending on your connected services and plan setup.",
-            },
-            {
-              q: "Is IMALI custodying my funds?",
-              a: "No. Funds remain in your own connected account. IMALI is built around connection and automation rather than custody.",
-            },
-          ].map((item, i) => (
-            <details
-              key={i}
-              className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-            >
-              <summary className="flex cursor-pointer items-center justify-between p-4 text-sm transition-colors hover:bg-gray-50 sm:p-5 sm:text-base">
-                <span className="pr-4 font-medium text-gray-900">{item.q}</span>
-                <span className="flex-shrink-0 text-lg text-gray-400 transition-transform group-open:rotate-45 sm:text-xl">
-                  +
+          {/* DEX Discoveries */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5">
+            <h2 className="font-bold text-lg flex items-center gap-2 mb-4 text-gray-900">
+              <span>🦄</span>
+              DEX Discoveries
+              {discoveries.length > 0 && (
+                <span className="ml-auto text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                  {discoveries.length} new
                 </span>
-              </summary>
-              <div className="px-4 pb-4 text-xs leading-relaxed text-gray-600 sm:px-5 sm:pb-5 sm:text-sm">
-                {item.a}
-              </div>
-            </details>
-          ))}
-        </div>
-      </section>
+              )}
+            </h2>
 
-      {/* FINAL CTA */}
-      <section className="bg-gradient-to-b from-white to-gray-50 px-4 py-14 text-center sm:py-20">
-        <div className="mx-auto max-w-2xl">
-          <div className="mb-3 text-4xl sm:mb-4 sm:text-5xl">🚀</div>
-          <h2 className="mb-3 text-2xl font-bold text-gray-900 sm:mb-4 sm:text-3xl md:text-4xl">
-            Ready to Trade and Earn More?
-          </h2>
-          <p className="mb-6 px-2 text-base text-gray-600 sm:mb-8 sm:text-lg">
-            Start with automated trading for stock and crypto, then grow with
-            live dashboard tracking and referral rewards.
-          </p>
-
-          <div className="flex flex-col justify-center gap-3 px-2 sm:flex-row sm:gap-4 sm:px-0">
-            <Link
-              to="/pricing"
-              className="rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 px-8 py-4 text-base font-bold text-white shadow-xl hover:from-indigo-500 hover:to-purple-500 sm:px-12 sm:py-5 sm:text-lg"
-            >
-              View Plans & Pricing
-            </Link>
-
-            <Link
-              to="/referrals"
-              className="rounded-full border-2 border-amber-200 bg-white px-8 py-4 text-base font-bold text-amber-700 transition-all hover:bg-amber-50 sm:px-12 sm:py-5 sm:text-lg"
-            >
-              Referral Program
-            </Link>
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+              {discoveries.length > 0 ? (
+                discoveries.map((d, i) => (
+                  <DiscoveryCard key={d.id || i} discovery={d} />
+                ))
+              ) : (
+                <div className="text-center py-12 text-gray-400">
+                  <div className="text-2xl mb-2">🔍</div>
+                  <p className="text-sm">Scanning for new tokens...</p>
+                </div>
+              )}
+            </div>
           </div>
+        </div>
 
-          <p className="mt-5 text-[11px] text-gray-500 sm:mt-6 sm:text-xs">
-            No credit card required • Cancel anytime • Referral rewards available
+        {/* Footer */}
+        <div className="mt-8 text-center text-xs text-gray-400 border-t border-gray-200 pt-6">
+          <p>
+            Real-time bot activity • Live trades • DEX discoveries
+            <br />
+            <Link to="/" className="text-indigo-600 hover:underline">Home</Link>
+            {" • "}
+            <Link to="/pricing" className="text-indigo-600 hover:underline">Pricing</Link>
+            {" • "}
+            <Link to="/referrals" className="text-amber-600 hover:underline">Referrals</Link>
           </p>
         </div>
-      </section>
-
-      {/* FOOTER LINKS */}
-      <section className="border-t border-gray-200 bg-white py-6 sm:py-8">
-        <div className="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-2 px-4 text-xs text-gray-500 sm:gap-6 sm:text-sm">
-          <Link to="/how-it-works" className="py-1 transition-colors hover:text-gray-900">
-            How It Works
-          </Link>
-          <Link to="/pricing" className="py-1 transition-colors hover:text-gray-900">
-            Pricing
-          </Link>
-          <Link to="/referrals" className="py-1 text-amber-700 transition-colors hover:text-amber-800">
-            Referrals
-          </Link>
-          <Link to="/support" className="py-1 transition-colors hover:text-gray-900">
-            Support
-          </Link>
-          <Link to="/privacy" className="py-1 transition-colors hover:text-gray-900">
-            Privacy
-          </Link>
-          <Link to="/terms" className="py-1 transition-colors hover:text-gray-900">
-            Terms
-          </Link>
-          <Link to="/public-dashboard" className="py-1 text-emerald-600 transition-colors hover:text-emerald-700">
-            Live Dashboard
-          </Link>
-        </div>
-      </section>
+      </main>
     </div>
   );
 }
