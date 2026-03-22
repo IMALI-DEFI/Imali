@@ -1,6 +1,6 @@
 // src/pages/Home.jsx
 
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 
@@ -57,17 +57,28 @@ function normalizeArray(value) {
 function collectRecentTrades(data = {}, limit = 20) {
   const combined = [
     ...normalizeArray(data?.recent_trades),
-    ...normalizeArray(data?.sniper?.discoveries || []),
+    ...normalizeArray(data?.sniper?.trades),
     ...normalizeArray(data?.okx?.recent_trades),
     ...normalizeArray(data?.futures?.recent_trades),
     ...normalizeArray(data?.stocks?.recent_trades),
+    ...normalizeArray(data?.okx?.trades),
+    ...normalizeArray(data?.futures?.trades),
+    ...normalizeArray(data?.stocks?.trades),
   ];
 
   const seen = new Set();
   const unique = [];
 
   for (const trade of combined) {
-    const key = trade?.id || `${trade?.symbol}-${trade?.side}-${trade?.timestamp}`;
+    const key =
+      trade?.id ||
+      [
+        trade?.symbol,
+        trade?.side,
+        trade?.created_at || trade?.timestamp,
+        trade?.pnl_usd || trade?.pnl || trade?.price,
+      ].join("|");
+
     if (!seen.has(key)) {
       seen.add(key);
       unique.push(trade);
@@ -84,7 +95,6 @@ function collectRecentTrades(data = {}, limit = 20) {
         pnl_percent: 2.4,
         pnl_usd: 180.22,
         created_at: new Date(now - 8 * 60000).toISOString(),
-        bot: "futures",
       },
       {
         id: "demo-2",
@@ -93,7 +103,6 @@ function collectRecentTrades(data = {}, limit = 20) {
         pnl_percent: -1.1,
         pnl_usd: -72.14,
         created_at: new Date(now - 22 * 60000).toISOString(),
-        bot: "okx",
       },
       {
         id: "demo-3",
@@ -102,7 +111,22 @@ function collectRecentTrades(data = {}, limit = 20) {
         pnl_percent: 3.8,
         pnl_usd: 205.41,
         created_at: new Date(now - 39 * 60000).toISOString(),
-        bot: "sniper",
+      },
+      {
+        id: "demo-4",
+        symbol: "AAPL",
+        side: "buy",
+        pnl_percent: 1.2,
+        pnl_usd: 34.88,
+        created_at: new Date(now - 75 * 60000).toISOString(),
+      },
+      {
+        id: "demo-5",
+        symbol: "TSLA",
+        side: "sell",
+        pnl_percent: -0.7,
+        pnl_usd: -18.64,
+        created_at: new Date(now - 110 * 60000).toISOString(),
       },
     ].slice(0, limit);
   }
@@ -123,7 +147,7 @@ function getBotStatuses(data = {}) {
       live:
         data?.futures?.status === "operational" ||
         data?.futures?.status === "running" ||
-        safeNumber(data?.futures?.positions, 0) > 0 ||
+        safeNumber(data?.futures?.positions_count, 0) > 0 ||
         normalizeArray(data?.futures?.trades).length > 0,
     },
     {
@@ -131,7 +155,7 @@ function getBotStatuses(data = {}) {
       live:
         data?.stocks?.running === true ||
         data?.stocks?.status === "operational" ||
-        safeNumber(data?.stocks?.positions, 0) > 0 ||
+        safeNumber(data?.stocks?.positions_count, 0) > 0 ||
         normalizeArray(data?.stocks?.trades).length > 0,
     },
     {
@@ -140,13 +164,13 @@ function getBotStatuses(data = {}) {
         data?.sniper?.status === "scanning" ||
         data?.sniper?.status === "monitoring" ||
         data?.sniper?.status === "running" ||
-        normalizeArray(data?.sniper?.discoveries).length > 0,
+        normalizeArray(data?.sniper?.trades).length > 0,
     },
     {
       label: "OKX",
       live:
         data?.okx?.status === "running" ||
-        safeNumber(data?.okx?.positions, 0) > 0 ||
+        safeNumber(data?.okx?.positions_count, 0) > 0 ||
         safeNumber(data?.okx?.total_trades, 0) > 0 ||
         normalizeArray(data?.okx?.trades).length > 0,
     },
@@ -159,13 +183,25 @@ function calculateTradeMetrics(trades = []) {
   let totalPnL = 0;
 
   for (const trade of trades) {
-    const pnl = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
+    const pnl =
+      trade?.pnl_usd ??
+      trade?.pnl ??
+      trade?.profit ??
+      trade?.realized_pnl ??
+      null;
 
     if (pnl !== null && pnl !== undefined && Number.isFinite(Number(pnl))) {
       const n = Number(pnl);
       totalPnL += n;
       if (n > 0) wins += 1;
       if (n < 0) losses += 1;
+    } else {
+      const pct = trade?.pnl_percent;
+      if (pct !== null && pct !== undefined && Number.isFinite(Number(pct))) {
+        const n = Number(pct);
+        if (n > 0) wins += 1;
+        if (n < 0) losses += 1;
+      }
     }
   }
 
@@ -183,11 +219,6 @@ function formatCurrency(value) {
   return `${sign}$${Math.abs(n).toFixed(2)}`;
 }
 
-function formatNumber(value) {
-  const n = safeNumber(value, 0);
-  return n.toLocaleString();
-}
-
 function buildActivitySeries(trades = []) {
   if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
 
@@ -195,10 +226,17 @@ function buildActivitySeries(trades = []) {
     .slice(0, 7)
     .reverse()
     .map((trade, index) => {
-      const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
-      if (usd !== null && Number.isFinite(Number(usd))) {
+      const usd = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
+      const pct = trade?.pnl_percent ?? null;
+
+      if (usd !== null && usd !== undefined && Number.isFinite(Number(usd))) {
         return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
       }
+
+      if (pct !== null && pct !== undefined && Number.isFinite(Number(pct))) {
+        return Math.max(2, Math.min(16, Math.abs(Number(pct)) * 2 + 3));
+      }
+
       return index + 4;
     });
 }
@@ -293,7 +331,8 @@ function usePromoClaim() {
 
       return true;
     } catch (err) {
-      const msg = err?.response?.data?.message || "Spot already taken or promo full";
+      const msg =
+        err?.response?.data?.message || "Spot already taken or promo full";
 
       setState({
         loading: false,
@@ -328,7 +367,12 @@ function useLiveActivity() {
       wins: 0,
       losses: 0,
       online: false,
-      botStatuses: [],
+      botStatuses: [
+        { label: "Futures", live: false },
+        { label: "Stocks", live: false },
+        { label: "Sniper", live: false },
+        { label: "OKX", live: false },
+      ],
     },
     loading: true,
     error: null,
@@ -361,21 +405,26 @@ function useLiveActivity() {
 
         const computedMetrics = calculateTradeMetrics(trades);
 
-        // Use summary data if available, otherwise use computed metrics
-        const totalTrades = summaryData?.summary?.total_trades ?? computedMetrics.totalTrades;
-        const totalPnL = summaryData?.summary?.total_pnl ?? computedMetrics.totalPnL;
-        const wins = summaryData?.summary?.wins ?? computedMetrics.wins;
-        const losses = summaryData?.summary?.losses ?? computedMetrics.losses;
+        const summary = summaryData?.summary || summaryData || {};
+
+        const totalTrades = safeNumber(summary?.total_trades, NaN);
+        const totalPnL = safeNumber(summary?.total_pnl, NaN);
+        const wins = safeNumber(summary?.wins, NaN);
+        const losses = safeNumber(summary?.losses, NaN);
 
         setActivity({
           trades,
           stats: {
             currentStatus: online ? "Live" : "Offline",
             activeBots,
-            totalTrades,
-            totalPnL,
-            wins,
-            losses,
+            totalTrades: Number.isFinite(totalTrades)
+              ? totalTrades
+              : computedMetrics.totalTrades,
+            totalPnL: Number.isFinite(totalPnL)
+              ? totalPnL
+              : computedMetrics.totalPnL,
+            wins: Number.isFinite(wins) ? wins : computedMetrics.wins,
+            losses: Number.isFinite(losses) ? losses : computedMetrics.losses,
             online,
             botStatuses,
           },
@@ -459,6 +508,40 @@ function FeatureRow({ icon, label }) {
     <div className="flex items-start gap-2 text-sm text-gray-700">
       <span className="mt-0.5 flex-shrink-0 text-emerald-600">{icon}</span>
       <span className="leading-snug">{label}</span>
+    </div>
+  );
+}
+
+function LiveTicker() {
+  const messages = [
+    "Daily activity updates every 30 seconds",
+    "Live bots are scanning markets now",
+    "Referral rewards are available for eligible users",
+    "Trade stats update from active bot activity",
+    "IMALI supports stock and crypto automation",
+  ];
+
+  const [index, setIndex] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIndex((i) => (i + 1) % messages.length);
+        setVisible(true);
+      }, 220);
+    }, 3500);
+
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700 sm:text-sm">
+      <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-500 animate-pulse" />
+      <span className={`truncate transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}>
+        {messages[index]}
+      </span>
     </div>
   );
 }
@@ -639,13 +722,18 @@ function LiveActivityWidget({ activity }) {
 
       <div className="mb-4 grid grid-cols-2 gap-3">
         <StatMiniCard
+          title="Current Status"
+          value={stats.currentStatus}
+          valueClassName={stats.online ? "text-emerald-600" : "text-gray-600"}
+        />
+        <StatMiniCard
           title="Active Bots"
           value={stats.activeBots}
           valueClassName="text-indigo-600"
         />
         <StatMiniCard
           title="Total Trades"
-          value={formatNumber(stats.totalTrades)}
+          value={stats.totalTrades}
           valueClassName="text-purple-600"
         />
         <StatMiniCard
@@ -653,11 +741,43 @@ function LiveActivityWidget({ activity }) {
           value={formatCurrency(stats.totalPnL)}
           valueClassName={stats.totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}
         />
-        <StatMiniCard
-          title="Win Rate"
-          value={stats.totalTrades > 0 ? `${((stats.wins / stats.totalTrades) * 100).toFixed(1)}%` : "0%"}
-          valueClassName="text-emerald-600"
-        />
+      </div>
+
+      <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+        <div className="mb-2 text-[10px] uppercase tracking-wide text-gray-500">
+          Win/Loss
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-emerald-600">
+            Wins: {stats.wins}
+          </span>
+          <span className="text-sm font-semibold text-red-600">
+            Losses: {stats.losses}
+          </span>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <div className="mb-2 text-[10px] uppercase tracking-wide text-gray-500">
+          Bot Status
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {stats.botStatuses.map((bot) => (
+            <div
+              key={bot.label}
+              className="flex items-center justify-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs"
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  bot.live ? "bg-emerald-500" : "bg-gray-300"
+                }`}
+              />
+              <span className={bot.live ? "text-gray-800" : "text-gray-500"}>
+                {bot.label}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {activity.error ? (
@@ -672,7 +792,7 @@ function LiveActivityWidget({ activity }) {
             trades.slice(0, 4).map((trade, i) => {
               const side = String(trade?.side || "buy").toLowerCase();
               const isBuy = side === "buy" || side === "long";
-              const pnlValue = trade?.pnl_usd ?? trade?.pnl ?? null;
+              const pnlValue = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
 
               return (
                 <div
@@ -680,12 +800,7 @@ function LiveActivityWidget({ activity }) {
                   className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs"
                 >
                   <div className="min-w-0 flex items-center gap-2">
-                    <span className="text-sm">
-                      {trade?.bot === "futures" && "📈"}
-                      {trade?.bot === "okx" && "🔷"}
-                      {trade?.bot === "sniper" && "🎯"}
-                      {trade?.bot === "stocks" && "📊"}
-                    </span>
+                    <span>📊</span>
 
                     <div className="min-w-0">
                       <div className="truncate font-medium text-gray-800">
@@ -744,100 +859,267 @@ export default function Home() {
   const promo = usePromoStatus();
   const promoClaim = usePromoClaim();
   const activity = useLiveActivity();
-  const videoRef = useRef(null);
 
   const [email, setEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white text-gray-900">
-      {/* VIDEO HERO SECTION - MOVED TO TOP */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-gray-900 to-gray-800">
-        {/* Background Video */}
-        <div className="absolute inset-0 overflow-hidden">
-          <video
-            ref={videoRef}
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="h-full w-full object-cover opacity-50"
-            poster="/api/placeholder/1920/1080"
-          >
-            <source src="/videos/imali-defi.MP4" type="video/mp4" />
-            {/* Fallback image if video doesn't load */}
-            <img src="/api/placeholder/1920/1080" alt="IMALI Trading" className="h-full w-full object-cover" />
-          </video>
-          <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-900/80 to-transparent" />
+      {/* VIDEO PLAYER SECTION - AT TOP */}
+      <div className="relative w-full bg-black">
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-auto max-h-[70vh] object-cover"
+          poster="/api/placeholder/1920/1080"
+        >
+          <source src="/videos/imali-demo.mp4" type="video/mp4" />
+          <img src="/api/placeholder/1920/1080" alt="IMALI Trading" className="w-full" />
+        </video>
+        
+        {/* Optional overlay text */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+          <div className="text-center text-white px-4">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2">
+              Watch AI Trade in Real-Time
+            </h2>
+            <p className="text-sm sm:text-base text-gray-200">
+              See how our bots analyze and execute trades
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* HERO */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-white via-emerald-50/40 to-white">
+        <div className="pointer-events-none absolute inset-0 select-none">
+          <img
+            src={StarterNFT}
+            alt=""
+            className="absolute left-[4%] top-20 w-24 opacity-10 sm:w-32 md:w-40"
+            draggable="false"
+          />
+          <img
+            src={ProNFT}
+            alt=""
+            className="absolute right-[5%] top-24 w-24 opacity-10 sm:top-32 sm:w-36 md:w-44"
+            draggable="false"
+          />
+          <img
+            src={EliteNFT}
+            alt=""
+            className="absolute bottom-0 left-1/2 w-28 -translate-x-1/2 opacity-10 sm:w-40 md:w-48"
+            draggable="false"
+          />
         </div>
 
-        <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24 md:py-32">
-          {/* Logo and QR Code Section */}
-          <div className="flex flex-col items-center justify-between gap-8 sm:flex-row sm:items-start">
-            <div className="text-center sm:text-left">
-              <div className="mb-4 flex items-center justify-center gap-3 sm:justify-start">
-                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500 to-blue-500"></div>
-                <h1 className="text-4xl font-bold text-white sm:text-5xl md:text-6xl">
-                  IMALI
-                </h1>
-              </div>
-              <p className="text-lg text-gray-300 sm:text-xl">
-                AI-Powered Trading for Everyone
-              </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
-                <Pill color="emerald">📱 Scan QR Code</Pill>
-                <Pill color="purple">🤖 AI Trading Bots</Pill>
-                <Pill color="amber">🎁 Referral Rewards</Pill>
-              </div>
-            </div>
+        <div className="relative mx-auto max-w-6xl px-4 pb-14 pt-16 sm:px-6 sm:pb-16 sm:pt-20 md:pt-24">
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <LiveTicker />
 
-            {/* QR Code */}
-            <div className="rounded-2xl bg-white p-3 shadow-xl">
-              <img
-                src="/api/placeholder/120/120"
-                alt="Scan QR Code"
-                className="h-24 w-24 sm:h-28 sm:w-28"
-              />
-              <p className="mt-2 text-center text-xs text-gray-600">
-                Scan to join
-              </p>
+            <Link
+              to="/live"
+              className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-medium text-emerald-700 shadow-sm hover:bg-emerald-50 sm:text-sm"
+            >
+              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <span>LIVE DASHBOARD</span>
+              <span>→</span>
+            </Link>
+          </div>
+
+          {/* Promo/Referral Banner */}
+          <div className="mx-auto mb-8 max-w-3xl">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-left shadow-sm sm:px-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
+                    Referral Program Offer
+                  </p>
+                  <h3 className="mt-1 text-lg font-bold text-gray-900 sm:text-xl">
+                    Invite friends and earn rewards in USDC or IMALI
+                  </h3>
+                  <p className="mt-1 max-w-2xl text-sm text-gray-600">
+                    Share your referral link, bring in new members, and earn
+                    partner rewards as the IMALI ecosystem grows.
+                  </p>
+                </div>
+
+                <Link
+                  to="/referrals"
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-amber-500 px-5 py-3 font-bold text-black transition-all hover:bg-amber-400"
+                >
+                  View Referral Offer
+                </Link>
+              </div>
             </div>
           </div>
 
-          <div className="mt-8 text-center">
-            <Link
-              to="/signup"
-              className="inline-block rounded-full bg-emerald-600 px-8 py-4 text-lg font-bold text-white shadow-xl transition-all hover:bg-emerald-500 sm:px-10 sm:py-5"
-            >
-              🚀 Get Started Now
-            </Link>
-            <p className="mt-4 text-sm text-gray-400">
-              No credit card required • Cancel anytime
+          <div className="text-center">
+            <h1 className="font-extrabold leading-tight">
+              <span className="mx-auto block max-w-5xl bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-center text-3xl text-transparent sm:text-4xl md:text-5xl lg:text-7xl">
+                Automated Trading for Stock and Crypto
+              </span>
+            </h1>
+
+            <p className="mx-auto mt-4 max-w-2xl px-2 text-base leading-relaxed text-gray-600 sm:mt-6 sm:text-lg md:text-xl">
+              Built to be simple for new users and powerful enough to grow with you.
+              Follow live bot activity, recent trades, and performance in one clean dashboard.
             </p>
+
+            <div className="mt-5 flex flex-wrap justify-center gap-2 px-2 sm:mt-6 sm:gap-3">
+              <Pill color="emerald">✅ No experience needed</Pill>
+              <Pill color="amber">🎁 Referral rewards available</Pill>
+              <Pill color="purple">🦾 AI-powered trading bots</Pill>
+            </div>
+
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link
+                to="/pricing"
+                className="rounded-full bg-emerald-600 px-8 py-4 text-center font-bold text-white shadow-lg shadow-emerald-200 transition-all hover:bg-emerald-500"
+              >
+                Get Started Now →
+              </Link>
+
+              <Link
+                to="/referrals"
+                className="rounded-full border border-gray-200 bg-white px-8 py-4 text-center font-bold text-gray-800 shadow-sm hover:bg-gray-50"
+              >
+                Explore Referral Program
+              </Link>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* PROMO SECTION - MOVED UP */}
-      <section className="relative -mt-8 mx-auto max-w-3xl px-3">
-        <Card className="p-5 shadow-xl sm:p-6">
+      {/* LIVE + ROBOTS */}
+      <section className="-mt-2 mx-auto mb-10 max-w-6xl px-3 sm:mb-12 sm:px-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <LiveActivityWidget activity={activity} />
+
+          <Card className="p-5">
+            <h3 className="mb-2 text-lg font-bold text-gray-900">
+              Your Trading Bots
+            </h3>
+            <p className="mb-4 text-sm text-gray-600">
+              Choose a plan, connect your accounts, and let IMALI handle stock
+              and crypto automation with a simpler user experience.
+            </p>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <img
+                  src={StarterNFT}
+                  alt="Starter bot"
+                  className="h-24 w-full object-contain sm:h-28"
+                />
+                <p className="mt-2 text-center text-xs text-gray-600">Starter</p>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <img
+                  src={ProNFT}
+                  alt="Pro bot"
+                  className="h-24 w-full object-contain sm:h-28"
+                />
+                <p className="mt-2 text-center text-xs text-gray-600">Pro</p>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <img
+                  src={EliteNFT}
+                  alt="Elite bot"
+                  className="h-24 w-full object-contain sm:h-28"
+                />
+                <p className="mt-2 text-center text-xs text-gray-600">Elite</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <h4 className="font-semibold text-amber-800">
+                Partner perk: referral rewards
+              </h4>
+              <p className="mt-1 text-sm text-gray-700">
+                Invite new users, track your network, and unlock extra value as
+                the IMALI ecosystem grows.
+              </p>
+            </div>
+          </Card>
+        </div>
+      </section>
+
+      {/* HOW IT WORKS */}
+      <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
+        <div className="mb-8 text-center sm:mb-12">
+          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
+            How Does It Work? 🤔
+          </h2>
+          <p className="mx-auto mt-2 max-w-xl px-2 text-sm text-gray-600 sm:mt-3 sm:text-base">
+            Simple setup, live dashboard tracking, and optional referral rewards.
+          </p>
+        </div>
+
+        <div className="space-y-6 px-1 sm:space-y-8 sm:px-0">
+          <StepCard
+            number="1"
+            emoji="📝"
+            title="Sign Up"
+            description="Create your account and choose the plan that fits your goals. No advanced trading knowledge required."
+          />
+          <div className="ml-5 h-4 border-l-2 border-gray-200 sm:ml-6 sm:h-6" />
+          <StepCard
+            number="2"
+            emoji="🔗"
+            title="Connect Your Accounts"
+            description="Link your supported exchange or brokerage account and unlock your dashboard, trading tools, and automation."
+          />
+          <div className="ml-5 h-4 border-l-2 border-gray-200 sm:ml-6 sm:h-6" />
+          <StepCard
+            number="3"
+            emoji="📊"
+            title="Track Live Activity"
+            description="Monitor current status, active bots, total trades, total P&L, and win/loss performance from one place."
+          />
+        </div>
+
+        <div className="mt-8 px-4 text-center sm:mt-10 sm:px-0">
+          <Link
+            to="/pricing"
+            className="inline-block w-full rounded-full bg-emerald-600 px-8 py-4 text-center font-bold text-white shadow-lg shadow-emerald-200 hover:bg-emerald-500 sm:w-auto"
+          >
+            Let's Go! View Plans →
+          </Link>
+        </div>
+      </section>
+
+      {/* PROMO */}
+      <section className="mx-auto max-w-3xl px-3 py-10 sm:px-4 sm:py-12">
+        <Card className="p-5 sm:p-6">
           <div className="mb-4 flex items-start gap-3 sm:items-center">
-            <span className="flex-shrink-0 text-3xl">🎁</span>
+            <span className="flex-shrink-0 text-2xl">🎁</span>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 sm:text-2xl">
+              <h3 className="text-lg font-bold text-gray-900 sm:text-xl">
                 Early Bird Special
               </h3>
-              <p className="text-sm text-gray-500">
-                First {promo.limit} users get an exclusive deal
+              <p className="text-xs text-gray-500 sm:text-sm">
+                First {promo.limit} users get a{" "}
+                <b className="text-emerald-600">special deal</b>
               </p>
             </div>
           </div>
 
-          <div className="mb-4 space-y-2 rounded-xl border border-gray-100 bg-gradient-to-r from-emerald-50 to-cyan-50 p-4">
-            <FeatureRow icon="✅" label="Only 5% fee on profits over 3% (normally 30%)" />
+          <div className="mb-4 space-y-2 rounded-xl border border-gray-100 bg-gray-50 p-3 sm:p-4">
+            <FeatureRow
+              icon="✅"
+              label="Only 5% fee on profits over 3% (normally 30%)"
+            />
             <FeatureRow icon="✅" label="Locked in for 90 days" />
-            <FeatureRow icon="✅" label="Full access to all bot features" />
-            <FeatureRow icon="✅" label="Priority support and early access" />
+            <FeatureRow icon="✅" label="Full access to bot features" />
+            <FeatureRow
+              icon="✅"
+              label="Referral program available for users who invite others"
+            />
           </div>
 
           <PromoMeter
@@ -847,12 +1129,14 @@ export default function Home() {
             loading={promo.loading}
           />
 
-          {promo.error && <p className="mt-2 text-xs text-amber-600">⚠ {promo.error}</p>}
+          {promo.error && (
+            <p className="mt-2 text-xs text-amber-600">⚠ {promo.error}</p>
+          )}
 
           {!showForm && !promoClaim.state.success && promo.active && (
             <button
               onClick={() => setShowForm(true)}
-              className="mt-4 w-full rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 py-4 text-base font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500"
+              className="mt-4 w-full rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 py-3.5 text-base font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500 sm:py-4 sm:text-lg"
             >
               🎉 Claim My Spot Now
             </button>
@@ -872,7 +1156,7 @@ export default function Home() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email address"
-                className="w-full rounded-xl border border-emerald-200 bg-white px-4 py-4 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                className="w-full rounded-xl border border-emerald-200 bg-white px-4 py-3.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100 sm:py-4 sm:text-base"
                 required
                 autoFocus
               />
@@ -883,11 +1167,11 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="flex gap-3">
+              <div className="flex gap-2 sm:gap-3">
                 <button
                   type="submit"
                   disabled={promoClaim.state.loading}
-                  className="flex-1 rounded-xl bg-emerald-600 py-4 text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-500"
+                  className="flex-1 rounded-xl bg-emerald-600 py-3.5 text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-500 sm:py-4 sm:text-base"
                 >
                   {promoClaim.state.loading ? "Claiming..." : "✅ Confirm My Spot"}
                 </button>
@@ -898,7 +1182,7 @@ export default function Home() {
                     setShowForm(false);
                     promoClaim.reset();
                   }}
-                  className="px-6 text-sm text-gray-500 hover:text-gray-700"
+                  className="px-4 text-sm text-gray-500 hover:text-gray-700 sm:px-6"
                 >
                   Cancel
                 </button>
@@ -909,8 +1193,10 @@ export default function Home() {
           {promoClaim.state.success && (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
               <div className="mb-2 text-3xl">🎉</div>
-              <p className="text-lg font-bold text-emerald-700">You're in!</p>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className="text-base font-bold text-emerald-700 sm:text-lg">
+                You&apos;re in!
+              </p>
+              <p className="mt-1 text-xs text-gray-600 sm:text-sm">
                 Check your email, then{" "}
                 <Link to="/signup" className="text-emerald-600 underline">
                   create your account
@@ -922,137 +1208,70 @@ export default function Home() {
         </Card>
       </section>
 
-      {/* LIVE DASHBOARD PREVIEW */}
-      <section className="mx-auto max-w-6xl px-3 py-12 sm:px-4 sm:py-16">
-        <div className="mb-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
-            Live Trading Dashboard
-          </h2>
-          <p className="mt-2 text-sm text-gray-600 sm:text-base">
-            Watch our bots trade in real-time
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveActivityWidget activity={activity} />
-
-          <Card className="p-5">
-            <h3 className="mb-2 text-lg font-bold text-gray-900">
-              Your Trading Bots
-            </h3>
-            <p className="mb-4 text-sm text-gray-600">
-              Choose a plan, connect your accounts, and let IMALI handle the trading
-            </p>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <img
-                  src={StarterNFT}
-                  alt="Starter bot"
-                  className="h-24 w-full object-contain"
-                />
-                <p className="mt-2 text-xs font-medium text-gray-700">Starter</p>
-                <p className="text-xs text-gray-500">Free</p>
-              </div>
-
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <img
-                  src={ProNFT}
-                  alt="Pro bot"
-                  className="h-24 w-full object-contain"
-                />
-                <p className="mt-2 text-xs font-medium text-gray-700">Pro</p>
-                <p className="text-xs text-gray-500">$19/mo</p>
-              </div>
-
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <img
-                  src={EliteNFT}
-                  alt="Elite bot"
-                  className="h-24 w-full object-contain"
-                />
-                <p className="mt-2 text-xs font-medium text-gray-700">Elite</p>
-                <p className="text-xs text-gray-500">$49/mo</p>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-xl bg-amber-50 p-4">
-              <h4 className="font-semibold text-amber-800">🎁 Partner Perk</h4>
-              <p className="mt-1 text-sm text-gray-700">
-                Invite friends and earn referral rewards as they join IMALI
-              </p>
-            </div>
-          </Card>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS */}
-      <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
+      {/* FEATURES */}
+      <section className="mx-auto max-w-6xl px-3 py-12 sm:px-4 md:px-6 sm:py-16">
         <div className="mb-8 text-center sm:mb-12">
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
-            How Does It Work? 🤔
+            What&apos;s Inside Your Dashboard ✨
           </h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm text-gray-600">
-            Simple setup, live dashboard, and optional referral rewards
+          <p className="mt-2 text-sm text-gray-600 sm:mt-3 sm:text-base">
+            Live stats, trade activity, automation tools, and referral rewards in one place
           </p>
-        </div>
-
-        <div className="space-y-6 sm:space-y-8">
-          <StepCard
-            number="1"
-            emoji="📝"
-            title="Sign Up"
-            description="Create your free account in seconds. No credit card required."
-          />
-          <div className="ml-5 h-4 border-l-2 border-gray-200 sm:ml-6" />
-          <StepCard
-            number="2"
-            emoji="🔗"
-            title="Connect Your Accounts"
-            description="Link OKX, Alpaca, or your wallet. The bot handles the rest."
-          />
-          <div className="ml-5 h-4 border-l-2 border-gray-200 sm:ml-6" />
-          <StepCard
-            number="3"
-            emoji="🤖"
-            title="Watch It Trade"
-            description="Sit back while AI analyzes markets and executes trades for you."
-          />
-        </div>
-
-        <div className="mt-8 text-center">
-          <Link
-            to="/signup"
-            className="inline-block w-full rounded-full bg-emerald-600 px-8 py-4 text-center font-bold text-white shadow-lg hover:bg-emerald-500 sm:w-auto"
-          >
-            Let's Go! Create My Account →
-          </Link>
-        </div>
-      </section>
-
-      {/* FEATURES */}
-      <section className="mx-auto max-w-6xl px-3 py-12 sm:px-4 sm:py-16">
-        <div className="mb-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
-            What's Inside Your Dashboard ✨
-          </h2>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
-            { icon: "🤖", title: "Automated Trading", desc: "Bots monitor markets and trade automatically", plan: "All Plans" },
-            { icon: "📊", title: "Live Dashboard", desc: "Track P&L, win rate, and active positions", plan: "All Plans" },
-            { icon: "🎁", title: "Referral Rewards", desc: "Earn rewards when friends join", plan: "Eligible Users" },
-            { icon: "📈", title: "Stock Trading", desc: "Trade US stocks via Alpaca", plan: "Starter+" },
-            { icon: "₿", title: "Crypto Trading", desc: "Trade crypto via OKX", plan: "Starter+" },
-            { icon: "🦄", title: "DEX Trading", desc: "Discover new tokens early", plan: "DeFi+" },
-          ].map(({ icon, title, desc, plan }) => (
+            {
+              icon: "🤖",
+              title: "Automated Trading Bot",
+              pill: "emerald",
+              plan: "All Plans",
+              desc: "Bots monitor supported stock and crypto markets and react using active strategies.",
+            },
+            {
+              icon: "📊",
+              title: "Live Dashboard Stats",
+              pill: "indigo",
+              plan: "All Plans",
+              desc: "Track current status, active bots, total trades, total P&L, and win/loss performance.",
+            },
+            {
+              icon: "🎁",
+              title: "Referral Rewards",
+              pill: "amber",
+              plan: "Eligible Users",
+              desc: "Invite friends, earn rewards, and unlock partner perks as your network grows.",
+            },
+            {
+              icon: "📈",
+              title: "Stock Trading Support",
+              pill: "indigo",
+              plan: "Starter+",
+              desc: "Connect supported brokerage flows and bring stock automation into your plan.",
+            },
+            {
+              icon: "₿",
+              title: "Crypto Trading Support",
+              pill: "purple",
+              plan: "Starter+",
+              desc: "Access crypto-focused automation and strategy expansion as your plan grows.",
+            },
+            {
+              icon: "🏅",
+              title: "Partner Growth Tools",
+              pill: "amber",
+              plan: "Referral Program",
+              desc: "Build your referral network and position yourself for future ecosystem bonuses.",
+            },
+          ].map(({ icon, title, pill, plan, desc }) => (
             <Card key={title} className="p-5">
-              <div className="mb-2 text-2xl">{icon}</div>
-              <h3 className="text-base font-bold text-gray-900">{title}</h3>
-              <p className="mt-2 text-xs text-gray-600">{desc}</p>
+              <div className="mb-2 text-2xl sm:mb-3 sm:text-3xl">{icon}</div>
+              <h3 className="text-base font-bold text-gray-900 sm:text-lg">{title}</h3>
+              <p className="mt-2 text-xs leading-relaxed text-gray-600 sm:text-sm">
+                {desc}
+              </p>
               <div className="mt-3">
-                <Pill color="indigo">{plan}</Pill>
+                <Pill color={pill}>{plan}</Pill>
               </div>
             </Card>
           ))}
@@ -1060,53 +1279,86 @@ export default function Home() {
       </section>
 
       {/* REFERRAL CTA */}
-      <section className="mx-auto max-w-5xl px-3 py-10 sm:px-4 sm:py-12">
-        <div className="rounded-3xl bg-gradient-to-r from-amber-50 via-pink-50 to-purple-50 p-6 shadow-sm sm:p-8">
+      <section className="mx-auto max-w-5xl px-3 py-10 sm:px-4 md:px-6 sm:py-12">
+        <div className="rounded-3xl border border-amber-200 bg-gradient-to-r from-amber-50 via-pink-50 to-purple-50 p-6 shadow-sm sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
-                Referral Program
+            <div className="max-w-2xl">
+              <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-700">
+                Referral Program Offer
               </p>
-              <h2 className="mt-2 text-2xl font-bold text-gray-900">
-                Earn Rewards by Inviting Friends
+              <h2 className="mt-2 text-2xl font-bold text-gray-900 sm:text-3xl">
+                Turn your network into an extra reward stream
               </h2>
-              <p className="mt-3 text-sm text-gray-600">
-                Share your link, bring in new users, and earn rewards in USDC or IMALI
+              <p className="mt-3 text-sm leading-relaxed text-gray-600 sm:text-base">
+                Share your IMALI link, invite new users, and qualify for rewards
+                in USDC or IMALI. Great for early users, creators, group owners,
+                and community builders.
               </p>
             </div>
 
-            <Link
-              to="/referrals"
-              className="rounded-xl bg-amber-500 px-6 py-3 text-center font-bold text-black hover:bg-amber-400"
-            >
-              View Referral Program
-            </Link>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link
+                to="/referrals"
+                className="rounded-xl bg-amber-500 px-6 py-3 text-center font-bold text-black hover:bg-amber-400"
+              >
+                View Referral Program
+              </Link>
+
+              <Link
+                to="/pricing"
+                className="rounded-xl border border-gray-200 bg-white px-6 py-3 text-center font-semibold hover:bg-gray-50"
+              >
+                View Plans
+              </Link>
+            </div>
           </div>
         </div>
       </section>
 
       {/* FAQ */}
-      <section className="mx-auto max-w-4xl px-3 py-12 sm:px-4 sm:py-16">
-        <div className="mb-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Common Questions 💬</h2>
+      <section className="mx-auto max-w-4xl px-3 py-12 sm:px-4 md:px-6 sm:py-16">
+        <div className="mb-8 text-center sm:mb-10">
+          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+            Common Questions 💬
+          </h2>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 sm:space-y-4">
           {[
-            { q: "Do I need trading experience?", a: "No. IMALI is designed for beginners. The bots handle the trading for you." },
-            { q: "What can I see on the dashboard?", a: "Track live trades, P&L, win rate, active positions, and bot status." },
-            { q: "How do referral rewards work?", a: "Share your unique link. When friends sign up and activate, you earn rewards." },
-            { q: "Can I stop anytime?", a: "Yes. You can pause or cancel your subscription anytime." },
-            { q: "Is my money safe?", a: "We never hold your funds. Your money stays in your connected exchange account." },
+            {
+              q: "Do I need to know how to trade?",
+              a: "No. IMALI is designed to be beginner friendly, with automation and a cleaner dashboard experience.",
+            },
+            {
+              q: "What will I see on the dashboard?",
+              a: "You can track current status, active bots, total trades, total P&L, and win/loss performance from the home dashboard preview and the full live dashboard.",
+            },
+            {
+              q: "Can I earn by inviting friends?",
+              a: "Yes. The referral program lets eligible users share their link and earn rewards when referred users join and activate.",
+            },
+            {
+              q: "Can I stop anytime?",
+              a: "Yes. You can pause or stop participating depending on your connected services and plan setup.",
+            },
+            {
+              q: "Is IMALI custodying my funds?",
+              a: "No. Funds remain in your own connected account. IMALI is built around connection and automation rather than custody.",
+            },
           ].map((item, i) => (
-            <details key={i} className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-              <summary className="flex cursor-pointer items-center justify-between p-4 text-sm transition-colors hover:bg-gray-50">
+            <details
+              key={i}
+              className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+            >
+              <summary className="flex cursor-pointer items-center justify-between p-4 text-sm transition-colors hover:bg-gray-50 sm:p-5 sm:text-base">
                 <span className="pr-4 font-medium text-gray-900">{item.q}</span>
-                <span className="flex-shrink-0 text-lg text-gray-400 transition-transform group-open:rotate-45">
+                <span className="flex-shrink-0 text-lg text-gray-400 transition-transform group-open:rotate-45 sm:text-xl">
                   +
                 </span>
               </summary>
-              <div className="px-4 pb-4 text-sm text-gray-600">{item.a}</div>
+              <div className="px-4 pb-4 text-xs leading-relaxed text-gray-600 sm:px-5 sm:pb-5 sm:text-sm">
+                {item.a}
+              </div>
             </details>
           ))}
         </div>
@@ -1115,33 +1367,61 @@ export default function Home() {
       {/* FINAL CTA */}
       <section className="bg-gradient-to-b from-white to-gray-50 px-4 py-14 text-center sm:py-20">
         <div className="mx-auto max-w-2xl">
-          <div className="mb-3 text-4xl">🚀</div>
-          <h2 className="mb-3 text-2xl font-bold text-gray-900">
-            Ready to Start Trading?
+          <div className="mb-3 text-4xl sm:mb-4 sm:text-5xl">🚀</div>
+          <h2 className="mb-3 text-2xl font-bold text-gray-900 sm:mb-4 sm:text-3xl md:text-4xl">
+            Ready to Trade and Earn More?
           </h2>
-          <p className="mb-6 text-base text-gray-600">
-            Join thousands of traders using AI to automate their trading
+          <p className="mb-6 px-2 text-base text-gray-600 sm:mb-8 sm:text-lg">
+            Start with automated trading for stock and crypto, then grow with
+            live dashboard tracking and referral rewards.
           </p>
 
-          <div className="flex flex-col justify-center gap-3 sm:flex-row">
+          <div className="flex flex-col justify-center gap-3 px-2 sm:flex-row sm:gap-4 sm:px-0">
             <Link
-              to="/signup"
-              className="rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 px-8 py-4 text-base font-bold text-white shadow-xl hover:from-indigo-500 hover:to-purple-500"
+              to="/pricing"
+              className="rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 px-8 py-4 text-base font-bold text-white shadow-xl hover:from-indigo-500 hover:to-purple-500 sm:px-12 sm:py-5 sm:text-lg"
             >
-              Create Free Account
+              View Plans & Pricing
             </Link>
 
             <Link
               to="/referrals"
-              className="rounded-full border-2 border-amber-200 bg-white px-8 py-4 text-base font-bold text-amber-700 hover:bg-amber-50"
+              className="rounded-full border-2 border-amber-200 bg-white px-8 py-4 text-base font-bold text-amber-700 transition-all hover:bg-amber-50 sm:px-12 sm:py-5 sm:text-lg"
             >
               Referral Program
             </Link>
           </div>
 
-          <p className="mt-5 text-xs text-gray-500">
-            No credit card required • Cancel anytime
+          <p className="mt-5 text-[11px] text-gray-500 sm:mt-6 sm:text-xs">
+            No credit card required • Cancel anytime • Referral rewards available
           </p>
+        </div>
+      </section>
+
+      {/* FOOTER LINKS */}
+      <section className="border-t border-gray-200 bg-white py-6 sm:py-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-2 px-4 text-xs text-gray-500 sm:gap-6 sm:text-sm">
+          <Link to="/how-it-works" className="py-1 transition-colors hover:text-gray-900">
+            How It Works
+          </Link>
+          <Link to="/pricing" className="py-1 transition-colors hover:text-gray-900">
+            Pricing
+          </Link>
+          <Link to="/referrals" className="py-1 text-amber-700 transition-colors hover:text-amber-800">
+            Referrals
+          </Link>
+          <Link to="/support" className="py-1 transition-colors hover:text-gray-900">
+            Support
+          </Link>
+          <Link to="/privacy" className="py-1 transition-colors hover:text-gray-900">
+            Privacy
+          </Link>
+          <Link to="/terms" className="py-1 transition-colors hover:text-gray-900">
+            Terms
+          </Link>
+          <Link to="/live" className="py-1 text-emerald-600 transition-colors hover:text-emerald-700">
+            Live
+          </Link>
         </div>
       </section>
     </div>
