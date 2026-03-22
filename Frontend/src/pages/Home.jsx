@@ -32,13 +32,15 @@ ChartJS.register(
    CONFIG
 ============================================================ */
 
-// Use environment variable or fallback to empty string for client-side only
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "";
+const API_BASE = "https://api.imali-defi.com";
 
-const LIVE_STATS_URL = API_BASE ? `${API_BASE}/api/public/live-stats` : null;
-const PROMO_STATUS_URL = API_BASE ? `${API_BASE}/api/promo/status` : null;
-const PROMO_CLAIM_URL = API_BASE ? `${API_BASE}/api/promo/claim` : null;
-const ANALYTICS_SUMMARY_URL = API_BASE ? `${API_BASE}/api/analytics/summary` : null;
+const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
+const PROMO_STATUS_URL = `${API_BASE}/api/promo/status`;
+const PROMO_CLAIM_URL = `${API_BASE}/api/promo/claim`;
+const ANALYTICS_SUMMARY_URL = `${API_BASE}/api/analytics/summary`;
+const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
+const TRADES_URL = `${API_BASE}/api/trades/recent`;
+const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
 
 /* ============================================================
    HELPERS
@@ -53,174 +55,6 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function collectRecentTrades(data = {}, limit = 20) {
-  const combined = [
-    ...normalizeArray(data?.recent_trades),
-    ...normalizeArray(data?.sniper?.trades),
-    ...normalizeArray(data?.sniper?.discoveries),
-    ...normalizeArray(data?.okx?.recent_trades),
-    ...normalizeArray(data?.okx?.trades),
-    ...normalizeArray(data?.futures?.recent_trades),
-    ...normalizeArray(data?.futures?.trades),
-    ...normalizeArray(data?.stocks?.recent_trades),
-    ...normalizeArray(data?.stocks?.trades),
-  ];
-
-  const seen = new Set();
-  const unique = [];
-
-  for (const trade of combined) {
-    if (!trade) continue;
-    
-    const key =
-      trade?.id ||
-      [
-        trade?.symbol,
-        trade?.side,
-        trade?.created_at || trade?.timestamp,
-        trade?.pnl_usd || trade?.pnl || trade?.price,
-      ].join("|");
-
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(trade);
-    }
-  }
-
-  if (unique.length === 0) {
-    const now = Date.now();
-    return [
-      {
-        id: "demo-1",
-        symbol: "BTC/USD",
-        side: "buy",
-        pnl_percent: 2.4,
-        pnl_usd: 180.22,
-        created_at: new Date(now - 8 * 60000).toISOString(),
-        bot: "futures",
-      },
-      {
-        id: "demo-2",
-        symbol: "ETH/USD",
-        side: "sell",
-        pnl_percent: -1.1,
-        pnl_usd: -72.14,
-        created_at: new Date(now - 22 * 60000).toISOString(),
-        bot: "okx",
-      },
-      {
-        id: "demo-3",
-        symbol: "SOL/USD",
-        side: "buy",
-        pnl_percent: 3.8,
-        pnl_usd: 205.41,
-        created_at: new Date(now - 39 * 60000).toISOString(),
-        bot: "sniper",
-      },
-      {
-        id: "demo-4",
-        symbol: "AAPL",
-        side: "buy",
-        pnl_percent: 1.2,
-        pnl_usd: 34.88,
-        created_at: new Date(now - 75 * 60000).toISOString(),
-        bot: "stocks",
-      },
-      {
-        id: "demo-5",
-        symbol: "TSLA",
-        side: "sell",
-        pnl_percent: -0.7,
-        pnl_usd: -18.64,
-        created_at: new Date(now - 110 * 60000).toISOString(),
-        bot: "stocks",
-      },
-    ].slice(0, limit);
-  }
-
-  return unique
-    .sort((a, b) => {
-      const tA = new Date(a?.created_at || a?.timestamp || 0).getTime();
-      const tB = new Date(b?.created_at || b?.timestamp || 0).getTime();
-      return tB - tA;
-    })
-    .slice(0, limit);
-}
-
-function getBotStatuses(data = {}) {
-  return [
-    {
-      label: "Futures",
-      live:
-        data?.futures?.status === "operational" ||
-        data?.futures?.status === "running" ||
-        safeNumber(data?.futures?.positions_count, 0) > 0 ||
-        normalizeArray(data?.futures?.trades).length > 0,
-    },
-    {
-      label: "Stocks",
-      live:
-        data?.stocks?.running === true ||
-        data?.stocks?.status === "operational" ||
-        safeNumber(data?.stocks?.positions_count, 0) > 0 ||
-        normalizeArray(data?.stocks?.trades).length > 0,
-    },
-    {
-      label: "Sniper",
-      live:
-        data?.sniper?.status === "scanning" ||
-        data?.sniper?.status === "monitoring" ||
-        data?.sniper?.status === "running" ||
-        normalizeArray(data?.sniper?.trades).length > 0 ||
-        normalizeArray(data?.sniper?.discoveries).length > 0,
-    },
-    {
-      label: "OKX",
-      live:
-        data?.okx?.status === "running" ||
-        safeNumber(data?.okx?.positions_count, 0) > 0 ||
-        safeNumber(data?.okx?.total_trades, 0) > 0 ||
-        normalizeArray(data?.okx?.trades).length > 0,
-    },
-  ];
-}
-
-function calculateTradeMetrics(trades = []) {
-  let wins = 0;
-  let losses = 0;
-  let totalPnL = 0;
-
-  for (const trade of trades) {
-    const pnl =
-      trade?.pnl_usd ??
-      trade?.pnl ??
-      trade?.profit ??
-      trade?.realized_pnl ??
-      null;
-
-    if (pnl !== null && pnl !== undefined && Number.isFinite(Number(pnl))) {
-      const n = Number(pnl);
-      totalPnL += n;
-      if (n > 0) wins += 1;
-      if (n < 0) losses += 1;
-    } else {
-      const pct = trade?.pnl_percent;
-      if (pct !== null && pct !== undefined && Number.isFinite(Number(pct))) {
-        const n = Number(pct);
-        if (n > 0) wins += 1;
-        if (n < 0) losses += 1;
-      }
-    }
-  }
-
-  return {
-    totalTrades: trades.length,
-    totalPnL,
-    wins,
-    losses,
-  };
-}
-
 function formatCurrency(value) {
   const n = safeNumber(value, 0);
   const sign = n >= 0 ? "+" : "-";
@@ -232,6 +66,20 @@ function formatNumber(value) {
   return n.toLocaleString();
 }
 
+function timeAgo(timestamp) {
+  if (!timestamp) return "";
+  try {
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return `${Math.floor(diffMins / 1440)}d ago`;
+  } catch {
+    return "";
+  }
+}
+
 function buildActivitySeries(trades = []) {
   if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
 
@@ -239,17 +87,10 @@ function buildActivitySeries(trades = []) {
     .slice(0, 7)
     .reverse()
     .map((trade, index) => {
-      const usd = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
-      const pct = trade?.pnl_percent ?? null;
-
-      if (usd !== null && usd !== undefined && Number.isFinite(Number(usd))) {
+      const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
+      if (usd !== null && Number.isFinite(Number(usd))) {
         return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
       }
-
-      if (pct !== null && pct !== undefined && Number.isFinite(Number(pct))) {
-        return Math.max(2, Math.min(16, Math.abs(Number(pct)) * 2 + 3));
-      }
-
       return index + 4;
     });
 }
@@ -264,35 +105,16 @@ function usePromoStatus() {
     claimed: 0,
     spotsLeft: 50,
     active: true,
-    loading: false,
+    loading: true,
     error: null,
   });
 
   useEffect(() => {
-    // If API_BASE is not configured, use demo data
-    if (!PROMO_STATUS_URL) {
-      setState({
-        limit: 50,
-        claimed: 12,
-        spotsLeft: 38,
-        active: true,
-        loading: false,
-        error: null,
-      });
-      return;
-    }
-
     let mounted = true;
 
     const load = async () => {
       try {
         const res = await axios.get(PROMO_STATUS_URL, { timeout: 6000 });
-        
-        // Check if response is HTML (invalid)
-        if (typeof res.data === 'string' && res.data.includes('<!doctype')) {
-          throw new Error('Invalid API response');
-        }
-        
         const data = res.data || {};
         const limit = safeNumber(data.limit, 50);
         const claimed = safeNumber(data.claimed, 0);
@@ -310,16 +132,11 @@ function usePromoStatus() {
       } catch (err) {
         console.error("Failed to fetch promo status:", err);
         if (!mounted) return;
-        
-        // Use fallback data
-        setState({
-          limit: 50,
-          claimed: 12,
-          spotsLeft: 38,
-          active: true,
+        setState((prev) => ({
+          ...prev,
           loading: false,
-          error: "Demo mode - API unavailable",
-        });
+          error: null,
+        }));
       }
     };
 
@@ -345,17 +162,6 @@ function usePromoClaim() {
 
   const claim = async (email) => {
     if (!email) return false;
-    
-    // If API is not configured, simulate success
-    if (!PROMO_CLAIM_URL) {
-      setState({
-        loading: false,
-        success: true,
-        error: null,
-        data: { message: "Demo mode - claim successful" },
-      });
-      return true;
-    }
 
     setState({
       loading: true,
@@ -380,8 +186,7 @@ function usePromoClaim() {
 
       return true;
     } catch (err) {
-      const msg =
-        err?.response?.data?.message || "Spot already taken or promo full";
+      const msg = err?.response?.data?.message || "Spot already taken or promo full";
 
       setState({
         loading: false,
@@ -409,216 +214,113 @@ function useLiveActivity() {
   const [activity, setActivity] = useState({
     trades: [],
     stats: {
-      currentStatus: "Demo",
-      activeBots: 2,
+      currentStatus: "Loading...",
+      activeBots: 0,
       totalTrades: 0,
       totalPnL: 0,
       wins: 0,
       losses: 0,
       online: false,
-      botStatuses: [
-        { label: "Futures", live: true },
-        { label: "Stocks", live: false },
-        { label: "Sniper", live: true },
-        { label: "OKX", live: false },
-      ],
+      botStatuses: [],
     },
     loading: true,
     error: null,
   });
 
   useEffect(() => {
-    // If API is not configured, use demo data immediately
-    if (!LIVE_STATS_URL) {
-      const now = Date.now();
-      const demoTrades = [
-        {
-          id: "demo-1",
-          symbol: "BTC/USD",
-          side: "buy",
-          pnl_usd: 180.22,
-          created_at: new Date(now - 8 * 60000).toISOString(),
-          bot: "futures",
-        },
-        {
-          id: "demo-2",
-          symbol: "ETH/USD",
-          side: "sell",
-          pnl_usd: -72.14,
-          created_at: new Date(now - 22 * 60000).toISOString(),
-          bot: "okx",
-        },
-        {
-          id: "demo-3",
-          symbol: "SOL/USD",
-          side: "buy",
-          pnl_usd: 205.41,
-          created_at: new Date(now - 39 * 60000).toISOString(),
-          bot: "sniper",
-        },
-        {
-          id: "demo-4",
-          symbol: "AAPL",
-          side: "buy",
-          pnl_usd: 34.88,
-          created_at: new Date(now - 75 * 60000).toISOString(),
-          bot: "stocks",
-        },
-      ];
-      
-      const metrics = calculateTradeMetrics(demoTrades);
-      
-      setActivity({
-        trades: demoTrades,
-        stats: {
-          currentStatus: "Demo",
-          activeBots: 2,
-          totalTrades: metrics.totalTrades,
-          totalPnL: metrics.totalPnL,
-          wins: metrics.wins,
-          losses: metrics.losses,
-          online: true,
-          botStatuses: [
-            { label: "Futures", live: true },
-            { label: "Stocks", live: false },
-            { label: "Sniper", live: true },
-            { label: "OKX", live: false },
-          ],
-        },
-        loading: false,
-        error: "Demo mode - Connect API for live data",
-      });
-      return;
-    }
-
     let mounted = true;
-    let retryCount = 0;
-    const maxRetries = 3;
 
     const fetchActivity = async () => {
       try {
-        const liveResponse = await axios.get(LIVE_STATS_URL, { timeout: 8000 });
-        
-        // Check if response is HTML (invalid)
-        if (typeof liveResponse.data === 'string' && liveResponse.data.includes('<!doctype')) {
-          throw new Error('Invalid API response');
-        }
-
-        let summaryData = {};
-        try {
-          if (ANALYTICS_SUMMARY_URL) {
-            const summaryResponse = await axios.get(ANALYTICS_SUMMARY_URL, {
-              timeout: 5000,
-            });
-            summaryData = summaryResponse.data || {};
-          }
-        } catch {
-          // fallback silently
-        }
+        // Fetch all data in parallel
+        const [liveStatsRes, botStatusRes, tradesRes] = await Promise.allSettled([
+          axios.get(LIVE_STATS_URL, { timeout: 8000 }),
+          axios.get(BOT_STATUS_URL, { timeout: 8000 }),
+          axios.get(TRADES_URL, { timeout: 8000 }),
+        ]);
 
         if (!mounted) return;
 
-        const data = liveResponse.data || {};
-        const trades = collectRecentTrades(data, 20);
-        const botStatuses = getBotStatuses(data);
-        const activeBots = botStatuses.filter((b) => b.live).length;
-        const online = activeBots > 0;
+        // Process bot statuses
+        let botStatuses = [];
+        let activeBots = 0;
+        let online = false;
 
-        const computedMetrics = calculateTradeMetrics(trades);
+        if (botStatusRes.status === "fulfilled" && botStatusRes.value.data?.bots) {
+          const bots = botStatusRes.value.data.bots;
+          botStatuses = bots.map(bot => ({
+            label: bot.name?.replace(" Bot", "") || "Unknown",
+            live: bot.status === "operational" || bot.status === "scanning" || bot.status === "running",
+            details: bot,
+          }));
+          activeBots = botStatuses.filter(b => b.live).length;
+          online = activeBots > 0;
+        } else {
+          // Fallback bot statuses
+          botStatuses = [
+            { label: "Futures", live: false, details: null },
+            { label: "Stocks", live: false, details: null },
+            { label: "Sniper", live: false, details: null },
+            { label: "OKX", live: false, details: null },
+          ];
+        }
 
-        const summary = summaryData?.summary || summaryData || {};
+        // Process trades
+        let trades = [];
+        let totalTrades = 0;
+        let totalPnL = 0;
+        let wins = 0;
+        let losses = 0;
 
-        const totalTrades = safeNumber(summary?.total_trades, NaN);
-        const totalPnL = safeNumber(summary?.total_pnl, NaN);
-        const wins = safeNumber(summary?.wins, NaN);
-        const losses = safeNumber(summary?.losses, NaN);
+        if (tradesRes.status === "fulfilled" && tradesRes.value.data?.trades) {
+          trades = tradesRes.value.data.trades;
+          totalTrades = trades.length;
+          
+          trades.forEach(trade => {
+            const pnl = trade.pnl_usd || trade.pnl || 0;
+            totalPnL += pnl;
+            if (pnl > 0) wins++;
+            if (pnl < 0) losses++;
+          });
+        }
+
+        // Also try to get analytics summary
+        try {
+          const analyticsRes = await axios.get(ANALYTICS_SUMMARY_URL, { timeout: 5000 });
+          if (analyticsRes.data?.summary) {
+            totalTrades = analyticsRes.data.summary.total_trades || totalTrades;
+            totalPnL = analyticsRes.data.summary.total_pnl || totalPnL;
+            wins = analyticsRes.data.summary.wins || wins;
+            losses = analyticsRes.data.summary.losses || losses;
+          }
+        } catch (e) {
+          // Use calculated values
+        }
 
         setActivity({
-          trades,
+          trades: trades.slice(0, 20),
           stats: {
             currentStatus: online ? "Live" : "Offline",
             activeBots,
-            totalTrades: Number.isFinite(totalTrades)
-              ? totalTrades
-              : computedMetrics.totalTrades,
-            totalPnL: Number.isFinite(totalPnL)
-              ? totalPnL
-              : computedMetrics.totalPnL,
-            wins: Number.isFinite(wins) ? wins : computedMetrics.wins,
-            losses: Number.isFinite(losses) ? losses : computedMetrics.losses,
+            totalTrades,
+            totalPnL,
+            wins,
+            losses,
             online,
             botStatuses,
           },
           loading: false,
           error: null,
         });
-
-        retryCount = 0;
       } catch (error) {
         console.error("Live activity fetch error:", error);
-
         if (!mounted) return;
 
-        if (retryCount >= maxRetries) {
-          // Use demo data as fallback
-          const now = Date.now();
-          const fallbackTrades = [
-            {
-              id: "fallback-1",
-              symbol: "BTC/USD",
-              side: "buy",
-              pnl_usd: 180.22,
-              created_at: new Date(now - 8 * 60000).toISOString(),
-              bot: "futures",
-            },
-            {
-              id: "fallback-2",
-              symbol: "ETH/USD",
-              side: "sell",
-              pnl_usd: -72.14,
-              created_at: new Date(now - 22 * 60000).toISOString(),
-              bot: "okx",
-            },
-            {
-              id: "fallback-3",
-              symbol: "SOL/USD",
-              side: "buy",
-              pnl_usd: 205.41,
-              created_at: new Date(now - 39 * 60000).toISOString(),
-              bot: "sniper",
-            },
-          ];
-          
-          const metrics = calculateTradeMetrics(fallbackTrades);
-          
-          setActivity({
-            trades: fallbackTrades,
-            stats: {
-              currentStatus: "Demo",
-              activeBots: 2,
-              totalTrades: metrics.totalTrades,
-              totalPnL: metrics.totalPnL,
-              wins: metrics.wins,
-              losses: metrics.losses,
-              online: false,
-              botStatuses: [
-                { label: "Futures", live: true },
-                { label: "Stocks", live: false },
-                { label: "Sniper", live: true },
-                { label: "OKX", live: false },
-              ],
-            },
-            loading: false,
-            error: "Demo mode - API unavailable",
-          });
-        } else {
-          retryCount++;
-          setActivity((prev) => ({
-            ...prev,
-            loading: true,
-            error: "Connecting...",
-          }));
-        }
+        setActivity((prev) => ({
+          ...prev,
+          loading: false,
+          error: "Unable to fetch live data",
+        }));
       }
     };
 
@@ -770,20 +472,6 @@ function StatMiniCard({ title, value, valueClassName = "text-gray-900" }) {
 ============================================================ */
 
 function LiveActivityWidget({ activity }) {
-  const formatTime = (ts) => {
-    if (!ts) return "";
-    try {
-      const diffMs = Date.now() - new Date(ts).getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      if (diffMins < 1) return "just now";
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-      return `${Math.floor(diffMins / 1440)}d ago`;
-    } catch {
-      return "";
-    }
-  };
-
   const series = buildActivitySeries(activity.trades);
 
   const chartData = useMemo(
@@ -877,9 +565,11 @@ function LiveActivityWidget({ activity }) {
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Dashboard Snapshot
+              Bot Activity
             </p>
-            <p className="text-sm text-gray-500">Live activity and recent performance</p>
+            <p className="text-sm text-gray-500">
+              {stats.online ? `${stats.activeBots} bots active` : "No active bots"}
+            </p>
           </div>
 
           <div
@@ -900,11 +590,6 @@ function LiveActivityWidget({ activity }) {
 
       <div className="mb-4 grid grid-cols-2 gap-3">
         <StatMiniCard
-          title="Current Status"
-          value={stats.currentStatus}
-          valueClassName={stats.online ? "text-emerald-600" : "text-gray-600"}
-        />
-        <StatMiniCard
           title="Active Bots"
           value={stats.activeBots}
           valueClassName="text-indigo-600"
@@ -919,47 +604,54 @@ function LiveActivityWidget({ activity }) {
           value={formatCurrency(stats.totalPnL)}
           valueClassName={stats.totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}
         />
-      </div>
-
-      <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
-        <div className="mb-2 text-[10px] uppercase tracking-wide text-gray-500">
-          Win/Loss
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-emerald-600">
-            Wins: {stats.wins}
-          </span>
-          <span className="text-sm font-semibold text-red-600">
-            Losses: {stats.losses}
-          </span>
-        </div>
+        <StatMiniCard
+          title="Win Rate"
+          value={stats.totalTrades > 0 ? `${((stats.wins / stats.totalTrades) * 100).toFixed(1)}%` : "0%"}
+          valueClassName="text-emerald-600"
+        />
       </div>
 
       <div className="mb-4">
         <div className="mb-2 text-[10px] uppercase tracking-wide text-gray-500">
           Bot Status
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {stats.botStatuses.map((bot) => (
-            <div
-              key={bot.label}
-              className="flex items-center justify-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs"
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  bot.live ? "bg-emerald-500" : "bg-gray-300"
+        <div className="grid grid-cols-2 gap-2">
+          {stats.botStatuses.length > 0 ? (
+            stats.botStatuses.map((bot) => (
+              <div
+                key={bot.label}
+                className={`flex items-center justify-between gap-2 rounded-lg border p-3 text-xs ${
+                  bot.live 
+                    ? "border-emerald-200 bg-emerald-50" 
+                    : "border-gray-200 bg-gray-50"
                 }`}
-              />
-              <span className={bot.live ? "text-gray-800" : "text-gray-500"}>
-                {bot.label}
-              </span>
-            </div>
-          ))}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      bot.live ? "bg-emerald-500 animate-pulse" : "bg-gray-400"
+                    }`}
+                  />
+                  <span className={bot.live ? "font-semibold text-gray-800" : "text-gray-500"}>
+                    {bot.label}
+                  </span>
+                </div>
+                {bot.live && bot.details && (
+                  <span className="text-[10px] text-emerald-600">
+                    {bot.details.positions !== undefined && `${bot.details.positions} pos`}
+                    {bot.details.discoveries !== undefined && ` • ${bot.details.discoveries} new`}
+                  </span>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="col-span-2 text-center text-gray-400 py-2">No bot data available</div>
+          )}
         </div>
       </div>
 
       {activity.error && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 py-3 text-center text-xs text-amber-700">
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 py-3 text-center text-xs text-amber-700">
           ⚠️ {activity.error}
         </div>
       )}
@@ -971,7 +663,7 @@ function LiveActivityWidget({ activity }) {
           trades.slice(0, 4).map((trade, i) => {
             const side = String(trade?.side || "buy").toLowerCase();
             const isBuy = side === "buy" || side === "long";
-            const pnlValue = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
+            const pnlValue = trade?.pnl_usd ?? trade?.pnl ?? null;
 
             return (
               <div
@@ -1003,7 +695,7 @@ function LiveActivityWidget({ activity }) {
                       </span>
 
                       <span className="text-[10px] text-gray-500">
-                        {formatTime(trade?.created_at || trade?.timestamp)}
+                        {timeAgo(trade?.created_at || trade?.timestamp)}
                       </span>
                     </div>
                   </div>
@@ -1048,7 +740,6 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
 
-  // Extract YouTube Shorts video ID from URL
   const videoId = "x6Dvj1ALs-w";
 
   return (
@@ -1066,7 +757,6 @@ export default function Home() {
           ></iframe>
         </div>
         
-        {/* Sound Control Button */}
         <button
           onClick={() => setIsMuted(!isMuted)}
           className="absolute bottom-4 right-4 z-10 rounded-full bg-black/70 p-3 text-white backdrop-blur-sm transition-all hover:bg-black/90"
@@ -1085,7 +775,7 @@ export default function Home() {
         </button>
       </div>
 
-      {/* PROMO SECTION - RIGHT AFTER VIDEO */}
+      {/* PROMO SECTION */}
       <section className="mx-auto max-w-3xl px-3 py-10 sm:px-4 sm:py-12">
         <Card className="p-5 sm:p-6 shadow-xl">
           <div className="mb-4 flex items-start gap-3 sm:items-center">
@@ -1102,16 +792,10 @@ export default function Home() {
           </div>
 
           <div className="mb-4 space-y-2 rounded-xl border border-gray-100 bg-gradient-to-r from-emerald-50 to-cyan-50 p-4">
-            <FeatureRow
-              icon="✅"
-              label="Only 5% fee on profits over 3% (normally 30%)"
-            />
+            <FeatureRow icon="✅" label="Only 5% fee on profits over 3% (normally 30%)" />
             <FeatureRow icon="✅" label="Locked in for 90 days" />
             <FeatureRow icon="✅" label="Full access to all bot features" />
-            <FeatureRow
-              icon="✅"
-              label="Referral program available for users who invite others"
-            />
+            <FeatureRow icon="✅" label="Referral program available for users who invite others" />
           </div>
 
           <PromoMeter
@@ -1611,7 +1295,7 @@ export default function Home() {
             Terms
           </Link>
           <Link to="/live" className="py-1 text-emerald-600 transition-colors hover:text-emerald-700">
-            Live
+            Live Dashboard
           </Link>
         </div>
       </section>
