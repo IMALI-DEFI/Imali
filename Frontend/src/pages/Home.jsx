@@ -32,14 +32,13 @@ ChartJS.register(
    CONFIG
 ============================================================ */
 
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
-  "https://api.imali-defi.com";
+// Use environment variable or fallback to empty string for client-side only
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "";
 
-const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
-const PROMO_STATUS_URL = `${API_BASE}/api/promo/status`;
-const PROMO_CLAIM_URL = `${API_BASE}/api/promo/claim`;
-const ANALYTICS_SUMMARY_URL = `${API_BASE}/api/analytics/summary`;
+const LIVE_STATS_URL = API_BASE ? `${API_BASE}/api/public/live-stats` : null;
+const PROMO_STATUS_URL = API_BASE ? `${API_BASE}/api/promo/status` : null;
+const PROMO_CLAIM_URL = API_BASE ? `${API_BASE}/api/promo/claim` : null;
+const ANALYTICS_SUMMARY_URL = API_BASE ? `${API_BASE}/api/analytics/summary` : null;
 
 /* ============================================================
    HELPERS
@@ -265,16 +264,35 @@ function usePromoStatus() {
     claimed: 0,
     spotsLeft: 50,
     active: true,
-    loading: true,
+    loading: false,
     error: null,
   });
 
   useEffect(() => {
+    // If API_BASE is not configured, use demo data
+    if (!PROMO_STATUS_URL) {
+      setState({
+        limit: 50,
+        claimed: 12,
+        spotsLeft: 38,
+        active: true,
+        loading: false,
+        error: null,
+      });
+      return;
+    }
+
     let mounted = true;
 
     const load = async () => {
       try {
         const res = await axios.get(PROMO_STATUS_URL, { timeout: 6000 });
+        
+        // Check if response is HTML (invalid)
+        if (typeof res.data === 'string' && res.data.includes('<!doctype')) {
+          throw new Error('Invalid API response');
+        }
+        
         const data = res.data || {};
         const limit = safeNumber(data.limit, 50);
         const claimed = safeNumber(data.claimed, 0);
@@ -292,11 +310,16 @@ function usePromoStatus() {
       } catch (err) {
         console.error("Failed to fetch promo status:", err);
         if (!mounted) return;
-        setState((prev) => ({
-          ...prev,
+        
+        // Use fallback data
+        setState({
+          limit: 50,
+          claimed: 12,
+          spotsLeft: 38,
+          active: true,
           loading: false,
-          error: "Promo unavailable",
-        }));
+          error: "Demo mode - API unavailable",
+        });
       }
     };
 
@@ -322,6 +345,17 @@ function usePromoClaim() {
 
   const claim = async (email) => {
     if (!email) return false;
+    
+    // If API is not configured, simulate success
+    if (!PROMO_CLAIM_URL) {
+      setState({
+        loading: false,
+        success: true,
+        error: null,
+        data: { message: "Demo mode - claim successful" },
+      });
+      return true;
+    }
 
     setState({
       loading: true,
@@ -375,17 +409,17 @@ function useLiveActivity() {
   const [activity, setActivity] = useState({
     trades: [],
     stats: {
-      currentStatus: "Offline",
-      activeBots: 0,
+      currentStatus: "Demo",
+      activeBots: 2,
       totalTrades: 0,
       totalPnL: 0,
       wins: 0,
       losses: 0,
       online: false,
       botStatuses: [
-        { label: "Futures", live: false },
+        { label: "Futures", live: true },
         { label: "Stocks", live: false },
-        { label: "Sniper", live: false },
+        { label: "Sniper", live: true },
         { label: "OKX", live: false },
       ],
     },
@@ -394,6 +428,69 @@ function useLiveActivity() {
   });
 
   useEffect(() => {
+    // If API is not configured, use demo data immediately
+    if (!LIVE_STATS_URL) {
+      const now = Date.now();
+      const demoTrades = [
+        {
+          id: "demo-1",
+          symbol: "BTC/USD",
+          side: "buy",
+          pnl_usd: 180.22,
+          created_at: new Date(now - 8 * 60000).toISOString(),
+          bot: "futures",
+        },
+        {
+          id: "demo-2",
+          symbol: "ETH/USD",
+          side: "sell",
+          pnl_usd: -72.14,
+          created_at: new Date(now - 22 * 60000).toISOString(),
+          bot: "okx",
+        },
+        {
+          id: "demo-3",
+          symbol: "SOL/USD",
+          side: "buy",
+          pnl_usd: 205.41,
+          created_at: new Date(now - 39 * 60000).toISOString(),
+          bot: "sniper",
+        },
+        {
+          id: "demo-4",
+          symbol: "AAPL",
+          side: "buy",
+          pnl_usd: 34.88,
+          created_at: new Date(now - 75 * 60000).toISOString(),
+          bot: "stocks",
+        },
+      ];
+      
+      const metrics = calculateTradeMetrics(demoTrades);
+      
+      setActivity({
+        trades: demoTrades,
+        stats: {
+          currentStatus: "Demo",
+          activeBots: 2,
+          totalTrades: metrics.totalTrades,
+          totalPnL: metrics.totalPnL,
+          wins: metrics.wins,
+          losses: metrics.losses,
+          online: true,
+          botStatuses: [
+            { label: "Futures", live: true },
+            { label: "Stocks", live: false },
+            { label: "Sniper", live: true },
+            { label: "OKX", live: false },
+          ],
+        },
+        loading: false,
+        error: "Demo mode - Connect API for live data",
+      });
+      return;
+    }
+
     let mounted = true;
     let retryCount = 0;
     const maxRetries = 3;
@@ -401,13 +498,20 @@ function useLiveActivity() {
     const fetchActivity = async () => {
       try {
         const liveResponse = await axios.get(LIVE_STATS_URL, { timeout: 8000 });
+        
+        // Check if response is HTML (invalid)
+        if (typeof liveResponse.data === 'string' && liveResponse.data.includes('<!doctype')) {
+          throw new Error('Invalid API response');
+        }
 
         let summaryData = {};
         try {
-          const summaryResponse = await axios.get(ANALYTICS_SUMMARY_URL, {
-            timeout: 5000,
-          });
-          summaryData = summaryResponse.data || {};
+          if (ANALYTICS_SUMMARY_URL) {
+            const summaryResponse = await axios.get(ANALYTICS_SUMMARY_URL, {
+              timeout: 5000,
+            });
+            summaryData = summaryResponse.data || {};
+          }
         } catch {
           // fallback silently
         }
@@ -456,11 +560,57 @@ function useLiveActivity() {
         if (!mounted) return;
 
         if (retryCount >= maxRetries) {
-          setActivity((prev) => ({
-            ...prev,
+          // Use demo data as fallback
+          const now = Date.now();
+          const fallbackTrades = [
+            {
+              id: "fallback-1",
+              symbol: "BTC/USD",
+              side: "buy",
+              pnl_usd: 180.22,
+              created_at: new Date(now - 8 * 60000).toISOString(),
+              bot: "futures",
+            },
+            {
+              id: "fallback-2",
+              symbol: "ETH/USD",
+              side: "sell",
+              pnl_usd: -72.14,
+              created_at: new Date(now - 22 * 60000).toISOString(),
+              bot: "okx",
+            },
+            {
+              id: "fallback-3",
+              symbol: "SOL/USD",
+              side: "buy",
+              pnl_usd: 205.41,
+              created_at: new Date(now - 39 * 60000).toISOString(),
+              bot: "sniper",
+            },
+          ];
+          
+          const metrics = calculateTradeMetrics(fallbackTrades);
+          
+          setActivity({
+            trades: fallbackTrades,
+            stats: {
+              currentStatus: "Demo",
+              activeBots: 2,
+              totalTrades: metrics.totalTrades,
+              totalPnL: metrics.totalPnL,
+              wins: metrics.wins,
+              losses: metrics.losses,
+              online: false,
+              botStatuses: [
+                { label: "Futures", live: true },
+                { label: "Stocks", live: false },
+                { label: "Sniper", live: true },
+                { label: "OKX", live: false },
+              ],
+            },
             loading: false,
-            error: "Live data temporarily unavailable",
-          }));
+            error: "Demo mode - API unavailable",
+          });
         } else {
           retryCount++;
           setActivity((prev) => ({
@@ -808,79 +958,79 @@ function LiveActivityWidget({ activity }) {
         </div>
       </div>
 
-      {activity.error ? (
+      {activity.error && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 py-3 text-center text-xs text-amber-700">
           ⚠️ {activity.error}
         </div>
-      ) : (
-        <div className="space-y-2">
-          <h4 className="mb-1 text-xs font-semibold text-gray-500">Recent Trades</h4>
+      )}
 
-          {trades.length > 0 ? (
-            trades.slice(0, 4).map((trade, i) => {
-              const side = String(trade?.side || "buy").toLowerCase();
-              const isBuy = side === "buy" || side === "long";
-              const pnlValue = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
+      <div className="space-y-2">
+        <h4 className="mb-1 text-xs font-semibold text-gray-500">Recent Trades</h4>
 
-              return (
-                <div
-                  key={trade?.id || i}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs"
-                >
-                  <div className="min-w-0 flex items-center gap-2">
-                    <span className="text-sm">
-                      {trade?.bot === "futures" && "📈"}
-                      {trade?.bot === "okx" && "🔷"}
-                      {trade?.bot === "sniper" && "🎯"}
-                      {trade?.bot === "stocks" && "📊"}
-                      {!trade?.bot && "📊"}
-                    </span>
+        {trades.length > 0 ? (
+          trades.slice(0, 4).map((trade, i) => {
+            const side = String(trade?.side || "buy").toLowerCase();
+            const isBuy = side === "buy" || side === "long";
+            const pnlValue = trade?.pnl_usd ?? trade?.pnl ?? trade?.profit ?? null;
 
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-gray-800">
-                        {trade?.symbol || "Unknown"}
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-2">
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] ${
-                            isBuy
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {side.toUpperCase()}
-                        </span>
+            return (
+              <div
+                key={trade?.id || i}
+                className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs"
+              >
+                <div className="min-w-0 flex items-center gap-2">
+                  <span className="text-sm">
+                    {trade?.bot === "futures" && "📈"}
+                    {trade?.bot === "okx" && "🔷"}
+                    {trade?.bot === "sniper" && "🎯"}
+                    {trade?.bot === "stocks" && "📊"}
+                    {!trade?.bot && "📊"}
+                  </span>
 
-                        <span className="text-[10px] text-gray-500">
-                          {formatTime(trade?.created_at || trade?.timestamp)}
-                        </span>
-                      </div>
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-gray-800">
+                      {trade?.symbol || "Unknown"}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] ${
+                          isBuy
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {side.toUpperCase()}
+                      </span>
+
+                      <span className="text-[10px] text-gray-500">
+                        {formatTime(trade?.created_at || trade?.timestamp)}
+                      </span>
                     </div>
                   </div>
-
-                  <div
-                    className={`shrink-0 font-semibold ${
-                      pnlValue === null || !Number.isFinite(Number(pnlValue))
-                        ? "text-gray-500"
-                        : Number(pnlValue) >= 0
-                        ? "text-emerald-600"
-                        : "text-red-600"
-                    }`}
-                  >
-                    {pnlValue === null || !Number.isFinite(Number(pnlValue))
-                      ? "—"
-                      : formatCurrency(Number(pnlValue))}
-                  </div>
                 </div>
-              );
-            })
-          ) : (
-            <div className="py-2 text-center text-xs text-gray-400">
-              No recent trades
-            </div>
-          )}
-        </div>
-      )}
+
+                <div
+                  className={`shrink-0 font-semibold ${
+                    pnlValue === null || !Number.isFinite(Number(pnlValue))
+                      ? "text-gray-500"
+                      : Number(pnlValue) >= 0
+                      ? "text-emerald-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {pnlValue === null || !Number.isFinite(Number(pnlValue))
+                    ? "—"
+                    : formatCurrency(Number(pnlValue))}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="py-2 text-center text-xs text-gray-400">
+            No recent trades
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
@@ -894,7 +1044,6 @@ export default function Home() {
   const promoClaim = usePromoClaim();
   const activity = useLiveActivity();
   const [isMuted, setIsMuted] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
 
   const [email, setEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -906,13 +1055,8 @@ export default function Home() {
     <div className="min-h-screen overflow-x-hidden bg-white text-gray-900">
       {/* YOUTUBE VIDEO PLAYER AT TOP */}
       <div className="relative w-full bg-black">
-        <div className="relative pt-[56.25%]"> {/* 16:9 aspect ratio */}
+        <div className="relative pt-[56.25%]">
           <iframe
-            ref={(iframe) => {
-              if (iframe && !isPlaying) {
-                setIsPlaying(true);
-              }
-            }}
             className="absolute top-0 left-0 w-full h-full"
             src={`https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&mute=${isMuted ? 1 : 0}&controls=1&modestbranding=1&rel=0&showinfo=0&playsinline=1&playlist=${videoId}`}
             title="IMALI Trading AI Demo"
