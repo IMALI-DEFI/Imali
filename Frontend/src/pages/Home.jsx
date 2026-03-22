@@ -865,7 +865,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white text-gray-900">
-      {/* VIDEO PLAYER SECTION - AT TOP */}
+      {/* VIDEO PLAYER AT TOP */}
       <div className="relative w-full bg-black">
         <video
           autoPlay
@@ -875,24 +875,137 @@ export default function Home() {
           className="w-full h-auto max-h-[70vh] object-cover"
           poster="/api/placeholder/1920/1080"
         >
-          <source src="/videos/imali-demo.mp4" type="video/mp4" />
+          <source src="/public/video/imali-defi.mp4" type="video/mp4" />
           <img src="/api/placeholder/1920/1080" alt="IMALI Trading" className="w-full" />
         </video>
         
         {/* Optional overlay text */}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
           <div className="text-center text-white px-4">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2">
               Watch AI Trade in Real-Time
             </h2>
             <p className="text-sm sm:text-base text-gray-200">
-              See how our bots analyze and execute trades
+              See how our bots analyze and execute trades automatically
             </p>
           </div>
         </div>
       </div>
 
-      {/* HERO */}
+      {/* PROMO SECTION - RIGHT AFTER VIDEO */}
+      <section className="mx-auto max-w-3xl px-3 py-10 sm:px-4 sm:py-12">
+        <Card className="p-5 sm:p-6 shadow-xl">
+          <div className="mb-4 flex items-start gap-3 sm:items-center">
+            <span className="flex-shrink-0 text-3xl">🎁</span>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 sm:text-2xl">
+                Early Bird Special
+              </h3>
+              <p className="text-sm text-gray-500">
+                First {promo.limit} users get a{" "}
+                <b className="text-emerald-600">special deal</b>
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-4 space-y-2 rounded-xl border border-gray-100 bg-gradient-to-r from-emerald-50 to-cyan-50 p-4">
+            <FeatureRow
+              icon="✅"
+              label="Only 5% fee on profits over 3% (normally 30%)"
+            />
+            <FeatureRow icon="✅" label="Locked in for 90 days" />
+            <FeatureRow icon="✅" label="Full access to all bot features" />
+            <FeatureRow
+              icon="✅"
+              label="Referral program available for users who invite others"
+            />
+          </div>
+
+          <PromoMeter
+            claimed={promo.claimed}
+            limit={promo.limit}
+            spotsLeft={promo.spotsLeft}
+            loading={promo.loading}
+          />
+
+          {promo.error && (
+            <p className="mt-2 text-xs text-amber-600">⚠ {promo.error}</p>
+          )}
+
+          {!showForm && !promoClaim.state.success && promo.active && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="mt-4 w-full rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 py-4 text-base font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500"
+            >
+              🎉 Claim My Spot Now
+            </button>
+          )}
+
+          {showForm && !promoClaim.state.success && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const ok = await promoClaim.claim(email);
+                if (ok) setShowForm(false);
+              }}
+              className="mt-4 space-y-3"
+            >
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email address"
+                className="w-full rounded-xl border border-emerald-200 bg-white px-4 py-4 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                required
+                autoFocus
+              />
+
+              {promoClaim.state.error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                  ⚠️ {promoClaim.state.error}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={promoClaim.state.loading}
+                  className="flex-1 rounded-xl bg-emerald-600 py-4 text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-500"
+                >
+                  {promoClaim.state.loading ? "Claiming..." : "✅ Confirm My Spot"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForm(false);
+                    promoClaim.reset();
+                  }}
+                  className="px-6 text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {promoClaim.state.success && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+              <div className="mb-2 text-3xl">🎉</div>
+              <p className="text-lg font-bold text-emerald-700">You're in!</p>
+              <p className="mt-1 text-sm text-gray-600">
+                Check your email, then{" "}
+                <Link to="/signup" className="text-emerald-600 underline">
+                  create your account
+                </Link>{" "}
+                to get started.
+              </p>
+            </div>
+          )}
+        </Card>
+      </section>
+
+      {/* HERO SECTION */}
       <section className="relative overflow-hidden bg-gradient-to-b from-white via-emerald-50/40 to-white">
         <div className="pointer-events-none absolute inset-0 select-none">
           <img
@@ -929,7 +1042,7 @@ export default function Home() {
             </Link>
           </div>
 
-          {/* Promo/Referral Banner */}
+          {/* Referral Banner */}
           <div className="mx-auto mb-8 max-w-3xl">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-left shadow-sm sm:px-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1093,126 +1206,11 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PROMO */}
-      <section className="mx-auto max-w-3xl px-3 py-10 sm:px-4 sm:py-12">
-        <Card className="p-5 sm:p-6">
-          <div className="mb-4 flex items-start gap-3 sm:items-center">
-            <span className="flex-shrink-0 text-2xl">🎁</span>
-            <div>
-              <h3 className="text-lg font-bold text-gray-900 sm:text-xl">
-                Early Bird Special
-              </h3>
-              <p className="text-xs text-gray-500 sm:text-sm">
-                First {promo.limit} users get a{" "}
-                <b className="text-emerald-600">special deal</b>
-              </p>
-            </div>
-          </div>
-
-          <div className="mb-4 space-y-2 rounded-xl border border-gray-100 bg-gray-50 p-3 sm:p-4">
-            <FeatureRow
-              icon="✅"
-              label="Only 5% fee on profits over 3% (normally 30%)"
-            />
-            <FeatureRow icon="✅" label="Locked in for 90 days" />
-            <FeatureRow icon="✅" label="Full access to bot features" />
-            <FeatureRow
-              icon="✅"
-              label="Referral program available for users who invite others"
-            />
-          </div>
-
-          <PromoMeter
-            claimed={promo.claimed}
-            limit={promo.limit}
-            spotsLeft={promo.spotsLeft}
-            loading={promo.loading}
-          />
-
-          {promo.error && (
-            <p className="mt-2 text-xs text-amber-600">⚠ {promo.error}</p>
-          )}
-
-          {!showForm && !promoClaim.state.success && promo.active && (
-            <button
-              onClick={() => setShowForm(true)}
-              className="mt-4 w-full rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 py-3.5 text-base font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500 sm:py-4 sm:text-lg"
-            >
-              🎉 Claim My Spot Now
-            </button>
-          )}
-
-          {showForm && !promoClaim.state.success && (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const ok = await promoClaim.claim(email);
-                if (ok) setShowForm(false);
-              }}
-              className="mt-4 space-y-3"
-            >
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email address"
-                className="w-full rounded-xl border border-emerald-200 bg-white px-4 py-3.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100 sm:py-4 sm:text-base"
-                required
-                autoFocus
-              />
-
-              {promoClaim.state.error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-                  ⚠️ {promoClaim.state.error}
-                </div>
-              )}
-
-              <div className="flex gap-2 sm:gap-3">
-                <button
-                  type="submit"
-                  disabled={promoClaim.state.loading}
-                  className="flex-1 rounded-xl bg-emerald-600 py-3.5 text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-500 sm:py-4 sm:text-base"
-                >
-                  {promoClaim.state.loading ? "Claiming..." : "✅ Confirm My Spot"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowForm(false);
-                    promoClaim.reset();
-                  }}
-                  className="px-4 text-sm text-gray-500 hover:text-gray-700 sm:px-6"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          )}
-
-          {promoClaim.state.success && (
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
-              <div className="mb-2 text-3xl">🎉</div>
-              <p className="text-base font-bold text-emerald-700 sm:text-lg">
-                You&apos;re in!
-              </p>
-              <p className="mt-1 text-xs text-gray-600 sm:text-sm">
-                Check your email, then{" "}
-                <Link to="/signup" className="text-emerald-600 underline">
-                  create your account
-                </Link>{" "}
-                to get started.
-              </p>
-            </div>
-          )}
-        </Card>
-      </section>
-
       {/* FEATURES */}
       <section className="mx-auto max-w-6xl px-3 py-12 sm:px-4 md:px-6 sm:py-16">
         <div className="mb-8 text-center sm:mb-12">
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
-            What&apos;s Inside Your Dashboard ✨
+            What's Inside Your Dashboard ✨
           </h2>
           <p className="mt-2 text-sm text-gray-600 sm:mt-3 sm:text-base">
             Live stats, trade activity, automation tools, and referral rewards in one place
