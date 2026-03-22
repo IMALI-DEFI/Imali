@@ -893,6 +893,8 @@ export default function Home() {
   const promo = usePromoStatus();
   const promoClaim = usePromoClaim();
   const activity = useLiveActivity();
+  const [isMuted, setIsMuted] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const [email, setEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -906,8 +908,13 @@ export default function Home() {
       <div className="relative w-full bg-black">
         <div className="relative pt-[56.25%]"> {/* 16:9 aspect ratio */}
           <iframe
+            ref={(iframe) => {
+              if (iframe && !isPlaying) {
+                setIsPlaying(true);
+              }
+            }}
             className="absolute top-0 left-0 w-full h-full"
-            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&mute=1&controls=0&modestbranding=1&rel=0&showinfo=0&playsinline=1&playlist=${videoId}`}
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&mute=${isMuted ? 1 : 0}&controls=1&modestbranding=1&rel=0&showinfo=0&playsinline=1&playlist=${videoId}`}
             title="IMALI Trading AI Demo"
             frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -915,17 +922,23 @@ export default function Home() {
           ></iframe>
         </div>
         
-        {/* Optional overlay text */}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-          <div className="text-center text-white px-4">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2">
-              Watch AI Trade in Real-Time
-            </h2>
-            <p className="text-sm sm:text-base text-gray-200">
-              See how our bots analyze and execute trades automatically
-            </p>
-          </div>
-        </div>
+        {/* Sound Control Button */}
+        <button
+          onClick={() => setIsMuted(!isMuted)}
+          className="absolute bottom-4 right-4 z-10 rounded-full bg-black/70 p-3 text-white backdrop-blur-sm transition-all hover:bg-black/90"
+          aria-label={isMuted ? "Unmute video" : "Mute video"}
+        >
+          {isMuted ? (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            </svg>
+          )}
+        </button>
       </div>
 
       {/* PROMO SECTION - RIGHT AFTER VIDEO */}
