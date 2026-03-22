@@ -897,21 +897,23 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
 
+  // Extract YouTube Shorts video ID from URL
+  const videoId = "x6Dvj1ALs-w";
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-white text-gray-900">
-      {/* VIDEO PLAYER AT TOP */}
+      {/* YOUTUBE VIDEO PLAYER AT TOP */}
       <div className="relative w-full bg-black">
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="w-full h-auto max-h-[70vh] object-cover"
-          poster="/api/placeholder/1920/1080"
-        >
-          <source src="/video/imali-defi.MP4" type="video/mp4" />
-          <img src="/api/placeholder/1920/1080" alt="IMALI Trading" className="w-full" />
-        </video>
+        <div className="relative pt-[56.25%]"> {/* 16:9 aspect ratio */}
+          <iframe
+            className="absolute top-0 left-0 w-full h-full"
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&mute=1&controls=0&modestbranding=1&rel=0&showinfo=0&playsinline=1&playlist=${videoId}`}
+            title="IMALI Trading AI Demo"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          ></iframe>
+        </div>
         
         {/* Optional overlay text */}
         <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
