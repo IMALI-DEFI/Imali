@@ -58,11 +58,12 @@ function collectRecentTrades(data = {}, limit = 20) {
   const combined = [
     ...normalizeArray(data?.recent_trades),
     ...normalizeArray(data?.sniper?.trades),
+    ...normalizeArray(data?.sniper?.discoveries),
     ...normalizeArray(data?.okx?.recent_trades),
-    ...normalizeArray(data?.futures?.recent_trades),
-    ...normalizeArray(data?.stocks?.recent_trades),
     ...normalizeArray(data?.okx?.trades),
+    ...normalizeArray(data?.futures?.recent_trades),
     ...normalizeArray(data?.futures?.trades),
+    ...normalizeArray(data?.stocks?.recent_trades),
     ...normalizeArray(data?.stocks?.trades),
   ];
 
@@ -70,6 +71,8 @@ function collectRecentTrades(data = {}, limit = 20) {
   const unique = [];
 
   for (const trade of combined) {
+    if (!trade) continue;
+    
     const key =
       trade?.id ||
       [
@@ -85,7 +88,7 @@ function collectRecentTrades(data = {}, limit = 20) {
     }
   }
 
-  if (!unique.length) {
+  if (unique.length === 0) {
     const now = Date.now();
     return [
       {
@@ -95,6 +98,7 @@ function collectRecentTrades(data = {}, limit = 20) {
         pnl_percent: 2.4,
         pnl_usd: 180.22,
         created_at: new Date(now - 8 * 60000).toISOString(),
+        bot: "futures",
       },
       {
         id: "demo-2",
@@ -103,6 +107,7 @@ function collectRecentTrades(data = {}, limit = 20) {
         pnl_percent: -1.1,
         pnl_usd: -72.14,
         created_at: new Date(now - 22 * 60000).toISOString(),
+        bot: "okx",
       },
       {
         id: "demo-3",
@@ -111,6 +116,7 @@ function collectRecentTrades(data = {}, limit = 20) {
         pnl_percent: 3.8,
         pnl_usd: 205.41,
         created_at: new Date(now - 39 * 60000).toISOString(),
+        bot: "sniper",
       },
       {
         id: "demo-4",
@@ -119,6 +125,7 @@ function collectRecentTrades(data = {}, limit = 20) {
         pnl_percent: 1.2,
         pnl_usd: 34.88,
         created_at: new Date(now - 75 * 60000).toISOString(),
+        bot: "stocks",
       },
       {
         id: "demo-5",
@@ -127,6 +134,7 @@ function collectRecentTrades(data = {}, limit = 20) {
         pnl_percent: -0.7,
         pnl_usd: -18.64,
         created_at: new Date(now - 110 * 60000).toISOString(),
+        bot: "stocks",
       },
     ].slice(0, limit);
   }
@@ -164,7 +172,8 @@ function getBotStatuses(data = {}) {
         data?.sniper?.status === "scanning" ||
         data?.sniper?.status === "monitoring" ||
         data?.sniper?.status === "running" ||
-        normalizeArray(data?.sniper?.trades).length > 0,
+        normalizeArray(data?.sniper?.trades).length > 0 ||
+        normalizeArray(data?.sniper?.discoveries).length > 0,
     },
     {
       label: "OKX",
@@ -217,6 +226,11 @@ function formatCurrency(value) {
   const n = safeNumber(value, 0);
   const sign = n >= 0 ? "+" : "-";
   return `${sign}$${Math.abs(n).toFixed(2)}`;
+}
+
+function formatNumber(value) {
+  const n = safeNumber(value, 0);
+  return n.toLocaleString();
 }
 
 function buildActivitySeries(trades = []) {
@@ -275,7 +289,8 @@ function usePromoStatus() {
           loading: false,
           error: null,
         });
-      } catch {
+      } catch (err) {
+        console.error("Failed to fetch promo status:", err);
         if (!mounted) return;
         setState((prev) => ({
           ...prev,
@@ -380,6 +395,8 @@ function useLiveActivity() {
 
   useEffect(() => {
     let mounted = true;
+    let retryCount = 0;
+    const maxRetries = 3;
 
     const fetchActivity = async () => {
       try {
@@ -431,16 +448,27 @@ function useLiveActivity() {
           loading: false,
           error: null,
         });
+
+        retryCount = 0;
       } catch (error) {
         console.error("Live activity fetch error:", error);
 
         if (!mounted) return;
 
-        setActivity((prev) => ({
-          ...prev,
-          loading: false,
-          error: "Live data temporarily unavailable",
-        }));
+        if (retryCount >= maxRetries) {
+          setActivity((prev) => ({
+            ...prev,
+            loading: false,
+            error: "Live data temporarily unavailable",
+          }));
+        } else {
+          retryCount++;
+          setActivity((prev) => ({
+            ...prev,
+            loading: true,
+            error: "Connecting...",
+          }));
+        }
       }
     };
 
@@ -733,7 +761,7 @@ function LiveActivityWidget({ activity }) {
         />
         <StatMiniCard
           title="Total Trades"
-          value={stats.totalTrades}
+          value={formatNumber(stats.totalTrades)}
           valueClassName="text-purple-600"
         />
         <StatMiniCard
@@ -800,7 +828,13 @@ function LiveActivityWidget({ activity }) {
                   className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs"
                 >
                   <div className="min-w-0 flex items-center gap-2">
-                    <span>📊</span>
+                    <span className="text-sm">
+                      {trade?.bot === "futures" && "📈"}
+                      {trade?.bot === "okx" && "🔷"}
+                      {trade?.bot === "sniper" && "🎯"}
+                      {trade?.bot === "stocks" && "📊"}
+                      {!trade?.bot && "📊"}
+                    </span>
 
                     <div className="min-w-0">
                       <div className="truncate font-medium text-gray-800">
@@ -875,12 +909,12 @@ export default function Home() {
           className="w-full h-auto max-h-[70vh] object-cover"
           poster="/api/placeholder/1920/1080"
         >
-          <source src="/public/video/imali-defi.mp4" type="video/mp4" />
+          <source src="/video/imali-defi.mp4" type="video/mp4" />
           <img src="/api/placeholder/1920/1080" alt="IMALI Trading" className="w-full" />
         </video>
         
         {/* Optional overlay text */}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
           <div className="text-center text-white px-4">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2">
               Watch AI Trade in Real-Time
