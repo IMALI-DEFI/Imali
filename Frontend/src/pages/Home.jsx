@@ -909,7 +909,7 @@ export default function Home() {
           className="w-full h-auto max-h-[70vh] object-cover"
           poster="/api/placeholder/1920/1080"
         >
-          <source src="/video/imali-defi.mp4" type="video/mp4" />
+          <source src="/video/imali-defi.MP4" type="video/mp4" />
           <img src="/api/placeholder/1920/1080" alt="IMALI Trading" className="w-full" />
         </video>
         
