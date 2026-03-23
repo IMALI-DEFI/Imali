@@ -57,7 +57,7 @@ function timeAgo(timestamp) {
 }
 
 /* =====================================================
-   DATA HOOK - Fetches REAL data from API
+   DATA HOOK - FETCHES REAL DATA FROM API
 ===================================================== */
 
 function useLiveData() {
@@ -76,10 +76,6 @@ function useLiveData() {
         profit_factor: 0,
         sharpe_ratio: 0,
         max_drawdown_percent: 0,
-        avg_win: 0,
-        avg_loss: 0,
-        largest_win: 0,
-        largest_loss: 0,
       }
     },
     pnlHistory: [],
@@ -124,11 +120,17 @@ function useLiveData() {
           botHistory: {},
         };
 
-        // Process trades
+        // ============================================================
+        // PROCESS REAL TRADES - THIS IS YOUR ACTUAL DATA
+        // ============================================================
         if (tradesRes.status === "fulfilled" && tradesRes.value.data?.trades) {
           newData.trades = tradesRes.value.data.trades;
+          console.log("✅ REAL TRADES LOADED:", newData.trades.length);
         } else if (tradesRes.status === "fulfilled" && tradesRes.value.data) {
           newData.trades = tradesRes.value.data;
+          console.log("✅ REAL TRADES LOADED (alternate):", newData.trades.length);
+        } else {
+          console.warn("⚠️ No trades data from API");
         }
 
         // Process discoveries
@@ -141,46 +143,97 @@ function useLiveData() {
           newData.bots = botsRes.value.data.bots;
         }
 
-        // Process analytics - use REAL API data
-        let analyticsData = { summary: {} };
-        if (analyticsRes.status === "fulfilled" && analyticsRes.value.data?.summary) {
-          analyticsData = analyticsRes.value.data;
-          console.log("📊 Analytics from API:", analyticsData.summary);
-        }
-
-        // Calculate cumulative P&L from trades if not in analytics
+        // ============================================================
+        // CALCULATE ALL METRICS FROM REAL TRADES (NO HARDCODING)
+        // ============================================================
         const trades = newData.trades;
-        let cumulativePnl = analyticsData.summary.cumulative_pnl || 0;
+        const realTotalTrades = trades.length;
         
-        if (cumulativePnl === 0 && trades.length > 0) {
-          const sortedTrades = [...trades].sort((a, b) => {
-            const dateA = new Date(a?.created_at || a?.timestamp || 0);
-            const dateB = new Date(b?.created_at || b?.timestamp || 0);
-            return dateA - dateB;
-          });
-          sortedTrades.forEach(trade => {
-            const pnl = trade?.pnl_usd || trade?.pnl || 0;
-            if (trade?.status !== "open") {
-              cumulativePnl += pnl;
+        console.log("📊 ACTUAL TRADE COUNT:", realTotalTrades);
+        
+        // Calculate from actual trades
+        let cumulativePnl = 0;
+        let totalPnl = 0;
+        let wins = 0;
+        let losses = 0;
+        let totalWinAmount = 0;
+        let totalLossAmount = 0;
+        let maxDrawdown = 0;
+        let peak = 0;
+        
+        // Sort trades by date for cumulative calculations
+        const sortedTrades = [...trades].sort((a, b) => {
+          const dateA = new Date(a?.created_at || a?.timestamp || 0);
+          const dateB = new Date(b?.created_at || b?.timestamp || 0);
+          return dateA - dateB;
+        });
+        
+        sortedTrades.forEach(trade => {
+          const pnl = trade?.pnl_usd || trade?.pnl || 0;
+          // Only count closed trades for P&L
+          if (trade?.status !== "open") {
+            cumulativePnl += pnl;
+            totalPnl += pnl;
+            
+            if (pnl > 0) {
+              wins++;
+              totalWinAmount += pnl;
+            } else if (pnl < 0) {
+              losses++;
+              totalLossAmount += Math.abs(pnl);
             }
-          });
-        }
-
-        analyticsData.summary = {
-          ...analyticsData.summary,
-          cumulative_pnl: cumulativePnl,
+            
+            // Calculate max drawdown
+            if (cumulativePnl > peak) peak = cumulativePnl;
+            const drawdown = peak > 0 ? (peak - cumulativePnl) / peak * 100 : 0;
+            if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+          }
+        });
+        
+        const winRate = realTotalTrades > 0 ? (wins / realTotalTrades * 100) : 0;
+        const profitFactor = totalLossAmount > 0 ? totalWinAmount / totalLossAmount : 0;
+        const avgTrade = realTotalTrades > 0 ? totalPnl / realTotalTrades : 0;
+        
+        // Calculate Sharpe Ratio (simplified for demo)
+        const returns = sortedTrades.map(t => t?.pnl_usd || t?.pnl || 0).filter(r => r !== 0);
+        const avgReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
+        const stdDev = returns.length > 1 ? Math.sqrt(returns.reduce((sq, n) => sq + Math.pow(n - avgReturn, 2), 0) / (returns.length - 1)) : 0;
+        const sharpeRatio = stdDev > 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0;
+        
+        // Build analytics summary with REAL data
+        const analyticsData = {
+          summary: {
+            total_trades: realTotalTrades,
+            win_rate: winRate,
+            total_pnl: totalPnl,
+            cumulative_pnl: cumulativePnl,
+            wins: wins,
+            losses: losses,
+            profit_factor: profitFactor,
+            sharpe_ratio: sharpeRatio,
+            max_drawdown_percent: maxDrawdown,
+            avg_trade: avgTrade,
+          }
         };
-
-        // Process bot history
-        if (botHistoryRes.status === "fulfilled" && botHistoryRes.value.data) {
-          newData.botHistory = botHistoryRes.value.data;
-        }
+        
+        console.log("📊 CALCULATED METRICS:", analyticsData.summary);
 
         // Process PNL history
         if (pnlHistoryRes.status === "fulfilled" && pnlHistoryRes.value.data?.history) {
           newData.pnlHistory = pnlHistoryRes.value.data.history;
-        } else if (newData.botHistory.pnl_by_day) {
-          newData.pnlHistory = newData.botHistory.pnl_by_day;
+        } else if (botHistoryRes.status === "fulfilled" && botHistoryRes.value.data?.pnl_by_day) {
+          newData.pnlHistory = botHistoryRes.value.data.pnl_by_day;
+        } else {
+          // Generate daily P&L from trades
+          const dailyPnL = new Map();
+          sortedTrades.forEach(trade => {
+            const date = new Date(trade?.created_at || trade?.timestamp || Date.now()).toISOString().split('T')[0];
+            const pnl = trade?.pnl_usd || trade?.pnl || 0;
+            if (trade?.status !== "open") {
+              dailyPnL.set(date, (dailyPnL.get(date) || 0) + pnl);
+            }
+          });
+          newData.pnlHistory = Array.from(dailyPnL.entries()).map(([date, pnl]) => ({ date, pnl }));
         }
 
         // Process user stats
@@ -222,31 +275,27 @@ function useLiveData() {
 }
 
 /* =====================================================
-   METRIC DEFINITION MODAL - For novice explanations
+   METRIC DEFINITION MODAL - HEDGE FUND FOCUSED
 ===================================================== */
 
 function MetricDefinitions({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   const metrics = [
-    { name: "Win Rate", symbol: "📈", definition: "Percentage of closed trades that were profitable. Higher indicates better trading consistency." },
-    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed by all bots. Includes both open and closed positions." },
-    { name: "Profit Factor", symbol: "💰", definition: "Gross profit divided by gross loss. A value > 1 indicates profitable trading overall." },
-    { name: "Sharpe Ratio", symbol: "⚖️", definition: "Measure of risk-adjusted return. Higher values indicate better returns per unit of risk." },
-    { name: "Max Drawdown", symbol: "📉", definition: "Largest peak-to-trough decline. Lower values indicate better risk management." },
-    { name: "Cumulative P&L", symbol: "📊", definition: "Total profit/loss since inception. Shows overall trading performance." },
-    { name: "Total Return", symbol: "📈", definition: "Percentage return on initial capital. Calculated as (Cumulative P&L / Initial Capital) × 100." },
-    { name: "Average Win", symbol: "✅", definition: "Average profit per winning trade. Higher indicates stronger winning trades." },
-    { name: "Average Loss", symbol: "❌", definition: "Average loss per losing trade. Lower indicates better loss management." },
-    { name: "Largest Win", symbol: "🏆", definition: "Most profitable single trade. Shows maximum profit potential." },
-    { name: "Largest Loss", symbol: "⚠️", definition: "Worst single trade loss. Shows maximum risk exposure." },
+    { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable. For hedge funds, consistency matters more than individual wins." },
+    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed. Higher volume indicates active strategy execution." },
+    { name: "Profit Factor", symbol: "💰", definition: "Gross profit divided by gross loss. Values above 1.5 are considered excellent for institutional strategies." },
+    { name: "Sharpe Ratio", symbol: "⚖️", definition: "Risk-adjusted return measure. Values above 1.0 are good, above 2.0 are very good for hedge funds." },
+    { name: "Max Drawdown", symbol: "📉", definition: "Largest peak-to-trough decline. Lower values (< 20%) are preferred by institutional investors." },
+    { name: "Cumulative P&L", symbol: "📊", definition: "Total profit/loss since inception. Shows overall strategy performance." },
+    { name: "Total Return", symbol: "📈", definition: "Percentage return on initial capital. Hedge funds typically target 10-20% annualized returns." },
   ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-gray-900">📊 Metric Definitions</h3>
+          <h3 className="text-lg font-bold text-gray-900">📊 Institutional Metric Definitions</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -255,7 +304,7 @@ function MetricDefinitions({ isOpen, onClose }) {
         </div>
         <div className="p-5 space-y-3">
           <p className="text-sm text-gray-500 mb-4">
-            Understanding these metrics helps you evaluate trading performance. Click any metric in the dashboard to see its definition.
+            Key performance indicators used by institutional investors to evaluate trading strategies.
           </p>
           {metrics.map((metric, idx) => (
             <div key={idx} className="border-b border-gray-100 pb-3 last:border-0">
@@ -283,7 +332,6 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
   const aiScore = trade?.ai_score || trade?.confidence || 0.75;
   const aiDecision = trade?.ai_decision || trade?.reason || "AI detected favorable market conditions";
-  const strategy = trade?.strategy || trade?.bot || "AI Weighted";
   const aiConfidence = trade?.confidence || (aiScore * 100).toFixed(0);
   const reasoning = trade?.reasoning || `Based on technical analysis and market sentiment, the AI identified a ${pnl > 0 ? "profitable" : "risky"} opportunity.`;
 
@@ -369,7 +417,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
 }
 
 /* =====================================================
-   CHART COMPONENT - Moved to top
+   CHART COMPONENT
 ===================================================== */
 
 function PerformanceChart({ pnlHistory = [] }) {
@@ -388,13 +436,9 @@ function PerformanceChart({ pnlHistory = [] }) {
     
     const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.pnl || p) : [];
     if (values.length === 0) {
-      // Show empty chart with message
       chartRef.current = new Chart(ctx, {
         type: "line",
-        data: {
-          labels: ["No Data"],
-          datasets: [{ data: [0] }]
-        },
+        data: { labels: ["No Data"], datasets: [{ data: [0] }] },
         options: { responsive: true, maintainAspectRatio: false }
       });
       return;
@@ -446,11 +490,7 @@ function PerformanceChart({ pnlHistory = [] }) {
         plugins: {
           legend: { 
             position: "top", 
-            labels: { 
-              boxWidth: 12, 
-              font: { size: 11, weight: "bold" },
-              usePointStyle: true,
-            } 
+            labels: { boxWidth: 12, font: { size: 11, weight: "bold" }, usePointStyle: true } 
           },
           tooltip: {
             callbacks: {
@@ -468,35 +508,16 @@ function PerformanceChart({ pnlHistory = [] }) {
           y: {
             position: "left",
             grid: { color: "rgba(0,0,0,0.05)" },
-            ticks: { 
-              color: "#6b7280",
-              callback: (value) => formatCurrency(value)
-            },
-            title: { 
-              display: true, 
-              text: "Daily P&L", 
-              color: "#6b7280",
-              font: { size: 11 }
-            }
+            ticks: { callback: (value) => formatCurrency(value) },
+            title: { display: true, text: "Daily P&L", color: "#6b7280", font: { size: 11 } }
           },
           y1: {
             position: "right",
             grid: { display: false },
-            ticks: { 
-              color: "#6366f1",
-              callback: (value) => formatCurrency(value)
-            },
-            title: { 
-              display: true, 
-              text: "Cumulative P&L", 
-              color: "#6366f1",
-              font: { size: 11 }
-            }
+            ticks: { callback: (value) => formatCurrency(value), color: "#6366f1" },
+            title: { display: true, text: "Cumulative P&L", color: "#6366f1", font: { size: 11 } }
           },
-          x: { 
-            grid: { display: false }, 
-            ticks: { color: "#6b7280" } 
-          }
+          x: { grid: { display: false }, ticks: { color: "#6b7280" } }
         }
       }
     });
@@ -510,106 +531,105 @@ function PerformanceChart({ pnlHistory = [] }) {
 }
 
 /* =====================================================
-   NOTABLE TRADES COMPONENT
+   NOTABLE TRADES PER BOT COMPONENT
 ===================================================== */
 
-function NotableTrades({ trades, onTradeClick }) {
-  const closedTrades = trades.filter(trade => {
+function BotNotableTrades({ botName, trades, onTradeClick }) {
+  // Filter trades for this specific bot
+  const botTrades = trades.filter(trade => {
+    const tradeBot = (trade?.bot || trade?.source || "").toLowerCase();
+    const bot = botName.toLowerCase();
+    return tradeBot.includes(bot) || bot.includes(tradeBot);
+  });
+
+  // Filter closed trades with non-zero P&L
+  const closedTrades = botTrades.filter(trade => {
     const pnl = trade?.pnl_usd || trade?.pnl || 0;
     return (trade?.status !== "open" && pnl !== 0) || (pnl !== 0 && trade?.created_at);
   });
 
   const topWinners = [...closedTrades]
     .sort((a, b) => (b?.pnl_usd || b?.pnl || 0) - (a?.pnl_usd || a?.pnl || 0))
-    .slice(0, 5);
+    .slice(0, 3);
 
   const topLosers = [...closedTrades]
     .sort((a, b) => (a?.pnl_usd || a?.pnl || 0) - (b?.pnl_usd || b?.pnl || 0))
-    .slice(0, 5);
+    .slice(0, 3);
 
   if (topWinners.length === 0 && topLosers.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl">
-        <div className="text-4xl mb-3">🏆</div>
-        <p className="text-sm">No notable trades yet</p>
+      <div className="text-center py-4 text-gray-400 text-xs">
+        No notable trades for {botName} yet
       </div>
     );
   }
 
+  const getBotIcon = () => {
+    if (botName.includes("Futures")) return "📊";
+    if (botName.includes("Stock")) return "📈";
+    if (botName.includes("Sniper")) return "🦄";
+    if (botName.includes("OKX")) return "🔷";
+    return "🤖";
+  };
+
+  const totalPnl = closedTrades.reduce((sum, t) => sum + (t?.pnl_usd || t?.pnl || 0), 0);
+  const winRate = closedTrades.length > 0 ? (topWinners.length / closedTrades.length * 100).toFixed(0) : 0;
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-5 border border-emerald-200">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-2xl">🏆</span>
-          <h3 className="font-bold text-lg text-gray-900">Best Performers</h3>
-          <span className="ml-auto text-xs text-emerald-600 bg-emerald-200 px-2 py-1 rounded-full">Top {topWinners.length}</span>
+    <div className="border border-gray-200 rounded-xl p-3 bg-white hover:shadow-md transition-all">
+      <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-100">
+        <span className="text-lg">{getBotIcon()}</span>
+        <h4 className="font-semibold text-gray-900 text-sm">{botName}</h4>
+        <span className="ml-auto text-[10px] text-gray-400">{botTrades.length} trades</span>
+      </div>
+      
+      {/* Bot Performance Metrics */}
+      <div className="grid grid-cols-3 gap-1 mb-3 text-[10px]">
+        <div className="text-center">
+          <div className="text-gray-400">Win Rate</div>
+          <div className="font-semibold text-emerald-600">{winRate}%</div>
         </div>
-        <div className="space-y-3">
-          {topWinners.map((trade, idx) => {
-            const pnl = trade?.pnl_usd || trade?.pnl || 0;
-            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
-            return (
-              <div key={idx} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => onTradeClick(trade)}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-lg text-gray-900">{trade?.symbol || "Unknown"}</span>
-                      <span className={`text-xs px-2 py-1 rounded-full ${trade?.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {trade?.side?.toUpperCase() || "BUY"}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex items-center gap-4 text-sm">
-                      <div><span className="text-gray-500">P&L:</span> <span className="font-semibold text-emerald-600">+${pnl.toFixed(2)}</span></div>
-                      <div><span className="text-gray-500">Return:</span> <span className="font-semibold text-emerald-600">+{Math.abs(pnlPercent).toFixed(1)}%</span></div>
-                    </div>
-                    <div className="mt-2 text-xs text-gray-400">{timeAgo(trade?.created_at || trade?.timestamp)}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-emerald-600">+${pnl.toFixed(2)}</div>
-                    <div className="text-xs text-emerald-500 mt-1">#{idx + 1}</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="text-center">
+          <div className="text-gray-400">P&L</div>
+          <div className={`font-semibold ${totalPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+            {formatCurrencySigned(totalPnl)}
+          </div>
+        </div>
+        <div className="text-center">
+          <div className="text-gray-400">Trades</div>
+          <div className="font-semibold text-gray-700">{closedTrades.length}</div>
         </div>
       </div>
-
-      <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl p-5 border border-red-200">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-2xl">📉</span>
-          <h3 className="font-bold text-lg text-gray-900">Worst Performers</h3>
-          <span className="ml-auto text-xs text-red-600 bg-red-200 px-2 py-1 rounded-full">Top {topLosers.length}</span>
-        </div>
-        <div className="space-y-3">
-          {topLosers.map((trade, idx) => {
-            const pnl = trade?.pnl_usd || trade?.pnl || 0;
-            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
-            return (
-              <div key={idx} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => onTradeClick(trade)}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-lg text-gray-900">{trade?.symbol || "Unknown"}</span>
-                      <span className={`text-xs px-2 py-1 rounded-full ${trade?.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {trade?.side?.toUpperCase() || "BUY"}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex items-center gap-4 text-sm">
-                      <div><span className="text-gray-500">P&L:</span> <span className="font-semibold text-red-600">${pnl.toFixed(2)}</span></div>
-                      <div><span className="text-gray-500">Return:</span> <span className="font-semibold text-red-600">{pnlPercent.toFixed(1)}%</span></div>
-                    </div>
-                    <div className="mt-2 text-xs text-gray-400">{timeAgo(trade?.created_at || trade?.timestamp)}</div>
+      
+      <div className="space-y-2">
+        {/* Winners */}
+        {topWinners.length > 0 && (
+          <div>
+            <div className="text-[10px] font-medium text-emerald-600 mb-1 flex items-center gap-1">
+              <span>🏆</span> Top Winners
+            </div>
+            {topWinners.map((trade, idx) => {
+              const pnl = trade?.pnl_usd || trade?.pnl || 0;
+              const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
+              return (
+                <div 
+                  key={idx}
+                  className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-emerald-50 cursor-pointer hover:bg-emerald-100 transition-colors text-xs"
+                  onClick={() => onTradeClick(trade)}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="font-medium text-gray-900 truncate">{trade?.symbol || "Unknown"}</span>
+                    <span className="text-[10px] text-gray-500">{trade?.side?.toUpperCase() || "BUY"}</span>
                   </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-red-600">${pnl.toFixed(2)}</div>
-                    <div className="text-xs text-red-500 mt-1">#{idx + 1}</div>
+                  <div className="text-right shrink-0">
+                    <div className="font-semibold text-emerald-600">+${pnl.toFixed(2)}</div>
+                    <div className="text-[9px] text-emerald-500">+{Math.abs(pnlPercent).toFixed(0)}%</div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -787,7 +807,6 @@ export default function PublicDashboard() {
   const [clock, setClock] = useState(new Date());
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [showMetricDefinitions, setShowMetricDefinitions] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState(null);
 
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 1000);
@@ -800,19 +819,16 @@ export default function PublicDashboard() {
   const analytics = data.analytics?.summary || {};
   const pnlHistory = data.pnlHistory || [];
 
-  // REAL data from API - no hardcoding
+  // REAL data from API - calculated from actual trades
   const totalTradesCount = analytics.total_trades || allTrades.length;
   const winsCount = analytics.wins || 0;
   const lossesCount = analytics.losses || 0;
-  const winRate = analytics.win_rate || (totalTradesCount > 0 ? (winsCount / totalTradesCount * 100) : 0);
+  const winRate = analytics.win_rate || 0;
   const profitFactor = analytics.profit_factor || 0;
   const sharpeRatio = analytics.sharpe_ratio || 0;
   const maxDrawdown = analytics.max_drawdown_percent || 0;
   const cumulativePnl = analytics.cumulative_pnl || 0;
-  const avgWin = analytics.avg_win || 0;
-  const avgLoss = analytics.avg_loss || 0;
-  const largestWin = analytics.largest_win || 0;
-  const largestLoss = analytics.largest_loss || 0;
+  const avgTrade = analytics.avg_trade || 0;
 
   // Calculate total return
   const initialBalance = 10000;
@@ -834,11 +850,6 @@ export default function PublicDashboard() {
     { id: "open", label: "Open", icon: "🟢", count: allTrades.filter(isOpenTrade).length },
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(t => !isOpenTrade(t)).length },
   ];
-
-  const handleMetricClick = (metricName) => {
-    setSelectedMetric(metricName);
-    setShowMetricDefinitions(true);
-  };
 
   if (data.loading && !data.lastUpdate) {
     return (
@@ -904,7 +915,7 @@ export default function PublicDashboard() {
               onClick={() => setShowMetricDefinitions(true)}
               className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors"
             >
-              📊 Understanding this chart
+              📊 Understanding these metrics
             </button>
           </div>
           <div className="h-96">
@@ -915,7 +926,7 @@ export default function PublicDashboard() {
           </div>
         </div>
 
-        {/* Key Metrics Grid - Professional hedge fund style */}
+        {/* Key Metrics Grid - Hedge Fund Focused */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-lg text-gray-800">Key Performance Metrics</h2>
@@ -929,103 +940,94 @@ export default function PublicDashboard() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <MetricCard 
               title="Win Rate" 
-              value={`${Math.round(winRate)}%`} 
+              value={`${winRate.toFixed(1)}%`} 
               icon="📈" 
               color="emerald"
               subtext={`${winsCount}W / ${lossesCount}L`}
-              tooltip="Percentage of trades that were profitable. Higher indicates better trading consistency."
-              onClick={() => handleMetricClick("Win Rate")}
+              tooltip="Percentage of trades that were profitable. Hedge funds typically target 55-65% win rates."
+              onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
               title="Total Trades" 
               value={totalTradesCount} 
               icon="🔄" 
               color="purple"
-              tooltip="Total number of trades executed. Higher volume indicates more active trading."
-              onClick={() => handleMetricClick("Total Trades")}
+              tooltip="Total number of trades executed. Higher volume indicates active strategy execution."
+              onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
               title="Profit Factor" 
               value={profitFactor.toFixed(2)} 
               icon="💰" 
               color="blue"
-              tooltip="Gross profit divided by gross loss. Values above 1.0 indicate profitable trading."
-              onClick={() => handleMetricClick("Profit Factor")}
+              tooltip="Gross profit divided by gross loss. Values above 1.5 are excellent."
+              onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
               title="Sharpe Ratio" 
               value={sharpeRatio.toFixed(2)} 
               icon="⚖️" 
               color="indigo"
-              tooltip="Risk-adjusted return measure. Higher values indicate better returns per unit of risk."
-              onClick={() => handleMetricClick("Sharpe Ratio")}
+              tooltip="Risk-adjusted return. Above 1.0 is good, above 2.0 is excellent."
+              onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
               title="Max Drawdown" 
               value={`${maxDrawdown.toFixed(1)}%`} 
               icon="📉" 
               color="amber"
-              tooltip="Largest peak-to-trough decline. Lower values indicate better risk management."
-              onClick={() => handleMetricClick("Max Drawdown")}
+              tooltip="Largest peak-to-trough decline. Hedge funds prefer under 20%."
+              onClick={() => setShowMetricDefinitions(true)}
             />
           </div>
         </div>
 
         {/* Secondary Metrics */}
-        <div className="mb-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="mb-8 grid grid-cols-2 sm:grid-cols-3 gap-3">
           <MetricCard 
             title="Total Return" 
             value={`${totalReturnPercent >= 0 ? "+" : ""}${totalReturnPercent.toFixed(1)}%`} 
             icon="📈" 
             color={totalReturnPercent >= 0 ? "emerald" : "red"}
             subtext={`Cumulative P&L: ${formatCurrencySigned(cumulativePnl)}`}
-            tooltip="Percentage return on initial capital. Calculated from all closed trades."
-            onClick={() => handleMetricClick("Total Return")}
+            tooltip="Percentage return on initial capital since inception."
+            onClick={() => setShowMetricDefinitions(true)}
           />
           <MetricCard 
-            title="Average Win" 
-            value={formatCurrency(avgWin)} 
-            icon="✅" 
-            color="emerald"
-            tooltip="Average profit per winning trade. Higher indicates stronger winning trades."
-            onClick={() => handleMetricClick("Average Win")}
+            title="Avg Trade" 
+            value={formatCurrencySigned(avgTrade)} 
+            icon="⚖️" 
+            color="blue"
+            tooltip="Average profit/loss per trade. Positive values indicate profitable strategy."
+            onClick={() => setShowMetricDefinitions(true)}
           />
           <MetricCard 
-            title="Average Loss" 
-            value={formatCurrency(Math.abs(avgLoss))} 
-            icon="❌" 
-            color="red"
-            tooltip="Average loss per losing trade. Lower indicates better loss management."
-            onClick={() => handleMetricClick("Average Loss")}
-          />
-          <MetricCard 
-            title="Best/Worst" 
-            value={`${formatCurrencySigned(largestWin)} / ${formatCurrencySigned(largestLoss)}`} 
-            icon="🏆/⚠️" 
+            title="Active Bots" 
+            value={bots.length} 
+            icon="🤖" 
             color="purple"
-            tooltip="Largest winning and losing trades. Shows risk/reward extremes."
-            onClick={() => handleMetricClick("Largest Win")}
+            tooltip="Number of trading bots currently operational."
+            onClick={() => setShowMetricDefinitions(true)}
           />
         </div>
 
-        {/* Bot Cards */}
+        {/* Bot Cards with Notable Trades Per Bot */}
         <div className="mb-8">
-          <h2 className="font-semibold text-lg mb-3 text-gray-800">Active Trading Bots</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <h2 className="font-semibold text-lg mb-3 text-gray-800">Active Trading Bots & Performance</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {bots.length > 0 ? (
-              bots.map((bot, index) => <BotCard key={index} bot={bot} />)
+              bots.map((bot, index) => (
+                <BotNotableTrades 
+                  key={index} 
+                  botName={bot.name || "Unknown Bot"} 
+                  trades={allTrades}
+                  onTradeClick={setSelectedTrade}
+                />
+              ))
             ) : (
               <div className="col-span-4 text-center py-8 text-gray-400">No bot data available</div>
             )}
           </div>
-        </div>
-
-        {/* Notable Trades */}
-        <div className="mb-8">
-          <h2 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-800">
-            <span>🏆</span> Most Notable Trades
-          </h2>
-          <NotableTrades trades={allTrades} onTradeClick={setSelectedTrade} />
         </div>
 
         {/* Two Column Layout - Trades and Discoveries */}
@@ -1111,10 +1113,7 @@ export default function PublicDashboard() {
       {/* Metric Definitions Modal */}
       <MetricDefinitions 
         isOpen={showMetricDefinitions} 
-        onClose={() => {
-          setShowMetricDefinitions(false);
-          setSelectedMetric(null);
-        }} 
+        onClose={() => setShowMetricDefinitions(false)} 
       />
 
       {/* Trade Detail Modal */}
