@@ -6,7 +6,7 @@ import axios from "axios";
 import Chart from "chart.js/auto";
 
 /* =====================================================
-   CONFIG
+   CONFIG - CORRECT ENDPOINTS
 ===================================================== */
 
 const API_BASE = "https://api.imali-defi.com";
@@ -19,18 +19,17 @@ const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
 const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
 const USER_STATS_URL = `${API_BASE}/api/user/stats`;
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
-const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
 
-// OKX Crypto Spot Bot (working)
+// OKX Crypto Spot Bot (working on port 8005)
 const OKX_SPOT_BOT_URL = "http://localhost:8005";
-const OKX_SPOT_TRADES_URL = `${OKX_SPOT_BOT_URL}/trades`;
+const OKX_SPOT_TRADES_URL = `${OKX_SPOT_BOT_URL}/api/trades`;  // <-- Correct endpoint
 const OKX_SPOT_STATUS_URL = `${OKX_SPOT_BOT_URL}/status`;
 const OKX_SPOT_POSITIONS_URL = `${OKX_SPOT_BOT_URL}/positions`;
 
-// Alpaca Stock Bot (needs to be running)
+// Alpaca Stock Bot (on port 3001)
 const STOCK_BOT_URL = "http://localhost:3001";
-const STOCK_BOT_STATUS_URL = `${STOCK_BOT_URL}/status`;
-const STOCK_BOT_TRADES_URL = `${STOCK_BOT_URL}/trades`;
+const STOCK_BOT_STATUS_URL = `${STOCK_BOT_URL}/status`;  // <-- This worked in your curl
+const STOCK_BOT_TRADES_URL = `${STOCK_BOT_URL}/api/trades`;
 const STOCK_BOT_POSITIONS_URL = `${STOCK_BOT_URL}/positions`;
 
 /* =====================================================
@@ -120,26 +119,30 @@ function useLiveData() {
           userStatsRes,
           pnlHistoryRes,
           liveStatsRes,
-          botHistoryRes,
         ] = await Promise.allSettled([
           axios.get(TRADES_URL, { timeout: 8000 }),
           axios.get(OKX_SPOT_TRADES_URL, { timeout: 8000 }).catch((err) => {
             console.log("OKX trades not available:", err.message);
             return { data: [] };
           }),
-          axios.get(OKX_SPOT_STATUS_URL, { timeout: 8000 }).catch(() => ({ data: {} })),
+          axios.get(OKX_SPOT_STATUS_URL, { timeout: 8000 }).catch((err) => {
+            console.log("OKX status not available:", err.message);
+            return { data: {} };
+          }),
           axios.get(STOCK_BOT_TRADES_URL, { timeout: 8000 }).catch((err) => {
             console.log("Stock bot trades not available:", err.message);
             return { data: [] };
           }),
-          axios.get(STOCK_BOT_STATUS_URL, { timeout: 8000 }).catch(() => ({ data: {} })),
+          axios.get(STOCK_BOT_STATUS_URL, { timeout: 8000 }).catch((err) => {
+            console.log("Stock bot status not available:", err.message);
+            return { data: {} };
+          }),
           axios.get(DISCOVERIES_URL, { timeout: 8000 }),
           axios.get(BOT_STATUS_URL, { timeout: 8000 }),
           axios.get(ANALYTICS_URL, { timeout: 8000 }),
           axios.get(USER_STATS_URL, { timeout: 8000 }),
           axios.get(PNL_HISTORY_URL, { timeout: 8000 }),
           axios.get(LIVE_STATS_URL, { timeout: 8000 }),
-          axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 8000, params: { days: 90 } }).catch(() => ({ data: {} })),
         ]);
 
         if (!mounted) return;
@@ -155,16 +158,20 @@ function useLiveData() {
           analytics: { summary: {} },
           pnlHistory: [],
           liveStats: {},
-          botHistory: null,
         };
 
-        // Process OKX Crypto Spot Trades (working)
+        // Process OKX Crypto Spot Trades - CORRECT ENDPOINT
         if (okxTradesRes.status === "fulfilled") {
-          if (Array.isArray(okxTradesRes.value.data)) {
-            newData.okxTrades = okxTradesRes.value.data;
+          const responseData = okxTradesRes.value.data;
+          if (Array.isArray(responseData)) {
+            newData.okxTrades = responseData;
             console.log("📊 OKX crypto trades loaded:", newData.okxTrades.length);
-          } else if (okxTradesRes.value.data?.trades) {
-            newData.okxTrades = okxTradesRes.value.data.trades;
+          } else if (responseData?.trades) {
+            newData.okxTrades = responseData.trades;
+            console.log("📊 OKX crypto trades loaded:", newData.okxTrades.length);
+          } else if (responseData?.data) {
+            newData.okxTrades = responseData.data;
+            console.log("📊 OKX crypto trades loaded:", newData.okxTrades.length);
           }
         }
 
@@ -176,11 +183,13 @@ function useLiveData() {
 
         // Process Alpaca Stock Trades
         if (stockTradesRes.status === "fulfilled") {
-          if (Array.isArray(stockTradesRes.value.data)) {
-            newData.stockTrades = stockTradesRes.value.data;
+          const responseData = stockTradesRes.value.data;
+          if (Array.isArray(responseData)) {
+            newData.stockTrades = responseData;
             console.log("📈 Stock bot trades loaded:", newData.stockTrades.length);
-          } else if (stockTradesRes.value.data?.trades) {
-            newData.stockTrades = stockTradesRes.value.data.trades;
+          } else if (responseData?.trades) {
+            newData.stockTrades = responseData.trades;
+            console.log("📈 Stock bot trades loaded:", newData.stockTrades.length);
           }
         }
 
@@ -623,7 +632,7 @@ function AlpacaStockBot({ trades, botStatus, onTradeClick }) {
         )}
         {!botStatus && (
           <div className="mt-3 text-xs text-amber-600">
-            ⚠️ Stock bot service not running. Start with: sudo systemctl start stock-bot
+            ⚠️ Stock bot service not responding. Check if it's running on port 3001.
           </div>
         )}
       </div>
