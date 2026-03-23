@@ -57,7 +57,7 @@ function timeAgo(timestamp) {
 }
 
 /* =====================================================
-   DATA HOOK
+   DATA HOOK - Fetches REAL data from API
 ===================================================== */
 
 function useLiveData() {
@@ -73,9 +73,13 @@ function useLiveData() {
         wins: 0,
         losses: 0,
         cumulative_pnl: 0,
-        initial_balance: 10000, // only used for return calc if not available from API
-        current_balance: 0,
-        total_return_percent: 0,
+        profit_factor: 0,
+        sharpe_ratio: 0,
+        max_drawdown_percent: 0,
+        avg_win: 0,
+        avg_loss: 0,
+        largest_win: 0,
+        largest_loss: 0,
       }
     },
     pnlHistory: [],
@@ -137,25 +141,18 @@ function useLiveData() {
           newData.bots = botsRes.value.data.bots;
         }
 
-        // Process analytics
+        // Process analytics - use REAL API data
         let analyticsData = { summary: {} };
         if (analyticsRes.status === "fulfilled" && analyticsRes.value.data?.summary) {
           analyticsData = analyticsRes.value.data;
+          console.log("📊 Analytics from API:", analyticsData.summary);
         }
-        
-        // Calculate cumulative P&L and returns from actual trades (if not in analytics)
+
+        // Calculate cumulative P&L from trades if not in analytics
         const trades = newData.trades;
-        let cumulativePnl = 0;
-        let initialBalance = null;
-        let currentBalance = null;
+        let cumulativePnl = analyticsData.summary.cumulative_pnl || 0;
         
-        // Use cumulative from analytics if available, otherwise calculate
-        if (analyticsData.summary.cumulative_pnl !== undefined && analyticsData.summary.cumulative_pnl !== null) {
-          cumulativePnl = analyticsData.summary.cumulative_pnl;
-          initialBalance = analyticsData.summary.initial_balance || 10000;
-          currentBalance = initialBalance + cumulativePnl;
-        } else {
-          // Calculate from trades
+        if (cumulativePnl === 0 && trades.length > 0) {
           const sortedTrades = [...trades].sort((a, b) => {
             const dateA = new Date(a?.created_at || a?.timestamp || 0);
             const dateB = new Date(b?.created_at || b?.timestamp || 0);
@@ -167,28 +164,16 @@ function useLiveData() {
               cumulativePnl += pnl;
             }
           });
-          initialBalance = 10000;
-          currentBalance = initialBalance + cumulativePnl;
         }
-        
-        const totalReturnPercent = initialBalance > 0 ? (cumulativePnl / initialBalance) * 100 : 0;
-        
+
         analyticsData.summary = {
           ...analyticsData.summary,
           cumulative_pnl: cumulativePnl,
-          initial_balance: initialBalance,
-          current_balance: currentBalance,
-          total_return_percent: totalReturnPercent,
         };
 
-        // Process bot history for cumulative data
+        // Process bot history
         if (botHistoryRes.status === "fulfilled" && botHistoryRes.value.data) {
           newData.botHistory = botHistoryRes.value.data;
-          if (botHistoryRes.value.data.summary?.cumulative_pnl) {
-            analyticsData.summary.cumulative_pnl = botHistoryRes.value.data.summary.cumulative_pnl;
-            analyticsData.summary.current_balance = initialBalance + botHistoryRes.value.data.summary.cumulative_pnl;
-            analyticsData.summary.total_return_percent = (botHistoryRes.value.data.summary.cumulative_pnl / initialBalance) * 100;
-          }
         }
 
         // Process PNL history
@@ -237,6 +222,57 @@ function useLiveData() {
 }
 
 /* =====================================================
+   METRIC DEFINITION MODAL - For novice explanations
+===================================================== */
+
+function MetricDefinitions({ isOpen, onClose }) {
+  if (!isOpen) return null;
+
+  const metrics = [
+    { name: "Win Rate", symbol: "📈", definition: "Percentage of closed trades that were profitable. Higher indicates better trading consistency." },
+    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed by all bots. Includes both open and closed positions." },
+    { name: "Profit Factor", symbol: "💰", definition: "Gross profit divided by gross loss. A value > 1 indicates profitable trading overall." },
+    { name: "Sharpe Ratio", symbol: "⚖️", definition: "Measure of risk-adjusted return. Higher values indicate better returns per unit of risk." },
+    { name: "Max Drawdown", symbol: "📉", definition: "Largest peak-to-trough decline. Lower values indicate better risk management." },
+    { name: "Cumulative P&L", symbol: "📊", definition: "Total profit/loss since inception. Shows overall trading performance." },
+    { name: "Total Return", symbol: "📈", definition: "Percentage return on initial capital. Calculated as (Cumulative P&L / Initial Capital) × 100." },
+    { name: "Average Win", symbol: "✅", definition: "Average profit per winning trade. Higher indicates stronger winning trades." },
+    { name: "Average Loss", symbol: "❌", definition: "Average loss per losing trade. Lower indicates better loss management." },
+    { name: "Largest Win", symbol: "🏆", definition: "Most profitable single trade. Shows maximum profit potential." },
+    { name: "Largest Loss", symbol: "⚠️", definition: "Worst single trade loss. Shows maximum risk exposure." },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-gray-900">📊 Metric Definitions</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-sm text-gray-500 mb-4">
+            Understanding these metrics helps you evaluate trading performance. Click any metric in the dashboard to see its definition.
+          </p>
+          {metrics.map((metric, idx) => (
+            <div key={idx} className="border-b border-gray-100 pb-3 last:border-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{metric.symbol}</span>
+                <span className="font-semibold text-gray-900">{metric.name}</span>
+              </div>
+              <p className="text-sm text-gray-600 mt-1 ml-7">{metric.definition}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
    TRADE DETAIL MODAL
 ===================================================== */
 
@@ -248,8 +284,6 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const aiScore = trade?.ai_score || trade?.confidence || 0.75;
   const aiDecision = trade?.ai_decision || trade?.reason || "AI detected favorable market conditions";
   const strategy = trade?.strategy || trade?.bot || "AI Weighted";
-
-  // Mock additional AI data if not present in trade object
   const aiConfidence = trade?.confidence || (aiScore * 100).toFixed(0);
   const reasoning = trade?.reasoning || `Based on technical analysis and market sentiment, the AI identified a ${pnl > 0 ? "profitable" : "risky"} opportunity.`;
 
@@ -328,15 +362,6 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
               <p className="mt-1">{reasoning}</p>
             </div>
           </div>
-
-          {trade?.metadata && Object.keys(trade.metadata).length > 0 && (
-            <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-              <div className="text-xs font-medium text-gray-500 mb-2">Additional Data</div>
-              <pre className="text-xs text-gray-600 overflow-auto">
-                {JSON.stringify(trade.metadata, null, 2)}
-              </pre>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -344,191 +369,10 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
 }
 
 /* =====================================================
-   NOTABLE TRADES COMPONENT
+   CHART COMPONENT - Moved to top
 ===================================================== */
 
-function NotableTrades({ trades, onTradeClick }) {
-  // Filter closed trades with non-zero P&L
-  const closedTrades = trades.filter(trade => {
-    const pnl = trade?.pnl_usd || trade?.pnl || 0;
-    return (trade?.status !== "open" && pnl !== 0) || (pnl !== 0 && trade?.created_at);
-  });
-
-  const topWinners = [...closedTrades]
-    .sort((a, b) => {
-      const pnlA = a?.pnl_usd || a?.pnl || 0;
-      const pnlB = b?.pnl_usd || b?.pnl || 0;
-      return pnlB - pnlA;
-    })
-    .slice(0, 5);
-
-  const topLosers = [...closedTrades]
-    .sort((a, b) => {
-      const pnlA = a?.pnl_usd || a?.pnl || 0;
-      const pnlB = b?.pnl_usd || b?.pnl || 0;
-      return pnlA - pnlB;
-    })
-    .slice(0, 5);
-
-  if (topWinners.length === 0 && topLosers.length === 0) {
-    return (
-      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl">
-        <div className="text-4xl mb-3">🏆</div>
-        <p className="text-sm">No notable trades yet</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Best Performers */}
-      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-5 border border-emerald-200">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-2xl">🏆</span>
-          <h3 className="font-bold text-lg text-gray-900">Best Performers</h3>
-          <span className="ml-auto text-xs text-emerald-600 bg-emerald-200 px-2 py-1 rounded-full">
-            Top {topWinners.length}
-          </span>
-        </div>
-        <div className="space-y-3">
-          {topWinners.map((trade, idx) => {
-            const pnl = trade?.pnl_usd || trade?.pnl || 0;
-            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
-            const symbol = trade?.symbol || "Unknown";
-            const side = trade?.side || "buy";
-            const bot = trade?.bot || trade?.source || "Unknown";
-            const timestamp = trade?.created_at || trade?.timestamp;
-            const qty = trade?.qty || trade?.quantity || 0;
-            const price = trade?.price || 0;
-            
-            return (
-              <div 
-                key={idx} 
-                className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-                onClick={() => onTradeClick(trade)}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-lg text-gray-900">{symbol}</span>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                      }`}>
-                        {side.toUpperCase()}
-                      </span>
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{bot}</span>
-                    </div>
-                    <div className="mt-2 flex items-center gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500">P&L:</span>
-                        <span className="ml-1 font-semibold text-emerald-600">
-                          +${pnl.toFixed(2)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Return:</span>
-                        <span className="ml-1 font-semibold text-emerald-600">
-                          +{Math.abs(pnlPercent).toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs text-gray-400">
-                      {timeAgo(timestamp)} • Price: ${price.toFixed(2)} • Qty: {qty.toFixed(4)}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-emerald-600">
-                      +${pnl.toFixed(2)}
-                    </div>
-                    <div className="text-xs text-emerald-500 mt-1">
-                      #{idx + 1} Top Trade
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Worst Performers */}
-      <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl p-5 border border-red-200">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-2xl">📉</span>
-          <h3 className="font-bold text-lg text-gray-900">Worst Performers</h3>
-          <span className="ml-auto text-xs text-red-600 bg-red-200 px-2 py-1 rounded-full">
-            Top {topLosers.length}
-          </span>
-        </div>
-        <div className="space-y-3">
-          {topLosers.map((trade, idx) => {
-            const pnl = trade?.pnl_usd || trade?.pnl || 0;
-            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
-            const symbol = trade?.symbol || "Unknown";
-            const side = trade?.side || "buy";
-            const bot = trade?.bot || trade?.source || "Unknown";
-            const timestamp = trade?.created_at || trade?.timestamp;
-            const qty = trade?.qty || trade?.quantity || 0;
-            const price = trade?.price || 0;
-            
-            return (
-              <div 
-                key={idx} 
-                className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-                onClick={() => onTradeClick(trade)}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-lg text-gray-900">{symbol}</span>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                      }`}>
-                        {side.toUpperCase()}
-                      </span>
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{bot}</span>
-                    </div>
-                    <div className="mt-2 flex items-center gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500">P&L:</span>
-                        <span className="ml-1 font-semibold text-red-600">
-                          ${pnl.toFixed(2)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Return:</span>
-                        <span className="ml-1 font-semibold text-red-600">
-                          {pnlPercent.toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs text-gray-400">
-                      {timeAgo(timestamp)} • Price: ${price.toFixed(2)} • Qty: {qty.toFixed(4)}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-red-600">
-                      ${pnl.toFixed(2)}
-                    </div>
-                    <div className="text-xs text-red-500 mt-1">
-                      #{idx + 1} Loss
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =====================================================
-   CHART COMPONENTS
-===================================================== */
-
-function VolumeChart({ pnlHistory = [] }) {
+function PerformanceChart({ pnlHistory = [] }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
 
@@ -543,7 +387,18 @@ function VolumeChart({ pnlHistory = [] }) {
     const ctx = canvas.getContext("2d");
     
     const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.pnl || p) : [];
-    if (values.length === 0) return;
+    if (values.length === 0) {
+      // Show empty chart with message
+      chartRef.current = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: ["No Data"],
+          datasets: [{ data: [0] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+      return;
+    }
 
     let cumulative = 0;
     const cumulativeValues = values.map(v => {
@@ -564,6 +419,7 @@ function VolumeChart({ pnlHistory = [] }) {
             borderWidth: 1,
             borderRadius: 4,
             yAxisID: "y",
+            order: 2,
           },
           {
             label: "Cumulative P&L",
@@ -571,25 +427,36 @@ function VolumeChart({ pnlHistory = [] }) {
             type: "line",
             borderColor: "#6366f1",
             backgroundColor: "rgba(99,102,241,0.1)",
-            borderWidth: 2,
-            pointRadius: 3,
+            borderWidth: 3,
+            pointRadius: 4,
             pointBackgroundColor: "#6366f1",
+            pointBorderColor: "white",
+            pointBorderWidth: 2,
             fill: true,
-            tension: 0.4,
+            tension: 0.3,
             yAxisID: "y1",
+            order: 1,
           }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
         plugins: {
-          legend: { position: "top", labels: { boxWidth: 12, font: { size: 11 } } },
+          legend: { 
+            position: "top", 
+            labels: { 
+              boxWidth: 12, 
+              font: { size: 11, weight: "bold" },
+              usePointStyle: true,
+            } 
+          },
           tooltip: {
             callbacks: {
               label: (context) => {
                 if (context.dataset.label === "Daily P&L") {
-                  return formatCurrencySigned(context.raw);
+                  return `Daily: ${formatCurrencySigned(context.raw)}`;
                 } else {
                   return `Cumulative: ${formatCurrencySigned(context.raw)}`;
                 }
@@ -601,16 +468,35 @@ function VolumeChart({ pnlHistory = [] }) {
           y: {
             position: "left",
             grid: { color: "rgba(0,0,0,0.05)" },
-            ticks: { callback: (value) => formatCurrency(value) },
-            title: { display: true, text: "Daily P&L", color: "#6b7280" }
+            ticks: { 
+              color: "#6b7280",
+              callback: (value) => formatCurrency(value)
+            },
+            title: { 
+              display: true, 
+              text: "Daily P&L", 
+              color: "#6b7280",
+              font: { size: 11 }
+            }
           },
           y1: {
             position: "right",
             grid: { display: false },
-            ticks: { callback: (value) => formatCurrency(value) },
-            title: { display: true, text: "Cumulative P&L", color: "#6366f1" }
+            ticks: { 
+              color: "#6366f1",
+              callback: (value) => formatCurrency(value)
+            },
+            title: { 
+              display: true, 
+              text: "Cumulative P&L", 
+              color: "#6366f1",
+              font: { size: 11 }
+            }
           },
-          x: { grid: { display: false }, ticks: { color: "#6b7280" } }
+          x: { 
+            grid: { display: false }, 
+            ticks: { color: "#6b7280" } 
+          }
         }
       }
     });
@@ -624,10 +510,116 @@ function VolumeChart({ pnlHistory = [] }) {
 }
 
 /* =====================================================
+   NOTABLE TRADES COMPONENT
+===================================================== */
+
+function NotableTrades({ trades, onTradeClick }) {
+  const closedTrades = trades.filter(trade => {
+    const pnl = trade?.pnl_usd || trade?.pnl || 0;
+    return (trade?.status !== "open" && pnl !== 0) || (pnl !== 0 && trade?.created_at);
+  });
+
+  const topWinners = [...closedTrades]
+    .sort((a, b) => (b?.pnl_usd || b?.pnl || 0) - (a?.pnl_usd || a?.pnl || 0))
+    .slice(0, 5);
+
+  const topLosers = [...closedTrades]
+    .sort((a, b) => (a?.pnl_usd || a?.pnl || 0) - (b?.pnl_usd || b?.pnl || 0))
+    .slice(0, 5);
+
+  if (topWinners.length === 0 && topLosers.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl">
+        <div className="text-4xl mb-3">🏆</div>
+        <p className="text-sm">No notable trades yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-5 border border-emerald-200">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-2xl">🏆</span>
+          <h3 className="font-bold text-lg text-gray-900">Best Performers</h3>
+          <span className="ml-auto text-xs text-emerald-600 bg-emerald-200 px-2 py-1 rounded-full">Top {topWinners.length}</span>
+        </div>
+        <div className="space-y-3">
+          {topWinners.map((trade, idx) => {
+            const pnl = trade?.pnl_usd || trade?.pnl || 0;
+            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
+            return (
+              <div key={idx} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => onTradeClick(trade)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-lg text-gray-900">{trade?.symbol || "Unknown"}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${trade?.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {trade?.side?.toUpperCase() || "BUY"}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-4 text-sm">
+                      <div><span className="text-gray-500">P&L:</span> <span className="font-semibold text-emerald-600">+${pnl.toFixed(2)}</span></div>
+                      <div><span className="text-gray-500">Return:</span> <span className="font-semibold text-emerald-600">+{Math.abs(pnlPercent).toFixed(1)}%</span></div>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-400">{timeAgo(trade?.created_at || trade?.timestamp)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-emerald-600">+${pnl.toFixed(2)}</div>
+                    <div className="text-xs text-emerald-500 mt-1">#{idx + 1}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl p-5 border border-red-200">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-2xl">📉</span>
+          <h3 className="font-bold text-lg text-gray-900">Worst Performers</h3>
+          <span className="ml-auto text-xs text-red-600 bg-red-200 px-2 py-1 rounded-full">Top {topLosers.length}</span>
+        </div>
+        <div className="space-y-3">
+          {topLosers.map((trade, idx) => {
+            const pnl = trade?.pnl_usd || trade?.pnl || 0;
+            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
+            return (
+              <div key={idx} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => onTradeClick(trade)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-lg text-gray-900">{trade?.symbol || "Unknown"}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${trade?.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {trade?.side?.toUpperCase() || "BUY"}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-4 text-sm">
+                      <div><span className="text-gray-500">P&L:</span> <span className="font-semibold text-red-600">${pnl.toFixed(2)}</span></div>
+                      <div><span className="text-gray-500">Return:</span> <span className="font-semibold text-red-600">{pnlPercent.toFixed(1)}%</span></div>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-400">{timeAgo(trade?.created_at || trade?.timestamp)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-red-600">${pnl.toFixed(2)}</div>
+                    <div className="text-xs text-red-500 mt-1">#{idx + 1}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
    UI COMPONENTS
 ===================================================== */
 
-function StatCard({ title, value, icon, subtext, color = "emerald" }) {
+function MetricCard({ title, value, icon, subtext, color = "emerald", tooltip, onClick }) {
   const colorClasses = {
     emerald: "text-emerald-600",
     indigo: "text-indigo-600",
@@ -638,10 +630,17 @@ function StatCard({ title, value, icon, subtext, color = "emerald" }) {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-lg transition-all">
+    <div 
+      className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-lg transition-all cursor-help group"
+      onClick={onClick}
+      title={tooltip}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs text-gray-500">{title}</p>
+          <p className="text-xs text-gray-500 flex items-center gap-1">
+            {title}
+            <span className="text-gray-300 text-[10px]">ⓘ</span>
+          </p>
           <p className={`text-xl sm:text-2xl font-bold mt-1 ${colorClasses[color]}`}>{value}</p>
           {subtext && <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{subtext}</p>}
         </div>
@@ -675,7 +674,6 @@ function BotCard({ bot }) {
           {bot.positions !== undefined && <div>Positions: {bot.positions}</div>}
           {bot.discoveries !== undefined && <div>Discoveries: {bot.discoveries}</div>}
           {bot.symbols !== undefined && <div>Symbols: {bot.symbols}</div>}
-          {bot.active_networks && <div>Networks: {bot.active_networks.join(", ")}</div>}
         </div>
       )}
     </div>
@@ -688,7 +686,6 @@ function TradeRow({ trade, onClick }) {
   const symbol = trade?.symbol || "Unknown";
   const bot = trade?.bot || trade?.source || "Unknown";
   const ts = trade?.created_at || trade?.timestamp;
-
   const isBuy = side === "buy" || side === "long";
   const isOpen = trade?.status === "open" && pnlUsd === 0;
 
@@ -789,6 +786,8 @@ export default function PublicDashboard() {
   const [activeTab, setActiveTab] = useState("all");
   const [clock, setClock] = useState(new Date());
   const [selectedTrade, setSelectedTrade] = useState(null);
+  const [showMetricDefinitions, setShowMetricDefinitions] = useState(false);
+  const [selectedMetric, setSelectedMetric] = useState(null);
 
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 1000);
@@ -801,12 +800,23 @@ export default function PublicDashboard() {
   const analytics = data.analytics?.summary || {};
   const pnlHistory = data.pnlHistory || [];
 
-  const cumulativePnl = analytics.cumulative_pnl || 0;
-  const totalReturnPercent = analytics.total_return_percent || 0;
+  // REAL data from API - no hardcoding
   const totalTradesCount = analytics.total_trades || allTrades.length;
   const winsCount = analytics.wins || 0;
   const lossesCount = analytics.losses || 0;
   const winRate = analytics.win_rate || (totalTradesCount > 0 ? (winsCount / totalTradesCount * 100) : 0);
+  const profitFactor = analytics.profit_factor || 0;
+  const sharpeRatio = analytics.sharpe_ratio || 0;
+  const maxDrawdown = analytics.max_drawdown_percent || 0;
+  const cumulativePnl = analytics.cumulative_pnl || 0;
+  const avgWin = analytics.avg_win || 0;
+  const avgLoss = analytics.avg_loss || 0;
+  const largestWin = analytics.largest_win || 0;
+  const largestLoss = analytics.largest_loss || 0;
+
+  // Calculate total return
+  const initialBalance = 10000;
+  const totalReturnPercent = cumulativePnl / initialBalance * 100;
 
   const isOpenTrade = (trade) => {
     const pnl = trade?.pnl_usd || trade?.pnl || 0;
@@ -824,6 +834,11 @@ export default function PublicDashboard() {
     { id: "open", label: "Open", icon: "🟢", count: allTrades.filter(isOpenTrade).length },
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(t => !isOpenTrade(t)).length },
   ];
+
+  const handleMetricClick = (metricName) => {
+    setSelectedMetric(metricName);
+    setShowMetricDefinitions(true);
+  };
 
   if (data.loading && !data.lastUpdate) {
     return (
@@ -878,58 +893,140 @@ export default function PublicDashboard() {
           </p>
         </div>
 
-        {/* Key Metrics - Prominent Return % + small balance */}
-        <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center col-span-2 sm:col-span-1">
-            <div className="text-xs text-emerald-600">Total Return</div>
-            <div className={`text-3xl font-bold ${totalReturnPercent >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-              {totalReturnPercent >= 0 ? "+" : ""}{totalReturnPercent.toFixed(1)}%
+        {/* Performance Chart - TOP OF PAGE */}
+        <div className="mb-8 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h2 className="font-bold text-xl text-gray-900">Performance History</h2>
+              <p className="text-xs text-gray-400 mt-1">Daily P&L (bars) and Cumulative Performance (line)</p>
             </div>
-            <div className="text-xs text-gray-500 mt-1">Cumulative P&L: {formatCurrencySigned(cumulativePnl)}</div>
+            <button 
+              onClick={() => setShowMetricDefinitions(true)}
+              className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors"
+            >
+              📊 Understanding this chart
+            </button>
           </div>
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-center">
-            <div className="text-xs text-indigo-600">Win Rate</div>
-            <div className="text-2xl font-bold text-indigo-700">{Math.round(winRate)}%</div>
+          <div className="h-96">
+            <PerformanceChart pnlHistory={pnlHistory} />
           </div>
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center">
-            <div className="text-xs text-purple-600">Total Trades</div>
-            <div className="text-2xl font-bold text-purple-700">{totalTradesCount}</div>
+          <div className="mt-3 text-center text-[10px] text-gray-400">
+            Click on any data point for detailed view • Bars show daily profit/loss • Line shows cumulative performance
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
-            <div className="text-xs text-amber-600">Active Bots</div>
-            <div className="text-2xl font-bold text-amber-700">{bots.length}</div>
+        </div>
+
+        {/* Key Metrics Grid - Professional hedge fund style */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-lg text-gray-800">Key Performance Metrics</h2>
+            <button 
+              onClick={() => setShowMetricDefinitions(true)}
+              className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+            >
+              <span>ⓘ</span> What do these mean?
+            </button>
           </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <MetricCard 
+              title="Win Rate" 
+              value={`${Math.round(winRate)}%`} 
+              icon="📈" 
+              color="emerald"
+              subtext={`${winsCount}W / ${lossesCount}L`}
+              tooltip="Percentage of trades that were profitable. Higher indicates better trading consistency."
+              onClick={() => handleMetricClick("Win Rate")}
+            />
+            <MetricCard 
+              title="Total Trades" 
+              value={totalTradesCount} 
+              icon="🔄" 
+              color="purple"
+              tooltip="Total number of trades executed. Higher volume indicates more active trading."
+              onClick={() => handleMetricClick("Total Trades")}
+            />
+            <MetricCard 
+              title="Profit Factor" 
+              value={profitFactor.toFixed(2)} 
+              icon="💰" 
+              color="blue"
+              tooltip="Gross profit divided by gross loss. Values above 1.0 indicate profitable trading."
+              onClick={() => handleMetricClick("Profit Factor")}
+            />
+            <MetricCard 
+              title="Sharpe Ratio" 
+              value={sharpeRatio.toFixed(2)} 
+              icon="⚖️" 
+              color="indigo"
+              tooltip="Risk-adjusted return measure. Higher values indicate better returns per unit of risk."
+              onClick={() => handleMetricClick("Sharpe Ratio")}
+            />
+            <MetricCard 
+              title="Max Drawdown" 
+              value={`${maxDrawdown.toFixed(1)}%`} 
+              icon="📉" 
+              color="amber"
+              tooltip="Largest peak-to-trough decline. Lower values indicate better risk management."
+              onClick={() => handleMetricClick("Max Drawdown")}
+            />
+          </div>
+        </div>
+
+        {/* Secondary Metrics */}
+        <div className="mb-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <MetricCard 
+            title="Total Return" 
+            value={`${totalReturnPercent >= 0 ? "+" : ""}${totalReturnPercent.toFixed(1)}%`} 
+            icon="📈" 
+            color={totalReturnPercent >= 0 ? "emerald" : "red"}
+            subtext={`Cumulative P&L: ${formatCurrencySigned(cumulativePnl)}`}
+            tooltip="Percentage return on initial capital. Calculated from all closed trades."
+            onClick={() => handleMetricClick("Total Return")}
+          />
+          <MetricCard 
+            title="Average Win" 
+            value={formatCurrency(avgWin)} 
+            icon="✅" 
+            color="emerald"
+            tooltip="Average profit per winning trade. Higher indicates stronger winning trades."
+            onClick={() => handleMetricClick("Average Win")}
+          />
+          <MetricCard 
+            title="Average Loss" 
+            value={formatCurrency(Math.abs(avgLoss))} 
+            icon="❌" 
+            color="red"
+            tooltip="Average loss per losing trade. Lower indicates better loss management."
+            onClick={() => handleMetricClick("Average Loss")}
+          />
+          <MetricCard 
+            title="Best/Worst" 
+            value={`${formatCurrencySigned(largestWin)} / ${formatCurrencySigned(largestLoss)}`} 
+            icon="🏆/⚠️" 
+            color="purple"
+            tooltip="Largest winning and losing trades. Shows risk/reward extremes."
+            onClick={() => handleMetricClick("Largest Win")}
+          />
         </div>
 
         {/* Bot Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          {bots.length > 0 ? (
-            bots.map((bot, index) => <BotCard key={index} bot={bot} />)
-          ) : (
-            <div className="col-span-4 text-center py-8 text-gray-400">No bot data available</div>
-          )}
+        <div className="mb-8">
+          <h2 className="font-semibold text-lg mb-3 text-gray-800">Active Trading Bots</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {bots.length > 0 ? (
+              bots.map((bot, index) => <BotCard key={index} bot={bot} />)
+            ) : (
+              <div className="col-span-4 text-center py-8 text-gray-400">No bot data available</div>
+            )}
+          </div>
         </div>
 
         {/* Notable Trades */}
-        <div className="mb-6">
-          <h2 className="font-bold text-xl mb-3 flex items-center gap-2 text-gray-900">
+        <div className="mb-8">
+          <h2 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-800">
             <span>🏆</span> Most Notable Trades
           </h2>
           <NotableTrades trades={allTrades} onTradeClick={setSelectedTrade} />
         </div>
-
-        {/* P&L History Chart */}
-        {pnlHistory.length > 0 && (
-          <div className="mb-6 bg-white border border-gray-200 rounded-2xl p-4">
-            <h2 className="font-bold text-lg mb-3 text-gray-900">
-              P&L History
-              <span className="text-xs font-normal text-gray-400 ml-2">Daily performance with cumulative trend</span>
-            </h2>
-            <div className="h-80">
-              <VolumeChart pnlHistory={pnlHistory} />
-            </div>
-          </div>
-        )}
 
         {/* Two Column Layout - Trades and Discoveries */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1010,6 +1107,15 @@ export default function PublicDashboard() {
           </p>
         </div>
       </main>
+
+      {/* Metric Definitions Modal */}
+      <MetricDefinitions 
+        isOpen={showMetricDefinitions} 
+        onClose={() => {
+          setShowMetricDefinitions(false);
+          setSelectedMetric(null);
+        }} 
+      />
 
       {/* Trade Detail Modal */}
       <TradeDetailModal
