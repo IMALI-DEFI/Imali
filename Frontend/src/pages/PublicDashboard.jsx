@@ -1,4 +1,4 @@
-// src/pages/PublicDashboard.jsx
+// src/pages/PublicDashboard.jsx - Enhanced with Stock Scanner Signals
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -18,6 +18,7 @@ const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
 const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
 const USER_STATS_URL = `${API_BASE}/api/user/stats`;
 const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
+const STOCK_SCANNER_URL = `${API_BASE}/api/scanner/signals`; // Add this endpoint
 
 /* =====================================================
    HELPERS
@@ -56,14 +57,25 @@ function timeAgo(timestamp) {
   }
 }
 
+function getRiskColor(risk) {
+  const riskLower = (risk || "").toLowerCase();
+  if (riskLower.includes("low")) return "text-emerald-600 bg-emerald-50";
+  if (riskLower.includes("medium-low")) return "text-emerald-500 bg-emerald-50";
+  if (riskLower.includes("medium")) return "text-amber-600 bg-amber-50";
+  if (riskLower.includes("medium-high")) return "text-orange-600 bg-orange-50";
+  if (riskLower.includes("high")) return "text-red-600 bg-red-50";
+  return "text-gray-600 bg-gray-50";
+}
+
 /* =====================================================
-   DATA HOOK - FETCHES ALL TRADES SINCE BOT ACTIVATION
+   DATA HOOK - FETCHES REAL DATA FROM API
 ===================================================== */
 
 function useLiveData() {
   const [data, setData] = useState({
     bots: [],
     trades: [],
+    signals: [],
     discoveries: [],
     analytics: {
       summary: {
@@ -90,22 +102,31 @@ function useLiveData() {
 
     const fetchAllData = async () => {
       try {
-        // Fetch all trades from bot activity history (up to 365 days)
-        const [tradesRes, discoveriesRes, botsRes, analyticsRes, userStatsRes, pnlHistoryRes, botHistoryRes] =
-          await Promise.allSettled([
-            axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 10000, params: { days: 365, limit: 5000 } }),
-            axios.get(DISCOVERIES_URL, { timeout: 8000 }),
-            axios.get(BOT_STATUS_URL, { timeout: 8000 }),
-            axios.get(ANALYTICS_URL, { timeout: 8000 }),
-            axios.get(USER_STATS_URL, { timeout: 8000 }),
-            axios.get(PNL_HISTORY_URL, { timeout: 8000 }),
-            axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 8000, params: { days: 365 } }),
-          ]);
+        const [
+          tradesRes,
+          discoveriesRes,
+          botsRes,
+          analyticsRes,
+          userStatsRes,
+          pnlHistoryRes,
+          botHistoryRes,
+          signalsRes,
+        ] = await Promise.allSettled([
+          axios.get(TRADES_URL, { timeout: 8000 }),
+          axios.get(DISCOVERIES_URL, { timeout: 8000 }),
+          axios.get(BOT_STATUS_URL, { timeout: 8000 }),
+          axios.get(ANALYTICS_URL, { timeout: 8000 }),
+          axios.get(USER_STATS_URL, { timeout: 8000 }),
+          axios.get(PNL_HISTORY_URL, { timeout: 8000 }),
+          axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 8000, params: { days: 90 } }),
+          axios.get(STOCK_SCANNER_URL, { timeout: 8000 }).catch(() => ({ data: { signals: [] } })),
+        ]);
 
         if (!mounted) return;
 
         let newData = {
           trades: [],
+          signals: [],
           discoveries: [],
           bots: [],
           analytics: { summary: {} },
@@ -114,26 +135,19 @@ function useLiveData() {
           botHistory: {},
         };
 
-        // Process trades – use history endpoint (all trades)
+        // Process trades
         if (tradesRes.status === "fulfilled" && tradesRes.value.data?.trades) {
           newData.trades = tradesRes.value.data.trades;
-          console.log(`✅ Loaded ${newData.trades.length} trades from history`);
         } else if (tradesRes.status === "fulfilled" && tradesRes.value.data) {
           newData.trades = tradesRes.value.data;
-          console.log(`✅ Loaded ${newData.trades.length} trades (fallback)`);
-        } else {
-          // Fallback to recent trades if history fails
-          const recentRes = await axios.get(TRADES_URL);
-          newData.trades = recentRes.data?.trades || [];
-          console.warn(`⚠️ History endpoint failed, using recent trades (${newData.trades.length})`);
         }
 
-        // Sort trades descending (most recent first)
-        newData.trades.sort((a, b) => {
-          const tA = new Date(a?.created_at || a?.timestamp || 0);
-          const tB = new Date(b?.created_at || b?.timestamp || 0);
-          return tB - tA;
-        });
+        // Process stock scanner signals
+        if (signalsRes.status === "fulfilled" && signalsRes.value.data?.signals) {
+          newData.signals = signalsRes.value.data.signals;
+        } else if (signalsRes.status === "fulfilled" && signalsRes.value.data) {
+          newData.signals = signalsRes.value.data;
+        }
 
         // Process discoveries
         if (discoveriesRes.status === "fulfilled" && discoveriesRes.value.data?.discoveries) {
@@ -145,13 +159,10 @@ function useLiveData() {
           newData.bots = botsRes.value.data.bots;
         }
 
-        // ============================================================
-        // CALCULATE ALL METRICS FROM ALL TRADES (NO HARDCODING)
-        // ============================================================
+        // Calculate metrics from real trades
         const trades = newData.trades;
         const realTotalTrades = trades.length;
-        console.log(`📊 Total trades since bot activation: ${realTotalTrades}`);
-
+        
         let cumulativePnl = 0;
         let totalPnl = 0;
         let wins = 0;
@@ -160,21 +171,19 @@ function useLiveData() {
         let totalLossAmount = 0;
         let maxDrawdown = 0;
         let peak = 0;
-
-        // Sort chronologically for cumulative calculations
+        
         const sortedTrades = [...trades].sort((a, b) => {
           const dateA = new Date(a?.created_at || a?.timestamp || 0);
           const dateB = new Date(b?.created_at || b?.timestamp || 0);
           return dateA - dateB;
         });
-
+        
         sortedTrades.forEach(trade => {
           const pnl = trade?.pnl_usd || trade?.pnl || 0;
-          // Only count closed trades for P&L
           if (trade?.status !== "open") {
             cumulativePnl += pnl;
             totalPnl += pnl;
-
+            
             if (pnl > 0) {
               wins++;
               totalWinAmount += pnl;
@@ -182,23 +191,23 @@ function useLiveData() {
               losses++;
               totalLossAmount += Math.abs(pnl);
             }
-
-            // Calculate max drawdown
+            
             if (cumulativePnl > peak) peak = cumulativePnl;
             const drawdown = peak > 0 ? (peak - cumulativePnl) / peak * 100 : 0;
             if (drawdown > maxDrawdown) maxDrawdown = drawdown;
           }
         });
-
+        
         const winRate = realTotalTrades > 0 ? (wins / realTotalTrades * 100) : 0;
         const profitFactor = totalLossAmount > 0 ? totalWinAmount / totalLossAmount : 0;
-
-        // Calculate Sharpe Ratio (simplified)
+        const avgTrade = realTotalTrades > 0 ? totalPnl / realTotalTrades : 0;
+        
+        // Calculate Sharpe Ratio
         const returns = sortedTrades.map(t => t?.pnl_usd || t?.pnl || 0).filter(r => r !== 0);
         const avgReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
         const stdDev = returns.length > 1 ? Math.sqrt(returns.reduce((sq, n) => sq + Math.pow(n - avgReturn, 2), 0) / (returns.length - 1)) : 0;
         const sharpeRatio = stdDev > 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0;
-
+        
         const analyticsData = {
           summary: {
             total_trades: realTotalTrades,
@@ -210,6 +219,7 @@ function useLiveData() {
             profit_factor: profitFactor,
             sharpe_ratio: sharpeRatio,
             max_drawdown_percent: maxDrawdown,
+            avg_trade: avgTrade,
           }
         };
 
@@ -218,17 +228,6 @@ function useLiveData() {
           newData.pnlHistory = pnlHistoryRes.value.data.history;
         } else if (botHistoryRes.status === "fulfilled" && botHistoryRes.value.data?.pnl_by_day) {
           newData.pnlHistory = botHistoryRes.value.data.pnl_by_day;
-        } else {
-          // Generate daily P&L from trades
-          const dailyPnL = new Map();
-          sortedTrades.forEach(trade => {
-            const date = new Date(trade?.created_at || trade?.timestamp || Date.now()).toISOString().split('T')[0];
-            const pnl = trade?.pnl_usd || trade?.pnl || 0;
-            if (trade?.status !== "open") {
-              dailyPnL.set(date, (dailyPnL.get(date) || 0) + pnl);
-            }
-          });
-          newData.pnlHistory = Array.from(dailyPnL.entries()).map(([date, pnl]) => ({ date, pnl }));
         }
 
         // Process user stats
@@ -247,7 +246,7 @@ function useLiveData() {
       } catch (error) {
         console.error("Data fetch error:", error);
         if (!mounted) return;
-
+        
         setData(prev => ({
           ...prev,
           loading: false,
@@ -270,7 +269,166 @@ function useLiveData() {
 }
 
 /* =====================================================
-   METRIC DEFINITION MODAL (unchanged)
+   STOCK SIGNAL CARD COMPONENT
+===================================================== */
+
+function StockSignalCard({ signal, onClick }) {
+  const action = signal?.action?.toUpperCase() || "HOLD";
+  const isBuy = action === "BUY";
+  const isSell = action === "SELL";
+  const isHold = action === "HOLD";
+  
+  const score = safeNumber(signal?.score, 0);
+  const confidence = safeNumber(signal?.confidence, 0);
+  const risk = signal?.risk || "medium";
+  const symbol = signal?.symbol || "UNKNOWN";
+  const timestamp = signal?.timestamp || signal?.created_at;
+  
+  const riskColor = getRiskColor(risk);
+  
+  let borderColor = "border-gray-200";
+  let bgColor = "bg-white";
+  let actionColor = "";
+  
+  if (isBuy) {
+    borderColor = "border-l-emerald-500";
+    bgColor = "bg-gradient-to-r from-emerald-50 to-white";
+    actionColor = "text-emerald-600";
+  } else if (isSell) {
+    borderColor = "border-l-red-500";
+    bgColor = "bg-gradient-to-r from-red-50 to-white";
+    actionColor = "text-red-600";
+  } else {
+    borderColor = "border-l-gray-400";
+    bgColor = "bg-gray-50";
+    actionColor = "text-gray-600";
+  }
+  
+  return (
+    <div 
+      className={`border-l-4 ${borderColor} ${bgColor} rounded-xl p-3 hover:shadow-md transition-all cursor-pointer`}
+      onClick={() => onClick(signal)}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="text-lg font-bold text-gray-900">{symbol}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${actionColor} bg-white`}>
+            {action}
+          </span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${riskColor}`}>
+            {risk}
+          </span>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-sm font-semibold text-gray-700">{score.toFixed(1)}</div>
+          <div className="text-[10px] text-gray-400">{confidence.toFixed(0)}% conf</div>
+        </div>
+      </div>
+      <div className="text-[10px] text-gray-400 mt-2">
+        {timeAgo(timestamp)}
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
+   SIGNAL DETAIL MODAL
+===================================================== */
+
+function SignalDetailModal({ signal, isOpen, onClose }) {
+  if (!isOpen || !signal) return null;
+
+  const action = signal?.action?.toUpperCase() || "HOLD";
+  const score = safeNumber(signal?.score, 0);
+  const confidence = safeNumber(signal?.confidence, 0);
+  const risk = signal?.risk || "medium";
+  const symbol = signal?.symbol || "UNKNOWN";
+  const timestamp = signal?.timestamp || signal?.created_at;
+  const reasoning = signal?.reasoning || signal?.reason || `AI analysis indicates ${action.toLowerCase()} opportunity based on technical and fundamental factors.`;
+  
+  const isBuy = action === "BUY";
+  const isSell = action === "SELL";
+  
+  const getRiskDescription = (riskLevel) => {
+    const riskMap = {
+      low: "Low risk - Conservative position sizing recommended",
+      "medium-low": "Medium-low risk - Moderate position sizing",
+      medium: "Medium risk - Standard position sizing",
+      "medium-high": "Medium-high risk - Reduced position sizing recommended",
+      high: "High risk - Small position size or wait for confirmation"
+    };
+    return riskMap[riskLevel.toLowerCase()] || "Standard risk level";
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-gray-900">Stock Signal Details</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="text-3xl font-bold text-gray-900">{symbol}</div>
+              <div className="text-sm text-gray-500 mt-1">
+                {timeAgo(timestamp)} • Scanner Analysis
+              </div>
+            </div>
+            <div className="text-right">
+              <div className={`text-2xl font-bold ${isBuy ? "text-emerald-600" : isSell ? "text-red-600" : "text-gray-600"}`}>
+                {action}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-sm border-t border-gray-100 pt-3">
+            <div>
+              <div className="text-gray-500">AI Score</div>
+              <div className="font-semibold text-lg">{score.toFixed(1)}</div>
+              <div className="text-[10px] text-gray-400">Threshold: 30+ for BUY</div>
+            </div>
+            <div>
+              <div className="text-gray-500">Confidence</div>
+              <div className="font-semibold text-lg">{confidence.toFixed(0)}%</div>
+            </div>
+            <div className="col-span-2">
+              <div className="text-gray-500">Risk Level</div>
+              <div className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getRiskColor(risk)}`}>
+                {risk.toUpperCase()}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{getRiskDescription(risk)}</p>
+            </div>
+          </div>
+
+          <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">🤖</span>
+              <span className="font-semibold text-gray-900">AI Analysis</span>
+            </div>
+            <p className="text-gray-700 text-sm">{reasoning}</p>
+          </div>
+
+          <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500">
+            <div className="font-medium mb-1">Signal Interpretation:</div>
+            <p>
+              {isBuy ? "BUY signals indicate strong upward momentum. Consider entry with appropriate position sizing based on risk level." : 
+               isSell ? "SELL signals suggest potential downward movement. Consider taking profits or reducing exposure." :
+               "HOLD signals indicate neutral outlook. Wait for clearer direction before taking action."}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
+   METRIC DEFINITION MODAL
 ===================================================== */
 
 function MetricDefinitions({ isOpen, onClose }) {
@@ -278,19 +436,22 @@ function MetricDefinitions({ isOpen, onClose }) {
 
   const metrics = [
     { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable. For hedge funds, consistency matters more than individual wins." },
-    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed since bot activation. Higher volume indicates active strategy execution." },
+    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed. Higher volume indicates active strategy execution." },
     { name: "Profit Factor", symbol: "💰", definition: "Gross profit divided by gross loss. Values above 1.5 are considered excellent for institutional strategies." },
     { name: "Sharpe Ratio", symbol: "⚖️", definition: "Risk-adjusted return measure. Values above 1.0 are good, above 2.0 are very good for hedge funds." },
     { name: "Max Drawdown", symbol: "📉", definition: "Largest peak-to-trough decline. Lower values (< 20%) are preferred by institutional investors." },
     { name: "Cumulative P&L", symbol: "📊", definition: "Total profit/loss since inception. Shows overall strategy performance." },
     { name: "Total Return", symbol: "📈", definition: "Percentage return on initial capital. Hedge funds typically target 10-20% annualized returns." },
+    { name: "AI Score", symbol: "🤖", definition: "Machine learning score (0-100). Higher scores indicate stronger signals. BUY threshold is 30+." },
+    { name: "Confidence", symbol: "📊", definition: "AI confidence level in the signal. Higher confidence indicates stronger conviction." },
+    { name: "Risk Level", symbol: "⚠️", definition: "Estimated risk level for the trade. Adjust position sizing accordingly." },
   ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-gray-900">📊 Institutional Metric Definitions</h3>
+          <h3 className="text-lg font-bold text-gray-900">📊 Metric Definitions</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -299,7 +460,7 @@ function MetricDefinitions({ isOpen, onClose }) {
         </div>
         <div className="p-5 space-y-3">
           <p className="text-sm text-gray-500 mb-4">
-            Key performance indicators used by institutional investors to evaluate trading strategies.
+            Key performance indicators and signal metrics used by institutional investors.
           </p>
           {metrics.map((metric, idx) => (
             <div key={idx} className="border-b border-gray-100 pb-3 last:border-0">
@@ -317,7 +478,7 @@ function MetricDefinitions({ isOpen, onClose }) {
 }
 
 /* =====================================================
-   TRADE DETAIL MODAL (unchanged)
+   TRADE DETAIL MODAL
 ===================================================== */
 
 function TradeDetailModal({ trade, isOpen, onClose }) {
@@ -412,7 +573,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
 }
 
 /* =====================================================
-   CHART COMPONENT (unchanged)
+   CHART COMPONENT
 ===================================================== */
 
 function PerformanceChart({ pnlHistory = [] }) {
@@ -526,127 +687,16 @@ function PerformanceChart({ pnlHistory = [] }) {
 }
 
 /* =====================================================
-   NOTABLE TRADES (Overall) – Top winners & losers since activation
-===================================================== */
-
-function OverallNotableTrades({ trades, onTradeClick }) {
-  // Filter closed trades with non-zero P&L
-  const closedTrades = trades.filter(trade => {
-    const pnl = trade?.pnl_usd || trade?.pnl || 0;
-    return (trade?.status !== "open" && pnl !== 0) || (pnl !== 0 && trade?.created_at);
-  });
-
-  // Top 5 winners (highest P&L)
-  const topWinners = [...closedTrades]
-    .sort((a, b) => (b?.pnl_usd || b?.pnl || 0) - (a?.pnl_usd || a?.pnl || 0))
-    .slice(0, 5);
-
-  // Top 5 losers (lowest P&L)
-  const topLosers = [...closedTrades]
-    .sort((a, b) => (a?.pnl_usd || a?.pnl || 0) - (b?.pnl_usd || b?.pnl || 0))
-    .slice(0, 5);
-
-  if (topWinners.length === 0 && topLosers.length === 0) {
-    return (
-      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl">
-        <div className="text-4xl mb-3">🏆</div>
-        <p className="text-sm">No notable trades yet</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Best Performers */}
-      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-5 border border-emerald-200">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-2xl">🏆</span>
-          <h3 className="font-bold text-lg text-gray-900">Best Performers (All Time)</h3>
-          <span className="ml-auto text-xs text-emerald-600 bg-emerald-200 px-2 py-1 rounded-full">Top 5</span>
-        </div>
-        <div className="space-y-3">
-          {topWinners.map((trade, idx) => {
-            const pnl = trade?.pnl_usd || trade?.pnl || 0;
-            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
-            const bot = trade?.bot || trade?.source || "Unknown";
-            return (
-              <div key={idx} className="bg-white rounded-xl p-3 shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => onTradeClick(trade)}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-gray-900">{trade?.symbol || "Unknown"}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{bot}</span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-3 text-xs">
-                      <span className="text-emerald-600 font-semibold">+${pnl.toFixed(2)}</span>
-                      <span className="text-emerald-500">+{Math.abs(pnlPercent).toFixed(1)}%</span>
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-1">{timeAgo(trade?.created_at || trade?.timestamp)}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xl font-bold text-emerald-600">+${pnl.toFixed(2)}</div>
-                    <div className="text-[10px] text-emerald-500">#{idx + 1}</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Worst Performers */}
-      <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl p-5 border border-red-200">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-2xl">📉</span>
-          <h3 className="font-bold text-lg text-gray-900">Worst Performers (All Time)</h3>
-          <span className="ml-auto text-xs text-red-600 bg-red-200 px-2 py-1 rounded-full">Top 5</span>
-        </div>
-        <div className="space-y-3">
-          {topLosers.map((trade, idx) => {
-            const pnl = trade?.pnl_usd || trade?.pnl || 0;
-            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
-            const bot = trade?.bot || trade?.source || "Unknown";
-            return (
-              <div key={idx} className="bg-white rounded-xl p-3 shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => onTradeClick(trade)}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-gray-900">{trade?.symbol || "Unknown"}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{bot}</span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-3 text-xs">
-                      <span className="text-red-600 font-semibold">${pnl.toFixed(2)}</span>
-                      <span className="text-red-500">{pnlPercent.toFixed(1)}%</span>
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-1">{timeAgo(trade?.created_at || trade?.timestamp)}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xl font-bold text-red-600">${pnl.toFixed(2)}</div>
-                    <div className="text-[10px] text-red-500">#{idx + 1}</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =====================================================
-   NOTABLE TRADES PER BOT – within same timeframe
+   BOT NOTABLE TRADES COMPONENT
 ===================================================== */
 
 function BotNotableTrades({ botName, trades, onTradeClick }) {
-  // Filter trades for this specific bot
   const botTrades = trades.filter(trade => {
     const tradeBot = (trade?.bot || trade?.source || "").toLowerCase();
     const bot = botName.toLowerCase();
     return tradeBot.includes(bot) || bot.includes(tradeBot);
   });
 
-  // Filter closed trades with non-zero P&L
   const closedTrades = botTrades.filter(trade => {
     const pnl = trade?.pnl_usd || trade?.pnl || 0;
     return (trade?.status !== "open" && pnl !== 0) || (pnl !== 0 && trade?.created_at);
@@ -656,14 +706,17 @@ function BotNotableTrades({ botName, trades, onTradeClick }) {
     .sort((a, b) => (b?.pnl_usd || b?.pnl || 0) - (a?.pnl_usd || a?.pnl || 0))
     .slice(0, 3);
 
-  const topLosers = [...closedTrades]
-    .sort((a, b) => (a?.pnl_usd || a?.pnl || 0) - (b?.pnl_usd || b?.pnl || 0))
-    .slice(0, 3);
-
-  if (topWinners.length === 0 && topLosers.length === 0) {
+  if (topWinners.length === 0) {
     return (
-      <div className="text-center py-4 text-gray-400 text-xs">
-        No notable trades for {botName} yet
+      <div className="border border-gray-200 rounded-xl p-3 bg-white">
+        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-100">
+          <span className="text-lg">🤖</span>
+          <h4 className="font-semibold text-gray-900 text-sm">{botName}</h4>
+          <span className="ml-auto text-[10px] text-gray-400">{botTrades.length} trades</span>
+        </div>
+        <div className="text-center py-4 text-gray-400 text-xs">
+          No notable trades yet
+        </div>
       </div>
     );
   }
@@ -687,7 +740,6 @@ function BotNotableTrades({ botName, trades, onTradeClick }) {
         <span className="ml-auto text-[10px] text-gray-400">{botTrades.length} trades</span>
       </div>
       
-      {/* Bot Performance Metrics */}
       <div className="grid grid-cols-3 gap-1 mb-3 text-[10px]">
         <div className="text-center">
           <div className="text-gray-400">Win Rate</div>
@@ -706,34 +758,26 @@ function BotNotableTrades({ botName, trades, onTradeClick }) {
       </div>
       
       <div className="space-y-2">
-        {/* Winners */}
-        {topWinners.length > 0 && (
-          <div>
-            <div className="text-[10px] font-medium text-emerald-600 mb-1 flex items-center gap-1">
-              <span>🏆</span> Top Winners
+        {topWinners.map((trade, idx) => {
+          const pnl = trade?.pnl_usd || trade?.pnl || 0;
+          const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
+          return (
+            <div 
+              key={idx}
+              className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-emerald-50 cursor-pointer hover:bg-emerald-100 transition-colors text-xs"
+              onClick={() => onTradeClick(trade)}
+            >
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="font-medium text-gray-900 truncate">{trade?.symbol || "Unknown"}</span>
+                <span className="text-[10px] text-gray-500">{trade?.side?.toUpperCase() || "BUY"}</span>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="font-semibold text-emerald-600">+${pnl.toFixed(2)}</div>
+                <div className="text-[9px] text-emerald-500">+{Math.abs(pnlPercent).toFixed(0)}%</div>
+              </div>
             </div>
-            {topWinners.map((trade, idx) => {
-              const pnl = trade?.pnl_usd || trade?.pnl || 0;
-              const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
-              return (
-                <div 
-                  key={idx}
-                  className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-emerald-50 cursor-pointer hover:bg-emerald-100 transition-colors text-xs"
-                  onClick={() => onTradeClick(trade)}
-                >
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <span className="font-medium text-gray-900 truncate">{trade?.symbol || "Unknown"}</span>
-                    <span className="text-[10px] text-gray-500">{trade?.side?.toUpperCase() || "BUY"}</span>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-semibold text-emerald-600">+${pnl.toFixed(2)}</div>
-                    <div className="text-[9px] text-emerald-500">+{Math.abs(pnlPercent).toFixed(0)}%</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+          );
+        })}
       </div>
     </div>
   );
@@ -908,8 +952,10 @@ function DiscoveryCard({ discovery }) {
 export default function PublicDashboard() {
   const data = useLiveData();
   const [activeTab, setActiveTab] = useState("all");
+  const [signalTab, setSignalTab] = useState("all");
   const [clock, setClock] = useState(new Date());
   const [selectedTrade, setSelectedTrade] = useState(null);
+  const [selectedSignal, setSelectedSignal] = useState(null);
   const [showMetricDefinitions, setShowMetricDefinitions] = useState(false);
 
   useEffect(() => {
@@ -918,12 +964,12 @@ export default function PublicDashboard() {
   }, []);
 
   const allTrades = data.trades || [];
+  const allSignals = data.signals || [];
   const discoveries = data.discoveries || [];
   const bots = data.bots || [];
   const analytics = data.analytics?.summary || {};
   const pnlHistory = data.pnlHistory || [];
 
-  // REAL data – calculated from all trades
   const totalTradesCount = analytics.total_trades || allTrades.length;
   const winsCount = analytics.wins || 0;
   const lossesCount = analytics.losses || 0;
@@ -932,8 +978,22 @@ export default function PublicDashboard() {
   const sharpeRatio = analytics.sharpe_ratio || 0;
   const maxDrawdown = analytics.max_drawdown_percent || 0;
   const cumulativePnl = analytics.cumulative_pnl || 0;
+  const avgTrade = analytics.avg_trade || 0;
+
   const initialBalance = 10000;
   const totalReturnPercent = cumulativePnl / initialBalance * 100;
+
+  // Filter signals
+  const buySignals = allSignals.filter(s => s?.action?.toUpperCase() === "BUY");
+  const sellSignals = allSignals.filter(s => s?.action?.toUpperCase() === "SELL");
+  const holdSignals = allSignals.filter(s => s?.action?.toUpperCase() === "HOLD");
+
+  const filteredSignals = useMemo(() => {
+    if (signalTab === "buy") return buySignals;
+    if (signalTab === "sell") return sellSignals;
+    if (signalTab === "hold") return holdSignals;
+    return allSignals;
+  }, [signalTab, allSignals, buySignals, sellSignals, holdSignals]);
 
   const isOpenTrade = (trade) => {
     const pnl = trade?.pnl_usd || trade?.pnl || 0;
@@ -950,6 +1010,13 @@ export default function PublicDashboard() {
     { id: "all", label: "All", icon: "🌐", count: allTrades.length },
     { id: "open", label: "Open", icon: "🟢", count: allTrades.filter(isOpenTrade).length },
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(t => !isOpenTrade(t)).length },
+  ];
+
+  const signalTabs = [
+    { id: "all", label: "All", icon: "📊", count: allSignals.length },
+    { id: "buy", label: "BUY", icon: "📈", count: buySignals.length, color: "emerald" },
+    { id: "sell", label: "SELL", icon: "📉", count: sellSignals.length, color: "red" },
+    { id: "hold", label: "HOLD", icon: "⏸️", count: holdSignals.length, color: "gray" },
   ];
 
   if (data.loading && !data.lastUpdate) {
@@ -1001,11 +1068,11 @@ export default function PublicDashboard() {
             Live Trading Dashboard
           </h1>
           <p className="text-gray-500 max-w-2xl mx-auto text-sm sm:text-base">
-            Real-time bot activity, trades, and discoveries from our automated trading infrastructure.
+            Real-time bot activity, AI stock signals, trades, and discoveries from our automated trading infrastructure.
           </p>
         </div>
 
-        {/* Performance Chart - TOP OF PAGE */}
+        {/* Performance Chart */}
         <div className="mb-8 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <div>
@@ -1027,7 +1094,7 @@ export default function PublicDashboard() {
           </div>
         </div>
 
-        {/* Key Metrics Grid - Hedge Fund Focused */}
+        {/* Key Metrics Grid */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-lg text-gray-800">Key Performance Metrics</h2>
@@ -1045,7 +1112,7 @@ export default function PublicDashboard() {
               icon="📈" 
               color="emerald"
               subtext={`${winsCount}W / ${lossesCount}L`}
-              tooltip="Percentage of trades that were profitable. Hedge funds typically target 55-65% win rates."
+              tooltip="Percentage of trades that were profitable."
               onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
@@ -1053,7 +1120,7 @@ export default function PublicDashboard() {
               value={totalTradesCount} 
               icon="🔄" 
               color="purple"
-              tooltip="Total number of trades executed since bot activation. Higher volume indicates active strategy execution."
+              tooltip="Total number of trades executed."
               onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
@@ -1061,7 +1128,7 @@ export default function PublicDashboard() {
               value={profitFactor.toFixed(2)} 
               icon="💰" 
               color="blue"
-              tooltip="Gross profit divided by gross loss. Values above 1.5 are excellent."
+              tooltip="Gross profit divided by gross loss. Above 1.5 is excellent."
               onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
@@ -1077,7 +1144,7 @@ export default function PublicDashboard() {
               value={`${maxDrawdown.toFixed(1)}%`} 
               icon="📉" 
               color="amber"
-              tooltip="Largest peak-to-trough decline. Hedge funds prefer under 20%."
+              tooltip="Largest peak-to-trough decline. Under 20% is preferred."
               onClick={() => setShowMetricDefinitions(true)}
             />
           </div>
@@ -1096,10 +1163,10 @@ export default function PublicDashboard() {
           />
           <MetricCard 
             title="Avg Trade" 
-            value={formatCurrencySigned(cumulativePnl / totalTradesCount)} 
+            value={formatCurrencySigned(avgTrade)} 
             icon="⚖️" 
             color="blue"
-            tooltip="Average profit/loss per trade. Positive values indicate profitable strategy."
+            tooltip="Average profit/loss per trade."
             onClick={() => setShowMetricDefinitions(true)}
           />
           <MetricCard 
@@ -1112,7 +1179,55 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Bot Cards with Notable Trades Per Bot */}
+        {/* AI Stock Signals Section */}
+        {allSignals.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-lg text-gray-800">🤖 AI Stock Scanner Signals</h2>
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                {signalTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setSignalTab(tab.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                      signalTab === tab.id 
+                        ? `bg-${tab.color || 'emerald'}-600 text-white` 
+                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                    {tab.count > 0 && (
+                      <span className="ml-1 text-[8px] bg-gray-200 text-gray-700 px-1.5 rounded-full">{tab.count}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {filteredSignals.length > 0 ? (
+                filteredSignals.slice(0, 20).map((signal, i) => (
+                  <StockSignalCard 
+                    key={signal.id || i} 
+                    signal={signal} 
+                    onClick={setSelectedSignal}
+                  />
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-xl">
+                  <div className="text-2xl mb-2">🤖</div>
+                  <p className="text-sm">No signals available</p>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 text-center text-[10px] text-gray-400">
+              BUY threshold: Score ≥ 30 • AI scores based on technical + fundamental analysis
+            </div>
+          </div>
+        )}
+
+        {/* Bot Cards with Notable Trades */}
         <div className="mb-8">
           <h2 className="font-semibold text-lg mb-3 text-gray-800">Active Trading Bots & Performance</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1129,14 +1244,6 @@ export default function PublicDashboard() {
               <div className="col-span-4 text-center py-8 text-gray-400">No bot data available</div>
             )}
           </div>
-        </div>
-
-        {/* Notable Trades (Overall) */}
-        <div className="mb-8">
-          <h2 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-800">
-            <span>🏆</span> Most Notable Trades (All Time)
-          </h2>
-          <OverallNotableTrades trades={allTrades} onTradeClick={setSelectedTrade} />
         </div>
 
         {/* Two Column Layout - Trades and Discoveries */}
@@ -1208,7 +1315,7 @@ export default function PublicDashboard() {
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-gray-400 border-t border-gray-200 pt-6">
           <p>
-            Real-time bot activity • Live trades • DEX discoveries • Cumulative P&L tracking since inception
+            Real-time bot activity • AI Stock Signals • Live trades • DEX discoveries • Cumulative P&L tracking since inception
             <br />
             <Link to="/" className="text-indigo-600 hover:underline">Home</Link>
             {" • "}
@@ -1230,6 +1337,13 @@ export default function PublicDashboard() {
         trade={selectedTrade}
         isOpen={selectedTrade !== null}
         onClose={() => setSelectedTrade(null)}
+      />
+
+      {/* Signal Detail Modal */}
+      <SignalDetailModal
+        signal={selectedSignal}
+        isOpen={selectedSignal !== null}
+        onClose={() => setSelectedSignal(null)}
       />
     </div>
   );
