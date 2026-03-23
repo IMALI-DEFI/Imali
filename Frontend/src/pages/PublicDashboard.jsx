@@ -18,6 +18,7 @@ const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
 const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const USER_STATS_URL = `${API_BASE}/api/user/stats`;
+const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
 
 /* =====================================================
    HELPERS
@@ -67,6 +68,10 @@ function useLiveData() {
         total_pnl: 0,
         wins: 0,
         losses: 0,
+        cumulative_pnl: 0,
+        initial_balance: 10000,
+        current_balance: 0,
+        total_return_percent: 0,
       }
     },
     pnlHistory: [],
@@ -88,6 +93,7 @@ function useLiveData() {
           analyticsRes,
           userStatsRes,
           pnlHistoryRes,
+          botHistoryRes,
         ] = await Promise.allSettled([
           axios.get(TRADES_URL, { timeout: 8000 }),
           axios.get(DISCOVERIES_URL, { timeout: 8000 }),
@@ -95,6 +101,7 @@ function useLiveData() {
           axios.get(ANALYTICS_URL, { timeout: 8000 }),
           axios.get(USER_STATS_URL, { timeout: 8000 }),
           axios.get(PNL_HISTORY_URL, { timeout: 8000 }),
+          axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 8000, params: { days: 90 } }),
         ]);
 
         if (!mounted) return;
@@ -106,6 +113,7 @@ function useLiveData() {
           analytics: { summary: {} },
           userStats: {},
           pnlHistory: [],
+          botHistory: {},
         };
 
         // Process trades
@@ -125,9 +133,60 @@ function useLiveData() {
           newData.bots = botsRes.value.data.bots;
         }
 
-        // Process analytics
+        // Process analytics - Enhanced with cumulative P&L
+        let analyticsData = { summary: {} };
         if (analyticsRes.status === "fulfilled" && analyticsRes.value.data?.summary) {
-          newData.analytics = analyticsRes.value.data;
+          analyticsData = analyticsRes.value.data;
+        }
+        
+        // Calculate cumulative P&L and returns
+        const trades = newData.trades;
+        let cumulativePnl = 0;
+        let initialBalance = 10000; // Starting balance
+        let currentBalance = initialBalance;
+        
+        // Sort trades by date to calculate cumulative correctly
+        const sortedTrades = [...trades].sort((a, b) => {
+          const dateA = new Date(a?.created_at || a?.timestamp || 0);
+          const dateB = new Date(b?.created_at || b?.timestamp || 0);
+          return dateA - dateB;
+        });
+        
+        sortedTrades.forEach(trade => {
+          const pnl = trade?.pnl_usd || trade?.pnl || 0;
+          if (trade?.status !== "open") {
+            cumulativePnl += pnl;
+            currentBalance += pnl;
+          }
+        });
+        
+        const totalReturnPercent = initialBalance > 0 ? (cumulativePnl / initialBalance) * 100 : 0;
+        
+        analyticsData.summary = {
+          ...analyticsData.summary,
+          cumulative_pnl: cumulativePnl,
+          initial_balance: initialBalance,
+          current_balance: currentBalance,
+          total_return_percent: totalReturnPercent,
+        };
+
+        // Process bot history for cumulative data
+        let botHistory = {};
+        if (botHistoryRes.status === "fulfilled" && botHistoryRes.value.data) {
+          botHistory = botHistoryRes.value.data;
+          // If bot history has cumulative data, use it
+          if (botHistory.summary?.cumulative_pnl) {
+            analyticsData.summary.cumulative_pnl = botHistory.summary.cumulative_pnl;
+            analyticsData.summary.current_balance = initialBalance + botHistory.summary.cumulative_pnl;
+            analyticsData.summary.total_return_percent = (botHistory.summary.cumulative_pnl / initialBalance) * 100;
+          }
+        }
+
+        // Process PNL history
+        if (pnlHistoryRes.status === "fulfilled" && pnlHistoryRes.value.data?.history) {
+          newData.pnlHistory = pnlHistoryRes.value.data.history;
+        } else if (botHistory.pnl_by_day) {
+          newData.pnlHistory = botHistory.pnl_by_day;
         }
 
         // Process user stats
@@ -135,13 +194,10 @@ function useLiveData() {
           newData.userStats = userStatsRes.value.data;
         }
 
-        // Process PNL history
-        if (pnlHistoryRes.status === "fulfilled" && pnlHistoryRes.value.data?.history) {
-          newData.pnlHistory = pnlHistoryRes.value.data.history;
-        }
-
         setData({
           ...newData,
+          analytics: analyticsData,
+          botHistory,
           loading: false,
           error: null,
           lastUpdate: new Date(),
@@ -173,6 +229,208 @@ function useLiveData() {
 }
 
 /* =====================================================
+   NOTABLE TRADES COMPONENT
+===================================================== */
+
+function NotableTrades({ trades }) {
+  // Filter out open trades and get only closed trades with non-zero P&L
+  const closedTrades = trades.filter(trade => {
+    const pnl = trade?.pnl_usd || trade?.pnl || 0;
+    return (trade?.status !== "open" && pnl !== 0) || (pnl !== 0 && trade?.created_at);
+  });
+
+  // Get top 5 winners (highest P&L)
+  const topWinners = [...closedTrades]
+    .sort((a, b) => {
+      const pnlA = a?.pnl_usd || a?.pnl || 0;
+      const pnlB = b?.pnl_usd || b?.pnl || 0;
+      return pnlB - pnlA;
+    })
+    .slice(0, 5);
+
+  // Get top 5 losers (lowest P&L)
+  const topLosers = [...closedTrades]
+    .sort((a, b) => {
+      const pnlA = a?.pnl_usd || a?.pnl || 0;
+      const pnlB = b?.pnl_usd || b?.pnl || 0;
+      return pnlA - pnlB;
+    })
+    .slice(0, 5);
+
+  if (topWinners.length === 0 && topLosers.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl">
+        <div className="text-4xl mb-3">🏆</div>
+        <p className="text-sm">No notable trades yet</p>
+        <p className="text-xs mt-2">Complete some trades to see top performers</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Best Performers */}
+      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-5 border border-emerald-200">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-2xl">🏆</span>
+          <h3 className="font-bold text-lg text-gray-900">Best Performers</h3>
+          <span className="ml-auto text-xs text-emerald-600 bg-emerald-200 px-2 py-1 rounded-full">
+            Top {topWinners.length}
+          </span>
+        </div>
+        
+        <div className="space-y-3">
+          {topWinners.map((trade, idx) => {
+            const pnl = trade?.pnl_usd || trade?.pnl || 0;
+            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
+            const symbol = trade?.symbol || "Unknown";
+            const side = trade?.side || "buy";
+            const bot = trade?.bot || trade?.source || "Unknown";
+            const timestamp = trade?.created_at || trade?.timestamp;
+            const qty = trade?.qty || trade?.quantity || 0;
+            const price = trade?.price || 0;
+            
+            return (
+              <div key={idx} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all group">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-lg text-gray-900">{symbol}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                      }`}>
+                        {side.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{bot}</span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">P&L:</span>
+                        <span className="ml-1 font-semibold text-emerald-600">
+                          +${pnl.toFixed(2)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Return:</span>
+                        <span className="ml-1 font-semibold text-emerald-600">
+                          +{Math.abs(pnlPercent).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Qty:</span>
+                        <span className="ml-1 font-medium">
+                          {qty.toFixed(4)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-400">
+                      {timeAgo(timestamp)} • Price: ${price.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-emerald-600">
+                      +${pnl.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-emerald-500 mt-1">
+                      #{idx + 1} Top Trade
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {topWinners.length === 5 && (
+          <div className="mt-3 text-center text-xs text-emerald-600">
+            🎉 These are your most profitable trades so far!
+          </div>
+        )}
+      </div>
+
+      {/* Worst Performers */}
+      <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl p-5 border border-red-200">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-2xl">📉</span>
+          <h3 className="font-bold text-lg text-gray-900">Worst Performers</h3>
+          <span className="ml-auto text-xs text-red-600 bg-red-200 px-2 py-1 rounded-full">
+            Top {topLosers.length}
+          </span>
+        </div>
+        
+        <div className="space-y-3">
+          {topLosers.map((trade, idx) => {
+            const pnl = trade?.pnl_usd || trade?.pnl || 0;
+            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
+            const symbol = trade?.symbol || "Unknown";
+            const side = trade?.side || "buy";
+            const bot = trade?.bot || trade?.source || "Unknown";
+            const timestamp = trade?.created_at || trade?.timestamp;
+            const qty = trade?.qty || trade?.quantity || 0;
+            const price = trade?.price || 0;
+            
+            return (
+              <div key={idx} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all group">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-lg text-gray-900">{symbol}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                      }`}>
+                        {side.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{bot}</span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">P&L:</span>
+                        <span className="ml-1 font-semibold text-red-600">
+                          ${pnl.toFixed(2)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Return:</span>
+                        <span className="ml-1 font-semibold text-red-600">
+                          {pnlPercent.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Qty:</span>
+                        <span className="ml-1 font-medium">
+                          {qty.toFixed(4)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-400">
+                      {timeAgo(timestamp)} • Price: ${price.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-red-600">
+                      ${pnl.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-red-500 mt-1">
+                      #{idx + 1} Loss
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {topLosers.length === 5 && (
+          <div className="mt-3 text-center text-xs text-red-600">
+            📊 Learning opportunities - review these trades for insights
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
    CHART COMPONENTS
 ===================================================== */
 
@@ -191,37 +449,88 @@ function VolumeChart({ pnlHistory = [] }) {
     const ctx = canvas.getContext("2d");
     
     const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.pnl || p) : [0, 0, 0, 0, 0, 0, 0];
+    
+    // Calculate cumulative for overlay
+    let cumulative = 0;
+    const cumulativeValues = values.map(v => {
+      cumulative += v;
+      return cumulative;
+    });
 
     chartRef.current = new Chart(ctx, {
       type: "bar",
       data: {
         labels: values.map((_, i) => `Day ${i+1}`),
-        datasets: [{
-          label: "Daily P&L",
-          data: values,
-          backgroundColor: values.map(v => v >= 0 ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"),
-          borderColor: values.map(v => v >= 0 ? "#10b981" : "#ef4444"),
-          borderWidth: 1,
-          borderRadius: 4,
-        }]
+        datasets: [
+          {
+            label: "Daily P&L",
+            data: values,
+            backgroundColor: values.map(v => v >= 0 ? "rgba(16,185,129,0.6)" : "rgba(239,68,68,0.6)"),
+            borderColor: values.map(v => v >= 0 ? "#10b981" : "#ef4444"),
+            borderWidth: 1,
+            borderRadius: 4,
+            yAxisID: "y",
+          },
+          {
+            label: "Cumulative P&L",
+            data: cumulativeValues,
+            type: "line",
+            borderColor: "#6366f1",
+            backgroundColor: "rgba(99,102,241,0.1)",
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBackgroundColor: "#6366f1",
+            fill: true,
+            tension: 0.4,
+            yAxisID: "y1",
+          }
+        ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false },
+          legend: {
+            position: "top",
+            labels: { boxWidth: 12, font: { size: 11 } }
+          },
           tooltip: {
             callbacks: {
-              label: (context) => formatCurrencySigned(context.raw)
+              label: (context) => {
+                if (context.dataset.label === "Daily P&L") {
+                  return formatCurrencySigned(context.raw);
+                } else {
+                  return `Cumulative: ${formatCurrencySigned(context.raw)}`;
+                }
+              }
             }
           }
         },
         scales: {
           y: {
+            position: "left",
             grid: { color: "rgba(0,0,0,0.05)" },
             ticks: { 
               color: "#6b7280",
               callback: (value) => formatCurrency(value)
+            },
+            title: {
+              display: true,
+              text: "Daily P&L",
+              color: "#6b7280"
+            }
+          },
+          y1: {
+            position: "right",
+            grid: { display: false },
+            ticks: { 
+              color: "#6366f1",
+              callback: (value) => formatCurrency(value)
+            },
+            title: {
+              display: true,
+              text: "Cumulative P&L",
+              color: "#6366f1"
             }
           },
           x: {
@@ -416,10 +725,13 @@ export default function PublicDashboard() {
   const discoveries = data.discoveries || [];
   const bots = data.bots || [];
   const analytics = data.analytics?.summary || {};
-  const userStats = data.userStats || {};
   const pnlHistory = data.pnlHistory || [];
 
   const totalPnL = analytics.total_pnl || 0;
+  const cumulativePnl = analytics.cumulative_pnl || totalPnL;
+  const initialBalance = analytics.initial_balance || 10000;
+  const currentBalance = analytics.current_balance || (initialBalance + cumulativePnl);
+  const totalReturnPercent = analytics.total_return_percent || (cumulativePnl / initialBalance * 100);
   const totalTradesCount = analytics.total_trades || allTrades.length;
   const winsCount = analytics.wins || 0;
   const lossesCount = analytics.losses || 0;
@@ -501,23 +813,29 @@ export default function PublicDashboard() {
           </p>
         </div>
 
-        {/* Quick Stats Banner */}
-        <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-2 text-center">
+        {/* Performance Overview Cards */}
+        <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-center">
             <div className="text-xs text-indigo-600">Win Rate</div>
-            <div className="text-lg font-bold text-indigo-700">{Math.round(winRate)}%</div>
+            <div className="text-xl font-bold text-indigo-700">{Math.round(winRate)}%</div>
           </div>
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2 text-center">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
             <div className="text-xs text-emerald-600">Total P&L</div>
-            <div className="text-lg font-bold text-emerald-700">{formatCurrencySigned(totalPnL)}</div>
+            <div className="text-xl font-bold text-emerald-700">{formatCurrencySigned(totalPnL)}</div>
           </div>
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-2 text-center">
-            <div className="text-xs text-purple-600">Active Bots</div>
-            <div className="text-lg font-bold text-purple-700">{bots.length}</div>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center">
+            <div className="text-xs text-purple-600">Cumulative P&L</div>
+            <div className="text-xl font-bold text-purple-700">{formatCurrencySigned(cumulativePnl)}</div>
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 text-center">
-            <div className="text-xs text-amber-600">Discoveries</div>
-            <div className="text-lg font-bold text-amber-700">{discoveries.length}</div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+            <div className="text-xs text-blue-600">Total Return</div>
+            <div className={`text-xl font-bold ${totalReturnPercent >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+              {totalReturnPercent >= 0 ? "+" : ""}{totalReturnPercent.toFixed(1)}%
+            </div>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+            <div className="text-xs text-amber-600">Active Bots</div>
+            <div className="text-xl font-bold text-amber-700">{bots.length}</div>
           </div>
         </div>
 
@@ -538,18 +856,18 @@ export default function PublicDashboard() {
             subtext={`Win Rate: ${Math.round(winRate)}%`}
           />
           <StatCard 
-            title="Active Bots" 
-            value={bots.length} 
-            icon="🤖" 
-            color="emerald" 
-            subtext="systems online" 
+            title="Cumulative P&L" 
+            value={formatCurrencySigned(cumulativePnl)} 
+            icon="📈" 
+            color={cumulativePnl >= 0 ? "emerald" : "red"} 
+            subtext={`From ${formatCurrency(initialBalance)} start`}
           />
           <StatCard 
-            title="Win / Loss" 
-            value={`${winsCount} / ${lossesCount}`} 
-            icon="⚔️" 
-            color="amber" 
-            subtext={`${Math.round(winRate)}% win rate`}
+            title="Current Balance" 
+            value={formatCurrency(currentBalance)} 
+            icon="💵" 
+            color="blue" 
+            subtext={`${totalReturnPercent >= 0 ? "+" : ""}${totalReturnPercent.toFixed(1)}% return`}
           />
         </div>
 
@@ -566,11 +884,28 @@ export default function PublicDashboard() {
           )}
         </div>
 
+        {/* Notable Trades Section */}
+        <div className="mb-6">
+          <h2 className="font-bold text-xl mb-3 flex items-center gap-2 text-gray-900">
+            <span>🏆</span>
+            Most Notable Trades
+            <span className="text-xs font-normal text-gray-400 ml-2">
+              Top winners and losers from all time
+            </span>
+          </h2>
+          <NotableTrades trades={allTrades} />
+        </div>
+
         {/* P&L History Chart */}
         {pnlHistory.length > 0 && (
           <div className="mb-6 bg-white border border-gray-200 rounded-2xl p-4">
-            <h2 className="font-bold text-lg mb-3 text-gray-900">Daily P&L History</h2>
-            <div className="h-64">
+            <h2 className="font-bold text-lg mb-3 text-gray-900">
+              P&L History
+              <span className="text-xs font-normal text-gray-400 ml-2">
+                Daily performance with cumulative trend
+              </span>
+            </h2>
+            <div className="h-80">
               <VolumeChart pnlHistory={pnlHistory} />
             </div>
           </div>
@@ -584,6 +919,9 @@ export default function PublicDashboard() {
               <h2 className="font-bold text-lg flex items-center gap-2 text-gray-900">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                 Live Trade Feed
+                <span className="text-xs font-normal text-gray-400">
+                  {allTrades.length} total trades
+                </span>
               </h2>
               <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
                 {tabs.map((tab) => (
@@ -650,7 +988,7 @@ export default function PublicDashboard() {
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-gray-400 border-t border-gray-200 pt-6">
           <p>
-            Real-time bot activity • Live trades • DEX discoveries
+            Real-time bot activity • Live trades • DEX discoveries • Cumulative P&L tracking since inception
             <br />
             <Link to="/" className="text-indigo-600 hover:underline">Home</Link>
             {" • "}
