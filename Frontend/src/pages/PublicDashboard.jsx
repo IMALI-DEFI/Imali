@@ -57,7 +57,7 @@ function timeAgo(timestamp) {
 }
 
 /* =====================================================
-   DATA HOOK - FETCHES REAL DATA FROM API
+   DATA HOOK - FETCHES ALL TRADES SINCE BOT ACTIVATION
 ===================================================== */
 
 function useLiveData() {
@@ -90,23 +90,17 @@ function useLiveData() {
 
     const fetchAllData = async () => {
       try {
-        const [
-          tradesRes,
-          discoveriesRes,
-          botsRes,
-          analyticsRes,
-          userStatsRes,
-          pnlHistoryRes,
-          botHistoryRes,
-        ] = await Promise.allSettled([
-          axios.get(TRADES_URL, { timeout: 8000 }),
-          axios.get(DISCOVERIES_URL, { timeout: 8000 }),
-          axios.get(BOT_STATUS_URL, { timeout: 8000 }),
-          axios.get(ANALYTICS_URL, { timeout: 8000 }),
-          axios.get(USER_STATS_URL, { timeout: 8000 }),
-          axios.get(PNL_HISTORY_URL, { timeout: 8000 }),
-          axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 8000, params: { days: 90 } }),
-        ]);
+        // Fetch all trades from bot activity history (up to 365 days)
+        const [tradesRes, discoveriesRes, botsRes, analyticsRes, userStatsRes, pnlHistoryRes, botHistoryRes] =
+          await Promise.allSettled([
+            axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 10000, params: { days: 365, limit: 5000 } }),
+            axios.get(DISCOVERIES_URL, { timeout: 8000 }),
+            axios.get(BOT_STATUS_URL, { timeout: 8000 }),
+            axios.get(ANALYTICS_URL, { timeout: 8000 }),
+            axios.get(USER_STATS_URL, { timeout: 8000 }),
+            axios.get(PNL_HISTORY_URL, { timeout: 8000 }),
+            axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 8000, params: { days: 365 } }),
+          ]);
 
         if (!mounted) return;
 
@@ -120,18 +114,26 @@ function useLiveData() {
           botHistory: {},
         };
 
-        // ============================================================
-        // PROCESS REAL TRADES - THIS IS YOUR ACTUAL DATA
-        // ============================================================
+        // Process trades – use history endpoint (all trades)
         if (tradesRes.status === "fulfilled" && tradesRes.value.data?.trades) {
           newData.trades = tradesRes.value.data.trades;
-          console.log("✅ REAL TRADES LOADED:", newData.trades.length);
+          console.log(`✅ Loaded ${newData.trades.length} trades from history`);
         } else if (tradesRes.status === "fulfilled" && tradesRes.value.data) {
           newData.trades = tradesRes.value.data;
-          console.log("✅ REAL TRADES LOADED (alternate):", newData.trades.length);
+          console.log(`✅ Loaded ${newData.trades.length} trades (fallback)`);
         } else {
-          console.warn("⚠️ No trades data from API");
+          // Fallback to recent trades if history fails
+          const recentRes = await axios.get(TRADES_URL);
+          newData.trades = recentRes.data?.trades || [];
+          console.warn(`⚠️ History endpoint failed, using recent trades (${newData.trades.length})`);
         }
+
+        // Sort trades descending (most recent first)
+        newData.trades.sort((a, b) => {
+          const tA = new Date(a?.created_at || a?.timestamp || 0);
+          const tB = new Date(b?.created_at || b?.timestamp || 0);
+          return tB - tA;
+        });
 
         // Process discoveries
         if (discoveriesRes.status === "fulfilled" && discoveriesRes.value.data?.discoveries) {
@@ -144,14 +146,12 @@ function useLiveData() {
         }
 
         // ============================================================
-        // CALCULATE ALL METRICS FROM REAL TRADES (NO HARDCODING)
+        // CALCULATE ALL METRICS FROM ALL TRADES (NO HARDCODING)
         // ============================================================
         const trades = newData.trades;
         const realTotalTrades = trades.length;
-        
-        console.log("📊 ACTUAL TRADE COUNT:", realTotalTrades);
-        
-        // Calculate from actual trades
+        console.log(`📊 Total trades since bot activation: ${realTotalTrades}`);
+
         let cumulativePnl = 0;
         let totalPnl = 0;
         let wins = 0;
@@ -160,21 +160,21 @@ function useLiveData() {
         let totalLossAmount = 0;
         let maxDrawdown = 0;
         let peak = 0;
-        
-        // Sort trades by date for cumulative calculations
+
+        // Sort chronologically for cumulative calculations
         const sortedTrades = [...trades].sort((a, b) => {
           const dateA = new Date(a?.created_at || a?.timestamp || 0);
           const dateB = new Date(b?.created_at || b?.timestamp || 0);
           return dateA - dateB;
         });
-        
+
         sortedTrades.forEach(trade => {
           const pnl = trade?.pnl_usd || trade?.pnl || 0;
           // Only count closed trades for P&L
           if (trade?.status !== "open") {
             cumulativePnl += pnl;
             totalPnl += pnl;
-            
+
             if (pnl > 0) {
               wins++;
               totalWinAmount += pnl;
@@ -182,25 +182,23 @@ function useLiveData() {
               losses++;
               totalLossAmount += Math.abs(pnl);
             }
-            
+
             // Calculate max drawdown
             if (cumulativePnl > peak) peak = cumulativePnl;
             const drawdown = peak > 0 ? (peak - cumulativePnl) / peak * 100 : 0;
             if (drawdown > maxDrawdown) maxDrawdown = drawdown;
           }
         });
-        
+
         const winRate = realTotalTrades > 0 ? (wins / realTotalTrades * 100) : 0;
         const profitFactor = totalLossAmount > 0 ? totalWinAmount / totalLossAmount : 0;
-        const avgTrade = realTotalTrades > 0 ? totalPnl / realTotalTrades : 0;
-        
-        // Calculate Sharpe Ratio (simplified for demo)
+
+        // Calculate Sharpe Ratio (simplified)
         const returns = sortedTrades.map(t => t?.pnl_usd || t?.pnl || 0).filter(r => r !== 0);
         const avgReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
         const stdDev = returns.length > 1 ? Math.sqrt(returns.reduce((sq, n) => sq + Math.pow(n - avgReturn, 2), 0) / (returns.length - 1)) : 0;
         const sharpeRatio = stdDev > 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0;
-        
-        // Build analytics summary with REAL data
+
         const analyticsData = {
           summary: {
             total_trades: realTotalTrades,
@@ -212,11 +210,8 @@ function useLiveData() {
             profit_factor: profitFactor,
             sharpe_ratio: sharpeRatio,
             max_drawdown_percent: maxDrawdown,
-            avg_trade: avgTrade,
           }
         };
-        
-        console.log("📊 CALCULATED METRICS:", analyticsData.summary);
 
         // Process PNL history
         if (pnlHistoryRes.status === "fulfilled" && pnlHistoryRes.value.data?.history) {
@@ -252,7 +247,7 @@ function useLiveData() {
       } catch (error) {
         console.error("Data fetch error:", error);
         if (!mounted) return;
-        
+
         setData(prev => ({
           ...prev,
           loading: false,
@@ -275,7 +270,7 @@ function useLiveData() {
 }
 
 /* =====================================================
-   METRIC DEFINITION MODAL - HEDGE FUND FOCUSED
+   METRIC DEFINITION MODAL (unchanged)
 ===================================================== */
 
 function MetricDefinitions({ isOpen, onClose }) {
@@ -283,7 +278,7 @@ function MetricDefinitions({ isOpen, onClose }) {
 
   const metrics = [
     { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable. For hedge funds, consistency matters more than individual wins." },
-    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed. Higher volume indicates active strategy execution." },
+    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed since bot activation. Higher volume indicates active strategy execution." },
     { name: "Profit Factor", symbol: "💰", definition: "Gross profit divided by gross loss. Values above 1.5 are considered excellent for institutional strategies." },
     { name: "Sharpe Ratio", symbol: "⚖️", definition: "Risk-adjusted return measure. Values above 1.0 are good, above 2.0 are very good for hedge funds." },
     { name: "Max Drawdown", symbol: "📉", definition: "Largest peak-to-trough decline. Lower values (< 20%) are preferred by institutional investors." },
@@ -322,7 +317,7 @@ function MetricDefinitions({ isOpen, onClose }) {
 }
 
 /* =====================================================
-   TRADE DETAIL MODAL
+   TRADE DETAIL MODAL (unchanged)
 ===================================================== */
 
 function TradeDetailModal({ trade, isOpen, onClose }) {
@@ -417,7 +412,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
 }
 
 /* =====================================================
-   CHART COMPONENT
+   CHART COMPONENT (unchanged)
 ===================================================== */
 
 function PerformanceChart({ pnlHistory = [] }) {
@@ -531,7 +526,116 @@ function PerformanceChart({ pnlHistory = [] }) {
 }
 
 /* =====================================================
-   NOTABLE TRADES PER BOT COMPONENT
+   NOTABLE TRADES (Overall) – Top winners & losers since activation
+===================================================== */
+
+function OverallNotableTrades({ trades, onTradeClick }) {
+  // Filter closed trades with non-zero P&L
+  const closedTrades = trades.filter(trade => {
+    const pnl = trade?.pnl_usd || trade?.pnl || 0;
+    return (trade?.status !== "open" && pnl !== 0) || (pnl !== 0 && trade?.created_at);
+  });
+
+  // Top 5 winners (highest P&L)
+  const topWinners = [...closedTrades]
+    .sort((a, b) => (b?.pnl_usd || b?.pnl || 0) - (a?.pnl_usd || a?.pnl || 0))
+    .slice(0, 5);
+
+  // Top 5 losers (lowest P&L)
+  const topLosers = [...closedTrades]
+    .sort((a, b) => (a?.pnl_usd || a?.pnl || 0) - (b?.pnl_usd || b?.pnl || 0))
+    .slice(0, 5);
+
+  if (topWinners.length === 0 && topLosers.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl">
+        <div className="text-4xl mb-3">🏆</div>
+        <p className="text-sm">No notable trades yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Best Performers */}
+      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-5 border border-emerald-200">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-2xl">🏆</span>
+          <h3 className="font-bold text-lg text-gray-900">Best Performers (All Time)</h3>
+          <span className="ml-auto text-xs text-emerald-600 bg-emerald-200 px-2 py-1 rounded-full">Top 5</span>
+        </div>
+        <div className="space-y-3">
+          {topWinners.map((trade, idx) => {
+            const pnl = trade?.pnl_usd || trade?.pnl || 0;
+            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
+            const bot = trade?.bot || trade?.source || "Unknown";
+            return (
+              <div key={idx} className="bg-white rounded-xl p-3 shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => onTradeClick(trade)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-gray-900">{trade?.symbol || "Unknown"}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{bot}</span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-3 text-xs">
+                      <span className="text-emerald-600 font-semibold">+${pnl.toFixed(2)}</span>
+                      <span className="text-emerald-500">+{Math.abs(pnlPercent).toFixed(1)}%</span>
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-1">{timeAgo(trade?.created_at || trade?.timestamp)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold text-emerald-600">+${pnl.toFixed(2)}</div>
+                    <div className="text-[10px] text-emerald-500">#{idx + 1}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Worst Performers */}
+      <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl p-5 border border-red-200">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-2xl">📉</span>
+          <h3 className="font-bold text-lg text-gray-900">Worst Performers (All Time)</h3>
+          <span className="ml-auto text-xs text-red-600 bg-red-200 px-2 py-1 rounded-full">Top 5</span>
+        </div>
+        <div className="space-y-3">
+          {topLosers.map((trade, idx) => {
+            const pnl = trade?.pnl_usd || trade?.pnl || 0;
+            const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
+            const bot = trade?.bot || trade?.source || "Unknown";
+            return (
+              <div key={idx} className="bg-white rounded-xl p-3 shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => onTradeClick(trade)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-gray-900">{trade?.symbol || "Unknown"}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{bot}</span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-3 text-xs">
+                      <span className="text-red-600 font-semibold">${pnl.toFixed(2)}</span>
+                      <span className="text-red-500">{pnlPercent.toFixed(1)}%</span>
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-1">{timeAgo(trade?.created_at || trade?.timestamp)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold text-red-600">${pnl.toFixed(2)}</div>
+                    <div className="text-[10px] text-red-500">#{idx + 1}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
+   NOTABLE TRADES PER BOT – within same timeframe
 ===================================================== */
 
 function BotNotableTrades({ botName, trades, onTradeClick }) {
@@ -819,7 +923,7 @@ export default function PublicDashboard() {
   const analytics = data.analytics?.summary || {};
   const pnlHistory = data.pnlHistory || [];
 
-  // REAL data from API - calculated from actual trades
+  // REAL data – calculated from all trades
   const totalTradesCount = analytics.total_trades || allTrades.length;
   const winsCount = analytics.wins || 0;
   const lossesCount = analytics.losses || 0;
@@ -828,9 +932,6 @@ export default function PublicDashboard() {
   const sharpeRatio = analytics.sharpe_ratio || 0;
   const maxDrawdown = analytics.max_drawdown_percent || 0;
   const cumulativePnl = analytics.cumulative_pnl || 0;
-  const avgTrade = analytics.avg_trade || 0;
-
-  // Calculate total return
   const initialBalance = 10000;
   const totalReturnPercent = cumulativePnl / initialBalance * 100;
 
@@ -952,7 +1053,7 @@ export default function PublicDashboard() {
               value={totalTradesCount} 
               icon="🔄" 
               color="purple"
-              tooltip="Total number of trades executed. Higher volume indicates active strategy execution."
+              tooltip="Total number of trades executed since bot activation. Higher volume indicates active strategy execution."
               onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
@@ -995,7 +1096,7 @@ export default function PublicDashboard() {
           />
           <MetricCard 
             title="Avg Trade" 
-            value={formatCurrencySigned(avgTrade)} 
+            value={formatCurrencySigned(cumulativePnl / totalTradesCount)} 
             icon="⚖️" 
             color="blue"
             tooltip="Average profit/loss per trade. Positive values indicate profitable strategy."
@@ -1028,6 +1129,14 @@ export default function PublicDashboard() {
               <div className="col-span-4 text-center py-8 text-gray-400">No bot data available</div>
             )}
           </div>
+        </div>
+
+        {/* Notable Trades (Overall) */}
+        <div className="mb-8">
+          <h2 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-800">
+            <span>🏆</span> Most Notable Trades (All Time)
+          </h2>
+          <OverallNotableTrades trades={allTrades} onTradeClick={setSelectedTrade} />
         </div>
 
         {/* Two Column Layout - Trades and Discoveries */}
