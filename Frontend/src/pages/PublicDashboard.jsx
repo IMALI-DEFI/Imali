@@ -7,6 +7,7 @@ import Chart from "chart.js/auto";
 import 'chartjs-plugin-annotation';
 
 const API_BASE = "https://api.imali-defi.com";
+const WS_BASE = "wss://api.imali-defi.com";
 const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
 
 // Animation helper
@@ -779,19 +780,104 @@ export default function PublicDashboard() {
     pnlHistory: [],
     loading: true,
     error: null,
-    lastUpdate: null
+    lastUpdate: null,
+    wsConnected: false
   });
   const [clock, setClock] = useState(new Date());
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [showMetricDefinitions, setShowMetricDefinitions] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [sortRecentTrades, setSortRecentTrades] = useState("date");
+  const wsRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
 
-  useEffect(() => {
-    const timer = setInterval(() => setClock(new Date()), 1000);
-    return () => clearInterval(timer);
+  // WebSocket connection with auto-reconnect
+  const connectWebSocket = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    try {
+      const ws = new WebSocket(`${WS_BASE}/ws/public`);
+      
+      ws.onopen = () => {
+        console.log("🔌 WebSocket connected for live updates");
+        setData(prev => ({ ...prev, wsConnected: true }));
+        
+        // Subscribe to trades channel
+        ws.send(JSON.stringify({ 
+          type: 'subscribe', 
+          channel: 'trades',
+          client: 'public-dashboard'
+        }));
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          
+          if (message.type === 'new_trade') {
+            console.log("📊 New trade received:", message.trade);
+            
+            // Update trades list (add to beginning)
+            setData(prev => ({
+              ...prev,
+              trades: [message.trade, ...prev.trades],
+              summary: message.summary || prev.summary,
+              lastUpdate: new Date()
+            }));
+            
+            // Add visual notification for new trade
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-emerald-500 text-white px-4 py-2 rounded-lg shadow-lg animate-bounce z-50';
+            toast.innerHTML = `🔄 New ${message.trade?.side?.toUpperCase()} trade: ${message.trade?.symbol} ${formatCurrencySigned(message.trade?.pnl_usd)}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+          }
+          
+          if (message.type === 'summary_update') {
+            setData(prev => ({
+              ...prev,
+              summary: message.summary,
+              lastUpdate: new Date()
+            }));
+          }
+          
+          if (message.type === 'pnl_update') {
+            setData(prev => ({
+              ...prev,
+              pnlHistory: message.pnlHistory,
+              lastUpdate: new Date()
+            }));
+          }
+          
+        } catch (err) {
+          console.error("Error parsing WebSocket message:", err);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        setData(prev => ({ ...prev, wsConnected: false }));
+      };
+      
+      ws.onclose = () => {
+        console.log("WebSocket disconnected, attempting reconnect in 5 seconds...");
+        setData(prev => ({ ...prev, wsConnected: false }));
+        
+        // Auto-reconnect
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connectWebSocket();
+        }, 5000);
+      };
+      
+      wsRef.current = ws;
+    } catch (err) {
+      console.error("Failed to connect WebSocket:", err);
+      setData(prev => ({ ...prev, wsConnected: false }));
+    }
   }, []);
 
+  // Initial data fetch
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -808,7 +894,8 @@ export default function PublicDashboard() {
             pnlHistory: response.data.data.pnl_by_day || [],
             loading: false,
             error: null,
-            lastUpdate: new Date()
+            lastUpdate: new Date(),
+            wsConnected: false
           });
         } else if (response.data && response.data.trades) {
           setData({
@@ -817,7 +904,8 @@ export default function PublicDashboard() {
             pnlHistory: response.data.pnl_by_day || [],
             loading: false,
             error: null,
-            lastUpdate: new Date()
+            lastUpdate: new Date(),
+            wsConnected: false
           });
         } else {
           setData(prev => ({
@@ -826,6 +914,10 @@ export default function PublicDashboard() {
             error: "No data received"
           }));
         }
+        
+        // Connect WebSocket after initial data load
+        connectWebSocket();
+        
       } catch (error) {
         console.error("❌ Error fetching data:", error);
         setData(prev => ({
@@ -833,13 +925,43 @@ export default function PublicDashboard() {
           loading: false,
           error: error.message
         }));
+        
+        // Still try WebSocket even if initial fetch fails
+        connectWebSocket();
       }
     };
     
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    
+    // Fallback polling every 30 seconds if WebSocket disconnects
+    const interval = setInterval(async () => {
+      if (!data.wsConnected && !data.loading) {
+        console.log("Fallback: Polling for updates...");
+        try {
+          const response = await axios.get(BOT_ACTIVITY_HISTORY_URL, {
+            params: { days: 365, limit: 100 },
+            timeout: 10000
+          });
+          if (response.data && response.data.trades) {
+            setData(prev => ({
+              ...prev,
+              trades: response.data.trades,
+              summary: response.data.summary,
+              lastUpdate: new Date()
+            }));
+          }
+        } catch (err) {
+          console.error("Polling failed:", err);
+        }
+      }
+    }, 30000);
+    
+    return () => {
+      clearInterval(interval);
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, [connectWebSocket]);
 
   const allTrades = data.trades || [];
   const summary = data.summary || {};
@@ -897,6 +1019,12 @@ export default function PublicDashboard() {
               <span className="text-xs px-3 py-1.5 rounded-full bg-purple-100 text-purple-700">
                 {totalTrades.toLocaleString()} Trades
               </span>
+              {data.wsConnected && (
+                <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  LIVE
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500">
               <div className="flex items-center gap-2">
@@ -925,7 +1053,7 @@ export default function PublicDashboard() {
             Trading in Public
           </h1>
           <p className="text-gray-500 max-w-2xl mx-auto text-sm sm:text-base">
-            Complete trading history • {totalTrades.toLocaleString()} total trades tracked • Real-time updates
+            Complete trading history • {totalTrades.toLocaleString()} total trades tracked • Real-time WebSocket updates
           </p>
         </div>
 
@@ -1023,6 +1151,11 @@ export default function PublicDashboard() {
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               Recent Trades
               <span className="text-xs font-normal text-gray-400">{totalTrades.toLocaleString()} total trades</span>
+              {data.wsConnected && (
+                <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                  🔌 Live
+                </span>
+              )}
             </h2>
             <div className="flex gap-2">
               <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -1070,7 +1203,7 @@ export default function PublicDashboard() {
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-gray-400 border-t border-gray-200 pt-6">
           <p>
-            Complete trading history • AI-powered signals • Real-time updates • Transparent performance
+            Complete trading history • AI-powered signals • Real-time WebSocket updates • Transparent performance
             <br />
             <Link to="/" className="text-indigo-600 hover:underline">Home</Link>
             {" • "}
