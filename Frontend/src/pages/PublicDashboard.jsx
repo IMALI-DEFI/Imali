@@ -1,9 +1,8 @@
 // src/pages/PublicDashboard.jsx
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import Chart from "chart.js/auto";
 
 const API_BASE = "https://api.imali-defi.com";
 const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
@@ -42,116 +41,6 @@ function getRiskColor(risk) {
   return "text-gray-600 bg-gray-50";
 }
 
-function PerformanceChart({ pnlHistory = [] }) {
-  const canvasRef = useRef(null);
-  const chartRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    if (chartRef.current) {
-      chartRef.current.destroy();
-    }
-
-    const ctx = canvas.getContext("2d");
-    
-    const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
-    const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
-      const date = new Date(p.date);
-      return `${date.getMonth()+1}/${date.getDate()}`;
-    }) : [];
-
-    if (values.length === 0) {
-      chartRef.current = new Chart(ctx, {
-        type: "line",
-        data: { labels: ["No Data"], datasets: [{ data: [0] }] },
-        options: { responsive: true, maintainAspectRatio: false }
-      });
-      return;
-    }
-
-    let cumulative = 0;
-    const cumulativeValues = values.map(v => {
-      cumulative += v;
-      return cumulative;
-    });
-
-    chartRef.current = new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: labels.slice(-30),
-        datasets: [
-          {
-            label: "Daily P&L",
-            data: values.slice(-30),
-            backgroundColor: values.slice(-30).map(v => v >= 0 ? "rgba(16,185,129,0.6)" : "rgba(239,68,68,0.6)"),
-            borderColor: values.slice(-30).map(v => v >= 0 ? "#10b981" : "#ef4444"),
-            borderWidth: 1,
-            borderRadius: 4,
-            yAxisID: "y",
-          },
-          {
-            label: "Cumulative P&L",
-            data: cumulativeValues.slice(-30),
-            type: "line",
-            borderColor: "#6366f1",
-            backgroundColor: "rgba(99,102,241,0.1)",
-            borderWidth: 3,
-            pointRadius: 3,
-            pointBackgroundColor: "#6366f1",
-            pointBorderColor: "white",
-            pointBorderWidth: 2,
-            fill: true,
-            tension: 0.3,
-            yAxisID: "y1",
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: { position: "top", labels: { boxWidth: 12, font: { size: 11 } } },
-          tooltip: {
-            callbacks: {
-              label: (context) => {
-                if (context.dataset.label === "Daily P&L") {
-                  return `Daily: ${formatCurrencySigned(context.raw)}`;
-                } else {
-                  return `Cumulative: ${formatCurrencySigned(context.raw)}`;
-                }
-              }
-            }
-          }
-        },
-        scales: {
-          y: {
-            position: "left",
-            grid: { color: "rgba(0,0,0,0.05)" },
-            ticks: { callback: (value) => formatCurrency(value) },
-            title: { display: true, text: "Daily P&L", color: "#6b7280" }
-          },
-          y1: {
-            position: "right",
-            grid: { display: false },
-            ticks: { callback: (value) => formatCurrency(value), color: "#6366f1" },
-            title: { display: true, text: "Cumulative P&L", color: "#6366f1" }
-          },
-          x: { grid: { display: false }, ticks: { color: "#6b7280", maxRotation: 45 } }
-        }
-      }
-    });
-
-    return () => {
-      if (chartRef.current) chartRef.current.destroy();
-    };
-  }, [pnlHistory]);
-
-  return <canvas ref={canvasRef} />;
-}
-
 function MetricCard({ title, value, icon, subtext, color = "emerald", onClick }) {
   const colorClasses = {
     emerald: "text-emerald-600",
@@ -166,10 +55,7 @@ function MetricCard({ title, value, icon, subtext, color = "emerald", onClick })
     <div className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-lg transition-all cursor-pointer" onClick={onClick}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs text-gray-500 flex items-center gap-1">
-            {title}
-            <span className="text-gray-300 text-[10px]">ⓘ</span>
-          </p>
+          <p className="text-xs text-gray-500">{title}</p>
           <p className={`text-xl sm:text-2xl font-bold mt-1 ${colorClasses[color]}`}>{value}</p>
           {subtext && <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{subtext}</p>}
         </div>
@@ -397,7 +283,6 @@ export default function PublicDashboard() {
   const [data, setData] = useState({
     trades: [],
     summary: {},
-    pnlHistory: [],
     loading: true,
     error: null,
     lastUpdate: null
@@ -421,31 +306,27 @@ export default function PublicDashboard() {
           timeout: 15000
         });
         
+        console.log("✅ Response:", response.data);
+        
+        let trades = [];
+        let summary = {};
+        
         if (response.data && response.data.data) {
-          setData({
-            trades: response.data.data.trades || [],
-            summary: response.data.data.summary || {},
-            pnlHistory: response.data.data.pnl_by_day || [],
-            loading: false,
-            error: null,
-            lastUpdate: new Date()
-          });
+          trades = response.data.data.trades || [];
+          summary = response.data.data.summary || {};
         } else if (response.data && response.data.trades) {
-          setData({
-            trades: response.data.trades || [],
-            summary: response.data.summary || {},
-            pnlHistory: response.data.pnl_by_day || [],
-            loading: false,
-            error: null,
-            lastUpdate: new Date()
-          });
-        } else {
-          setData(prev => ({
-            ...prev,
-            loading: false,
-            error: "No data received"
-          }));
+          trades = response.data.trades || [];
+          summary = response.data.summary || {};
         }
+        
+        setData({
+          trades: trades,
+          summary: summary,
+          loading: false,
+          error: null,
+          lastUpdate: new Date()
+        });
+        
       } catch (error) {
         console.error("❌ Error fetching data:", error);
         setData(prev => ({
@@ -463,7 +344,6 @@ export default function PublicDashboard() {
 
   const allTrades = data.trades || [];
   const summary = data.summary || {};
-  const pnlHistory = data.pnlHistory || [];
 
   const totalTrades = summary.total_trades || allTrades.length;
   const totalPnl = summary.total_pnl || 0;
@@ -471,11 +351,11 @@ export default function PublicDashboard() {
   const losses = summary.losses || 0;
   const winRate = summary.win_rate || 0;
 
-  const filteredTrades = useMemo(() => {
+  const filteredTrades = (() => {
     if (activeTab === "open") return allTrades.filter(t => t.status === "open");
     if (activeTab === "closed") return allTrades.filter(t => t.status === "closed");
     return allTrades;
-  }, [activeTab, allTrades]);
+  })();
 
   const tabs = [
     { id: "all", label: "All", icon: "🌐", count: allTrades.length },
@@ -539,27 +419,6 @@ export default function PublicDashboard() {
             Complete trading history • {totalTrades} total trades tracked
           </p>
         </div>
-
-        {/* Performance Chart */}
-        {pnlHistory.length > 0 && (
-          <div className="mb-8 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div>
-                <h2 className="font-bold text-xl text-gray-900">Performance History</h2>
-                <p className="text-xs text-gray-400 mt-1">Daily P&L (bars) and Cumulative Performance (line)</p>
-              </div>
-              <button 
-                onClick={() => setShowMetricDefinitions(true)}
-                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors"
-              >
-                📊 Understanding these metrics
-              </button>
-            </div>
-            <div className="h-96">
-              <PerformanceChart pnlHistory={pnlHistory} />
-            </div>
-          </div>
-        )}
 
         {/* Key Metrics Grid */}
         <div className="mb-8">
