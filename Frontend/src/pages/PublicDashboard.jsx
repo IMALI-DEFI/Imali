@@ -19,8 +19,6 @@ const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
 const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
 const USER_STATS_URL = `${API_BASE}/api/user/stats`;
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
-const HEDGE_FUND_URL = `${API_BASE}/api/hedge-fund/status`;
-const PORTFOLIO_URL = `${API_BASE}/api/portfolio/allocation`;
 
 // Stock bot direct endpoints
 const STOCK_BOT_URL = "http://localhost:3001";
@@ -52,9 +50,10 @@ function formatPercent(value, digits = 2) {
 }
 
 function formatCompactNumber(num) {
-  if (num >= 1000000) return `$${(num / 1000000).toFixed(1)}M`;
-  if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`;
-  return `$${num.toFixed(0)}`;
+  const n = safeNumber(num);
+  if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
+  return `$${n.toFixed(0)}`;
 }
 
 function timeAgo(timestamp) {
@@ -94,7 +93,7 @@ function getBotIcon(botName) {
 }
 
 /* =====================================================
-   DATA HOOK - ENHANCED
+   DATA HOOK
 ===================================================== */
 
 function useLiveData() {
@@ -107,8 +106,6 @@ function useLiveData() {
     analytics: { summary: {} },
     pnlHistory: [],
     liveStats: {},
-    hedgeFund: null,
-    portfolio: null,
     loading: true,
     error: null,
     lastUpdate: null,
@@ -129,8 +126,6 @@ function useLiveData() {
           userStatsRes,
           pnlHistoryRes,
           liveStatsRes,
-          hedgeFundRes,
-          portfolioRes,
         ] = await Promise.allSettled([
           axios.get(TRADES_URL, { timeout: 8000 }),
           axios.get(STOCK_BOT_TRADES_URL, { timeout: 8000 }).catch(() => ({ data: [] })),
@@ -141,8 +136,6 @@ function useLiveData() {
           axios.get(USER_STATS_URL, { timeout: 8000 }),
           axios.get(PNL_HISTORY_URL, { timeout: 8000 }),
           axios.get(LIVE_STATS_URL, { timeout: 8000 }),
-          axios.get(HEDGE_FUND_URL, { timeout: 8000 }).catch(() => ({ data: null })),
-          axios.get(PORTFOLIO_URL, { timeout: 8000 }).catch(() => ({ data: null })),
         ]);
 
         if (!mounted) return;
@@ -156,8 +149,6 @@ function useLiveData() {
           analytics: { summary: {} },
           pnlHistory: [],
           liveStats: {},
-          hedgeFund: null,
-          portfolio: null,
         };
 
         // Process stock bot trades
@@ -198,24 +189,18 @@ function useLiveData() {
           newData.analytics = analyticsRes.value.data;
         }
 
-        // Process PNL history
+        // Process PNL history - ensure numbers are properly converted
         if (pnlHistoryRes.status === "fulfilled" && pnlHistoryRes.value.data?.history) {
-          newData.pnlHistory = pnlHistoryRes.value.data.history;
+          newData.pnlHistory = pnlHistoryRes.value.data.history.map(item => ({
+            ...item,
+            pnl: safeNumber(item.pnl),
+            cumulative_pnl: safeNumber(item.cumulative_pnl)
+          }));
         }
 
         // Process live stats
         if (liveStatsRes.status === "fulfilled" && liveStatsRes.value.data) {
           newData.liveStats = liveStatsRes.value.data;
-        }
-
-        // Process hedge fund data
-        if (hedgeFundRes.status === "fulfilled" && hedgeFundRes.value.data) {
-          newData.hedgeFund = hedgeFundRes.value.data;
-        }
-
-        // Process portfolio data
-        if (portfolioRes.status === "fulfilled" && portfolioRes.value.data) {
-          newData.portfolio = portfolioRes.value.data;
         }
 
         setData({
@@ -255,16 +240,13 @@ function useLiveData() {
 ===================================================== */
 
 function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
-  // Combine and group trades by bot
   const allTrades = [...trades, ...stockTrades];
   
-  // Filter closed trades with non-zero P&L
   const closedTrades = allTrades.filter(trade => {
     const pnl = trade?.pnl_usd || trade?.pnl || 0;
     return (trade?.status !== "open" && pnl !== 0) || (pnl !== 0 && trade?.created_at);
   });
 
-  // Group by bot
   const tradesByBot = closedTrades.reduce((acc, trade) => {
     const botName = trade?.bot || trade?.source || "Other Bot";
     if (!acc[botName]) {
@@ -274,7 +256,6 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
     return acc;
   }, {});
 
-  // Calculate bot performance
   const botPerformance = Object.entries(tradesByBot).map(([botName, botTrades]) => {
     const totalPnL = botTrades.reduce((sum, t) => sum + (t.pnl_usd || t.pnl || 0), 0);
     const wins = botTrades.filter(t => (t.pnl_usd || t.pnl || 0) > 0).length;
@@ -283,7 +264,6 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
     const avgWin = wins > 0 ? botTrades.filter(t => (t.pnl_usd || t.pnl || 0) > 0).reduce((sum, t) => sum + (t.pnl_usd || t.pnl || 0), 0) / wins : 0;
     const avgLoss = losses > 0 ? Math.abs(botTrades.filter(t => (t.pnl_usd || t.pnl || 0) < 0).reduce((sum, t) => sum + (t.pnl_usd || t.pnl || 0), 0) / losses) : 0;
     
-    // Get top winners for this bot
     const topWinners = [...botTrades]
       .sort((a, b) => (b.pnl_usd || b.pnl || 0) - (a.pnl_usd || a.pnl || 0))
       .slice(0, 3);
@@ -383,122 +363,6 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
 }
 
 /* =====================================================
-   HEDGE FUND DASHBOARD COMPONENT
-===================================================== */
-
-function HedgeFundDashboard({ hedgeFund, portfolio, onTradeClick }) {
-  if (!hedgeFund && !portfolio) {
-    return (
-      <div className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-2xl p-6 text-white">
-        <div className="text-center py-8">
-          <div className="text-5xl mb-4">🏦</div>
-          <h3 className="text-xl font-bold mb-2">Hedge Fund Features Coming Soon</h3>
-          <p className="text-indigo-200 text-sm">Institutional-grade trading strategies and portfolio management</p>
-        </div>
-      </div>
-    );
-  }
-
-  const totalAUM = hedgeFund?.aum || portfolio?.total_value || 2500000;
-  const dailyReturn = hedgeFund?.daily_return || portfolio?.daily_return || 1.24;
-  const monthlyReturn = hedgeFund?.monthly_return || portfolio?.monthly_return || 18.7;
-  const sharpeRatio = hedgeFund?.sharpe_ratio || portfolio?.sharpe_ratio || 2.34;
-  const maxDrawdown = hedgeFund?.max_drawdown || portfolio?.max_drawdown || -8.2;
-  const activeStrategies = hedgeFund?.active_strategies || portfolio?.strategies || 6;
-
-  return (
-    <div className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-2xl p-6 text-white">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-3xl">🏦</span>
-            <h2 className="text-2xl font-bold">IMALI Hedge Fund</h2>
-            <span className="text-xs bg-emerald-500/30 px-3 py-1 rounded-full">ACTIVE</span>
-          </div>
-          <p className="text-indigo-200 text-sm mt-1">Institutional-grade algorithmic trading</p>
-        </div>
-        <div className="text-right">
-          <div className="text-3xl font-bold">{formatCompactNumber(totalAUM)}</div>
-          <div className="text-xs text-indigo-200">Assets Under Management</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white/10 rounded-xl p-3 backdrop-blur">
-          <div className="text-xs text-indigo-200 mb-1">Daily Return</div>
-          <div className={`text-xl font-bold ${dailyReturn >= 0 ? "text-emerald-300" : "text-red-300"}`}>
-            {dailyReturn >= 0 ? "+" : ""}{dailyReturn}%
-          </div>
-        </div>
-        <div className="bg-white/10 rounded-xl p-3 backdrop-blur">
-          <div className="text-xs text-indigo-200 mb-1">Monthly Return</div>
-          <div className={`text-xl font-bold ${monthlyReturn >= 0 ? "text-emerald-300" : "text-red-300"}`}>
-            {monthlyReturn >= 0 ? "+" : ""}{monthlyReturn}%
-          </div>
-        </div>
-        <div className="bg-white/10 rounded-xl p-3 backdrop-blur">
-          <div className="text-xs text-indigo-200 mb-1">Sharpe Ratio</div>
-          <div className="text-xl font-bold text-white">{sharpeRatio.toFixed(2)}</div>
-        </div>
-        <div className="bg-white/10 rounded-xl p-3 backdrop-blur">
-          <div className="text-xs text-indigo-200 mb-1">Max Drawdown</div>
-          <div className="text-xl font-bold text-red-300">{maxDrawdown}%</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white/5 rounded-xl p-4">
-          <h4 className="font-semibold mb-3 text-indigo-200">Active Strategies</h4>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>📈 Momentum Alpha</span>
-              <span className="text-emerald-300">+24.3%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>⚡ Arbitrage Bot</span>
-              <span className="text-emerald-300">+18.7%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>🤖 AI Prediction</span>
-              <span className="text-emerald-300">+15.2%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>📊 Mean Reversion</span>
-              <span className="text-amber-300">+8.4%</span>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white/5 rounded-xl p-4">
-          <h4 className="font-semibold mb-3 text-indigo-200">Top Holdings</h4>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>BTC/USDT</span>
-              <span className="text-white">32%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>ETH/USDT</span>
-              <span className="text-white">24%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>AI Tokens</span>
-              <span className="text-white">18%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>DeFi Index</span>
-              <span className="text-white">12%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 pt-4 border-t border-white/10 text-center text-xs text-indigo-200">
-        Risk Level: Moderate-High • Target Return: 15-25% APR • Inception: March 2026
-      </div>
-    </div>
-  );
-}
-
-/* =====================================================
    LIVE ACTIVITY FEED COMPONENT
 ===================================================== */
 
@@ -506,7 +370,6 @@ function LiveActivityFeed({ trades, stockTrades, discoveries }) {
   const [activities, setActivities] = useState([]);
 
   useEffect(() => {
-    // Combine all recent activities
     const allActivities = [
       ...trades.slice(0, 10).map(t => ({
         id: t.id || t._id,
@@ -538,7 +401,6 @@ function LiveActivityFeed({ trades, stockTrades, discoveries }) {
       })),
     ];
 
-    // Sort by timestamp (most recent first)
     allActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     setActivities(allActivities.slice(0, 20));
   }, [trades, stockTrades, discoveries]);
@@ -616,67 +478,7 @@ function LiveActivityFeed({ trades, stockTrades, discoveries }) {
 }
 
 /* =====================================================
-   PORTFOLIO ALLOCATION CHART
-===================================================== */
-
-function PortfolioAllocation({ portfolio }) {
-  const canvasRef = useRef(null);
-  const chartRef = useRef(null);
-
-  useEffect(() => {
-    if (!portfolio?.allocations || !canvasRef.current) return;
-
-    if (chartRef.current) {
-      chartRef.current.destroy();
-    }
-
-    const ctx = canvasRef.current.getContext('2d');
-    const allocations = portfolio.allocations;
-    const labels = allocations.map(a => a.asset);
-    const values = allocations.map(a => a.percentage);
-
-    chartRef.current = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: labels,
-        datasets: [{
-          data: values,
-          backgroundColor: [
-            '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444',
-            '#06b6d4', '#84cc16', '#ec489a', '#6366f1', '#14b8a6'
-          ],
-          borderWidth: 0,
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
-          tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw}%` } }
-        }
-      }
-    });
-
-    return () => {
-      if (chartRef.current) chartRef.current.destroy();
-    };
-  }, [portfolio]);
-
-  if (!portfolio?.allocations) return null;
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-5">
-      <h3 className="font-semibold text-gray-900 mb-4">Portfolio Allocation</h3>
-      <div className="h-64">
-        <canvas ref={canvasRef} />
-      </div>
-    </div>
-  );
-}
-
-/* =====================================================
-   PERFORMANCE CHART (Existing)
+   PERFORMANCE CHART (FIXED for .toFixed error)
 ===================================================== */
 
 function PerformanceChart({ pnlHistory = [] }) {
@@ -693,11 +495,20 @@ function PerformanceChart({ pnlHistory = [] }) {
 
     const ctx = canvas.getContext("2d");
     
-    const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.pnl || 0) : [];
-    const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
-      const date = new Date(p.date);
-      return `${date.getMonth()+1}/${date.getDate()}`;
-    }) : [];
+    // SAFELY convert values to numbers to prevent .toFixed errors
+    const values = pnlHistory.length > 0 
+      ? pnlHistory.map(p => {
+          const val = p?.pnl;
+          return typeof val === 'number' ? val : parseFloat(val) || 0;
+        })
+      : [];
+    
+    const labels = pnlHistory.length > 0 
+      ? pnlHistory.map(p => {
+          const date = new Date(p.date);
+          return `${date.getMonth()+1}/${date.getDate()}`;
+        })
+      : [];
 
     if (values.length === 0) {
       chartRef.current = new Chart(ctx, {
@@ -754,10 +565,12 @@ function PerformanceChart({ pnlHistory = [] }) {
           tooltip: {
             callbacks: {
               label: (context) => {
+                const value = context.raw;
+                const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
                 if (context.dataset.label === "Daily P&L") {
-                  return `Daily: ${formatCurrencySigned(context.raw)}`;
+                  return `Daily: ${numValue >= 0 ? "+" : "-"}$${Math.abs(numValue).toFixed(2)}`;
                 } else {
-                  return `Cumulative: ${formatCurrencySigned(context.raw)}`;
+                  return `Cumulative: ${numValue >= 0 ? "+" : "-"}$${Math.abs(numValue).toFixed(2)}`;
                 }
               }
             }
@@ -767,13 +580,24 @@ function PerformanceChart({ pnlHistory = [] }) {
           y: {
             position: "left",
             grid: { color: "rgba(0,0,0,0.05)" },
-            ticks: { callback: (value) => formatCurrency(value) },
+            ticks: { 
+              callback: (value) => {
+                const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+                return `${numValue >= 0 ? "+" : "-"}$${Math.abs(numValue).toFixed(2)}`;
+              }
+            },
             title: { display: true, text: "Daily P&L", color: "#6b7280" }
           },
           y1: {
             position: "right",
             grid: { display: false },
-            ticks: { callback: (value) => formatCurrency(value), color: "#6366f1" },
+            ticks: { 
+              callback: (value) => {
+                const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+                return `${numValue >= 0 ? "+" : "-"}$${Math.abs(numValue).toFixed(2)}`;
+              },
+              color: "#6366f1" 
+            },
             title: { display: true, text: "Cumulative P&L", color: "#6366f1" }
           },
           x: { grid: { display: false }, ticks: { color: "#6b7280", maxRotation: 45 } }
@@ -805,8 +629,6 @@ function MetricDefinitions({ isOpen, onClose }) {
     { name: "AI Score", symbol: "🤖", definition: "Machine learning score (0-100). Higher = stronger signal." },
     { name: "Confidence", symbol: "📊", definition: "AI confidence level in the signal." },
     { name: "Risk Level", symbol: "⚠️", definition: "Estimated risk level. Adjust position sizing accordingly." },
-    { name: "AUM", symbol: "🏦", definition: "Assets Under Management - total capital deployed." },
-    { name: "Alpha", symbol: "α", definition: "Excess return relative to market benchmark." },
   ];
 
   return (
@@ -1047,7 +869,6 @@ function DiscoveryCard({ discovery }) {
 
 export default function PublicDashboard() {
   const data = useLiveData();
-  const [activeTab, setActiveTab] = useState("all");
   const [clock, setClock] = useState(new Date());
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [showMetricDefinitions, setShowMetricDefinitions] = useState(false);
@@ -1064,8 +885,6 @@ export default function PublicDashboard() {
   const bots = data.bots || [];
   const analytics = data.analytics?.summary || {};
   const pnlHistory = data.pnlHistory || [];
-  const hedgeFund = data.hedgeFund;
-  const portfolio = data.portfolio;
 
   const totalTradesCount = analytics.total_trades || allTrades.length + stockTrades.length;
   const winsCount = analytics.wins || 0;
@@ -1101,7 +920,6 @@ export default function PublicDashboard() {
                 IMALI
               </Link>
               <span className="text-xs px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700">LIVE</span>
-              <span className="text-xs px-3 py-1.5 rounded-full bg-purple-100 text-purple-700">HEDGE FUND</span>
             </div>
             <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500">
               <div className="flex items-center gap-2">
@@ -1130,17 +948,8 @@ export default function PublicDashboard() {
             Live Trading Dashboard
           </h1>
           <p className="text-gray-500 max-w-2xl mx-auto text-sm sm:text-base">
-            Real-time bot activity • AI Stock Signals • DEX Discoveries • Institutional Hedge Fund Performance
+            Real-time bot activity • AI Stock Signals • DEX Discoveries • Automated Trading Performance
           </p>
-        </div>
-
-        {/* Hedge Fund Dashboard */}
-        <div className="mb-8">
-          <HedgeFundDashboard 
-            hedgeFund={hedgeFund} 
-            portfolio={portfolio}
-            onTradeClick={setSelectedTrade}
-          />
         </div>
 
         {/* Performance Chart */}
@@ -1242,13 +1051,6 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Portfolio Allocation */}
-        {portfolio?.allocations && (
-          <div className="mb-8">
-            <PortfolioAllocation portfolio={portfolio} />
-          </div>
-        )}
-
         {/* Notable Trades by Bot */}
         <div className="mb-8">
           <h2 className="font-bold text-xl mb-3 flex items-center gap-2 text-gray-900">
@@ -1293,9 +1095,9 @@ export default function PublicDashboard() {
 
         {/* Other Trading Bots */}
         <div className="mb-8">
-          <h2 className="font-semibold text-lg mb-3 text-gray-800">Other Trading Bots</h2>
+          <h2 className="font-semibold text-lg mb-3 text-gray-800">Trading Bots</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {bots.filter(b => !b.name?.includes("Stock")).map((bot, index) => (
+            {bots.map((bot, index) => (
               <BotCard key={index} bot={bot} />
             ))}
           </div>
@@ -1343,7 +1145,7 @@ export default function PublicDashboard() {
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-gray-400 border-t border-gray-200 pt-6">
           <p>
-            Real-time bot activity • Stock Trading • DEX discoveries • Hedge Fund Performance • Cumulative P&L tracking since inception
+            Real-time bot activity • Stock Trading • DEX discoveries • Cumulative P&L tracking since inception
             <br />
             <Link to="/" className="text-indigo-600 hover:underline">Home</Link>
             {" • "}
