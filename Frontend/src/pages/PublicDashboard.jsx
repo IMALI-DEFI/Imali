@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 import Chart from "chart.js/auto";
 
-const API_BASE = "http://localhost:3004";
+const API_BASE = "https://api.imali-defi.com";
 const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
 
 function formatCurrency(value) {
