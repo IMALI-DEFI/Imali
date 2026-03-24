@@ -16,7 +16,7 @@ import {
   Filler,
   RadialLinearScale
 } from "chart.js";
-import { Bar, Line, Radar } from "react-chartjs-2";
+import { Bar, Line } from "react-chartjs-2";
 
 // Register Chart.js components
 ChartJS.register(
@@ -47,6 +47,11 @@ function formatCurrency(value) {
 function formatCurrencySigned(value) {
   const n = Number(value) || 0;
   return `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
+}
+
+function formatPercent(value) {
+  const n = Number(value) || 0;
+  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
 function formatCompactNumber(num) {
@@ -334,12 +339,12 @@ function EnhancedPerformanceChart({ pnlHistory = [] }) {
   );
 }
 
-// Enhanced Trade Detail Modal with all fields
+// Enhanced Trade Detail Modal with all fields including percent return
 function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
 
   const pnl = trade.pnl_usd || 0;
-  const pnlPercent = trade.pnl_percent || 0;
+  const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
   const symbol = trade.symbol || "Unknown";
   const side = trade.side || "buy";
   const bot = trade.bot || "unknown";
@@ -401,8 +406,8 @@ function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
                 {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(entryPrice)}
               </div>
               {pnl !== 0 && (
-                <div className={`text-sm ${pnl > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {Math.abs(pnlPercent).toFixed(1)}% return
+                <div className={`text-sm font-semibold ${pnl > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {formatPercent(pnlPercent)} return
                 </div>
               )}
             </div>
@@ -478,8 +483,20 @@ function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
             </div>
           </div>
 
-          {/* Metrics */}
-          <div className="grid grid-cols-3 gap-3 pt-2">
+          {/* Metrics with Percent Return Highlighted */}
+          <div className="grid grid-cols-4 gap-3 pt-2">
+            <div className="text-center p-2 bg-gray-50 rounded-lg">
+              <div className="text-xs text-gray-500">P&L</div>
+              <div className={`text-lg font-bold ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
+                {formatCurrencySigned(pnl)}
+              </div>
+            </div>
+            <div className="text-center p-2 bg-gray-50 rounded-lg">
+              <div className="text-xs text-gray-500">Return %</div>
+              <div className={`text-lg font-bold ${pnlPercent > 0 ? "text-emerald-600" : pnlPercent < 0 ? "text-red-600" : "text-gray-600"}`}>
+                {formatPercent(pnlPercent)}
+              </div>
+            </div>
             <div className="text-center p-2 bg-gray-50 rounded-lg">
               <div className="text-xs text-gray-500">AI Score</div>
               <div className="text-lg font-bold text-indigo-600">{score > 0 ? score.toFixed(1) : "N/A"}</div>
@@ -488,10 +505,6 @@ function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
               <div className="text-xs text-gray-500">Confidence</div>
               <div className="text-lg font-bold text-purple-600">{confidence > 0 ? `${confidence.toFixed(0)}%` : "N/A"}</div>
             </div>
-            <div className="text-center p-2 bg-gray-50 rounded-lg">
-              <div className="text-xs text-gray-500">Risk Level</div>
-              <div className={`text-lg font-bold ${getRiskColor(risk)}`}>{risk.toUpperCase()}</div>
-            </div>
           </div>
         </div>
       </div>
@@ -499,9 +512,10 @@ function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
   );
 }
 
-// Trade Row Component
+// Trade Row Component with Percent Return
 function TradeRow({ trade, onClick }) {
   const pnl = trade.pnl_usd || 0;
+  const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
   const isWin = pnl > 0;
   const side = trade.side || "buy";
   const bot = trade.bot || "unknown";
@@ -554,7 +568,7 @@ function TradeRow({ trade, onClick }) {
               {formatCurrencySigned(pnl)}
             </div>
             <div className={`text-xs ${isWin ? "text-emerald-500" : "text-red-500"}`}>
-              {pnl > 0 ? "+" : ""}{(trade.pnl_percent || 0).toFixed(1)}%
+              {formatPercent(pnlPercent)}
             </div>
           </>
         ) : trade.status === "open" ? (
@@ -716,6 +730,7 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
               <h4 className="text-xs font-semibold text-gray-600 mb-2">🏆 Notable Trades</h4>
               {sortedTrades.slice(0, 5).map((trade, idx) => {
                 const pnl = trade.pnl_usd || trade.pnl || 0;
+                const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
                 const isWin = pnl > 0;
                 return (
                   <div 
@@ -752,7 +767,7 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
                         {formatCurrencySigned(pnl)}
                       </div>
                       <div className={`text-xs ${isWin ? "text-emerald-500" : "text-red-500"}`}>
-                        {pnl > 0 ? "+" : ""}{(trade.pnl_percent || 0).toFixed(1)}%
+                        {formatPercent(pnlPercent)}
                       </div>
                     </div>
                   </div>
@@ -885,7 +900,7 @@ export default function PublicDashboard() {
             
             const toast = document.createElement('div');
             toast.className = 'fixed bottom-4 right-4 bg-emerald-500 text-white px-4 py-2 rounded-lg shadow-lg animate-bounce z-50';
-            toast.innerHTML = `🔄 New ${message.trade?.side?.toUpperCase()} trade: ${message.trade?.symbol} ${formatCurrencySigned(message.trade?.pnl_usd)}`;
+            toast.innerHTML = `🔄 New ${message.trade?.side?.toUpperCase()} trade: ${message.trade?.symbol} ${formatCurrencySigned(message.trade?.pnl_usd)} (${formatPercent(message.trade?.pnl_percent || 0)})`;
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
           }
