@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { useLocation } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
 
 const AuthContext = createContext({});
@@ -17,14 +18,24 @@ const isSessionExpired = (err) => err?.response?.status === 401;
 const isForbidden = (err) => err?.response?.status === 403;
 const isRateLimited = (err) => err?.response?.status === 429;
 
+// Public routes that don't require authentication
+const PUBLIC_ROUTES = ['/', '/dashboard', '/public-dashboard', '/public', '/live', '/trading'];
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [activation, setActivation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
-
+  
+  const location = useLocation();
   const initialLoadDone = useRef(false);
   const loadingLock = useRef(false);
+
+  // Check if current route is public
+  const isPublicRoute = useCallback(() => {
+    const pathname = location?.pathname || window.location.pathname;
+    return PUBLIC_ROUTES.includes(pathname) || pathname === '/';
+  }, [location]);
 
   // ========================
   // Helper to verify token status
@@ -115,6 +126,16 @@ export const AuthProvider = ({ children }) => {
   // ========================
   const loadUserData = useCallback(async () => {
     console.log("[AuthContext] loadUserData started");
+    
+    // SKIP AUTH FOR PUBLIC ROUTES
+    if (isPublicRoute()) {
+      console.log("[AuthContext] Public route detected - skipping auth");
+      setUser(null);
+      setActivation(null);
+      setLoading(false);
+      return;
+    }
+    
     const hasToken = verifyTokenStatus();
 
     if (!hasToken) {
@@ -180,7 +201,7 @@ export const AuthProvider = ({ children }) => {
       loadingLock.current = false;
       console.log("[AuthContext] loadUserData completed");
     }
-  }, [verifyTokenStatus]);
+  }, [verifyTokenStatus, isPublicRoute]);
 
   // ========================
   // Initial load
@@ -360,6 +381,7 @@ export const AuthProvider = ({ children }) => {
       authError,
       isAuthenticated: !!user || BotAPI.isLoggedIn(),
       hasToken: BotAPI.isLoggedIn(),
+      isPublicRoute: isPublicRoute(),
 
       setUser,
       setActivation,
@@ -384,6 +406,7 @@ export const AuthProvider = ({ children }) => {
       loadUserData,
       refreshActivation,
       refreshProfile,
+      isPublicRoute,
     ]
   );
 
