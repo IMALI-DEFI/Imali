@@ -41,17 +41,23 @@ const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
 function formatCurrency(value) {
   const n = Number(value) || 0;
-  return `$${n.toFixed(2)}`;
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatCurrencySigned(value) {
   const n = Number(value) || 0;
-  return `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
+  const absValue = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${n >= 0 ? "+" : "-"}$${absValue}`;
 }
 
 function formatPercent(value) {
   const n = Number(value) || 0;
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+}
+
+function formatNumber(value) {
+  const n = Number(value) || 0;
+  return n.toLocaleString();
 }
 
 function formatCompactNumber(num) {
@@ -152,8 +158,6 @@ function EnhancedPerformanceChart({ pnlHistory = [] }) {
     return `${date.getMonth()+1}/${date.getDate()}`;
   }) : [];
 
-  const maxValue = Math.max(...values, 0);
-  const minValue = Math.min(...values, 0);
   const totalPnL = cumulativeValues[cumulativeValues.length - 1] || 0;
   const bestDay = Math.max(...values, 0);
   const worstDay = Math.min(...values, 0);
@@ -339,7 +343,7 @@ function EnhancedPerformanceChart({ pnlHistory = [] }) {
   );
 }
 
-// Enhanced Trade Detail Modal with all fields including percent return
+// Enhanced Trade Detail Modal
 function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
 
@@ -361,7 +365,6 @@ function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
   const strategy = trade.strategy || trade.bot || "Momentum";
   const exchange = trade.exchange || "OKX";
 
-  // Reasoning based on score and confidence
   const getReasoning = () => {
     if (score >= 70) {
       return "Based on strong technical analysis and positive market sentiment, the AI identified a high-probability entry with multiple confirming signals.";
@@ -385,7 +388,6 @@ function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
         </div>
         
         <div className="p-6 space-y-5">
-          {/* Header with Symbol and P&L */}
           <div className="flex justify-between items-start">
             <div>
               <div className="flex items-center gap-2">
@@ -413,7 +415,6 @@ function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
             </div>
           </div>
 
-          {/* Trade Details Grid */}
           <div className="grid grid-cols-2 gap-4 text-sm border-t border-gray-100 pt-4">
             <div>
               <div className="text-gray-500">Side</div>
@@ -461,7 +462,6 @@ function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
             )}
           </div>
 
-          {/* AI Analysis Section */}
           <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-2xl">🤖</span>
@@ -483,7 +483,6 @@ function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
             </div>
           </div>
 
-          {/* Metrics with Percent Return Highlighted */}
           <div className="grid grid-cols-4 gap-3 pt-2">
             <div className="text-center p-2 bg-gray-50 rounded-lg">
               <div className="text-xs text-gray-500">P&L</div>
@@ -581,7 +580,7 @@ function TradeRow({ trade, onClick }) {
   );
 }
 
-// Notable Trades by Bot with Sorting
+// Notable Trades by Bot with Sorting (including percent return)
 function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
   const [sortBy, setSortBy] = useState("pnl");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -612,6 +611,10 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
         case "pnl":
           aVal = Math.abs(a.pnl_usd || a.pnl || 0);
           bVal = Math.abs(b.pnl_usd || b.pnl || 0);
+          break;
+        case "percent":
+          aVal = Math.abs(a.pnl_percent || a.pnl_percentage || 0);
+          bVal = Math.abs(b.pnl_percent || b.pnl_percentage || 0);
           break;
         case "date":
           aVal = new Date(a.created_at).getTime();
@@ -646,6 +649,7 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
 
   const sortOptions = [
     { value: "pnl", label: "💰 By P&L", icon: "💰" },
+    { value: "percent", label: "📊 By % Return", icon: "📊" },
     { value: "date", label: "📅 By Date", icon: "📅" },
     { value: "symbol", label: "🔤 By Symbol", icon: "🔤" }
   ];
@@ -705,6 +709,7 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
         const totalPnL = botTrades.reduce((sum, t) => sum + (t.pnl_usd || t.pnl || 0), 0);
         const wins = botTrades.filter(t => (t.pnl_usd || t.pnl || 0) > 0).length;
         const winRate = botTrades.length > 0 ? (wins / botTrades.length * 100) : 0;
+        const avgPercentReturn = botTrades.reduce((sum, t) => sum + (t.pnl_percent || t.pnl_percentage || 0), 0) / botTrades.length;
         
         return (
           <div key={botName} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
@@ -723,6 +728,27 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
                   {formatCurrencySigned(totalPnL)}
                 </div>
                 <div className="text-xs text-gray-400">Total P&L</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-4 pb-3 border-b border-gray-100">
+              <div className="text-center">
+                <div className="text-xs text-gray-400">Avg Win</div>
+                <div className="text-sm font-semibold text-emerald-600">
+                  {formatCurrency(botTrades.filter(t => (t.pnl_usd || 0) > 0).reduce((sum, t) => sum + (t.pnl_usd || 0), 0) / (botTrades.filter(t => (t.pnl_usd || 0) > 0).length || 1))}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-xs text-gray-400">Avg Loss</div>
+                <div className="text-sm font-semibold text-red-600">
+                  {formatCurrencySigned(botTrades.filter(t => (t.pnl_usd || 0) < 0).reduce((sum, t) => sum + (t.pnl_usd || 0), 0) / (botTrades.filter(t => (t.pnl_usd || 0) < 0).length || 1))}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-xs text-gray-400">Avg % Return</div>
+                <div className={`text-sm font-semibold ${avgPercentReturn >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {formatPercent(avgPercentReturn)}
+                </div>
               </div>
             </div>
 
@@ -819,6 +845,7 @@ function MetricDefinitions({ isOpen, onClose }) {
     { name: "Max Drawdown", symbol: "📉", definition: "Largest peak-to-trough decline. Lower is better." },
     { name: "AI Score", symbol: "🤖", definition: "Machine learning score (0-100). Higher = stronger signal." },
     { name: "Confidence", symbol: "📊", definition: "AI confidence level in the signal." },
+    { name: "Avg % Return", symbol: "📊", definition: "Average percentage return per trade." },
   ];
 
   return (
@@ -1040,11 +1067,20 @@ export default function PublicDashboard() {
   const wins = summary.wins || 0;
   const losses = summary.losses || 0;
   const winRate = summary.win_rate || 0;
+  
+  // Calculate average percent return for closed trades
+  const closedTrades = allTrades.filter(t => t.status === "closed" && (t.pnl_usd || 0) !== 0);
+  const avgPercentReturn = closedTrades.length > 0 
+    ? closedTrades.reduce((sum, t) => sum + (t.pnl_percent || t.pnl_percentage || 0), 0) / closedTrades.length 
+    : 0;
 
   const sortedRecentTrades = useMemo(() => {
     return [...allTrades].sort((a, b) => {
       if (sortRecentTrades === "pnl") {
         return Math.abs(b.pnl_usd || 0) - Math.abs(a.pnl_usd || 0);
+      }
+      if (sortRecentTrades === "percent") {
+        return Math.abs(b.pnl_percent || b.pnl_percentage || 0) - Math.abs(a.pnl_percent || a.pnl_percentage || 0);
       }
       return new Date(b.created_at) - new Date(a.created_at);
     });
@@ -1060,6 +1096,12 @@ export default function PublicDashboard() {
     { id: "all", label: "All", icon: "🌐", count: allTrades.length },
     { id: "open", label: "Open", icon: "🟢", count: allTrades.filter(t => t.status === "open").length },
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(t => t.status === "closed").length },
+  ];
+
+  const sortOptions = [
+    { value: "date", label: "📅 Sort by Date", icon: "📅" },
+    { value: "pnl", label: "💰 Sort by P&L", icon: "💰" },
+    { value: "percent", label: "📊 Sort by % Return", icon: "📊" }
   ];
 
   if (data.loading && !data.lastUpdate) {
@@ -1084,7 +1126,7 @@ export default function PublicDashboard() {
               </Link>
               <span className="text-xs px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700">LIVE</span>
               <span className="text-xs px-3 py-1.5 rounded-full bg-purple-100 text-purple-700">
-                {totalTrades.toLocaleString()} Trades
+                {formatNumber(totalTrades)} Trades
               </span>
               {data.wsConnected && (
                 <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
@@ -1120,7 +1162,7 @@ export default function PublicDashboard() {
             Trading in Public
           </h1>
           <p className="text-gray-500 max-w-2xl mx-auto text-sm sm:text-base">
-            Complete trading history • {totalTrades.toLocaleString()} total trades tracked • Real-time WebSocket updates
+            Complete trading history • {formatNumber(totalTrades)} total trades tracked • Real-time WebSocket updates
           </p>
         </div>
 
@@ -1159,18 +1201,18 @@ export default function PublicDashboard() {
               <span>ⓘ</span> What do these mean?
             </button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <MetricCard 
               title="Win Rate" 
               value={`${winRate.toFixed(1)}%`} 
               icon="📈" 
               color="emerald"
-              subtext={`${wins}W / ${losses}L`}
+              subtext={`${formatNumber(wins)}W / ${formatNumber(losses)}L`}
               onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
               title="Total Trades" 
-              value={totalTrades.toLocaleString()} 
+              value={formatNumber(totalTrades)} 
               icon="🔄" 
               color="purple"
               onClick={() => setShowMetricDefinitions(true)}
@@ -1187,6 +1229,14 @@ export default function PublicDashboard() {
               value={formatCurrencySigned(totalTrades > 0 ? totalPnl / totalTrades : 0)} 
               icon="⚖️" 
               color="blue"
+              onClick={() => setShowMetricDefinitions(true)}
+            />
+            <MetricCard 
+              title="Avg % Return" 
+              value={formatPercent(avgPercentReturn)} 
+              icon="📊" 
+              color={avgPercentReturn >= 0 ? "emerald" : "red"}
+              subtext={`Based on ${formatNumber(closedTrades.length)} closed trades`}
               onClick={() => setShowMetricDefinitions(true)}
             />
           </div>
@@ -1214,7 +1264,7 @@ export default function PublicDashboard() {
             <h2 className="font-bold text-lg flex items-center gap-2 text-gray-900">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               Recent Trades
-              <span className="text-xs font-normal text-gray-400">{totalTrades.toLocaleString()} total trades</span>
+              <span className="text-xs font-normal text-gray-400">{formatNumber(totalTrades)} total trades</span>
               {data.wsConnected && (
                 <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
                   🔌 Live
@@ -1234,7 +1284,7 @@ export default function PublicDashboard() {
                     <span>{tab.icon}</span>
                     <span>{tab.label}</span>
                     {tab.count > 0 && (
-                      <span className="ml-1 text-[8px] bg-gray-200 text-gray-700 px-1.5 rounded-full">{tab.count}</span>
+                      <span className="ml-1 text-[8px] bg-gray-200 text-gray-700 px-1.5 rounded-full">{formatNumber(tab.count)}</span>
                     )}
                   </button>
                 ))}
@@ -1244,8 +1294,9 @@ export default function PublicDashboard() {
                 onChange={(e) => setSortRecentTrades(e.target.value)}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 border-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="date">📅 Sort by Date</option>
-                <option value="pnl">💰 Sort by P&L</option>
+                {sortOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
           </div>
