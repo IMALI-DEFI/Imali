@@ -13,9 +13,10 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  RadialLinearScale
 } from "chart.js";
-import { Bar, Line } from "react-chartjs-2";
+import { Bar, Line, Radar } from "react-chartjs-2";
 
 // Register Chart.js components
 ChartJS.register(
@@ -27,7 +28,8 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  RadialLinearScale
 );
 
 const API_BASE = "https://api.imali-defi.com";
@@ -90,26 +92,16 @@ function getBotIcon(botName) {
   return "🤖";
 }
 
-// Animated Performance Chart with smooth transitions
-function AnimatedPerformanceChart({ pnlHistory = [] }) {
+// Enhanced Performance Chart with multiple visualizations
+function EnhancedPerformanceChart({ pnlHistory = [] }) {
+  const [activeView, setActiveView] = useState("bars");
   const [animatedData, setAnimatedData] = useState({ values: [], cumulativeValues: [] });
   const animationRef = useRef(null);
 
   useEffect(() => {
     const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
-    const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
-      const date = new Date(p.date);
-      return `${date.getMonth()+1}/${date.getDate()}`;
-    }) : [];
-
-    let cumulative = 0;
-    const cumulativeValues = values.map(v => {
-      cumulative += v;
-      return cumulative;
-    });
-
+    
     const targetValues = values;
-    const targetCumulative = cumulativeValues;
 
     const animate = (startTime) => {
       const duration = 1000;
@@ -155,28 +147,36 @@ function AnimatedPerformanceChart({ pnlHistory = [] }) {
     return `${date.getMonth()+1}/${date.getDate()}`;
   }) : [];
 
-  const chartData = {
+  const maxValue = Math.max(...values, 0);
+  const minValue = Math.min(...values, 0);
+  const totalPnL = cumulativeValues[cumulativeValues.length - 1] || 0;
+  const bestDay = Math.max(...values, 0);
+  const worstDay = Math.min(...values, 0);
+
+  const barChartData = {
     labels: labels.slice(-30),
     datasets: [
       {
         label: "Daily P&L",
         data: values.slice(-30),
-        backgroundColor: (context) => {
-          const value = context.raw;
-          return value >= 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)";
-        },
-        borderColor: (context) => {
-          const value = context.raw;
-          return value >= 0 ? "#10b981" : "#ef4444";
-        },
+        backgroundColor: values.slice(-30).map(v => 
+          v >= 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)"
+        ),
+        borderColor: values.slice(-30).map(v => v >= 0 ? "#10b981" : "#ef4444"),
         borderWidth: 1,
-        borderRadius: 6,
-        yAxisID: "y",
-      },
+        borderRadius: 8,
+        barPercentage: 0.7,
+        categoryPercentage: 0.8,
+      }
+    ]
+  };
+
+  const lineChartData = {
+    labels: labels.slice(-30),
+    datasets: [
       {
         label: "Cumulative P&L",
         data: cumulativeValues.slice(-30),
-        type: "line",
         borderColor: "#8b5cf6",
         backgroundColor: "rgba(139,92,246,0.1)",
         borderWidth: 3,
@@ -186,12 +186,43 @@ function AnimatedPerformanceChart({ pnlHistory = [] }) {
         pointBorderWidth: 2,
         fill: true,
         tension: 0.4,
-        yAxisID: "y1",
       }
     ]
   };
 
-  const options = {
+  const areaChartData = {
+    labels: labels.slice(-30),
+    datasets: [
+      {
+        label: "Daily P&L",
+        data: values.slice(-30),
+        borderColor: "#10b981",
+        backgroundColor: (context) => {
+          const ctx = context.chart.ctx;
+          const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+          gradient.addColorStop(0, "rgba(16,185,129,0.5)");
+          gradient.addColorStop(1, "rgba(16,185,129,0.05)");
+          return gradient;
+        },
+        fill: true,
+        tension: 0.4,
+        borderWidth: 2,
+        pointRadius: 3,
+        pointBackgroundColor: "#10b981",
+      }
+    ]
+  };
+
+  const getChartData = () => {
+    switch(activeView) {
+      case "bars": return barChartData;
+      case "line": return lineChartData;
+      case "area": return areaChartData;
+      default: return barChartData;
+    }
+  };
+
+  const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
@@ -203,11 +234,7 @@ function AnimatedPerformanceChart({ pnlHistory = [] }) {
         bodyColor: "#ddd",
         callbacks: {
           label: (context) => {
-            if (context.dataset.label === "Daily P&L") {
-              return `Daily: ${formatCurrencySigned(context.raw)}`;
-            } else {
-              return `Cumulative: ${formatCurrencySigned(context.raw)}`;
-            }
+            return `${context.dataset.label}: ${formatCurrencySigned(context.raw)}`;
           }
         }
       }
@@ -218,18 +245,8 @@ function AnimatedPerformanceChart({ pnlHistory = [] }) {
         grid: { color: "rgba(0,0,0,0.05)" },
         ticks: { 
           callback: (value) => formatCurrency(value),
-          stepSize: 5000
         },
-        title: { display: true, text: "Daily P&L", color: "#6b7280", font: { size: 12 } }
-      },
-      y1: {
-        position: "right",
-        grid: { display: false },
-        ticks: { 
-          callback: (value) => formatCurrency(value),
-          color: "#8b5cf6" 
-        },
-        title: { display: true, text: "Cumulative P&L", color: "#8b5cf6", font: { size: 12 } }
+        title: { display: true, text: "P&L ($)", color: "#6b7280", font: { size: 12 } }
       },
       x: { 
         grid: { display: false }, 
@@ -238,108 +255,313 @@ function AnimatedPerformanceChart({ pnlHistory = [] }) {
     }
   };
 
-  return <Bar data={chartData} options={options} />;
+  const lineChartOptions = {
+    ...chartOptions,
+    scales: {
+      y: {
+        ...chartOptions.scales.y,
+        title: { display: true, text: "Cumulative P&L ($)", color: "#8b5cf6", font: { size: 12 } }
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Chart Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveView("bars")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeView === "bars" 
+                ? "bg-indigo-600 text-white shadow-md" 
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            📊 Bar Chart
+          </button>
+          <button
+            onClick={() => setActiveView("line")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeView === "line" 
+                ? "bg-indigo-600 text-white shadow-md" 
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            📈 Cumulative Line
+          </button>
+          <button
+            onClick={() => setActiveView("area")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeView === "area" 
+                ? "bg-indigo-600 text-white shadow-md" 
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            🌊 Area Chart
+          </button>
+        </div>
+        
+        <div className="flex gap-4 text-sm">
+          <div className="text-center">
+            <div className="text-gray-500">Total P&L</div>
+            <div className={`text-xl font-bold ${totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+              {formatCurrencySigned(totalPnL)}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-gray-500">Best Day</div>
+            <div className="text-xl font-bold text-emerald-600">+{formatCurrency(bestDay)}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-gray-500">Worst Day</div>
+            <div className="text-xl font-bold text-red-600">{formatCurrencySigned(worstDay)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="h-96">
+        {activeView === "line" ? (
+          <Line data={lineChartData} options={lineChartOptions} />
+        ) : activeView === "area" ? (
+          <Line data={areaChartData} options={chartOptions} />
+        ) : (
+          <Bar data={barChartData} options={chartOptions} />
+        )}
+      </div>
+    </div>
+  );
 }
 
-// Hedge Fund Dashboard Component
-function HedgeFundDashboard({ analytics }) {
-  const totalPnl = analytics.total_pnl || 0;
-  const totalTrades = analytics.total_trades || 0;
-  const winRate = analytics.win_rate || 0;
-  const profitFactor = analytics.profit_factor || 0;
-  
-  const aum = 2500000;
-  const monthlyReturn = 18.7;
-  const sharpeRatio = 2.34;
-  const maxDrawdown = -8.2;
+// Enhanced Trade Detail Modal with all fields
+function EnhancedTradeDetailModal({ trade, isOpen, onClose }) {
+  if (!isOpen || !trade) return null;
+
+  const pnl = trade.pnl_usd || 0;
+  const pnlPercent = trade.pnl_percent || 0;
+  const symbol = trade.symbol || "Unknown";
+  const side = trade.side || "buy";
+  const bot = trade.bot || "unknown";
+  const timestamp = trade.created_at;
+  const entryPrice = trade.price || 0;
+  const exitPrice = trade.exit_price || null;
+  const qty = trade.qty || 0;
+  const status = trade.status === "open" ? "Open" : "Closed";
+  const score = trade.overall_score || 0;
+  const confidence = trade.confidence || 0;
+  const risk = trade.risk_level || "medium";
+  const entryReason = trade.entry_reason || "AI detected favorable market conditions";
+  const exitReason = trade.exit_reason || (status === "Closed" ? "Take profit / Stop loss triggered" : "Position still active");
+  const strategy = trade.strategy || trade.bot || "Momentum";
+  const exchange = trade.exchange || "OKX";
+
+  // Reasoning based on score and confidence
+  const getReasoning = () => {
+    if (score >= 70) {
+      return "Based on strong technical analysis and positive market sentiment, the AI identified a high-probability entry with multiple confirming signals.";
+    } else if (score >= 55) {
+      return "Technical indicators aligned with favorable market conditions, suggesting a moderate probability of success with managed risk.";
+    } else {
+      return "AI detected a potential opportunity with acceptable risk-reward ratio based on recent price action and market structure.";
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-gray-900">Trade Details</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div className="p-6 space-y-5">
+          {/* Header with Symbol and P&L */}
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-3xl font-bold text-gray-900">{symbol}</span>
+                <span className={`text-xs px-2 py-1 rounded-full ${side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                  {side.toUpperCase()}
+                </span>
+                <span className={`text-xs px-2 py-1 rounded-full ${status === "Closed" ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600"}`}>
+                  {status}
+                </span>
+              </div>
+              <div className="text-sm text-gray-500 mt-1">
+                {timeAgo(timestamp)} • {bot}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className={`text-3xl font-bold ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
+                {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(entryPrice)}
+              </div>
+              {pnl !== 0 && (
+                <div className={`text-sm ${pnl > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {Math.abs(pnlPercent).toFixed(1)}% return
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Trade Details Grid */}
+          <div className="grid grid-cols-2 gap-4 text-sm border-t border-gray-100 pt-4">
+            <div>
+              <div className="text-gray-500">Side</div>
+              <div className={`font-semibold ${side === "buy" ? "text-emerald-600" : "text-red-600"}`}>
+                {side.toUpperCase()}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-500">Quantity</div>
+              <div className="font-semibold">{qty.toFixed(6)}</div>
+            </div>
+            <div>
+              <div className="text-gray-500">Entry Price</div>
+              <div className="font-semibold">{formatCurrency(entryPrice)}</div>
+            </div>
+            <div>
+              <div className="text-gray-500">Exit Price</div>
+              <div className="font-semibold">{exitPrice ? formatCurrency(exitPrice) : "—"}</div>
+            </div>
+            <div>
+              <div className="text-gray-500">Bot / Strategy</div>
+              <div className="font-semibold">{bot} • {strategy}</div>
+            </div>
+            <div>
+              <div className="text-gray-500">Exchange</div>
+              <div className="font-semibold">{exchange}</div>
+            </div>
+            <div>
+              <div className="text-gray-500">Risk Level</div>
+              <div className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${getRiskColor(risk)}`}>
+                {risk.toUpperCase()}
+              </div>
+            </div>
+            {score > 0 && (
+              <div>
+                <div className="text-gray-500">AI Score</div>
+                <div className="font-semibold text-indigo-600">{score.toFixed(1)} / 100</div>
+              </div>
+            )}
+            {confidence > 0 && (
+              <div>
+                <div className="text-gray-500">Confidence</div>
+                <div className="font-semibold text-purple-600">{confidence.toFixed(0)}%</div>
+              </div>
+            )}
+          </div>
+
+          {/* AI Analysis Section */}
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-2xl">🤖</span>
+              <span className="font-bold text-gray-900">AI Decision Analysis</span>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide">Entry Reason</div>
+                <p className="text-gray-700 text-sm mt-1">{entryReason}</p>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mt-3">Exit Reason</div>
+                <p className="text-gray-700 text-sm mt-1">{exitReason}</p>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mt-3">Confidence Reasoning</div>
+                <p className="text-gray-700 text-sm mt-1">{getReasoning()}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Metrics */}
+          <div className="grid grid-cols-3 gap-3 pt-2">
+            <div className="text-center p-2 bg-gray-50 rounded-lg">
+              <div className="text-xs text-gray-500">AI Score</div>
+              <div className="text-lg font-bold text-indigo-600">{score > 0 ? score.toFixed(1) : "N/A"}</div>
+            </div>
+            <div className="text-center p-2 bg-gray-50 rounded-lg">
+              <div className="text-xs text-gray-500">Confidence</div>
+              <div className="text-lg font-bold text-purple-600">{confidence > 0 ? `${confidence.toFixed(0)}%` : "N/A"}</div>
+            </div>
+            <div className="text-center p-2 bg-gray-50 rounded-lg">
+              <div className="text-xs text-gray-500">Risk Level</div>
+              <div className={`text-lg font-bold ${getRiskColor(risk)}`}>{risk.toUpperCase()}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Trade Row Component
+function TradeRow({ trade, onClick }) {
+  const pnl = trade.pnl_usd || 0;
+  const isWin = pnl > 0;
+  const side = trade.side || "buy";
+  const bot = trade.bot || "unknown";
+  const timestamp = trade.created_at;
+  const risk = trade.risk_level || "medium";
+  const score = trade.overall_score || 0;
+  const confidence = trade.confidence || 0;
   
   return (
-    <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-800 rounded-2xl p-6 text-white shadow-xl mb-8">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-4xl">🏦</span>
-            <h2 className="text-2xl font-bold tracking-tight">IMALI Hedge Fund</h2>
-            <span className="text-xs bg-emerald-500/30 px-3 py-1 rounded-full backdrop-blur-sm">ACTIVE</span>
+    <div 
+      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all hover:shadow-md ${
+        isWin ? "bg-emerald-50 hover:bg-emerald-100" : pnl < 0 ? "bg-red-50 hover:bg-red-100" : "bg-gray-50 hover:bg-gray-100"
+      }`}
+      onClick={() => onClick(trade)}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-gray-900">{trade.symbol || "Unknown"}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${
+            side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+          }`}>
+            {side.toUpperCase()}
+          </span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRiskColor(risk)}`}>
+            {risk}
+          </span>
+          <span className="text-[10px] text-gray-400">{bot}</span>
+          {trade.status === "open" && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">OPEN</span>
+          )}
+        </div>
+        {score > 0 && (
+          <div className="text-xs text-gray-400 mt-1">
+            Score: {score.toFixed(1)} • Conf: {confidence.toFixed(0)}%
           </div>
-          <p className="text-indigo-200 text-sm mt-1">Institutional-grade algorithmic trading • 24/7 Markets</p>
+        )}
+        <div className="text-xs text-gray-400">
+          {timeAgo(timestamp)} • {formatCurrency(trade.price || 0)} • Qty: {trade.qty?.toFixed(4) || 0}
         </div>
-        <div className="text-right">
-          <div className="text-3xl font-bold">{formatCompactNumber(aum)}</div>
-          <div className="text-xs text-indigo-200">Assets Under Management</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/20">
-          <div className="text-xs text-indigo-200 mb-1">Daily Return</div>
-          <div className="text-xl font-bold text-emerald-300">+1.24%</div>
-        </div>
-        <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/20">
-          <div className="text-xs text-indigo-200 mb-1">Monthly Return</div>
-          <div className="text-xl font-bold text-emerald-300">+{monthlyReturn}%</div>
-        </div>
-        <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/20">
-          <div className="text-xs text-indigo-200 mb-1">Sharpe Ratio</div>
-          <div className="text-xl font-bold text-white">{sharpeRatio.toFixed(2)}</div>
-        </div>
-        <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/20">
-          <div className="text-xs text-indigo-200 mb-1">Max Drawdown</div>
-          <div className="text-xl font-bold text-red-300">{maxDrawdown}%</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-          <h4 className="font-semibold mb-3 text-indigo-200 flex items-center gap-2">
-            <span>📊</span> Active Strategies
-          </h4>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>📈 Momentum Alpha</span>
-              <span className="text-emerald-300">+24.3%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>⚡ Arbitrage Bot</span>
-              <span className="text-emerald-300">+18.7%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>🤖 AI Prediction</span>
-              <span className="text-emerald-300">+15.2%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>📊 Mean Reversion</span>
-              <span className="text-amber-300">+8.4%</span>
-            </div>
+        {trade.entry_reason && (
+          <div className="text-[10px] text-gray-500 mt-1 truncate">
+            {trade.entry_reason}
           </div>
-        </div>
-        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
-          <h4 className="font-semibold mb-3 text-indigo-200 flex items-center gap-2">
-            <span>💼</span> Top Holdings
-          </h4>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>BTC/USDT</span>
-              <span className="text-white">32%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>ETH/USDT</span>
-              <span className="text-white">24%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>AI Tokens</span>
-              <span className="text-white">18%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>DeFi Index</span>
-              <span className="text-white">12%</span>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
-
-      <div className="mt-4 pt-4 border-t border-white/10 text-center text-xs text-indigo-200">
-        Risk Level: Moderate-High • Target Return: 15-25% APR • Since March 2026
+      <div className="text-right shrink-0">
+        {trade.status !== "open" && pnl !== 0 ? (
+          <>
+            <div className={`font-semibold ${isWin ? "text-emerald-600" : "text-red-600"}`}>
+              {formatCurrencySigned(pnl)}
+            </div>
+            <div className={`text-xs ${isWin ? "text-emerald-500" : "text-red-500"}`}>
+              {pnl > 0 ? "+" : ""}{(trade.pnl_percent || 0).toFixed(1)}%
+            </div>
+          </>
+        ) : trade.status === "open" ? (
+          <div className="font-semibold text-blue-600">Open</div>
+        ) : (
+          <div className="font-semibold text-gray-600">{formatCurrency(trade.price || 0)}</div>
+        )}
       </div>
     </div>
   );
@@ -544,181 +766,6 @@ function NotableTradesByBot({ trades, stockTrades, onTradeClick }) {
   );
 }
 
-// Trade Row Component
-function TradeRow({ trade, onClick }) {
-  const pnl = trade.pnl_usd || 0;
-  const isWin = pnl > 0;
-  const side = trade.side || "buy";
-  const bot = trade.bot || "unknown";
-  const timestamp = trade.created_at;
-  const risk = trade.risk_level || "medium";
-  const score = trade.overall_score || 0;
-  const confidence = trade.confidence || 0;
-  
-  return (
-    <div 
-      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all hover:shadow-md ${
-        isWin ? "bg-emerald-50 hover:bg-emerald-100" : pnl < 0 ? "bg-red-50 hover:bg-red-100" : "bg-gray-50 hover:bg-gray-100"
-      }`}
-      onClick={() => onClick(trade)}
-    >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-gray-900">{trade.symbol || "Unknown"}</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${
-            side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-          }`}>
-            {side.toUpperCase()}
-          </span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRiskColor(risk)}`}>
-            {risk}
-          </span>
-          <span className="text-[10px] text-gray-400">{bot}</span>
-          {trade.status === "open" && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">OPEN</span>
-          )}
-        </div>
-        {score > 0 && (
-          <div className="text-xs text-gray-400 mt-1">
-            Score: {score.toFixed(1)} • Conf: {confidence.toFixed(0)}%
-          </div>
-        )}
-        <div className="text-xs text-gray-400">
-          {timeAgo(timestamp)} • {formatCurrency(trade.price || 0)} • Qty: {trade.qty?.toFixed(4) || 0}
-        </div>
-        {trade.entry_reason && (
-          <div className="text-[10px] text-gray-500 mt-1 truncate">
-            {trade.entry_reason}
-          </div>
-        )}
-      </div>
-      <div className="text-right shrink-0">
-        {trade.status !== "open" && pnl !== 0 ? (
-          <>
-            <div className={`font-semibold ${isWin ? "text-emerald-600" : "text-red-600"}`}>
-              {formatCurrencySigned(pnl)}
-            </div>
-            <div className={`text-xs ${isWin ? "text-emerald-500" : "text-red-500"}`}>
-              {pnl > 0 ? "+" : ""}{(trade.pnl_percent || 0).toFixed(1)}%
-            </div>
-          </>
-        ) : trade.status === "open" ? (
-          <div className="font-semibold text-blue-600">Open</div>
-        ) : (
-          <div className="font-semibold text-gray-600">{formatCurrency(trade.price || 0)}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TradeDetailModal({ trade, isOpen, onClose }) {
-  if (!isOpen || !trade) return null;
-
-  const pnl = trade.pnl_usd || 0;
-  const pnlPercent = trade.pnl_percent || 0;
-  const symbol = trade.symbol || "Unknown";
-  const side = trade.side || "buy";
-  const bot = trade.bot || "unknown";
-  const timestamp = trade.created_at;
-  const price = trade.price || 0;
-  const qty = trade.qty || 0;
-  const status = trade.status === "open" ? "Open" : "Closed";
-  const score = trade.overall_score || 0;
-  const confidence = trade.confidence || 0;
-  const risk = trade.risk_level || "medium";
-  const entryReason = trade.entry_reason || "AI detected opportunity";
-  const exitReason = trade.exit_reason;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-gray-900">Trade Details</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <div className="text-2xl font-bold text-gray-900">{symbol}</div>
-              <div className="text-sm text-gray-500 mt-1">
-                {timeAgo(timestamp)} • {bot}
-              </div>
-            </div>
-            <div className="text-right">
-              <div className={`text-2xl font-bold ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
-                {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(price)}
-              </div>
-              {pnl !== 0 && (
-                <div className={`text-sm ${pnl > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {Math.abs(pnlPercent).toFixed(1)}% return
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-sm border-t border-gray-100 pt-3">
-            <div>
-              <div className="text-gray-500">Side</div>
-              <div className={`font-semibold ${side === "buy" ? "text-emerald-600" : "text-red-600"}`}>
-                {side.toUpperCase()}
-              </div>
-            </div>
-            <div>
-              <div className="text-gray-500">Quantity</div>
-              <div className="font-semibold">{qty.toFixed(4)}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Price</div>
-              <div className="font-semibold">{formatCurrency(price)}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Status</div>
-              <div className="font-semibold">{status}</div>
-            </div>
-            {score > 0 && (
-              <div>
-                <div className="text-gray-500">AI Score</div>
-                <div className="font-semibold">{score.toFixed(1)}</div>
-              </div>
-            )}
-            {confidence > 0 && (
-              <div>
-                <div className="text-gray-500">Confidence</div>
-                <div className="font-semibold">{confidence.toFixed(0)}%</div>
-              </div>
-            )}
-            <div className="col-span-2">
-              <div className="text-gray-500">Risk Level</div>
-              <div className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getRiskColor(risk)}`}>
-                {risk.toUpperCase()}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">🤖</span>
-              <span className="font-semibold text-gray-900">AI Analysis</span>
-            </div>
-            <p className="text-gray-700 text-sm">{entryReason}</p>
-            {exitReason && (
-              <div className="mt-2 pt-2 border-t border-indigo-200">
-                <span className="text-xs text-gray-500">Exit Reason:</span>
-                <p className="text-xs text-gray-600 mt-1">{exitReason}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function MetricCard({ title, value, icon, subtext, color = "emerald", onClick }) {
   const colorClasses = {
     emerald: "text-emerald-600",
@@ -815,7 +862,6 @@ export default function PublicDashboard() {
         console.log("🔌 WebSocket connected for live updates");
         setData(prev => ({ ...prev, wsConnected: true }));
         
-        // Subscribe to trades channel
         ws.send(JSON.stringify({ 
           type: 'subscribe', 
           channel: 'trades',
@@ -830,7 +876,6 @@ export default function PublicDashboard() {
           if (message.type === 'new_trade') {
             console.log("📊 New trade received:", message.trade);
             
-            // Update trades list (add to beginning)
             setData(prev => ({
               ...prev,
               trades: [message.trade, ...prev.trades],
@@ -838,7 +883,6 @@ export default function PublicDashboard() {
               lastUpdate: new Date()
             }));
             
-            // Add visual notification for new trade
             const toast = document.createElement('div');
             toast.className = 'fixed bottom-4 right-4 bg-emerald-500 text-white px-4 py-2 rounded-lg shadow-lg animate-bounce z-50';
             toast.innerHTML = `🔄 New ${message.trade?.side?.toUpperCase()} trade: ${message.trade?.symbol} ${formatCurrencySigned(message.trade?.pnl_usd)}`;
@@ -876,7 +920,6 @@ export default function PublicDashboard() {
         console.log("WebSocket disconnected, attempting reconnect in 5 seconds...");
         setData(prev => ({ ...prev, wsConnected: false }));
         
-        // Auto-reconnect
         if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = setTimeout(() => {
           connectWebSocket();
@@ -928,7 +971,6 @@ export default function PublicDashboard() {
           }));
         }
         
-        // Connect WebSocket after initial data load
         connectWebSocket();
         
       } catch (error) {
@@ -939,14 +981,12 @@ export default function PublicDashboard() {
           error: error.message
         }));
         
-        // Still try WebSocket even if initial fetch fails
         connectWebSocket();
       }
     };
     
     fetchData();
     
-    // Fallback polling every 30 seconds if WebSocket disconnects
     const interval = setInterval(async () => {
       if (!data.wsConnected && !data.loading) {
         console.log("Fallback: Polling for updates...");
@@ -986,7 +1026,6 @@ export default function PublicDashboard() {
   const losses = summary.losses || 0;
   const winRate = summary.win_rate || 0;
 
-  // Sort recent trades
   const sortedRecentTrades = useMemo(() => {
     return [...allTrades].sort((a, b) => {
       if (sortRecentTrades === "pnl") {
@@ -1070,10 +1109,7 @@ export default function PublicDashboard() {
           </p>
         </div>
 
-        {/* Hedge Fund Dashboard */}
-        <HedgeFundDashboard analytics={summary} />
-
-        {/* Performance Chart */}
+        {/* Performance Chart - Enhanced */}
         {pnlHistory.length > 0 && (
           <div className="mb-8 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -1089,10 +1125,10 @@ export default function PublicDashboard() {
               </button>
             </div>
             <div className="h-96">
-              <AnimatedPerformanceChart pnlHistory={pnlHistory} />
+              <EnhancedPerformanceChart pnlHistory={pnlHistory} />
             </div>
             <div className="mt-3 text-center text-[10px] text-gray-400">
-              Bars show daily profit/loss • Line shows cumulative performance • Animated transitions
+              Multiple chart views • Animated transitions • Real-time updates
             </div>
           </div>
         )}
@@ -1233,8 +1269,8 @@ export default function PublicDashboard() {
         onClose={() => setShowMetricDefinitions(false)} 
       />
 
-      {/* Trade Detail Modal */}
-      <TradeDetailModal
+      {/* Enhanced Trade Detail Modal */}
+      <EnhancedTradeDetailModal
         trade={selectedTrade}
         isOpen={selectedTrade !== null}
         onClose={() => setSelectedTrade(null)}
