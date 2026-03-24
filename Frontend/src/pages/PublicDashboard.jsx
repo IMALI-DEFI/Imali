@@ -6,12 +6,12 @@ import axios from "axios";
 import Chart from "chart.js/auto";
 
 /* =====================================================
-   CONFIG
+   CONFIG - USING WORKING ENDPOINTS ONLY
 ===================================================== */
 
 const API_BASE = "https://api.imali-defi.com";
 
-// Main API endpoints
+// Working endpoints (from your curl tests)
 const TRADES_URL = `${API_BASE}/api/trades/recent`;
 const DISCOVERIES_URL = `${API_BASE}/api/discoveries`;
 const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
@@ -19,9 +19,6 @@ const ANALYTICS_URL = `${API_BASE}/api/analytics/summary`;
 const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
 const USER_STATS_URL = `${API_BASE}/api/user/stats`;
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
-
-// Bot Activity History - THIS WILL GET ALL TRADES FROM ALL BOTS!
-const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
 
 // OKX Crypto Spot Bot (working on port 8005)
 const OKX_SPOT_BOT_URL = "http://localhost:8005";
@@ -81,13 +78,13 @@ function getRiskColor(risk) {
 }
 
 /* =====================================================
-   DATA HOOK - FETCHES ALL TRADES FROM HISTORY
+   DATA HOOK - FETCHES FROM WORKING ENDPOINTS
 ===================================================== */
 
 function useLiveData() {
   const [data, setData] = useState({
     bots: [],
-    allTrades: [],        // ALL trades from history
+    allTrades: [],
     okxTrades: [],
     stockTrades: [],
     futuresTrades: [],
@@ -110,8 +107,9 @@ function useLiveData() {
       try {
         console.log("🔄 Fetching all bot data...");
         
+        // Fetch from all working endpoints
         const [
-          historyRes,
+          tradesRes,
           okxTradesRes,
           okxStatusRes,
           stockTradesRes,
@@ -122,7 +120,7 @@ function useLiveData() {
           pnlHistoryRes,
           liveStatsRes,
         ] = await Promise.allSettled([
-          axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 8000, params: { days: 365, limit: 5000 } }),
+          axios.get(TRADES_URL, { timeout: 8000 }),
           axios.get(OKX_SPOT_TRADES_URL, { timeout: 8000 }).catch(() => ({ data: [] })),
           axios.get(OKX_SPOT_STATUS_URL, { timeout: 8000 }).catch(() => ({ data: {} })),
           axios.get(STOCK_BOT_TRADES_URL, { timeout: 8000 }).catch(() => ({ data: [] })),
@@ -151,64 +149,55 @@ function useLiveData() {
           liveStats: {},
         };
 
-        // ============================================================
-        // PROCESS BOT ACTIVITY HISTORY - THIS HAS ALL TRADES!
-        // ============================================================
-        if (historyRes.status === "fulfilled" && historyRes.value.data?.trades) {
-          const allHistoryTrades = historyRes.value.data.trades;
-          console.log("📊 TOTAL TRADES FROM HISTORY:", allHistoryTrades.length);
-          
-          newData.allTrades = allHistoryTrades;
-          
-          // Separate by bot type
-          newData.okxTrades = allHistoryTrades.filter(t => t.bot === "okx" || t.bot === "spot" || t.source === "okx");
-          newData.stockTrades = allHistoryTrades.filter(t => t.bot === "stocks" || t.bot === "stock");
-          newData.futuresTrades = allHistoryTrades.filter(t => t.bot === "futures");
-          newData.sniperTrades = allHistoryTrades.filter(t => t.bot === "sniper");
-          
-          console.log("📊 Breakdown:", {
-            okx: newData.okxTrades.length,
-            stocks: newData.stockTrades.length,
-            futures: newData.futuresTrades.length,
-            sniper: newData.sniperTrades.length,
-          });
-          
-          // Use history analytics if available
-          if (historyRes.value.data?.summary) {
-            newData.analytics = { summary: historyRes.value.data.summary };
-          }
-        } else {
-          console.warn("Bot activity history not available");
-        }
-
-        // Process OKX direct trades (for real-time updates)
-        if (okxTradesRes.status === "fulfilled" && Array.isArray(okxTradesRes.value.data)) {
-          // Merge with history trades, but keep history as primary source
-          const existingIds = new Set(newData.okxTrades.map(t => t.id));
-          const newOkxTrades = okxTradesRes.value.data.filter(t => !existingIds.has(t.id));
-          if (newOkxTrades.length > 0) {
-            newData.okxTrades = [...newData.okxTrades, ...newOkxTrades];
-            newData.allTrades = [...newData.allTrades, ...newOkxTrades];
+        // Process OKX Crypto Spot Trades (WORKING!)
+        if (okxTradesRes.status === "fulfilled") {
+          const responseData = okxTradesRes.value.data;
+          if (Array.isArray(responseData)) {
+            newData.okxTrades = responseData;
+            console.log("📊 OKX crypto trades loaded:", newData.okxTrades.length);
+          } else if (responseData?.trades) {
+            newData.okxTrades = responseData.trades;
           }
         }
 
-        // Process Stock bot trades
-        if (stockTradesRes.status === "fulfilled" && Array.isArray(stockTradesRes.value.data)) {
-          const existingIds = new Set(newData.stockTrades.map(t => t.id));
-          const newStockTrades = stockTradesRes.value.data.filter(t => !existingIds.has(t.id));
-          if (newStockTrades.length > 0) {
-            newData.stockTrades = [...newData.stockTrades, ...newStockTrades];
-            newData.allTrades = [...newData.allTrades, ...newStockTrades];
-          }
-        }
-
-        // Process bot status
+        // Process OKX Bot Status
         if (okxStatusRes.status === "fulfilled" && okxStatusRes.value.data) {
           newData.okxBotStatus = okxStatusRes.value.data;
         }
-        
+
+        // Process Stock Bot Trades
+        if (stockTradesRes.status === "fulfilled" && Array.isArray(stockTradesRes.value.data)) {
+          newData.stockTrades = stockTradesRes.value.data;
+          console.log("📈 Stock bot trades loaded:", newData.stockTrades.length);
+        }
+
+        // Process Stock Bot Status
         if (stockStatusRes.status === "fulfilled" && stockStatusRes.value.data) {
           newData.stockBotStatus = stockStatusRes.value.data;
+        }
+
+        // Process main API trades (these may include futures and sniper)
+        if (tradesRes.status === "fulfilled") {
+          let mainTrades = [];
+          if (tradesRes.value.data?.trades) {
+            mainTrades = tradesRes.value.data.trades;
+          } else if (Array.isArray(tradesRes.value.data)) {
+            mainTrades = tradesRes.value.data;
+          }
+          
+          // Separate by bot type
+          newData.futuresTrades = mainTrades.filter(t => t.bot === "futures");
+          newData.sniperTrades = mainTrades.filter(t => t.bot === "sniper");
+          
+          // Also add any trades not already captured
+          const existingIds = new Set([
+            ...newData.okxTrades.map(t => t.id),
+            ...newData.stockTrades.map(t => t.id)
+          ]);
+          const newTrades = mainTrades.filter(t => !existingIds.has(t.id));
+          newData.allTrades = [...newData.okxTrades, ...newData.stockTrades, ...newTrades];
+        } else {
+          newData.allTrades = [...newData.okxTrades, ...newData.stockTrades];
         }
 
         // Process discoveries
@@ -225,11 +214,14 @@ function useLiveData() {
           newData.bots = botsRes.value.data.bots;
         }
 
+        // Process analytics
+        if (analyticsRes.status === "fulfilled" && analyticsRes.value.data?.summary) {
+          newData.analytics = analyticsRes.value.data;
+        }
+
         // Process PNL history
         if (pnlHistoryRes.status === "fulfilled" && pnlHistoryRes.value.data?.history) {
           newData.pnlHistory = pnlHistoryRes.value.data.history;
-        } else if (historyRes.status === "fulfilled" && historyRes.value.data?.pnl_by_day) {
-          newData.pnlHistory = historyRes.value.data.pnl_by_day;
         }
 
         // Process live stats
@@ -491,7 +483,7 @@ function OKXCryptoBot({ trades, botStatus, onTradeClick }) {
       <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center">
         <div className="text-4xl mb-3">🔷</div>
         <h3 className="font-semibold text-gray-900 mb-2">OKX Crypto Bot</h3>
-        <p className="text-sm text-gray-500">No crypto trades yet.</p>
+        <p className="text-sm text-gray-500">No crypto trades yet. The bot is scanning...</p>
         {botStatus && (
           <div className="mt-3 text-xs text-gray-400">
             <div>Status: {botStatus.status || "Unknown"}</div>
@@ -627,7 +619,7 @@ function AllTradesList({ trades, onTradeClick }) {
       <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center">
         <div className="text-4xl mb-3">📊</div>
         <h3 className="font-semibold text-gray-900 mb-2">All Trades</h3>
-        <p className="text-sm text-gray-500">No trades found in history.</p>
+        <p className="text-sm text-gray-500">No trades found.</p>
       </div>
     );
   }
@@ -1025,6 +1017,51 @@ function DiscoveryCard({ discovery }) {
 }
 
 /* =====================================================
+   METRIC DEFINITION MODAL
+===================================================== */
+
+function MetricDefinitions({ isOpen, onClose }) {
+  if (!isOpen) return null;
+
+  const metrics = [
+    { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable." },
+    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed across all bots." },
+    { name: "Profit Factor", symbol: "💰", definition: "Gross profit divided by gross loss. Above 1.5 is excellent." },
+    { name: "Sharpe Ratio", symbol: "⚖️", definition: "Risk-adjusted return measure. Above 1.0 is good." },
+    { name: "Max Drawdown", symbol: "📉", definition: "Largest peak-to-trough decline. Lower is better." },
+    { name: "AI Score", symbol: "🤖", definition: "Machine learning score (0-100). Higher = stronger signal." },
+    { name: "Confidence", symbol: "📊", definition: "AI confidence level in the signal." },
+    { name: "Risk Level", symbol: "⚠️", definition: "Estimated risk level for position sizing." },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-gray-900">📊 Metric Definitions</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          {metrics.map((metric, idx) => (
+            <div key={idx} className="border-b border-gray-100 pb-3 last:border-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{metric.symbol}</span>
+                <span className="font-semibold text-gray-900">{metric.name}</span>
+              </div>
+              <p className="text-sm text-gray-600 mt-1 ml-7">{metric.definition}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
    MAIN COMPONENT
 ===================================================== */
 
@@ -1047,8 +1084,8 @@ export default function PublicDashboard() {
   const sniperTrades = data.sniperTrades || [];
   const discoveries = data.discoveries || [];
   const bots = data.bots || [];
-  const analytics = data.analytics?.summary || {};
   const pnlHistory = data.pnlHistory || [];
+  const analytics = data.analytics?.summary || {};
 
   const totalTradesCount = allTrades.length;
   const totalPnL = allTrades.reduce((sum, t) => sum + (t.pnl || t.pnl_usd || 0), 0);
@@ -1056,7 +1093,6 @@ export default function PublicDashboard() {
   const losses = allTrades.filter(t => (t.pnl || t.pnl_usd || 0) < 0).length;
   const winRate = totalTradesCount > 0 ? (wins / totalTradesCount * 100) : 0;
   
-  // Calculate profit factor
   const totalWinAmount = allTrades.filter(t => (t.pnl || t.pnl_usd || 0) > 0).reduce((sum, t) => sum + (t.pnl || t.pnl_usd || 0), 0);
   const totalLossAmount = Math.abs(allTrades.filter(t => (t.pnl || t.pnl_usd || 0) < 0).reduce((sum, t) => sum + (t.pnl || t.pnl_usd || 0), 0));
   const profitFactor = totalLossAmount > 0 ? totalWinAmount / totalLossAmount : 0;
@@ -1071,7 +1107,7 @@ export default function PublicDashboard() {
         <div className="text-center">
           <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-gray-500">Loading live dashboard...</p>
-          <p className="text-xs text-gray-400 mt-2">Fetching all historical trades...</p>
+          <p className="text-xs text-gray-400 mt-2">Fetching data from bots...</p>
         </div>
       </div>
     );
