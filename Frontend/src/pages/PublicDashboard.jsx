@@ -1,11 +1,11 @@
 // src/pages/PublicDashboard.jsx
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import Chart from "chart.js/auto";
 
-const API_BASE = "https://api.imali-defi.com";
+const API_BASE = "http://localhost:3004";
 const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
 
 function formatCurrency(value) {
@@ -415,7 +415,7 @@ export default function PublicDashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        console.log("🔄 Fetching bot activity history...");
+        console.log("🔄 Fetching bot activity history from localhost:3004...");
         const response = await axios.get(BOT_ACTIVITY_HISTORY_URL, {
           params: { days: 365, limit: 5000 },
           timeout: 15000
@@ -489,7 +489,6 @@ export default function PublicDashboard() {
         <div className="text-center">
           <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-gray-500">Loading trading dashboard...</p>
-          <p className="text-xs text-gray-400 mt-2">Fetching {totalTrades} trades from history</p>
         </div>
       </div>
     );
