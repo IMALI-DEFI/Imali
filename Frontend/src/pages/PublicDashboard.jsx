@@ -3,8 +3,32 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import Chart from "chart.js/auto";
-import 'chartjs-plugin-annotation';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from "chart.js";
+import { Bar, Line } from "react-chartjs-2";
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 const API_BASE = "https://api.imali-defi.com";
 const WS_BASE = "wss://api.imali-defi.com";
@@ -68,20 +92,10 @@ function getBotIcon(botName) {
 
 // Animated Performance Chart with smooth transitions
 function AnimatedPerformanceChart({ pnlHistory = [] }) {
-  const canvasRef = useRef(null);
-  const chartRef = useRef(null);
-  const animationRef = useRef(null);
   const [animatedData, setAnimatedData] = useState({ values: [], cumulativeValues: [] });
-  const [animationProgress, setAnimationProgress] = useState(0);
+  const animationRef = useRef(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    if (chartRef.current) {
-      chartRef.current.destroy();
-    }
-
     const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
     const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
       const date = new Date(p.date);
@@ -113,7 +127,6 @@ function AnimatedPerformanceChart({ pnlHistory = [] }) {
         });
         
         setAnimatedData({ values: currentValues, cumulativeValues: currentCumulativeValues });
-        setAnimationProgress(progress);
         
         if (progress < 1) {
           animationRef.current = requestAnimationFrame(animateFrame);
@@ -124,108 +137,108 @@ function AnimatedPerformanceChart({ pnlHistory = [] }) {
       animationRef.current = requestAnimationFrame(animateFrame);
     };
 
-    const ctx = canvas.getContext("2d");
-    
-    chartRef.current = new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: labels.slice(-30),
-        datasets: [
-          {
-            label: "Daily P&L",
-            data: animatedData.values.length ? animatedData.values.slice(-30) : values.slice(-30),
-            backgroundColor: (context) => {
-              const value = context.raw;
-              return value >= 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)";
-            },
-            borderColor: (context) => {
-              const value = context.raw;
-              return value >= 0 ? "#10b981" : "#ef4444";
-            },
-            borderWidth: 1,
-            borderRadius: 6,
-            yAxisID: "y",
-            animation: false,
-          },
-          {
-            label: "Cumulative P&L",
-            data: animatedData.cumulativeValues.length ? animatedData.cumulativeValues.slice(-30) : cumulativeValues.slice(-30),
-            type: "line",
-            borderColor: "#8b5cf6",
-            backgroundColor: "rgba(139,92,246,0.1)",
-            borderWidth: 3,
-            pointRadius: (context) => {
-              const value = context.raw;
-              return value > 0 ? 4 : 3;
-            },
-            pointBackgroundColor: "#8b5cf6",
-            pointBorderColor: "white",
-            pointBorderWidth: 2,
-            pointHoverRadius: 8,
-            fill: true,
-            tension: 0.4,
-            yAxisID: "y1",
-            animation: false,
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: { position: "top", labels: { boxWidth: 12, font: { size: 11 }, usePointStyle: true } },
-          tooltip: {
-            backgroundColor: "rgba(0,0,0,0.8)",
-            titleColor: "#fff",
-            bodyColor: "#ddd",
-            callbacks: {
-              label: (context) => {
-                if (context.dataset.label === "Daily P&L") {
-                  return `Daily: ${formatCurrencySigned(context.raw)}`;
-                } else {
-                  return `Cumulative: ${formatCurrencySigned(context.raw)}`;
-                }
-              }
-            }
-          }
-        },
-        scales: {
-          y: {
-            position: "left",
-            grid: { color: "rgba(0,0,0,0.05)" },
-            ticks: { 
-              callback: (value) => formatCurrency(value),
-              stepSize: 5000
-            },
-            title: { display: true, text: "Daily P&L", color: "#6b7280", font: { size: 12 } }
-          },
-          y1: {
-            position: "right",
-            grid: { display: false },
-            ticks: { 
-              callback: (value) => formatCurrency(value),
-              color: "#8b5cf6" 
-            },
-            title: { display: true, text: "Cumulative P&L", color: "#8b5cf6", font: { size: 12 } }
-          },
-          x: { 
-            grid: { display: false }, 
-            ticks: { color: "#6b7280", maxRotation: 45, font: { size: 10 } } 
-          }
-        }
-      }
-    });
-
     animate(performance.now());
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (chartRef.current) chartRef.current.destroy();
     };
   }, [pnlHistory]);
 
-  return <canvas ref={canvasRef} />;
+  const values = animatedData.values.length ? animatedData.values : (pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : []);
+  const cumulativeValues = animatedData.cumulativeValues.length ? animatedData.cumulativeValues : (() => {
+    let cum = 0;
+    return values.map(v => { cum += v; return cum; });
+  })();
+  
+  const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
+    const date = new Date(p.date);
+    return `${date.getMonth()+1}/${date.getDate()}`;
+  }) : [];
+
+  const chartData = {
+    labels: labels.slice(-30),
+    datasets: [
+      {
+        label: "Daily P&L",
+        data: values.slice(-30),
+        backgroundColor: (context) => {
+          const value = context.raw;
+          return value >= 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)";
+        },
+        borderColor: (context) => {
+          const value = context.raw;
+          return value >= 0 ? "#10b981" : "#ef4444";
+        },
+        borderWidth: 1,
+        borderRadius: 6,
+        yAxisID: "y",
+      },
+      {
+        label: "Cumulative P&L",
+        data: cumulativeValues.slice(-30),
+        type: "line",
+        borderColor: "#8b5cf6",
+        backgroundColor: "rgba(139,92,246,0.1)",
+        borderWidth: 3,
+        pointRadius: 4,
+        pointBackgroundColor: "#8b5cf6",
+        pointBorderColor: "white",
+        pointBorderWidth: 2,
+        fill: true,
+        tension: 0.4,
+        yAxisID: "y1",
+      }
+    ]
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { position: "top", labels: { boxWidth: 12, font: { size: 11 }, usePointStyle: true } },
+      tooltip: {
+        backgroundColor: "rgba(0,0,0,0.8)",
+        titleColor: "#fff",
+        bodyColor: "#ddd",
+        callbacks: {
+          label: (context) => {
+            if (context.dataset.label === "Daily P&L") {
+              return `Daily: ${formatCurrencySigned(context.raw)}`;
+            } else {
+              return `Cumulative: ${formatCurrencySigned(context.raw)}`;
+            }
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        position: "left",
+        grid: { color: "rgba(0,0,0,0.05)" },
+        ticks: { 
+          callback: (value) => formatCurrency(value),
+          stepSize: 5000
+        },
+        title: { display: true, text: "Daily P&L", color: "#6b7280", font: { size: 12 } }
+      },
+      y1: {
+        position: "right",
+        grid: { display: false },
+        ticks: { 
+          callback: (value) => formatCurrency(value),
+          color: "#8b5cf6" 
+        },
+        title: { display: true, text: "Cumulative P&L", color: "#8b5cf6", font: { size: 12 } }
+      },
+      x: { 
+        grid: { display: false }, 
+        ticks: { color: "#6b7280", maxRotation: 45, font: { size: 10 } } 
+      }
+    }
+  };
+
+  return <Bar data={chartData} options={options} />;
 }
 
 // Hedge Fund Dashboard Component
@@ -796,7 +809,7 @@ export default function PublicDashboard() {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     try {
-      const ws = new WebSocket(`${WS_BASE}/ws/public`);
+      const ws = new WebSocket(`${WS_BASE}/ws/`);
       
       ws.onopen = () => {
         console.log("🔌 WebSocket connected for live updates");
