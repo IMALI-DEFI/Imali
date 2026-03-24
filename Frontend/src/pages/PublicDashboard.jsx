@@ -6,7 +6,7 @@ import axios from "axios";
 import Chart from "chart.js/auto";
 
 /* =====================================================
-   CONFIG - CORRECT ENDPOINTS
+   CONFIG
 ===================================================== */
 
 const API_BASE = "https://api.imali-defi.com";
@@ -20,17 +20,18 @@ const PNL_HISTORY_URL = `${API_BASE}/api/pnl/history`;
 const USER_STATS_URL = `${API_BASE}/api/user/stats`;
 const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
+// Bot Activity History - THIS WILL GET ALL TRADES FROM ALL BOTS!
+const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
+
 // OKX Crypto Spot Bot (working on port 8005)
 const OKX_SPOT_BOT_URL = "http://localhost:8005";
-const OKX_SPOT_TRADES_URL = `${OKX_SPOT_BOT_URL}/api/trades`;  // <-- Correct endpoint
+const OKX_SPOT_TRADES_URL = `${OKX_SPOT_BOT_URL}/api/trades`;
 const OKX_SPOT_STATUS_URL = `${OKX_SPOT_BOT_URL}/status`;
-const OKX_SPOT_POSITIONS_URL = `${OKX_SPOT_BOT_URL}/positions`;
 
 // Alpaca Stock Bot (on port 3001)
 const STOCK_BOT_URL = "http://localhost:3001";
-const STOCK_BOT_STATUS_URL = `${STOCK_BOT_URL}/status`;  // <-- This worked in your curl
+const STOCK_BOT_STATUS_URL = `${STOCK_BOT_URL}/status`;
 const STOCK_BOT_TRADES_URL = `${STOCK_BOT_URL}/api/trades`;
-const STOCK_BOT_POSITIONS_URL = `${STOCK_BOT_URL}/positions`;
 
 /* =====================================================
    HELPERS
@@ -80,15 +81,17 @@ function getRiskColor(risk) {
 }
 
 /* =====================================================
-   DATA HOOK - FETCHES ALL BOT DATA
+   DATA HOOK - FETCHES ALL TRADES FROM HISTORY
 ===================================================== */
 
 function useLiveData() {
   const [data, setData] = useState({
     bots: [],
-    trades: [],
+    allTrades: [],        // ALL trades from history
     okxTrades: [],
     stockTrades: [],
+    futuresTrades: [],
+    sniperTrades: [],
     okxBotStatus: null,
     stockBotStatus: null,
     discoveries: [],
@@ -108,7 +111,7 @@ function useLiveData() {
         console.log("🔄 Fetching all bot data...");
         
         const [
-          tradesRes,
+          historyRes,
           okxTradesRes,
           okxStatusRes,
           stockTradesRes,
@@ -116,31 +119,17 @@ function useLiveData() {
           discoveriesRes,
           botsRes,
           analyticsRes,
-          userStatsRes,
           pnlHistoryRes,
           liveStatsRes,
         ] = await Promise.allSettled([
-          axios.get(TRADES_URL, { timeout: 8000 }),
-          axios.get(OKX_SPOT_TRADES_URL, { timeout: 8000 }).catch((err) => {
-            console.log("OKX trades not available:", err.message);
-            return { data: [] };
-          }),
-          axios.get(OKX_SPOT_STATUS_URL, { timeout: 8000 }).catch((err) => {
-            console.log("OKX status not available:", err.message);
-            return { data: {} };
-          }),
-          axios.get(STOCK_BOT_TRADES_URL, { timeout: 8000 }).catch((err) => {
-            console.log("Stock bot trades not available:", err.message);
-            return { data: [] };
-          }),
-          axios.get(STOCK_BOT_STATUS_URL, { timeout: 8000 }).catch((err) => {
-            console.log("Stock bot status not available:", err.message);
-            return { data: {} };
-          }),
+          axios.get(BOT_ACTIVITY_HISTORY_URL, { timeout: 8000, params: { days: 365, limit: 5000 } }),
+          axios.get(OKX_SPOT_TRADES_URL, { timeout: 8000 }).catch(() => ({ data: [] })),
+          axios.get(OKX_SPOT_STATUS_URL, { timeout: 8000 }).catch(() => ({ data: {} })),
+          axios.get(STOCK_BOT_TRADES_URL, { timeout: 8000 }).catch(() => ({ data: [] })),
+          axios.get(STOCK_BOT_STATUS_URL, { timeout: 8000 }).catch(() => ({ data: {} })),
           axios.get(DISCOVERIES_URL, { timeout: 8000 }),
           axios.get(BOT_STATUS_URL, { timeout: 8000 }),
           axios.get(ANALYTICS_URL, { timeout: 8000 }),
-          axios.get(USER_STATS_URL, { timeout: 8000 }),
           axios.get(PNL_HISTORY_URL, { timeout: 8000 }),
           axios.get(LIVE_STATS_URL, { timeout: 8000 }),
         ]);
@@ -148,64 +137,78 @@ function useLiveData() {
         if (!mounted) return;
 
         let newData = {
-          trades: [],
+          bots: [],
+          allTrades: [],
           okxTrades: [],
           stockTrades: [],
+          futuresTrades: [],
+          sniperTrades: [],
           okxBotStatus: null,
           stockBotStatus: null,
           discoveries: [],
-          bots: [],
           analytics: { summary: {} },
           pnlHistory: [],
           liveStats: {},
         };
 
-        // Process OKX Crypto Spot Trades - CORRECT ENDPOINT
-        if (okxTradesRes.status === "fulfilled") {
-          const responseData = okxTradesRes.value.data;
-          if (Array.isArray(responseData)) {
-            newData.okxTrades = responseData;
-            console.log("📊 OKX crypto trades loaded:", newData.okxTrades.length);
-          } else if (responseData?.trades) {
-            newData.okxTrades = responseData.trades;
-            console.log("📊 OKX crypto trades loaded:", newData.okxTrades.length);
-          } else if (responseData?.data) {
-            newData.okxTrades = responseData.data;
-            console.log("📊 OKX crypto trades loaded:", newData.okxTrades.length);
+        // ============================================================
+        // PROCESS BOT ACTIVITY HISTORY - THIS HAS ALL TRADES!
+        // ============================================================
+        if (historyRes.status === "fulfilled" && historyRes.value.data?.trades) {
+          const allHistoryTrades = historyRes.value.data.trades;
+          console.log("📊 TOTAL TRADES FROM HISTORY:", allHistoryTrades.length);
+          
+          newData.allTrades = allHistoryTrades;
+          
+          // Separate by bot type
+          newData.okxTrades = allHistoryTrades.filter(t => t.bot === "okx" || t.bot === "spot" || t.source === "okx");
+          newData.stockTrades = allHistoryTrades.filter(t => t.bot === "stocks" || t.bot === "stock");
+          newData.futuresTrades = allHistoryTrades.filter(t => t.bot === "futures");
+          newData.sniperTrades = allHistoryTrades.filter(t => t.bot === "sniper");
+          
+          console.log("📊 Breakdown:", {
+            okx: newData.okxTrades.length,
+            stocks: newData.stockTrades.length,
+            futures: newData.futuresTrades.length,
+            sniper: newData.sniperTrades.length,
+          });
+          
+          // Use history analytics if available
+          if (historyRes.value.data?.summary) {
+            newData.analytics = { summary: historyRes.value.data.summary };
+          }
+        } else {
+          console.warn("Bot activity history not available");
+        }
+
+        // Process OKX direct trades (for real-time updates)
+        if (okxTradesRes.status === "fulfilled" && Array.isArray(okxTradesRes.value.data)) {
+          // Merge with history trades, but keep history as primary source
+          const existingIds = new Set(newData.okxTrades.map(t => t.id));
+          const newOkxTrades = okxTradesRes.value.data.filter(t => !existingIds.has(t.id));
+          if (newOkxTrades.length > 0) {
+            newData.okxTrades = [...newData.okxTrades, ...newOkxTrades];
+            newData.allTrades = [...newData.allTrades, ...newOkxTrades];
           }
         }
 
-        // Process OKX Bot Status
+        // Process Stock bot trades
+        if (stockTradesRes.status === "fulfilled" && Array.isArray(stockTradesRes.value.data)) {
+          const existingIds = new Set(newData.stockTrades.map(t => t.id));
+          const newStockTrades = stockTradesRes.value.data.filter(t => !existingIds.has(t.id));
+          if (newStockTrades.length > 0) {
+            newData.stockTrades = [...newData.stockTrades, ...newStockTrades];
+            newData.allTrades = [...newData.allTrades, ...newStockTrades];
+          }
+        }
+
+        // Process bot status
         if (okxStatusRes.status === "fulfilled" && okxStatusRes.value.data) {
           newData.okxBotStatus = okxStatusRes.value.data;
-          console.log("🔷 OKX Bot status:", newData.okxBotStatus);
         }
-
-        // Process Alpaca Stock Trades
-        if (stockTradesRes.status === "fulfilled") {
-          const responseData = stockTradesRes.value.data;
-          if (Array.isArray(responseData)) {
-            newData.stockTrades = responseData;
-            console.log("📈 Stock bot trades loaded:", newData.stockTrades.length);
-          } else if (responseData?.trades) {
-            newData.stockTrades = responseData.trades;
-            console.log("📈 Stock bot trades loaded:", newData.stockTrades.length);
-          }
-        }
-
-        // Process Stock Bot Status
+        
         if (stockStatusRes.status === "fulfilled" && stockStatusRes.value.data) {
           newData.stockBotStatus = stockStatusRes.value.data;
-          console.log("📈 Stock bot status:", newData.stockBotStatus);
-        }
-
-        // Process main API trades
-        if (tradesRes.status === "fulfilled") {
-          if (tradesRes.value.data?.trades) {
-            newData.trades = tradesRes.value.data.trades;
-          } else if (Array.isArray(tradesRes.value.data)) {
-            newData.trades = tradesRes.value.data;
-          }
         }
 
         // Process discoveries
@@ -222,14 +225,11 @@ function useLiveData() {
           newData.bots = botsRes.value.data.bots;
         }
 
-        // Process analytics
-        if (analyticsRes.status === "fulfilled" && analyticsRes.value.data?.summary) {
-          newData.analytics = analyticsRes.value.data;
-        }
-
         // Process PNL history
         if (pnlHistoryRes.status === "fulfilled" && pnlHistoryRes.value.data?.history) {
           newData.pnlHistory = pnlHistoryRes.value.data.history;
+        } else if (historyRes.status === "fulfilled" && historyRes.value.data?.pnl_by_day) {
+          newData.pnlHistory = historyRes.value.data.pnl_by_day;
         }
 
         // Process live stats
@@ -244,7 +244,7 @@ function useLiveData() {
           lastUpdate: new Date(),
         });
 
-        console.log("✅ Data fetch complete. OKX trades:", newData.okxTrades.length, "Stock trades:", newData.stockTrades.length);
+        console.log("✅ Data fetch complete. Total trades:", newData.allTrades.length);
 
       } catch (error) {
         console.error("Data fetch error:", error);
@@ -275,10 +275,7 @@ function useLiveData() {
    NOTABLE TRADES COMPONENT
 ===================================================== */
 
-function NotableTrades({ okxTrades, stockTrades, onTradeClick }) {
-  // Combine all trades from both bots
-  const allTrades = [...okxTrades, ...stockTrades];
-  
+function NotableTrades({ allTrades, onTradeClick }) {
   // Filter closed trades with non-zero P&L
   const closedTrades = allTrades.filter(trade => {
     const pnl = trade?.pnl_usd || trade?.pnl || 0;
@@ -331,7 +328,9 @@ function NotableTrades({ okxTrades, stockTrades, onTradeClick }) {
             const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
             const symbol = trade?.symbol || "Unknown";
             const side = trade?.side || "buy";
-            const bot = trade?.bot || trade?.source || (trade?.symbol?.includes("USDT") ? "OKX Crypto" : "Stock Bot");
+            const bot = trade?.bot || trade?.source || 
+              (trade?.symbol?.includes("USDT") ? "OKX" : 
+               trade?.symbol?.match(/^[A-Z]+$/) ? "Stocks" : "Other");
             const timestamp = trade?.created_at || trade?.timestamp;
             const price = trade?.price || 0;
             const score = trade?.overall_score || trade?.ai_score || 0;
@@ -412,7 +411,9 @@ function NotableTrades({ okxTrades, stockTrades, onTradeClick }) {
             const pnlPercent = trade?.pnl_percentage || trade?.pnl_pct || (pnl / 1000 * 100);
             const symbol = trade?.symbol || "Unknown";
             const side = trade?.side || "buy";
-            const bot = trade?.bot || trade?.source || (trade?.symbol?.includes("USDT") ? "OKX Crypto" : "Stock Bot");
+            const bot = trade?.bot || trade?.source ||
+              (trade?.symbol?.includes("USDT") ? "OKX" : 
+               trade?.symbol?.match(/^[A-Z]+$/) ? "Stocks" : "Other");
             const timestamp = trade?.created_at || trade?.timestamp;
             const price = trade?.price || 0;
             const score = trade?.overall_score || trade?.ai_score || 0;
@@ -490,7 +491,7 @@ function OKXCryptoBot({ trades, botStatus, onTradeClick }) {
       <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center">
         <div className="text-4xl mb-3">🔷</div>
         <h3 className="font-semibold text-gray-900 mb-2">OKX Crypto Bot</h3>
-        <p className="text-sm text-gray-500">No crypto trades yet. The bot is scanning...</p>
+        <p className="text-sm text-gray-500">No crypto trades yet.</p>
         {botStatus && (
           <div className="mt-3 text-xs text-gray-400">
             <div>Status: {botStatus.status || "Unknown"}</div>
@@ -540,7 +541,7 @@ function OKXCryptoBot({ trades, botStatus, onTradeClick }) {
             <div className="text-xs text-gray-400">Positions</div>
           </div>
           <div className="text-center">
-            <div className="text-lg font-bold text-gray-900">{botStatus.total_trades || 0}</div>
+            <div className="text-lg font-bold text-gray-900">{botStatus.total_trades || trades.length}</div>
             <div className="text-xs text-gray-400">Total Trades</div>
           </div>
           <div className="text-center">
@@ -550,7 +551,7 @@ function OKXCryptoBot({ trades, botStatus, onTradeClick }) {
         </div>
       )}
       
-      <div className="space-y-2 max-h-[400px] overflow-y-auto">
+      <div className="space-y-2 max-h-[500px] overflow-y-auto">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold text-gray-700">Recent Trades</h3>
           <span className="text-xs text-gray-400">Click any trade for details</span>
@@ -586,6 +587,11 @@ function OKXCryptoBot({ trades, botStatus, onTradeClick }) {
                 <div className="text-xs text-gray-400">
                   {timeAgo(trade.created_at || trade.timestamp)} • {formatCurrency(trade.price)} • Qty: {trade.qty?.toFixed(4)}
                 </div>
+                {trade.entry_reason && (
+                  <div className="text-[10px] text-gray-500 mt-1 truncate">
+                    {trade.entry_reason}
+                  </div>
+                )}
               </div>
               <div className="text-right shrink-0">
                 {trade.status !== "open" && pnl !== 0 ? (
@@ -612,90 +618,44 @@ function OKXCryptoBot({ trades, botStatus, onTradeClick }) {
 }
 
 /* =====================================================
-   ALPACA STOCK BOT ACTIVITY COMPONENT
+   ALL TRADES COMPONENT
 ===================================================== */
 
-function AlpacaStockBot({ trades, botStatus, onTradeClick }) {
+function AllTradesList({ trades, onTradeClick }) {
   if (!trades || trades.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center">
-        <div className="text-4xl mb-3">📈</div>
-        <h3 className="font-semibold text-gray-900 mb-2">Alpaca Stock Bot</h3>
-        <p className="text-sm text-gray-500">No stock trades yet. The bot is scanning...</p>
-        {botStatus && (
-          <div className="mt-3 text-xs text-gray-400">
-            <div>Status: {botStatus.status || "Unknown"}</div>
-            <div>Mode: {botStatus.mode || "PAPER"}</div>
-            <div>Symbols: {botStatus.symbols || 0}</div>
-            <div>Positions: {botStatus.positions || 0}</div>
-          </div>
-        )}
-        {!botStatus && (
-          <div className="mt-3 text-xs text-amber-600">
-            ⚠️ Stock bot service not responding. Check if it's running on port 3001.
-          </div>
-        )}
+        <div className="text-4xl mb-3">📊</div>
+        <h3 className="font-semibold text-gray-900 mb-2">All Trades</h3>
+        <p className="text-sm text-gray-500">No trades found in history.</p>
       </div>
     );
   }
-
-  const closedTrades = trades.filter(t => t.status === "closed");
-  const totalPnL = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
-  const wins = closedTrades.filter(t => t.pnl > 0).length;
-  const losses = closedTrades.filter(t => t.pnl < 0).length;
-  const winRate = closedTrades.length > 0 ? (wins / closedTrades.length * 100).toFixed(1) : 0;
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">📈</span>
-          <h2 className="font-bold text-xl text-gray-900">Alpaca Stock Bot</h2>
-          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-            {botStatus?.mode === "paper" ? "PAPER TRADING" : "LIVE"}
-          </span>
-          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+          <span className="text-2xl">📊</span>
+          <h2 className="font-bold text-xl text-gray-900">All Trades History</h2>
+          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
             {trades.length} Total Trades
           </span>
         </div>
-        <div className="text-right">
-          <div className={`text-lg font-bold ${totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-            {formatCurrencySigned(totalPnL)}
-          </div>
-          <div className="text-xs text-gray-400">Total P&L</div>
-        </div>
       </div>
       
-      {botStatus && (
-        <div className="grid grid-cols-4 gap-3 mb-4 pb-3 border-b border-gray-100">
-          <div className="text-center">
-            <div className="text-lg font-bold text-gray-900">{botStatus.symbols || 0}</div>
-            <div className="text-xs text-gray-400">Symbols</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-bold text-gray-900">{botStatus.positions || 0}</div>
-            <div className="text-xs text-gray-400">Positions</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-bold text-gray-900">{botStatus.trades || 0}</div>
-            <div className="text-xs text-gray-400">Total Trades</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-bold text-gray-900">{winRate}%</div>
-            <div className="text-xs text-gray-400">Win Rate</div>
-          </div>
-        </div>
-      )}
-      
-      <div className="space-y-2 max-h-[400px] overflow-y-auto">
+      <div className="space-y-2 max-h-[500px] overflow-y-auto">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold text-gray-700">Recent Trades</h3>
+          <h3 className="text-sm font-semibold text-gray-700">Trade List</h3>
           <span className="text-xs text-gray-400">Click any trade for details</span>
         </div>
-        {trades.slice(0, 20).map((trade, i) => {
-          const pnl = trade.pnl || 0;
-          const pnlPercent = trade.pnl_percentage || 0;
+        {trades.slice(0, 50).map((trade, i) => {
+          const pnl = trade.pnl || trade.pnl_usd || 0;
+          const pnlPercent = trade.pnl_percentage || trade.pnl_pct || 0;
           const isWin = pnl > 0;
+          const bot = trade.bot || trade.source || 
+            (trade.symbol?.includes("USDT") ? "OKX" : 
+             trade.symbol?.match(/^[A-Z]+$/) ? "Stocks" : "Other");
           
           return (
             <div 
@@ -703,25 +663,23 @@ function AlpacaStockBot({ trades, botStatus, onTradeClick }) {
               className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all hover:shadow-md ${
                 isWin ? "bg-emerald-50 hover:bg-emerald-100" : pnl < 0 ? "bg-red-50 hover:bg-red-100" : "bg-gray-50 hover:bg-gray-100"
               }`}
-              onClick={() => onTradeClick(trade, "Alpaca Stocks")}
+              onClick={() => onTradeClick(trade, bot)}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-900">{trade.symbol}</span>
+                  <span className="font-semibold text-gray-900">{trade.symbol || "Unknown"}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     trade.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                   }`}>
                     {trade.side?.toUpperCase() || "BUY"}
                   </span>
+                  <span className="text-[10px] text-gray-400">{bot}</span>
                   {trade.status === "open" && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">OPEN</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">OPEN</span>
                   )}
                 </div>
                 <div className="text-xs text-gray-400 mt-1">
-                  {trade.entry_reason && trade.entry_reason.substring(0, 50)}
-                </div>
-                <div className="text-xs text-gray-400">
-                  {timeAgo(trade.created_at || trade.timestamp)} • {formatCurrency(trade.price)} • Qty: {trade.qty?.toFixed(4)}
+                  {timeAgo(trade.created_at || trade.timestamp)} • {formatCurrency(trade.price || 0)} • Qty: {trade.qty?.toFixed(4) || 0}
                 </div>
               </div>
               <div className="text-right shrink-0">
@@ -737,56 +695,12 @@ function AlpacaStockBot({ trades, botStatus, onTradeClick }) {
                 ) : trade.status === "open" ? (
                   <div className="font-semibold text-blue-600">Open</div>
                 ) : (
-                  <div className="font-semibold text-gray-600">{formatCurrency(trade.price)}</div>
+                  <div className="font-semibold text-gray-600">{formatCurrency(trade.price || 0)}</div>
                 )}
               </div>
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-/* =====================================================
-   METRIC DEFINITION MODAL
-===================================================== */
-
-function MetricDefinitions({ isOpen, onClose }) {
-  if (!isOpen) return null;
-
-  const metrics = [
-    { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable." },
-    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed across all bots." },
-    { name: "Profit Factor", symbol: "💰", definition: "Gross profit divided by gross loss. Above 1.5 is excellent." },
-    { name: "Sharpe Ratio", symbol: "⚖️", definition: "Risk-adjusted return measure. Above 1.0 is good." },
-    { name: "Max Drawdown", symbol: "📉", definition: "Largest peak-to-trough decline. Lower is better." },
-    { name: "AI Score", symbol: "🤖", definition: "Machine learning score (0-100). Higher = stronger signal." },
-    { name: "Confidence", symbol: "📊", definition: "AI confidence level in the signal." },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-gray-900">📊 Metric Definitions</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-5 space-y-3">
-          {metrics.map((metric, idx) => (
-            <div key={idx} className="border-b border-gray-100 pb-3 last:border-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{metric.symbol}</span>
-                <span className="font-semibold text-gray-900">{metric.name}</span>
-              </div>
-              <p className="text-sm text-gray-600 mt-1 ml-7">{metric.definition}</p>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -1126,25 +1040,28 @@ export default function PublicDashboard() {
     return () => clearInterval(timer);
   }, []);
 
+  const allTrades = data.allTrades || [];
   const okxTrades = data.okxTrades || [];
   const stockTrades = data.stockTrades || [];
-  const okxBotStatus = data.okxBotStatus;
-  const stockBotStatus = data.stockBotStatus;
+  const futuresTrades = data.futuresTrades || [];
+  const sniperTrades = data.sniperTrades || [];
   const discoveries = data.discoveries || [];
   const bots = data.bots || [];
   const analytics = data.analytics?.summary || {};
   const pnlHistory = data.pnlHistory || [];
 
-  const totalTradesCount = analytics.total_trades || okxTrades.length + stockTrades.length;
-  const winsCount = analytics.wins || 0;
-  const lossesCount = analytics.losses || 0;
-  const winRate = analytics.win_rate || 0;
-  const profitFactor = analytics.profit_factor || 0;
-  const sharpeRatio = analytics.sharpe_ratio || 0;
-  const maxDrawdown = analytics.max_drawdown_percent || 0;
-  const totalPnl = analytics.total_pnl || 0;
+  const totalTradesCount = allTrades.length;
+  const totalPnL = allTrades.reduce((sum, t) => sum + (t.pnl || t.pnl_usd || 0), 0);
+  const wins = allTrades.filter(t => (t.pnl || t.pnl_usd || 0) > 0).length;
+  const losses = allTrades.filter(t => (t.pnl || t.pnl_usd || 0) < 0).length;
+  const winRate = totalTradesCount > 0 ? (wins / totalTradesCount * 100) : 0;
+  
+  // Calculate profit factor
+  const totalWinAmount = allTrades.filter(t => (t.pnl || t.pnl_usd || 0) > 0).reduce((sum, t) => sum + (t.pnl || t.pnl_usd || 0), 0);
+  const totalLossAmount = Math.abs(allTrades.filter(t => (t.pnl || t.pnl_usd || 0) < 0).reduce((sum, t) => sum + (t.pnl || t.pnl_usd || 0), 0));
+  const profitFactor = totalLossAmount > 0 ? totalWinAmount / totalLossAmount : 0;
 
-  const cumulativePnl = pnlHistory.length > 0 ? pnlHistory[pnlHistory.length - 1]?.cumulative_pnl || totalPnl : totalPnl;
+  const cumulativePnl = pnlHistory.length > 0 ? pnlHistory[pnlHistory.length - 1]?.cumulative_pnl || totalPnL : totalPnL;
   const initialBalance = 10000;
   const totalReturnPercent = cumulativePnl / initialBalance * 100;
 
@@ -1154,7 +1071,7 @@ export default function PublicDashboard() {
         <div className="text-center">
           <div className="animate-spin h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-gray-500">Loading live dashboard...</p>
-          <p className="text-xs text-gray-400 mt-2">Connecting to bots...</p>
+          <p className="text-xs text-gray-400 mt-2">Fetching all historical trades...</p>
         </div>
       </div>
     );
@@ -1170,16 +1087,9 @@ export default function PublicDashboard() {
                 IMALI
               </Link>
               <span className="text-xs px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700">LIVE</span>
-              {okxTrades.length > 0 && (
-                <span className="text-xs px-3 py-1.5 rounded-full bg-purple-100 text-purple-700">
-                  🔷 {okxTrades.length} Crypto
-                </span>
-              )}
-              {stockTrades.length > 0 && (
-                <span className="text-xs px-3 py-1.5 rounded-full bg-blue-100 text-blue-700">
-                  📈 {stockTrades.length} Stocks
-                </span>
-              )}
+              <span className="text-xs px-3 py-1.5 rounded-full bg-blue-100 text-blue-700">
+                {totalTradesCount} Total Trades
+              </span>
             </div>
             <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500">
               <div className="flex items-center gap-2">
@@ -1208,7 +1118,7 @@ export default function PublicDashboard() {
             Live Trading Dashboard
           </h1>
           <p className="text-gray-500 max-w-2xl mx-auto text-sm sm:text-base">
-            Real-time bot activity from OKX Crypto Bot and Alpaca Stock Bot.
+            Complete trading history from all bots • {totalTradesCount} total trades tracked
           </p>
         </div>
 
@@ -1251,7 +1161,7 @@ export default function PublicDashboard() {
               value={`${winRate.toFixed(1)}%`} 
               icon="📈" 
               color="emerald"
-              subtext={`${winsCount}W / ${lossesCount}L`}
+              subtext={`${wins}W / ${losses}L`}
               onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
@@ -1269,34 +1179,27 @@ export default function PublicDashboard() {
               onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
-              title="Sharpe Ratio" 
-              value={sharpeRatio.toFixed(2)} 
-              icon="⚖️" 
-              color="indigo"
+              title="Total P&L" 
+              value={formatCurrencySigned(totalPnL)} 
+              icon="💵" 
+              color={totalPnL >= 0 ? "emerald" : "red"}
               onClick={() => setShowMetricDefinitions(true)}
             />
             <MetricCard 
-              title="Max Drawdown" 
-              value={`${maxDrawdown.toFixed(1)}%`} 
-              icon="📉" 
-              color="amber"
+              title="Total Return" 
+              value={`${totalReturnPercent >= 0 ? "+" : ""}${totalReturnPercent.toFixed(1)}%`} 
+              icon="📈" 
+              color={totalReturnPercent >= 0 ? "emerald" : "red"}
+              subtext={`Cumulative: ${formatCurrencySigned(cumulativePnl)}`}
               onClick={() => setShowMetricDefinitions(true)}
             />
           </div>
         </div>
 
-        {/* Secondary Metrics */}
+        {/* Secondary Metrics - Bot Breakdown */}
         <div className="mb-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <MetricCard 
-            title="Total Return" 
-            value={`${totalReturnPercent >= 0 ? "+" : ""}${totalReturnPercent.toFixed(1)}%`} 
-            icon="📈" 
-            color={totalReturnPercent >= 0 ? "emerald" : "red"}
-            subtext={`Cumulative P&L: ${formatCurrencySigned(cumulativePnl)}`}
-            onClick={() => setShowMetricDefinitions(true)}
-          />
-          <MetricCard 
-            title="Crypto Trades" 
+            title="OKX Trades" 
             value={okxTrades.length} 
             icon="🔷" 
             color="purple"
@@ -1310,10 +1213,17 @@ export default function PublicDashboard() {
             onClick={() => setShowMetricDefinitions(true)}
           />
           <MetricCard 
-            title="Active Bots" 
-            value={bots.length} 
-            icon="🤖" 
-            color="gray"
+            title="Futures Trades" 
+            value={futuresTrades.length} 
+            icon="📊" 
+            color="amber"
+            onClick={() => setShowMetricDefinitions(true)}
+          />
+          <MetricCard 
+            title="Sniper Trades" 
+            value={sniperTrades.length} 
+            icon="🎯" 
+            color="red"
             onClick={() => setShowMetricDefinitions(true)}
           />
         </div>
@@ -1328,8 +1238,7 @@ export default function PublicDashboard() {
             </span>
           </h2>
           <NotableTrades 
-            okxTrades={okxTrades} 
-            stockTrades={stockTrades}
+            allTrades={allTrades}
             onTradeClick={(trade, bot) => {
               setSelectedTrade(trade);
               setSelectedBot(bot);
@@ -1341,7 +1250,7 @@ export default function PublicDashboard() {
         <div className="mb-8">
           <OKXCryptoBot 
             trades={okxTrades} 
-            botStatus={okxBotStatus}
+            botStatus={data.okxBotStatus}
             onTradeClick={(trade, bot) => {
               setSelectedTrade(trade);
               setSelectedBot(bot);
@@ -1349,26 +1258,15 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* ALPACA STOCK BOT ACTIVITY */}
+        {/* ALL TRADES HISTORY */}
         <div className="mb-8">
-          <AlpacaStockBot 
-            trades={stockTrades} 
-            botStatus={stockBotStatus}
+          <AllTradesList 
+            trades={allTrades}
             onTradeClick={(trade, bot) => {
               setSelectedTrade(trade);
               setSelectedBot(bot);
             }}
           />
-        </div>
-
-        {/* Other Trading Bots */}
-        <div className="mb-8">
-          <h2 className="font-semibold text-lg mb-3 text-gray-800">Other Trading Bots</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {bots.filter(b => !b.name?.includes("OKX") && !b.name?.includes("Stock")).map((bot, index) => (
-              <BotCard key={index} bot={bot} />
-            ))}
-          </div>
         </div>
 
         {/* DEX Discoveries */}
@@ -1389,7 +1287,7 @@ export default function PublicDashboard() {
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-gray-400 border-t border-gray-200 pt-6">
           <p>
-            Real-time bot activity • OKX Crypto Trading • Alpaca Stock Trading • DEX discoveries
+            Complete trading history • OKX Crypto • Alpaca Stocks • Futures • Sniper
             <br />
             <Link to="/" className="text-indigo-600 hover:underline">Home</Link>
             {" • "}
