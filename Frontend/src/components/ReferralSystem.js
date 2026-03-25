@@ -16,7 +16,8 @@ import {
   FaSpinner,
   FaWallet,
   FaGift,
-  FaTwitter
+  FaTwitter,
+  FaArrowLeft
 } from "react-icons/fa";
 import referralImg from "../assets/images/referral_program.png";
 import referralBot from "../assets/images/cards/referralbot.png";
@@ -37,7 +38,7 @@ const Tile = ({ title, value, icon: Icon, accent = "emerald", suffix = "" }) => 
 );
 
 const ReferralSystem = () => {
-  const { account, isConnected } = useWallet();
+  const { account, isConnected, connectWallet } = useWallet();
   
   const [referralData, setReferralData] = useState({
     code: "",
@@ -62,11 +63,23 @@ const ReferralSystem = () => {
   const [showWalletInput, setShowWalletInput] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authToken, setAuthToken] = useState(null);
+
+  // Check authentication on mount
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+    if (token) {
+      setAuthToken(token);
+      setIsAuthenticated(true);
+    } else {
+      setIsAuthenticated(false);
+    }
+  }, []);
 
   // Generate referral code from wallet address
   const generateReferralCode = (wallet) => {
     if (!wallet) return "";
-    // Create a short code from wallet address
     const shortCode = wallet.slice(2, 10).toUpperCase();
     return `IMALI-${shortCode}`;
   };
@@ -83,7 +96,7 @@ const ReferralSystem = () => {
     setError(null);
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
       if (!token) {
         setError("Please log in to view referral data");
         setLoading(false);
@@ -119,7 +132,7 @@ const ReferralSystem = () => {
           ...prev,
           qualifiedReferrals: stats.qualified_referrals || 0,
           level1Earnings: stats.total_rewards_earned || 0,
-          level2Earnings: stats.total_rewards_earned * 0.25, // Example: 25% of total for level 2
+          level2Earnings: stats.total_rewards_earned * 0.25,
         }));
       }
       
@@ -127,6 +140,7 @@ const ReferralSystem = () => {
       console.error("Error fetching referral data:", error);
       if (error.response?.status === 401) {
         setError("Session expired. Please log in again.");
+        setIsAuthenticated(false);
       } else {
         setError("Failed to load referral data. Please try again.");
       }
@@ -143,8 +157,9 @@ const ReferralSystem = () => {
   // Apply referral code
   const applyReferralCode = async () => {
     if (!referralInput.trim()) return;
-    if (!isConnected) {
-      setError("Please connect your wallet first");
+    
+    if (!isAuthenticated) {
+      setError("Please log in to apply a referral code");
       return;
     }
     
@@ -153,7 +168,7 @@ const ReferralSystem = () => {
     setValidationStatus(null);
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
       if (!token) {
         setError("Please log in to apply a referral code");
         setApplyLoading(false);
@@ -178,7 +193,7 @@ const ReferralSystem = () => {
         if (applyRes.data.success) {
           setSuccess("Referral code applied successfully!");
           setReferralInput("");
-          fetchReferralData(); // Refresh data
+          fetchReferralData();
           setTimeout(() => setSuccess(null), 3000);
         } else {
           setError(applyRes.data.message || "Failed to apply referral code");
@@ -209,6 +224,11 @@ const ReferralSystem = () => {
       return;
     }
     
+    if (!isAuthenticated) {
+      setError("Please log in to claim rewards");
+      return;
+    }
+    
     if (!walletAddress && !showWalletInput) {
       setShowWalletInput(true);
       return;
@@ -228,7 +248,7 @@ const ReferralSystem = () => {
     setError(null);
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
       if (!token) {
         setError("Please log in to claim rewards");
         setClaimLoading(false);
@@ -276,25 +296,101 @@ const ReferralSystem = () => {
     }
   };
   
+  const handleConnectWallet = () => {
+    if (connectWallet) {
+      connectWallet();
+    } else {
+      window.dispatchEvent(new CustomEvent('open-wallet-modal'));
+    }
+  };
+  
   useEffect(() => {
-    if (account && isConnected) {
+    if (account && isConnected && isAuthenticated) {
       fetchReferralData();
     }
-  }, [account, isConnected]);
+  }, [account, isConnected, isAuthenticated]);
   
-  // Demo mode for non-authenticated users
+  // Not authenticated state
+  if (!isAuthenticated) {
+    return (
+      <div className="relative min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white overflow-hidden">
+        <div className="max-w-6xl mx-auto px-6 py-12">
+          {/* Back button */}
+          <Link to="/" className="inline-flex items-center gap-2 text-white/60 hover:text-white mb-8 transition">
+            <FaArrowLeft className="text-sm" />
+            Back to Home
+          </Link>
+          
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500/20 to-emerald-700/20 mb-6">
+              <FaUserFriends className="text-5xl text-emerald-400" />
+            </div>
+            <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+              IMALI Referral Program
+            </h1>
+            <p className="text-white/70 max-w-2xl mx-auto mb-8 text-lg">
+              Earn 20% of fees paid by users you refer. Connect your account to get started.
+            </p>
+            
+            <div className="max-w-md mx-auto bg-white/5 rounded-2xl p-6 border border-white/10 mb-8">
+              <h3 className="text-lg font-semibold mb-3">How it works</h3>
+              <ol className="text-left space-y-3 text-white/70">
+                <li className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm">1</span>
+                  <span>Create an account or log in</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm">2</span>
+                  <span>Get your unique referral link</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm">3</span>
+                  <span>Share with friends and earn 20% of their fees in USDC</span>
+                </li>
+              </ol>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                to="/signup"
+                className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-cyan-600 rounded-xl font-semibold hover:from-emerald-500 hover:to-cyan-500 transition"
+              >
+                Create Account
+              </Link>
+              <Link
+                to="/login"
+                className="px-8 py-3 bg-white/10 rounded-xl font-semibold hover:bg-white/20 transition border border-white/20"
+              >
+                Log In
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Wallet not connected state (but authenticated)
   if (!isConnected) {
     return (
       <div className="relative min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white overflow-hidden">
         <div className="max-w-6xl mx-auto px-6 py-12">
+          <Link to="/" className="inline-flex items-center gap-2 text-white/60 hover:text-white mb-8 transition">
+            <FaArrowLeft className="text-sm" />
+            Back to Home
+          </Link>
+          
           <div className="text-center">
-            <FaWallet className="text-6xl text-emerald-400 mx-auto mb-4" />
-            <h1 className="text-3xl font-bold mb-2">Connect Your Wallet</h1>
-            <p className="text-white/70 mb-6">Connect your wallet to view your referral stats and start earning</p>
+            <FaWallet className="text-6xl text-emerald-400 mx-auto mb-6" />
+            <h1 className="text-3xl font-bold mb-4">Connect Your Wallet</h1>
+            <p className="text-white/70 max-w-md mx-auto mb-8">
+              Connect your wallet to view your referral stats and start earning rewards
+            </p>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('open-wallet-modal'))}
-              className="px-8 py-3 bg-emerald-600 rounded-xl font-semibold hover:bg-emerald-700 transition"
+              onClick={handleConnectWallet}
+              className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-cyan-600 rounded-xl font-semibold hover:from-emerald-500 hover:to-cyan-500 transition inline-flex items-center gap-2"
             >
+              <FaWallet className="text-sm" />
               Connect Wallet
             </button>
           </div>
@@ -323,6 +419,12 @@ const ReferralSystem = () => {
       <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-violet-500/10 blur-3xl" />
 
       <div className="max-w-6xl mx-auto px-6 py-12">
+        {/* Back button */}
+        <Link to="/" className="inline-flex items-center gap-2 text-white/60 hover:text-white mb-6 transition">
+          <FaArrowLeft className="text-sm" />
+          Back to Home
+        </Link>
+        
         {/* Header */}
         <div className="text-center mb-10">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-300 via-yellow-300 to-pink-300 bg-clip-text text-transparent flex items-center justify-center gap-3">
