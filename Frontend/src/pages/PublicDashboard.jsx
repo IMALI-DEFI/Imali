@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import io from "socket.io-client";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -32,7 +31,6 @@ ChartJS.register(
 
 const API_BASE = "https://api.imali-defi.com";
 const PUBLIC_TRADES_URL = `${API_BASE}/api/public/trades`;
-const WS_TOKEN_URL = `${API_BASE}/api/ws/token`;
 
 function formatCurrency(value) {
   const n = Number(value) || 0;
@@ -607,7 +605,6 @@ export default function PublicDashboard() {
     loading: true,
     error: null,
     lastUpdate: null,
-    wsConnected: false,
     botStats: {}
   });
 
@@ -617,8 +614,6 @@ export default function PublicDashboard() {
   const [activeTab, setActiveTab] = useState("all");
   const [sortRecentTrades, setSortRecentTrades] = useState("percent");
   const pollingRef = useRef(null);
-  const socketRef = useRef(null);
-  const reconnectAttempts = useRef(0);
 
   const BOTS = [
     { name: "Futures Bot", type: "futures" },
@@ -627,7 +622,6 @@ export default function PublicDashboard() {
     { name: "OKX Spot", type: "okx" }
   ];
 
-  // Fetch initial data
   const fetchData = useCallback(async () => {
     try {
       const response = await axios.get(PUBLIC_TRADES_URL, {
@@ -661,96 +655,14 @@ export default function PublicDashboard() {
     }
   }, []);
 
-  // WebSocket connection
-  const connectWebSocket = useCallback(async () => {
-    try {
-      // Get WebSocket token from API (public endpoint may need auth)
-      // For public dashboard, we might need to get a token differently
-      // If no auth required, connect directly
-      
-      const socketUrl = API_BASE.replace('https', 'wss');
-      const socket = io(socketUrl, {
-        path: '/ws',
-        transports: ['websocket'],
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000
-      });
-      
-      socket.on('connect', () => {
-        console.log('✅ WebSocket connected');
-        setData(prev => ({ ...prev, wsConnected: true }));
-        reconnectAttempts.current = 0;
-        
-        // Subscribe to trade updates
-        socket.emit('subscribe_trades', { bot: 'all' });
-      });
-      
-      socket.on('disconnect', (reason) => {
-        console.log('❌ WebSocket disconnected:', reason);
-        setData(prev => ({ ...prev, wsConnected: false }));
-      });
-      
-      socket.on('connect_error', (error) => {
-        console.error('WebSocket connection error:', error);
-        setData(prev => ({ ...prev, wsConnected: false }));
-        reconnectAttempts.current += 1;
-      });
-      
-      // Listen for new trades
-      socket.on('new_trade', (trade) => {
-        console.log('📊 New trade received:', trade);
-        setData(prev => ({
-          ...prev,
-          trades: [trade, ...prev.trades],
-          lastUpdate: new Date()
-        }));
-      });
-      
-      // Listen for position updates
-      socket.on('position_update', (position) => {
-        console.log('📈 Position update:', position);
-        // Update open positions in trades list
-        setData(prev => {
-          const updatedTrades = prev.trades.map(t => 
-            t.id === position.id ? { ...t, ...position } : t
-          );
-          return {
-            ...prev,
-            trades: updatedTrades,
-            lastUpdate: new Date()
-          };
-        });
-      });
-      
-      socketRef.current = socket;
-      
-    } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
-      setData(prev => ({ ...prev, wsConnected: false }));
-    }
-  }, []);
-
-  // Initialize
   useEffect(() => {
     fetchData();
-    connectWebSocket();
-    
-    // Fallback polling for when WebSocket fails
-    pollingRef.current = setInterval(() => {
-      if (!data.wsConnected) {
-        fetchData();
-      }
-    }, 30000);
-    
+    pollingRef.current = setInterval(fetchData, 30000);
+
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
     };
-  }, [fetchData, connectWebSocket]);
+  }, [fetchData]);
 
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 1000);
@@ -814,17 +726,6 @@ export default function PublicDashboard() {
                 IMALI
               </Link>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">LIVE</span>
-              {data.wsConnected && (
-                <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 flex items-center gap-0.5">
-                  <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
-                  REAL-TIME
-                </span>
-              )}
-              {!data.wsConnected && (
-                <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
-                  POLLING
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-2 text-[10px] text-gray-500">
               <span>Last: {data.lastUpdate ? timeAgo(data.lastUpdate) : "—"}</span>
@@ -848,9 +749,7 @@ export default function PublicDashboard() {
           <h1 className="text-2xl font-bold mb-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-transparent">
             Live Trading Dashboard
           </h1>
-          <p className="text-gray-500 text-xs">
-            {formatNumber(totalTrades)} trades tracked • {data.wsConnected ? 'Real-time WebSocket' : '30s polling'} • 4 active bots
-          </p>
+          <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} trades tracked • Live updates every 30s • 4 active bots</p>
         </div>
 
         {pnlHistory.length > 0 && (
@@ -918,9 +817,8 @@ export default function PublicDashboard() {
         <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
           <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
             <h2 className="font-semibold text-sm flex items-center gap-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${data.wsConnected ? 'bg-green-500 animate-pulse' : 'bg-emerald-500'}`} />
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
               Recent Trades
-              {data.wsConnected && <span className="text-[8px] text-green-600 ml-1">(real-time)</span>}
             </h2>
             <div className="flex gap-1">
               <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
@@ -963,7 +861,7 @@ export default function PublicDashboard() {
         </div>
 
         <div className="mt-4 text-center text-[10px] text-gray-400 border-t border-gray-200 pt-3">
-          <p>AI-powered signals • Live WebSocket updates • 4 active bots • Transparent performance</p>
+          <p>AI-powered signals • Live PostgreSQL-backed trade data • 4 active bots • Transparent performance</p>
           <div className="flex justify-center gap-3 mt-1">
             <Link to="/" className="text-indigo-600">Home</Link>
             <Link to="/pricing" className="text-indigo-600">Pricing</Link>
