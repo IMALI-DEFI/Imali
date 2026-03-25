@@ -101,49 +101,48 @@ function HedgeFundDashboard({ analytics }) {
   const winRate = analytics.win_rate || 0;
   const totalPnl = analytics.total_pnl || 0;
   const profitFactor = analytics.profit_factor || 2.1;
-  
   const aum = 2500000;
   const sharpeRatio = 2.34;
   
   return (
-    <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-800 rounded-2xl p-5 text-white shadow-xl mb-6">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+    <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-800 rounded-2xl p-4 text-white shadow-xl mb-5">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-3xl">🏦</span>
-          <h2 className="text-xl font-bold tracking-tight">IMALI Hedge Fund</h2>
+          <span className="text-2xl">🏦</span>
+          <h2 className="text-lg font-bold">IMALI Hedge Fund</h2>
           <span className="text-[10px] bg-emerald-500/30 px-2 py-0.5 rounded-full">ACTIVE</span>
         </div>
         <div className="text-right">
-          <div className="text-xl font-bold">{formatCompactNumber(aum)}</div>
-          <div className="text-[10px] text-indigo-200">AUM</div>
+          <div className="text-lg font-bold">{formatCompactNumber(aum)}</div>
+          <div className="text-[9px] text-indigo-200">AUM</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <div className="bg-white/10 rounded-xl p-2 text-center">
-          <div className="text-[10px] text-indigo-200">Win Rate</div>
-          <div className="text-base font-bold text-emerald-300">{winRate.toFixed(1)}%</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+        <div className="bg-white/10 rounded-lg p-2 text-center">
+          <div className="text-[9px] text-indigo-200">Win Rate</div>
+          <div className="text-sm font-bold text-emerald-300">{winRate.toFixed(1)}%</div>
         </div>
-        <div className="bg-white/10 rounded-xl p-2 text-center">
-          <div className="text-[10px] text-indigo-200">Total P&L</div>
-          <div className={`text-base font-bold ${totalPnl >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+        <div className="bg-white/10 rounded-lg p-2 text-center">
+          <div className="text-[9px] text-indigo-200">Total P&L</div>
+          <div className={`text-sm font-bold ${totalPnl >= 0 ? "text-emerald-300" : "text-red-300"}`}>
             {formatCurrencySigned(totalPnl)}
           </div>
         </div>
-        <div className="bg-white/10 rounded-xl p-2 text-center">
-          <div className="text-[10px] text-indigo-200">Sharpe Ratio</div>
-          <div className="text-base font-bold text-white">{sharpeRatio.toFixed(2)}</div>
+        <div className="bg-white/10 rounded-lg p-2 text-center">
+          <div className="text-[9px] text-indigo-200">Sharpe Ratio</div>
+          <div className="text-sm font-bold text-white">{sharpeRatio.toFixed(2)}</div>
         </div>
-        <div className="bg-white/10 rounded-xl p-2 text-center">
-          <div className="text-[10px] text-indigo-200">Profit Factor</div>
-          <div className="text-base font-bold text-emerald-300">{profitFactor.toFixed(2)}</div>
+        <div className="bg-white/10 rounded-lg p-2 text-center">
+          <div className="text-[9px] text-indigo-200">Profit Factor</div>
+          <div className="text-sm font-bold text-emerald-300">{profitFactor.toFixed(2)}</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white/5 rounded-xl p-2">
-          <h4 className="font-semibold text-xs text-indigo-200 mb-1">Active Strategies</h4>
-          <div className="space-y-1 text-xs">
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="bg-white/5 rounded-lg p-2">
+          <h4 className="font-semibold text-indigo-200 mb-1">Active Strategies</h4>
+          <div className="space-y-1">
             <div className="flex justify-between">
               <span>Momentum Alpha</span>
               <span className="text-emerald-300">+24.3%</span>
@@ -158,9 +157,9 @@ function HedgeFundDashboard({ analytics }) {
             </div>
           </div>
         </div>
-        <div className="bg-white/5 rounded-xl p-2">
-          <h4 className="font-semibold text-xs text-indigo-200 mb-1">Top Holdings</h4>
-          <div className="space-y-1 text-xs">
+        <div className="bg-white/5 rounded-lg p-2">
+          <h4 className="font-semibold text-indigo-200 mb-1">Top Holdings</h4>
+          <div className="space-y-1">
             <div className="flex justify-between">
               <span>BTC/USDT</span>
               <span className="text-white">32%</span>
@@ -180,7 +179,7 @@ function HedgeFundDashboard({ analytics }) {
   );
 }
 
-// Single Performance Chart with Bars and Cumulative Line
+// Performance Chart Component
 function PerformanceChart({ pnlHistory = [] }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
@@ -229,8 +228,6 @@ function PerformanceChart({ pnlHistory = [] }) {
             borderWidth: 1,
             borderRadius: 6,
             yAxisID: "y",
-            barPercentage: 0.7,
-            categoryPercentage: 0.8,
           },
           {
             label: "Cumulative P&L",
@@ -270,26 +267,16 @@ function PerformanceChart({ pnlHistory = [] }) {
           y: {
             position: "left",
             grid: { color: "rgba(0,0,0,0.05)" },
-            ticks: { 
-              callback: (value) => formatCurrency(value),
-              font: { size: 10 }
-            },
+            ticks: { callback: (value) => formatCurrency(value), font: { size: 10 } },
             title: { display: false }
           },
           y1: {
             position: "right",
             grid: { display: false },
-            ticks: { 
-              callback: (value) => formatCurrency(value),
-              font: { size: 10 },
-              color: "#8b5cf6"
-            },
+            ticks: { callback: (value) => formatCurrency(value), font: { size: 10 }, color: "#8b5cf6" },
             title: { display: false }
           },
-          x: { 
-            grid: { display: false }, 
-            ticks: { font: { size: 9 }, maxRotation: 45 } 
-          }
+          x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } }
         }
       }
     });
@@ -302,7 +289,7 @@ function PerformanceChart({ pnlHistory = [] }) {
   return <canvas ref={canvasRef} />;
 }
 
-// Trade Row Component with Percent Return and Exit Price
+// Trade Row Component
 function TradeRow({ trade, onClick }) {
   const pnl = trade.pnl_usd || 0;
   const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
@@ -657,6 +644,11 @@ export default function PublicDashboard() {
     };
   }, [connectWebSocket]);
 
+  useEffect(() => {
+    const timer = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const allTrades = data.trades || [];
   const summary = data.summary || {};
   const pnlHistory = data.pnlHistory || [];
@@ -673,7 +665,9 @@ export default function PublicDashboard() {
         return Math.abs(b.pnl_usd || 0) - Math.abs(a.pnl_usd || 0);
       }
       if (sortRecentTrades === "percent") {
-        return (b.pnl_percent || b.pnl_percentage || 0) - (a.pnl_percent || a.pnl_percentage || 0);
+        const aPercent = a.pnl_percent || a.pnl_percentage || 0;
+        const bPercent = b.pnl_percent || b.pnl_percentage || 0;
+        return bPercent - aPercent;
       }
       return new Date(b.created_at) - new Date(a.created_at);
     });
@@ -747,7 +741,7 @@ export default function PublicDashboard() {
         {/* Hedge Fund Dashboard */}
         <HedgeFundDashboard analytics={summary} />
 
-        {/* Performance Chart - Single View */}
+        {/* Performance Chart */}
         {pnlHistory.length > 0 && (
           <div className="mb-5 bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
             <div className="flex items-center justify-between mb-2">
