@@ -91,7 +91,7 @@ function getBotIcon(botName) {
   return "🤖";
 }
 
-// Enhanced Performance Chart with gradient and animations
+// Fixed Performance Chart with proper scaling
 function PerformanceChart({ pnlHistory = [] }) {
   const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
   const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
@@ -113,25 +113,26 @@ function PerformanceChart({ pnlHistory = [] }) {
     return cumulative;
   });
 
+  // Find the max values for better scaling
+  const maxDaily = Math.max(...values, 0);
+  const maxCumulative = Math.max(...cumulativeValues, 0);
+  const minDaily = Math.min(...values, 0);
+  
+  // Calculate appropriate step sizes
+  const dailyStepSize = Math.ceil(maxDaily / 10);
+  const cumulativeStepSize = Math.ceil(maxCumulative / 10);
+
   const chartData = {
-    labels: labels.slice(-30),
+    labels: labels,
     datasets: [
       {
         label: "Daily P&L",
-        data: values.slice(-30),
+        data: values,
         type: 'bar',
-        backgroundColor: (context) => {
-          const value = context.raw;
-          return value >= 0 
-            ? 'rgba(16, 185, 129, 0.8)' 
-            : 'rgba(239, 68, 68, 0.8)';
-        },
-        borderColor: (context) => {
-          const value = context.raw;
-          return value >= 0 ? '#10b981' : '#ef4444';
-        },
-        borderWidth: 2,
-        borderRadius: 8,
+        backgroundColor: values.map(v => v >= 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)'),
+        borderColor: values.map(v => v >= 0 ? '#10b981' : '#ef4444'),
+        borderWidth: 1,
+        borderRadius: 4,
         barPercentage: 0.7,
         categoryPercentage: 0.8,
         yAxisID: "y",
@@ -139,25 +140,18 @@ function PerformanceChart({ pnlHistory = [] }) {
       },
       {
         label: "Cumulative P&L",
-        data: cumulativeValues.slice(-30),
+        data: cumulativeValues,
         type: 'line',
         borderColor: "#8b5cf6",
-        backgroundColor: (context) => {
-          const chart = context.chart;
-          const ctx = chart.ctx;
-          const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-          gradient.addColorStop(0, 'rgba(139, 92, 246, 0.3)');
-          gradient.addColorStop(1, 'rgba(139, 92, 246, 0.02)');
-          return gradient;
-        },
+        backgroundColor: "rgba(139, 92, 246, 0.1)",
         borderWidth: 3,
         pointRadius: 4,
         pointBackgroundColor: "#8b5cf6",
         pointBorderColor: "white",
-        pointBorderWidth: 2,
-        pointHoverRadius: 7,
+        pointBorderWidth: 1,
+        pointHoverRadius: 6,
         fill: true,
-        tension: 0.4,
+        tension: 0.3,
         yAxisID: "y1",
         order: 1,
       }
@@ -208,7 +202,7 @@ function PerformanceChart({ pnlHistory = [] }) {
         ticks: { 
           callback: (value) => formatCurrency(value),
           font: { size: 10 },
-          stepSize: 5000,
+          stepSize: dailyStepSize > 0 ? dailyStepSize : 5000,
         },
         title: { 
           display: true, 
@@ -223,7 +217,8 @@ function PerformanceChart({ pnlHistory = [] }) {
         ticks: { 
           callback: (value) => formatCurrency(value),
           font: { size: 10 },
-          color: "#8b5cf6"
+          color: "#8b5cf6",
+          stepSize: cumulativeStepSize > 0 ? cumulativeStepSize : 50000,
         },
         title: { 
           display: true, 
@@ -235,9 +230,10 @@ function PerformanceChart({ pnlHistory = [] }) {
       x: { 
         grid: { display: false },
         ticks: { 
-          font: { size: 9 },
+          font: { size: 10 },
           maxRotation: 45,
           autoSkip: true,
+          maxTicksLimit: 10,
         },
         title: {
           display: true,
@@ -249,10 +245,10 @@ function PerformanceChart({ pnlHistory = [] }) {
     },
     elements: {
       bar: {
-        borderRadius: 8,
+        borderRadius: 4,
       },
       line: {
-        tension: 0.4,
+        tension: 0.3,
       },
       point: {
         radius: 3,
@@ -338,13 +334,11 @@ function NotableTradesByBot({ trades, onTradeClick }) {
   const [sortOrder, setSortOrder] = useState("desc");
   const [selectedBot, setSelectedBot] = useState("all");
   
-  // Filter closed trades with non-zero P&L
   const closedTrades = trades.filter(trade => {
     const pnl = trade?.pnl_usd || trade?.pnl || 0;
     return trade?.status !== "open" && pnl !== 0;
   });
 
-  // Group by bot
   const tradesByBot = closedTrades.reduce((acc, trade) => {
     const botName = trade?.bot || trade?.source || "Other Bot";
     if (!acc[botName]) {
@@ -403,7 +397,6 @@ function NotableTradesByBot({ trades, onTradeClick }) {
 
   return (
     <div className="space-y-4">
-      {/* Sort Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-gray-200">
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500">Sort by:</span>
