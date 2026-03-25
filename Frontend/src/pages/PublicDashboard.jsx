@@ -13,9 +13,10 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  TooltipItem
 } from "chart.js";
-import { Bar, Line } from "react-chartjs-2";
+import { Bar } from "react-chartjs-2";
 
 // Register Chart.js components
 ChartJS.register(
@@ -55,13 +56,6 @@ function formatNumber(value) {
   return n.toLocaleString();
 }
 
-function formatCompactNumber(num) {
-  const n = Number(num) || 0;
-  if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
-  return `$${n.toFixed(0)}`;
-}
-
 function timeAgo(timestamp) {
   if (!timestamp) return "—";
   try {
@@ -93,93 +87,12 @@ function getBotIcon(botName) {
   if (name.includes("sniper")) return "🦄";
   if (name.includes("spot")) return "💎";
   if (name.includes("okx")) return "🔷";
+  if (name.includes("momentum")) return "🚀";
+  if (name.includes("arbitrage")) return "⚡";
   return "🤖";
 }
 
-// Hedge Fund Dashboard Component
-function HedgeFundDashboard({ analytics }) {
-  const winRate = analytics.win_rate || 0;
-  const totalPnl = analytics.total_pnl || 0;
-  const profitFactor = analytics.profit_factor || 2.1;
-  const aum = 2500000;
-  const sharpeRatio = 2.34;
-  
-  return (
-    <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-800 rounded-2xl p-4 text-white shadow-xl mb-5">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🏦</span>
-          <h2 className="text-lg font-bold">IMALI Hedge Fund</h2>
-          <span className="text-[10px] bg-emerald-500/30 px-2 py-0.5 rounded-full">ACTIVE</span>
-        </div>
-        <div className="text-right">
-          <div className="text-lg font-bold">{formatCompactNumber(aum)}</div>
-          <div className="text-[9px] text-indigo-200">AUM</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-        <div className="bg-white/10 rounded-lg p-2 text-center">
-          <div className="text-[9px] text-indigo-200">Win Rate</div>
-          <div className="text-sm font-bold text-emerald-300">{winRate.toFixed(1)}%</div>
-        </div>
-        <div className="bg-white/10 rounded-lg p-2 text-center">
-          <div className="text-[9px] text-indigo-200">Total P&L</div>
-          <div className={`text-sm font-bold ${totalPnl >= 0 ? "text-emerald-300" : "text-red-300"}`}>
-            {formatCurrencySigned(totalPnl)}
-          </div>
-        </div>
-        <div className="bg-white/10 rounded-lg p-2 text-center">
-          <div className="text-[9px] text-indigo-200">Sharpe Ratio</div>
-          <div className="text-sm font-bold text-white">{sharpeRatio.toFixed(2)}</div>
-        </div>
-        <div className="bg-white/10 rounded-lg p-2 text-center">
-          <div className="text-[9px] text-indigo-200">Profit Factor</div>
-          <div className="text-sm font-bold text-emerald-300">{profitFactor.toFixed(2)}</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="bg-white/5 rounded-lg p-2">
-          <h4 className="font-semibold text-indigo-200 mb-1">Active Strategies</h4>
-          <div className="space-y-1">
-            <div className="flex justify-between">
-              <span>Momentum Alpha</span>
-              <span className="text-emerald-300">+24.3%</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Arbitrage Bot</span>
-              <span className="text-emerald-300">+18.7%</span>
-            </div>
-            <div className="flex justify-between">
-              <span>AI Prediction</span>
-              <span className="text-emerald-300">+15.2%</span>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white/5 rounded-lg p-2">
-          <h4 className="font-semibold text-indigo-200 mb-1">Top Holdings</h4>
-          <div className="space-y-1">
-            <div className="flex justify-between">
-              <span>BTC/USDT</span>
-              <span className="text-white">32%</span>
-            </div>
-            <div className="flex justify-between">
-              <span>ETH/USDT</span>
-              <span className="text-white">24%</span>
-            </div>
-            <div className="flex justify-between">
-              <span>AI Tokens</span>
-              <span className="text-white">18%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Performance Chart Component using react-chartjs-2
+// Enhanced Performance Chart with gradient and animations
 function PerformanceChart({ pnlHistory = [] }) {
   const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
   const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
@@ -189,7 +102,7 @@ function PerformanceChart({ pnlHistory = [] }) {
 
   if (values.length === 0) {
     return (
-      <div className="h-56 flex items-center justify-center text-gray-400">
+      <div className="h-64 flex items-center justify-center text-gray-400">
         <p className="text-sm">No data available</p>
       </div>
     );
@@ -201,32 +114,61 @@ function PerformanceChart({ pnlHistory = [] }) {
     return cumulative;
   });
 
+  // Create gradient for area fill
+  const createGradient = (ctx) => {
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
+    gradient.addColorStop(1, 'rgba(139, 92, 246, 0.02)');
+    return gradient;
+  };
+
   const chartData = {
     labels: labels.slice(-30),
     datasets: [
       {
         label: "Daily P&L",
         data: values.slice(-30),
-        backgroundColor: values.slice(-30).map(v => v >= 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)"),
-        borderColor: values.slice(-30).map(v => v >= 0 ? "#10b981" : "#ef4444"),
-        borderWidth: 1,
-        borderRadius: 6,
+        type: 'bar',
+        backgroundColor: (context) => {
+          const value = context.raw;
+          return value >= 0 
+            ? 'rgba(16, 185, 129, 0.8)' 
+            : 'rgba(239, 68, 68, 0.8)';
+        },
+        borderColor: (context) => {
+          const value = context.raw;
+          return value >= 0 ? '#10b981' : '#ef4444';
+        },
+        borderWidth: 2,
+        borderRadius: 8,
+        barPercentage: 0.7,
+        categoryPercentage: 0.8,
         yAxisID: "y",
+        order: 2,
       },
       {
         label: "Cumulative P&L",
         data: cumulativeValues.slice(-30),
-        type: "line",
+        type: 'line',
         borderColor: "#8b5cf6",
-        backgroundColor: "rgba(139,92,246,0.1)",
+        backgroundColor: (context) => {
+          const chart = context.chart;
+          const { ctx } = chart;
+          const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+          gradient.addColorStop(0, 'rgba(139, 92, 246, 0.3)');
+          gradient.addColorStop(1, 'rgba(139, 92, 246, 0.02)');
+          return gradient;
+        },
         borderWidth: 3,
-        pointRadius: 3,
+        pointRadius: 4,
         pointBackgroundColor: "#8b5cf6",
         pointBorderColor: "white",
-        pointBorderWidth: 1,
+        pointBorderWidth: 2,
+        pointHoverRadius: 7,
         fill: true,
-        tension: 0.3,
+        tension: 0.4,
         yAxisID: "y1",
+        order: 1,
       }
     ]
   };
@@ -234,16 +176,32 @@ function PerformanceChart({ pnlHistory = [] }) {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    interaction: { mode: "index", intersect: false },
+    interaction: {
+      mode: "index",
+      intersect: false,
+    },
     plugins: {
-      legend: { position: "top", labels: { boxWidth: 10, font: { size: 10 } } },
+      legend: {
+        position: "top",
+        labels: {
+          boxWidth: 12,
+          font: { size: 11, weight: '500' },
+          usePointStyle: true,
+          padding: 15,
+        },
+      },
       tooltip: {
+        backgroundColor: "rgba(0,0,0,0.85)",
+        titleColor: "#fff",
+        bodyColor: "#e5e7eb",
+        padding: 10,
+        cornerRadius: 8,
         callbacks: {
-          label: (context) => {
+          label: (context: TooltipItem<"bar">) => {
             if (context.dataset.label === "Daily P&L") {
-              return `Daily: ${formatCurrencySigned(context.raw)}`;
+              return `📊 Daily: ${formatCurrencySigned(context.raw as number)}`;
             }
-            return `Cumulative: ${formatCurrencySigned(context.raw)}`;
+            return `📈 Cumulative: ${formatCurrencySigned(context.raw as number)}`;
           }
         }
       }
@@ -251,24 +209,70 @@ function PerformanceChart({ pnlHistory = [] }) {
     scales: {
       y: {
         position: "left",
-        grid: { color: "rgba(0,0,0,0.05)" },
-        ticks: { callback: (value) => formatCurrency(value), font: { size: 10 } },
-        title: { display: false }
+        grid: { 
+          color: "rgba(0,0,0,0.05)",
+          drawBorder: false,
+        },
+        ticks: { 
+          callback: (value) => formatCurrency(value as number),
+          font: { size: 10 },
+          stepSize: 5000,
+        },
+        title: { 
+          display: true, 
+          text: "Daily P&L", 
+          color: "#6b7280", 
+          font: { size: 11, weight: '500' } 
+        }
       },
       y1: {
         position: "right",
         grid: { display: false },
-        ticks: { callback: (value) => formatCurrency(value), font: { size: 10 }, color: "#8b5cf6" },
-        title: { display: false }
+        ticks: { 
+          callback: (value) => formatCurrency(value as number),
+          font: { size: 10 },
+          color: "#8b5cf6"
+        },
+        title: { 
+          display: true, 
+          text: "Cumulative P&L", 
+          color: "#8b5cf6", 
+          font: { size: 11, weight: '500' } 
+        }
       },
-      x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } }
+      x: { 
+        grid: { display: false },
+        ticks: { 
+          font: { size: 9 },
+          maxRotation: 45,
+          autoSkip: true,
+        },
+        title: {
+          display: true,
+          text: "Date",
+          color: "#6b7280",
+          font: { size: 10 }
+        }
+      }
+    },
+    elements: {
+      bar: {
+        borderRadius: 8,
+      },
+      line: {
+        tension: 0.4,
+      },
+      point: {
+        radius: 3,
+        hoverRadius: 6,
+      }
     }
   };
 
   return <Bar data={chartData} options={options} />;
 }
 
-// Trade Row Component
+// Trade Row Component with Percent Return
 function TradeRow({ trade, onClick }) {
   const pnl = trade.pnl_usd || 0;
   const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
@@ -278,11 +282,14 @@ function TradeRow({ trade, onClick }) {
   const timestamp = trade.created_at;
   const risk = trade.risk_level || "medium";
   const exitPrice = trade.exit_price || trade.close_price;
+  const isOpen = trade.status === "open";
   
   return (
     <div 
-      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all active:scale-[0.99] ${
-        isWin ? "bg-emerald-50" : pnl < 0 ? "bg-red-50" : "bg-gray-50"
+      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all hover:shadow-md active:scale-[0.99] ${
+        !isOpen && pnl > 0 ? "bg-emerald-50 hover:bg-emerald-100" : 
+        !isOpen && pnl < 0 ? "bg-red-50 hover:bg-red-100" : 
+        "bg-gray-50 hover:bg-gray-100"
       }`}
       onClick={() => onClick(trade)}
     >
@@ -297,31 +304,232 @@ function TradeRow({ trade, onClick }) {
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRiskColor(risk)}`}>
             {risk}
           </span>
-          {trade.status === "open" && (
+          <span className="text-[9px] text-gray-400">{bot}</span>
+          {isOpen && (
             <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">OPEN</span>
           )}
         </div>
         <div className="text-[10px] text-gray-400 mt-0.5">
-          {timeAgo(timestamp)} • {bot}
+          {timeAgo(timestamp)}
         </div>
         <div className="text-[10px] text-gray-500 mt-0.5">
           Entry: {formatCurrency(trade.price || 0)}
           {exitPrice && ` → Exit: ${formatCurrency(exitPrice)}`}
         </div>
         {trade.entry_reason && (
-          <div className="text-[9px] text-gray-400 mt-0.5 truncate">
+          <div className="text-[9px] text-gray-400 mt-0.5 truncate max-w-[200px]">
             {trade.entry_reason}
           </div>
         )}
       </div>
       <div className="text-right shrink-0 ml-2">
-        <div className={`font-semibold text-sm ${isWin ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
-          {formatCurrencySigned(pnl)}
+        {!isOpen ? (
+          <>
+            <div className={`font-semibold text-sm ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
+              {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(trade.price || 0)}
+            </div>
+            <div className={`text-[11px] font-medium ${pnlPercent > 0 ? "text-emerald-500" : pnlPercent < 0 ? "text-red-500" : "text-gray-400"}`}>
+              {formatPercent(pnlPercent)}
+            </div>
+          </>
+        ) : (
+          <div className="font-semibold text-sm text-blue-600">Open</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Notable Trades by Bot Component
+function NotableTradesByBot({ trades, onTradeClick }) {
+  const [sortBy, setSortBy] = useState("pnl");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [selectedBot, setSelectedBot] = useState("all");
+  
+  // Filter closed trades with non-zero P&L
+  const closedTrades = trades.filter(trade => {
+    const pnl = trade?.pnl_usd || trade?.pnl || 0;
+    return trade?.status !== "open" && pnl !== 0;
+  });
+
+  // Group by bot
+  const tradesByBot = closedTrades.reduce((acc, trade) => {
+    const botName = trade?.bot || trade?.source || "Other Bot";
+    if (!acc[botName]) {
+      acc[botName] = [];
+    }
+    acc[botName].push(trade);
+    return acc;
+  }, {});
+
+  const botNames = ["all", ...Object.keys(tradesByBot).sort()];
+  
+  const getSortedTrades = useCallback((botTrades) => {
+    return [...botTrades].sort((a, b) => {
+      let aVal, bVal;
+      switch(sortBy) {
+        case "pnl":
+          aVal = Math.abs(a.pnl_usd || a.pnl || 0);
+          bVal = Math.abs(b.pnl_usd || b.pnl || 0);
+          break;
+        case "percent":
+          aVal = Math.abs(a.pnl_percent || a.pnl_percentage || 0);
+          bVal = Math.abs(b.pnl_percent || b.pnl_percentage || 0);
+          break;
+        case "date":
+          aVal = new Date(a.created_at).getTime();
+          bVal = new Date(b.created_at).getTime();
+          break;
+        default:
+          aVal = (a.pnl_usd || a.pnl || 0);
+          bVal = (b.pnl_usd || b.pnl || 0);
+      }
+      if (sortOrder === "desc") return bVal - aVal;
+      return aVal - bVal;
+    });
+  }, [sortBy, sortOrder]);
+
+  const filteredBots = selectedBot === "all" 
+    ? Object.entries(tradesByBot)
+    : Object.entries(tradesByBot).filter(([name]) => name === selectedBot);
+
+  if (closedTrades.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl">
+        <div className="text-4xl mb-3">🤖</div>
+        <p className="text-sm">No notable trades yet</p>
+        <p className="text-xs mt-2">Complete some trades to see top performers</p>
+      </div>
+    );
+  }
+
+  const sortOptions = [
+    { value: "pnl", label: "💰 By P&L", icon: "💰" },
+    { value: "percent", label: "📊 By % Return", icon: "📊" },
+    { value: "date", label: "📅 By Date", icon: "📅" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Sort Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-gray-200">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Sort by:</span>
+          <div className="flex gap-1">
+            {sortOptions.map(option => (
+              <button
+                key={option.value}
+                onClick={() => {
+                  if (sortBy === option.value) {
+                    setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+                  } else {
+                    setSortBy(option.value);
+                    setSortOrder("desc");
+                  }
+                }}
+                className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all flex items-center gap-1 ${
+                  sortBy === option.value 
+                    ? "bg-indigo-600 text-white" 
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                <span>{option.icon}</span>
+                <span>{option.label}</span>
+                {sortBy === option.value && (
+                  <span className="text-[10px]">{sortOrder === "desc" ? "↓" : "↑"}</span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className={`text-[11px] font-medium ${pnlPercent > 0 ? "text-emerald-500" : pnlPercent < 0 ? "text-red-500" : "text-gray-400"}`}>
-          {formatPercent(pnlPercent)}
+        
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Bot:</span>
+          <select
+            value={selectedBot}
+            onChange={(e) => setSelectedBot(e.target.value)}
+            className="px-2 py-1 rounded-lg text-[10px] font-medium bg-gray-100 border-none focus:ring-2 focus:ring-indigo-500"
+          >
+            {botNames.map(name => (
+              <option key={name} value={name}>
+                {name === "all" ? "🤖 All Bots" : `${getBotIcon(name)} ${name}`}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+
+      {filteredBots.map(([botName, botTrades]) => {
+        const sortedTrades = getSortedTrades(botTrades);
+        const totalPnL = botTrades.reduce((sum, t) => sum + (t.pnl_usd || t.pnl || 0), 0);
+        const wins = botTrades.filter(t => (t.pnl_usd || t.pnl || 0) > 0).length;
+        const winRate = botTrades.length > 0 ? (wins / botTrades.length * 100) : 0;
+        
+        return (
+          <div key={botName} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{getBotIcon(botName)}</span>
+                <div>
+                  <h3 className="font-bold text-base text-gray-900">{botName}</h3>
+                  <p className="text-[10px] text-gray-500">
+                    {botTrades.length} trades • {wins}W / {botTrades.length - wins}L • {winRate.toFixed(1)}% win rate
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className={`text-lg font-bold ${totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {formatCurrencySigned(totalPnL)}
+                </div>
+                <div className="text-[9px] text-gray-400">Total P&L</div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-[11px] font-semibold text-gray-600 mb-2">🏆 Notable Trades</h4>
+              {sortedTrades.slice(0, 5).map((trade, idx) => {
+                const pnl = trade.pnl_usd || trade.pnl || 0;
+                const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
+                const isWin = pnl > 0;
+                const exitPrice = trade.exit_price || trade.close_price;
+                return (
+                  <div 
+                    key={idx}
+                    className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all hover:scale-[1.01] ${
+                      isWin ? "bg-emerald-50 hover:bg-emerald-100" : "bg-red-50 hover:bg-red-100"
+                    }`}
+                    onClick={() => onTradeClick(trade)}
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-sm">{getBotIcon(botName)}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="font-semibold text-xs text-gray-900">{trade.symbol}</span>
+                          <span className={`text-[9px] px-1 py-0.5 rounded-full ${trade.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                            {trade.side?.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-[9px] text-gray-400">
+                          {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
+                          {exitPrice && ` → Exit: ${formatCurrency(exitPrice)}`}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <div className={`text-xs font-bold ${isWin ? "text-emerald-600" : "text-red-600"}`}>
+                        {formatCurrencySigned(pnl)}
+                      </div>
+                      <div className={`text-[10px] ${isWin ? "text-emerald-500" : "text-red-500"}`}>
+                        {formatPercent(pnlPercent)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -717,9 +925,6 @@ export default function PublicDashboard() {
           <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} trades tracked • Real-time updates</p>
         </div>
 
-        {/* Hedge Fund Dashboard */}
-        <HedgeFundDashboard analytics={summary} />
-
         {/* Performance Chart */}
         {pnlHistory.length > 0 && (
           <div className="mb-5 bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
@@ -732,7 +937,7 @@ export default function PublicDashboard() {
                 ⓘ
               </button>
             </div>
-            <div className="h-56">
+            <div className="h-64">
               <PerformanceChart pnlHistory={pnlHistory} />
             </div>
             <p className="text-center text-[9px] text-gray-400 mt-2">Daily P&L (bars) and Cumulative (line)</p>
@@ -769,6 +974,21 @@ export default function PublicDashboard() {
             icon="⚖️" 
             color="blue"
             onClick={() => setShowMetricDefinitions(true)}
+          />
+        </div>
+
+        {/* Notable Trades by Bot */}
+        <div className="mb-5">
+          <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
+            <span>🤖</span>
+            Bot Performance & Notable Trades
+            <span className="text-[10px] font-normal text-gray-400 ml-1">
+              Sort and filter by bot
+            </span>
+          </h2>
+          <NotableTradesByBot 
+            trades={allTrades}
+            onTradeClick={setSelectedTrade}
           />
         </div>
 
