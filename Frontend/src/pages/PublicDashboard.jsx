@@ -91,7 +91,7 @@ function getBotIcon(botName) {
   return "🤖";
 }
 
-// Fixed Performance Chart with proper scaling
+// Performance Chart
 function PerformanceChart({ pnlHistory = [] }) {
   const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
   const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
@@ -112,15 +112,6 @@ function PerformanceChart({ pnlHistory = [] }) {
     cumulative += v;
     return cumulative;
   });
-
-  // Find the max values for better scaling
-  const maxDaily = Math.max(...values, 0);
-  const maxCumulative = Math.max(...cumulativeValues, 0);
-  const minDaily = Math.min(...values, 0);
-  
-  // Calculate appropriate step sizes
-  const dailyStepSize = Math.ceil(maxDaily / 10);
-  const cumulativeStepSize = Math.ceil(maxCumulative / 10);
 
   const chartData = {
     labels: labels,
@@ -145,11 +136,10 @@ function PerformanceChart({ pnlHistory = [] }) {
         borderColor: "#8b5cf6",
         backgroundColor: "rgba(139, 92, 246, 0.1)",
         borderWidth: 3,
-        pointRadius: 4,
+        pointRadius: 3,
         pointBackgroundColor: "#8b5cf6",
         pointBorderColor: "white",
         pointBorderWidth: 1,
-        pointHoverRadius: 6,
         fill: true,
         tension: 0.3,
         yAxisID: "y1",
@@ -161,33 +151,16 @@ function PerformanceChart({ pnlHistory = [] }) {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    interaction: {
-      mode: "index",
-      intersect: false,
-    },
+    interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: {
-        position: "top",
-        labels: {
-          boxWidth: 12,
-          font: { size: 11, weight: '500' },
-          usePointStyle: true,
-          padding: 15,
-        },
-      },
+      legend: { position: "top", labels: { boxWidth: 10, font: { size: 10 } } },
       tooltip: {
-        backgroundColor: "rgba(0,0,0,0.85)",
-        titleColor: "#fff",
-        bodyColor: "#e5e7eb",
-        padding: 10,
-        cornerRadius: 8,
         callbacks: {
           label: (context) => {
-            const rawValue = context.raw;
             if (context.dataset.label === "Daily P&L") {
-              return `📊 Daily: ${formatCurrencySigned(rawValue)}`;
+              return `Daily: ${formatCurrencySigned(context.raw)}`;
             }
-            return `📈 Cumulative: ${formatCurrencySigned(rawValue)}`;
+            return `Cumulative: ${formatCurrencySigned(context.raw)}`;
           }
         }
       }
@@ -195,72 +168,24 @@ function PerformanceChart({ pnlHistory = [] }) {
     scales: {
       y: {
         position: "left",
-        grid: { 
-          color: "rgba(0,0,0,0.05)",
-          drawBorder: false,
-        },
-        ticks: { 
-          callback: (value) => formatCurrency(value),
-          font: { size: 10 },
-          stepSize: dailyStepSize > 0 ? dailyStepSize : 5000,
-        },
-        title: { 
-          display: true, 
-          text: "Daily P&L", 
-          color: "#6b7280", 
-          font: { size: 11, weight: '500' } 
-        }
+        grid: { color: "rgba(0,0,0,0.05)" },
+        ticks: { callback: (value) => formatCurrency(value), font: { size: 10 } },
+        title: { display: false }
       },
       y1: {
         position: "right",
         grid: { display: false },
-        ticks: { 
-          callback: (value) => formatCurrency(value),
-          font: { size: 10 },
-          color: "#8b5cf6",
-          stepSize: cumulativeStepSize > 0 ? cumulativeStepSize : 50000,
-        },
-        title: { 
-          display: true, 
-          text: "Cumulative P&L", 
-          color: "#8b5cf6", 
-          font: { size: 11, weight: '500' } 
-        }
+        ticks: { callback: (value) => formatCurrency(value), font: { size: 10 }, color: "#8b5cf6" },
+        title: { display: false }
       },
-      x: { 
-        grid: { display: false },
-        ticks: { 
-          font: { size: 10 },
-          maxRotation: 45,
-          autoSkip: true,
-          maxTicksLimit: 10,
-        },
-        title: {
-          display: true,
-          text: "Date",
-          color: "#6b7280",
-          font: { size: 10 }
-        }
-      }
-    },
-    elements: {
-      bar: {
-        borderRadius: 4,
-      },
-      line: {
-        tension: 0.3,
-      },
-      point: {
-        radius: 3,
-        hoverRadius: 6,
-      }
+      x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } }
     }
   };
 
   return <Bar data={chartData} options={options} />;
 }
 
-// Trade Row Component with Percent Return
+// Trade Row Component
 function TradeRow({ trade, onClick }) {
   const pnl = trade.pnl_usd || 0;
   const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
@@ -334,13 +259,17 @@ function NotableTradesByBot({ trades, onTradeClick }) {
   const [sortOrder, setSortOrder] = useState("desc");
   const [selectedBot, setSelectedBot] = useState("all");
   
+  // Filter closed trades with non-zero P&L
   const closedTrades = trades.filter(trade => {
     const pnl = trade?.pnl_usd || trade?.pnl || 0;
     return trade?.status !== "open" && pnl !== 0;
   });
 
+  // Group by bot - EXCLUDING "spot" bot
   const tradesByBot = closedTrades.reduce((acc, trade) => {
     const botName = trade?.bot || trade?.source || "Other Bot";
+    // Skip the spot bot entirely
+    if (botName === "spot") return acc;
     if (!acc[botName]) {
       acc[botName] = [];
     }
@@ -962,7 +891,7 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Notable Trades by Bot */}
+        {/* Notable Trades by Bot - Excluding Spot Bot */}
         <div className="mb-5">
           <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
             <span>🤖</span>
