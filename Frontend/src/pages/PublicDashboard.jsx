@@ -82,13 +82,23 @@ function getRiskColor(risk) {
 function getBotIcon(botName) {
   const name = (botName || "").toLowerCase();
   if (name.includes("stock")) return "📈";
-  if (name.includes("futures")) return "📊";
-  if (name.includes("sniper")) return "🦄";
-  if (name.includes("spot")) return "💎";
-  if (name.includes("okx")) return "🔷";
+  if (name.includes("crypto")) return "🪙";
+  if (name.includes("sniper")) return "🎯";
   if (name.includes("momentum")) return "🚀";
+  if (name.includes("spot")) return "💎";
+  if (name.includes("futures")) return "📊";
+  if (name.includes("okx")) return "🔷";
   if (name.includes("arbitrage")) return "⚡";
   return "🤖";
+}
+
+function getBotColor(botName) {
+  const name = (botName || "").toLowerCase();
+  if (name.includes("stock")) return "from-blue-500 to-blue-600";
+  if (name.includes("crypto")) return "from-purple-500 to-purple-600";
+  if (name.includes("sniper")) return "from-red-500 to-red-600";
+  if (name.includes("momentum")) return "from-emerald-500 to-emerald-600";
+  return "from-gray-500 to-gray-600";
 }
 
 // Performance Chart
@@ -185,6 +195,124 @@ function PerformanceChart({ pnlHistory = [] }) {
   return <Bar data={chartData} options={options} />;
 }
 
+// Bot Card Component
+function BotCard({ bot, trades, onTradeClick }) {
+  const botTrades = trades.filter(t => (t.bot || t.source || "").toLowerCase() === bot.name.toLowerCase());
+  const closedTrades = botTrades.filter(t => t.status !== "open");
+  const openTrades = botTrades.filter(t => t.status === "open");
+  
+  const totalPnL = closedTrades.reduce((sum, t) => sum + (t.pnl_usd || t.pnl || 0), 0);
+  const wins = closedTrades.filter(t => (t.pnl_usd || t.pnl || 0) > 0).length;
+  const losses = closedTrades.filter(t => (t.pnl_usd || t.pnl || 0) < 0).length;
+  const winRate = closedTrades.length > 0 ? (wins / closedTrades.length * 100) : 0;
+  
+  // Sort by percent return descending for notable trades
+  const notableTrades = [...closedTrades]
+    .sort((a, b) => {
+      const aPercent = Math.abs(a.pnl_percent || a.pnl_percentage || 0);
+      const bPercent = Math.abs(b.pnl_percent || b.pnl_percentage || 0);
+      return bPercent - aPercent;
+    })
+    .slice(0, 5);
+  
+  const bestTrade = notableTrades[0];
+  const bestReturn = bestTrade ? (bestTrade.pnl_percent || bestTrade.pnl_percentage || 0) : 0;
+  
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-full bg-gradient-to-r ${getBotColor(bot.name)} flex items-center justify-center text-white text-xl`}>
+            {getBotIcon(bot.name)}
+          </div>
+          <div>
+            <h3 className="font-bold text-lg text-gray-900">{bot.name}</h3>
+            <p className="text-xs text-gray-500">
+              {botTrades.length} total trades • {wins}W / {losses}L
+            </p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className={`text-xl font-bold ${totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+            {formatCurrencySigned(totalPnL)}
+          </div>
+          <div className="text-xs text-gray-500">Total P&L</div>
+        </div>
+      </div>
+      
+      {/* Stats Grid */}
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        <div className="text-center p-2 bg-gray-50 rounded-lg">
+          <div className="text-lg font-bold text-gray-900">{winRate.toFixed(1)}%</div>
+          <div className="text-[10px] text-gray-500">Win Rate</div>
+        </div>
+        <div className="text-center p-2 bg-gray-50 rounded-lg">
+          <div className="text-lg font-bold text-gray-900">{closedTrades.length}</div>
+          <div className="text-[10px] text-gray-500">Closed</div>
+        </div>
+        <div className="text-center p-2 bg-gray-50 rounded-lg">
+          <div className="text-lg font-bold text-blue-600">{openTrades.length}</div>
+          <div className="text-[10px] text-gray-500">Open</div>
+        </div>
+        <div className="text-center p-2 bg-gray-50 rounded-lg">
+          <div className="text-lg font-bold text-emerald-600">{bestReturn.toFixed(1)}%</div>
+          <div className="text-[10px] text-gray-500">Best Return</div>
+        </div>
+      </div>
+      
+      {/* Notable Trades */}
+      {notableTrades.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
+            🏆 Top Returns
+          </h4>
+          <div className="space-y-2">
+            {notableTrades.map((trade, idx) => {
+              const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
+              const pnl = trade.pnl_usd || trade.pnl || 0;
+              const exitPrice = trade.exit_price || trade.close_price;
+              const isWin = pnl > 0;
+              
+              return (
+                <div 
+                  key={idx}
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all hover:scale-[1.01] ${
+                    isWin ? "bg-emerald-50 hover:bg-emerald-100" : "bg-red-50 hover:bg-red-100"
+                  }`}
+                  onClick={() => onTradeClick(trade)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm text-gray-900">{trade.symbol}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                        trade.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                      }`}>
+                        {trade.side?.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">
+                      {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
+                      {exitPrice && ` → Exit: ${formatCurrency(exitPrice)}`}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <div className={`text-sm font-bold ${isWin ? "text-emerald-600" : "text-red-600"}`}>
+                      {formatPercent(pnlPercent)}
+                    </div>
+                    <div className={`text-[10px] ${isWin ? "text-emerald-500" : "text-red-500"}`}>
+                      {formatCurrencySigned(pnl)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Trade Row Component
 function TradeRow({ trade, onClick }) {
   const pnl = trade.pnl_usd || 0;
@@ -214,10 +342,10 @@ function TradeRow({ trade, onClick }) {
           }`}>
             {side.toUpperCase()}
           </span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRiskColor(risk)}`}>
-            {risk}
+          <span className="text-[9px] text-gray-400 flex items-center gap-0.5">
+            <span>{getBotIcon(bot)}</span>
+            <span>{bot}</span>
           </span>
-          <span className="text-[9px] text-gray-400">{bot}</span>
           {isOpen && (
             <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">OPEN</span>
           )}
@@ -239,212 +367,16 @@ function TradeRow({ trade, onClick }) {
         {!isOpen ? (
           <>
             <div className={`font-semibold text-sm ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
-              {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(trade.price || 0)}
+              {formatPercent(pnlPercent)}
             </div>
             <div className={`text-[11px] font-medium ${pnlPercent > 0 ? "text-emerald-500" : pnlPercent < 0 ? "text-red-500" : "text-gray-400"}`}>
-              {formatPercent(pnlPercent)}
+              {formatCurrencySigned(pnl)}
             </div>
           </>
         ) : (
           <div className="font-semibold text-sm text-blue-600">Open</div>
         )}
       </div>
-    </div>
-  );
-}
-
-// Notable Trades by Bot Component - Sorted by Percent Return
-function NotableTradesByBot({ trades, onTradeClick }) {
-  const [sortBy, setSortBy] = useState("percent");
-  const [sortOrder, setSortOrder] = useState("desc");
-  const [selectedBot, setSelectedBot] = useState("all");
-  
-  // Filter closed trades with non-zero P&L
-  const closedTrades = trades.filter(trade => {
-    const pnl = trade?.pnl_usd || trade?.pnl || 0;
-    return trade?.status !== "open" && pnl !== 0;
-  });
-
-  // Group by bot - EXCLUDING "spot" bot
-  const tradesByBot = closedTrades.reduce((acc, trade) => {
-    const botName = trade?.bot || trade?.source || "Other Bot";
-    if (botName === "spot") return acc;
-    if (!acc[botName]) {
-      acc[botName] = [];
-    }
-    acc[botName].push(trade);
-    return acc;
-  }, {});
-
-  const botNames = ["all", ...Object.keys(tradesByBot).sort()];
-  
-  const getSortedTrades = useCallback((botTrades) => {
-    return [...botTrades].sort((a, b) => {
-      let aVal, bVal;
-      switch(sortBy) {
-        case "pnl":
-          aVal = Math.abs(a.pnl_usd || a.pnl || 0);
-          bVal = Math.abs(b.pnl_usd || b.pnl || 0);
-          break;
-        case "percent":
-          aVal = a.pnl_percent || a.pnl_percentage || 0;
-          bVal = b.pnl_percent || b.pnl_percentage || 0;
-          break;
-        case "date":
-          aVal = new Date(a.created_at).getTime();
-          bVal = new Date(b.created_at).getTime();
-          break;
-        default:
-          aVal = (a.pnl_usd || a.pnl || 0);
-          bVal = (b.pnl_usd || b.pnl || 0);
-      }
-      if (sortOrder === "desc") return bVal - aVal;
-      return aVal - bVal;
-    });
-  }, [sortBy, sortOrder]);
-
-  const filteredBots = selectedBot === "all" 
-    ? Object.entries(tradesByBot)
-    : Object.entries(tradesByBot).filter(([name]) => name === selectedBot);
-
-  if (closedTrades.length === 0) {
-    return (
-      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl">
-        <div className="text-4xl mb-3">🤖</div>
-        <p className="text-sm">No notable trades yet</p>
-        <p className="text-xs mt-2">Complete some trades to see top performers</p>
-      </div>
-    );
-  }
-
-  const sortOptions = [
-    { value: "percent", label: "📊 By % Return", icon: "📊" },
-    { value: "pnl", label: "💰 By P&L", icon: "💰" },
-    { value: "date", label: "📅 By Date", icon: "📅" },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-gray-200">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Sort by:</span>
-          <div className="flex gap-1">
-            {sortOptions.map(option => (
-              <button
-                key={option.value}
-                onClick={() => {
-                  if (sortBy === option.value) {
-                    setSortOrder(sortOrder === "desc" ? "asc" : "desc");
-                  } else {
-                    setSortBy(option.value);
-                    setSortOrder("desc");
-                  }
-                }}
-                className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all flex items-center gap-1 ${
-                  sortBy === option.value 
-                    ? "bg-indigo-600 text-white" 
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
-              >
-                <span>{option.icon}</span>
-                <span>{option.label}</span>
-                {sortBy === option.value && (
-                  <span className="text-[10px]">{sortOrder === "desc" ? "↓" : "↑"}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Bot:</span>
-          <select
-            value={selectedBot}
-            onChange={(e) => setSelectedBot(e.target.value)}
-            className="px-2 py-1 rounded-lg text-[10px] font-medium bg-gray-100 border-none focus:ring-2 focus:ring-indigo-500"
-          >
-            {botNames.map(name => (
-              <option key={name} value={name}>
-                {name === "all" ? "🤖 All Bots" : `${getBotIcon(name)} ${name}`}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {filteredBots.map(([botName, botTrades]) => {
-        const sortedTrades = getSortedTrades(botTrades);
-        const totalPnL = botTrades.reduce((sum, t) => sum + (t.pnl_usd || t.pnl || 0), 0);
-        const wins = botTrades.filter(t => (t.pnl_usd || t.pnl || 0) > 0).length;
-        const winRate = botTrades.length > 0 ? (wins / botTrades.length * 100) : 0;
-        
-        return (
-          <div key={botName} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
-            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{getBotIcon(botName)}</span>
-                <div>
-                  <h3 className="font-bold text-base text-gray-900">{botName}</h3>
-                  <p className="text-[10px] text-gray-500">
-                    {botTrades.length} trades • {wins}W / {botTrades.length - wins}L • {winRate.toFixed(1)}% win rate
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className={`text-lg font-bold ${totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {formatCurrencySigned(totalPnL)}
-                </div>
-                <div className="text-[9px] text-gray-400">Total P&L</div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold text-gray-600 mb-2">🏆 Notable Trades (Sorted by % Return)</h4>
-              {sortedTrades.slice(0, 5).map((trade, idx) => {
-                const pnl = trade.pnl_usd || trade.pnl || 0;
-                const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
-                const isWin = pnl > 0;
-                const exitPrice = trade.exit_price || trade.close_price;
-                const rankEmoji = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : "📊";
-                return (
-                  <div 
-                    key={idx}
-                    className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all hover:scale-[1.01] ${
-                      isWin ? "bg-emerald-50 hover:bg-emerald-100" : "bg-red-50 hover:bg-red-100"
-                    }`}
-                    onClick={() => onTradeClick(trade)}
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-sm">{rankEmoji}</span>
-                      <span className="text-sm">{getBotIcon(botName)}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <span className="font-semibold text-xs text-gray-900">{trade.symbol}</span>
-                          <span className={`text-[9px] px-1 py-0.5 rounded-full ${trade.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                            {trade.side?.toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="text-[9px] text-gray-400">
-                          {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
-                          {exitPrice && ` → Exit: ${formatCurrency(exitPrice)}`}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0 ml-2">
-                      <div className={`text-xs font-bold ${isWin ? "text-emerald-600" : "text-red-600"}`}>
-                        {formatCurrencySigned(pnl)}
-                      </div>
-                      <div className={`text-[10px] font-bold ${isWin ? "text-emerald-500" : "text-red-500"}`}>
-                        {formatPercent(pnlPercent)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -500,11 +432,11 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
             </div>
             <div className="text-right">
               <div className={`text-xl font-bold ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
-                {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(entryPrice)}
+                {formatPercent(pnlPercent)}
               </div>
               {pnl !== 0 && (
                 <div className={`text-xs font-semibold ${pnl > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {formatPercent(pnlPercent)} return
+                  {formatCurrencySigned(pnl)} return
                 </div>
               )}
             </div>
@@ -647,9 +579,17 @@ export default function PublicDashboard() {
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [showMetricDefinitions, setShowMetricDefinitions] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
-  const [sortRecentTrades, setSortRecentTrades] = useState("date");
+  const [sortRecentTrades, setSortRecentTrades] = useState("percent"); // Default to percent for highest returns first
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+
+  // Define your 4 bots here
+  const BOTS = [
+    { name: "Stock Sniper", type: "stock" },
+    { name: "Crypto Sniper", type: "crypto" },
+    { name: "Momentum Bot", type: "momentum" },
+    { name: "Futures Bot", type: "futures" }
+  ];
 
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -761,14 +701,15 @@ export default function PublicDashboard() {
   const losses = summary.losses || 0;
   const winRate = summary.win_rate || 0;
 
+  // Sort recent trades by percent return (highest first)
   const sortedRecentTrades = useMemo(() => {
     return [...allTrades].sort((a, b) => {
       if (sortRecentTrades === "pnl") {
         return Math.abs(b.pnl_usd || 0) - Math.abs(a.pnl_usd || 0);
       }
       if (sortRecentTrades === "percent") {
-        const aPercent = a.pnl_percent || a.pnl_percentage || 0;
-        const bPercent = b.pnl_percent || b.pnl_percentage || 0;
+        const aPercent = Math.abs(a.pnl_percent || a.pnl_percentage || 0);
+        const bPercent = Math.abs(b.pnl_percent || b.pnl_percentage || 0);
         return bPercent - aPercent;
       }
       return new Date(b.created_at) - new Date(a.created_at);
@@ -892,22 +833,28 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Notable Trades by Bot - Excluding Spot Bot, Sorted by % Return */}
+        {/* All 4 Bots Section */}
         <div className="mb-5">
           <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
             <span>🤖</span>
-            Bot Performance & Notable Trades
+            All Bots Performance
             <span className="text-[10px] font-normal text-gray-400 ml-1">
-              Sorted by highest % return
+              Live trading data • Highest returns shown
             </span>
           </h2>
-          <NotableTradesByBot 
-            trades={allTrades}
-            onTradeClick={setSelectedTrade}
-          />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {BOTS.map((bot) => (
+              <BotCard 
+                key={bot.name}
+                bot={bot}
+                trades={allTrades}
+                onTradeClick={setSelectedTrade}
+              />
+            ))}
+          </div>
         </div>
 
-        {/* Recent Trades Feed */}
+        {/* Recent Trades Feed - Sorted by Highest Percent Return First */}
         <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
           <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
             <h2 className="font-semibold text-sm flex items-center gap-1">
@@ -933,9 +880,9 @@ export default function PublicDashboard() {
                 onChange={(e) => setSortRecentTrades(e.target.value)}
                 className="px-2 py-1 rounded-lg text-[10px] font-medium bg-gray-100 border-none focus:ring-1 focus:ring-emerald-500"
               >
-                <option value="date">📅 Date</option>
-                <option value="pnl">💰 P&L</option>
-                <option value="percent">📊 % Return</option>
+                <option value="percent">📊 Highest % Return</option>
+                <option value="pnl">💰 Largest P&L</option>
+                <option value="date">📅 Latest First</option>
               </select>
             </div>
           </div>
