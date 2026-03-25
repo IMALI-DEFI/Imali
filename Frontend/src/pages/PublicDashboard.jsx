@@ -33,6 +33,7 @@ ChartJS.register(
 const API_BASE = "https://api.imali-defi.com";
 const WS_BASE = "wss://api.imali-defi.com";
 const BOT_ACTIVITY_HISTORY_URL = `${API_BASE}/api/bot-activity/history`;
+const LIVE_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
 function formatCurrency(value) {
   const n = Number(value) || 0;
@@ -81,24 +82,48 @@ function getRiskColor(risk) {
 
 function getBotIcon(botName) {
   const name = (botName || "").toLowerCase();
-  if (name.includes("stock")) return "📈";
-  if (name.includes("crypto")) return "🪙";
-  if (name.includes("sniper")) return "🎯";
+  if (name.includes("futures") || name.includes("perp")) return "📊";
+  if (name.includes("stock") || name.includes("alpaca")) return "📈";
+  if (name.includes("sniper") || name.includes("dex")) return "🎯";
+  if (name.includes("okx") || name.includes("spot")) return "🔷";
   if (name.includes("momentum")) return "🚀";
-  if (name.includes("spot")) return "💎";
-  if (name.includes("futures")) return "📊";
-  if (name.includes("okx")) return "🔷";
+  if (name.includes("crypto")) return "🪙";
   if (name.includes("arbitrage")) return "⚡";
   return "🤖";
 }
 
 function getBotColor(botName) {
   const name = (botName || "").toLowerCase();
+  if (name.includes("futures")) return "from-purple-500 to-purple-600";
   if (name.includes("stock")) return "from-blue-500 to-blue-600";
-  if (name.includes("crypto")) return "from-purple-500 to-purple-600";
   if (name.includes("sniper")) return "from-red-500 to-red-600";
-  if (name.includes("momentum")) return "from-emerald-500 to-emerald-600";
+  if (name.includes("okx")) return "from-emerald-500 to-emerald-600";
+  if (name.includes("momentum")) return "from-orange-500 to-orange-600";
   return "from-gray-500 to-gray-600";
+}
+
+// Map bot names from database to display names
+function getDisplayBotName(botName) {
+  const name = (botName || "").toLowerCase();
+  
+  if (name.includes("futures")) return "Futures Bot";
+  if (name.includes("stock") || name.includes("alpaca")) return "Stock Bot";
+  if (name.includes("sniper") || name.includes("dex")) return "Sniper Bot";
+  if (name.includes("okx") || name.includes("spot")) return "OKX Spot";
+  if (name.includes("momentum")) return "Momentum Bot";
+  
+  // Default mapping for common names
+  const mapping = {
+    "futures": "Futures Bot",
+    "stocks": "Stock Bot",
+    "sniper": "Sniper Bot",
+    "okx": "OKX Spot",
+    "spot": "OKX Spot",
+    "momentum": "Momentum Bot",
+    "crypto": "Crypto Sniper"
+  };
+  
+  return mapping[name] || botName || "Unknown Bot";
 }
 
 // Performance Chart
@@ -197,7 +222,21 @@ function PerformanceChart({ pnlHistory = [] }) {
 
 // Bot Card Component
 function BotCard({ bot, trades, onTradeClick }) {
-  const botTrades = trades.filter(t => (t.bot || t.source || "").toLowerCase() === bot.name.toLowerCase());
+  // Filter trades for this bot (case insensitive)
+  const botTrades = trades.filter(t => {
+    const tradeBot = (t.bot || t.source || "").toLowerCase();
+    const botName = bot.name.toLowerCase();
+    
+    // Handle different bot name variations
+    if (botName === "futures bot") return tradeBot.includes("futures");
+    if (botName === "stock bot") return tradeBot.includes("stock") || tradeBot.includes("alpaca");
+    if (botName === "sniper bot") return tradeBot.includes("sniper") || tradeBot.includes("dex");
+    if (botName === "okx spot") return tradeBot.includes("okx") || tradeBot.includes("spot");
+    if (botName === "momentum bot") return tradeBot.includes("momentum");
+    
+    return tradeBot === botName;
+  });
+  
   const closedTrades = botTrades.filter(t => t.status !== "open");
   const openTrades = botTrades.filter(t => t.status === "open");
   
@@ -217,6 +256,28 @@ function BotCard({ bot, trades, onTradeClick }) {
   
   const bestTrade = notableTrades[0];
   const bestReturn = bestTrade ? (bestTrade.pnl_percent || bestTrade.pnl_percentage || 0) : 0;
+  
+  if (botTrades.length === 0) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-full bg-gradient-to-r ${getBotColor(bot.name)} flex items-center justify-center text-white text-xl`}>
+              {getBotIcon(bot.name)}
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-gray-900">{bot.name}</h3>
+              <p className="text-xs text-gray-500">No trades yet</p>
+            </div>
+          </div>
+        </div>
+        <div className="text-center py-8 text-gray-400">
+          <div className="text-2xl mb-2">🤖</div>
+          <p className="text-xs">Waiting for first trade...</p>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
@@ -319,7 +380,7 @@ function TradeRow({ trade, onClick }) {
   const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
   const isWin = pnl > 0;
   const side = trade.side || "buy";
-  const bot = trade.bot || "unknown";
+  const bot = getDisplayBotName(trade.bot || trade.source || "unknown");
   const timestamp = trade.created_at;
   const risk = trade.risk_level || "medium";
   const exitPrice = trade.exit_price || trade.close_price;
@@ -389,7 +450,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
   const symbol = trade.symbol || "Unknown";
   const side = trade.side || "buy";
-  const bot = trade.bot || "unknown";
+  const bot = getDisplayBotName(trade.bot || trade.source || "unknown");
   const timestamp = trade.created_at;
   const entryPrice = trade.price || 0;
   const exitPrice = trade.exit_price || trade.close_price;
@@ -573,22 +634,23 @@ export default function PublicDashboard() {
     loading: true,
     error: null,
     lastUpdate: null,
-    wsConnected: false
+    wsConnected: false,
+    botStats: {}
   });
   const [clock, setClock] = useState(new Date());
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [showMetricDefinitions, setShowMetricDefinitions] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
-  const [sortRecentTrades, setSortRecentTrades] = useState("percent"); // Default to percent for highest returns first
+  const [sortRecentTrades, setSortRecentTrades] = useState("percent");
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
 
-  // Define your 4 bots here
+  // Define your 4 bots with proper display names
   const BOTS = [
-    { name: "Stock Sniper", type: "stock" },
-    { name: "Crypto Sniper", type: "crypto" },
-    { name: "Momentum Bot", type: "momentum" },
-    { name: "Futures Bot", type: "futures" }
+    { name: "Futures Bot", type: "futures" },
+    { name: "Stock Bot", type: "stock" },
+    { name: "Sniper Bot", type: "sniper" },
+    { name: "OKX Spot", type: "okx" }
   ];
 
   const connectWebSocket = useCallback(() => {
@@ -612,6 +674,11 @@ export default function PublicDashboard() {
               trades: [message.trade, ...prev.trades],
               summary: message.summary || prev.summary,
               lastUpdate: new Date()
+            }));
+          } else if (message.type === 'bot_stats') {
+            setData(prev => ({
+              ...prev,
+              botStats: message.stats || prev.botStats
             }));
           }
         } catch (err) {
@@ -642,28 +709,39 @@ export default function PublicDashboard() {
         });
         
         if (response.data && response.data.data) {
-          setData({
+          setData(prev => ({
+            ...prev,
             trades: response.data.data.trades || [],
             summary: response.data.data.summary || {},
             pnlHistory: response.data.data.pnl_by_day || [],
             loading: false,
             error: null,
-            lastUpdate: new Date(),
-            wsConnected: false
-          });
+            lastUpdate: new Date()
+          }));
         } else if (response.data && response.data.trades) {
-          setData({
+          setData(prev => ({
+            ...prev,
             trades: response.data.trades || [],
             summary: response.data.summary || {},
             pnlHistory: response.data.pnl_by_day || [],
             loading: false,
             error: null,
-            lastUpdate: new Date(),
-            wsConnected: false
-          });
+            lastUpdate: new Date()
+          }));
         } else {
           setData(prev => ({ ...prev, loading: false, error: "No data received" }));
         }
+        
+        // Fetch live bot stats
+        try {
+          const statsRes = await axios.get(LIVE_STATS_URL, { timeout: 5000 });
+          if (statsRes.data && statsRes.data.data) {
+            setData(prev => ({ ...prev, botStats: statsRes.data.data }));
+          }
+        } catch (e) {
+          console.warn("Failed to fetch live stats:", e);
+        }
+        
         connectWebSocket();
       } catch (error) {
         console.error("❌ Error:", error);
