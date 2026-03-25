@@ -15,7 +15,7 @@ import {
   Legend,
   Filler
 } from "chart.js";
-import { Bar } from "react-chartjs-2";
+import { Bar, Line } from "react-chartjs-2";
 
 // Register Chart.js components
 ChartJS.register(
@@ -179,114 +179,93 @@ function HedgeFundDashboard({ analytics }) {
   );
 }
 
-// Performance Chart Component
+// Performance Chart Component using react-chartjs-2
 function PerformanceChart({ pnlHistory = [] }) {
-  const canvasRef = useRef(null);
-  const chartRef = useRef(null);
+  const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
+  const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
+    const date = new Date(p.date);
+    return `${date.getMonth()+1}/${date.getDate()}`;
+  }) : [];
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  if (values.length === 0) {
+    return (
+      <div className="h-56 flex items-center justify-center text-gray-400">
+        <p className="text-sm">No data available</p>
+      </div>
+    );
+  }
 
-    if (chartRef.current) {
-      chartRef.current.destroy();
-    }
+  let cumulative = 0;
+  const cumulativeValues = values.map(v => {
+    cumulative += v;
+    return cumulative;
+  });
 
-    const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
-    const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
-      const date = new Date(p.date);
-      return `${date.getMonth()+1}/${date.getDate()}`;
-    }) : [];
-
-    if (values.length === 0) {
-      const ctx = canvas.getContext("2d");
-      chartRef.current = new Chart(ctx, {
-        type: "line",
-        data: { labels: ["No Data"], datasets: [{ data: [0] }] },
-        options: { responsive: true, maintainAspectRatio: false }
-      });
-      return;
-    }
-
-    let cumulative = 0;
-    const cumulativeValues = values.map(v => {
-      cumulative += v;
-      return cumulative;
-    });
-
-    const ctx = canvas.getContext("2d");
-    chartRef.current = new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: labels.slice(-30),
-        datasets: [
-          {
-            label: "Daily P&L",
-            data: values.slice(-30),
-            backgroundColor: values.slice(-30).map(v => v >= 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)"),
-            borderColor: values.slice(-30).map(v => v >= 0 ? "#10b981" : "#ef4444"),
-            borderWidth: 1,
-            borderRadius: 6,
-            yAxisID: "y",
-          },
-          {
-            label: "Cumulative P&L",
-            data: cumulativeValues.slice(-30),
-            type: "line",
-            borderColor: "#8b5cf6",
-            backgroundColor: "rgba(139,92,246,0.1)",
-            borderWidth: 3,
-            pointRadius: 3,
-            pointBackgroundColor: "#8b5cf6",
-            pointBorderColor: "white",
-            pointBorderWidth: 1,
-            fill: true,
-            tension: 0.3,
-            yAxisID: "y1",
-          }
-        ]
+  const chartData = {
+    labels: labels.slice(-30),
+    datasets: [
+      {
+        label: "Daily P&L",
+        data: values.slice(-30),
+        backgroundColor: values.slice(-30).map(v => v >= 0 ? "rgba(16,185,129,0.7)" : "rgba(239,68,68,0.7)"),
+        borderColor: values.slice(-30).map(v => v >= 0 ? "#10b981" : "#ef4444"),
+        borderWidth: 1,
+        borderRadius: 6,
+        yAxisID: "y",
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: { position: "top", labels: { boxWidth: 10, font: { size: 10 } } },
-          tooltip: {
-            callbacks: {
-              label: (context) => {
-                if (context.dataset.label === "Daily P&L") {
-                  return `Daily: ${formatCurrencySigned(context.raw)}`;
-                }
-                return `Cumulative: ${formatCurrencySigned(context.raw)}`;
-              }
+      {
+        label: "Cumulative P&L",
+        data: cumulativeValues.slice(-30),
+        type: "line",
+        borderColor: "#8b5cf6",
+        backgroundColor: "rgba(139,92,246,0.1)",
+        borderWidth: 3,
+        pointRadius: 3,
+        pointBackgroundColor: "#8b5cf6",
+        pointBorderColor: "white",
+        pointBorderWidth: 1,
+        fill: true,
+        tension: 0.3,
+        yAxisID: "y1",
+      }
+    ]
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { position: "top", labels: { boxWidth: 10, font: { size: 10 } } },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            if (context.dataset.label === "Daily P&L") {
+              return `Daily: ${formatCurrencySigned(context.raw)}`;
             }
+            return `Cumulative: ${formatCurrencySigned(context.raw)}`;
           }
-        },
-        scales: {
-          y: {
-            position: "left",
-            grid: { color: "rgba(0,0,0,0.05)" },
-            ticks: { callback: (value) => formatCurrency(value), font: { size: 10 } },
-            title: { display: false }
-          },
-          y1: {
-            position: "right",
-            grid: { display: false },
-            ticks: { callback: (value) => formatCurrency(value), font: { size: 10 }, color: "#8b5cf6" },
-            title: { display: false }
-          },
-          x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } }
         }
       }
-    });
+    },
+    scales: {
+      y: {
+        position: "left",
+        grid: { color: "rgba(0,0,0,0.05)" },
+        ticks: { callback: (value) => formatCurrency(value), font: { size: 10 } },
+        title: { display: false }
+      },
+      y1: {
+        position: "right",
+        grid: { display: false },
+        ticks: { callback: (value) => formatCurrency(value), font: { size: 10 }, color: "#8b5cf6" },
+        title: { display: false }
+      },
+      x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } }
+    }
+  };
 
-    return () => {
-      if (chartRef.current) chartRef.current.destroy();
-    };
-  }, [pnlHistory]);
-
-  return <canvas ref={canvasRef} />;
+  return <Bar data={chartData} options={options} />;
 }
 
 // Trade Row Component
