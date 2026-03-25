@@ -13,8 +13,7 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler,
-  TooltipItem
+  Filler
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
@@ -114,14 +113,6 @@ function PerformanceChart({ pnlHistory = [] }) {
     return cumulative;
   });
 
-  // Create gradient for area fill
-  const createGradient = (ctx) => {
-    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-    gradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
-    gradient.addColorStop(1, 'rgba(139, 92, 246, 0.02)');
-    return gradient;
-  };
-
   const chartData = {
     labels: labels.slice(-30),
     datasets: [
@@ -153,7 +144,7 @@ function PerformanceChart({ pnlHistory = [] }) {
         borderColor: "#8b5cf6",
         backgroundColor: (context) => {
           const chart = context.chart;
-          const { ctx } = chart;
+          const ctx = chart.ctx;
           const gradient = ctx.createLinearGradient(0, 0, 0, 300);
           gradient.addColorStop(0, 'rgba(139, 92, 246, 0.3)');
           gradient.addColorStop(1, 'rgba(139, 92, 246, 0.02)');
@@ -197,11 +188,12 @@ function PerformanceChart({ pnlHistory = [] }) {
         padding: 10,
         cornerRadius: 8,
         callbacks: {
-          label: (context: TooltipItem<"bar">) => {
+          label: (context) => {
+            const rawValue = context.raw;
             if (context.dataset.label === "Daily P&L") {
-              return `📊 Daily: ${formatCurrencySigned(context.raw as number)}`;
+              return `📊 Daily: ${formatCurrencySigned(rawValue)}`;
             }
-            return `📈 Cumulative: ${formatCurrencySigned(context.raw as number)}`;
+            return `📈 Cumulative: ${formatCurrencySigned(rawValue)}`;
           }
         }
       }
@@ -214,7 +206,7 @@ function PerformanceChart({ pnlHistory = [] }) {
           drawBorder: false,
         },
         ticks: { 
-          callback: (value) => formatCurrency(value as number),
+          callback: (value) => formatCurrency(value),
           font: { size: 10 },
           stepSize: 5000,
         },
@@ -229,7 +221,7 @@ function PerformanceChart({ pnlHistory = [] }) {
         position: "right",
         grid: { display: false },
         ticks: { 
-          callback: (value) => formatCurrency(value as number),
+          callback: (value) => formatCurrency(value),
           font: { size: 10 },
           color: "#8b5cf6"
         },
