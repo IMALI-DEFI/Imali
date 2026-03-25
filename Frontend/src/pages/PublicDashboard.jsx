@@ -253,9 +253,9 @@ function TradeRow({ trade, onClick }) {
   );
 }
 
-// Notable Trades by Bot Component
+// Notable Trades by Bot Component - Sorted by Percent Return
 function NotableTradesByBot({ trades, onTradeClick }) {
-  const [sortBy, setSortBy] = useState("pnl");
+  const [sortBy, setSortBy] = useState("percent");
   const [sortOrder, setSortOrder] = useState("desc");
   const [selectedBot, setSelectedBot] = useState("all");
   
@@ -268,7 +268,6 @@ function NotableTradesByBot({ trades, onTradeClick }) {
   // Group by bot - EXCLUDING "spot" bot
   const tradesByBot = closedTrades.reduce((acc, trade) => {
     const botName = trade?.bot || trade?.source || "Other Bot";
-    // Skip the spot bot entirely
     if (botName === "spot") return acc;
     if (!acc[botName]) {
       acc[botName] = [];
@@ -288,8 +287,8 @@ function NotableTradesByBot({ trades, onTradeClick }) {
           bVal = Math.abs(b.pnl_usd || b.pnl || 0);
           break;
         case "percent":
-          aVal = Math.abs(a.pnl_percent || a.pnl_percentage || 0);
-          bVal = Math.abs(b.pnl_percent || b.pnl_percentage || 0);
+          aVal = a.pnl_percent || a.pnl_percentage || 0;
+          bVal = b.pnl_percent || b.pnl_percentage || 0;
           break;
         case "date":
           aVal = new Date(a.created_at).getTime();
@@ -319,8 +318,8 @@ function NotableTradesByBot({ trades, onTradeClick }) {
   }
 
   const sortOptions = [
-    { value: "pnl", label: "💰 By P&L", icon: "💰" },
     { value: "percent", label: "📊 By % Return", icon: "📊" },
+    { value: "pnl", label: "💰 By P&L", icon: "💰" },
     { value: "date", label: "📅 By Date", icon: "📅" },
   ];
 
@@ -400,12 +399,13 @@ function NotableTradesByBot({ trades, onTradeClick }) {
             </div>
 
             <div className="space-y-2">
-              <h4 className="text-[11px] font-semibold text-gray-600 mb-2">🏆 Notable Trades</h4>
+              <h4 className="text-[11px] font-semibold text-gray-600 mb-2">🏆 Notable Trades (Sorted by % Return)</h4>
               {sortedTrades.slice(0, 5).map((trade, idx) => {
                 const pnl = trade.pnl_usd || trade.pnl || 0;
                 const pnlPercent = trade.pnl_percent || trade.pnl_percentage || 0;
                 const isWin = pnl > 0;
                 const exitPrice = trade.exit_price || trade.close_price;
+                const rankEmoji = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : "📊";
                 return (
                   <div 
                     key={idx}
@@ -415,6 +415,7 @@ function NotableTradesByBot({ trades, onTradeClick }) {
                     onClick={() => onTradeClick(trade)}
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-sm">{rankEmoji}</span>
                       <span className="text-sm">{getBotIcon(botName)}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1 flex-wrap">
@@ -433,7 +434,7 @@ function NotableTradesByBot({ trades, onTradeClick }) {
                       <div className={`text-xs font-bold ${isWin ? "text-emerald-600" : "text-red-600"}`}>
                         {formatCurrencySigned(pnl)}
                       </div>
-                      <div className={`text-[10px] ${isWin ? "text-emerald-500" : "text-red-500"}`}>
+                      <div className={`text-[10px] font-bold ${isWin ? "text-emerald-500" : "text-red-500"}`}>
                         {formatPercent(pnlPercent)}
                       </div>
                     </div>
@@ -891,13 +892,13 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Notable Trades by Bot - Excluding Spot Bot */}
+        {/* Notable Trades by Bot - Excluding Spot Bot, Sorted by % Return */}
         <div className="mb-5">
           <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
             <span>🤖</span>
             Bot Performance & Notable Trades
             <span className="text-[10px] font-normal text-gray-400 ml-1">
-              Sort and filter by bot
+              Sorted by highest % return
             </span>
           </h2>
           <NotableTradesByBot 
