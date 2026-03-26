@@ -96,7 +96,7 @@ function getBotDisplayName(botName) {
 }
 
 // Performance Chart Component
-function PerformanceChart({ pnlHistory = [] }) {
+function PerformanceChart({ pnlHistory = [], botName = "All Bots" }) {
   const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
   const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
     const date = new Date(p.date);
@@ -105,8 +105,8 @@ function PerformanceChart({ pnlHistory = [] }) {
 
   if (values.length === 0) {
     return (
-      <div className="h-64 flex items-center justify-center text-gray-400">
-        <p className="text-sm">No chart data available</p>
+      <div className="h-48 flex items-center justify-center text-gray-400">
+        <p className="text-xs">No historical data for {botName}</p>
       </div>
     );
   }
@@ -157,7 +157,7 @@ function PerformanceChart({ pnlHistory = [] }) {
     maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: { position: "top", labels: { boxWidth: 10, font: { size: 10 } } },
+      legend: { position: "top", labels: { boxWidth: 10, font: { size: 9 } } },
       tooltip: {
         callbacks: {
           label: (context) => {
@@ -173,24 +173,25 @@ function PerformanceChart({ pnlHistory = [] }) {
       y: {
         position: "left",
         grid: { color: "rgba(0,0,0,0.05)" },
-        ticks: { callback: (value) => formatCurrency(value), font: { size: 10 } },
+        ticks: { callback: (value) => formatCurrency(value), font: { size: 8 } },
         title: { display: false }
       },
       y1: {
         position: "right",
         grid: { display: false },
-        ticks: { callback: (value) => formatCurrency(value), font: { size: 10 }, color: "#8b5cf6" },
+        ticks: { callback: (value) => formatCurrency(value), font: { size: 8 }, color: "#8b5cf6" },
         title: { display: false }
       },
-      x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45 } }
+      x: { grid: { display: false }, ticks: { font: { size: 8 }, maxRotation: 45 } }
     }
   };
 
   return <Bar data={chartData} options={options} />;
 }
 
-// Bot Performance Card Component
+// Bot Performance Card Component with Historical Chart
 function BotPerformanceCard({ bot, stats, onTradeClick }) {
+  const [expanded, setExpanded] = useState(false);
   const hasTrades = stats && (stats.total_trades > 0);
   const winRate = stats?.win_rate || 0;
   const wins = stats?.wins || 0;
@@ -200,6 +201,7 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
   const openTrades = stats?.open_trades || 0;
   const bestReturn = stats?.best_return || 0;
   const showBestReturn = bestReturn > 0;
+  const pnlHistory = stats?.pnl_history || [];
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all">
@@ -211,11 +213,17 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
             <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
           )}
         </div>
-        {hasTrades ? (
+        <div className="flex items-center gap-2">
+          {hasTrades && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs text-indigo-600 hover:text-indigo-700"
+            >
+              {expanded ? "▼ Less" : "▶ Details"}
+            </button>
+          )}
           <span className="text-xs text-gray-500">{totalTrades.toLocaleString()} trades</span>
-        ) : (
-          <span className="text-xs text-gray-400">No trades yet</span>
-        )}
+        </div>
       </div>
 
       {hasTrades ? (
@@ -242,10 +250,19 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
             </div>
           )}
 
+          {expanded && pnlHistory.length > 0 && (
+            <div className="mt-3 mb-3 pt-3 border-t border-gray-100">
+              <div className="text-xs font-semibold text-gray-600 mb-2">📊 Historical Performance</div>
+              <div className="h-40">
+                <PerformanceChart pnlHistory={pnlHistory} botName={bot} />
+              </div>
+            </div>
+          )}
+
           {stats?.top_trades && stats.top_trades.length > 0 && (
             <div className="mt-2 space-y-2">
               <div className="text-xs font-semibold text-gray-600">🏆 Top Returns</div>
-              {stats.top_trades.slice(0, 3).map((trade, idx) => {
+              {stats.top_trades.slice(0, expanded ? 5 : 3).map((trade, idx) => {
                 const pnlPercent = trade.pnl_percent || 0;
                 if (pnlPercent <= 0) return null;
                 return (
@@ -286,7 +303,7 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
 }
 
 // Trade Row Component
-function TradeRow({ trade, onClick }) {
+function TradeRow({ trade, onClick, isNotable = false }) {
   const pnl = trade.pnl_usd || 0;
   const pnlPercent = trade.pnl_percent || 0;
   const side = trade.side || "buy";
@@ -299,6 +316,7 @@ function TradeRow({ trade, onClick }) {
   return (
     <div 
       className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all hover:shadow-md ${
+        isNotable ? "border-2 border-amber-300 bg-amber-50/30" :
         !isOpen && pnl > 0 ? "bg-emerald-50 hover:bg-emerald-100" : 
         !isOpen && pnl < 0 ? "bg-red-50 hover:bg-red-100" : 
         isOpen ? "bg-blue-50 hover:bg-blue-100" : 
@@ -308,6 +326,7 @@ function TradeRow({ trade, onClick }) {
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1 flex-wrap">
+          {isNotable && <span className="text-amber-500 text-xs">🏆</span>}
           <span className="font-semibold text-sm text-gray-900">{trade.symbol || "Unknown"}</span>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
             side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
@@ -482,6 +501,7 @@ function MetricDefinitions({ isOpen, onClose }) {
   const metrics = [
     { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable." },
     { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed." },
+    { name: "Notable Trades", symbol: "🏆", definition: "Top performing trades with highest percentage returns." },
   ];
 
   return (
@@ -517,6 +537,7 @@ export default function PublicDashboard() {
     summary: {},
     pnlHistory: [],
     botStats: {},
+    notableTrades: [],
     loading: true,
     error: null,
     lastUpdate: null
@@ -544,16 +565,16 @@ export default function PublicDashboard() {
         console.log("🤖 Unique bot names in data:", uniqueBotNames);
         console.log("📊 Total trades:", trades.length);
         
-        // Calculate daily P&L for chart
-        const dailyPnL = {};
+        // Calculate overall daily P&L for chart
+        const overallDailyPnL = {};
         trades.forEach(trade => {
           if (trade.created_at && trade.pnl_usd) {
             const date = new Date(trade.created_at).toISOString().split('T')[0];
-            dailyPnL[date] = (dailyPnL[date] || 0) + (trade.pnl_usd || 0);
+            overallDailyPnL[date] = (overallDailyPnL[date] || 0) + (trade.pnl_usd || 0);
           }
         });
         
-        const pnlHistory = Object.entries(dailyPnL).map(([date, daily_pnl]) => ({
+        const overallPnlHistory = Object.entries(overallDailyPnL).map(([date, daily_pnl]) => ({
           date,
           daily_pnl,
           pnl: daily_pnl
@@ -577,7 +598,7 @@ export default function PublicDashboard() {
           count: tradesByBot[bot].length
         })));
         
-        // Calculate stats for each bot
+        // Calculate stats for each bot with historical data
         const botStats = {};
         
         Object.entries(tradesByBot).forEach(([botName, botTrades]) => {
@@ -587,11 +608,26 @@ export default function PublicDashboard() {
           const losses = closedTrades.filter(t => (t.pnl_usd || 0) < 0);
           const winRate = closedTrades.length > 0 ? (wins.length / closedTrades.length) * 100 : 0;
           
+          // Calculate bot-specific daily P&L
+          const botDailyPnL = {};
+          botTrades.forEach(trade => {
+            if (trade.created_at && trade.pnl_usd && trade.status === "closed") {
+              const date = new Date(trade.created_at).toISOString().split('T')[0];
+              botDailyPnL[date] = (botDailyPnL[date] || 0) + (trade.pnl_usd || 0);
+            }
+          });
+          
+          const botPnlHistory = Object.entries(botDailyPnL).map(([date, daily_pnl]) => ({
+            date,
+            daily_pnl,
+            pnl: daily_pnl
+          })).sort((a, b) => new Date(a.date) - new Date(b.date));
+          
           // Get top trades by percent return
           const topTrades = [...closedTrades]
             .filter(t => (t.pnl_percent || 0) > 0)
             .sort((a, b) => (b.pnl_percent || 0) - (a.pnl_percent || 0))
-            .slice(0, 5);
+            .slice(0, 10);
           
           botStats[botName] = {
             total_trades: botTrades.length,
@@ -602,17 +638,26 @@ export default function PublicDashboard() {
             open_trades: openTrades.length,
             best_return: topTrades[0]?.pnl_percent || 0,
             top_trades: topTrades,
+            pnl_history: botPnlHistory,
             status: botTrades.length > 0 ? "active" : "inactive"
           };
         });
         
+        // Calculate notable trades (top 10 across all bots)
+        const allClosedTrades = trades.filter(t => t.status === "closed" && (t.pnl_percent || 0) > 0);
+        const notableTrades = [...allClosedTrades]
+          .sort((a, b) => (b.pnl_percent || 0) - (a.pnl_percent || 0))
+          .slice(0, 10);
+        
         console.log("✅ Bot stats calculated:", Object.keys(botStats).length, "bots");
+        console.log("🏆 Notable trades found:", notableTrades.length);
         
         setData({
           trades: trades,
           summary: summary,
           botStats: botStats,
-          pnlHistory: pnlHistory,
+          pnlHistory: overallPnlHistory,
+          notableTrades: notableTrades,
           loading: false,
           error: null,
           lastUpdate: new Date()
@@ -638,14 +683,14 @@ export default function PublicDashboard() {
   }, [fetchData]);
 
   const allTrades = data.trades || [];
-  const summary = data.summary || {};
   const pnlHistory = data.pnlHistory || [];
   const botStats = data.botStats || {};
+  const notableTrades = data.notableTrades || [];
 
-  const totalTrades = summary.total_trades || allTrades.length;
+  const totalTrades = allTrades.length;
   const closedTradesOnly = allTrades.filter(t => t.status === "closed");
-  const wins = summary.wins || closedTradesOnly.filter(t => (t.pnl_usd || 0) > 0).length;
-  const losses = summary.losses || closedTradesOnly.filter(t => (t.pnl_usd || 0) < 0).length;
+  const wins = closedTradesOnly.filter(t => (t.pnl_usd || 0) > 0).length;
+  const losses = closedTradesOnly.filter(t => (t.pnl_usd || 0) < 0).length;
   const winRate = (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0;
 
   const activeBots = Object.keys(botStats).length;
@@ -677,7 +722,7 @@ export default function PublicDashboard() {
     { id: "closed", label: "Closed", count: allTrades.filter(t => t.status === "closed").length },
   ];
 
-  const bots = Object.keys(botStats).sort();
+  const bots = ['Futures Bot', 'Stock Bot', 'Sniper Bot', 'OKX Spot'];
 
   if (data.loading && !data.lastUpdate) {
     return (
@@ -733,7 +778,7 @@ export default function PublicDashboard() {
         {pnlHistory.length > 0 ? (
           <div className="mb-5 bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="font-semibold text-sm text-gray-900">Performance History</h2>
+              <h2 className="font-semibold text-sm text-gray-900">Overall Performance History</h2>
               <button 
                 onClick={() => setShowMetricDefinitions(true)}
                 className="text-[10px] text-indigo-600"
@@ -742,7 +787,7 @@ export default function PublicDashboard() {
               </button>
             </div>
             <div className="h-64">
-              <PerformanceChart pnlHistory={pnlHistory} />
+              <PerformanceChart pnlHistory={pnlHistory} botName="All Bots" />
             </div>
             <p className="text-center text-[9px] text-gray-400 mt-2">Daily P&L (bars) and Cumulative (line)</p>
           </div>
@@ -772,30 +817,66 @@ export default function PublicDashboard() {
           />
         </div>
 
+        {/* Notable Trades Section */}
+        {notableTrades.length > 0 && (
+          <div className="mb-5">
+            <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
+              <span>🏆</span>
+              Notable Trades
+              <span className="text-[10px] font-normal text-gray-400 ml-1">
+                Top {notableTrades.length} highest percentage returns
+              </span>
+            </h2>
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 shadow-sm">
+              <div className="space-y-2">
+                {notableTrades.slice(0, 5).map((trade, idx) => (
+                  <TradeRow key={trade.id || idx} trade={trade} onClick={setSelectedTrade} isNotable={true} />
+                ))}
+              </div>
+              {notableTrades.length > 5 && (
+                <details className="mt-3">
+                  <summary className="text-xs text-amber-600 cursor-pointer hover:text-amber-700 text-center">
+                    Show {notableTrades.length - 5} more notable trades...
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {notableTrades.slice(5).map((trade, idx) => (
+                      <TradeRow key={trade.id || idx} trade={trade} onClick={setSelectedTrade} isNotable={true} />
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Bot Performance Section */}
         <div className="mb-5">
           <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
             <span>🤖</span>
             All {activeBots} Bots Performance
             <span className="text-[10px] font-normal text-gray-400 ml-1">
-              {activeBots} active bots • Real-time performance
+              Click "Details" to see historical charts • Top returns shown
             </span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {bots.length > 0 ? (
-              bots.map((bot) => (
-                <BotPerformanceCard
-                  key={bot}
-                  bot={bot}
-                  stats={botStats[bot]}
-                  onTradeClick={setSelectedTrade}
-                />
-              ))
-            ) : (
-              <div className="col-span-2 text-center py-8 text-gray-400">
-                No bot data available
-              </div>
-            )}
+            {bots.map((bot) => (
+              <BotPerformanceCard
+                key={bot}
+                bot={bot}
+                stats={botStats[bot] || {
+                  total_trades: 0,
+                  wins: 0,
+                  losses: 0,
+                  win_rate: 0,
+                  closed_trades: 0,
+                  open_trades: 0,
+                  best_return: 0,
+                  top_trades: [],
+                  pnl_history: []
+                }}
+                onTradeClick={setSelectedTrade}
+              />
+            ))}
           </div>
         </div>
 
