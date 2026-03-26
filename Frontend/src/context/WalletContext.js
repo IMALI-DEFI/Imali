@@ -1,5 +1,11 @@
 // src/context/WalletContext.jsx
-import React, { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { ethers } from "ethers";
 
 export const WalletContext = createContext(null);
@@ -9,58 +15,100 @@ export function WalletProvider({ children }) {
   const [chainId, setChainId] = useState(null);
   const [provider, setProvider] = useState(null);
   const [connecting, setConnecting] = useState(false);
+  const [hasWallet, setHasWallet] = useState(false);
 
   useEffect(() => {
-    if (!window.ethereum) return;
+    if (!window.ethereum) {
+      setHasWallet(false);
+      return;
+    }
 
-    const p = new ethers.providers.Web3Provider(window.ethereum);
+    setHasWallet(true);
+
+    const p = new ethers.providers.Web3Provider(window.ethereum, "any");
     setProvider(p);
 
-    window.ethereum
-      .request({ method: "eth_accounts" })
-      .then((accounts) => {
-        if (accounts?.[0]) setAccount(accounts[0]);
-      })
-      .catch(() => {});
+    const initWallet = async () => {
+      try {
+        const [accounts, hexChainId] = await Promise.all([
+          window.ethereum.request({ method: "eth_accounts" }),
+          window.ethereum.request({ method: "eth_chainId" }),
+        ]);
+
+        setAccount(accounts?.[0] || null);
+        setChainId(hexChainId ? parseInt(hexChainId, 16) : null);
+      } catch (err) {
+        console.error("[WalletContext] Failed to initialize wallet:", err);
+      }
+    };
+
+    initWallet();
   }, []);
 
   useEffect(() => {
     if (!window.ethereum?.on) return;
 
-    const onAccounts = (accounts) => setAccount(accounts?.[0] || null);
-    const onChain = (hex) => setChainId(parseInt(hex, 16));
+    const onAccountsChanged = (accounts) => {
+      setAccount(accounts?.[0] || null);
+    };
 
-    window.ethereum.on("accountsChanged", onAccounts);
-    window.ethereum.on("chainChanged", onChain);
+    const onChainChanged = (hexChainId) => {
+      setChainId(hexChainId ? parseInt(hexChainId, 16) : null);
+    };
+
+    window.ethereum.on("accountsChanged", onAccountsChanged);
+    window.ethereum.on("chainChanged", onChainChanged);
 
     return () => {
-      window.ethereum.removeListener("accountsChanged", onAccounts);
-      window.ethereum.removeListener("chainChanged", onChain);
+      if (window.ethereum?.removeListener) {
+        window.ethereum.removeListener("accountsChanged", onAccountsChanged);
+        window.ethereum.removeListener("chainChanged", onChainChanged);
+      }
     };
   }, []);
 
   const connectWallet = useCallback(async () => {
-    if (!window.ethereum) throw new Error("MetaMask not installed");
-    if (connecting) return;
+    if (!window.ethereum) {
+      throw new Error("MetaMask or a compatible wallet is not installed");
+    }
+
+    if (connecting) return null;
 
     setConnecting(true);
-    try {
-      const accounts = await window.ethereum.request({
-        method: "eth_requestAccounts",
-      });
-      setAccount(accounts?.[0] || null);
 
-      const hex = await window.ethereum.request({ method: "eth_chainId" });
-      setChainId(parseInt(hex, 16));
+    try {
+      const p = new ethers.providers.Web3Provider(window.ethereum, "any");
+      setProvider(p);
+
+      const [accounts, hexChainId] = await Promise.all([
+        window.ethereum.request({ method: "eth_requestAccounts" }),
+        window.ethereum.request({ method: "eth_chainId" }),
+      ]);
+
+      const nextAccount = accounts?.[0] || null;
+      const nextChainId = hexChainId ? parseInt(hexChainId, 16) : null;
+
+      setAccount(nextAccount);
+      setChainId(nextChainId);
+
+      return {
+        account: nextAccount,
+        chainId: nextChainId,
+      };
+    } catch (err) {
+      console.error("[WalletContext] connectWallet failed:", err);
+      throw err;
     } finally {
       setConnecting(false);
     }
   }, [connecting]);
 
-  const disconnectWallet = () => {
+  const disconnectWallet = useCallback(() => {
     setAccount(null);
     setChainId(null);
-  };
+  }, []);
+
+  const isConnected = !!account;
 
   const value = useMemo(
     () => ({
@@ -68,25 +116,41 @@ export function WalletProvider({ children }) {
       chainId,
       provider,
       connecting,
+      hasWallet,
+      isConnected,
       connectWallet,
       disconnectWallet,
     }),
-    [account, chainId, provider, connecting, connectWallet]
+    [
+      account,
+      chainId,
+      provider,
+      connecting,
+      hasWallet,
+      isConnected,
+      connectWallet,
+      disconnectWallet,
+    ]
   );
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+  return (
+    <WalletContext.Provider value={value}>
+      {children}
+    </WalletContext.Provider>
+  );
 }
 
 export function useWallet() {
   const ctx = React.useContext(WalletContext);
 
-  // 🚨 crash-proof fallback
   if (!ctx) {
     return {
       account: null,
       chainId: null,
       provider: null,
       connecting: false,
+      hasWallet: typeof window !== "undefined" ? !!window.ethereum : false,
+      isConnected: false,
       connectWallet: async () => {
         throw new Error("WalletProvider not mounted");
       },
