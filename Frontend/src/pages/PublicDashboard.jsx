@@ -79,12 +79,20 @@ function getRiskColor(risk) {
 
 function getBotIcon(botName) {
   const name = (botName || "").toLowerCase();
-  if (name.includes("stock")) return "📈";
-  if (name.includes("futures")) return "📊";
-  if (name.includes("sniper")) return "🎯";
-  if (name.includes("okx")) return "🔷";
-  if (name.includes("spot")) return "💎";
+  if (name.includes("stock") || name.includes("equity")) return "📈";
+  if (name.includes("futures") || name.includes("future") || name.includes("perp")) return "📊";
+  if (name.includes("sniper") || name.includes("snip") || name.includes("dex")) return "🎯";
+  if (name.includes("okx") || name.includes("spot")) return "🔷";
   return "🤖";
+}
+
+function getBotDisplayName(botName) {
+  const name = (botName || "").toLowerCase();
+  if (name.includes("stock") || name.includes("equity")) return "Stock Bot";
+  if (name.includes("futures") || name.includes("future") || name.includes("perp")) return "Futures Bot";
+  if (name.includes("sniper") || name.includes("snip") || name.includes("dex")) return "Sniper Bot";
+  if (name.includes("okx") || name.includes("spot")) return "OKX Spot";
+  return botName || "Unknown Bot";
 }
 
 // Performance Chart Component
@@ -204,7 +212,7 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
           )}
         </div>
         {hasTrades ? (
-          <span className="text-xs text-gray-500">{totalTrades.toLocaleString()} total trades</span>
+          <span className="text-xs text-gray-500">{totalTrades.toLocaleString()} trades</span>
         ) : (
           <span className="text-xs text-gray-400">No trades yet</span>
         )}
@@ -277,12 +285,12 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
   );
 }
 
-// Trade Row Component - Shows ALL trades
+// Trade Row Component
 function TradeRow({ trade, onClick }) {
   const pnl = trade.pnl_usd || 0;
   const pnlPercent = trade.pnl_percent || 0;
   const side = trade.side || "buy";
-  const bot = trade.bot || "unknown";
+  const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
   const score = trade.overall_score || 0;
   const confidence = trade.confidence || 0;
@@ -351,7 +359,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const pnlPercent = trade.pnl_percent || 0;
   const symbol = trade.symbol || "Unknown";
   const side = trade.side || "buy";
-  const bot = trade.bot || "unknown";
+  const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
   const entryPrice = trade.price || 0;
   const exitPrice = trade.exit_price;
@@ -474,7 +482,6 @@ function MetricDefinitions({ isOpen, onClose }) {
   const metrics = [
     { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable." },
     { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed." },
-    { name: "Profit Factor", symbol: "⚖️", definition: "Gross profit divided by gross loss. Above 1.0 is profitable." },
   ];
 
   return (
@@ -514,11 +521,10 @@ export default function PublicDashboard() {
     error: null,
     lastUpdate: null
   });
-  const [clock, setClock] = useState(new Date());
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [showMetricDefinitions, setShowMetricDefinitions] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
-  const [sortRecentTrades, setSortRecentTrades] = useState("percent");
+  const [sortRecentTrades, setSortRecentTrades] = useState("recent");
 
   const fetchData = useCallback(async () => {
     try {
@@ -532,6 +538,11 @@ export default function PublicDashboard() {
       if (response.data && response.data.success) {
         const trades = response.data.trades || [];
         const summary = response.data.summary || {};
+        
+        // Log actual bot names for debugging
+        const uniqueBotNames = [...new Set(trades.map(t => t.bot).filter(Boolean))];
+        console.log("🤖 Unique bot names in data:", uniqueBotNames);
+        console.log("📊 Total trades:", trades.length);
         
         // Calculate daily P&L for chart
         const dailyPnL = {};
@@ -548,52 +559,54 @@ export default function PublicDashboard() {
           pnl: daily_pnl
         })).sort((a, b) => new Date(a.date) - new Date(b.date));
         
-        // Calculate bot-specific stats
-        const botNames = ['futures', 'stocks', 'sniper', 'okx'];
-        const botDisplayNames = {
-          'futures': 'Futures Bot',
-          'stocks': 'Stock Bot',
-          'sniper': 'Sniper Bot',
-          'okx': 'OKX Spot'
-        };
+        // Group trades by bot dynamically
+        const tradesByBot = {};
         
+        trades.forEach(trade => {
+          const botRaw = trade.bot || "unknown";
+          const botDisplay = getBotDisplayName(botRaw);
+          
+          if (!tradesByBot[botDisplay]) {
+            tradesByBot[botDisplay] = [];
+          }
+          tradesByBot[botDisplay].push(trade);
+        });
+        
+        console.log("📊 Trades by bot:", Object.keys(tradesByBot).map(bot => ({
+          bot,
+          count: tradesByBot[bot].length
+        })));
+        
+        // Calculate stats for each bot
         const botStats = {};
         
-        botNames.forEach(bot => {
-          const botTrades = trades.filter(t => 
-            (t.bot || "").toLowerCase() === bot
-          );
+        Object.entries(tradesByBot).forEach(([botName, botTrades]) => {
+          const closedTrades = botTrades.filter(t => t.status === "closed");
+          const openTrades = botTrades.filter(t => t.status === "open");
+          const wins = closedTrades.filter(t => (t.pnl_usd || 0) > 0);
+          const losses = closedTrades.filter(t => (t.pnl_usd || 0) < 0);
+          const winRate = closedTrades.length > 0 ? (wins.length / closedTrades.length) * 100 : 0;
           
-          const botTotalPnL = botTrades.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
-          const botWins = botTrades.filter(t => (t.pnl_usd || 0) > 0).length;
-          const botLosses = botTrades.filter(t => (t.pnl_usd || 0) < 0).length;
-          const botWinRate = botTrades.length > 0 ? (botWins / botTrades.length) * 100 : 0;
-          
-          // Get top trades by percent return (only profitable ones)
-          const topTrades = [...botTrades]
-            .filter(t => t.status !== "open" && (t.pnl_percent || 0) > 0)
+          // Get top trades by percent return
+          const topTrades = [...closedTrades]
+            .filter(t => (t.pnl_percent || 0) > 0)
             .sort((a, b) => (b.pnl_percent || 0) - (a.pnl_percent || 0))
             .slice(0, 5);
           
-          botStats[botDisplayNames[bot]] = {
+          botStats[botName] = {
             total_trades: botTrades.length,
-            wins: botWins,
-            losses: botLosses,
-            win_rate: botWinRate,
-            closed_trades: botTrades.filter(t => t.status === "closed").length,
-            open_trades: botTrades.filter(t => t.status === "open").length,
+            wins: wins.length,
+            losses: losses.length,
+            win_rate: winRate,
+            closed_trades: closedTrades.length,
+            open_trades: openTrades.length,
             best_return: topTrades[0]?.pnl_percent || 0,
             top_trades: topTrades,
             status: botTrades.length > 0 ? "active" : "inactive"
           };
         });
         
-        console.log("📊 Dashboard loaded:", {
-          totalTrades: trades.length,
-          futuresTrades: trades.filter(t => t.bot === 'futures').length,
-          okxTrades: trades.filter(t => t.bot === 'okx').length,
-          sampleTrade: trades[0]
-        });
+        console.log("✅ Bot stats calculated:", Object.keys(botStats).length, "bots");
         
         setData({
           trades: trades,
@@ -624,29 +637,20 @@ export default function PublicDashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  useEffect(() => {
-    const timer = setInterval(() => setClock(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   const allTrades = data.trades || [];
   const summary = data.summary || {};
   const pnlHistory = data.pnlHistory || [];
   const botStats = data.botStats || {};
 
   const totalTrades = summary.total_trades || allTrades.length;
-  const wins = summary.wins || allTrades.filter(t => (t.pnl_usd || 0) > 0).length;
-  const losses = summary.losses || allTrades.filter(t => (t.pnl_usd || 0) < 0).length;
-  const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
-  
-  // Calculate profit factor
-  const grossProfit = allTrades.filter(t => (t.pnl_usd || 0) > 0).reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
-  const grossLoss = Math.abs(allTrades.filter(t => (t.pnl_usd || 0) < 0).reduce((sum, t) => sum + (t.pnl_usd || 0), 0));
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : 0;
+  const closedTradesOnly = allTrades.filter(t => t.status === "closed");
+  const wins = summary.wins || closedTradesOnly.filter(t => (t.pnl_usd || 0) > 0).length;
+  const losses = summary.losses || closedTradesOnly.filter(t => (t.pnl_usd || 0) < 0).length;
+  const winRate = (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0;
 
-  const activeBots = Object.values(botStats).filter(bot => bot.total_trades > 0).length;
+  const activeBots = Object.keys(botStats).length;
 
-  // Sort trades by percent return
+  // Sort trades
   const sortedRecentTrades = useMemo(() => {
     return [...allTrades].sort((a, b) => {
       if (sortRecentTrades === "pnl") {
@@ -673,7 +677,7 @@ export default function PublicDashboard() {
     { id: "closed", label: "Closed", count: allTrades.filter(t => t.status === "closed").length },
   ];
 
-  const bots = ['Futures Bot', 'Stock Bot', 'Sniper Bot', 'OKX Spot'];
+  const bots = Object.keys(botStats).sort();
 
   if (data.loading && !data.lastUpdate) {
     return (
@@ -722,11 +726,11 @@ export default function PublicDashboard() {
           <h1 className="text-2xl font-bold mb-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-transparent">
             Live Trading Dashboard
           </h1>
-          <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} trades tracked • Real-time updates • {activeBots} active bots</p>
+          <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates</p>
         </div>
 
         {/* Performance Chart */}
-        {pnlHistory.length > 0 && (
+        {pnlHistory.length > 0 ? (
           <div className="mb-5 bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-semibold text-sm text-gray-900">Performance History</h2>
@@ -742,10 +746,14 @@ export default function PublicDashboard() {
             </div>
             <p className="text-center text-[9px] text-gray-400 mt-2">Daily P&L (bars) and Cumulative (line)</p>
           </div>
+        ) : (
+          <div className="mb-5 bg-white border border-gray-200 rounded-xl p-8 text-center">
+            <p className="text-gray-400 text-sm">Loading historical performance data...</p>
+          </div>
         )}
 
         {/* Key Metrics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5">
+        <div className="grid grid-cols-2 gap-2 mb-5">
           <MetricCard 
             title="Win Rate" 
             value={`${winRate.toFixed(1)}%`} 
@@ -759,13 +767,7 @@ export default function PublicDashboard() {
             value={formatNumber(totalTrades)} 
             icon="🔄" 
             color="purple"
-            onClick={() => setShowMetricDefinitions(true)}
-          />
-          <MetricCard 
-            title="Profit Factor" 
-            value={profitFactor.toFixed(2)} 
-            icon="⚖️" 
-            color="blue"
+            subtext={`${formatNumber(closedTradesOnly.length)} closed`}
             onClick={() => setShowMetricDefinitions(true)}
           />
         </div>
@@ -776,18 +778,24 @@ export default function PublicDashboard() {
             <span>🤖</span>
             All {activeBots} Bots Performance
             <span className="text-[10px] font-normal text-gray-400 ml-1">
-              Live trading data • {activeBots} active bots • Highest returns shown
+              {activeBots} active bots • Real-time performance
             </span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {bots.map((bot) => (
-              <BotPerformanceCard
-                key={bot}
-                bot={bot}
-                stats={botStats[bot]}
-                onTradeClick={setSelectedTrade}
-              />
-            ))}
+            {bots.length > 0 ? (
+              bots.map((bot) => (
+                <BotPerformanceCard
+                  key={bot}
+                  bot={bot}
+                  stats={botStats[bot]}
+                  onTradeClick={setSelectedTrade}
+                />
+              ))
+            ) : (
+              <div className="col-span-2 text-center py-8 text-gray-400">
+                No bot data available
+              </div>
+            )}
           </div>
         </div>
 
@@ -830,7 +838,7 @@ export default function PublicDashboard() {
           <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
             {filteredTrades.length > 0 ? (
               filteredTrades.map((trade, idx) => (
-                <TradeRow key={idx} trade={trade} onClick={setSelectedTrade} />
+                <TradeRow key={trade.id || idx} trade={trade} onClick={setSelectedTrade} />
               ))
             ) : (
               <div className="p-8 text-center text-gray-400">
