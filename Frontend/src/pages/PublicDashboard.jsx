@@ -83,7 +83,7 @@ function getBotIcon(botName) {
   if (name.includes("futures")) return "📊";
   if (name.includes("sniper")) return "🎯";
   if (name.includes("okx")) return "🔷";
-  if (name.includes("momentum")) return "🚀";
+  if (name.includes("spot")) return "💎";
   return "🤖";
 }
 
@@ -184,7 +184,6 @@ function PerformanceChart({ pnlHistory = [] }) {
 // Bot Performance Card Component
 function BotPerformanceCard({ bot, stats, onTradeClick }) {
   const hasTrades = stats && (stats.total_trades > 0);
-  const totalPnL = stats?.total_pnl || 0;
   const winRate = stats?.win_rate || 0;
   const wins = stats?.wins || 0;
   const losses = stats?.losses || 0;
@@ -215,18 +214,16 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
         <>
           <div className="grid grid-cols-3 gap-3 mb-3">
             <div className="text-center">
-              <div className={`text-lg font-bold ${totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {formatCurrencySigned(totalPnL)}
-              </div>
-              <div className="text-[10px] text-gray-500">Total P&L</div>
-            </div>
-            <div className="text-center">
               <div className="text-lg font-bold text-blue-600">{winRate.toFixed(1)}%</div>
               <div className="text-[10px] text-gray-500">Win Rate</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-purple-600">{closedTrades.toLocaleString()}</div>
               <div className="text-[10px] text-gray-500">Closed</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-bold text-emerald-600">{openTrades.toLocaleString()}</div>
+              <div className="text-[10px] text-gray-500">Open</div>
             </div>
           </div>
           
@@ -280,7 +277,7 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
   );
 }
 
-// Trade Row Component
+// Trade Row Component - Shows ALL trades
 function TradeRow({ trade, onClick }) {
   const pnl = trade.pnl_usd || 0;
   const pnlPercent = trade.pnl_percent || 0;
@@ -291,13 +288,11 @@ function TradeRow({ trade, onClick }) {
   const confidence = trade.confidence || 0;
   const isOpen = trade.status === "open";
   
-  // For closed trades, only show if profitable
-  if (!isOpen && pnl <= 0) return null;
-  
   return (
     <div 
       className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all hover:shadow-md ${
         !isOpen && pnl > 0 ? "bg-emerald-50 hover:bg-emerald-100" : 
+        !isOpen && pnl < 0 ? "bg-red-50 hover:bg-red-100" : 
         isOpen ? "bg-blue-50 hover:bg-blue-100" : 
         "bg-gray-50 hover:bg-gray-100"
       }`}
@@ -331,11 +326,11 @@ function TradeRow({ trade, onClick }) {
       <div className="text-right shrink-0 ml-2">
         {!isOpen ? (
           <>
-            <div className="font-semibold text-sm text-emerald-600">
-              {formatCurrencySigned(pnl)}
+            <div className={`font-semibold text-sm ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
+              {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(trade.price || 0)}
             </div>
-            {pnlPercent > 0 && (
-              <div className="text-[11px] font-medium text-emerald-500">
+            {pnlPercent !== 0 && (
+              <div className={`text-[11px] font-medium ${pnlPercent > 0 ? "text-emerald-500" : "text-red-500"}`}>
                 {formatPercent(pnlPercent)}
               </div>
             )}
@@ -479,7 +474,6 @@ function MetricDefinitions({ isOpen, onClose }) {
   const metrics = [
     { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable." },
     { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed." },
-    { name: "Total P&L", symbol: "💰", definition: "Total profit and loss across all trades." },
     { name: "Profit Factor", symbol: "⚖️", definition: "Gross profit divided by gross loss. Above 1.0 is profitable." },
   ];
 
@@ -583,7 +577,6 @@ export default function PublicDashboard() {
           
           botStats[botDisplayNames[bot]] = {
             total_trades: botTrades.length,
-            total_pnl: botTotalPnL,
             wins: botWins,
             losses: botLosses,
             win_rate: botWinRate,
@@ -593,6 +586,13 @@ export default function PublicDashboard() {
             top_trades: topTrades,
             status: botTrades.length > 0 ? "active" : "inactive"
           };
+        });
+        
+        console.log("📊 Dashboard loaded:", {
+          totalTrades: trades.length,
+          futuresTrades: trades.filter(t => t.bot === 'futures').length,
+          okxTrades: trades.filter(t => t.bot === 'okx').length,
+          sampleTrade: trades[0]
         });
         
         setData({
@@ -635,7 +635,6 @@ export default function PublicDashboard() {
   const botStats = data.botStats || {};
 
   const totalTrades = summary.total_trades || allTrades.length;
-  const totalPnL = summary.total_pnl || allTrades.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
   const wins = summary.wins || allTrades.filter(t => (t.pnl_usd || 0) > 0).length;
   const losses = summary.losses || allTrades.filter(t => (t.pnl_usd || 0) < 0).length;
   const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
@@ -647,15 +646,15 @@ export default function PublicDashboard() {
 
   const activeBots = Object.values(botStats).filter(bot => bot.total_trades > 0).length;
 
-  // Sort trades by percent return (highest positive first)
+  // Sort trades by percent return
   const sortedRecentTrades = useMemo(() => {
     return [...allTrades].sort((a, b) => {
       if (sortRecentTrades === "pnl") {
         return (b.pnl_usd || 0) - (a.pnl_usd || 0);
       }
       if (sortRecentTrades === "percent") {
-        const aPercent = (a.pnl_percent || 0);
-        const bPercent = (b.pnl_percent || 0);
+        const aPercent = Math.abs(a.pnl_percent || 0);
+        const bPercent = Math.abs(b.pnl_percent || 0);
         return bPercent - aPercent;
       }
       return new Date(b.created_at) - new Date(a.created_at);
@@ -746,7 +745,7 @@ export default function PublicDashboard() {
         )}
 
         {/* Key Metrics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5">
           <MetricCard 
             title="Win Rate" 
             value={`${winRate.toFixed(1)}%`} 
@@ -760,13 +759,6 @@ export default function PublicDashboard() {
             value={formatNumber(totalTrades)} 
             icon="🔄" 
             color="purple"
-            onClick={() => setShowMetricDefinitions(true)}
-          />
-          <MetricCard 
-            title="Total P&L" 
-            value={formatCurrencySigned(totalPnL)} 
-            icon="💰" 
-            color={totalPnL >= 0 ? "emerald" : "red"}
             onClick={() => setShowMetricDefinitions(true)}
           />
           <MetricCard 
@@ -799,65 +791,70 @@ export default function PublicDashboard() {
           </div>
         </div>
 
-        {/* Recent Trades Feed */}
-        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-            <h2 className="font-semibold text-sm flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-              Recent Trades
-            </h2>
-            <div className="flex gap-1">
-              <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
-                      activeTab === tab.id ? "bg-emerald-600 text-white" : "text-gray-500"
-                    }`}
-                  >
-                    {tab.label} ({formatNumber(tab.count)})
-                  </button>
-                ))}
+        {/* Recent Trades Section */}
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="border-b border-gray-200 p-3 bg-gray-50">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-sm text-gray-900">Recent Trades</h2>
+                <div className="flex gap-1">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all ${
+                        activeTab === tab.id
+                          ? "bg-indigo-600 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      {tab.label} ({tab.count})
+                    </button>
+                  ))}
+                </div>
               </div>
-              <select
-                value={sortRecentTrades}
-                onChange={(e) => setSortRecentTrades(e.target.value)}
-                className="px-2 py-1 rounded-lg text-[10px] font-medium bg-gray-100 border-none focus:ring-1 focus:ring-emerald-500"
-              >
-                <option value="percent">📊 Highest % Return</option>
-                <option value="date">📅 Date</option>
-                <option value="pnl">💰 P&L</option>
-              </select>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-500">Sort by:</span>
+                <select
+                  value={sortRecentTrades}
+                  onChange={(e) => setSortRecentTrades(e.target.value)}
+                  className="text-[10px] border border-gray-300 rounded-md px-2 py-0.5 bg-white"
+                >
+                  <option value="recent">Most Recent</option>
+                  <option value="percent">Highest % Return</option>
+                  <option value="pnl">Highest $ P&L</option>
+                </select>
+              </div>
             </div>
           </div>
-
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
+          <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
             {filteredTrades.length > 0 ? (
-              filteredTrades.slice(0, 50).map((trade, i) => (
-                <TradeRow key={trade.id || i} trade={trade} onClick={setSelectedTrade} />
+              filteredTrades.map((trade, idx) => (
+                <TradeRow key={idx} trade={trade} onClick={setSelectedTrade} />
               ))
             ) : (
-              <div className="text-center py-8 text-gray-400">
-                <div className="text-2xl mb-1">📭</div>
-                <p className="text-xs">No trades found</p>
+              <div className="p-8 text-center text-gray-400">
+                <p className="text-sm">No trades found</p>
               </div>
             )}
           </div>
         </div>
 
-        <div className="mt-4 text-center text-[10px] text-gray-400 border-t border-gray-200 pt-3">
-          <p>AI-powered signals • Live PostgreSQL-backed trade data • {activeBots} active bots • Transparent performance</p>
-          <div className="flex justify-center gap-3 mt-1">
-            <Link to="/" className="text-indigo-600">Home</Link>
-            <Link to="/pricing" className="text-indigo-600">Pricing</Link>
-            <Link to="/referrals" className="text-amber-600">Referrals</Link>
-          </div>
+        <div className="text-center text-[9px] text-gray-400 mt-4 pb-4">
+          Last updated: {data.lastUpdate?.toLocaleTimeString() || "—"} • Data refreshes every 30 seconds
         </div>
       </main>
 
-      <MetricDefinitions isOpen={showMetricDefinitions} onClose={() => setShowMetricDefinitions(false)} />
-      <TradeDetailModal trade={selectedTrade} isOpen={selectedTrade !== null} onClose={() => setSelectedTrade(null)} />
+      {/* Modals */}
+      <TradeDetailModal
+        trade={selectedTrade}
+        isOpen={!!selectedTrade}
+        onClose={() => setSelectedTrade(null)}
+      />
+      <MetricDefinitions
+        isOpen={showMetricDefinitions}
+        onClose={() => setShowMetricDefinitions(false)}
+      />
     </div>
   );
 }
