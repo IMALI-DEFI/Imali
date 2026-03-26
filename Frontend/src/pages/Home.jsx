@@ -248,13 +248,11 @@ function useLiveActivity() {
       currentStatus: "Loading...",
       activeBots: 0,
       totalTrades: 0,
-      totalPnL: 0,
       wins: 0,
       losses: 0,
       winRate: 0,
       online: false,
       botStatuses: [],
-      profitFactor: 0,
     },
     pnlHistory: [],
     loading: true,
@@ -272,7 +270,6 @@ function useLiveActivity() {
       const payload = tradesRes.data?.data || tradesRes.data || {};
       const trades = payload.trades || [];
       const summary = payload.summary || {};
-      const pnlHistory = payload.pnl_by_day || [];
 
       // Also get bot status
       let botStatuses = [];
@@ -318,7 +315,6 @@ function useLiveActivity() {
       const wins = summary.wins || trades.filter(t => (t.pnl_usd || t.pnl || 0) > 0).length;
       const totalTrades = summary.total_trades || trades.length;
       const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
-      const totalPnL = summary.total_pnl || trades.reduce((sum, t) => sum + (t.pnl_usd || t.pnl || 0), 0);
 
       setActivity({
         trades: trades.slice(0, 20),
@@ -326,15 +322,13 @@ function useLiveActivity() {
           currentStatus: online ? "Live" : "Demo",
           activeBots,
           totalTrades,
-          totalPnL,
           wins,
           losses: summary.losses || totalTrades - wins,
           winRate,
           online,
           botStatuses,
-          profitFactor: summary.profit_factor || 0,
         },
-        pnlHistory,
+        pnlHistory: [],
         loading: false,
         error: null,
       });
@@ -349,7 +343,6 @@ function useLiveActivity() {
           currentStatus: "Live",
           activeBots: 4,
           totalTrades: 0,
-          totalPnL: 0,
           wins: 0,
           losses: 0,
           winRate: 0,
@@ -360,7 +353,6 @@ function useLiveActivity() {
             { label: "Sniper", live: true, details: null },
             { label: "OKX", live: true, details: null },
           ],
-          profitFactor: 0,
         },
       }));
     }
@@ -640,20 +632,10 @@ function LiveActivityWidget({ activity }) {
           valueClassName="text-purple-600"
         />
         <StatMiniCard
-          title="Total P&L"
-          value={formatCurrency(stats.totalPnL)}
-          valueClassName={stats.totalPnL >= 0 ? "text-emerald-600" : "text-red-600"}
-        />
-        <StatMiniCard
           title="Win Rate"
           value={`${stats.winRate.toFixed(1)}%`}
           valueClassName="text-emerald-600"
           subtext={`${stats.wins}W / ${stats.losses}L`}
-        />
-        <StatMiniCard
-          title="Profit Factor"
-          value={stats.profitFactor > 0 ? stats.profitFactor.toFixed(2) : "—"}
-          valueClassName="text-blue-600"
         />
       </div>
 
