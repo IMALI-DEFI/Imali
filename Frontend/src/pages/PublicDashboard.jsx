@@ -16,7 +16,6 @@ import {
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
-// Register Chart.js components
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -79,39 +78,24 @@ function getRiskColor(risk) {
 
 function getBotIcon(botName) {
   const name = (botName || "").toLowerCase();
-  if (name.includes("stock") || name.includes("equity")) return "📈";
-  if (name.includes("futures") || name.includes("future") || name.includes("perp")) return "📊";
-  if (name.includes("sniper") || name.includes("snip") || name.includes("dex")) return "🎯";
+  if (name.includes("stock")) return "📈";
+  if (name.includes("futures")) return "📊";
+  if (name.includes("sniper")) return "🎯";
   if (name.includes("okx") || name.includes("spot")) return "🔷";
   return "🤖";
 }
 
-// Map actual bot names to display names
 function getBotDisplayName(botName) {
   const name = (botName || "").toLowerCase();
-  
-  // Check for stock bots
-  if (name.includes("stock") || name.includes("equity") || name === "stocks") return "Stock Bot";
-  
-  // Check for futures bots
-  if (name.includes("futures") || name.includes("future") || name.includes("perp") || name === "futures") return "Futures Bot";
-  
-  // Check for sniper bots
-  if (name.includes("sniper") || name.includes("snip") || name.includes("dex") || name === "sniper") return "Sniper Bot";
-  
-  // Check for OKX bots
-  if (name.includes("okx") || name.includes("spot") || name === "okx" || name === "okx_spot") return "OKX Spot";
-  
+  if (name === "okx") return "OKX Crypto";
+  if (name === "spot") return "Spot Trading";
+  if (name === "sniper") return "Sniper Bot";
+  if (name === "futures") return "Futures Bot";
+  if (name === "stocks") return "Stock Bot";
+  if (name === "futures_test") return "Futures Test";
+  if (name === "test_bot") return "Test Bot";
+  if (name === "unknown") return "Unknown Bot";
   return botName || "Unknown Bot";
-}
-
-// Get the raw bot name from display name (for filtering)
-function getRawBotName(displayName) {
-  if (displayName === "Futures Bot") return ["futures", "future", "perp"];
-  if (displayName === "Stock Bot") return ["stock", "stocks", "equity"];
-  if (displayName === "Sniper Bot") return ["sniper", "snip", "dex"];
-  if (displayName === "OKX Spot") return ["okx", "okx_spot", "spot"];
-  return [displayName.toLowerCase()];
 }
 
 // Performance Chart Component
@@ -208,7 +192,7 @@ function PerformanceChart({ pnlHistory = [], botName = "All Bots" }) {
   return <Bar data={chartData} options={options} />;
 }
 
-// Bot Performance Card Component with Historical Chart
+// Bot Performance Card Component
 function BotPerformanceCard({ bot, stats, onTradeClick }) {
   const [expanded, setExpanded] = useState(false);
   const hasTrades = stats && (stats.total_trades > 0);
@@ -221,13 +205,14 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
   const bestReturn = stats?.best_return || 0;
   const showBestReturn = bestReturn > 0;
   const pnlHistory = stats?.pnl_history || [];
+  const avgReturn = stats?.avg_return || 0;
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-2xl">{getBotIcon(bot)}</span>
-          <h3 className="font-bold text-gray-900">{bot}</h3>
+          <h3 className="font-bold text-gray-900">{getBotDisplayName(bot)}</h3>
           {hasTrades && (
             <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
           )}
@@ -262,18 +247,26 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
             </div>
           </div>
           
-          {showBestReturn && (
-            <div className="text-center mb-2">
-              <div className="text-xs text-gray-500">Best Return</div>
-              <div className="text-sm font-bold text-green-600">{formatPercent(bestReturn)}</div>
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            {showBestReturn && (
+              <div className="text-center">
+                <div className="text-xs text-gray-500">Best Return</div>
+                <div className="text-sm font-bold text-green-600">{formatPercent(bestReturn)}</div>
+              </div>
+            )}
+            <div className="text-center">
+              <div className="text-xs text-gray-500">Avg Return</div>
+              <div className={`text-sm font-bold ${avgReturn >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {formatPercent(avgReturn)}
+              </div>
             </div>
-          )}
+          </div>
 
           {expanded && pnlHistory.length > 0 && (
             <div className="mt-3 mb-3 pt-3 border-t border-gray-100">
               <div className="text-xs font-semibold text-gray-600 mb-2">📊 Historical Performance</div>
               <div className="h-40">
-                <PerformanceChart pnlHistory={pnlHistory} botName={bot} />
+                <PerformanceChart pnlHistory={pnlHistory} botName={getBotDisplayName(bot)} />
               </div>
             </div>
           )}
@@ -571,7 +564,7 @@ export default function PublicDashboard() {
       console.log("🔄 Fetching trades from PostgreSQL...");
       
       const response = await axios.get(TRADES_URL, {
-        params: { limit: 5000 },
+        params: { limit: 10000 },
         timeout: 15000
       });
 
@@ -579,10 +572,11 @@ export default function PublicDashboard() {
         const trades = response.data.trades || [];
         const summary = response.data.summary || {};
         
-        // Log actual bot names for debugging
-        const uniqueBotNames = [...new Set(trades.map(t => t.bot).filter(Boolean))];
-        console.log("🤖 UNIQUE BOT NAMES IN DATA:", uniqueBotNames);
-        console.log("📊 Total trades:", trades.length);
+        console.log(`📊 Total trades: ${trades.length}`);
+        
+        // Get unique bot names
+        const uniqueBots = [...new Set(trades.map(t => t.bot).filter(Boolean))];
+        console.log("🤖 Unique bots found:", uniqueBots);
         
         // Calculate overall daily P&L for chart
         const overallDailyPnL = {};
@@ -599,45 +593,11 @@ export default function PublicDashboard() {
           pnl: daily_pnl
         })).sort((a, b) => new Date(a.date) - new Date(b.date));
         
-        // Define all possible bot display names we want to show
-        const botDisplayNames = ['Futures Bot', 'Stock Bot', 'Sniper Bot', 'OKX Spot'];
-        
-        // Initialize botStats with all bots
+        // Group trades by bot and calculate stats
         const botStats = {};
-        botDisplayNames.forEach(botName => {
-          botStats[botName] = {
-            total_trades: 0,
-            wins: 0,
-            losses: 0,
-            win_rate: 0,
-            closed_trades: 0,
-            open_trades: 0,
-            best_return: 0,
-            top_trades: [],
-            pnl_history: [],
-            status: "inactive"
-          };
-        });
         
-        // Group trades by actual bot name and map to display names
-        trades.forEach(trade => {
-          const actualBotName = trade.bot || "unknown";
-          const displayName = getBotDisplayName(actualBotName);
-          
-          // Only process if it's one of our target bots
-          if (botStats[displayName]) {
-            if (!botStats[displayName].trades) {
-              botStats[displayName].trades = [];
-            }
-            botStats[displayName].trades.push(trade);
-          } else {
-            console.log(`⚠️ Unknown bot name: "${actualBotName}" mapped to "${displayName}"`);
-          }
-        });
-        
-        // Calculate stats for each bot
-        Object.keys(botStats).forEach(botName => {
-          const botTrades = botStats[botName].trades || [];
+        uniqueBots.forEach(botName => {
+          const botTrades = trades.filter(t => t.bot === botName);
           
           if (botTrades.length > 0) {
             const closedTrades = botTrades.filter(t => t.status === "closed");
@@ -645,6 +605,7 @@ export default function PublicDashboard() {
             const wins = closedTrades.filter(t => (t.pnl_usd || 0) > 0);
             const losses = closedTrades.filter(t => (t.pnl_usd || 0) < 0);
             const winRate = closedTrades.length > 0 ? (wins.length / closedTrades.length) * 100 : 0;
+            const avgReturn = closedTrades.reduce((sum, t) => sum + (t.pnl_percent || 0), 0) / (closedTrades.length || 1);
             
             // Calculate bot-specific daily P&L
             const botDailyPnL = {};
@@ -675,28 +636,23 @@ export default function PublicDashboard() {
               closed_trades: closedTrades.length,
               open_trades: openTrades.length,
               best_return: topTrades[0]?.pnl_percent || 0,
+              avg_return: avgReturn,
               top_trades: topTrades,
               pnl_history: botPnlHistory,
               status: botTrades.length > 0 ? "active" : "inactive"
             };
             
-            console.log(`✅ ${botName}: ${botTrades.length} trades, ${closedTrades.length} closed, ${openTrades.length} open`);
+            console.log(`✅ ${botName}: ${botTrades.length} trades (${closedTrades.length} closed, ${openTrades.length} open), Win Rate: ${winRate.toFixed(1)}%`);
           }
         });
         
-        // Calculate notable trades (top 10 across all bots)
+        // Calculate notable trades (top 20 across all bots)
         const allClosedTrades = trades.filter(t => t.status === "closed" && (t.pnl_percent || 0) > 0);
         const notableTrades = [...allClosedTrades]
           .sort((a, b) => (b.pnl_percent || 0) - (a.pnl_percent || 0))
-          .slice(0, 10);
+          .slice(0, 20);
         
-        console.log("✅ Bot stats calculated:", Object.keys(botStats).length, "bots");
-        console.log("🏆 Notable trades found:", notableTrades.length);
-        console.log("📊 Bot stats summary:", Object.entries(botStats).map(([name, stats]) => ({
-          name,
-          trades: stats.total_trades,
-          hasHistory: stats.pnl_history.length
-        })));
+        console.log(`🏆 Notable trades found: ${notableTrades.length}`);
         
         setData({
           trades: trades,
@@ -739,7 +695,7 @@ export default function PublicDashboard() {
   const losses = closedTradesOnly.filter(t => (t.pnl_usd || 0) < 0).length;
   const winRate = (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0;
 
-  const activeBots = Object.values(botStats).filter(bot => bot.total_trades > 0).length;
+  const activeBots = Object.keys(botStats).length;
 
   // Sort trades
   const sortedRecentTrades = useMemo(() => {
@@ -768,7 +724,8 @@ export default function PublicDashboard() {
     { id: "closed", label: "Closed", count: allTrades.filter(t => t.status === "closed").length },
   ];
 
-  const bots = ['Futures Bot', 'Stock Bot', 'Sniper Bot', 'OKX Spot'];
+  // Get all bot names sorted by trade count
+  const bots = Object.keys(botStats).sort((a, b) => botStats[b].total_trades - botStats[a].total_trades);
 
   if (data.loading && !data.lastUpdate) {
     return (
@@ -909,17 +866,7 @@ export default function PublicDashboard() {
               <BotPerformanceCard
                 key={bot}
                 bot={bot}
-                stats={botStats[bot] || {
-                  total_trades: 0,
-                  wins: 0,
-                  losses: 0,
-                  win_rate: 0,
-                  closed_trades: 0,
-                  open_trades: 0,
-                  best_return: 0,
-                  top_trades: [],
-                  pnl_history: []
-                }}
+                stats={botStats[bot]}
                 onTradeClick={setSelectedTrade}
               />
             ))}
