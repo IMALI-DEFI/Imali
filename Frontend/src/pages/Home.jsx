@@ -33,7 +33,6 @@ ChartJS.register(
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
-// CORRECTED ENDPOINTS - Using working API endpoints
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const PROMO_STATUS_URL = `${API_BASE}/api/promo/status`;
 const PROMO_CLAIM_URL = `${API_BASE}/api/promo/claim`;
@@ -99,6 +98,15 @@ function getBotIcon(botName) {
   if (name.includes("sniper")) return "🎯";
   if (name.includes("okx")) return "🔷";
   return "🤖";
+}
+
+function getBotDisplayName(botName) {
+  const name = (botName || "").toLowerCase();
+  if (name === "okx") return "OKX Spot";
+  if (name === "futures") return "Futures Bot";
+  if (name === "stocks") return "Stock Bot";
+  if (name === "sniper") return "Sniper Bot";
+  return "Bot";
 }
 
 function normalizeBotType(trade) {
@@ -260,7 +268,6 @@ function useLiveActivity() {
 
   const fetchActivity = useCallback(async () => {
     try {
-      // Fetch from public live stats endpoint
       const statsRes = await axios.get(PUBLIC_STATS_URL, {
         timeout: 10000
       });
@@ -270,26 +277,29 @@ function useLiveActivity() {
         const trades = data.recent_trades || [];
         const summary = data.summary || {};
         
-        // Process bot statuses
+        // Process bot statuses - only main bots
         let botStatuses = [];
         let activeBots = 0;
         let online = false;
+        const mainBots = ["okx", "futures", "stocks", "sniper"];
 
         if (data.bots && data.bots.length > 0) {
-          botStatuses = data.bots.map(bot => ({
-            label: bot.name || "Unknown",
-            live: bot.total_trades > 0,
-            details: bot,
-          }));
+          botStatuses = data.bots
+            .filter(bot => mainBots.includes(bot.name))
+            .map(bot => ({
+              label: getBotDisplayName(bot.name),
+              live: bot.total_trades > 0,
+              details: bot,
+            }));
           activeBots = botStatuses.filter(b => b.live).length;
           online = activeBots > 0;
         } else {
           // Fallback to known bots
           botStatuses = [
-            { label: "Futures", live: true, details: null },
-            { label: "Stock", live: true, details: null },
-            { label: "Sniper", live: true, details: null },
-            { label: "OKX", live: true, details: null },
+            { label: "Futures Bot", live: true, details: null },
+            { label: "Stock Bot", live: true, details: null },
+            { label: "Sniper Bot", live: true, details: null },
+            { label: "OKX Spot", live: true, details: null },
           ];
           activeBots = 4;
           online = true;
@@ -334,10 +344,10 @@ function useLiveActivity() {
           winRate: 0,
           online: true,
           botStatuses: [
-            { label: "Futures", live: true, details: null },
-            { label: "Stock", live: true, details: null },
-            { label: "Sniper", live: true, details: null },
-            { label: "OKX", live: true, details: null },
+            { label: "Futures Bot", live: true, details: null },
+            { label: "Stock Bot", live: true, details: null },
+            { label: "Sniper Bot", live: true, details: null },
+            { label: "OKX Spot", live: true, details: null },
           ],
         },
       }));
@@ -674,6 +684,7 @@ function LiveActivityWidget({ activity }) {
             const isBuy = side === "buy" || side === "long";
             const pnlValue = trade?.pnl_usd ?? trade?.pnl ?? null;
             const botType = normalizeBotType(trade);
+            const botDisplay = getBotDisplayName(botType);
 
             return (
               <div
@@ -682,7 +693,7 @@ function LiveActivityWidget({ activity }) {
               >
                 <div className="min-w-0 flex items-center gap-2">
                   <span className="text-sm">
-                    {getBotIcon(botType)}
+                    {getBotIcon(botDisplay)}
                   </span>
 
                   <div className="min-w-0">
@@ -1004,32 +1015,25 @@ export default function Home() {
               and crypto automation with a simpler user experience.
             </p>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                <img
-                  src={StarterNFT}
-                  alt="Starter bot"
-                  className="h-24 w-full object-contain sm:h-28"
-                />
-                <p className="mt-2 text-center text-xs text-gray-600">Starter</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                <span className="text-3xl block mb-2">📊</span>
+                <p className="text-xs font-semibold text-gray-700">Futures Bot</p>
               </div>
 
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                <img
-                  src={ProNFT}
-                  alt="Pro bot"
-                  className="h-24 w-full object-contain sm:h-28"
-                />
-                <p className="mt-2 text-center text-xs text-gray-600">Pro</p>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                <span className="text-3xl block mb-2">📈</span>
+                <p className="text-xs font-semibold text-gray-700">Stock Bot</p>
               </div>
 
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                <img
-                  src={EliteNFT}
-                  alt="Elite bot"
-                  className="h-24 w-full object-contain sm:h-28"
-                />
-                <p className="mt-2 text-center text-xs text-gray-600">Elite</p>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                <span className="text-3xl block mb-2">🎯</span>
+                <p className="text-xs font-semibold text-gray-700">Sniper Bot</p>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                <span className="text-3xl block mb-2">🔷</span>
+                <p className="text-xs font-semibold text-gray-700">OKX Spot</p>
               </div>
             </div>
 
