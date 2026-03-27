@@ -94,80 +94,7 @@ function getBotDisplayName(botName) {
   return botName || "Bot";
 }
 
-// Home Page Style Activity Series Chart
-function ActivitySeriesChart({ trades = [] }) {
-  const series = useMemo(() => {
-    if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
-
-    return trades
-      .slice(0, 7)
-      .reverse()
-      .map((trade, index) => {
-        const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
-        if (usd !== null && Number.isFinite(Number(usd))) {
-          return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
-        }
-        return index + 4;
-      });
-  }, [trades]);
-
-  const chartData = {
-    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    datasets: [
-      {
-        data: series,
-        borderColor: "#10b981",
-        backgroundColor: "rgba(16, 185, 129, 0.18)",
-        fill: true,
-        tension: 0.45,
-        pointRadius: 4,
-        pointHoverRadius: 5,
-        pointBackgroundColor: "#ffffff",
-        pointBorderColor: "#10b981",
-        pointBorderWidth: 2,
-        borderWidth: 3,
-      },
-    ],
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        displayColors: false,
-        backgroundColor: "#111827",
-        titleColor: "#ffffff",
-        bodyColor: "#d1fae5",
-        padding: 10,
-        callbacks: {
-          label: (context) => {
-            return `Activity: ${context.raw.toFixed(1)}`;
-          }
-        }
-      },
-    },
-    scales: {
-      x: {
-        display: true,
-        grid: { display: false },
-        ticks: {
-          color: "#9ca3af",
-          font: { size: 10 },
-        },
-      },
-      y: {
-        display: false,
-        grid: { color: "rgba(229,231,235,0.5)" },
-      },
-    },
-  };
-
-  return <Line data={chartData} options={options} />;
-}
-
-// Daily Activity Chart (Detailed)
+// Daily Activity Chart
 function DailyActivityChart({ trades = [] }) {
   const [chartData, setChartData] = useState({ labels: [], datasets: [] });
 
@@ -288,7 +215,7 @@ function BotPerformanceCard({ bot, stats, allTrades, onTradeClick }) {
   const wins = safeNumber(stats?.wins);
   const losses = safeNumber(stats?.losses);
 
-  // Get all notable trades for this bot - ALL historical trades ranked by highest P&L %
+  // Get ALL notable trades for this bot - ALL historical trades ranked by highest P&L %
   const botTrades = useMemo(() => {
     if (!allTrades || !bot) return [];
     return allTrades
@@ -350,13 +277,13 @@ function BotPerformanceCard({ bot, stats, allTrades, onTradeClick }) {
             <div>
               <div className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-2">
                 <span>🏆</span> Notable Trades (Ranked by Highest % Return)
-                <span className="text-[9px] text-gray-400">All historical trades</span>
+                <span className="text-[9px] text-gray-400">All historical trades - {botTrades.length} winning trades</span>
               </div>
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
                 {botTrades.map((trade, idx) => (
                   <div
                     key={trade.id || idx}
-                    className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 cursor-pointer hover:from-green-100 hover:to-emerald-100 transition-colors border border-green-100"
+                    className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 cursor-pointer hover:from-green-100 hover:to-emerald-100 transition-colors border border-green-200"
                     onClick={(e) => { e.stopPropagation(); onTradeClick(trade); }}
                   >
                     <div className="flex-1 min-w-0">
@@ -367,7 +294,7 @@ function BotPerformanceCard({ bot, stats, allTrades, onTradeClick }) {
                         }`}>
                           {trade.side?.toUpperCase()}
                         </span>
-                        <span className="text-[9px] text-gray-500">#{idx + 1}</span>
+                        <span className="text-[9px] font-semibold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">#{idx + 1}</span>
                       </div>
                       <div className="text-[9px] text-gray-500 mt-0.5">
                         {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
@@ -379,6 +306,9 @@ function BotPerformanceCard({ bot, stats, allTrades, onTradeClick }) {
                     </div>
                   </div>
                 ))}
+              </div>
+              <div className="text-center text-[10px] text-gray-400 mt-3 pt-2 border-t border-gray-200">
+                Showing all {botTrades.length} winning trades sorted by highest % return
               </div>
             </div>
           )}
@@ -719,28 +649,11 @@ export default function PublicDashboard() {
           <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates</p>
         </div>
 
-        {/* Home Page Style Activity Chart */}
-        <div className="mb-5 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="flex items-center gap-2 font-bold text-gray-900">
-              <span className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
-              Bot Activity (7-Day Trend)
-            </h3>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Live Trading Activity
-            </span>
-          </div>
-          <div className="h-40">
-            <ActivitySeriesChart trades={allTrades} />
-          </div>
-          <p className="text-center text-[9px] text-gray-400 mt-2">Activity based on recent trade volume</p>
-        </div>
-
         {/* Daily Activity Chart */}
         <div className="mb-5 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="flex items-center gap-2 font-bold text-gray-900">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
               Daily Trading Activity
             </h3>
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
