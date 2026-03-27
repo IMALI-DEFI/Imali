@@ -1,5 +1,5 @@
 // src/pages/PublicDashboard.jsx
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import {
@@ -25,6 +25,10 @@ ChartJS.register(
 const API_BASE = "https://api.imali-defi.com";
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;
+
+// Cache configuration
+const CACHE_DURATION = 60000; // 1 minute cache
+const REFRESH_INTERVAL = 60000; // 1 minute refresh (instead of 30 seconds)
 
 // Safe number formatting functions
 function safeNumber(value, fallback = 0) {
@@ -183,14 +187,13 @@ function StatMiniCard({ title, value, valueClassName = "text-gray-900", subtext 
 
 // Bot Performance Card - Collapsible with Notable Trades from API
 function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
-  const [expanded, setExpanded] = useState(true); // Expanded by default
+  const [expanded, setExpanded] = useState(true);
   const hasTrades = stats && (stats.total_trades > 0);
   const winRate = safeNumber(stats?.win_rate);
   const totalTrades = safeNumber(stats?.total_trades);
   const wins = safeNumber(stats?.wins);
   const losses = safeNumber(stats?.losses);
 
-  // Get notable trades for this bot from the API data
   const botNotableTrades = notableTrades?.[bot] || [];
 
   if (!hasTrades) return null;
@@ -448,10 +451,31 @@ export default function PublicDashboard() {
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [activeTab, setActiveTab] = useState("all");
   const [sortRecentTrades, setSortRecentTrades] = useState("recent");
+  
+  // Add ref to track if fetch is in progress
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
+  const MIN_FETCH_INTERVAL = 60000; // Minimum 60 seconds between fetches
 
   const fetchData = useCallback(async () => {
+    // Prevent multiple simultaneous fetches
+    if (isFetchingRef.current) {
+      console.log("⏭️ Fetch already in progress, skipping...");
+      return;
+    }
+    
+    // Rate limit - don't fetch more than once per minute
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < MIN_FETCH_INTERVAL && data.lastUpdate) {
+      console.log("⏭️ Rate limited - last fetch was", Math.round((now - lastFetchTimeRef.current) / 1000), "seconds ago");
+      return;
+    }
+    
+    isFetchingRef.current = true;
+    
     try {
       console.log("🔄 Fetching public dashboard data...");
+      lastFetchTimeRef.current = now;
       
       // Fetch both endpoints in parallel
       const [statsResponse, notableResponse] = await Promise.all([
@@ -517,17 +541,20 @@ export default function PublicDashboard() {
       
     } catch (error) {
       console.error("❌ Error fetching data:", error);
+      // Don't clear existing data on error, just show error message
       setData(prev => ({ 
         ...prev, 
-        loading: false, 
         error: error.response?.data?.message || error.message || "Failed to fetch trading data" 
       }));
+    } finally {
+      isFetchingRef.current = false;
     }
-  }, []);
+  }, [data.lastUpdate]);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000);
+    // Increase interval to 60 seconds instead of 30
+    const interval = setInterval(fetchData, REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchData]);
 
@@ -596,7 +623,7 @@ export default function PublicDashboard() {
             <div className="flex items-center gap-2 text-[10px] text-gray-500">
               <span>{formatNumber(totalTrades)} trades tracked</span>
               <span>•</span>
-              <span>Live updates every 30s</span>
+              <span>Live updates every 60s</span>
               <span>•</span>
               <span>{activeBots} active bots</span>
               <Link to="/signup" className="px-2 py-1 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-[10px] font-medium">
@@ -618,7 +645,7 @@ export default function PublicDashboard() {
           <h1 className="text-2xl font-bold mb-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-transparent">
             Trading in Public
           </h1>
-          <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates</p>
+          <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates every 60s</p>
         </div>
 
         {/* Home Page Style Activity Chart (7-day) */}
@@ -725,7 +752,7 @@ export default function PublicDashboard() {
         </div>
 
         <div className="text-center text-[9px] text-gray-400 mt-4 pb-4">
-          Last updated: {data.lastUpdate?.toLocaleTimeString() || "—"} • Data refreshes every 30 seconds
+          Last updated: {data.lastUpdate?.toLocaleTimeString() || "—"} • Data refreshes every 60 seconds
         </div>
       </main>
 
