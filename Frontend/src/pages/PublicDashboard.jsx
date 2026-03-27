@@ -11,7 +11,6 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler,
   Filler
 } from "chart.js";
 import { Line } from "react-chartjs-2";
@@ -211,7 +210,7 @@ function WinLossChart({ trades = [] }) {
   return <Line data={chartData} options={options} />;
 }
 
-// Bot Performance Card Component - Removed average return
+// Bot Performance Card Component
 function BotPerformanceCard({ bot, stats, onTradeClick }) {
   const hasTrades = stats && (stats.total_trades > 0);
   const winRate = safeNumber(stats?.win_rate);
@@ -496,7 +495,6 @@ export default function PublicDashboard() {
         const summary = apiData.summary || {};
         
         // Get all trades - the API returns recent trades only
-        // We need to fetch all trades from another endpoint or accumulate
         const allTrades = [...trades];
         
         console.log(`📊 Total trades: ${summary.total_trades || allTrades.length}`);
@@ -515,7 +513,7 @@ export default function PublicDashboard() {
           const closedTrades = wins + losses;
           const totalPnL = safeNumber(bot.total_pnl);
           
-          // Find best trade for this bot from notable trades
+          // Find best trade for this bot from recent trades
           let bestReturn = 0;
           (apiData.recent_trades || []).forEach(trade => {
             if (trade.bot === bot.name) {
@@ -606,7 +604,6 @@ export default function PublicDashboard() {
   const totalTrades = safeNumber(data.summary.total_trades || allTrades.length);
   const wins = safeNumber(data.summary.wins);
   const losses = safeNumber(data.summary.losses);
-  const winRate = safeNumber(data.summary.win_rate) || (wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0);
   const totalPnL = safeNumber(data.summary.total_pnl);
 
   const activeBots = Object.keys(botStats).length;
