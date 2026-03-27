@@ -6,22 +6,20 @@ import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  BarElement,
-  LineElement,
   PointElement,
+  LineElement,
   Title,
   Tooltip,
   Legend,
   Filler
 } from "chart.js";
-import { Bar } from "react-chartjs-2";
+import { Line } from "react-chartjs-2";
 
 ChartJS.register(
   CategoryScale,
   LinearScale,
-  BarElement,
-  LineElement,
   PointElement,
+  LineElement,
   Title,
   Tooltip,
   Legend,
@@ -98,119 +96,108 @@ function getBotDisplayName(botName) {
   if (name === "sniper") return "Sniper Bot";
   if (name === "futures") return "Futures Bot";
   if (name === "stocks") return "Stock Bot";
-  if (name === "futures_test") return "Futures Test";
-  if (name === "test_bot") return "Test Bot";
-  if (name === "unknown") return "Unknown Bot";
-  return botName || "Unknown Bot";
+  return botName || "Bot";
 }
 
-// Performance Chart Component
-function PerformanceChart({ pnlHistory = [], botName = "All Bots" }) {
-  const values = pnlHistory.length > 0 ? pnlHistory.map(p => safeNumber(p.daily_pnl || p.pnl || 0)) : [];
-  const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
-    const date = new Date(p.date);
-    return `${date.getMonth()+1}/${date.getDate()}`;
-  }) : [];
+// Win Rate Over Time Chart Component
+function WinRateChart({ trades = [] }) {
+  const [chartData, setChartData] = useState({ labels: [], datasets: [] });
 
-  if (values.length === 0) {
-    return (
-      <div className="h-48 flex items-center justify-center text-gray-400">
-        <p className="text-xs">No historical data for {botName}</p>
-      </div>
-    );
-  }
-
-  let cumulative = 0;
-  const cumulativeValues = values.map(v => {
-    cumulative += v;
-    return cumulative;
-  });
-
-  const chartData = {
-    labels: labels,
-    datasets: [
-      {
-        label: "Daily P&L",
-        data: values,
-        type: 'bar',
-        backgroundColor: values.map(v => v >= 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)'),
-        borderColor: values.map(v => v >= 0 ? '#10b981' : '#ef4444'),
-        borderWidth: 1,
-        borderRadius: 4,
-        barPercentage: 0.7,
-        categoryPercentage: 0.8,
-        yAxisID: "y",
-        order: 2,
-      },
-      {
-        label: "Cumulative P&L",
-        data: cumulativeValues,
-        type: 'line',
-        borderColor: "#8b5cf6",
-        backgroundColor: "rgba(139, 92, 246, 0.1)",
-        borderWidth: 3,
-        pointRadius: 3,
-        pointBackgroundColor: "#8b5cf6",
-        pointBorderColor: "white",
-        pointBorderWidth: 1,
-        fill: true,
-        tension: 0.3,
-        yAxisID: "y1",
-        order: 1,
+  useEffect(() => {
+    // Group trades by date and calculate win rate
+    const dailyData = {};
+    
+    trades.forEach(trade => {
+      if (!trade.created_at) return;
+      const date = new Date(trade.created_at).toISOString().split('T')[0];
+      if (!dailyData[date]) {
+        dailyData[date] = { wins: 0, losses: 0 };
       }
-    ]
-  };
+      const pnl = safeNumber(trade.pnl_usd);
+      if (pnl > 0) {
+        dailyData[date].wins++;
+      } else if (pnl < 0) {
+        dailyData[date].losses++;
+      }
+    });
+
+    const dates = Object.keys(dailyData).sort();
+    const winRates = dates.map(date => {
+      const { wins, losses } = dailyData[date];
+      const total = wins + losses;
+      return total > 0 ? (wins / total) * 100 : 0;
+    });
+
+    setChartData({
+      labels: dates.map(d => {
+        const date = new Date(d);
+        return `${date.getMonth()+1}/${date.getDate()}`;
+      }),
+      datasets: [
+        {
+          label: "Win Rate %",
+          data: winRates,
+          borderColor: "#10b981",
+          backgroundColor: "rgba(16, 185, 129, 0.1)",
+          borderWidth: 3,
+          pointRadius: 4,
+          pointBackgroundColor: "#10b981",
+          pointBorderColor: "white",
+          pointBorderWidth: 2,
+          fill: true,
+          tension: 0.3,
+        }
+      ]
+    });
+  }, [trades]);
 
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: { position: "top", labels: { boxWidth: 10, font: { size: 9 } } },
+      legend: { position: "top", labels: { boxWidth: 10, font: { size: 10 } } },
       tooltip: {
         callbacks: {
           label: (context) => {
-            if (context.dataset.label === "Daily P&L") {
-              return `Daily: ${formatCurrencySigned(context.raw)}`;
-            }
-            return `Cumulative: ${formatCurrencySigned(context.raw)}`;
+            return `Win Rate: ${context.raw.toFixed(1)}%`;
           }
         }
       }
     },
     scales: {
       y: {
-        position: "left",
-        grid: { color: "rgba(0,0,0,0.05)" },
-        ticks: { callback: (value) => formatCurrency(value), font: { size: 8 } },
-        title: { display: false }
+        min: 0,
+        max: 100,
+        ticks: { callback: (value) => `${value}%`, font: { size: 10 } },
+        title: { display: true, text: "Win Rate (%)", font: { size: 10 } }
       },
-      y1: {
-        position: "right",
-        grid: { display: false },
-        ticks: { callback: (value) => formatCurrency(value), font: { size: 8 }, color: "#8b5cf6" },
-        title: { display: false }
-      },
-      x: { grid: { display: false }, ticks: { font: { size: 8 }, maxRotation: 45 } }
+      x: {
+        ticks: { font: { size: 9 }, maxRotation: 45 }
+      }
     }
   };
 
-  return <Bar data={chartData} options={options} />;
+  if (winRates?.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center text-gray-400">
+        <p className="text-sm">No win rate data available</p>
+      </div>
+    );
+  }
+
+  return <Line data={chartData} options={options} />;
 }
 
-// Bot Performance Card Component
+// Bot Performance Card Component - Filtered to main bots only
 function BotPerformanceCard({ bot, stats, onTradeClick }) {
-  const [expanded, setExpanded] = useState(false);
   const hasTrades = stats && (stats.total_trades > 0);
   const winRate = safeNumber(stats?.win_rate);
-  const wins = safeNumber(stats?.wins);
-  const losses = safeNumber(stats?.losses);
   const totalTrades = safeNumber(stats?.total_trades);
-  const closedTrades = safeNumber(stats?.closed_trades);
-  const openTrades = safeNumber(stats?.open_trades);
   const bestReturn = safeNumber(stats?.best_return);
-  const showBestReturn = bestReturn > 0;
   const avgReturn = safeNumber(stats?.avg_return);
+
+  // Skip bots with 0 trades
+  if (!hasTrades) return null;
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all">
@@ -218,92 +205,28 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
         <div className="flex items-center gap-2">
           <span className="text-2xl">{getBotIcon(bot)}</span>
           <h3 className="font-bold text-gray-900">{getBotDisplayName(bot)}</h3>
-          {hasTrades && (
-            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          )}
+          <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
         </div>
-        <div className="flex items-center gap-2">
-          {hasTrades && (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="text-xs text-indigo-600 hover:text-indigo-700"
-            >
-              {expanded ? "▼ Less" : "▶ Details"}
-            </button>
-          )}
-          <span className="text-xs text-gray-500">{totalTrades.toLocaleString()} trades</span>
+        <span className="text-xs text-gray-500">{totalTrades.toLocaleString()} trades</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-3">
+        <div className="text-center">
+          <div className="text-xl font-bold text-blue-600">{winRate.toFixed(1)}%</div>
+          <div className="text-[10px] text-gray-500">Win Rate</div>
+        </div>
+        <div className="text-center">
+          <div className={`text-xl font-bold ${avgReturn >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {formatPercent(avgReturn)}
+          </div>
+          <div className="text-[10px] text-gray-500">Avg Return</div>
         </div>
       </div>
 
-      {hasTrades ? (
-        <>
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            <div className="text-center">
-              <div className="text-lg font-bold text-blue-600">{winRate.toFixed(1)}%</div>
-              <div className="text-[10px] text-gray-500">Win Rate</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-purple-600">{closedTrades.toLocaleString()}</div>
-              <div className="text-[10px] text-gray-500">Closed</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-emerald-600">{openTrades.toLocaleString()}</div>
-              <div className="text-[10px] text-gray-500">Open</div>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            {showBestReturn && (
-              <div className="text-center">
-                <div className="text-xs text-gray-500">Best Return</div>
-                <div className="text-sm font-bold text-green-600">{formatPercent(bestReturn)}</div>
-              </div>
-            )}
-            <div className="text-center">
-              <div className="text-xs text-gray-500">Avg Return</div>
-              <div className={`text-sm font-bold ${avgReturn >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {formatPercent(avgReturn)}
-              </div>
-            </div>
-          </div>
-
-          {stats?.top_trades && stats.top_trades.length > 0 && (
-            <div className="mt-2 space-y-2">
-              <div className="text-xs font-semibold text-gray-600">🏆 Top Returns</div>
-              {stats.top_trades.slice(0, expanded ? 5 : 3).map((trade, idx) => {
-                const pnlPercent = safeNumber(trade.pnl_percent);
-                if (pnlPercent <= 0) return null;
-                return (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-2 rounded-lg bg-green-50 cursor-pointer hover:bg-green-100"
-                    onClick={() => onTradeClick(trade)}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-medium">{trade.symbol}</span>
-                        <span className={`text-[9px] px-1 py-0.5 rounded-full ${trade.side === "buy" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
-                          {trade.side?.toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="text-[9px] text-gray-500 mt-0.5">
-                        {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-bold text-green-600">{formatPercent(pnlPercent)}</div>
-                      <div className="text-[10px] text-gray-500">{formatCurrencySigned(trade.pnl_usd || 0)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="py-6 text-center">
-          <div className="text-3xl mb-2 opacity-50">🤖</div>
-          <p className="text-xs text-gray-400">Waiting for first trade...</p>
+      {bestReturn > 0 && (
+        <div className="text-center pt-2 border-t border-gray-100">
+          <div className="text-xs text-gray-500">Best Trade</div>
+          <div className="text-sm font-bold text-green-600">{formatPercent(bestReturn)}</div>
         </div>
       )}
     </div>
@@ -317,8 +240,6 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   const side = trade.side || "buy";
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
-  const score = safeNumber(trade.overall_score);
-  const confidence = safeNumber(trade.confidence);
   const isOpen = trade.status === "open";
   
   return (
@@ -352,11 +273,6 @@ function TradeRow({ trade, onClick, isNotable = false }) {
         <div className="text-[10px] text-gray-500 mt-0.5">
           Entry: {formatCurrency(trade.price || 0)}
         </div>
-        {(score > 0 || confidence > 0) && (
-          <div className="text-[9px] text-gray-400 mt-0.5">
-            Score: {score.toFixed(1)} • Conf: {confidence.toFixed(0)}%
-          </div>
-        )}
       </div>
       <div className="text-right shrink-0 ml-2">
         {!isOpen ? (
@@ -378,7 +294,7 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   );
 }
 
-// Trade Detail Modal (keep as is, but use safeNumber where needed)
+// Trade Detail Modal
 function TradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
 
@@ -392,8 +308,6 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const exitPrice = trade.exit_price ? safeNumber(trade.exit_price) : null;
   const qty = safeNumber(trade.qty);
   const status = trade.status === "open" ? "Open" : "Closed";
-  const score = safeNumber(trade.overall_score);
-  const confidence = safeNumber(trade.confidence);
   const risk = trade.risk_level || "medium";
   const entryReason = trade.entry_reason || "AI detected favorable market conditions";
 
@@ -452,18 +366,6 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
                 {risk.toUpperCase()}
               </div>
             </div>
-            {score > 0 && (
-              <div>
-                <div className="text-gray-500">AI Score</div>
-                <div className="font-semibold text-indigo-600">{score.toFixed(1)} / 100</div>
-              </div>
-            )}
-            {confidence > 0 && (
-              <div>
-                <div className="text-gray-500">Confidence</div>
-                <div className="font-semibold text-purple-600">{confidence.toFixed(0)}%</div>
-              </div>
-            )}
           </div>
 
           <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
@@ -490,7 +392,6 @@ function MetricCard({ title, value, icon, subtext, color = "emerald", onClick })
   };
 
   const displayValue = typeof value === 'number' ? value : safeNumber(value);
-  const displaySubtext = subtext ? subtext : "";
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3 hover:shadow-md transition-all cursor-pointer" onClick={onClick}>
@@ -500,7 +401,7 @@ function MetricCard({ title, value, icon, subtext, color = "emerald", onClick })
           <p className={`text-base sm:text-lg font-bold mt-0.5 ${colorClasses[color]}`}>
             {typeof displayValue === 'number' ? displayValue.toLocaleString() : displayValue}
           </p>
-          {displaySubtext && <p className="text-[9px] text-gray-400 mt-0.5">{displaySubtext}</p>}
+          {subtext && <p className="text-[9px] text-gray-400 mt-0.5">{subtext}</p>}
         </div>
         <div className="text-xl opacity-60">{icon}</div>
       </div>
@@ -514,7 +415,7 @@ function MetricDefinitions({ isOpen, onClose }) {
   const metrics = [
     { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable." },
     { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed." },
-    { name: "Notable Trades", symbol: "🏆", definition: "Top performing trades with highest percentage returns." },
+    { name: "Notable Trades", symbol: "🏆", definition: "Top performing trades with highest percentage returns across all bots." },
   ];
 
   return (
@@ -558,7 +459,7 @@ export default function PublicDashboard() {
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [showMetricDefinitions, setShowMetricDefinitions] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
-  const [sortRecentTrades, setSortRecentTrades] = useState("recent");
+  const [sortRecentTrades, setSortRecentTrades] = useState("percent");
 
   const fetchData = useCallback(async () => {
     try {
@@ -572,26 +473,21 @@ export default function PublicDashboard() {
         const apiData = response.data.data;
         const trades = apiData.recent_trades || [];
         const summary = apiData.summary || {};
-        const pnlHistory = apiData.daily_pnl || [];
         
         console.log(`📊 Total trades: ${summary.total_trades || trades.length}`);
-        console.log(`📊 Daily data points: ${pnlHistory.length}`);
         
-        // Format daily P&L for chart
-        const formattedPnlHistory = pnlHistory.map(day => ({
-          date: day.date,
-          daily_pnl: safeNumber(day.daily_pnl),
-          pnl: safeNumber(day.daily_pnl)
-        })).sort((a, b) => new Date(a.date) - new Date(b.date));
-        
-        // Process bot stats from API data
+        // Process bot stats - filter out bots with 0 trades
         const botStats = {};
+        const mainBots = ["okx", "futures", "stocks", "spot", "sniper"];
+        
         (apiData.bots || []).forEach(bot => {
+          if (!mainBots.includes(bot.name)) return;
           const totalTrades = safeNumber(bot.total_trades);
+          if (totalTrades === 0) return;
+          
           const wins = safeNumber(bot.wins);
           const losses = safeNumber(bot.losses);
           const closedTrades = wins + losses;
-          const openTrades = safeNumber(bot.open_positions);
           const totalPnL = safeNumber(bot.total_pnl);
           
           botStats[bot.name] = {
@@ -599,36 +495,52 @@ export default function PublicDashboard() {
             wins: wins,
             losses: losses,
             win_rate: closedTrades > 0 ? (wins / closedTrades) * 100 : 0,
-            closed_trades: closedTrades,
-            open_trades: openTrades,
             best_return: 0,
-            top_trades: [],
-            pnl_history: [],
             avg_return: totalTrades > 0 ? totalPnL / totalTrades : 0,
-            status: totalTrades > 0 ? "active" : "inactive"
+            top_trades: []
           };
         });
         
-        // Create notable trades from recent trades with positive P&L
-        const notableTrades = trades
-          .filter(t => safeNumber(t.pnl_percent) > 0)
-          .sort((a, b) => safeNumber(b.pnl_percent) - safeNumber(a.pnl_percent))
-          .slice(0, 20);
+        // Create notable trades by bot with highest percent returns
+        const notableByBot = {};
+        trades.forEach(trade => {
+          const pnlPercent = safeNumber(trade.pnl_percent);
+          if (pnlPercent > 0 && trade.bot && mainBots.includes(trade.bot)) {
+            if (!notableByBot[trade.bot]) notableByBot[trade.bot] = [];
+            notableByBot[trade.bot].push({ ...trade, pnl_percent: pnlPercent });
+          }
+        });
+        
+        // Take top 3 from each bot
+        const allNotable = [];
+        Object.keys(notableByBot).forEach(bot => {
+          const topTrades = notableByBot[bot]
+            .sort((a, b) => safeNumber(b.pnl_percent) - safeNumber(a.pnl_percent))
+            .slice(0, 3);
+          topTrades.forEach(trade => {
+            allNotable.push({
+              ...trade,
+              bot_display: getBotDisplayName(bot),
+              bot_icon: getBotIcon(bot)
+            });
+          });
+        });
+        
+        // Sort all notable trades by percent return
+        allNotable.sort((a, b) => safeNumber(b.pnl_percent) - safeNumber(a.pnl_percent));
         
         console.log("✅ Dashboard data loaded:", {
           totalTrades: summary.total_trades,
-          tradesCount: trades.length,
-          dailyData: formattedPnlHistory.length,
           bots: Object.keys(botStats).length,
-          notableTrades: notableTrades.length
+          notableTrades: allNotable.length
         });
         
         setData({
           trades: trades,
           summary: summary,
+          pnlHistory: [],
           botStats: botStats,
-          pnlHistory: formattedPnlHistory,
-          notableTrades: notableTrades,
+          notableTrades: allNotable,
           loading: false,
           error: null,
           lastUpdate: new Date()
@@ -654,7 +566,6 @@ export default function PublicDashboard() {
   }, [fetchData]);
 
   const allTrades = data.trades || [];
-  const pnlHistory = data.pnlHistory || [];
   const botStats = data.botStats || {};
   const notableTrades = data.notableTrades || [];
 
@@ -662,8 +573,9 @@ export default function PublicDashboard() {
   const wins = safeNumber(data.summary.wins);
   const losses = safeNumber(data.summary.losses);
   const winRate = safeNumber(data.summary.win_rate) || (wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0);
+  const totalPnL = safeNumber(data.summary.total_pnl);
 
-  const activeBots = Object.keys(botStats).filter(bot => botStats[bot].total_trades > 0).length;
+  const activeBots = Object.keys(botStats).length;
 
   // Sort trades
   const sortedRecentTrades = useMemo(() => {
@@ -692,8 +604,7 @@ export default function PublicDashboard() {
     { id: "closed", label: "Closed", count: allTrades.filter(t => t.status === "closed").length },
   ];
 
-  // Get all bot names sorted by trade count
-  const bots = Object.keys(botStats).sort((a, b) => botStats[b].total_trades - botStats[a].total_trades);
+  const bots = ["okx", "futures", "stocks", "spot", "sniper"].filter(bot => botStats[bot]?.total_trades > 0);
 
   if (data.loading && !data.lastUpdate) {
     return (
@@ -740,33 +651,27 @@ export default function PublicDashboard() {
 
         <div className="text-center mb-4">
           <h1 className="text-2xl font-bold mb-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-transparent">
-            Live Trading Dashboard
+            Trading in Public
           </h1>
           <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates</p>
         </div>
 
-        {/* Performance Chart */}
-        {pnlHistory.length > 0 ? (
-          <div className="mb-5 bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="font-semibold text-sm text-gray-900">Overall Performance History</h2>
-              <button 
-                onClick={() => setShowMetricDefinitions(true)}
-                className="text-[10px] text-indigo-600"
-              >
-                ⓘ
-              </button>
-            </div>
-            <div className="h-64">
-              <PerformanceChart pnlHistory={pnlHistory} botName="All Bots" />
-            </div>
-            <p className="text-center text-[9px] text-gray-400 mt-2">Daily P&L (bars) and Cumulative (line)</p>
+        {/* Win Rate Chart */}
+        <div className="mb-5 bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-semibold text-sm text-gray-900">Win Rate Over Time</h2>
+            <button 
+              onClick={() => setShowMetricDefinitions(true)}
+              className="text-[10px] text-indigo-600"
+            >
+              ⓘ
+            </button>
           </div>
-        ) : (
-          <div className="mb-5 bg-white border border-gray-200 rounded-xl p-8 text-center">
-            <p className="text-gray-400 text-sm">Loading historical performance data...</p>
+          <div className="h-64">
+            <WinRateChart trades={allTrades} />
           </div>
-        )}
+          <p className="text-center text-[9px] text-gray-400 mt-2">Daily win rate percentage</p>
+        </div>
 
         {/* Key Metrics Grid */}
         <div className="grid grid-cols-2 gap-2 mb-5">
@@ -779,44 +684,47 @@ export default function PublicDashboard() {
             onClick={() => setShowMetricDefinitions(true)}
           />
           <MetricCard 
-            title="Total Trades" 
-            value={formatNumber(totalTrades)} 
-            icon="🔄" 
-            color="purple"
-            subtext={`${formatNumber(allTrades.filter(t => t.status === "closed").length)} closed`}
+            title="Total P&L" 
+            value={formatCurrency(totalPnL)} 
+            icon="💰" 
+            color={totalPnL >= 0 ? "emerald" : "red"}
             onClick={() => setShowMetricDefinitions(true)}
           />
         </div>
 
-        {/* Notable Trades Section */}
+        {/* Notable Trades Section - Organized by Bot */}
         {notableTrades.length > 0 && (
           <div className="mb-5">
             <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
               <span>🏆</span>
-              Notable Trades
+              Notable Trades by Bot
               <span className="text-[10px] font-normal text-gray-400 ml-1">
-                Top {notableTrades.length} highest percentage returns
+                Top 3 highest percentage returns per bot
               </span>
             </h2>
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 shadow-sm">
-              <div className="space-y-2">
-                {notableTrades.slice(0, 5).map((trade, idx) => (
-                  <TradeRow key={trade.id || idx} trade={trade} onClick={setSelectedTrade} isNotable={true} />
-                ))}
-              </div>
-              {notableTrades.length > 5 && (
-                <details className="mt-3">
-                  <summary className="text-xs text-amber-600 cursor-pointer hover:text-amber-700 text-center">
-                    Show {notableTrades.length - 5} more notable trades...
-                  </summary>
-                  <div className="mt-2 space-y-2">
-                    {notableTrades.slice(5).map((trade, idx) => (
-                      <TradeRow key={trade.id || idx} trade={trade} onClick={setSelectedTrade} isNotable={true} />
-                    ))}
+            
+            {/* Group notable trades by bot */}
+            {bots.map(bot => {
+              const botNotables = notableTrades.filter(t => t.bot === bot);
+              if (botNotables.length === 0) return null;
+              
+              return (
+                <div key={bot} className="mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xl">{getBotIcon(bot)}</span>
+                    <h3 className="font-semibold text-gray-800">{getBotDisplayName(bot)}</h3>
+                    <span className="text-xs text-gray-400">Top {botNotables.length} trades</span>
                   </div>
-                </details>
-              )}
-            </div>
+                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 shadow-sm">
+                    <div className="space-y-2">
+                      {botNotables.map((trade, idx) => (
+                        <TradeRow key={trade.id || idx} trade={trade} onClick={setSelectedTrade} isNotable={true} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -824,12 +732,12 @@ export default function PublicDashboard() {
         <div className="mb-5">
           <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
             <span>🤖</span>
-            All {activeBots} Bots Performance
+            Active Bots Performance
             <span className="text-[10px] font-normal text-gray-400 ml-1">
-              Top returns shown
+              Real-time performance metrics
             </span>
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {bots.map((bot) => (
               <BotPerformanceCard
                 key={bot}
