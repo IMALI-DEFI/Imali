@@ -88,48 +88,52 @@ function getBotIcon(botName) {
 function getBotDisplayName(botName) {
   const name = (botName || "").toLowerCase();
   if (name === "okx") return "OKX Spot";
-  if (name === "spot") return "Spot Trading";
-  if (name === "sniper") return "Sniper Bot";
   if (name === "futures") return "Futures Bot";
   if (name === "stocks") return "Stock Bot";
+  if (name === "sniper") return "Sniper Bot";
   return botName || "Bot";
 }
 
-// Activity Series Chart - Same as Home page
-function ActivitySeriesChart({ trades = [] }) {
-  const series = useMemo(() => {
-    if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
+// Daily Activity Chart
+function DailyActivityChart({ trades = [] }) {
+  const [chartData, setChartData] = useState({ labels: [], datasets: [] });
 
-    return trades
-      .slice(0, 7)
-      .reverse()
-      .map((trade, index) => {
-        const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
-        if (usd !== null && Number.isFinite(Number(usd))) {
-          return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
-        }
-        return index + 4;
-      });
+  useEffect(() => {
+    // Group trades by date and count activity
+    const dailyCount = {};
+    
+    trades.forEach(trade => {
+      if (!trade.created_at) return;
+      const date = new Date(trade.created_at).toISOString().split('T')[0];
+      dailyCount[date] = (dailyCount[date] || 0) + 1;
+    });
+
+    const dates = Object.keys(dailyCount).sort();
+    const activityData = dates.map(date => dailyCount[date]);
+
+    setChartData({
+      labels: dates.map(d => {
+        const date = new Date(d);
+        return `${date.getMonth()+1}/${date.getDate()}`;
+      }),
+      datasets: [
+        {
+          label: "Daily Trades",
+          data: activityData,
+          borderColor: "#10b981",
+          backgroundColor: "rgba(16, 185, 129, 0.18)",
+          fill: true,
+          tension: 0.45,
+          pointRadius: 4,
+          pointHoverRadius: 5,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#10b981",
+          pointBorderWidth: 2,
+          borderWidth: 3,
+        },
+      ],
+    });
   }, [trades]);
-
-  const chartData = {
-    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    datasets: [
-      {
-        data: series,
-        borderColor: "#10b981",
-        backgroundColor: "rgba(16, 185, 129, 0.18)",
-        fill: true,
-        tension: 0.45,
-        pointRadius: 4,
-        pointHoverRadius: 5,
-        pointBackgroundColor: "#ffffff",
-        pointBorderColor: "#10b981",
-        pointBorderWidth: 2,
-        borderWidth: 3,
-      },
-    ],
-  };
 
   const options = {
     responsive: true,
@@ -144,7 +148,7 @@ function ActivitySeriesChart({ trades = [] }) {
         padding: 10,
         callbacks: {
           label: (context) => {
-            return `Activity: ${context.raw.toFixed(1)}`;
+            return `Trades: ${context.raw}`;
           }
         }
       },
@@ -156,19 +160,40 @@ function ActivitySeriesChart({ trades = [] }) {
         ticks: {
           color: "#9ca3af",
           font: { size: 10 },
+          maxRotation: 45,
         },
       },
       y: {
-        display: false,
+        display: true,
         grid: { color: "rgba(229,231,235,0.5)" },
+        ticks: {
+          color: "#9ca3af",
+          font: { size: 10 },
+        },
+        title: {
+          display: true,
+          text: "Number of Trades",
+          color: "#9ca3af",
+          font: { size: 10 },
+        },
       },
     },
   };
 
+  const hasData = activityData?.length > 0;
+
+  if (!hasData) {
+    return (
+      <div className="h-64 flex items-center justify-center text-gray-400">
+        <p className="text-sm">No activity data available</p>
+      </div>
+    );
+  }
+
   return <Line data={chartData} options={options} />;
 }
 
-// Stat Mini Card - Same as Home page
+// Stat Mini Card
 function StatMiniCard({ title, value, valueClassName = "text-gray-900", subtext }) {
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
@@ -181,8 +206,8 @@ function StatMiniCard({ title, value, valueClassName = "text-gray-900", subtext 
   );
 }
 
-// Bot Performance Card Component - Collapsible
-function BotPerformanceCard({ bot, stats, trades, onTradeClick }) {
+// Bot Performance Card - Collapsible with Notable Trades
+function BotPerformanceCard({ bot, stats, allTrades, onTradeClick }) {
   const [expanded, setExpanded] = useState(false);
   const hasTrades = stats && (stats.total_trades > 0);
   const winRate = safeNumber(stats?.win_rate);
@@ -191,10 +216,13 @@ function BotPerformanceCard({ bot, stats, trades, onTradeClick }) {
   const wins = safeNumber(stats?.wins);
   const losses = safeNumber(stats?.losses);
 
-  // Get top trades for this bot
-  const botTrades = (trades || []).filter(t => t.bot === bot && safeNumber(t.pnl_percent) > 0)
-    .sort((a, b) => safeNumber(b.pnl_percent) - safeNumber(a.pnl_percent))
-    .slice(0, 10);
+  // Get all notable trades for this bot - ALL historical trades ranked by P&L %
+  const botTrades = useMemo(() => {
+    if (!allTrades || !bot) return [];
+    return allTrades
+      .filter(t => t.bot === bot && safeNumber(t.pnl_percent) > 0)
+      .sort((a, b) => safeNumber(b.pnl_percent) - safeNumber(a.pnl_percent));
+  }, [allTrades, bot]);
 
   if (!hasTrades) return null;
 
@@ -248,32 +276,43 @@ function BotPerformanceCard({ bot, stats, trades, onTradeClick }) {
           
           {botTrades.length > 0 && (
             <div>
-              <div className="text-xs font-semibold text-gray-600 mb-2">🏆 Top Trades</div>
-              <div className="space-y-2">
+              <div className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-2">
+                <span>🏆</span> Notable Trades (Ranked by % Return)
+                <span className="text-[9px] text-gray-400">All historical trades</span>
+              </div>
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
                 {botTrades.map((trade, idx) => (
                   <div
                     key={trade.id || idx}
-                    className="flex items-center justify-between p-2 rounded-lg bg-green-50 cursor-pointer hover:bg-green-100 transition-colors"
+                    className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 cursor-pointer hover:from-green-100 hover:to-emerald-100 transition-colors border border-green-100"
                     onClick={(e) => { e.stopPropagation(); onTradeClick(trade); }}
                   >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-medium">{trade.symbol}</span>
-                        <span className={`text-[9px] px-1 py-0.5 rounded-full ${trade.side === "buy" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-bold text-gray-900">{trade.symbol}</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                          trade.side === "buy" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"
+                        }`}>
                           {trade.side?.toUpperCase()}
                         </span>
+                        <span className="text-[9px] text-gray-500">Rank #{idx + 1}</span>
                       </div>
                       <div className="text-[9px] text-gray-500 mt-0.5">
                         {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-bold text-green-600">{formatPercent(safeNumber(trade.pnl_percent))}</div>
-                      <div className="text-[10px] text-gray-500">{formatCurrencySigned(trade.pnl_usd || 0)}</div>
+                    <div className="text-right shrink-0 ml-4">
+                      <div className="text-base font-bold text-green-600">{formatPercent(safeNumber(trade.pnl_percent))}</div>
+                      <div className="text-[9px] text-gray-500">{formatCurrencySigned(trade.pnl_usd || 0)}</div>
                     </div>
                   </div>
                 ))}
               </div>
+              {botTrades.length > 10 && (
+                <div className="text-center text-[10px] text-gray-400 mt-2">
+                  Showing top {Math.min(botTrades.length, botTrades.length)} trades
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -457,6 +496,7 @@ export default function PublicDashboard() {
         const summary = apiData.summary || {};
         
         console.log(`📊 Total trades from API: ${summary.total_trades || trades.length}`);
+        console.log(`📊 Trades loaded: ${trades.length}`);
         
         // Process bot stats - only main bots
         const botStats = {};
@@ -471,9 +511,9 @@ export default function PublicDashboard() {
           const losses = safeNumber(bot.losses);
           const closedTrades = wins + losses;
           
-          // Find best trade for this bot from recent trades
+          // Find best trade for this bot from all trades
           let bestReturn = 0;
-          (apiData.recent_trades || []).forEach(trade => {
+          trades.forEach(trade => {
             if (trade.bot === bot.name) {
               const pnlPercent = safeNumber(trade.pnl_percent);
               if (pnlPercent > bestReturn) bestReturn = pnlPercent;
@@ -612,23 +652,24 @@ export default function PublicDashboard() {
           <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates</p>
         </div>
 
-        {/* Activity Chart - Same as Home page */}
+        {/* Daily Activity Chart */}
         <div className="mb-5 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="flex items-center gap-2 font-bold text-gray-900">
               <span className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
-              Bot Activity
+              Daily Trading Activity
             </h3>
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Live Trading Activity
+              Historical Performance
             </span>
           </div>
-          <div className="h-40">
-            <ActivitySeriesChart trades={allTrades} />
+          <div className="h-64">
+            <DailyActivityChart trades={allTrades} />
           </div>
+          <p className="text-center text-[9px] text-gray-400 mt-2">Number of trades executed per day</p>
         </div>
 
-        {/* Stats Cards - Same as Home page */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-3 mb-5">
           <StatMiniCard
             title="Total Trades"
@@ -643,13 +684,13 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Bot Performance Section - Collapsible Cards */}
+        {/* Bot Performance Section - Collapsible with Notable Trades */}
         <div className="mb-5">
           <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
             <span>🤖</span>
             Active Bots Performance
             <span className="text-[10px] font-normal text-gray-400 ml-1">
-              Click to expand and see top trades
+              Click to expand and see all notable trades ranked by % return
             </span>
           </h2>
           <div className="grid grid-cols-1 gap-3">
@@ -658,7 +699,7 @@ export default function PublicDashboard() {
                 key={bot}
                 bot={bot}
                 stats={botStats[bot]}
-                trades={allTrades}
+                allTrades={allTrades}
                 onTradeClick={setSelectedTrade}
               />
             ))}
