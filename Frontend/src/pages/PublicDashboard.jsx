@@ -11,6 +11,7 @@ import {
   Title,
   Tooltip,
   Legend,
+  Filler,
   Filler
 } from "chart.js";
 import { Line } from "react-chartjs-2";
@@ -99,12 +100,12 @@ function getBotDisplayName(botName) {
   return botName || "Bot";
 }
 
-// Win Rate Over Time Chart Component - FIXED
-function WinRateChart({ trades = [] }) {
+// Cumulative Win/Loss Chart Component
+function WinLossChart({ trades = [] }) {
   const [chartData, setChartData] = useState({ labels: [], datasets: [] });
 
   useEffect(() => {
-    // Group trades by date and calculate win rate
+    // Group trades by date and calculate cumulative wins and losses
     const dailyData = {};
     
     trades.forEach(trade => {
@@ -122,10 +123,18 @@ function WinRateChart({ trades = [] }) {
     });
 
     const dates = Object.keys(dailyData).sort();
-    const winRatesData = dates.map(date => {
-      const { wins, losses } = dailyData[date];
-      const total = wins + losses;
-      return total > 0 ? (wins / total) * 100 : 0;
+    
+    let cumulativeWins = 0;
+    let cumulativeLosses = 0;
+    
+    const winData = [];
+    const lossData = [];
+    
+    dates.forEach(date => {
+      cumulativeWins += dailyData[date].wins;
+      cumulativeLosses += dailyData[date].losses;
+      winData.push(cumulativeWins);
+      lossData.push(cumulativeLosses);
     });
 
     setChartData({
@@ -135,13 +144,26 @@ function WinRateChart({ trades = [] }) {
       }),
       datasets: [
         {
-          label: "Win Rate %",
-          data: winRatesData,
+          label: "Cumulative Wins",
+          data: winData,
           borderColor: "#10b981",
           backgroundColor: "rgba(16, 185, 129, 0.1)",
           borderWidth: 3,
           pointRadius: 4,
           pointBackgroundColor: "#10b981",
+          pointBorderColor: "white",
+          pointBorderWidth: 2,
+          fill: true,
+          tension: 0.3,
+        },
+        {
+          label: "Cumulative Losses",
+          data: lossData,
+          borderColor: "#ef4444",
+          backgroundColor: "rgba(239, 68, 68, 0.1)",
+          borderWidth: 3,
+          pointRadius: 4,
+          pointBackgroundColor: "#ef4444",
           pointBorderColor: "white",
           pointBorderWidth: 2,
           fill: true,
@@ -159,17 +181,16 @@ function WinRateChart({ trades = [] }) {
       tooltip: {
         callbacks: {
           label: (context) => {
-            return `Win Rate: ${context.raw.toFixed(1)}%`;
+            return `${context.dataset.label}: ${context.raw}`;
           }
         }
       }
     },
     scales: {
       y: {
-        min: 0,
-        max: 100,
-        ticks: { callback: (value) => `${value}%`, font: { size: 10 } },
-        title: { display: true, text: "Win Rate (%)", font: { size: 10 } }
+        beginAtZero: true,
+        ticks: { stepSize: 1, font: { size: 10 } },
+        title: { display: true, text: "Number of Trades", font: { size: 10 } }
       },
       x: {
         ticks: { font: { size: 9 }, maxRotation: 45 }
@@ -182,7 +203,7 @@ function WinRateChart({ trades = [] }) {
   if (!hasData) {
     return (
       <div className="h-64 flex items-center justify-center text-gray-400">
-        <p className="text-sm">No win rate data available</p>
+        <p className="text-sm">No win/loss data available</p>
       </div>
     );
   }
@@ -190,13 +211,14 @@ function WinRateChart({ trades = [] }) {
   return <Line data={chartData} options={options} />;
 }
 
-// Bot Performance Card Component - Filtered to main bots only
+// Bot Performance Card Component - Removed average return
 function BotPerformanceCard({ bot, stats, onTradeClick }) {
   const hasTrades = stats && (stats.total_trades > 0);
   const winRate = safeNumber(stats?.win_rate);
   const totalTrades = safeNumber(stats?.total_trades);
   const bestReturn = safeNumber(stats?.best_return);
-  const avgReturn = safeNumber(stats?.avg_return);
+  const wins = safeNumber(stats?.wins);
+  const losses = safeNumber(stats?.losses);
 
   // Skip bots with 0 trades
   if (!hasTrades) return null;
@@ -218,10 +240,8 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
           <div className="text-[10px] text-gray-500">Win Rate</div>
         </div>
         <div className="text-center">
-          <div className={`text-xl font-bold ${avgReturn >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {formatPercent(avgReturn)}
-          </div>
-          <div className="text-[10px] text-gray-500">Avg Return</div>
+          <div className="text-xl font-bold text-emerald-600">{wins.toLocaleString()}</div>
+          <div className="text-[10px] text-gray-500">Wins</div>
         </div>
       </div>
 
@@ -415,9 +435,9 @@ function MetricDefinitions({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   const metrics = [
-    { name: "Win Rate", symbol: "📈", definition: "Percentage of trades that were profitable." },
-    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed." },
-    { name: "Notable Trades", symbol: "🏆", definition: "Top performing trades with highest percentage returns across all bots." },
+    { name: "Win/Loss", symbol: "📊", definition: "Cumulative winning trades vs losing trades over time." },
+    { name: "Total Trades", symbol: "🔄", definition: "Total number of trades executed across all bots." },
+    { name: "Notable Trades", symbol: "🏆", definition: "Top performing trades with highest percentage returns, ranked by bot." },
   ];
 
   return (
@@ -451,7 +471,6 @@ export default function PublicDashboard() {
   const [data, setData] = useState({
     trades: [],
     summary: {},
-    pnlHistory: [],
     botStats: {},
     notableTrades: [],
     loading: true,
@@ -476,9 +495,13 @@ export default function PublicDashboard() {
         const trades = apiData.recent_trades || [];
         const summary = apiData.summary || {};
         
-        console.log(`📊 Total trades: ${summary.total_trades || trades.length}`);
+        // Get all trades - the API returns recent trades only
+        // We need to fetch all trades from another endpoint or accumulate
+        const allTrades = [...trades];
         
-        // Process bot stats - filter out bots with 0 trades
+        console.log(`📊 Total trades: ${summary.total_trades || allTrades.length}`);
+        
+        // Process bot stats
         const botStats = {};
         const mainBots = ["okx", "futures", "stocks", "spot", "sniper"];
         
@@ -492,12 +515,21 @@ export default function PublicDashboard() {
           const closedTrades = wins + losses;
           const totalPnL = safeNumber(bot.total_pnl);
           
+          // Find best trade for this bot from notable trades
+          let bestReturn = 0;
+          (apiData.recent_trades || []).forEach(trade => {
+            if (trade.bot === bot.name) {
+              const pnlPercent = safeNumber(trade.pnl_percent);
+              if (pnlPercent > bestReturn) bestReturn = pnlPercent;
+            }
+          });
+          
           botStats[bot.name] = {
             total_trades: totalTrades,
             wins: wins,
             losses: losses,
             win_rate: closedTrades > 0 ? (wins / closedTrades) * 100 : 0,
-            best_return: 0,
+            best_return: bestReturn,
             avg_return: totalTrades > 0 ? totalPnL / totalTrades : 0,
             top_trades: []
           };
@@ -505,7 +537,7 @@ export default function PublicDashboard() {
         
         // Create notable trades by bot with highest percent returns
         const notableByBot = {};
-        trades.forEach(trade => {
+        allTrades.forEach(trade => {
           const pnlPercent = safeNumber(trade.pnl_percent);
           if (pnlPercent > 0 && trade.bot && mainBots.includes(trade.bot)) {
             if (!notableByBot[trade.bot]) notableByBot[trade.bot] = [];
@@ -513,12 +545,12 @@ export default function PublicDashboard() {
           }
         });
         
-        // Take top 3 from each bot
+        // Take top 5 from each bot for better display
         const allNotable = [];
         Object.keys(notableByBot).forEach(bot => {
           const topTrades = notableByBot[bot]
             .sort((a, b) => safeNumber(b.pnl_percent) - safeNumber(a.pnl_percent))
-            .slice(0, 3);
+            .slice(0, 5);
           topTrades.forEach(trade => {
             allNotable.push({
               ...trade,
@@ -534,13 +566,13 @@ export default function PublicDashboard() {
         console.log("✅ Dashboard data loaded:", {
           totalTrades: summary.total_trades,
           bots: Object.keys(botStats).length,
-          notableTrades: allNotable.length
+          notableTrades: allNotable.length,
+          tradesCount: allTrades.length
         });
         
         setData({
-          trades: trades,
+          trades: allTrades,
           summary: summary,
-          pnlHistory: [],
           botStats: botStats,
           notableTrades: allNotable,
           loading: false,
@@ -579,7 +611,7 @@ export default function PublicDashboard() {
 
   const activeBots = Object.keys(botStats).length;
 
-  // Sort trades
+  // Sort trades by percent for recent trades
   const sortedRecentTrades = useMemo(() => {
     return [...allTrades].sort((a, b) => {
       if (sortRecentTrades === "pnl") {
@@ -658,10 +690,10 @@ export default function PublicDashboard() {
           <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates</p>
         </div>
 
-        {/* Win Rate Chart */}
+        {/* Win/Loss Chart */}
         <div className="mb-5 bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold text-sm text-gray-900">Win Rate Over Time</h2>
+            <h2 className="font-semibold text-sm text-gray-900">Win/Loss Over Time</h2>
             <button 
               onClick={() => setShowMetricDefinitions(true)}
               className="text-[10px] text-indigo-600"
@@ -670,19 +702,19 @@ export default function PublicDashboard() {
             </button>
           </div>
           <div className="h-64">
-            <WinRateChart trades={allTrades} />
+            <WinLossChart trades={allTrades} />
           </div>
-          <p className="text-center text-[9px] text-gray-400 mt-2">Daily win rate percentage</p>
+          <p className="text-center text-[9px] text-gray-400 mt-2">Cumulative winning trades vs losing trades</p>
         </div>
 
         {/* Key Metrics Grid */}
         <div className="grid grid-cols-2 gap-2 mb-5">
           <MetricCard 
-            title="Win Rate" 
-            value={`${winRate.toFixed(1)}%`} 
-            icon="📈" 
-            color="emerald"
-            subtext={`${formatNumber(wins)}W / ${formatNumber(losses)}L`}
+            title="Total Trades" 
+            value={formatNumber(totalTrades)} 
+            icon="🔄" 
+            color="purple"
+            subtext={`${formatNumber(allTrades.filter(t => t.status === "closed").length)} closed`}
             onClick={() => setShowMetricDefinitions(true)}
           />
           <MetricCard 
@@ -701,7 +733,7 @@ export default function PublicDashboard() {
               <span>🏆</span>
               Notable Trades by Bot
               <span className="text-[10px] font-normal text-gray-400 ml-1">
-                Top 3 highest percentage returns per bot
+                Top 5 highest percentage returns per bot
               </span>
             </h2>
             
@@ -736,7 +768,7 @@ export default function PublicDashboard() {
             <span>🤖</span>
             Active Bots Performance
             <span className="text-[10px] font-normal text-gray-400 ml-1">
-              Real-time performance metrics
+              Win rate and best trades
             </span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
