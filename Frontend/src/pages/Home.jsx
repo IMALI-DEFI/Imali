@@ -33,8 +33,8 @@ ChartJS.register(
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
-// CORRECTED ENDPOINTS - Using existing API endpoints
-const PUBLIC_TRADES_URL = `${API_BASE}/api/public/trades`;  // This returns real trades
+// CORRECTED ENDPOINTS - Using working API endpoints
+const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const PROMO_STATUS_URL = `${API_BASE}/api/promo/status`;
 const PROMO_CLAIM_URL = `${API_BASE}/api/promo/claim`;
 const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
@@ -138,7 +138,6 @@ function usePromoStatus() {
         const res = await axios.get(PROMO_STATUS_URL, { timeout: 6000 });
         const data = res.data || {};
         
-        // Handle both direct response and success wrapper
         const promoData = data.data || data;
         
         const limit = safeNumber(promoData.limit, 50);
@@ -261,29 +260,25 @@ function useLiveActivity() {
 
   const fetchActivity = useCallback(async () => {
     try {
-      // Fetch from public trades endpoint (returns real data from PostgreSQL)
-      const tradesRes = await axios.get(PUBLIC_TRADES_URL, {
-        params: { days: 30, limit: 100 },
+      // Fetch from public live stats endpoint
+      const statsRes = await axios.get(PUBLIC_STATS_URL, {
         timeout: 10000
       });
 
-      const payload = tradesRes.data?.data || tradesRes.data || {};
-      const trades = payload.trades || [];
-      const summary = payload.summary || {};
-
-      // Also get bot status
-      let botStatuses = [];
-      let activeBots = 0;
-      let online = false;
-
-      try {
-        const botStatusRes = await axios.get(BOT_STATUS_URL, { timeout: 5000 });
-        const bots = botStatusRes.data?.data?.bots || botStatusRes.data?.bots || [];
+      if (statsRes.data && statsRes.data.success) {
+        const data = statsRes.data.data;
+        const trades = data.recent_trades || [];
+        const summary = data.summary || {};
         
-        if (Array.isArray(bots) && bots.length > 0) {
-          botStatuses = bots.map(bot => ({
+        // Process bot statuses
+        let botStatuses = [];
+        let activeBots = 0;
+        let online = false;
+
+        if (data.bots && data.bots.length > 0) {
+          botStatuses = data.bots.map(bot => ({
             label: bot.name || "Unknown",
-            live: bot.status === "operational" || bot.status === "scanning" || bot.status === "running",
+            live: bot.total_trades > 0,
             details: bot,
           }));
           activeBots = botStatuses.filter(b => b.live).length;
@@ -299,45 +294,36 @@ function useLiveActivity() {
           activeBots = 4;
           online = true;
         }
-      } catch (e) {
-        console.warn("Bot status fetch failed, using defaults", e);
-        botStatuses = [
-          { label: "Futures", live: true, details: null },
-          { label: "Stock", live: true, details: null },
-          { label: "Sniper", live: true, details: null },
-          { label: "OKX", live: true, details: null },
-        ];
-        activeBots = 4;
-        online = true;
+
+        const wins = summary.wins || 0;
+        const totalTrades = summary.total_trades || trades.length;
+        const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
+
+        setActivity({
+          trades: trades.slice(0, 20),
+          stats: {
+            currentStatus: online ? "Live" : "Demo",
+            activeBots,
+            totalTrades,
+            wins,
+            losses: summary.losses || 0,
+            winRate,
+            online,
+            botStatuses,
+          },
+          pnlHistory: data.daily_pnl || [],
+          loading: false,
+          error: null,
+        });
+      } else {
+        throw new Error("Invalid response from API");
       }
-
-      // Calculate win rate from summary or trades
-      const wins = summary.wins || trades.filter(t => (t.pnl_usd || t.pnl || 0) > 0).length;
-      const totalTrades = summary.total_trades || trades.length;
-      const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
-
-      setActivity({
-        trades: trades.slice(0, 20),
-        stats: {
-          currentStatus: online ? "Live" : "Demo",
-          activeBots,
-          totalTrades,
-          wins,
-          losses: summary.losses || totalTrades - wins,
-          winRate,
-          online,
-          botStatuses,
-        },
-        pnlHistory: [],
-        loading: false,
-        error: null,
-      });
     } catch (error) {
       console.error("Live activity fetch error:", error);
       setActivity((prev) => ({
         ...prev,
         loading: false,
-        error: null, // Don't show error to users, use demo data silently
+        error: null,
         trades: prev.trades.length ? prev.trades : [],
         stats: prev.stats.online ? prev.stats : {
           currentStatus: "Live",
