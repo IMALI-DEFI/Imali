@@ -180,7 +180,7 @@ function DailyActivityChart({ trades = [] }) {
     },
   };
 
-  const hasData = activityData?.length > 0;
+  const hasData = chartData.datasets[0]?.data?.length > 0;
 
   if (!hasData) {
     return (
@@ -308,11 +308,6 @@ function BotPerformanceCard({ bot, stats, allTrades, onTradeClick }) {
                   </div>
                 ))}
               </div>
-              {botTrades.length > 10 && (
-                <div className="text-center text-[10px] text-gray-400 mt-2">
-                  Showing top {Math.min(botTrades.length, botTrades.length)} trades
-                </div>
-              )}
             </div>
           )}
         </div>
