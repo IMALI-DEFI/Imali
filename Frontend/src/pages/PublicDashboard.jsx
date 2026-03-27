@@ -24,6 +24,7 @@ ChartJS.register(
 
 const API_BASE = "https://api.imali-defi.com";
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
+const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;
 
 // Safe number formatting functions
 function safeNumber(value, fallback = 0) {
@@ -94,45 +95,41 @@ function getBotDisplayName(botName) {
   return botName || "Bot";
 }
 
-// Daily Activity Chart
-function DailyActivityChart({ trades = [] }) {
-  const [chartData, setChartData] = useState({ labels: [], datasets: [] });
+// Home Page Style Activity Series Chart (7-day)
+function ActivitySeriesChart({ trades = [] }) {
+  const series = useMemo(() => {
+    if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
 
-  useEffect(() => {
-    const dailyCount = {};
-    
-    trades.forEach(trade => {
-      if (!trade.created_at) return;
-      const date = new Date(trade.created_at).toISOString().split('T')[0];
-      dailyCount[date] = (dailyCount[date] || 0) + 1;
-    });
-
-    const dates = Object.keys(dailyCount).sort();
-    const activityData = dates.map(date => dailyCount[date]);
-
-    setChartData({
-      labels: dates.map(d => {
-        const date = new Date(d);
-        return `${date.getMonth()+1}/${date.getDate()}`;
-      }),
-      datasets: [
-        {
-          label: "Daily Trades",
-          data: activityData,
-          borderColor: "#10b981",
-          backgroundColor: "rgba(16, 185, 129, 0.18)",
-          fill: true,
-          tension: 0.45,
-          pointRadius: 4,
-          pointHoverRadius: 5,
-          pointBackgroundColor: "#ffffff",
-          pointBorderColor: "#10b981",
-          pointBorderWidth: 2,
-          borderWidth: 3,
-        },
-      ],
-    });
+    return trades
+      .slice(0, 7)
+      .reverse()
+      .map((trade, index) => {
+        const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
+        if (usd !== null && Number.isFinite(Number(usd))) {
+          return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
+        }
+        return index + 4;
+      });
   }, [trades]);
+
+  const chartData = {
+    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    datasets: [
+      {
+        data: series,
+        borderColor: "#10b981",
+        backgroundColor: "rgba(16, 185, 129, 0.18)",
+        fill: true,
+        tension: 0.45,
+        pointRadius: 4,
+        pointHoverRadius: 5,
+        pointBackgroundColor: "#ffffff",
+        pointBorderColor: "#10b981",
+        pointBorderWidth: 2,
+        borderWidth: 3,
+      },
+    ],
+  };
 
   const options = {
     responsive: true,
@@ -147,7 +144,7 @@ function DailyActivityChart({ trades = [] }) {
         padding: 10,
         callbacks: {
           label: (context) => {
-            return `Trades: ${context.raw}`;
+            return `Activity: ${context.raw.toFixed(1)}`;
           }
         }
       },
@@ -159,35 +156,14 @@ function DailyActivityChart({ trades = [] }) {
         ticks: {
           color: "#9ca3af",
           font: { size: 10 },
-          maxRotation: 45,
         },
       },
       y: {
-        display: true,
+        display: false,
         grid: { color: "rgba(229,231,235,0.5)" },
-        ticks: {
-          color: "#9ca3af",
-          font: { size: 10 },
-        },
-        title: {
-          display: true,
-          text: "Number of Trades",
-          color: "#9ca3af",
-          font: { size: 10 },
-        },
       },
     },
   };
-
-  const hasData = chartData.datasets[0]?.data?.length > 0;
-
-  if (!hasData) {
-    return (
-      <div className="h-64 flex items-center justify-center text-gray-400">
-        <p className="text-sm">No activity data available</p>
-      </div>
-    );
-  }
 
   return <Line data={chartData} options={options} />;
 }
@@ -205,23 +181,17 @@ function StatMiniCard({ title, value, valueClassName = "text-gray-900", subtext 
   );
 }
 
-// Bot Performance Card - Collapsible with Notable Trades
-function BotPerformanceCard({ bot, stats, allTrades, onTradeClick }) {
-  const [expanded, setExpanded] = useState(false);
+// Bot Performance Card - Collapsible with Notable Trades from API
+function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
+  const [expanded, setExpanded] = useState(true); // Expanded by default
   const hasTrades = stats && (stats.total_trades > 0);
   const winRate = safeNumber(stats?.win_rate);
   const totalTrades = safeNumber(stats?.total_trades);
-  const bestReturn = safeNumber(stats?.best_return);
   const wins = safeNumber(stats?.wins);
   const losses = safeNumber(stats?.losses);
 
-  // Get ALL notable trades for this bot - ALL historical trades ranked by highest P&L %
-  const botTrades = useMemo(() => {
-    if (!allTrades || !bot) return [];
-    return allTrades
-      .filter(t => t.bot === bot && safeNumber(t.pnl_percent) > 0)
-      .sort((a, b) => safeNumber(b.pnl_percent) - safeNumber(a.pnl_percent));
-  }, [allTrades, bot]);
+  // Get notable trades for this bot from the API data
+  const botNotableTrades = notableTrades?.[bot] || [];
 
   if (!hasTrades) return null;
 
@@ -268,19 +238,21 @@ function BotPerformanceCard({ bot, stats, allTrades, onTradeClick }) {
               <div className="text-[9px] text-gray-500">Losses</div>
             </div>
             <div className="text-center">
-              <div className="text-lg font-bold text-green-600">{formatPercent(bestReturn)}</div>
+              <div className="text-lg font-bold text-green-600">
+                {botNotableTrades[0] ? formatPercent(botNotableTrades[0].pnl_percent) : "0%"}
+              </div>
               <div className="text-[9px] text-gray-500">Best Trade</div>
             </div>
           </div>
           
-          {botTrades.length > 0 && (
+          {botNotableTrades.length > 0 && (
             <div>
               <div className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-2">
                 <span>🏆</span> Notable Trades (Ranked by Highest % Return)
-                <span className="text-[9px] text-gray-400">All historical trades - {botTrades.length} winning trades</span>
+                <span className="text-[9px] text-gray-400">Top {botNotableTrades.length} winning trades</span>
               </div>
               <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                {botTrades.map((trade, idx) => (
+                {botNotableTrades.map((trade, idx) => (
                   <div
                     key={trade.id || idx}
                     className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 cursor-pointer hover:from-green-100 hover:to-emerald-100 transition-colors border border-green-200"
@@ -306,9 +278,6 @@ function BotPerformanceCard({ bot, stats, allTrades, onTradeClick }) {
                     </div>
                   </div>
                 ))}
-              </div>
-              <div className="text-center text-[10px] text-gray-400 mt-3 pt-2 border-t border-gray-200">
-                Showing all {botTrades.length} winning trades sorted by highest % return
               </div>
             </div>
           )}
@@ -471,6 +440,7 @@ export default function PublicDashboard() {
     trades: [],
     summary: {},
     botStats: {},
+    notableTrades: {},
     loading: true,
     error: null,
     lastUpdate: null
@@ -483,17 +453,18 @@ export default function PublicDashboard() {
     try {
       console.log("🔄 Fetching public dashboard data...");
       
-      const response = await axios.get(PUBLIC_STATS_URL, {
-        timeout: 15000
-      });
+      // Fetch both endpoints in parallel
+      const [statsResponse, notableResponse] = await Promise.all([
+        axios.get(PUBLIC_STATS_URL, { timeout: 15000 }),
+        axios.get(NOTABLE_TRADES_URL, { timeout: 15000, params: { limit: 10 } })
+      ]);
 
-      if (response.data && response.data.success) {
-        const apiData = response.data.data;
+      if (statsResponse.data && statsResponse.data.success) {
+        const apiData = statsResponse.data.data;
         const trades = apiData.recent_trades || [];
         const summary = apiData.summary || {};
         
         console.log(`📊 Total trades from API: ${summary.total_trades || trades.length}`);
-        console.log(`📊 Trades loaded: ${trades.length}`);
         
         // Process bot stats - only main bots
         const botStats = {};
@@ -508,34 +479,34 @@ export default function PublicDashboard() {
           const losses = safeNumber(bot.losses);
           const closedTrades = wins + losses;
           
-          // Find best trade for this bot from all trades
-          let bestReturn = 0;
-          trades.forEach(trade => {
-            if (trade.bot === bot.name) {
-              const pnlPercent = safeNumber(trade.pnl_percent);
-              if (pnlPercent > bestReturn) bestReturn = pnlPercent;
-            }
-          });
-          
           botStats[bot.name] = {
             total_trades: totalTrades,
             wins: wins,
             losses: losses,
             win_rate: closedTrades > 0 ? (wins / closedTrades) * 100 : 0,
-            best_return: bestReturn,
+            best_return: 0,
           };
         });
+        
+        // Process notable trades
+        let notableTrades = {};
+        if (notableResponse.data && notableResponse.data.success) {
+          notableTrades = notableResponse.data.data;
+          console.log("🏆 Notable trades loaded:", Object.keys(notableTrades).length, "bots");
+        }
         
         console.log("✅ Dashboard data loaded:", {
           totalTrades: summary.total_trades,
           tradesCount: trades.length,
-          bots: Object.keys(botStats).length
+          bots: Object.keys(botStats).length,
+          notableBots: Object.keys(notableTrades).length
         });
         
         setData({
           trades: trades,
           summary: summary,
           botStats: botStats,
+          notableTrades: notableTrades,
           loading: false,
           error: null,
           lastUpdate: new Date()
@@ -562,6 +533,7 @@ export default function PublicDashboard() {
 
   const allTrades = data.trades || [];
   const botStats = data.botStats || {};
+  const notableTrades = data.notableTrades || {};
 
   const totalTrades = safeNumber(data.summary.total_trades || allTrades.length);
   const wins = safeNumber(data.summary.wins);
@@ -649,21 +621,21 @@ export default function PublicDashboard() {
           <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates</p>
         </div>
 
-        {/* Daily Activity Chart */}
+        {/* Home Page Style Activity Chart (7-day) */}
         <div className="mb-5 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="flex items-center gap-2 font-bold text-gray-900">
               <span className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
-              Daily Trading Activity
+              Bot Activity (7-Day Trend)
             </h3>
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Historical Performance
+              Live Trading Activity
             </span>
           </div>
-          <div className="h-64">
-            <DailyActivityChart trades={allTrades} />
+          <div className="h-40">
+            <ActivitySeriesChart trades={allTrades} />
           </div>
-          <p className="text-center text-[9px] text-gray-400 mt-2">Number of trades executed per day</p>
+          <p className="text-center text-[9px] text-gray-400 mt-2">Activity based on recent trade volume</p>
         </div>
 
         {/* Stats Cards */}
@@ -684,10 +656,10 @@ export default function PublicDashboard() {
         {/* Bot Performance Section - Collapsible with Notable Trades */}
         <div className="mb-5">
           <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
-            <span>🤖</span>
-            Active Bots Performance
+            <span>🏆</span>
+            Notable Trades by Bot
             <span className="text-[10px] font-normal text-gray-400 ml-1">
-              Click to expand and see all notable trades ranked by highest % return
+              Ranked by highest percentage return - Click to collapse
             </span>
           </h2>
           <div className="grid grid-cols-1 gap-3">
@@ -696,7 +668,7 @@ export default function PublicDashboard() {
                 key={bot}
                 bot={bot}
                 stats={botStats[bot]}
-                allTrades={allTrades}
+                notableTrades={notableTrades}
                 onTradeClick={setSelectedTrade}
               />
             ))}
