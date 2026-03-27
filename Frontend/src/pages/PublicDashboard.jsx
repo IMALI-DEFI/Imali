@@ -99,7 +99,7 @@ function getBotDisplayName(botName) {
   return botName || "Bot";
 }
 
-// Win Rate Over Time Chart Component
+// Win Rate Over Time Chart Component - FIXED
 function WinRateChart({ trades = [] }) {
   const [chartData, setChartData] = useState({ labels: [], datasets: [] });
 
@@ -122,7 +122,7 @@ function WinRateChart({ trades = [] }) {
     });
 
     const dates = Object.keys(dailyData).sort();
-    const winRates = dates.map(date => {
+    const winRatesData = dates.map(date => {
       const { wins, losses } = dailyData[date];
       const total = wins + losses;
       return total > 0 ? (wins / total) * 100 : 0;
@@ -136,7 +136,7 @@ function WinRateChart({ trades = [] }) {
       datasets: [
         {
           label: "Win Rate %",
-          data: winRates,
+          data: winRatesData,
           borderColor: "#10b981",
           backgroundColor: "rgba(16, 185, 129, 0.1)",
           borderWidth: 3,
@@ -177,7 +177,9 @@ function WinRateChart({ trades = [] }) {
     }
   };
 
-  if (winRates?.length === 0) {
+  const hasData = chartData.datasets[0]?.data?.length > 0;
+
+  if (!hasData) {
     return (
       <div className="h-64 flex items-center justify-center text-gray-400">
         <p className="text-sm">No win rate data available</p>
