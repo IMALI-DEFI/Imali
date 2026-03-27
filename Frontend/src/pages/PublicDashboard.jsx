@@ -31,24 +31,30 @@ ChartJS.register(
 const API_BASE = "https://api.imali-defi.com";
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
+// Safe number formatting functions
+function safeNumber(value, fallback = 0) {
+  const num = Number(value);
+  return isNaN(num) ? fallback : num;
+}
+
 function formatCurrency(value) {
-  const n = Number(value) || 0;
+  const n = safeNumber(value);
   return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatCurrencySigned(value) {
-  const n = Number(value) || 0;
+  const n = safeNumber(value);
   const absValue = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${n >= 0 ? "+" : "-"}$${absValue}`;
 }
 
 function formatPercent(value) {
-  const n = Number(value) || 0;
+  const n = safeNumber(value);
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
 function formatNumber(value) {
-  const n = Number(value) || 0;
+  const n = safeNumber(value);
   return n.toLocaleString();
 }
 
@@ -100,7 +106,7 @@ function getBotDisplayName(botName) {
 
 // Performance Chart Component
 function PerformanceChart({ pnlHistory = [], botName = "All Bots" }) {
-  const values = pnlHistory.length > 0 ? pnlHistory.map(p => p.daily_pnl || p.pnl || 0) : [];
+  const values = pnlHistory.length > 0 ? pnlHistory.map(p => safeNumber(p.daily_pnl || p.pnl || 0)) : [];
   const labels = pnlHistory.length > 0 ? pnlHistory.map(p => {
     const date = new Date(p.date);
     return `${date.getMonth()+1}/${date.getDate()}`;
@@ -196,15 +202,15 @@ function PerformanceChart({ pnlHistory = [], botName = "All Bots" }) {
 function BotPerformanceCard({ bot, stats, onTradeClick }) {
   const [expanded, setExpanded] = useState(false);
   const hasTrades = stats && (stats.total_trades > 0);
-  const winRate = stats?.win_rate || 0;
-  const wins = stats?.wins || 0;
-  const losses = stats?.losses || 0;
-  const totalTrades = stats?.total_trades || 0;
-  const closedTrades = stats?.closed_trades || 0;
-  const openTrades = stats?.open_trades || 0;
-  const bestReturn = stats?.best_return || 0;
+  const winRate = safeNumber(stats?.win_rate);
+  const wins = safeNumber(stats?.wins);
+  const losses = safeNumber(stats?.losses);
+  const totalTrades = safeNumber(stats?.total_trades);
+  const closedTrades = safeNumber(stats?.closed_trades);
+  const openTrades = safeNumber(stats?.open_trades);
+  const bestReturn = safeNumber(stats?.best_return);
   const showBestReturn = bestReturn > 0;
-  const avgReturn = stats?.avg_return || 0;
+  const avgReturn = safeNumber(stats?.avg_return);
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all">
@@ -265,7 +271,7 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
             <div className="mt-2 space-y-2">
               <div className="text-xs font-semibold text-gray-600">🏆 Top Returns</div>
               {stats.top_trades.slice(0, expanded ? 5 : 3).map((trade, idx) => {
-                const pnlPercent = trade.pnl_percent || 0;
+                const pnlPercent = safeNumber(trade.pnl_percent);
                 if (pnlPercent <= 0) return null;
                 return (
                   <div
@@ -306,13 +312,13 @@ function BotPerformanceCard({ bot, stats, onTradeClick }) {
 
 // Trade Row Component
 function TradeRow({ trade, onClick, isNotable = false }) {
-  const pnl = trade.pnl_usd || 0;
-  const pnlPercent = trade.pnl_percent || 0;
+  const pnl = safeNumber(trade.pnl_usd);
+  const pnlPercent = safeNumber(trade.pnl_percent);
   const side = trade.side || "buy";
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
-  const score = trade.overall_score || 0;
-  const confidence = trade.confidence || 0;
+  const score = safeNumber(trade.overall_score);
+  const confidence = safeNumber(trade.confidence);
   const isOpen = trade.status === "open";
   
   return (
@@ -372,22 +378,22 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   );
 }
 
-// Trade Detail Modal
+// Trade Detail Modal (keep as is, but use safeNumber where needed)
 function TradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
 
-  const pnl = trade.pnl_usd || 0;
-  const pnlPercent = trade.pnl_percent || 0;
+  const pnl = safeNumber(trade.pnl_usd);
+  const pnlPercent = safeNumber(trade.pnl_percent);
   const symbol = trade.symbol || "Unknown";
   const side = trade.side || "buy";
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
-  const entryPrice = trade.price || 0;
-  const exitPrice = trade.exit_price;
-  const qty = trade.qty || 0;
+  const entryPrice = safeNumber(trade.price);
+  const exitPrice = trade.exit_price ? safeNumber(trade.exit_price) : null;
+  const qty = safeNumber(trade.qty);
   const status = trade.status === "open" ? "Open" : "Closed";
-  const score = trade.overall_score || 0;
-  const confidence = trade.confidence || 0;
+  const score = safeNumber(trade.overall_score);
+  const confidence = safeNumber(trade.confidence);
   const risk = trade.risk_level || "medium";
   const entryReason = trade.entry_reason || "AI detected favorable market conditions";
 
@@ -483,13 +489,18 @@ function MetricCard({ title, value, icon, subtext, color = "emerald", onClick })
     blue: "text-blue-600",
   };
 
+  const displayValue = typeof value === 'number' ? value : safeNumber(value);
+  const displaySubtext = subtext ? subtext : "";
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3 hover:shadow-md transition-all cursor-pointer" onClick={onClick}>
       <div className="flex items-center justify-between">
         <div className="min-w-0">
           <p className="text-[10px] text-gray-500">{title}</p>
-          <p className={`text-base sm:text-lg font-bold mt-0.5 ${colorClasses[color]}`}>{value}</p>
-          {subtext && <p className="text-[9px] text-gray-400 mt-0.5">{subtext}</p>}
+          <p className={`text-base sm:text-lg font-bold mt-0.5 ${colorClasses[color]}`}>
+            {typeof displayValue === 'number' ? displayValue.toLocaleString() : displayValue}
+          </p>
+          {displaySubtext && <p className="text-[9px] text-gray-400 mt-0.5">{displaySubtext}</p>}
         </div>
         <div className="text-xl opacity-60">{icon}</div>
       </div>
@@ -569,19 +580,19 @@ export default function PublicDashboard() {
         // Format daily P&L for chart
         const formattedPnlHistory = pnlHistory.map(day => ({
           date: day.date,
-          daily_pnl: day.daily_pnl,
-          pnl: day.daily_pnl
+          daily_pnl: safeNumber(day.daily_pnl),
+          pnl: safeNumber(day.daily_pnl)
         })).sort((a, b) => new Date(a.date) - new Date(b.date));
         
         // Process bot stats from API data
         const botStats = {};
         (apiData.bots || []).forEach(bot => {
-          const totalTrades = bot.total_trades || 0;
-          const wins = bot.wins || 0;
-          const losses = bot.losses || 0;
+          const totalTrades = safeNumber(bot.total_trades);
+          const wins = safeNumber(bot.wins);
+          const losses = safeNumber(bot.losses);
           const closedTrades = wins + losses;
-          const openTrades = bot.open_positions || 0;
-          const totalPnL = bot.total_pnl || 0;
+          const openTrades = safeNumber(bot.open_positions);
+          const totalPnL = safeNumber(bot.total_pnl);
           
           botStats[bot.name] = {
             total_trades: totalTrades,
@@ -600,8 +611,8 @@ export default function PublicDashboard() {
         
         // Create notable trades from recent trades with positive P&L
         const notableTrades = trades
-          .filter(t => (t.pnl_percent || 0) > 0)
-          .sort((a, b) => (b.pnl_percent || 0) - (a.pnl_percent || 0))
+          .filter(t => safeNumber(t.pnl_percent) > 0)
+          .sort((a, b) => safeNumber(b.pnl_percent) - safeNumber(a.pnl_percent))
           .slice(0, 20);
         
         console.log("✅ Dashboard data loaded:", {
@@ -647,10 +658,10 @@ export default function PublicDashboard() {
   const botStats = data.botStats || {};
   const notableTrades = data.notableTrades || [];
 
-  const totalTrades = data.summary.total_trades || allTrades.length;
-  const wins = data.summary.wins || 0;
-  const losses = data.summary.losses || 0;
-  const winRate = data.summary.win_rate || (wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0);
+  const totalTrades = safeNumber(data.summary.total_trades || allTrades.length);
+  const wins = safeNumber(data.summary.wins);
+  const losses = safeNumber(data.summary.losses);
+  const winRate = safeNumber(data.summary.win_rate) || (wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0);
 
   const activeBots = Object.keys(botStats).filter(bot => botStats[bot].total_trades > 0).length;
 
@@ -658,11 +669,11 @@ export default function PublicDashboard() {
   const sortedRecentTrades = useMemo(() => {
     return [...allTrades].sort((a, b) => {
       if (sortRecentTrades === "pnl") {
-        return (b.pnl_usd || 0) - (a.pnl_usd || 0);
+        return safeNumber(b.pnl_usd) - safeNumber(a.pnl_usd);
       }
       if (sortRecentTrades === "percent") {
-        const aPercent = Math.abs(a.pnl_percent || 0);
-        const bPercent = Math.abs(b.pnl_percent || 0);
+        const aPercent = Math.abs(safeNumber(a.pnl_percent));
+        const bPercent = Math.abs(safeNumber(b.pnl_percent));
         return bPercent - aPercent;
       }
       return new Date(b.created_at) - new Date(a.created_at);
