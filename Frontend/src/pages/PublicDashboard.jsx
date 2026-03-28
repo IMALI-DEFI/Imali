@@ -528,22 +528,36 @@ export default function PublicDashboard() {
       if (statsResponse.data && statsResponse.data.success) {
         const apiData = statsResponse.data.data;
         
-        // Map trades directly - API now returns qty and exit_price
+        // DEBUG: Log the first trade to see what fields are coming from API
+        if (apiData.recent_trades && apiData.recent_trades.length > 0) {
+          console.log("🔍 First trade from API:", apiData.recent_trades[0]);
+          console.log("🔍 Does it have qty?", apiData.recent_trades[0].qty);
+          console.log("🔍 Does it have exit_price?", apiData.recent_trades[0].exit_price);
+        }
+        
+        // Map trades - PRESERVE all fields from API
         const trades = (apiData.recent_trades || []).map(trade => ({
-          ...trade,
-          // Ensure numeric values
-          qty: safeNumber(trade.qty, 0),
-          exit_price: trade.exit_price ? safeNumber(trade.exit_price) : null,
+          ...trade, // Keep all original fields
+          // Ensure numeric values but preserve original
+          qty: trade.qty !== undefined ? safeNumber(trade.qty) : 0,
+          exit_price: trade.exit_price !== undefined ? trade.exit_price : null,
           price: safeNumber(trade.price, 0),
           pnl_usd: safeNumber(trade.pnl_usd, 0),
           pnl_percent: safeNumber(trade.pnl_percent, 0),
         }));
         
+        // DEBUG: Log the first mapped trade
+        if (trades.length > 0) {
+          console.log("✅ First mapped trade:", trades[0]);
+          console.log("✅ qty after mapping:", trades[0].qty);
+          console.log("✅ exit_price after mapping:", trades[0].exit_price);
+        }
+        
         const summary = apiData.summary || {};
         
         console.log(`📊 Total trades from API: ${summary.total_trades || trades.length}`);
-        console.log(`📊 Trades with quantity: ${trades.filter(t => t.qty > 0).length}`);
-        console.log(`📊 Trades with exit prices: ${trades.filter(t => t.exit_price).length}`);
+        console.log(`📊 Trades with quantity > 0: ${trades.filter(t => t.qty > 0).length}`);
+        console.log(`📊 Trades with exit_price: ${trades.filter(t => t.exit_price).length}`);
         
         const botStats = {};
         const mainBots = ["okx", "futures", "stocks", "sniper"];
@@ -578,7 +592,8 @@ export default function PublicDashboard() {
           bots: Object.keys(botStats).length,
           notableBots: Object.keys(notableTrades).length,
           tradesWithExitPrices: trades.filter(t => t.exit_price).length,
-          tradesWithQuantity: trades.filter(t => t.qty > 0).length
+          tradesWithQuantity: trades.filter(t => t.qty > 0).length,
+          sampleTradeWithQty: trades.find(t => t.qty > 0)
         });
         
         setData({
