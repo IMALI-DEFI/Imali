@@ -279,7 +279,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
                       <div className="text-[9px] text-gray-500 mt-0.5">
                         {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
                         {trade.exit_price && ` • Exit: ${formatCurrency(trade.exit_price)}`}
-                        {trade.qty && ` • Qty: ${trade.qty}`}
+                        {trade.qty && ` • Qty: ${safeNumber(trade.qty).toFixed(6)}`}
                       </div>
                     </div>
                     <div className="text-right shrink-0 ml-4">
@@ -297,7 +297,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   );
 }
 
-// Trade Row Component - Updated to show quantity and exit price
+// Trade Row Component - Shows quantity and exit price
 function TradeRow({ trade, onClick, isNotable = false }) {
   const pnl = safeNumber(trade.pnl_usd);
   const pnlPercent = safeNumber(trade.pnl_percent);
@@ -342,7 +342,7 @@ function TradeRow({ trade, onClick, isNotable = false }) {
             <span>Exit: {formatCurrency(exitPrice)}</span>
           )}
           {quantity && quantity > 0 && (
-            <span>Qty: {quantity.toFixed(6)}</span>
+            <span>Qty: {safeNumber(quantity).toFixed(6)}</span>
           )}
         </div>
       </div>
@@ -366,7 +366,7 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   );
 }
 
-// Trade Detail Modal - Updated to show quantity and exit price
+// Trade Detail Modal - Shows quantity and exit price in detail
 function TradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
 
@@ -528,35 +528,16 @@ export default function PublicDashboard() {
       if (statsResponse.data && statsResponse.data.success) {
         const apiData = statsResponse.data.data;
         
-        // Comprehensive trade data mapping to ensure all fields are captured
-        const trades = (apiData.recent_trades || []).map(trade => {
-          // Log raw trade data for debugging
-          console.log("Raw trade data:", {
-            id: trade.id,
-            symbol: trade.symbol,
-            qty: trade.qty,
-            exit_price: trade.exit_price,
-            price: trade.price,
-            status: trade.status
-          });
-          
-          return {
-            ...trade,
-            // Map quantity from various possible field names
-            qty: trade.qty || trade.quantity || trade.amount || 0,
-            // Map exit price from various possible field names
-            exit_price: trade.exit_price || trade.exitPrice || trade.exit_price_usd || trade.close_price || null,
-            // Map entry price
-            price: trade.price || trade.entry_price || trade.entryPrice || 0,
-            // Ensure status is consistent
-            status: trade.status || (trade.exit_price ? "closed" : "open"),
-            // Ensure side is consistent
-            side: trade.side || (trade.type === "buy" ? "buy" : "sell"),
-            // Ensure P&L fields
-            pnl_usd: trade.pnl_usd || trade.pnl || trade.profit_loss || 0,
-            pnl_percent: trade.pnl_percent || trade.return_percent || 0,
-          };
-        });
+        // Map trades directly - API now returns qty and exit_price
+        const trades = (apiData.recent_trades || []).map(trade => ({
+          ...trade,
+          // Ensure numeric values
+          qty: safeNumber(trade.qty, 0),
+          exit_price: trade.exit_price ? safeNumber(trade.exit_price) : null,
+          price: safeNumber(trade.price, 0),
+          pnl_usd: safeNumber(trade.pnl_usd, 0),
+          pnl_percent: safeNumber(trade.pnl_percent, 0),
+        }));
         
         const summary = apiData.summary || {};
         
@@ -719,7 +700,7 @@ export default function PublicDashboard() {
           <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates</p>
         </div>
 
-        {/* Bot Activity Chart - Replaced with Home page style chart */}
+        {/* Bot Activity Chart */}
         <div className="mb-5 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="flex items-center gap-2 font-bold text-gray-900">
@@ -751,7 +732,7 @@ export default function PublicDashboard() {
           />
         </div>
 
-        {/* Bot Performance Section - Collapsible with Notable Trades */}
+        {/* Bot Performance Section */}
         <div className="mb-5">
           <h2 className="font-bold text-base mb-2 flex items-center gap-2 text-gray-900">
             <span>🏆</span>
