@@ -60,7 +60,7 @@ function formatNumber(value) {
 
 function formatQuantity(value) {
   const n = safeNumber(value);
-  // Format with appropriate decimals based on size
+  if (n === 0) return "0";
   if (n < 0.0001) return n.toExponential(4);
   if (n < 0.01) return n.toFixed(8);
   if (n < 1) return n.toFixed(6);
@@ -110,7 +110,7 @@ function getBotDisplayName(botName) {
   return botName || "Bot";
 }
 
-// Helper function to build activity series - copied from Home page
+// Helper function to build activity series
 function buildActivitySeries(trades = []) {
   if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
 
@@ -126,7 +126,7 @@ function buildActivitySeries(trades = []) {
     });
 }
 
-// Bot Activity Chart - Simplified version matching Home page
+// Bot Activity Chart
 function BotActivityChart({ trades = [], stats }) {
   const series = buildActivitySeries(trades);
   
@@ -200,7 +200,7 @@ function StatMiniCard({ title, value, valueClassName = "text-gray-900", subtext 
   );
 }
 
-// Bot Performance Card - Collapsible with Notable Trades from API
+// Bot Performance Card
 function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   const [expanded, setExpanded] = useState(true);
   const hasTrades = stats && (stats.total_trades > 0);
@@ -307,7 +307,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   );
 }
 
-// FIXED: Trade Row Component - Shows quantity and exit price properly
+// CRITICAL FIX: Trade Row Component - Handles string to number conversion
 function TradeRow({ trade, onClick, isNotable = false }) {
   const pnl = safeNumber(trade.pnl_usd);
   const pnlPercent = safeNumber(trade.pnl_percent);
@@ -316,17 +316,30 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   const timestamp = trade.created_at;
   const isOpen = trade.status === "open";
   
-  // FIX: Handle multiple possible field names for quantity
-  const quantity = trade.quantity || trade.qty || trade.amount || 0;
+  // CRITICAL: Convert all values to numbers
+  const quantity = safeNumber(trade.quantity || trade.qty || trade.amount || 0);
   
-  // FIX: Handle multiple possible field names for exit price
-  const exitPrice = trade.exit_price || trade.exitPrice || trade.exit || null;
+  // CRITICAL: Convert exit price to number - this is the key fix!
+  let exitPrice = null;
+  if (trade.exit_price !== undefined && trade.exit_price !== null) {
+    exitPrice = safeNumber(trade.exit_price);
+  } else if (trade.exitPrice !== undefined && trade.exitPrice !== null) {
+    exitPrice = safeNumber(trade.exitPrice);
+  } else if (trade.exit !== undefined && trade.exit !== null) {
+    exitPrice = safeNumber(trade.exit);
+  }
   
-  // FIX: Handle entry price (price or entry_price)
-  const entryPrice = trade.price || trade.entry_price || 0;
+  const entryPrice = safeNumber(trade.price || trade.entry_price || 0);
   
-  // FIX: Calculate if exit price is different from entry price
-  const hasValidExit = exitPrice !== null && exitPrice !== entryPrice;
+  // Check if exit price is valid and different (using tolerance for floating point)
+  const hasValidExit = exitPrice !== null && 
+                       !isNaN(exitPrice) && 
+                       Math.abs(exitPrice - entryPrice) > 0.0001;
+  
+  // Check if it's a breakeven trade
+  const isBreakeven = exitPrice !== null && 
+                      !isNaN(exitPrice) && 
+                      Math.abs(exitPrice - entryPrice) <= 0.0001;
   
   return (
     <div 
@@ -358,14 +371,26 @@ function TradeRow({ trade, onClick, isNotable = false }) {
         </div>
         <div className="text-[10px] text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>Entry: {formatCurrency(entryPrice)}</span>
+          
+          {/* Show exit price if available and different */}
           {!isOpen && hasValidExit && (
-            <span className="text-emerald-600">Exit: {formatCurrency(exitPrice)}</span>
+            <span className="text-emerald-600 font-medium">
+              Exit: {formatCurrency(exitPrice)}
+            </span>
           )}
-          {!isOpen && !hasValidExit && exitPrice && (
-            <span className="text-gray-400">Exit: {formatCurrency(exitPrice)} (same as entry)</span>
+          
+          {/* Show breakeven indicator */}
+          {!isOpen && isBreakeven && (
+            <span className="text-gray-400">
+              Exit: {formatCurrency(exitPrice)} (breakeven)
+            </span>
           )}
+          
+          {/* Show quantity */}
           {quantity > 0 && (
-            <span className="text-purple-600">Qty: {formatQuantity(quantity)}</span>
+            <span className="text-purple-600 font-mono font-medium">
+              Qty: {formatQuantity(quantity)}
+            </span>
           )}
         </div>
       </div>
@@ -389,7 +414,7 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   );
 }
 
-// FIXED: Trade Detail Modal - Shows quantity and exit price in detail
+// Trade Detail Modal
 function TradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
 
@@ -400,9 +425,17 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
   
-  // FIX: Handle multiple possible field names
+  // Convert all values to numbers
   const entryPrice = safeNumber(trade.price || trade.entry_price || 0);
-  const exitPrice = trade.exit_price || trade.exitPrice || trade.exit || null;
+  let exitPrice = null;
+  if (trade.exit_price !== undefined && trade.exit_price !== null) {
+    exitPrice = safeNumber(trade.exit_price);
+  } else if (trade.exitPrice !== undefined && trade.exitPrice !== null) {
+    exitPrice = safeNumber(trade.exitPrice);
+  } else if (trade.exit !== undefined && trade.exit !== null) {
+    exitPrice = safeNumber(trade.exit);
+  }
+  
   const quantity = safeNumber(trade.quantity || trade.qty || trade.amount || 0);
   const status = trade.status === "open" ? "Open" : "Closed";
   const risk = trade.risk_level || "medium";
@@ -410,7 +443,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
 
   // Calculate price change percentage if exit price exists
   const priceChangePercent = exitPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : null;
-  const hasValidExit = exitPrice && exitPrice !== entryPrice;
+  const hasValidExit = exitPrice !== null && Math.abs(exitPrice - entryPrice) > 0.0001;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -532,20 +565,17 @@ export default function PublicDashboard() {
 
   const fetchData = useCallback(async () => {
     if (isFetchingRef.current) {
-      console.log("⏭️ Fetch already in progress, skipping...");
       return;
     }
     
     const now = Date.now();
     if (now - lastFetchTimeRef.current < MIN_FETCH_INTERVAL && data.lastUpdate) {
-      console.log("⏭️ Rate limited - last fetch was", Math.round((now - lastFetchTimeRef.current) / 1000), "seconds ago");
       return;
     }
     
     isFetchingRef.current = true;
     
     try {
-      console.log("🔄 Fetching public dashboard data...");
       lastFetchTimeRef.current = now;
       
       const [statsResponse, notableResponse] = await Promise.all([
@@ -556,36 +586,23 @@ export default function PublicDashboard() {
       if (statsResponse.data && statsResponse.data.success) {
         const apiData = statsResponse.data.data;
         
-        // FIX: Map trades and preserve all fields with proper normalization
+        // CRITICAL: Normalize trades with proper number conversion
         const trades = (apiData.recent_trades || []).map(trade => ({
-          ...trade, // Keep all original fields
-          // Normalize quantity - try multiple field names
-          quantity: trade.quantity || trade.qty || trade.amount || 0,
-          qty: trade.quantity || trade.qty || trade.amount || 0, // Keep both for compatibility
-          // Normalize exit price
-          exit_price: trade.exit_price || trade.exitPrice || trade.exit || null,
-          // Normalize entry price
-          price: trade.price || trade.entry_price || 0,
-          entry_price: trade.price || trade.entry_price || 0,
-          // Ensure numeric values
+          ...trade,
+          // Convert quantity to number
+          quantity: safeNumber(trade.quantity || trade.qty || trade.amount || 0),
+          qty: safeNumber(trade.qty || trade.quantity || trade.amount || 0),
+          // CRITICAL: Convert exit_price from string to number
+          exit_price: trade.exit_price !== undefined && trade.exit_price !== null 
+            ? safeNumber(trade.exit_price) 
+            : (trade.exitPrice ? safeNumber(trade.exitPrice) : null),
+          // Convert prices to numbers
+          price: safeNumber(trade.price || trade.entry_price || 0),
+          entry_price: safeNumber(trade.entry_price || trade.price || 0),
+          // Ensure PnL values are numbers
           pnl_usd: safeNumber(trade.pnl_usd, 0),
           pnl_percent: safeNumber(trade.pnl_percent, 0),
         }));
-        
-        // DEBUG: Log what we got
-        if (trades.length > 0) {
-          const sample = trades[0];
-          console.log("📊 Sample trade after normalization:", {
-            symbol: sample.symbol,
-            quantity: sample.quantity,
-            qty: sample.qty,
-            exit_price: sample.exit_price,
-            price: sample.price,
-            pnl_percent: sample.pnl_percent
-          });
-          console.log(`📊 Trades with quantity > 0: ${trades.filter(t => t.quantity > 0).length}`);
-          console.log(`📊 Trades with exit_price: ${trades.filter(t => t.exit_price).length}`);
-        }
         
         const summary = apiData.summary || {};
         
@@ -613,7 +630,6 @@ export default function PublicDashboard() {
         let notableTrades = {};
         if (notableResponse.data && notableResponse.data.success) {
           notableTrades = notableResponse.data.data;
-          console.log("🏆 Notable trades loaded:", Object.keys(notableTrades).length, "bots");
         }
         
         setData({
@@ -630,7 +646,7 @@ export default function PublicDashboard() {
       }
       
     } catch (error) {
-      console.error("❌ Error fetching data:", error);
+      console.error("Error fetching data:", error);
       setData(prev => ({ 
         ...prev, 
         error: error.response?.data?.message || error.message || "Failed to fetch trading data" 
