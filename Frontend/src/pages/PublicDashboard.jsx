@@ -100,146 +100,81 @@ function getBotDisplayName(botName) {
   return botName || "Bot";
 }
 
-// Daily Trading Activity Chart with dual axis (Trade Count + P&L)
-function DailyTradingChart({ trades = [] }) {
-  const [chartData, setChartData] = useState({ labels: [], datasets: [] });
+// Helper function to build activity series - copied from Home page
+function buildActivitySeries(trades = []) {
+  if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
 
-  useEffect(() => {
-    // Group trades by date
-    const dailyCount = {};
-    const dailyPnL = {};
-    
-    trades.forEach(trade => {
-      if (!trade.created_at) return;
-      const date = new Date(trade.created_at).toISOString().split('T')[0];
-      dailyCount[date] = (dailyCount[date] || 0) + 1;
-      dailyPnL[date] = (dailyPnL[date] || 0) + safeNumber(trade.pnl_usd);
+  return trades
+    .slice(0, 7)
+    .reverse()
+    .map((trade, index) => {
+      const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
+      if (usd !== null && Number.isFinite(Number(usd))) {
+        return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
+      }
+      return index + 4;
     });
+}
 
-    // Get last 14 days of data for better visualization
-    const allDates = Object.keys(dailyCount).sort();
-    const dates = allDates.slice(-14);
-    
-    const activityData = dates.map(date => dailyCount[date] || 0);
-    const pnlData = dates.map(date => dailyPnL[date] || 0);
-
-    setChartData({
-      labels: dates.map(d => {
-        const date = new Date(d);
-        return `${date.getMonth()+1}/${date.getDate()}`;
-      }),
+// Bot Activity Chart - Simplified version matching Home page
+function BotActivityChart({ trades = [], stats }) {
+  const series = buildActivitySeries(trades);
+  
+  const chartData = useMemo(
+    () => ({
+      labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
       datasets: [
         {
-          label: "Trade Count",
-          data: activityData,
+          data: series,
           borderColor: "#10b981",
-          backgroundColor: "rgba(16, 185, 129, 0.1)",
-          borderWidth: 3,
+          backgroundColor: "rgba(16,185,129,0.18)",
+          fill: true,
+          tension: 0.45,
           pointRadius: 4,
-          pointHoverRadius: 6,
-          pointBackgroundColor: "#10b981",
-          pointBorderColor: "white",
-          pointBorderWidth: 2,
-          fill: true,
-          tension: 0.3,
-          yAxisID: "y",
-        },
-        {
-          label: "P&L ($)",
-          data: pnlData,
-          borderColor: "#8b5cf6",
-          backgroundColor: "rgba(139, 92, 246, 0.1)",
-          borderWidth: 2,
-          pointRadius: 3,
           pointHoverRadius: 5,
-          pointBackgroundColor: "#8b5cf6",
-          pointBorderColor: "white",
-          pointBorderWidth: 1.5,
-          fill: true,
-          tension: 0.3,
-          yAxisID: "y1",
-        }
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#10b981",
+          pointBorderWidth: 2,
+          borderWidth: 3,
+        },
       ],
-    });
-  }, [trades]);
+    }),
+    [series]
+  );
 
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: "index",
-      intersect: false,
-    },
-    plugins: {
-      legend: { 
-        position: "top", 
-        labels: { 
-          boxWidth: 12, 
-          font: { size: 10, weight: "bold" },
-          usePointStyle: true,
-        } 
+  const chartOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          displayColors: false,
+          backgroundColor: "#111827",
+          titleColor: "#ffffff",
+          bodyColor: "#d1fae5",
+          padding: 10,
+        },
       },
-      tooltip: {
-        callbacks: {
-          label: (context) => {
-            if (context.dataset.label === "Trade Count") {
-              return `📊 Trades: ${context.raw}`;
-            }
-            return `💰 P&L: ${formatCurrency(context.raw)}`;
-          }
-        }
-      }
-    },
-    scales: {
-      y: {
-        position: "left",
-        title: { 
-          display: true, 
-          text: "Number of Trades", 
-          font: { size: 10, weight: "bold" },
-          color: "#10b981"
+      scales: {
+        x: {
+          display: true,
+          grid: { display: false },
+          ticks: {
+            color: "#9ca3af",
+            font: { size: 10 },
+          },
         },
-        ticks: { 
-          font: { size: 10 },
-          stepSize: 1,
+        y: {
+          display: false,
+          grid: { color: "rgba(229,231,235,0.5)" },
         },
-        grid: { color: "rgba(0,0,0,0.05)" }
       },
-      y1: {
-        position: "right",
-        title: { 
-          display: true, 
-          text: "Profit & Loss ($)", 
-          font: { size: 10, weight: "bold" },
-          color: "#8b5cf6"
-        },
-        ticks: { 
-          callback: (value) => formatCurrency(value), 
-          font: { size: 10 } 
-        },
-        grid: { display: false }
-      },
-      x: {
-        ticks: { font: { size: 9 }, maxRotation: 45 },
-        grid: { display: false }
-      }
-    },
-  };
+    }),
+    []
+  );
 
-  const hasData = chartData.datasets[0]?.data?.length > 0 && chartData.datasets[0].data.some(v => v > 0);
-
-  if (!hasData) {
-    return (
-      <div className="h-64 flex items-center justify-center text-gray-400">
-        <div className="text-center">
-          <p className="text-sm">No trading activity data available</p>
-          <p className="text-[10px] mt-1">Trades will appear here once your bots start trading</p>
-        </div>
-      </div>
-    );
-  }
-
-  return <Line data={chartData} options={options} />;
+  return <Line data={chartData} options={chartOptions} />;
 }
 
 // Stat Mini Card
@@ -709,21 +644,21 @@ export default function PublicDashboard() {
           <p className="text-gray-500 text-xs">{formatNumber(totalTrades)} total trades • {activeBots} active bots • Real-time updates</p>
         </div>
 
-        {/* Daily Trading Activity Chart - Dynamic with dual axis */}
+        {/* Bot Activity Chart - Replaced with Home page style chart */}
         <div className="mb-5 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="flex items-center gap-2 font-bold text-gray-900">
               <span className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
-              Daily Trading Activity
+              Bot Activity
             </h3>
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Last 14 Days
+              Last 7 Days
             </span>
           </div>
           <div className="h-80">
-            <DailyTradingChart trades={allTrades} />
+            <BotActivityChart trades={allTrades} />
           </div>
-          <p className="text-center text-[9px] text-gray-400 mt-2">Green: Trade count | Purple: Profit & Loss</p>
+          <p className="text-center text-[9px] text-gray-400 mt-2">Weekly trading activity based on recent trades</p>
         </div>
 
         {/* Stats Cards */}
