@@ -278,6 +278,8 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
                       </div>
                       <div className="text-[9px] text-gray-500 mt-0.5">
                         {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
+                        {trade.exit_price && ` • Exit: ${formatCurrency(trade.exit_price)}`}
+                        {trade.qty && ` • Qty: ${trade.qty}`}
                       </div>
                     </div>
                     <div className="text-right shrink-0 ml-4">
@@ -295,7 +297,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   );
 }
 
-// Trade Row Component - Updated to show exit price for closed trades
+// Trade Row Component - Updated to show quantity and exit price
 function TradeRow({ trade, onClick, isNotable = false }) {
   const pnl = safeNumber(trade.pnl_usd);
   const pnlPercent = safeNumber(trade.pnl_percent);
@@ -303,7 +305,8 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
   const isOpen = trade.status === "open";
-  const exitPrice = trade.exit_price || trade.exitPrice;
+  const exitPrice = trade.exit_price;
+  const quantity = trade.qty;
   
   return (
     <div 
@@ -333,10 +336,13 @@ function TradeRow({ trade, onClick, isNotable = false }) {
         <div className="text-[10px] text-gray-400 mt-0.5">
           {timeAgo(timestamp)}
         </div>
-        <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2">
+        <div className="text-[10px] text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>Entry: {formatCurrency(trade.price || 0)}</span>
           {!isOpen && exitPrice && (
             <span>Exit: {formatCurrency(exitPrice)}</span>
+          )}
+          {quantity && quantity > 0 && (
+            <span>Qty: {quantity.toFixed(6)}</span>
           )}
         </div>
       </div>
@@ -360,7 +366,7 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   );
 }
 
-// Trade Detail Modal - Updated to show exit price prominently
+// Trade Detail Modal - Updated to show quantity and exit price
 function TradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
 
@@ -371,11 +377,14 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
   const entryPrice = safeNumber(trade.price);
-  const exitPrice = trade.exit_price || trade.exitPrice ? safeNumber(trade.exit_price || trade.exitPrice) : null;
+  const exitPrice = trade.exit_price ? safeNumber(trade.exit_price) : null;
   const qty = safeNumber(trade.qty);
   const status = trade.status === "open" ? "Open" : "Closed";
   const risk = trade.risk_level || "medium";
   const entryReason = trade.entry_reason || "AI detected favorable market conditions";
+
+  // Calculate price change percentage if exit price exists
+  const priceChangePercent = exitPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -422,7 +431,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
           <div className="grid grid-cols-2 gap-3 text-xs border-t border-gray-100 pt-3">
             <div>
               <div className="text-gray-500">Quantity</div>
-              <div className="font-semibold">{qty.toFixed(6)}</div>
+              <div className="font-semibold">{qty > 0 ? qty.toFixed(6) : "—"}</div>
             </div>
             <div>
               <div className="text-gray-500">Entry Price</div>
@@ -436,14 +445,20 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
                 </div>
                 <div>
                   <div className="text-gray-500">Price Change</div>
-                  <div className={`font-semibold ${exitPrice > entryPrice ? "text-green-600" : exitPrice < entryPrice ? "text-red-600" : "text-gray-600"}`}>
-                    {formatPercent(((exitPrice - entryPrice) / entryPrice) * 100)}
+                  <div className={`font-semibold ${priceChangePercent > 0 ? "text-green-600" : priceChangePercent < 0 ? "text-red-600" : "text-gray-600"}`}>
+                    {formatPercent(priceChangePercent)}
                   </div>
                 </div>
               </>
             )}
+            {status === "Closed" && !exitPrice && (
+              <div className="col-span-2">
+                <div className="text-gray-500">Exit Price</div>
+                <div className="font-semibold text-gray-400">Not recorded</div>
+              </div>
+            )}
             {status === "Open" && (
-              <div>
+              <div className="col-span-2">
                 <div className="text-gray-500">Current Status</div>
                 <div className="font-semibold text-blue-600">Active Position</div>
               </div>
@@ -512,17 +527,42 @@ export default function PublicDashboard() {
 
       if (statsResponse.data && statsResponse.data.success) {
         const apiData = statsResponse.data.data;
-        // Map trades to ensure exit_price is properly captured
-        const trades = (apiData.recent_trades || []).map(trade => ({
-          ...trade,
-          // Ensure exit_price is captured from various possible field names
-          exit_price: trade.exit_price || trade.exitPrice || trade.exit_price_usd || null,
-          // Ensure price is captured
-          price: trade.price || trade.entry_price || trade.entryPrice || 0,
-        }));
+        
+        // Comprehensive trade data mapping to ensure all fields are captured
+        const trades = (apiData.recent_trades || []).map(trade => {
+          // Log raw trade data for debugging
+          console.log("Raw trade data:", {
+            id: trade.id,
+            symbol: trade.symbol,
+            qty: trade.qty,
+            exit_price: trade.exit_price,
+            price: trade.price,
+            status: trade.status
+          });
+          
+          return {
+            ...trade,
+            // Map quantity from various possible field names
+            qty: trade.qty || trade.quantity || trade.amount || 0,
+            // Map exit price from various possible field names
+            exit_price: trade.exit_price || trade.exitPrice || trade.exit_price_usd || trade.close_price || null,
+            // Map entry price
+            price: trade.price || trade.entry_price || trade.entryPrice || 0,
+            // Ensure status is consistent
+            status: trade.status || (trade.exit_price ? "closed" : "open"),
+            // Ensure side is consistent
+            side: trade.side || (trade.type === "buy" ? "buy" : "sell"),
+            // Ensure P&L fields
+            pnl_usd: trade.pnl_usd || trade.pnl || trade.profit_loss || 0,
+            pnl_percent: trade.pnl_percent || trade.return_percent || 0,
+          };
+        });
+        
         const summary = apiData.summary || {};
         
         console.log(`📊 Total trades from API: ${summary.total_trades || trades.length}`);
+        console.log(`📊 Trades with quantity: ${trades.filter(t => t.qty > 0).length}`);
+        console.log(`📊 Trades with exit prices: ${trades.filter(t => t.exit_price).length}`);
         
         const botStats = {};
         const mainBots = ["okx", "futures", "stocks", "sniper"];
@@ -556,7 +596,8 @@ export default function PublicDashboard() {
           tradesCount: trades.length,
           bots: Object.keys(botStats).length,
           notableBots: Object.keys(notableTrades).length,
-          tradesWithExitPrices: trades.filter(t => t.exit_price).length
+          tradesWithExitPrices: trades.filter(t => t.exit_price).length,
+          tradesWithQuantity: trades.filter(t => t.qty > 0).length
         });
         
         setData({
