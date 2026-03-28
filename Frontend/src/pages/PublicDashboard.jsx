@@ -295,7 +295,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   );
 }
 
-// Trade Row Component
+// Trade Row Component - Updated to show exit price for closed trades
 function TradeRow({ trade, onClick, isNotable = false }) {
   const pnl = safeNumber(trade.pnl_usd);
   const pnlPercent = safeNumber(trade.pnl_percent);
@@ -303,6 +303,7 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
   const isOpen = trade.status === "open";
+  const exitPrice = trade.exit_price || trade.exitPrice;
   
   return (
     <div 
@@ -332,8 +333,11 @@ function TradeRow({ trade, onClick, isNotable = false }) {
         <div className="text-[10px] text-gray-400 mt-0.5">
           {timeAgo(timestamp)}
         </div>
-        <div className="text-[10px] text-gray-500 mt-0.5">
-          Entry: {formatCurrency(trade.price || 0)}
+        <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2">
+          <span>Entry: {formatCurrency(trade.price || 0)}</span>
+          {!isOpen && exitPrice && (
+            <span>Exit: {formatCurrency(exitPrice)}</span>
+          )}
         </div>
       </div>
       <div className="text-right shrink-0 ml-2">
@@ -356,7 +360,7 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   );
 }
 
-// Trade Detail Modal
+// Trade Detail Modal - Updated to show exit price prominently
 function TradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
 
@@ -367,7 +371,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
   const entryPrice = safeNumber(trade.price);
-  const exitPrice = trade.exit_price ? safeNumber(trade.exit_price) : null;
+  const exitPrice = trade.exit_price || trade.exitPrice ? safeNumber(trade.exit_price || trade.exitPrice) : null;
   const qty = safeNumber(trade.qty);
   const status = trade.status === "open" ? "Open" : "Closed";
   const risk = trade.risk_level || "medium";
@@ -401,10 +405,16 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
                 {timeAgo(timestamp)} • {bot}
               </div>
             </div>
-            {pnl > 0 && (
+            {pnl !== 0 && (
               <div className="text-right">
-                <div className="text-xl font-bold text-green-600">{formatCurrencySigned(pnl)}</div>
-                <div className="text-xs font-semibold text-green-600">{formatPercent(pnlPercent)} return</div>
+                <div className={`text-xl font-bold ${pnl > 0 ? "text-green-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
+                  {formatCurrencySigned(pnl)}
+                </div>
+                {pnlPercent !== 0 && (
+                  <div className={`text-xs font-semibold ${pnlPercent > 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatPercent(pnlPercent)} return
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -418,10 +428,26 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
               <div className="text-gray-500">Entry Price</div>
               <div className="font-semibold">{formatCurrency(entryPrice)}</div>
             </div>
-            <div>
-              <div className="text-gray-500">Exit Price</div>
-              <div className="font-semibold">{exitPrice ? formatCurrency(exitPrice) : "—"}</div>
-            </div>
+            {status === "Closed" && exitPrice && (
+              <>
+                <div>
+                  <div className="text-gray-500">Exit Price</div>
+                  <div className="font-semibold">{formatCurrency(exitPrice)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Price Change</div>
+                  <div className={`font-semibold ${exitPrice > entryPrice ? "text-green-600" : exitPrice < entryPrice ? "text-red-600" : "text-gray-600"}`}>
+                    {formatPercent(((exitPrice - entryPrice) / entryPrice) * 100)}
+                  </div>
+                </div>
+              </>
+            )}
+            {status === "Open" && (
+              <div>
+                <div className="text-gray-500">Current Status</div>
+                <div className="font-semibold text-blue-600">Active Position</div>
+              </div>
+            )}
             <div>
               <div className="text-gray-500">Risk Level</div>
               <div className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${getRiskColor(risk)}`}>
@@ -486,7 +512,14 @@ export default function PublicDashboard() {
 
       if (statsResponse.data && statsResponse.data.success) {
         const apiData = statsResponse.data.data;
-        const trades = apiData.recent_trades || [];
+        // Map trades to ensure exit_price is properly captured
+        const trades = (apiData.recent_trades || []).map(trade => ({
+          ...trade,
+          // Ensure exit_price is captured from various possible field names
+          exit_price: trade.exit_price || trade.exitPrice || trade.exit_price_usd || null,
+          // Ensure price is captured
+          price: trade.price || trade.entry_price || trade.entryPrice || 0,
+        }));
         const summary = apiData.summary || {};
         
         console.log(`📊 Total trades from API: ${summary.total_trades || trades.length}`);
@@ -522,7 +555,8 @@ export default function PublicDashboard() {
           totalTrades: summary.total_trades,
           tradesCount: trades.length,
           bots: Object.keys(botStats).length,
-          notableBots: Object.keys(notableTrades).length
+          notableBots: Object.keys(notableTrades).length,
+          tradesWithExitPrices: trades.filter(t => t.exit_price).length
         });
         
         setData({
