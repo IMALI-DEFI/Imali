@@ -827,7 +827,7 @@ export default function PublicDashboard() {
         </div>
       </main>
 
-      {/* Modal */}
+      {/* lModal */}
       <TradeDetailModal
         trade={selectedTrade}
         isOpen={!!selectedTrade}
