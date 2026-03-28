@@ -58,6 +58,16 @@ function formatNumber(value) {
   return n.toLocaleString();
 }
 
+function formatQuantity(value) {
+  const n = safeNumber(value);
+  // Format with appropriate decimals based on size
+  if (n < 0.0001) return n.toExponential(4);
+  if (n < 0.01) return n.toFixed(8);
+  if (n < 1) return n.toFixed(6);
+  if (n < 1000) return n.toFixed(4);
+  return n.toFixed(2);
+}
+
 function timeAgo(timestamp) {
   if (!timestamp) return "—";
   try {
@@ -279,7 +289,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
                       <div className="text-[9px] text-gray-500 mt-0.5">
                         {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
                         {trade.exit_price && ` • Exit: ${formatCurrency(trade.exit_price)}`}
-                        {trade.qty && ` • Qty: ${safeNumber(trade.qty).toFixed(6)}`}
+                        {trade.quantity && ` • Qty: ${formatQuantity(trade.quantity)}`}
                       </div>
                     </div>
                     <div className="text-right shrink-0 ml-4">
@@ -297,7 +307,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   );
 }
 
-// Trade Row Component - Shows quantity and exit price
+// FIXED: Trade Row Component - Shows quantity and exit price properly
 function TradeRow({ trade, onClick, isNotable = false }) {
   const pnl = safeNumber(trade.pnl_usd);
   const pnlPercent = safeNumber(trade.pnl_percent);
@@ -305,8 +315,18 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
   const isOpen = trade.status === "open";
-  const exitPrice = trade.exit_price;
-  const quantity = trade.qty;
+  
+  // FIX: Handle multiple possible field names for quantity
+  const quantity = trade.quantity || trade.qty || trade.amount || 0;
+  
+  // FIX: Handle multiple possible field names for exit price
+  const exitPrice = trade.exit_price || trade.exitPrice || trade.exit || null;
+  
+  // FIX: Handle entry price (price or entry_price)
+  const entryPrice = trade.price || trade.entry_price || 0;
+  
+  // FIX: Calculate if exit price is different from entry price
+  const hasValidExit = exitPrice !== null && exitPrice !== entryPrice;
   
   return (
     <div 
@@ -337,12 +357,15 @@ function TradeRow({ trade, onClick, isNotable = false }) {
           {timeAgo(timestamp)}
         </div>
         <div className="text-[10px] text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>Entry: {formatCurrency(trade.price || 0)}</span>
-          {!isOpen && exitPrice && (
-            <span>Exit: {formatCurrency(exitPrice)}</span>
+          <span>Entry: {formatCurrency(entryPrice)}</span>
+          {!isOpen && hasValidExit && (
+            <span className="text-emerald-600">Exit: {formatCurrency(exitPrice)}</span>
           )}
-          {quantity && quantity > 0 && (
-            <span>Qty: {safeNumber(quantity).toFixed(6)}</span>
+          {!isOpen && !hasValidExit && exitPrice && (
+            <span className="text-gray-400">Exit: {formatCurrency(exitPrice)} (same as entry)</span>
+          )}
+          {quantity > 0 && (
+            <span className="text-purple-600">Qty: {formatQuantity(quantity)}</span>
           )}
         </div>
       </div>
@@ -350,7 +373,7 @@ function TradeRow({ trade, onClick, isNotable = false }) {
         {!isOpen ? (
           <>
             <div className={`font-semibold text-sm ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
-              {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(trade.price || 0)}
+              {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(entryPrice)}
             </div>
             {pnlPercent !== 0 && (
               <div className={`text-[11px] font-medium ${pnlPercent > 0 ? "text-emerald-500" : "text-red-500"}`}>
@@ -366,7 +389,7 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   );
 }
 
-// Trade Detail Modal - Shows quantity and exit price in detail
+// FIXED: Trade Detail Modal - Shows quantity and exit price in detail
 function TradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
 
@@ -376,15 +399,18 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const side = trade.side || "buy";
   const bot = getBotDisplayName(trade.bot);
   const timestamp = trade.created_at;
-  const entryPrice = safeNumber(trade.price);
-  const exitPrice = trade.exit_price ? safeNumber(trade.exit_price) : null;
-  const qty = safeNumber(trade.qty);
+  
+  // FIX: Handle multiple possible field names
+  const entryPrice = safeNumber(trade.price || trade.entry_price || 0);
+  const exitPrice = trade.exit_price || trade.exitPrice || trade.exit || null;
+  const quantity = safeNumber(trade.quantity || trade.qty || trade.amount || 0);
   const status = trade.status === "open" ? "Open" : "Closed";
   const risk = trade.risk_level || "medium";
   const entryReason = trade.entry_reason || "AI detected favorable market conditions";
 
   // Calculate price change percentage if exit price exists
   const priceChangePercent = exitPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : null;
+  const hasValidExit = exitPrice && exitPrice !== entryPrice;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -431,7 +457,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
           <div className="grid grid-cols-2 gap-3 text-xs border-t border-gray-100 pt-3">
             <div>
               <div className="text-gray-500">Quantity</div>
-              <div className="font-semibold">{qty > 0 ? qty.toFixed(6) : "—"}</div>
+              <div className="font-semibold text-purple-600">{quantity > 0 ? formatQuantity(quantity) : "—"}</div>
             </div>
             <div>
               <div className="text-gray-500">Entry Price</div>
@@ -441,7 +467,9 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
               <>
                 <div>
                   <div className="text-gray-500">Exit Price</div>
-                  <div className="font-semibold">{formatCurrency(exitPrice)}</div>
+                  <div className={`font-semibold ${hasValidExit ? "text-emerald-600" : "text-gray-400"}`}>
+                    {formatCurrency(exitPrice)}
+                  </div>
                 </div>
                 <div>
                   <div className="text-gray-500">Price Change</div>
@@ -528,36 +556,38 @@ export default function PublicDashboard() {
       if (statsResponse.data && statsResponse.data.success) {
         const apiData = statsResponse.data.data;
         
-        // DEBUG: Log the first trade to see what fields are coming from API
-        if (apiData.recent_trades && apiData.recent_trades.length > 0) {
-          console.log("🔍 First trade from API:", apiData.recent_trades[0]);
-          console.log("🔍 Does it have qty?", apiData.recent_trades[0].qty);
-          console.log("🔍 Does it have exit_price?", apiData.recent_trades[0].exit_price);
-        }
-        
-        // Map trades - PRESERVE all fields from API
+        // FIX: Map trades and preserve all fields with proper normalization
         const trades = (apiData.recent_trades || []).map(trade => ({
           ...trade, // Keep all original fields
-          // Ensure numeric values but preserve original
-          qty: trade.qty !== undefined ? safeNumber(trade.qty) : 0,
-          exit_price: trade.exit_price !== undefined ? trade.exit_price : null,
-          price: safeNumber(trade.price, 0),
+          // Normalize quantity - try multiple field names
+          quantity: trade.quantity || trade.qty || trade.amount || 0,
+          qty: trade.quantity || trade.qty || trade.amount || 0, // Keep both for compatibility
+          // Normalize exit price
+          exit_price: trade.exit_price || trade.exitPrice || trade.exit || null,
+          // Normalize entry price
+          price: trade.price || trade.entry_price || 0,
+          entry_price: trade.price || trade.entry_price || 0,
+          // Ensure numeric values
           pnl_usd: safeNumber(trade.pnl_usd, 0),
           pnl_percent: safeNumber(trade.pnl_percent, 0),
         }));
         
-        // DEBUG: Log the first mapped trade
+        // DEBUG: Log what we got
         if (trades.length > 0) {
-          console.log("✅ First mapped trade:", trades[0]);
-          console.log("✅ qty after mapping:", trades[0].qty);
-          console.log("✅ exit_price after mapping:", trades[0].exit_price);
+          const sample = trades[0];
+          console.log("📊 Sample trade after normalization:", {
+            symbol: sample.symbol,
+            quantity: sample.quantity,
+            qty: sample.qty,
+            exit_price: sample.exit_price,
+            price: sample.price,
+            pnl_percent: sample.pnl_percent
+          });
+          console.log(`📊 Trades with quantity > 0: ${trades.filter(t => t.quantity > 0).length}`);
+          console.log(`📊 Trades with exit_price: ${trades.filter(t => t.exit_price).length}`);
         }
         
         const summary = apiData.summary || {};
-        
-        console.log(`📊 Total trades from API: ${summary.total_trades || trades.length}`);
-        console.log(`📊 Trades with quantity > 0: ${trades.filter(t => t.qty > 0).length}`);
-        console.log(`📊 Trades with exit_price: ${trades.filter(t => t.exit_price).length}`);
         
         const botStats = {};
         const mainBots = ["okx", "futures", "stocks", "sniper"];
@@ -585,16 +615,6 @@ export default function PublicDashboard() {
           notableTrades = notableResponse.data.data;
           console.log("🏆 Notable trades loaded:", Object.keys(notableTrades).length, "bots");
         }
-        
-        console.log("✅ Dashboard data loaded:", {
-          totalTrades: summary.total_trades,
-          tradesCount: trades.length,
-          bots: Object.keys(botStats).length,
-          notableBots: Object.keys(notableTrades).length,
-          tradesWithExitPrices: trades.filter(t => t.exit_price).length,
-          tradesWithQuantity: trades.filter(t => t.qty > 0).length,
-          sampleTradeWithQty: trades.find(t => t.qty > 0)
-        });
         
         setData({
           trades: trades,
