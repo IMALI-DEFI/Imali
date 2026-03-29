@@ -20,6 +20,14 @@ import {
   FaMedal,
   FaLink,
   FaSyncAlt,
+  FaGooglePlay,
+  FaApple,
+  FaChrome,
+  FaFirefox,
+  FaMobile,
+  FaQuestionCircle,
+  FaEnvelope,
+  FaArrowRight,
 } from "react-icons/fa";
 import referralImg from "../assets/images/referral_program.png";
 import referralBot from "../assets/images/cards/referralbot.png";
@@ -100,6 +108,12 @@ const ReferralSystem = () => {
   const [success, setSuccess] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
+  const [showWalletGuide, setShowWalletGuide] = useState(false);
+  const [emailMode, setEmailMode] = useState(false);
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [showSignupForm, setShowSignupForm] = useState(false);
+  const [guestMode, setGuestMode] = useState(false);
 
   // Check authentication status
   useEffect(() => {
@@ -111,10 +125,8 @@ const ReferralSystem = () => {
   // Auto-connect wallet on page load
   useEffect(() => {
     const autoConnect = async () => {
-      // Don't attempt auto-connect if already connected, connecting, or already attempted
       if (isConnected || connecting || autoConnectAttempted) return;
       
-      // Don't attempt if no wallet is installed
       if (!hasWallet) {
         setAutoConnectAttempted(true);
         return;
@@ -126,12 +138,10 @@ const ReferralSystem = () => {
         await connectWallet();
         console.log("[ReferralSystem] Auto-connect successful");
       } catch (err) {
-        console.log("[ReferralSystem] Auto-connect failed or user rejected:", err.message);
-        // Don't show error for auto-connect failures - user can manually connect
+        console.log("[ReferralSystem] Auto-connect failed:", err.message);
       }
     };
 
-    // Small delay to ensure wallet context is ready
     const timer = setTimeout(autoConnect, 500);
     return () => clearTimeout(timer);
   }, [connectWallet, isConnected, connecting, autoConnectAttempted, hasWallet]);
@@ -375,8 +385,381 @@ const ReferralSystem = () => {
     }
   };
 
-  const guestMode = isConnected && !isAuthenticated;
+  const handleEmailSignup = async () => {
+    if (!signupEmail || !signupPassword) {
+      setError("Please enter email and password");
+      return;
+    }
 
+    setLoading(true);
+    try {
+      const response = await axios.post(`${API_BASE}/api/signup`, {
+        email: signupEmail,
+        password: signupPassword,
+        tier: "starter",
+        referral_code: effectiveReferralCode,
+      });
+
+      if (response.data.success) {
+        const { token } = response.data;
+        localStorage.setItem("auth_token", token);
+        setIsAuthenticated(true);
+        setShowSignupForm(false);
+        setSuccess("Account created successfully! You can now participate in referrals.");
+        setTimeout(() => setSuccess(null), 5000);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || "Signup failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isGuestMode = guestMode && !isConnected && !isAuthenticated;
+  const isWalletConnected = isConnected && !isAuthenticated;
+
+  // Wallet Guide Modal
+  const WalletGuideModal = () => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
+          <h2 className="text-2xl font-bold">Choose Your Wallet</h2>
+          <button onClick={() => setShowWalletGuide(false)} className="text-gray-500 hover:text-gray-700 text-2xl">
+            ×
+          </button>
+        </div>
+        
+        <div className="p-6">
+          <p className="text-gray-600 mb-6">
+            A Web3 wallet is your gateway to the decentralized web. Choose one below to get started:
+          </p>
+
+          {/* Browser Extensions */}
+          <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+            <FaChrome className="text-blue-500" /> Browser Extensions
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <WalletOption
+              name="MetaMask"
+              icon="🦊"
+              description="The most popular Web3 wallet"
+              installUrl="https://metamask.io/download/"
+              color="orange"
+            />
+            <WalletOption
+              name="Coinbase Wallet"
+              icon="💰"
+              description="Easy to use, great for beginners"
+              installUrl="https://www.coinbase.com/wallet"
+              color="blue"
+            />
+            <WalletOption
+              name="Rabby Wallet"
+              icon="🐰"
+              description="Advanced features for DeFi"
+              installUrl="https://rabby.io/"
+              color="purple"
+            />
+            <WalletOption
+              name="Trust Wallet"
+              icon="🔒"
+              description="Multi-chain support"
+              installUrl="https://trustwallet.com/"
+              color="green"
+            />
+          </div>
+
+          {/* Mobile Wallets */}
+          <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+            <FaMobile className="text-green-500" /> Mobile Wallets
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <WalletOption
+              name="MetaMask Mobile"
+              icon="🦊"
+              description="iOS & Android app"
+              installUrl="https://metamask.io/download/"
+              color="orange"
+              mobile
+            />
+            <WalletOption
+              name="Trust Wallet"
+              icon="🔒"
+              description="Binance's official wallet"
+              installUrl="https://trustwallet.com/"
+              color="green"
+              mobile
+            />
+            <WalletOption
+              name="Rainbow"
+              icon="🌈"
+              description="Beautiful iOS wallet"
+              installUrl="https://rainbow.me/"
+              color="purple"
+              mobile
+            />
+            <WalletOption
+              name="Coinbase Wallet"
+              icon="💰"
+              description="iOS & Android"
+              installUrl="https://www.coinbase.com/wallet"
+              color="blue"
+              mobile
+            />
+          </div>
+
+          {/* Hardware Wallets */}
+          <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+            <FaMedal className="text-yellow-500" /> Hardware Wallets (Most Secure)
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <WalletOption
+              name="Ledger"
+              icon="🔐"
+              description="Industry standard hardware wallet"
+              installUrl="https://www.ledger.com/"
+              color="red"
+            />
+            <WalletOption
+              name="Trezor"
+              icon="🔒"
+              description="Secure and open-source"
+              installUrl="https://trezor.io/"
+              color="gray"
+            />
+          </div>
+
+          <div className="mt-6 p-4 bg-emerald-50 rounded-lg">
+            <p className="text-sm text-emerald-800">
+              💡 <strong>New to crypto?</strong> Start with MetaMask - it's the most widely used and has great tutorials.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const WalletOption = ({ name, icon, description, installUrl, color, mobile }) => (
+    <a
+      href={installUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-3 p-3 border rounded-xl hover:shadow-md transition-all group"
+    >
+      <div className="text-3xl">{icon}</div>
+      <div className="flex-1">
+        <div className="font-semibold group-hover:text-emerald-600 transition">
+          {name}
+          {mobile && <span className="text-xs ml-2 text-gray-400">Mobile</span>}
+        </div>
+        <div className="text-xs text-gray-500">{description}</div>
+      </div>
+      <FaArrowRight className="text-gray-400 group-hover:text-emerald-600 transition" />
+    </a>
+  );
+
+  // No wallet installed - show comprehensive options
+  if (!hasWallet && !autoConnectAttempted && !guestMode) {
+    return (
+      <div className="min-h-screen bg-white text-gray-900">
+        <div className="mx-auto max-w-6xl px-6 py-12">
+          <Link
+            to="/"
+            className="mb-8 inline-flex items-center gap-2 text-gray-500 transition hover:text-gray-900"
+          >
+            <FaArrowLeft className="text-sm" />
+            Back to Home
+          </Link>
+
+          <div className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-emerald-50 p-8 shadow-sm">
+            <div className="mx-auto max-w-4xl text-center">
+              <div className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100">
+                <FaWallet className="text-5xl text-emerald-600" />
+              </div>
+
+              <h1 className="mb-4 text-4xl font-bold text-gray-900 md:text-5xl">
+                Start the Referral Program
+              </h1>
+
+              <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
+                Choose how you want to participate. Get your personal referral link and start earning rewards.
+              </p>
+
+              {/* Options Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                {/* Option 1: Install Wallet */}
+                <div className="bg-white rounded-2xl border-2 border-emerald-200 p-6 text-left">
+                  <div className="text-4xl mb-3">🦊</div>
+                  <h3 className="text-xl font-bold mb-2">Use a Web3 Wallet</h3>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Get the full experience with a crypto wallet. Best for earning and claiming rewards.
+                  </p>
+                  <ul className="text-sm text-gray-600 mb-4 space-y-1">
+                    <li>✓ Earn referral rewards</li>
+                    <li>✓ Claim directly to your wallet</li>
+                    <li>✓ Track NFT progress</li>
+                  </ul>
+                  <button
+                    onClick={() => setShowWalletGuide(true)}
+                    className="w-full bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 transition"
+                  >
+                    Choose a Wallet →
+                  </button>
+                </div>
+
+                {/* Option 2: Email Signup */}
+                <div className="bg-white rounded-2xl border-2 border-gray-200 p-6 text-left">
+                  <div className="text-4xl mb-3">✉️</div>
+                  <h3 className="text-xl font-bold mb-2">Use Email Only</h3>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Start with just an email address. Perfect for beginners.
+                  </p>
+                  <ul className="text-sm text-gray-600 mb-4 space-y-1">
+                    <li>✓ Get referral link instantly</li>
+                    <li>✓ Track referrals</li>
+                    <li>✓ Add wallet later for claims</li>
+                  </ul>
+                  <button
+                    onClick={() => setShowSignupForm(true)}
+                    className="w-full bg-gray-600 text-white py-2 rounded-lg hover:bg-gray-700 transition"
+                  >
+                    Sign up with Email →
+                  </button>
+                </div>
+
+                {/* Option 3: Guest Mode */}
+                <div className="bg-white rounded-2xl border-2 border-gray-200 p-6 text-left md:col-span-2">
+                  <div className="text-4xl mb-3">👀</div>
+                  <h3 className="text-xl font-bold mb-2">Just Looking</h3>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Browse the referral program without creating an account.
+                  </p>
+                  <button
+                    onClick={() => setGuestMode(true)}
+                    className="w-full bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 transition"
+                  >
+                    Continue as Guest →
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-400 mt-4">
+                By continuing, you agree to our Terms of Service and Privacy Policy
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Wallet Guide Modal */}
+        {showWalletGuide && <WalletGuideModal />}
+
+        {/* Email Signup Modal */}
+        {showSignupForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold">Create Account</h2>
+                <button onClick={() => setShowSignupForm(false)} className="text-gray-500 hover:text-gray-700 text-2xl">
+                  ×
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={signupEmail}
+                    onChange={(e) => setSignupEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    placeholder="Create a password"
+                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Minimum 8 characters</p>
+                </div>
+                <button
+                  onClick={handleEmailSignup}
+                  disabled={loading}
+                  className="w-full bg-emerald-600 text-white py-3 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
+                >
+                  {loading ? <FaSpinner className="animate-spin mx-auto" /> : "Create Account"}
+                </button>
+                <p className="text-xs text-gray-500 text-center">
+                  You can add a wallet later to claim rewards
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Guest Mode View
+  if (isGuestMode) {
+    return (
+      <div className="min-h-screen bg-white text-gray-900">
+        <div className="mx-auto max-w-6xl px-6 py-12">
+          <Link
+            to="/"
+            className="mb-8 inline-flex items-center gap-2 text-gray-500 transition hover:text-gray-900"
+          >
+            <FaArrowLeft className="text-sm" />
+            Back to Home
+          </Link>
+
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+            <p className="text-yellow-800 flex items-center gap-2">
+              👋 You're in guest mode. <button onClick={() => setGuestMode(false)} className="underline font-semibold">Create an account</button> or{' '}
+              <button onClick={() => setShowWalletGuide(true)} className="underline font-semibold">connect a wallet</button> to get your personal referral link and earn rewards!
+            </p>
+          </div>
+
+          <div className="text-center py-12">
+            <FaUserFriends className="text-6xl text-gray-300 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">See the Referral Program</h2>
+            <p className="text-gray-600 mb-6">
+              Create an account or connect a wallet to get your referral link and start earning.
+            </p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => setShowSignupForm(true)}
+                className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700"
+              >
+                Sign Up
+              </button>
+              <button
+                onClick={() => setShowWalletGuide(true)}
+                className="border border-emerald-600 text-emerald-600 px-6 py-2 rounded-lg hover:bg-emerald-50"
+              >
+                Connect Wallet
+              </button>
+            </div>
+          </div>
+
+          {/* Show limited preview content */}
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-5 opacity-50">
+            {/* Preview of referral content - blurred/disabled */}
+            <div className="lg:col-span-5 text-center text-gray-400">
+              <p>Sign up to see your referral dashboard</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Rest of your existing component (connecting, loading, main view)
+  // ... (keep your existing code from here)
+  
   // Show loading state while auto-connect is in progress
   if (connecting && !isConnected) {
     return (
@@ -401,8 +784,8 @@ const ReferralSystem = () => {
     );
   }
 
-  // No wallet installed - show install prompt
-  if (!hasWallet && !autoConnectAttempted) {
+  // Not connected but wallet exists - show connect screen
+  if (!isConnected && hasWallet && autoConnectAttempted && !guestMode) {
     return (
       <div className="min-h-screen bg-white text-gray-900">
         <div className="mx-auto max-w-6xl px-6 py-12">
@@ -421,122 +804,12 @@ const ReferralSystem = () => {
               </div>
 
               <h1 className="mb-4 text-4xl font-bold text-gray-900 md:text-5xl">
-                Start the Referral Program
+                Connect Your Wallet
               </h1>
 
               <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
-                To begin, you'll need a Web3 wallet like MetaMask. Install one to get
-                your personal referral link and start sharing right away.
+                Connect your Web3 wallet to get your personal referral link and start earning rewards.
               </p>
-
-              <div className="mx-auto mb-8 max-w-xl rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm">
-                <h3 className="mb-4 text-lg font-semibold text-gray-900">
-                  Get a Web3 Wallet
-                </h3>
-
-                <ol className="space-y-3 text-gray-600">
-                  <li className="flex gap-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-700">
-                      1
-                    </span>
-                    <span>
-                      Install <b>MetaMask</b> or another Web3 wallet browser extension.
-                    </span>
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-700">
-                      2
-                    </span>
-                    <span>
-                      Create or import a wallet and fund it if needed.
-                    </span>
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-700">
-                      3
-                    </span>
-                    <span>
-                      Refresh this page and approve the connection request.
-                    </span>
-                  </li>
-                </ol>
-              </div>
-
-              <a
-                href="https://metamask.io/download/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-8 py-3 font-semibold text-white transition hover:bg-emerald-700"
-              >
-                <FaWallet className="text-sm" />
-                Install MetaMask
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Not connected but wallet exists - show connect screen with auto-connect already attempted
-  if (!isConnected && hasWallet && autoConnectAttempted) {
-    return (
-      <div className="min-h-screen bg-white text-gray-900">
-        <div className="mx-auto max-w-6xl px-6 py-12">
-          <Link
-            to="/"
-            className="mb-8 inline-flex items-center gap-2 text-gray-500 transition hover:text-gray-900"
-          >
-            <FaArrowLeft className="text-sm" />
-            Back to Home
-          </Link>
-
-          <div className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-emerald-50 p-8 shadow-sm">
-            <div className="mx-auto max-w-3xl text-center">
-              <div className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100">
-                <FaWallet className="text-5xl text-emerald-600" />
-              </div>
-
-              <h1 className="mb-4 text-4xl font-bold text-gray-900 md:text-5xl">
-                Start the Referral Program
-              </h1>
-
-              <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
-                Connect your wallet to get your personal referral link and start sharing.
-              </p>
-
-              <div className="mx-auto mb-8 max-w-xl rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm">
-                <h3 className="mb-4 text-lg font-semibold text-gray-900">
-                  How to connect your wallet
-                </h3>
-
-                <ol className="space-y-3 text-gray-600">
-                  <li className="flex gap-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-700">
-                      1
-                    </span>
-                    <span>
-                      Click the <b>Connect Wallet</b> button below.
-                    </span>
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-700">
-                      2
-                    </span>
-                    <span>
-                      Your wallet app or browser wallet will pop up and ask for permission.
-                    </span>
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-700">
-                      3
-                    </span>
-                    <span>
-                      Approve the connection. After that, your referral link and QR code will appear.
-                    </span>
-                  </li>
-                </ol>
-              </div>
 
               <button
                 onClick={handleConnectWallet}
@@ -546,9 +819,20 @@ const ReferralSystem = () => {
                 {connecting ? <FaSpinner className="animate-spin" /> : <FaWallet className="text-sm" />}
                 {connecting ? "Connecting..." : "Connect Wallet"}
               </button>
+
+              <div className="mt-6">
+                <button
+                  onClick={() => setShowWalletGuide(true)}
+                  className="text-emerald-600 hover:text-emerald-700 text-sm underline"
+                >
+                  Don't have a wallet? Learn more →
+                </button>
+              </div>
             </div>
           </div>
         </div>
+
+        {showWalletGuide && <WalletGuideModal />}
       </div>
     );
   }
@@ -565,6 +849,9 @@ const ReferralSystem = () => {
       </div>
     );
   }
+
+  // Main authenticated view
+  const mainGuestMode = isConnected && !isAuthenticated;
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
@@ -604,7 +891,7 @@ const ReferralSystem = () => {
           </p>
         </div>
 
-        {guestMode && (
+        {mainGuestMode && (
           <div className="mb-6 rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-cyan-800">
             Your wallet is connected. That means your referral link is ready now.
             You can start sharing it even before completing full signup.
@@ -631,6 +918,7 @@ const ReferralSystem = () => {
                 src={referralImg}
                 alt="IMALI Referral overview"
                 className="mb-4 w-full rounded-xl"
+                onError={(e) => { e.target.style.display = 'none'; }}
               />
               <h3 className="mb-2 text-lg font-bold text-gray-900">How it works</h3>
               <ol className="list-inside list-decimal space-y-2 text-sm text-gray-600">
@@ -665,6 +953,7 @@ const ReferralSystem = () => {
                 src={referralBot}
                 alt="IMALI Referral Bot"
                 className="mb-4 w-full rounded-xl border border-amber-200"
+                onError={(e) => { e.target.style.display = 'none'; }}
               />
 
               <div className="mb-3 rounded-xl border border-amber-200 bg-white p-3">
@@ -795,9 +1084,9 @@ const ReferralSystem = () => {
 
                 <button
                   onClick={claimRewards}
-                  disabled={referralData.pendingRewards <= 0 || claimLoading || guestMode}
+                  disabled={referralData.pendingRewards <= 0 || claimLoading || mainGuestMode}
                   className={`flex items-center gap-2 rounded-2xl px-6 py-3 font-semibold transition ${
-                    referralData.pendingRewards > 0 && !claimLoading && !guestMode
+                    referralData.pendingRewards > 0 && !claimLoading && !mainGuestMode
                       ? "bg-emerald-600 text-white hover:bg-emerald-700"
                       : "cursor-not-allowed bg-gray-300 text-gray-600"
                   }`}
@@ -807,13 +1096,13 @@ const ReferralSystem = () => {
                 </button>
               </div>
 
-              {guestMode && (
+              {mainGuestMode && (
                 <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-800">
                   You can share your link now. To claim rewards later, log in or finish creating your account.
                 </div>
               )}
 
-              {showWalletInput && !guestMode && (
+              {showWalletInput && !mainGuestMode && (
                 <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                   <label className="mb-2 block text-sm font-medium text-gray-900">
                     Wallet address for payout
