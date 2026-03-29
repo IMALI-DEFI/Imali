@@ -1,11 +1,17 @@
 // src/pages/Signup.jsx
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import React, { useMemo, useState } from "react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Signup() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signup, login } = useAuth();
+
+  const referralCode = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("ref") || "";
+  }, [location.search]);
 
   const [form, setForm] = useState({
     email: "",
@@ -22,19 +28,60 @@ export default function Signup() {
   const [step, setStep] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
 
+  const updateField = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
   const validate = () => {
-    if (!form.email.trim()) return "Email is required.";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
+    const email = form.email.trim().toLowerCase();
+
+    if (!email) return "Email is required.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return "Please enter a valid email address.";
-    if (form.password.length < 8)
+    }
+
+    if (form.password.length < 8) {
       return "Password must be at least 8 characters.";
-    if (form.password.length > 72)
+    }
+
+    if (form.password.length > 72) {
       return "Password must be 72 characters or less.";
-    if (form.password !== form.confirmPassword)
+    }
+
+    if (!/[A-Z]/.test(form.password)) {
+      return "Password must include at least one uppercase letter.";
+    }
+
+    if (!/[a-z]/.test(form.password)) {
+      return "Password must include at least one lowercase letter.";
+    }
+
+    if (!/[0-9]/.test(form.password)) {
+      return "Password must include at least one number.";
+    }
+
+    if (form.password !== form.confirmPassword) {
       return "Passwords do not match.";
-    if (!form.acceptTerms)
-      return "You must accept the Terms and Privacy Policy.";
+    }
+
+    if (!form.acceptTerms) {
+      return "You must accept the Terms of Service and Privacy Policy.";
+    }
+
     return null;
+  };
+
+  const getFriendlyError = (resultOrError) => {
+    if (!resultOrError) return "Something went wrong. Please try again.";
+
+    if (typeof resultOrError === "string") return resultOrError;
+
+    return (
+      resultOrError.error ||
+      resultOrError.message ||
+      resultOrError.response?.data?.message ||
+      "Something went wrong. Please try again."
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -47,51 +94,56 @@ export default function Signup() {
       return;
     }
 
+    const email = form.email.trim().toLowerCase();
+
     setLoading(true);
     setError("");
     setStep("creating");
 
-    const email = form.email.trim().toLowerCase();
-
     try {
-      // Step 1: Create account with newsletter preference
-      console.log("[Signup] Creating account...");
-      const signupResult = await signup({
+      const signupPayload = {
         email,
         password: form.password,
         tier: form.tier,
         strategy: form.strategy,
         subscribe_newsletter: form.subscribeNewsletter,
-        referral_code: new URLSearchParams(window.location.search).get("ref") || undefined,
+        referral_code: referralCode || undefined,
+      };
+
+      console.log("[Signup] Creating account...", {
+        email,
+        tier: form.tier,
+        strategy: form.strategy,
+        hasReferralCode: !!referralCode,
       });
 
-      if (!signupResult.success) {
-        setError(signupResult.error || "Signup failed. Please try again.");
-        setLoading(false);
+      const signupResult = await signup(signupPayload);
+
+      if (!signupResult?.success) {
+        setError(getFriendlyError(signupResult));
         setStep("");
+        setLoading(false);
         return;
       }
 
       console.log("[Signup] Account created successfully");
       setShowSuccess(true);
-      
-      // Small delay to show success message
-      await new Promise((r) => setTimeout(r, 1000));
 
-      // Step 2: Auto-login
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
       setStep("logging-in");
       console.log("[Signup] Logging in...");
 
       const loginResult = await login(email, form.password);
 
-      if (!loginResult.success) {
-        // Login failed but account was created
-        console.warn("[Signup] Auto-login failed, redirecting to login");
+      if (!loginResult?.success) {
+        console.warn("[Signup] Auto-login failed after signup:", loginResult);
+
         navigate("/login", {
           replace: true,
           state: {
-            message: "Account created! Please log in to continue.",
-            email: email,
+            message: "Account created successfully. Please log in to continue.",
+            email,
           },
         });
         return;
@@ -99,19 +151,20 @@ export default function Signup() {
 
       console.log("[Signup] Login successful");
 
-      // Step 3: Store user preferences
       localStorage.setItem("IMALI_EMAIL", email);
       localStorage.setItem("IMALI_TIER", form.tier);
-      localStorage.setItem("IMALI_NEWSLETTER", form.subscribeNewsletter ? "true" : "false");
+      localStorage.setItem(
+        "IMALI_NEWSLETTER",
+        form.subscribeNewsletter ? "true" : "false"
+      );
 
-      // Step 4: Navigate to BILLING first (not activation)
       setStep("redirecting-to-billing");
-      console.log("[Signup] Navigating to billing...");
+      console.log("[Signup] Redirecting to billing...");
 
       navigate("/billing", {
         replace: true,
         state: {
-          email: email,
+          email,
           tier: form.tier,
           strategy: form.strategy,
           fromSignup: true,
@@ -120,7 +173,7 @@ export default function Signup() {
       });
     } catch (err) {
       console.error("[Signup] Unexpected error:", err);
-      setError(err.message || "Signup failed. Please try again.");
+      setError(getFriendlyError(err));
       setStep("");
     } finally {
       setLoading(false);
@@ -129,6 +182,7 @@ export default function Signup() {
 
   const getButtonText = () => {
     if (showSuccess) return "Account created! 🎉";
+
     switch (step) {
       case "creating":
         return "Creating account…";
@@ -144,19 +198,16 @@ export default function Signup() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-950 via-gray-900 to-black px-4">
       <div className="w-full max-w-lg bg-gray-900/80 backdrop-blur-sm border border-gray-800 rounded-2xl p-8 shadow-2xl">
-        
-        {/* Logo/Brand */}
         <div className="text-center mb-6">
           <div className="text-4xl mb-2">🚀</div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
             Start Trading Smarter
           </h1>
           <p className="text-gray-400 mt-2">
-            Join the AI-powered trading revolution
+            Join the AI-powered trading platform
           </p>
         </div>
 
-        {/* Flow Indicator */}
         <div className="mb-6 flex justify-between text-xs text-gray-500">
           <span className="text-blue-400">1. Sign Up</span>
           <span>→</span>
@@ -167,14 +218,18 @@ export default function Signup() {
           <span>4. Dashboard</span>
         </div>
 
-        {/* Error Message */}
+        {referralCode && (
+          <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm">
+            🎁 Referral code detected: <span className="font-semibold">{referralCode}</span>
+          </div>
+        )}
+
         {error && (
           <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
             ⚠️ {error}
           </div>
         )}
 
-        {/* Success Message */}
         {showSuccess && (
           <div className="mb-4 p-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-sm">
             ✅ Account created! Taking you to billing setup...
@@ -182,7 +237,6 @@ export default function Signup() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Email Input */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Email Address
@@ -193,15 +247,12 @@ export default function Signup() {
               autoComplete="email"
               placeholder="you@example.com"
               value={form.email}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, email: e.target.value }))
-              }
+              onChange={(e) => updateField("email", e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               disabled={loading || showSuccess}
             />
           </div>
 
-          {/* Password Input */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Password
@@ -212,18 +263,15 @@ export default function Signup() {
               autoComplete="new-password"
               placeholder="Create a strong password"
               value={form.password}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, password: e.target.value }))
-              }
+              onChange={(e) => updateField("password", e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               disabled={loading || showSuccess}
             />
             <p className="text-xs text-gray-500 mt-1">
-              Minimum 8 characters, include numbers and letters
+              Minimum 8 characters, with uppercase, lowercase, and a number
             </p>
           </div>
 
-          {/* Confirm Password */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Confirm Password
@@ -234,24 +282,19 @@ export default function Signup() {
               autoComplete="new-password"
               placeholder="Confirm your password"
               value={form.confirmPassword}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, confirmPassword: e.target.value }))
-              }
+              onChange={(e) => updateField("confirmPassword", e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               disabled={loading || showSuccess}
             />
           </div>
 
-          {/* Strategy Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Trading Strategy
             </label>
             <select
               value={form.strategy}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, strategy: e.target.value }))
-              }
+              onChange={(e) => updateField("strategy", e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
               disabled={loading || showSuccess}
             >
@@ -261,17 +304,13 @@ export default function Signup() {
             </select>
           </div>
 
-          {/* Newsletter Opt-in */}
           <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4">
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={form.subscribeNewsletter}
                 onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    subscribeNewsletter: e.target.checked,
-                  }))
+                  updateField("subscribeNewsletter", e.target.checked)
                 }
                 className="mt-1 w-4 h-4 text-blue-500 rounded focus:ring-blue-500"
                 disabled={loading || showSuccess}
@@ -281,40 +320,39 @@ export default function Signup() {
                   📧 Get trading insights & updates
                 </div>
                 <div className="text-xs text-gray-400 mt-1">
-                  Weekly market analysis, new features, and trading tips. 
+                  Weekly market analysis, new features, and trading tips.
                   You can unsubscribe anytime.
                 </div>
               </div>
             </label>
           </div>
 
-          {/* Terms & Conditions */}
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
               checked={form.acceptTerms}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  acceptTerms: e.target.checked,
-                }))
-              }
+              onChange={(e) => updateField("acceptTerms", e.target.checked)}
               className="mt-1 w-4 h-4 text-blue-500 rounded focus:ring-blue-500"
               disabled={loading || showSuccess}
             />
             <div className="text-sm text-gray-400">
               I agree to the{" "}
-              <Link to="/terms" className="text-blue-400 hover:text-blue-300 underline">
+              <Link
+                to="/terms"
+                className="text-blue-400 hover:text-blue-300 underline"
+              >
                 Terms of Service
               </Link>{" "}
               and{" "}
-              <Link to="/privacy" className="text-blue-400 hover:text-blue-300 underline">
+              <Link
+                to="/privacy"
+                className="text-blue-400 hover:text-blue-300 underline"
+              >
                 Privacy Policy
               </Link>
             </div>
           </label>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading || showSuccess}
@@ -323,7 +361,6 @@ export default function Signup() {
             {getButtonText()}
           </button>
 
-          {/* Features List */}
           <div className="mt-6 pt-4 border-t border-gray-800">
             <p className="text-xs text-gray-500 text-center mb-3">
               ✨ Free tier includes:
@@ -345,15 +382,16 @@ export default function Signup() {
           </div>
         </form>
 
-        {/* Login Link */}
         <p className="mt-6 text-center text-gray-400 text-sm">
           Already have an account?{" "}
-          <Link to="/login" className="text-blue-400 hover:text-blue-300 underline font-medium">
+          <Link
+            to="/login"
+            className="text-blue-400 hover:text-blue-300 underline font-medium"
+          >
             Log in
           </Link>
         </p>
 
-        {/* Trust Badges */}
         <div className="mt-6 flex justify-center gap-4 text-xs text-gray-600">
           <span>🔒 SSL Encrypted</span>
           <span>💳 Secure Payments</span>
