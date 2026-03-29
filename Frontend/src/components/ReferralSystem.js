@@ -19,6 +19,7 @@ import {
   FaArrowLeft,
   FaMedal,
   FaLink,
+  FaSyncAlt,
 } from "react-icons/fa";
 import referralImg from "../assets/images/referral_program.png";
 import referralBot from "../assets/images/cards/referralbot.png";
@@ -84,7 +85,7 @@ const defaultReferralData = {
 };
 
 const ReferralSystem = () => {
-  const { account, isConnected, connectWallet, connecting } = useWallet();
+  const { account, isConnected, connectWallet, connecting, hasWallet } = useWallet();
 
   const [referralData, setReferralData] = useState(defaultReferralData);
   const [referralInput, setReferralInput] = useState("");
@@ -98,12 +99,42 @@ const ReferralSystem = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
 
+  // Check authentication status
   useEffect(() => {
     const token =
       localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
     setIsAuthenticated(!!token);
   }, []);
+
+  // Auto-connect wallet on page load
+  useEffect(() => {
+    const autoConnect = async () => {
+      // Don't attempt auto-connect if already connected, connecting, or already attempted
+      if (isConnected || connecting || autoConnectAttempted) return;
+      
+      // Don't attempt if no wallet is installed
+      if (!hasWallet) {
+        setAutoConnectAttempted(true);
+        return;
+      }
+
+      setAutoConnectAttempted(true);
+      
+      try {
+        await connectWallet();
+        console.log("[ReferralSystem] Auto-connect successful");
+      } catch (err) {
+        console.log("[ReferralSystem] Auto-connect failed or user rejected:", err.message);
+        // Don't show error for auto-connect failures - user can manually connect
+      }
+    };
+
+    // Small delay to ensure wallet context is ready
+    const timer = setTimeout(autoConnect, 500);
+    return () => clearTimeout(timer);
+  }, [connectWallet, isConnected, connecting, autoConnectAttempted, hasWallet]);
 
   const generateReferralCode = (wallet) => {
     if (!wallet) return "";
@@ -346,7 +377,32 @@ const ReferralSystem = () => {
 
   const guestMode = isConnected && !isAuthenticated;
 
-  if (!isConnected) {
+  // Show loading state while auto-connect is in progress
+  if (connecting && !isConnected) {
+    return (
+      <div className="min-h-screen bg-white text-gray-900">
+        <div className="flex min-h-screen flex-col items-center justify-center">
+          <div className="text-center">
+            <FaSpinner className="mx-auto mb-4 animate-spin text-4xl text-emerald-600" />
+            <p className="text-gray-600">Connecting to wallet...</p>
+            <p className="mt-2 text-sm text-gray-400">
+              Please approve the connection in your wallet if prompted.
+            </p>
+            <button
+              onClick={handleConnectWallet}
+              className="mt-6 inline-flex items-center gap-2 rounded-xl border border-emerald-600 px-6 py-2 text-emerald-600 transition hover:bg-emerald-50"
+            >
+              <FaSyncAlt />
+              Connect Manually
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No wallet installed - show install prompt
+  if (!hasWallet && !autoConnectAttempted) {
     return (
       <div className="min-h-screen bg-white text-gray-900">
         <div className="mx-auto max-w-6xl px-6 py-12">
@@ -369,8 +425,84 @@ const ReferralSystem = () => {
               </h1>
 
               <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
-                New here? No problem. To begin, just connect your wallet. That gives
-                you your personal referral link so you can start sharing right away.
+                To begin, you'll need a Web3 wallet like MetaMask. Install one to get
+                your personal referral link and start sharing right away.
+              </p>
+
+              <div className="mx-auto mb-8 max-w-xl rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm">
+                <h3 className="mb-4 text-lg font-semibold text-gray-900">
+                  Get a Web3 Wallet
+                </h3>
+
+                <ol className="space-y-3 text-gray-600">
+                  <li className="flex gap-3">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-700">
+                      1
+                    </span>
+                    <span>
+                      Install <b>MetaMask</b> or another Web3 wallet browser extension.
+                    </span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-700">
+                      2
+                    </span>
+                    <span>
+                      Create or import a wallet and fund it if needed.
+                    </span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-700">
+                      3
+                    </span>
+                    <span>
+                      Refresh this page and approve the connection request.
+                    </span>
+                  </li>
+                </ol>
+              </div>
+
+              <a
+                href="https://metamask.io/download/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-8 py-3 font-semibold text-white transition hover:bg-emerald-700"
+              >
+                <FaWallet className="text-sm" />
+                Install MetaMask
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Not connected but wallet exists - show connect screen with auto-connect already attempted
+  if (!isConnected && hasWallet && autoConnectAttempted) {
+    return (
+      <div className="min-h-screen bg-white text-gray-900">
+        <div className="mx-auto max-w-6xl px-6 py-12">
+          <Link
+            to="/"
+            className="mb-8 inline-flex items-center gap-2 text-gray-500 transition hover:text-gray-900"
+          >
+            <FaArrowLeft className="text-sm" />
+            Back to Home
+          </Link>
+
+          <div className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-emerald-50 p-8 shadow-sm">
+            <div className="mx-auto max-w-3xl text-center">
+              <div className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100">
+                <FaWallet className="text-5xl text-emerald-600" />
+              </div>
+
+              <h1 className="mb-4 text-4xl font-bold text-gray-900 md:text-5xl">
+                Start the Referral Program
+              </h1>
+
+              <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
+                Connect your wallet to get your personal referral link and start sharing.
               </p>
 
               <div className="mx-auto mb-8 max-w-xl rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm">
@@ -384,7 +516,7 @@ const ReferralSystem = () => {
                       1
                     </span>
                     <span>
-                      Tap <b>Connect Wallet</b>.
+                      Click the <b>Connect Wallet</b> button below.
                     </span>
                   </li>
                   <li className="flex gap-3">
@@ -400,7 +532,7 @@ const ReferralSystem = () => {
                       3
                     </span>
                     <span>
-                      Approve the connection. After that, your referral link and QR code will appear on this page.
+                      Approve the connection. After that, your referral link and QR code will appear.
                     </span>
                   </li>
                 </ol>
@@ -445,6 +577,22 @@ const ReferralSystem = () => {
           Back to Home
         </Link>
 
+        {/* Wallet connection status indicator */}
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+            <span className="text-sm text-emerald-700">
+              Wallet Connected: {account?.slice(0, 6)}...{account?.slice(-4)}
+            </span>
+          </div>
+          <button
+            onClick={handleConnectWallet}
+            className="text-xs text-emerald-600 hover:text-emerald-800"
+          >
+            <FaSyncAlt className="inline mr-1" /> Switch Wallet
+          </button>
+        </div>
+
         <div className="mb-10 text-center">
           <h1 className="flex items-center justify-center gap-3 text-4xl font-extrabold tracking-tight text-gray-900 md:text-5xl">
             <FaUserFriends className="text-emerald-600" />
@@ -486,7 +634,7 @@ const ReferralSystem = () => {
               />
               <h3 className="mb-2 text-lg font-bold text-gray-900">How it works</h3>
               <ol className="list-inside list-decimal space-y-2 text-sm text-gray-600">
-                <li>Connect your wallet to create your personal referral link.</li>
+                <li>Your wallet is connected automatically when you visit.</li>
                 <li>Share that link or QR code with friends.</li>
                 <li>When they join using your link, your referral activity starts tracking.</li>
                 <li>As you grow, you can earn rewards and unlock Referral NFT perks.</li>
@@ -689,7 +837,7 @@ const ReferralSystem = () => {
                   <li>Rewards are paid in {referralData.rewardCurrency}.</li>
                 </ul>
                 <ul className="list-inside list-disc space-y-2">
-                  <li>You do not need full signup just to get your link started.</li>
+                  <li>Your wallet is automatically detected when you visit.</li>
                   <li>Full account access is used for claims and advanced tracking.</li>
                 </ul>
               </div>
