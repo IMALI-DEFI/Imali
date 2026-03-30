@@ -8,6 +8,14 @@
   NODE_OPTIONS = "--openssl-legacy-provider"
   CI = "false"
 
+# Redirect /api/* calls to your Oracle server
+[[redirects]]
+  from = "/api/*"
+  to = "https://api.imali-defi.com/api/:splat"
+  status = 200
+  force = true
+
+# Your existing redirects
 [[redirects]]
   from = "/bot-api/*"
   to = "http://129.213.90.84:8001/:splat"
