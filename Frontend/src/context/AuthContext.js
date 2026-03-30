@@ -16,6 +16,9 @@ export const useAuth = () => useContext(AuthContext);
 
 const isSessionExpired = (err) => err?.response?.status === 401;
 
+// Admin emails that bypass activation
+const ADMIN_EMAILS = ["wayne@imali-defi.com", "admin@imali-defi.com"];
+
 const PUBLIC_ROUTES = [
   "/",
   "/login",
@@ -40,6 +43,7 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
 
   const location = useLocation();
+  const navigate = useNavigate();
   const bootstrappedRef = useRef(false);
   const loadingRef = useRef(false);
 
@@ -61,6 +65,9 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setActivation(null);
     setAuthError(null);
+    // Clear any cached activation data
+    localStorage.removeItem("imali_activation");
+    sessionStorage.removeItem("imali_activation");
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -98,10 +105,17 @@ export const AuthProvider = ({ children }) => {
         
         // Ensure all boolean fields are actually booleans
         freshActivation.has_card_on_file = !!freshActivation.has_card_on_file;
+        freshActivation.billing_complete = !!freshActivation.billing_complete;
         freshActivation.okx_connected = !!freshActivation.okx_connected;
         freshActivation.alpaca_connected = !!freshActivation.alpaca_connected;
         freshActivation.wallet_connected = !!freshActivation.wallet_connected;
         freshActivation.trading_enabled = !!freshActivation.trading_enabled;
+        freshActivation.activation_complete = !!freshActivation.activation_complete;
+      }
+      
+      // Cache the activation data
+      if (freshActivation) {
+        localStorage.setItem("imali_activation", JSON.stringify(freshActivation));
       }
       
       setActivation(freshActivation);
@@ -135,7 +149,13 @@ export const AuthProvider = ({ children }) => {
       try {
         // Load profile first
         const profileResult = await BotAPI.me();
-        const freshUser = profileResult?.user || profileResult || null;
+        let freshUser = profileResult?.user || profileResult || null;
+        
+        // Ensure is_admin is properly set from user data
+        if (freshUser) {
+          freshUser.is_admin = freshUser.is_admin === true || ADMIN_EMAILS.includes(freshUser.email);
+        }
+        
         setUser(freshUser);
 
         // Then load activation status
@@ -150,23 +170,42 @@ export const AuthProvider = ({ children }) => {
               freshActivation.has_card_on_file = freshActivation.billing_complete;
             }
             freshActivation.has_card_on_file = !!freshActivation.has_card_on_file;
+            freshActivation.billing_complete = !!freshActivation.billing_complete;
             freshActivation.okx_connected = !!freshActivation.okx_connected;
             freshActivation.alpaca_connected = !!freshActivation.alpaca_connected;
             freshActivation.wallet_connected = !!freshActivation.wallet_connected;
             freshActivation.trading_enabled = !!freshActivation.trading_enabled;
+            freshActivation.activation_complete = !!freshActivation.activation_complete;
+          }
+          
+          // Cache activation data
+          if (freshActivation) {
+            localStorage.setItem("imali_activation", JSON.stringify(freshActivation));
           }
           
           setActivation(freshActivation);
         } catch (actErr) {
-          console.warn("[Auth] Activation status failed, using default:", actErr);
-          if (!isSessionExpired(actErr)) {
+          console.warn("[Auth] Activation status failed, using cached or default:", actErr);
+          // Try to use cached activation data
+          const cachedActivation = localStorage.getItem("imali_activation");
+          if (cachedActivation) {
+            try {
+              const parsed = JSON.parse(cachedActivation);
+              setActivation(parsed);
+              console.log("[Auth] Using cached activation data");
+            } catch (e) {
+              setActivation(null);
+            }
+          } else if (!isSessionExpired(actErr)) {
             // Set default activation state
             setActivation({
               has_card_on_file: false,
+              billing_complete: false,
               okx_connected: false,
               alpaca_connected: false,
               wallet_connected: false,
               trading_enabled: false,
+              activation_complete: false,
             });
           } else {
             throw actErr;
@@ -208,8 +247,14 @@ export const AuthProvider = ({ children }) => {
     }
   }, [location.pathname, hasToken, isPublicRoute, loadUserData]);
 
-  // Enhanced activationComplete logic
+  // Enhanced activationComplete logic with admin bypass
   const activationComplete = useMemo(() => {
+    // Admin bypass - admins are always considered activated
+    if (user?.is_admin === true || ADMIN_EMAILS.includes(user?.email)) {
+      console.log("[Auth] Admin bypass - activationComplete = true");
+      return true;
+    }
+    
     if (!user || !activation) return false;
     if (activation._error) return false;
 
@@ -233,6 +278,7 @@ export const AuthProvider = ({ children }) => {
     const isComplete = okxOk && alpacaOk && walletOk && tradingOk;
     
     console.log("[Auth] activationComplete check:", {
+      email: user.email,
       tier,
       hasCard,
       needsOkx, okxOk,
@@ -272,7 +318,13 @@ export const AuthProvider = ({ children }) => {
         // Determine where to redirect based on activation status
         let redirectPath = "/dashboard";
         
-        if (activation) {
+        // Check if user is admin
+        const isAdmin = user?.is_admin === true || ADMIN_EMAILS.includes(email);
+        
+        if (isAdmin) {
+          // Admins go directly to dashboard
+          redirectPath = "/dashboard";
+        } else if (activation) {
           const hasCard = activation.has_card_on_file === true || activation.billing_complete === true;
           
           if (!hasCard) {
@@ -307,7 +359,7 @@ export const AuthProvider = ({ children }) => {
         };
       }
     },
-    [loadUserData, activation]
+    [loadUserData, activation, user]
   );
 
   const signup = useCallback(async (userData) => {
@@ -353,7 +405,11 @@ export const AuthProvider = ({ children }) => {
     clearAuthState();
     bootstrappedRef.current = false;
     loadingRef.current = false;
-  }, [clearAuthState]);
+    // Clear cached data
+    localStorage.removeItem("imali_activation");
+    sessionStorage.removeItem("imali_activation");
+    navigate("/login", { replace: true });
+  }, [clearAuthState, navigate]);
 
   const value = useMemo(
     () => ({
