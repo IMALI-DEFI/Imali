@@ -4,8 +4,9 @@ import axios from "axios";
 // =========================
 // CONFIGURATION
 // =========================
+// In BotAPI.js, change line 9 to:
 const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || 
-  "/api";
+  "https://api.imali-defi.com";
 
 const TOKEN_KEY = "imali_token";
 
