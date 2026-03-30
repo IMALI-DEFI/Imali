@@ -313,7 +313,11 @@ export const AuthProvider = ({ children }) => {
           };
         }
 
+        // Load user data
         await loadUserData({ force: true });
+        
+        // CRITICAL: Refresh activation data after login
+        await refreshActivation();
 
         // Determine where to redirect based on activation status
         let redirectPath = "/dashboard";
@@ -359,7 +363,7 @@ export const AuthProvider = ({ children }) => {
         };
       }
     },
-    [loadUserData, activation, user]
+    [loadUserData, refreshActivation, activation, user]
   );
 
   const signup = useCallback(async (userData) => {
