@@ -5,9 +5,12 @@ import { useAuth } from "../../context/AuthContext";
 // Pages that need login but NOT activation
 const ACTIVATION_EXEMPT = ["/activation", "/billing", "/settings"];
 
+// Admin emails that bypass activation requirements
+const ADMIN_EMAILS = ["wayne@imali-defi.com", "admin@imali-defi.com"];
+
 export default function ProtectedRoute({ requireActivation = false }) {
   const location = useLocation();
-  const { user, activation, loading, activationComplete } = useAuth();
+  const { user, activation, loading, activationComplete, isAuthenticated } = useAuth();
 
   // ── Still loading auth state ────────────────────────────
   if (loading) {
@@ -22,7 +25,7 @@ export default function ProtectedRoute({ requireActivation = false }) {
   }
 
   // ── Not logged in → login ───────────────────────────────
-  if (!user) {
+  if (!user && !isAuthenticated) {
     return (
       <Navigate
         to="/login"
@@ -30,6 +33,15 @@ export default function ProtectedRoute({ requireActivation = false }) {
         state={{ from: location.pathname + location.search }}
       />
     );
+  }
+
+  // ── Check if user is admin (bypass activation) ──────────
+  const isAdmin = user?.is_admin === true || ADMIN_EMAILS.includes(user?.email);
+
+  // Admin bypass - allow access regardless of activation
+  if (isAdmin && requireActivation) {
+    console.log("[ProtectedRoute] Admin bypass - allowing access to:", location.pathname);
+    return <Outlet />;
   }
 
   // ── Check if current path is exempt from activation ─────
@@ -41,25 +53,36 @@ export default function ProtectedRoute({ requireActivation = false }) {
   if (requireActivation && !activationComplete && !isExempt) {
     console.log("[ProtectedRoute] Not activated, redirecting:", {
       path: location.pathname,
-      billing: !!activation?.billing_complete,
-      okx: !!activation?.okx_connected,
-      alpaca: !!activation?.alpaca_connected,
-      wallet: !!activation?.wallet_connected,
-      trading: !!activation?.trading_enabled,
+      hasCard: activation?.has_card_on_file,
+      billingComplete: activation?.billing_complete,
+      okx: activation?.okx_connected,
+      alpaca: activation?.alpaca_connected,
+      wallet: activation?.wallet_connected,
+      trading: activation?.trading_enabled,
+      isAdmin: isAdmin
     });
 
-    // Send to billing if that's the missing piece
-    if (!activation?.billing_complete) {
-      return <Navigate to="/billing" replace />;
+    // Check if user has a card on file
+    const hasCard = activation?.has_card_on_file === true || activation?.billing_complete === true;
+    
+    // Send to billing if missing card
+    if (!hasCard) {
+      return <Navigate to="/billing" replace state={{ from: location.pathname }} />;
     }
 
     // Otherwise send to activation to finish connections + trading
-    return <Navigate to="/activation" replace />;
+    return <Navigate to="/activation" replace state={{ from: location.pathname }} />;
   }
 
   // ── Already activated but sitting on /activation → dashboard
   if (activationComplete && location.pathname === "/activation") {
     console.log("[ProtectedRoute] Already activated, pushing to /dashboard");
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // ── Already activated but sitting on /billing → dashboard
+  if (activationComplete && location.pathname === "/billing") {
+    console.log("[ProtectedRoute] Already activated, pushing to /dashboard from billing");
     return <Navigate to="/dashboard" replace />;
   }
 
