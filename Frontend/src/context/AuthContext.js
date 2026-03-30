@@ -8,7 +8,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import BotAPI from "../utils/BotAPI";
 
 const AuthContext = createContext({});
@@ -30,6 +30,7 @@ const PUBLIC_ROUTES = [
   "/live",
   "/trading",
   "/referrals",
+  "/after-login",
 ];
 
 export const AuthProvider = ({ children }) => {
@@ -65,20 +66,54 @@ export const AuthProvider = ({ children }) => {
   const refreshProfile = useCallback(async () => {
     if (!hasToken()) return null;
 
-    const response = await BotAPI.me();
-    const freshUser = response?.user || response || null;
-    setUser(freshUser);
-    return freshUser;
-  }, [hasToken]);
+    try {
+      const response = await BotAPI.me();
+      const freshUser = response?.user || response || null;
+      setUser(freshUser);
+      return freshUser;
+    } catch (error) {
+      console.error("[Auth] Failed to refresh profile:", error);
+      if (isSessionExpired(error)) {
+        clearAuthState();
+      }
+      return null;
+    }
+  }, [hasToken, clearAuthState]);
 
   const refreshActivation = useCallback(async () => {
     if (!hasToken()) return null;
 
-    const response = await BotAPI.activationStatus();
-    const freshActivation = response?.status || response || null;
-    setActivation(freshActivation);
-    return freshActivation;
-  }, [hasToken]);
+    try {
+      const response = await BotAPI.activationStatus();
+      // Normalize the response structure
+      let freshActivation = response?.status || response || null;
+      
+      // Ensure we have consistent field names
+      if (freshActivation) {
+        // Map billing_complete to has_card_on_file if needed
+        if (typeof freshActivation.has_card_on_file === 'undefined' && 
+            typeof freshActivation.billing_complete !== 'undefined') {
+          freshActivation.has_card_on_file = freshActivation.billing_complete;
+        }
+        
+        // Ensure all boolean fields are actually booleans
+        freshActivation.has_card_on_file = !!freshActivation.has_card_on_file;
+        freshActivation.okx_connected = !!freshActivation.okx_connected;
+        freshActivation.alpaca_connected = !!freshActivation.alpaca_connected;
+        freshActivation.wallet_connected = !!freshActivation.wallet_connected;
+        freshActivation.trading_enabled = !!freshActivation.trading_enabled;
+      }
+      
+      setActivation(freshActivation);
+      return freshActivation;
+    } catch (error) {
+      console.error("[Auth] Failed to refresh activation:", error);
+      if (isSessionExpired(error)) {
+        clearAuthState();
+      }
+      return null;
+    }
+  }, [hasToken, clearAuthState]);
 
   const loadUserData = useCallback(
     async ({ force = false } = {}) => {
@@ -98,30 +133,47 @@ export const AuthProvider = ({ children }) => {
       setAuthError(null);
 
       try {
-        const [profileResult, activationResult] = await Promise.allSettled([
-          BotAPI.me(),
-          BotAPI.activationStatus(),
-        ]);
+        // Load profile first
+        const profileResult = await BotAPI.me();
+        const freshUser = profileResult?.user || profileResult || null;
+        setUser(freshUser);
 
-        if (profileResult.status === "fulfilled") {
-          const freshUser = profileResult.value?.user || profileResult.value || null;
-          setUser(freshUser);
-        } else {
-          throw profileResult.reason;
-        }
-
-        if (activationResult.status === "fulfilled") {
-          const freshActivation =
-            activationResult.value?.status || activationResult.value || null;
+        // Then load activation status
+        try {
+          const activationResult = await BotAPI.activationStatus();
+          let freshActivation = activationResult?.status || activationResult || null;
+          
+          // Normalize activation data
+          if (freshActivation) {
+            if (typeof freshActivation.has_card_on_file === 'undefined' && 
+                typeof freshActivation.billing_complete !== 'undefined') {
+              freshActivation.has_card_on_file = freshActivation.billing_complete;
+            }
+            freshActivation.has_card_on_file = !!freshActivation.has_card_on_file;
+            freshActivation.okx_connected = !!freshActivation.okx_connected;
+            freshActivation.alpaca_connected = !!freshActivation.alpaca_connected;
+            freshActivation.wallet_connected = !!freshActivation.wallet_connected;
+            freshActivation.trading_enabled = !!freshActivation.trading_enabled;
+          }
+          
           setActivation(freshActivation);
-        } else {
-          const actErr = activationResult.reason;
-          if (isSessionExpired(actErr)) {
+        } catch (actErr) {
+          console.warn("[Auth] Activation status failed, using default:", actErr);
+          if (!isSessionExpired(actErr)) {
+            // Set default activation state
+            setActivation({
+              has_card_on_file: false,
+              okx_connected: false,
+              alpaca_connected: false,
+              wallet_connected: false,
+              trading_enabled: false,
+            });
+          } else {
             throw actErr;
           }
-          setActivation(null);
         }
       } catch (err) {
+        console.error("[Auth] Failed to load user data:", err);
         if (isSessionExpired(err)) {
           clearAuthState();
         } else {
@@ -156,24 +208,41 @@ export const AuthProvider = ({ children }) => {
     }
   }, [location.pathname, hasToken, isPublicRoute, loadUserData]);
 
+  // Enhanced activationComplete logic
   const activationComplete = useMemo(() => {
     if (!user || !activation) return false;
     if (activation._error) return false;
 
     const tier = (user.tier || "starter").toLowerCase();
-    const billingComplete = activation.has_card_on_file === true;
-    if (!billingComplete) return false;
+    
+    // Check billing - use has_card_on_file OR billing_complete
+    const hasCard = activation.has_card_on_file === true || activation.billing_complete === true;
+    if (!hasCard) return false;
 
+    // Define required connections based on tier
     const needsOkx = ["starter", "pro", "bundle"].includes(tier);
     const needsAlpaca = ["starter", "bundle"].includes(tier);
     const needsWallet = ["elite", "stock", "bundle"].includes(tier);
 
+    // Check connections
     const okxOk = !needsOkx || activation.okx_connected === true;
     const alpacaOk = !needsAlpaca || activation.alpaca_connected === true;
     const walletOk = !needsWallet || activation.wallet_connected === true;
     const tradingOk = activation.trading_enabled === true;
 
-    return okxOk && alpacaOk && walletOk && tradingOk;
+    const isComplete = okxOk && alpacaOk && walletOk && tradingOk;
+    
+    console.log("[Auth] activationComplete check:", {
+      tier,
+      hasCard,
+      needsOkx, okxOk,
+      needsAlpaca, alpacaOk,
+      needsWallet, walletOk,
+      tradingOk,
+      isComplete
+    });
+    
+    return isComplete;
   }, [user, activation]);
 
   const login = useCallback(
@@ -200,9 +269,23 @@ export const AuthProvider = ({ children }) => {
 
         await loadUserData({ force: true });
 
+        // Determine where to redirect based on activation status
+        let redirectPath = "/dashboard";
+        
+        if (activation) {
+          const hasCard = activation.has_card_on_file === true || activation.billing_complete === true;
+          
+          if (!hasCard) {
+            redirectPath = "/billing";
+          } else if (!activation.trading_enabled) {
+            redirectPath = "/activation";
+          }
+        }
+
         return {
           success: true,
           data: result.data,
+          redirectTo: redirectPath,
         };
       } catch (err) {
         let errorMessage = "Login failed";
@@ -224,7 +307,7 @@ export const AuthProvider = ({ children }) => {
         };
       }
     },
-    [loadUserData]
+    [loadUserData, activation]
   );
 
   const signup = useCallback(async (userData) => {
@@ -237,6 +320,7 @@ export const AuthProvider = ({ children }) => {
         success: true,
         data: result.data,
         token: result.token || result?.data?.token || null,
+        redirectTo: "/billing", // New users go to billing
       };
     } catch (err) {
       let errorMessage = "Signup failed";
