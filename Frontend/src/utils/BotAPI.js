@@ -8,6 +8,16 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
   "https://api.imali-defi.com";
 const TOKEN_KEY = "imali_token";
 
+// Helper function to check if we're on a billing-related page
+const isStripePage = () => {
+  const path = window.location.pathname;
+  return path.includes('/billing') || 
+         path.includes('/activation') ||
+         path.includes('/signup') ||
+         path.includes('/checkout') ||
+         path.includes('/billing-dashboard');
+};
+
 // =========================
 // AXIOS INSTANCE
 // =========================
@@ -583,11 +593,19 @@ const BotAPI = {
   },
 
   // ========================
-  // BILLING
+  // BILLING (WITH STRIPE GUARDS)
   // ========================
   async createSetupIntent(payload = {}) {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping createSetupIntent - not on billing page, path:", window.location.pathname);
+      return { should_skip: true, message: "Not on billing page" };
+    }
+    
     try {
+      console.log("[BotAPI] Creating setup intent...");
       const response = await api.post("/api/billing/setup-intent", payload);
+      console.log("[BotAPI] Setup intent response:", response.data);
       return response.data;
     } catch (error) {
       console.error("[BotAPI] Setup intent error:", error);
@@ -596,8 +614,16 @@ const BotAPI = {
   },
 
   async getCardStatus() {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping getCardStatus - not on billing page, path:", window.location.pathname);
+      return { has_card: false, should_skip: true };
+    }
+    
     try {
+      console.log("[BotAPI] Fetching card status...");
       const response = await api.get("/api/billing/card-status");
+      console.log("[BotAPI] Card status response:", response.data);
       return response.data;
     } catch (error) {
       console.error("[BotAPI] Card status error:", error);
@@ -606,8 +632,16 @@ const BotAPI = {
   },
 
   async confirmCard() {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping confirmCard - not on billing page, path:", window.location.pathname);
+      return { should_skip: true };
+    }
+    
     try {
+      console.log("[BotAPI] Confirming card...");
       const response = await api.post("/api/billing/confirm-card");
+      console.log("[BotAPI] Confirm card response:", response.data);
       return response.data;
     } catch (error) {
       console.error("[BotAPI] Confirm card error:", error);
@@ -616,6 +650,12 @@ const BotAPI = {
   },
 
   async setDefaultPayment(paymentMethodId, customerId = null) {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping setDefaultPayment - not on billing page");
+      return { should_skip: true };
+    }
+    
     try {
       const response = await api.post("/api/billing/set-default-payment", {
         payment_method_id: paymentMethodId,
@@ -629,7 +669,14 @@ const BotAPI = {
   },
 
   async getSubscription() {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping getSubscription - not on billing page, path:", window.location.pathname);
+      return { has_subscription: false, tier: "starter", should_skip: true };
+    }
+    
     try {
+      console.log("[BotAPI] Fetching subscription...");
       const response = await api.get("/api/billing/subscription");
       return response.data;
     } catch (error) {
@@ -639,6 +686,12 @@ const BotAPI = {
   },
 
   async createSubscription(tier) {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping createSubscription - not on billing page");
+      return { should_skip: true };
+    }
+    
     try {
       const response = await api.post("/api/billing/subscription/create", { tier });
       return response.data;
@@ -649,6 +702,12 @@ const BotAPI = {
   },
 
   async cancelSubscription(cancelAtPeriodEnd = true, reason = "") {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping cancelSubscription - not on billing page");
+      return { should_skip: true };
+    }
+    
     try {
       const response = await api.post("/api/billing/subscription/cancel", { 
         cancel_at_period_end: cancelAtPeriodEnd,
@@ -662,6 +721,12 @@ const BotAPI = {
   },
 
   async updateSubscription(newTier) {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping updateSubscription - not on billing page");
+      return { should_skip: true };
+    }
+    
     try {
       const response = await api.post("/api/billing/subscription/update", { tier: newTier });
       return response.data;
@@ -672,6 +737,12 @@ const BotAPI = {
   },
 
   async getInvoices(limit = 12) {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping getInvoices - not on billing page");
+      return { invoices: [] };
+    }
+    
     try {
       const response = await api.get(`/api/billing/invoices?limit=${limit}`);
       return response.data;
@@ -682,6 +753,12 @@ const BotAPI = {
   },
 
   async getUpcomingInvoice(newTier = null) {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping getUpcomingInvoice - not on billing page");
+      return { has_subscription: false };
+    }
+    
     try {
       let url = "/api/billing/upcoming-invoice";
       if (newTier) {
@@ -696,6 +773,12 @@ const BotAPI = {
   },
 
   async createPortalSession() {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping createPortalSession - not on billing page");
+      return { should_skip: true };
+    }
+    
     try {
       const response = await api.post("/api/billing/portal");
       return response.data;
@@ -706,6 +789,12 @@ const BotAPI = {
   },
 
   async previewSubscriptionChange(newTier) {
+    // Skip if not on a billing-related page
+    if (!isStripePage()) {
+      console.log("[BotAPI] Skipping previewSubscriptionChange - not on billing page");
+      return { should_skip: true };
+    }
+    
     try {
       const response = await api.post("/api/billing/subscription/preview", { tier: newTier });
       return response.data;
