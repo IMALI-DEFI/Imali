@@ -1,38 +1,24 @@
-// src/pages/Billing.jsx
-import React, { useEffect, useState } from "react";
-import { useLocation, useNavigate, Link } from "react-router-dom";
+// src/components/StripeElements.jsx
+import React, { useState, useEffect } from "react";
 import { loadStripe } from "@stripe/stripe-js";
-import {
-  Elements,
-  PaymentElement,
-  useStripe,
-  useElements,
-} from "@stripe/react-stripe-js";
-import BotAPI from "../utils/BotAPI";
-import { useAuth } from "../context/AuthContext";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 
-const stripePromise = loadStripe(
-  process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY
-);
-
-function BillingInner() {
+// This component handles the actual Stripe payment form
+function PaymentForm({ onSuccess, onError }) {
   const stripe = useStripe();
   const elements = useElements();
-  const navigate = useNavigate();
-  const { refreshActivation } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("idle"); // idle, processing, confirming, success
+  const [step, setStep] = useState("idle");
 
   const handleSubmit = async () => {
     if (!stripe || !elements) return;
 
     setBusy(true);
-    setStatus("processing");
+    setStep("confirming");
     setError("");
 
     try {
-      // Step 1: Confirm setup with Stripe
       const { error: stripeError } = await stripe.confirmSetup({
         elements,
         confirmParams: {
@@ -41,67 +27,48 @@ function BillingInner() {
         redirect: "if_required",
       });
 
-      if (stripeError) {
-        throw stripeError;
-      }
+      if (stripeError) throw stripeError;
 
-      // Step 2: Payment successful - now confirm with our backend
-      setStatus("confirming");
+      setStep("saving");
       
-      // Call our dedicated confirm-card endpoint
-      // This tells the backend to check Stripe and update the database
+      // Confirm with backend
       const confirmResult = await BotAPI.confirmCard();
       
-      if (!confirmResult) {
-        throw new Error("No response from server");
-      }
+      if (!confirmResult) throw new Error("No response from server");
 
-      // Step 3: Refresh activation data to get updated billing_complete
-      setStatus("refreshing");
-      await refreshActivation();
-      
-      // Small delay for state to propagate
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // Step 4: Navigate to activation
-      setStatus("success");
-      navigate("/activation", { replace: true });
+      setStep("success");
+      onSuccess();
 
     } catch (err) {
-      console.error("Payment setup error:", err);
+      console.error("Payment error:", err);
       
-      // Handle specific errors
+      let errorMessage = "Failed to save payment method";
       if (err.message?.includes("card_declined")) {
-        setError("Your card was declined. Please try another card.");
+        errorMessage = "Your card was declined. Please try another card.";
       } else if (err.message?.includes("insufficient_funds")) {
-        setError("Insufficient funds. Please try another card.");
-      } else if (err.response?.status === 429) {
-        setError("Too many attempts. Please wait a moment and try again.");
-      } else {
-        setError(err.message || "Failed to save payment method");
+        errorMessage = "Insufficient funds. Please try another card.";
+      } else if (err.message) {
+        errorMessage = err.message;
       }
       
-      setStatus("idle");
+      setError(errorMessage);
+      onError(err);
+      setStep("error");
     } finally {
       setBusy(false);
     }
   };
 
-  // Helper to get status message
-  const getStatusMessage = () => {
-    switch (status) {
-      case "processing":
-        return "Processing your payment...";
-      case "confirming":
-        return "Confirming with Stripe...";
-      case "refreshing":
-        return "Updating your account...";
-      case "success":
-        return "Success! Redirecting...";
-      default:
-        return "Please wait...";
+  const getButtonText = () => {
+    switch (step) {
+      case "confirming": return "Confirming with Stripe...";
+      case "saving": return "Saving to account...";
+      case "success": return "✓ Payment Method Added!";
+      default: return "Add Payment Method";
     }
   };
+
+  const isDisabled = busy || !stripe || !elements || step === "success";
 
   return (
     <div className="space-y-4">
@@ -111,175 +78,98 @@ function BillingInner() {
         </div>
       )}
 
-      <PaymentElement />
+      <div className="bg-black/30 rounded-lg p-4">
+        <PaymentElement />
+      </div>
 
       <button
         onClick={handleSubmit}
-        disabled={busy || !stripe || !elements}
-        className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled={isDisabled}
+        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {busy ? getStatusMessage() : "Save Payment Method"}
+        {busy ? (
+          <span className="flex items-center justify-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+            {getButtonText()}
+          </span>
+        ) : (
+          getButtonText()
+        )}
       </button>
 
-      {busy && (
-        <div className="text-center">
-          <div className="flex justify-center mt-2 space-x-1">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }} />
-          </div>
-          <p className="text-xs text-gray-400 mt-2">
-            {getStatusMessage()}
-          </p>
-        </div>
-      )}
+      <div className="text-xs text-center text-gray-500 space-y-1">
+        <p>🔒 Your payment information is encrypted and secure</p>
+        <p>💳 We never store your full card details</p>
+        <p>💰 You'll only be charged 30% of trading profits</p>
+      </div>
     </div>
   );
 }
 
-export default function Billing() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { user } = useAuth();
-
-  const email =
-    location.state?.email || localStorage.getItem("IMALI_EMAIL") || user?.email;
-  const tier = location.state?.tier || "starter";
-
-  const [clientSecret, setClientSecret] = useState("");
+// Main StripeElements component that lazy loads Stripe
+export default function StripeElements({ clientSecret, onSuccess, onError }) {
+  const [stripePromise, setStripePromise] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
-    const initializeBilling = async () => {
+    const loadStripeAsync = async () => {
       try {
-        // Check if we're logged in
-        const token = BotAPI.getToken();
-        
-        if (!token && !email) {
-          navigate("/signup", { replace: true });
-          return;
-        }
-
-        // Get user email if not provided
-        let userEmail = email;
-        if (!userEmail && token) {
-          try {
-            const me = await BotAPI.me();
-            userEmail = me?.user?.email || me?.email;
-            if (userEmail) {
-              localStorage.setItem("IMALI_EMAIL", userEmail);
-            }
-          } catch (e) {
-            console.warn("Could not fetch user email:", e);
-          }
-        }
-
-        if (!userEmail) {
-          navigate("/signup", { replace: true });
-          return;
-        }
-
-        // Create Stripe SetupIntent
-        const res = await BotAPI.createSetupIntent({
-          email: userEmail,
-          tier,
-        });
-
-        if (!res?.client_secret) {
-          throw new Error("Stripe client_secret missing");
-        }
-
-        setClientSecret(res.client_secret);
+        const { loadStripe } = await import("@stripe/stripe-js");
+        const stripe = await loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+        setStripePromise(() => stripe);
       } catch (err) {
-        console.error("Billing initialization error:", err);
-        
-        if (err.response?.status === 401) {
-          setError("Session expired. Please log in again.");
-        } else if (err.response?.status === 429) {
-          setError("Too many requests. Please wait a moment.");
-        } else if (err.response?.status === 503) {
-          setError("Service temporarily unavailable.");
-        } else {
-          setError(err.message || "Failed to initialize billing");
-        }
+        console.error("Failed to load Stripe:", err);
+        onError?.(new Error("Failed to load payment system"));
       } finally {
         setLoading(false);
       }
     };
-
-    initializeBilling();
-  }, [email, tier, navigate]);
+    
+    loadStripeAsync();
+  }, [onError]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-4"></div>
-          <div className="text-emerald-400">Loading billing...</div>
-        </div>
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500 mx-auto mb-3"></div>
+        <p className="text-gray-400 text-sm">Loading payment form...</p>
       </div>
     );
   }
 
-  if (error) {
+  if (!stripePromise) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white p-6">
-        <div className="max-w-md mx-auto text-center">
-          <div className="bg-red-500/10 border border-red-500/30 text-red-200 px-4 py-3 rounded-lg mb-4">
-            ⚠️ {error}
-          </div>
-
-          <button
-            onClick={() => navigate("/activation")}
-            className="inline-block bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-          >
-            Back to Activation
-          </button>
-        </div>
+      <div className="text-center py-8">
+        <p className="text-red-400 text-sm">Failed to load payment system</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-3 text-sm text-emerald-400 hover:text-emerald-300"
+        >
+          Retry
+        </button>
       </div>
     );
   }
-
-  if (!clientSecret) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white p-6">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-2">Add Payment Method</h1>
-        <p className="text-gray-400 text-sm mb-6">
-          Your card will be saved securely with Stripe
-        </p>
-
-        <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-          <Elements
-            stripe={stripePromise}
-            options={{
-              clientSecret,
-              appearance: {
-                theme: "night",
-                variables: {
-                  colorPrimary: "#10b981",
-                  colorBackground: "#1f2937",
-                  colorText: "#ffffff",
-                  colorDanger: "#ef4444",
-                },
-              },
-            }}
-          >
-            <BillingInner />
-          </Elements>
-        </div>
-
-        <div className="mt-4 text-center">
-          <Link
-            to="/activation"
-            className="text-sm text-gray-400 hover:text-white"
-          >
-            Skip for now
-          </Link>
-        </div>
-      </div>
-    </div>
+    <Elements
+      stripe={stripePromise}
+      options={{
+        clientSecret,
+        appearance: {
+          theme: "night",
+          variables: {
+            colorPrimary: "#10b981",
+            colorBackground: "#1f2937",
+            colorText: "#ffffff",
+            colorDanger: "#ef4444",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            borderRadius: "8px",
+          },
+        },
+      }}
+    >
+      <PaymentForm onSuccess={onSuccess} onError={onError} />
+    </Elements>
   );
 }
