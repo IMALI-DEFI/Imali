@@ -1,54 +1,89 @@
-import React, { useState, useEffect } from "react";
-import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+// src/components/StripeElements.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
 import BotAPI from "../utils/BotAPI";
 
-function PaymentForm({ onSuccess, onError }) {
+function PaymentForm({
+  onSuccess,
+  onError,
+  returnPath = "/activation",
+  buttonLabel = "Add Payment Method",
+}) {
   const stripe = useStripe();
   const elements = useElements();
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState("idle");
 
+  const isDisabled = busy || !stripe || !elements || step === "success";
+
+  const getButtonText = () => {
+    if (busy) {
+      switch (step) {
+        case "confirming":
+          return "Confirming with Stripe...";
+        case "saving":
+          return "Saving to account...";
+        default:
+          return "Processing...";
+      }
+    }
+
+    if (step === "success") return "✓ Payment Method Added!";
+    return buttonLabel;
+  };
+
   const handleSubmit = async () => {
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || busy) return;
 
     setBusy(true);
-    setStep("confirming");
     setError("");
+    setStep("confirming");
 
     try {
       const { error: stripeError } = await stripe.confirmSetup({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/activation`,
+          return_url: `${window.location.origin}${returnPath}`,
         },
         redirect: "if_required",
       });
 
-      if (stripeError) throw stripeError;
+      if (stripeError) {
+        throw stripeError;
+      }
 
       setStep("saving");
 
       const confirmResult = await BotAPI.confirmCard();
-      if (!confirmResult) throw new Error("No response from server");
+      if (!confirmResult) {
+        throw new Error("No response from server");
+      }
 
       setStep("success");
-      onSuccess?.();
+      onSuccess?.(confirmResult);
     } catch (err) {
-      console.error("Payment error:", err);
+      console.error("[StripeElements] Payment error:", err);
 
       let errorMessage = "Failed to save payment method";
-      if (err.message?.includes("card_declined")) {
+      if (err?.message?.includes("card_declined")) {
         errorMessage = "Your card was declined. Please try another card.";
-      } else if (err.message?.includes("insufficient_funds")) {
+      } else if (err?.message?.includes("insufficient_funds")) {
         errorMessage = "Insufficient funds. Please try another card.";
-      } else if (err.message) {
+      } else if (err?.message) {
         errorMessage = err.message;
       }
 
       setError(errorMessage);
-      onError?.(err);
       setStep("error");
+      onError?.(err);
     } finally {
       setBusy(false);
     }
@@ -57,57 +92,119 @@ function PaymentForm({ onSuccess, onError }) {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-200 px-4 py-3 rounded-lg text-sm">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           ⚠️ {error}
         </div>
       )}
 
-      <div className="bg-black/30 rounded-lg p-4">
+      <div className="rounded-lg bg-black/30 p-4">
         <PaymentElement />
       </div>
 
       <button
+        type="button"
         onClick={handleSubmit}
-        disabled={busy || !stripe || !elements || step === "success"}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled={isDisabled}
+        className="w-full rounded-lg bg-emerald-600 px-4 py-3 font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {busy ? "Processing..." : step === "success" ? "✓ Payment Method Added!" : "Add Payment Method"}
+        {busy ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            {getButtonText()}
+          </span>
+        ) : (
+          getButtonText()
+        )}
       </button>
+
+      <div className="space-y-1 text-center text-xs text-gray-500">
+        <p>🔒 Your payment information is encrypted and secure</p>
+        <p>💳 We never store your full card details</p>
+        <p>💰 Your billing is handled securely through Stripe</p>
+      </div>
     </div>
   );
 }
 
-export default function StripeElements({ clientSecret, onSuccess, onError }) {
+export default function StripeElements({
+  clientSecret,
+  onSuccess,
+  onError,
+  returnPath = "/activation",
+  buttonLabel = "Add Payment Method",
+}) {
   const [stripePromise, setStripePromise] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const publishableKey = useMemo(
+    () => process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || "",
+    []
+  );
+
   useEffect(() => {
-    const loadStripeAsync = async () => {
+    let mounted = true;
+
+    const initStripe = async () => {
       try {
-        const { loadStripe } = await import("@stripe/stripe-js");
-        const stripe = await loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
-        setStripePromise(() => stripe);
+        if (!publishableKey) {
+          throw new Error("Missing Stripe publishable key");
+        }
+
+        const stripe = await loadStripe(publishableKey);
+
+        if (!mounted) return;
+        setStripePromise(stripe);
       } catch (err) {
-        console.error("Failed to load Stripe:", err);
-        onError?.(new Error("Failed to load payment system"));
+        console.error("[StripeElements] Failed to load Stripe:", err);
+        if (mounted) {
+          setStripePromise(null);
+          onError?.(err);
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
-    loadStripeAsync();
-  }, [onError]);
+    initStripe();
+
+    return () => {
+      mounted = false;
+    };
+  }, [publishableKey, onError]);
 
   if (loading) {
-    return <div className="text-center py-8">Loading payment form...</div>;
+    return (
+      <div className="py-8 text-center">
+        <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-b-2 border-emerald-500" />
+        <p className="text-sm text-gray-400">Loading payment form...</p>
+      </div>
+    );
   }
 
   if (!stripePromise) {
-    return <div className="text-center py-8 text-red-400">Failed to load payment system</div>;
+    return (
+      <div className="py-8 text-center">
+        <p className="text-sm text-red-400">Failed to load payment system</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-3 text-sm text-emerald-400 transition-colors hover:text-emerald-300"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   if (!clientSecret) {
-    return <div className="text-center py-8 text-gray-400">Preparing secure payment form...</div>;
+    return (
+      <div className="py-8 text-center">
+        <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-b-2 border-emerald-500" />
+        <p className="text-sm text-gray-400">Preparing secure payment form...</p>
+      </div>
+    );
   }
 
   return (
@@ -128,7 +225,12 @@ export default function StripeElements({ clientSecret, onSuccess, onError }) {
         },
       }}
     >
-      <PaymentForm onSuccess={onSuccess} onError={onError} />
+      <PaymentForm
+        onSuccess={onSuccess}
+        onError={onError}
+        returnPath={returnPath}
+        buttonLabel={buttonLabel}
+      />
     </Elements>
   );
 }
