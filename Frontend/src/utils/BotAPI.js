@@ -5,7 +5,8 @@ import axios from "axios";
 // CONFIGURATION
 // =========================
 const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || 
-  "/api";
+  "https://api.imali-defi.com";
+
 const TOKEN_KEY = "imali_token";
 
 // Helper function to check if we're on a billing-related page
