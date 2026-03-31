@@ -36,6 +36,7 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.c
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const PROMO_STATUS_URL = `${API_BASE}/api/promo/status`;
 const PROMO_CLAIM_URL = `${API_BASE}/api/promo/claim`;
+const USER_COUNT_URL = `${API_BASE}/api/admin/user-count`;
 const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
 
 /* ============================================================
@@ -136,6 +137,7 @@ function usePromoStatus() {
     feePercent: 5,
     durationDays: 90,
     thresholdPercent: 3,
+    userCount: 0, // Total users signed up
   });
 
   useEffect(() => {
@@ -143,27 +145,47 @@ function usePromoStatus() {
 
     const load = async () => {
       try {
-        const res = await axios.get(PROMO_STATUS_URL, { timeout: 6000 });
-        const data = res.data || {};
+        // Fetch both promo status and user count in parallel
+        const [promoRes, userCountRes] = await Promise.allSettled([
+          axios.get(PROMO_STATUS_URL, { timeout: 6000 }),
+          axios.get(USER_COUNT_URL, { timeout: 6000 }).catch(() => null)
+        ]);
+
+        let promoData = {};
+        let userCount = 0;
+
+        // Handle promo status
+        if (promoRes.status === 'fulfilled' && promoRes.value?.data) {
+          promoData = promoRes.value.data.data || promoRes.value.data;
+        }
+
+        // Handle user count (if endpoint exists)
+        if (userCountRes.status === 'fulfilled' && userCountRes.value?.data) {
+          userCount = userCountRes.value.data.count || userCountRes.value.data.total || 0;
+        }
+
+        // Get claimed count from promo data or fallback to user count
+        const promoLimit = safeNumber(promoData.limit, 50);
+        const promoClaimed = safeNumber(promoData.claimed, 0);
         
-        const promoData = data.data || data;
-        
-        const limit = safeNumber(promoData.limit, 50);
-        const claimed = safeNumber(promoData.claimed, 0);
+        // Use the larger of promo claimed or user count (since users who signed up might not have claimed)
+        const totalClaimed = Math.max(promoClaimed, userCount);
+        const spotsLeft = Math.max(0, promoLimit - totalClaimed);
 
         if (!mounted) return;
 
         setState({
-          limit,
-          claimed,
-          spotsLeft: Math.max(0, limit - claimed),
-          active: claimed < limit,
+          limit: promoLimit,
+          claimed: totalClaimed,
+          spotsLeft,
+          active: totalClaimed < promoLimit,
           loading: false,
           error: null,
           promoType: promoData.promo_type || "first_50",
           feePercent: safeNumber(promoData.fee_percent, 5),
           durationDays: safeNumber(promoData.duration_days, 90),
           thresholdPercent: safeNumber(promoData.threshold_percent, 3),
+          userCount,
         });
       } catch (err) {
         console.error("Failed to fetch promo status:", err);
@@ -177,7 +199,7 @@ function usePromoStatus() {
     };
 
     load();
-    const id = setInterval(load, 60000);
+    const id = setInterval(load, 60000); // Update every minute
 
     return () => {
       mounted = false;
@@ -435,7 +457,7 @@ function LiveTicker() {
   );
 }
 
-function PromoMeter({ claimed, limit, spotsLeft, loading, feePercent, durationDays }) {
+function PromoMeter({ claimed, limit, spotsLeft, loading, feePercent, durationDays, userCount }) {
   const pct = limit > 0 ? (claimed / limit) * 100 : 0;
   const urgency =
     spotsLeft <= 10
@@ -463,9 +485,16 @@ function PromoMeter({ claimed, limit, spotsLeft, loading, feePercent, durationDa
       </div>
 
       {!loading && (
-        <p className="text-[10px] text-gray-500 text-center">
-          Only {feePercent}% fee on profits over {durationDays} days
-        </p>
+        <div className="text-center space-y-1">
+          <p className="text-[10px] text-gray-500">
+            Only {feePercent}% fee on profits over {durationDays} days
+          </p>
+          {userCount > 0 && (
+            <p className="text-[9px] text-gray-400">
+              📊 {userCount} total users signed up
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -805,6 +834,7 @@ export default function Home() {
             loading={promo.loading}
             feePercent={promo.feePercent}
             durationDays={promo.durationDays}
+            userCount={promo.userCount}
           />
 
           {promo.error && (
@@ -890,6 +920,18 @@ export default function Home() {
                   create your account
                 </Link>{" "}
                 to get started.
+              </p>
+            </div>
+          )}
+
+          {/* Show message when promo is full */}
+          {!promo.active && !promo.loading && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
+              <p className="text-sm font-medium text-amber-700">
+                🎉 The first {promo.limit} spots have been claimed!
+              </p>
+              <p className="mt-1 text-xs text-amber-600">
+                You can still sign up for our standard plans below.
               </p>
             </div>
           )}
