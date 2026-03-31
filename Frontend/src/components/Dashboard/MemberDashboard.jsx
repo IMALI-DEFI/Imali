@@ -2,8 +2,8 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useSocket } from "../../context/SocketContext";  // ✅ Use SocketContext
 import BotAPI from "../../utils/BotAPI";
-import socketService from "../../services/socketService";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -663,8 +663,17 @@ const BotStatusCard = ({ bot }) => {
 export default function MemberDashboard() {
   const navigate = useNavigate();
   const { user, activation, token } = useAuth();
+  const { 
+    isConnected, 
+    liveStats, 
+    lastTrade, 
+    trades: liveTrades,
+    announcements,
+    subscribeToTrades,
+    subscribeToPnl
+  } = useSocket(); // ✅ Use SocketContext instead of direct socketService
 
-  // State for all data from API
+  // State for dashboard data (initial load + fallback)
   const [dashboardData, setDashboardData] = useState({
     trades: [],
     discoveries: [],
@@ -686,7 +695,6 @@ export default function MemberDashboard() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [historicalType, setHistoricalType] = useState("daily");
   const [activeTab, setActiveTab] = useState("all");
-  const [isConnected, setIsConnected] = useState(false);
   const [livePnlUpdate, setLivePnlUpdate] = useState(null);
 
   const mountedRef = useRef(true);
@@ -708,87 +716,55 @@ export default function MemberDashboard() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Initialize Socket.IO connection
+  // Subscribe to real-time events when connected
   useEffect(() => {
-    if (!token) return;
+    if (!isConnected) return;
 
-    const initSocket = async () => {
-      try {
-        await socketService.connect(token);
-        setIsConnected(true);
-        console.log("[MemberDashboard] Socket.IO connected");
+    // Subscribe to trade updates
+    subscribeToTrades();
+    subscribeToPnl();
 
-        // Subscribe to trade updates
-        socketService.onTrade((trade) => {
-          console.log("[MemberDashboard] New trade received:", trade);
-          
-          if (mountedRef.current) {
-            // Add new trade to the list
-            const newTrade = {
-              ...trade,
-              created_at: trade.timestamp || new Date().toISOString()
-            };
-            
-            setDashboardData(prev => ({
-              ...prev,
-              trades: [newTrade, ...prev.trades].slice(0, 500)
-            }));
+    // Handle live trade updates from SocketContext
+    if (lastTrade) {
+      console.log("[MemberDashboard] Live trade from context:", lastTrade);
+      
+      const newTrade = {
+        ...lastTrade,
+        created_at: lastTrade.timestamp || new Date().toISOString()
+      };
+      
+      setDashboardData(prev => ({
+        ...prev,
+        trades: [newTrade, ...prev.trades].slice(0, 500)
+      }));
 
-            // Update analytics summary
-            const newPnl = (pnlRef.current || 0) + (trade.pnl || 0);
-            const isWin = (trade.pnl || 0) > 0;
-            
-            setDashboardData(prev => ({
-              ...prev,
-              analytics: {
-                ...prev.analytics,
-                summary: {
-                  ...prev.analytics?.summary,
-                  total_pnl: newPnl,
-                  total_trades: (prev.analytics?.summary?.total_trades || 0) + 1,
-                  wins: (prev.analytics?.summary?.wins || 0) + (isWin ? 1 : 0),
-                  losses: (prev.analytics?.summary?.losses || 0) + (!isWin && trade.pnl !== 0 ? 1 : 0),
-                }
-              }
-            }));
-
-            setLastUpdate(new Date());
+      // Update analytics summary
+      const newPnl = (pnlRef.current || 0) + (lastTrade.pnl || 0);
+      const isWin = (lastTrade.pnl || 0) > 0;
+      
+      setDashboardData(prev => ({
+        ...prev,
+        analytics: {
+          ...prev.analytics,
+          summary: {
+            ...prev.analytics?.summary,
+            total_pnl: newPnl,
+            total_trades: (prev.analytics?.summary?.total_trades || 0) + 1,
+            wins: (prev.analytics?.summary?.wins || 0) + (isWin ? 1 : 0),
+            losses: (prev.analytics?.summary?.losses || 0) + (!isWin && lastTrade.pnl !== 0 ? 1 : 0),
           }
-        });
+        }
+      }));
 
-        // Subscribe to P&L updates
-        socketService.onPnlUpdate((pnlData) => {
-          console.log("[MemberDashboard] P&L update received:", pnlData);
-          if (mountedRef.current) {
-            setLivePnlUpdate(pnlData);
-            
-            // Update cumulative P&L
-            setDashboardData(prev => ({
-              ...prev,
-              analytics: {
-                ...prev.analytics,
-                summary: {
-                  ...prev.analytics?.summary,
-                  total_pnl: pnlData.total_pnl || prev.analytics?.summary?.total_pnl || 0
-                }
-              }
-            }));
-          }
-        });
-
-      } catch (err) {
-        console.error("[MemberDashboard] Socket.IO connection failed:", err);
-        setIsConnected(false);
-      }
-    };
-
-    initSocket();
-
-    return () => {
-      socketService.disconnect();
-      setIsConnected(false);
-    };
-  }, [token]);
+      setLastUpdate(new Date());
+      setLivePnlUpdate(lastTrade);
+      
+      // Clear the alert after 3 seconds
+      setTimeout(() => {
+        if (mountedRef.current) setLivePnlUpdate(null);
+      }, 3000);
+    }
+  }, [isConnected, lastTrade, subscribeToTrades, subscribeToPnl]);
 
   // Fetch initial data using BotAPI
   const fetchData = useCallback(async () => {
@@ -868,8 +844,12 @@ export default function MemberDashboard() {
       const analyticsData = analyticsRes.status === "fulfilled" ? safeExtract(analyticsRes.value) : { summary: {} };
       const historicalData = historicalRes.status === "fulfilled" ? historicalRes.value : { daily: [], weekly: [], monthly: [] };
 
+      // Merge live trades from SocketContext with fetched trades
+      const allTrades = [...(liveTrades || []), ...(tradesData?.trades || [])];
+      const uniqueTrades = dedupeTrades(allTrades);
+
       setDashboardData({
-        trades: tradesData?.trades || [],
+        trades: uniqueTrades,
         discoveries: discoveriesData?.discoveries || [],
         bots: botStatusData?.bots || [],
         analytics: analyticsData,
@@ -886,7 +866,7 @@ export default function MemberDashboard() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [liveTrades]);
 
   // Initial load and periodic refresh (fallback for missed socket events)
   useEffect(() => {
@@ -929,10 +909,11 @@ export default function MemberDashboard() {
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(isClosedTrade).length },
   ];
 
-  const totalPnL = dashboardData.analytics?.summary?.total_pnl || 0;
-  const wins = dashboardData.analytics?.summary?.wins || 0;
-  const losses = dashboardData.analytics?.summary?.losses || 0;
-  const winRate = dashboardData.analytics?.summary?.win_rate || 
+  // Use liveStats from SocketContext for real-time stats
+  const totalPnL = liveStats.totalPnl || dashboardData.analytics?.summary?.total_pnl || 0;
+  const wins = liveStats.wins || dashboardData.analytics?.summary?.wins || 0;
+  const losses = liveStats.losses || dashboardData.analytics?.summary?.losses || 0;
+  const winRate = liveStats.winRate || dashboardData.analytics?.summary?.win_rate || 
     (wins + losses > 0 ? Math.round((wins / (wins + losses)) * 100) : 0);
 
   const todayPnL = useMemo(() => {
@@ -942,7 +923,7 @@ export default function MemberDashboard() {
       .reduce((sum, t) => sum + safeNumber(getTradePnlUsd(t), 0), 0);
   }, [allTrades]);
 
-  const activeBots = dashboardData.bots.filter(b => 
+  const activeBots = liveStats.activeBots || dashboardData.bots.filter(b => 
     b.status === "operational" || b.status === "scanning"
   ).length;
 
@@ -952,11 +933,13 @@ export default function MemberDashboard() {
   const stockBot = dashboardData.bots.find(b => b.name?.includes("Stock"));
 
   const sniperDiscoveries = sniperBot?.discoveries || dashboardData.discoveries.length;
-  const okxPositions = okxBot?.positions || 0;
 
   const tier = normalizeTier(user?.tier);
   const plan = PLANS.find(p => p.value === tier) || PLANS[0];
   const isLive = activation?.has_card_on_file || false;
+
+  // Show live announcement if available
+  const latestAnnouncement = announcements[0];
 
   if (loading) {
     return (
@@ -986,12 +969,26 @@ export default function MemberDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
       <div className="max-w-7xl mx-auto px-3 py-3 sm:p-4 md:p-6 space-y-3 sm:space-y-5">
         
+        {/* Live Announcement Banner */}
+        {latestAnnouncement && (
+          <div className="p-3 bg-indigo-600/20 border border-indigo-500/40 rounded-2xl text-indigo-200 text-sm animate-pulse">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span>📢</span>
+                <span className="font-semibold">{latestAnnouncement.title}:</span>
+                <span>{latestAnnouncement.content}</span>
+              </div>
+              <span className="text-xs opacity-75">{timeAgo(latestAnnouncement.created_at)}</span>
+            </div>
+          </div>
+        )}
+
         {/* Connection Status */}
         <div className="flex justify-between items-center gap-2 text-xs">
           <div className="flex items-center gap-2">
-            <span className={`inline-block w-2 h-2 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></span>
+            <span className={`inline-block w-2 h-2 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`}></span>
             <span className="text-white/60">
-              {isConnected ? 'Live updates via WebSocket' : 'Using periodic updates'}
+              {isConnected ? 'Live updates via WebSocket' : 'Using periodic updates (fallback)'}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -1085,10 +1082,10 @@ export default function MemberDashboard() {
           />
         </CardShell>
 
-        {/* Stats Grid */}
+        {/* Stats Grid - Using Real-time data */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard title="Total P&L" value={formatUsd(totalPnL)} color={totalPnL >= 0 ? "emerald" : "red"} />
-          <StatCard title="Win Rate" value={`${winRate}%`} subtext={`${wins}W / ${losses}L`} color="purple" />
+          <StatCard title="Win Rate" value={`${winRate.toFixed(1)}%`} subtext={`${wins}W / ${losses}L`} color="purple" />
           <StatCard title="Today's P&L" value={formatUsd(todayPnL)} color={todayPnL >= 0 ? "emerald" : "red"} />
           <StatCard title="Active Bots" value={activeBots} subtext="Systems online" color="cyan" />
         </div>
