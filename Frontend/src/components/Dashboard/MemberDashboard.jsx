@@ -1,9 +1,9 @@
 // src/pages/member/MemberDashboard.jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import BotAPI from "../utils/BotAPI";
-import socketService from "../services/socketService";
+import { useAuth } from "../../context/AuthContext";
+import BotAPI from "../../utils/BotAPI";
+import socketService from "../../services/socketService";
 import {
   Chart as ChartJS,
   CategoryScale,
