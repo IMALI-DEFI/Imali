@@ -2,13 +2,17 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import axios from "axios";
 
-// 🖼️ Tier NFT art (placeholders - update with actual paths)
+// 🖼️ Tier NFT art
 import StarterNFT from "../assets/images/nfts/nft-starter.png";
 import ProNFT from "../assets/images/nfts/nft-pro.png";
 import EliteNFT from "../assets/images/nfts/nft-elite.png";
 import StockNFT from "../assets/images/nfts/nft-stock.png";
 import BundleNFT from "../assets/images/nfts/nft-bundle.png";
+
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const PROMO_STATUS_URL = `${API_BASE}/api/promo/status`;
 
 /* ===================== HELPERS ===================== */
 
@@ -59,38 +63,52 @@ export default function Pricing() {
   const { user, isAuthenticated } = useAuth();
 
   // Promo counter (First 50)
-  const PROMO_LIMIT = 50;
-  const [totalClaimed, setTotalClaimed] = useState(0);
-  const [spotsLeft, setSpotsLeft] = useState(PROMO_LIMIT);
+  const [promoData, setPromoData] = useState({
+    limit: 50,
+    claimed: 0,
+    spotsLeft: 50,
+    active: true,
+    loading: true,
+    feePercent: 5,
+    durationDays: 90,
+    thresholdPercent: 3,
+  });
 
-  // Fetch promo status on mount
+  // Fetch promo status from endpoint
   useEffect(() => {
     const fetchPromoStatus = async () => {
       try {
-        const response = await fetch("/api/promo/status");
-        const data = await response.json();
+        const response = await axios.get(PROMO_STATUS_URL, { timeout: 6000 });
+        const data = response.data;
+        
         if (data.success && data.data) {
-          setTotalClaimed(data.data.claimed || 0);
-          setSpotsLeft(data.data.spots_left || PROMO_LIMIT);
+          const promo = data.data;
+          const limit = Number(promo.limit) || 50;
+          const claimed = Number(promo.claimed) || 0;
+          
+          setPromoData({
+            limit,
+            claimed,
+            spotsLeft: Math.max(0, limit - claimed),
+            active: claimed < limit,
+            loading: false,
+            feePercent: Number(promo.fee_percent) || 5,
+            durationDays: Number(promo.duration_days) || 90,
+            thresholdPercent: Number(promo.threshold_percent) || 3,
+          });
+        } else {
+          setPromoData(prev => ({ ...prev, loading: false }));
         }
       } catch (error) {
         console.error("Failed to fetch promo status:", error);
-        // Fallback to localStorage
-        try {
-          const local = Number(localStorage.getItem("imali_promo_claimed") || "0");
-          const claimed = Number.isFinite(local) ? local : 0;
-          setTotalClaimed(claimed);
-          setSpotsLeft(PROMO_LIMIT - claimed);
-        } catch {
-          setTotalClaimed(0);
-          setSpotsLeft(PROMO_LIMIT);
-        }
+        setPromoData(prev => ({ ...prev, loading: false }));
       }
     };
+    
     fetchPromoStatus();
   }, []);
 
-  // Plans (slugs aligned with backend: starter/pro/elite/stock/bundle)
+  // Plans with correct tier slugs
   const plans = [
     {
       name: "Starter",
@@ -116,6 +134,7 @@ export default function Pricing() {
       cta: "Start Free",
       ctaLink: "/signup",
       frame: "from-sky-500/40 to-indigo-500/40",
+      requiresPayment: false,
     },
     {
       name: "Pro",
@@ -138,11 +157,12 @@ export default function Pricing() {
         "Established Crypto": ["Optional (if enabled for your account)"],
         "New Crypto": ["—"],
       },
-      fees: ["$19/mo + 5% performance fee only when up > 3% (monthly)"],
+      fees: [`${PRICE.pro === 19 ? "$19/mo" : `$${PRICE.pro}/mo`} + 5% performance fee only when up > 3% (monthly)`],
       cta: "Choose Pro",
       ctaLink: "/signup",
       frame: "from-fuchsia-500/40 to-purple-500/40",
       popular: true,
+      requiresPayment: true,
     },
     {
       name: "Elite",
@@ -165,10 +185,11 @@ export default function Pricing() {
         Stocks: ["Alpaca bot"],
         "New Crypto": ["—"],
       },
-      fees: ["$49/mo + 5% performance fee only when up > 3% (monthly)"],
+      fees: [`${PRICE.elite === 49 ? "$49/mo" : `$${PRICE.elite}/mo`} + 5% performance fee only when up > 3% (monthly)`],
       cta: "Choose Elite",
       ctaLink: "/signup",
       frame: "from-amber-500/40 to-orange-500/40",
+      requiresPayment: true,
     },
     {
       name: "DeFi (New Crypto)",
@@ -190,10 +211,11 @@ export default function Pricing() {
         "Established Crypto": ["Optional add-on path"],
         Stocks: ["Optional add-on path"],
       },
-      fees: ["$99/mo (DEX fees + gas not included)"],
+      fees: [`${PRICE.stock === 99 ? "$99/mo" : `$${PRICE.stock}/mo`} (DEX fees + gas not included)`],
       cta: "Unlock DeFi",
       ctaLink: "/signup",
       frame: "from-emerald-500/40 to-teal-500/40",
+      requiresPayment: true,
     },
     {
       name: "Bundle",
@@ -216,17 +238,40 @@ export default function Pricing() {
         "Established Crypto": ["OKX bot (CEX)"],
         Stocks: ["Alpaca bot"],
       },
-      fees: ["$199/mo (platform + exchange fees may apply)"],
+      fees: [`${PRICE.bundle === 199 ? "$199/mo" : `$${PRICE.bundle}/mo`} (platform + exchange fees may apply)`],
       cta: "Get Bundle",
       ctaLink: "/signup",
       frame: "from-zinc-300/30 to-slate-500/30",
+      requiresPayment: true,
     },
   ];
 
   const handleChoosePlan = (plan) => {
     if (isAuthenticated) {
-      // User is logged in, redirect to billing to upgrade/change plan
-      navigate("/billing", { state: { selectedTier: plan.slug, fromPricing: true } });
+      // User is logged in, check if they already have this tier
+      const currentTier = user?.tier?.toLowerCase();
+      
+      if (currentTier === plan.slug) {
+        // Already on this plan, go to dashboard
+        navigate("/dashboard");
+      } else if (plan.requiresPayment || (plan.slug !== "starter" && currentTier === "starter")) {
+        // Need to upgrade - go to billing
+        navigate("/billing", { 
+          state: { 
+            selectedTier: plan.slug, 
+            fromPricing: true,
+            upgradeFrom: currentTier
+          } 
+        });
+      } else {
+        // Free tier or downgrade - go to dashboard with message
+        navigate("/dashboard", { 
+          state: { 
+            message: `You're now on the ${plan.name} plan. Complete activation to start trading.`,
+            selectedTier: plan.slug
+          } 
+        });
+      }
     } else {
       // User not logged in, redirect to signup with tier preselected
       navigate(`/signup?tier=${plan.slug}`);
@@ -266,34 +311,36 @@ export default function Pricing() {
         </div>
 
         {/* First 50 Promo Banner */}
-        <div className="mb-10 rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-6 py-5">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <div className="text-sm font-semibold text-emerald-200">🔥 LIMITED TIME OFFER</div>
-              <div className="text-lg md:text-xl font-extrabold mt-1">
-                First 50 customers: 5% performance fee when up &gt; 3% (90 days)
+        {!promoData.loading && promoData.active && (
+          <div className="mb-10 rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-6 py-5">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-emerald-200">🔥 LIMITED TIME OFFER</div>
+                <div className="text-lg md:text-xl font-extrabold mt-1">
+                  First {promoData.limit} customers: {promoData.feePercent}% performance fee when up &gt; {promoData.thresholdPercent}% ({promoData.durationDays} days)
+                </div>
+                <div className="text-sm text-white/70 mt-1">
+                  No monthly fees for {promoData.durationDays} days. Pay only when you profit.
+                </div>
               </div>
-              <div className="text-sm text-white/70 mt-1">
-                No monthly fees for 3 months. Pay only when you profit.
+
+              <div className="shrink-0">
+                <div className="text-xs text-white/70">Spots left</div>
+                <div className="text-3xl font-extrabold text-emerald-200 tabular-nums">
+                  {promoData.spotsLeft}
+                </div>
+                <div className="text-[11px] text-white/60">out of {promoData.limit}</div>
               </div>
             </div>
 
-            <div className="shrink-0">
-              <div className="text-xs text-white/70">Spots left</div>
-              <div className="text-3xl font-extrabold text-emerald-200 tabular-nums">
-                {spotsLeft}
-              </div>
-              <div className="text-[11px] text-white/60">out of {PROMO_LIMIT}</div>
+            <div className="mt-4 h-2 w-full rounded-full bg-white/10 overflow-hidden">
+              <div
+                className="h-full bg-emerald-400/80 transition-all duration-500"
+                style={{ width: `${((promoData.limit - promoData.spotsLeft) / promoData.limit) * 100}%` }}
+              />
             </div>
           </div>
-
-          <div className="mt-4 h-2 w-full rounded-full bg-white/10 overflow-hidden">
-            <div
-              className="h-full bg-emerald-400/80 transition-all duration-500"
-              style={{ width: `${((PROMO_LIMIT - spotsLeft) / PROMO_LIMIT) * 100}%` }}
-            />
-          </div>
-        </div>
+        )}
 
         {/* Plans Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
