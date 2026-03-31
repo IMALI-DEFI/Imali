@@ -19,6 +19,7 @@
     "react-scripts": "5.0.1",
     "react-tabs": "5.2.0",
     "react-toastify": "11.0.5",
+    "socket.io-client": "^4.8.3",
     "web3": "1.10.0",
     "web3modal": "1.9.10"
   },
