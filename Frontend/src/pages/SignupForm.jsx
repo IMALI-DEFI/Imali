@@ -1,5 +1,5 @@
 // src/pages/Signup.jsx
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -13,11 +13,16 @@ export default function Signup() {
     return params.get("ref") || "";
   }, [location.search]);
 
+  const urlTier = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("tier") || "starter";
+  }, [location.search]);
+
   const [form, setForm] = useState({
     email: "",
     password: "",
     confirmPassword: "",
-    tier: "starter",
+    tier: urlTier,
     strategy: "ai_weighted",
     acceptTerms: false,
     subscribeNewsletter: true,
@@ -27,6 +32,11 @@ export default function Signup() {
   const [error, setError] = useState("");
   const [step, setStep] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
+
+  // Update tier if URL param changes
+  useEffect(() => {
+    setForm(prev => ({ ...prev, tier: urlTier }));
+  }, [urlTier]);
 
   const updateField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -82,6 +92,23 @@ export default function Signup() {
       resultOrError.response?.data?.message ||
       "Something went wrong. Please try again."
     );
+  };
+
+  const getTierDescription = (tier) => {
+    switch (tier) {
+      case "starter":
+        return "Free plan - 30% performance fee";
+      case "pro":
+        return "Pro - $19/mo + 5% performance fee";
+      case "elite":
+        return "Elite - $49/mo + 5% performance fee";
+      case "stock":
+        return "DeFi - $99/mo (DEX trading)";
+      case "bundle":
+        return "Bundle - $199/mo (All bots)";
+      default:
+        return "";
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -158,10 +185,11 @@ export default function Signup() {
         form.subscribeNewsletter ? "true" : "false"
       );
 
-      setStep("redirecting-to-billing");
-      console.log("[Signup] Redirecting to billing...");
+      setStep("redirecting-to-activation");
+      console.log("[Signup] Redirecting to activation...");
 
-      navigate("/billing", {
+      // Redirect to activation page with selected tier
+      navigate("/activation", {
         replace: true,
         state: {
           email,
@@ -188,8 +216,8 @@ export default function Signup() {
         return "Creating account…";
       case "logging-in":
         return "Signing you in…";
-      case "redirecting-to-billing":
-        return "Taking you to billing…";
+      case "redirecting-to-activation":
+        return "Setting up your account…";
       default:
         return loading ? "Please wait…" : "Create free account";
     }
@@ -211,11 +239,9 @@ export default function Signup() {
         <div className="mb-6 flex justify-between text-xs text-gray-500">
           <span className="text-blue-400">1. Sign Up</span>
           <span>→</span>
-          <span>2. Add Payment</span>
+          <span>2. Connect Accounts</span>
           <span>→</span>
-          <span>3. Connect Accounts</span>
-          <span>→</span>
-          <span>4. Dashboard</span>
+          <span>3. Start Trading</span>
         </div>
 
         {referralCode && (
@@ -232,7 +258,7 @@ export default function Signup() {
 
         {showSuccess && (
           <div className="mb-4 p-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-sm">
-            ✅ Account created! Taking you to billing setup...
+            ✅ Account created! Setting up your account...
           </div>
         )}
 
@@ -286,6 +312,28 @@ export default function Signup() {
               className="w-full px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               disabled={loading || showSuccess}
             />
+          </div>
+
+          {/* Tier Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Select Your Plan
+            </label>
+            <select
+              value={form.tier}
+              onChange={(e) => updateField("tier", e.target.value)}
+              className="w-full px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              disabled={loading || showSuccess}
+            >
+              <option value="starter">Starter - Free (30% performance fee)</option>
+              <option value="pro">Pro - $19/mo + 5% performance fee</option>
+              <option value="elite">Elite - $49/mo + 5% performance fee</option>
+              <option value="stock">DeFi (New Crypto) - $99/mo</option>
+              <option value="bundle">Bundle - $199/mo (All bots)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {getTierDescription(form.tier)}
+            </p>
           </div>
 
           <div>
@@ -363,7 +411,7 @@ export default function Signup() {
 
           <div className="mt-6 pt-4 border-t border-gray-800">
             <p className="text-xs text-gray-500 text-center mb-3">
-              ✨ Free tier includes:
+              ✨ Your selected plan includes:
             </p>
             <div className="grid grid-cols-2 gap-2 text-xs text-gray-400">
               <div className="flex items-center gap-1">
@@ -376,7 +424,7 @@ export default function Signup() {
                 <span className="text-green-500">✓</span> Real-time alerts
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-green-500">✓</span> 30% performance fee
+                <span className="text-green-500">✓</span> Performance-based fees
               </div>
             </div>
           </div>
