@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
+import socketService from "../../services/socketService";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -74,11 +75,9 @@ const safeNumber = (v, f = 0) => {
 
 const safeExtract = (response, fallback = null) => {
   if (!response) return fallback;
-  // Handle { success: true, data: {...} }
   if (response.data && typeof response.data === 'object') {
     return response.data;
   }
-  // Handle direct object
   return response;
 };
 
@@ -105,25 +104,6 @@ const formatCompact = (n) => {
 const formatPercent = (v, digits = 2) => {
   const num = safeNumber(v);
   return `${num >= 0 ? "+" : ""}${num.toFixed(digits)}%`;
-};
-
-const formatDate = (timestamp) => {
-  if (!timestamp) return "—";
-  try {
-    return new Date(timestamp).toLocaleDateString();
-  } catch {
-    return "—";
-  }
-};
-
-const formatShortDate = (timestamp) => {
-  if (!timestamp) return "—";
-  try {
-    const d = new Date(timestamp);
-    return `${d.getMonth() + 1}/${d.getDate()}`;
-  } catch {
-    return "—";
-  }
 };
 
 const timeAgo = (timestamp) => {
@@ -244,7 +224,7 @@ function PerformanceChart({ historicalData, type = "daily", onTypeChange }) {
 
     const labels = chartData.map(d => {
       const date = new Date(d?.date || d?.timestamp || 0);
-      return formatShortDate(date);
+      return `${date.getMonth() + 1}/${date.getDate()}`;
     });
 
     const pnlData = chartData.map(d => safeNumber(d?.pnl, 0));
@@ -682,7 +662,7 @@ const BotStatusCard = ({ bot }) => {
 /* ===================== MAIN DASHBOARD ===================== */
 export default function MemberDashboard() {
   const navigate = useNavigate();
-  const { user, activation } = useAuth();
+  const { user, activation, token } = useAuth();
 
   // State for all data from API
   const [dashboardData, setDashboardData] = useState({
@@ -706,25 +686,118 @@ export default function MemberDashboard() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [historicalType, setHistoricalType] = useState("daily");
   const [activeTab, setActiveTab] = useState("all");
+  const [isConnected, setIsConnected] = useState(false);
+  const [livePnlUpdate, setLivePnlUpdate] = useState(null);
 
   const mountedRef = useRef(true);
+  const tradesRef = useRef([]);
+  const pnlRef = useRef(0);
+
+  // Update trades ref when dashboard data changes
+  useEffect(() => {
+    tradesRef.current = dashboardData.trades;
+  }, [dashboardData.trades]);
+
+  // Update pnl ref when analytics changes
+  useEffect(() => {
+    pnlRef.current = dashboardData.analytics?.summary?.total_pnl || 0;
+  }, [dashboardData.analytics]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Fetch data using BotAPI
+  // Initialize Socket.IO connection
+  useEffect(() => {
+    if (!token) return;
+
+    const initSocket = async () => {
+      try {
+        await socketService.connect(token);
+        setIsConnected(true);
+        console.log("[MemberDashboard] Socket.IO connected");
+
+        // Subscribe to trade updates
+        socketService.onTrade((trade) => {
+          console.log("[MemberDashboard] New trade received:", trade);
+          
+          if (mountedRef.current) {
+            // Add new trade to the list
+            const newTrade = {
+              ...trade,
+              created_at: trade.timestamp || new Date().toISOString()
+            };
+            
+            setDashboardData(prev => ({
+              ...prev,
+              trades: [newTrade, ...prev.trades].slice(0, 500)
+            }));
+
+            // Update analytics summary
+            const newPnl = (pnlRef.current || 0) + (trade.pnl || 0);
+            const isWin = (trade.pnl || 0) > 0;
+            
+            setDashboardData(prev => ({
+              ...prev,
+              analytics: {
+                ...prev.analytics,
+                summary: {
+                  ...prev.analytics?.summary,
+                  total_pnl: newPnl,
+                  total_trades: (prev.analytics?.summary?.total_trades || 0) + 1,
+                  wins: (prev.analytics?.summary?.wins || 0) + (isWin ? 1 : 0),
+                  losses: (prev.analytics?.summary?.losses || 0) + (!isWin && trade.pnl !== 0 ? 1 : 0),
+                }
+              }
+            }));
+
+            setLastUpdate(new Date());
+          }
+        });
+
+        // Subscribe to P&L updates
+        socketService.onPnlUpdate((pnlData) => {
+          console.log("[MemberDashboard] P&L update received:", pnlData);
+          if (mountedRef.current) {
+            setLivePnlUpdate(pnlData);
+            
+            // Update cumulative P&L
+            setDashboardData(prev => ({
+              ...prev,
+              analytics: {
+                ...prev.analytics,
+                summary: {
+                  ...prev.analytics?.summary,
+                  total_pnl: pnlData.total_pnl || prev.analytics?.summary?.total_pnl || 0
+                }
+              }
+            }));
+          }
+        });
+
+      } catch (err) {
+        console.error("[MemberDashboard] Socket.IO connection failed:", err);
+        setIsConnected(false);
+      }
+    };
+
+    initSocket();
+
+    return () => {
+      socketService.disconnect();
+      setIsConnected(false);
+    };
+  }, [token]);
+
+  // Fetch initial data using BotAPI
   const fetchData = useCallback(async () => {
     try {
       console.log("[MemberDashboard] Fetching dashboard data...");
       
-      // Use Promise.allSettled to handle individual failures
       const [tradesRes, discoveriesRes, botStatusRes, analyticsRes, historicalRes] = await Promise.allSettled([
-        // Get trades - using BotAPI.getTrades() or fallback to getSniperTrades()
         (async () => {
           try {
-            // Try getTrades first, fallback to getSniperTrades
             if (typeof BotAPI.getTrades === 'function') {
               return await BotAPI.getTrades(100);
             } else if (typeof BotAPI.getSniperTrades === 'function') {
@@ -737,7 +810,6 @@ export default function MemberDashboard() {
           }
         })(),
         
-        // Get discoveries
         (async () => {
           try {
             if (typeof BotAPI.getDiscoveries === 'function') {
@@ -750,7 +822,6 @@ export default function MemberDashboard() {
           }
         })(),
         
-        // Get bot status
         (async () => {
           try {
             if (typeof BotAPI.getBotStatus === 'function') {
@@ -763,7 +834,6 @@ export default function MemberDashboard() {
           }
         })(),
         
-        // Get analytics summary
         (async () => {
           try {
             if (typeof BotAPI.getAnalyticsSummary === 'function') {
@@ -776,13 +846,11 @@ export default function MemberDashboard() {
           }
         })(),
         
-        // Get historical data
         (async () => {
           try {
             if (typeof BotAPI.getPublicHistorical === 'function') {
               return await BotAPI.getPublicHistorical();
             }
-            // Fallback to fetch
             const response = await fetch(`/api/public/historical`);
             return await response.json();
           } catch (e) {
@@ -794,18 +862,11 @@ export default function MemberDashboard() {
 
       if (!mountedRef.current) return;
 
-      // Safely extract data from each response
       const tradesData = tradesRes.status === "fulfilled" ? safeExtract(tradesRes.value) : { trades: [] };
       const discoveriesData = discoveriesRes.status === "fulfilled" ? safeExtract(discoveriesRes.value) : { discoveries: [] };
       const botStatusData = botStatusRes.status === "fulfilled" ? safeExtract(botStatusRes.value) : { bots: [] };
       const analyticsData = analyticsRes.status === "fulfilled" ? safeExtract(analyticsRes.value) : { summary: {} };
       const historicalData = historicalRes.status === "fulfilled" ? historicalRes.value : { daily: [], weekly: [], monthly: [] };
-
-      console.log("[MemberDashboard] Data fetched:", {
-        trades: tradesData?.trades?.length || 0,
-        discoveries: discoveriesData?.discoveries?.length || 0,
-        bots: botStatusData?.bots?.length || 0
-      });
 
       setDashboardData({
         trades: tradesData?.trades || [],
@@ -827,10 +888,11 @@ export default function MemberDashboard() {
     }
   }, []);
 
-  // Initial load and polling every 10 seconds
+  // Initial load and periodic refresh (fallback for missed socket events)
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    // Refresh every 30 seconds as fallback (socket should handle real-time)
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
@@ -867,7 +929,6 @@ export default function MemberDashboard() {
     { id: "closed", label: "Closed", icon: "✅", count: allTrades.filter(isClosedTrade).length },
   ];
 
-  // P&L stats from analytics
   const totalPnL = dashboardData.analytics?.summary?.total_pnl || 0;
   const wins = dashboardData.analytics?.summary?.wins || 0;
   const losses = dashboardData.analytics?.summary?.losses || 0;
@@ -881,7 +942,6 @@ export default function MemberDashboard() {
       .reduce((sum, t) => sum + safeNumber(getTradePnlUsd(t), 0), 0);
   }, [allTrades]);
 
-  // Bot stats from real data
   const activeBots = dashboardData.bots.filter(b => 
     b.status === "operational" || b.status === "scanning"
   ).length;
@@ -894,7 +954,6 @@ export default function MemberDashboard() {
   const sniperDiscoveries = sniperBot?.discoveries || dashboardData.discoveries.length;
   const okxPositions = okxBot?.positions || 0;
 
-  // Auth data
   const tier = normalizeTier(user?.tier);
   const plan = PLANS.find(p => p.value === tier) || PLANS[0];
   const isLive = activation?.has_card_on_file || false;
@@ -927,21 +986,40 @@ export default function MemberDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950 text-white">
       <div className="max-w-7xl mx-auto px-3 py-3 sm:p-4 md:p-6 space-y-3 sm:space-y-5">
         
-        {/* Last Update Status */}
+        {/* Connection Status */}
         <div className="flex justify-between items-center gap-2 text-xs">
           <div className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-            <span className="text-white/60">Live data - refreshes every 10s</span>
+            <span className={`inline-block w-2 h-2 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></span>
+            <span className="text-white/60">
+              {isConnected ? 'Live updates via WebSocket' : 'Using periodic updates'}
+            </span>
           </div>
           <div className="flex items-center gap-3">
             <Link to="/live" className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
               <span>👁️</span> Public Dashboard
             </Link>
             <span className="text-white/40">
-              {lastUpdate?.toLocaleTimeString() || 'Never'}
+              Last update: {lastUpdate?.toLocaleTimeString() || 'Never'}
             </span>
           </div>
         </div>
+
+        {/* Live P&L Alert */}
+        {livePnlUpdate && (
+          <div className={`p-3 rounded-2xl text-sm transition-all duration-300 ${
+            livePnlUpdate.pnl > 0 
+              ? 'bg-emerald-600/20 border border-emerald-500/40 text-emerald-200'
+              : 'bg-red-600/20 border border-red-500/40 text-red-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span>⚡ Live Trade Update</span>
+              <span className="font-bold">{formatUsd(livePnlUpdate.pnl)}</span>
+            </div>
+            <div className="text-xs opacity-75 mt-1">
+              {livePnlUpdate.symbol} • {formatPercent(livePnlUpdate.pnl_percent)}
+            </div>
+          </div>
+        )}
 
         {/* Error Banner */}
         {error && (
@@ -1007,7 +1085,7 @@ export default function MemberDashboard() {
           />
         </CardShell>
 
-        {/* Stats Grid - Using Real Data */}
+        {/* Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard title="Total P&L" value={formatUsd(totalPnL)} color={totalPnL >= 0 ? "emerald" : "red"} />
           <StatCard title="Win Rate" value={`${winRate}%`} subtext={`${wins}W / ${losses}L`} color="purple" />
@@ -1015,20 +1093,12 @@ export default function MemberDashboard() {
           <StatCard title="Active Bots" value={activeBots} subtext="Systems online" color="cyan" />
         </div>
 
-        {/* Bot Cards - Using Real Bot Status Data */}
+        {/* Bot Cards */}
         <CollapsibleCard title="🤖 Your Trading Bots" icon="🤖" defaultOpen={true}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* OKX Spot Bot */}
-            {okxBot && (
-              <BotStatusCard bot={okxBot} />
-            )}
+            {okxBot && <BotStatusCard bot={okxBot} />}
+            {stockBot && <BotStatusCard bot={stockBot} />}
 
-            {/* Stock Bot */}
-            {stockBot && (
-              <BotStatusCard bot={stockBot} />
-            )}
-
-            {/* Futures Bot - Gated */}
             <FeatureLock feature="Futures">
               {futuresBot ? (
                 <BotStatusCard bot={futuresBot} />
@@ -1041,7 +1111,6 @@ export default function MemberDashboard() {
               )}
             </FeatureLock>
 
-            {/* DEX Sniper - Gated */}
             <FeatureLock feature="DEX Sniper">
               {sniperBot ? (
                 <BotStatusCard bot={sniperBot} />
@@ -1054,7 +1123,6 @@ export default function MemberDashboard() {
               )}
             </FeatureLock>
 
-            {/* Staking - Gated */}
             <FeatureLock feature="Staking">
               <CardShell title="Staking" icon="🥩">
                 <MetricRow label="Staked" value="$25,000" />
@@ -1063,7 +1131,6 @@ export default function MemberDashboard() {
               </CardShell>
             </FeatureLock>
 
-            {/* Yield Farming - Gated */}
             <FeatureLock feature="Yield Farming">
               <CardShell title="Yield Farming" icon="🌾">
                 <MetricRow label="Value" value="$15,000" />
@@ -1072,7 +1139,6 @@ export default function MemberDashboard() {
               </CardShell>
             </FeatureLock>
 
-            {/* NFT Marketplace - Gated */}
             <FeatureLock feature="NFT Marketplace">
               <CardShell title="NFTs" icon="🖼️">
                 <MetricRow label="Owned" value="12" />
@@ -1104,19 +1170,20 @@ export default function MemberDashboard() {
               <MetricRow label="Total Trades" value={allTrades.length} />
               <MetricRow label="Open Positions" value={allTrades.filter(isOpenTrade).length} />
               <MetricRow label="Win/Loss Ratio" value={(wins / Math.max(losses, 1)).toFixed(2)} />
+              <MetricRow label="WebSocket" value={isConnected ? "Connected" : "Disconnected"} valueClassName={isConnected ? "text-green-400" : "text-red-400"} />
             </div>
           </CardShell>
 
           <CardShell title="System Status" icon="📡">
             <div className="space-y-2 text-xs">
               <MetricRow label="API" value="Connected" valueClassName="text-green-400" />
-              <MetricRow label="Last Update" value={lastUpdate ? timeAgo(lastUpdate) : "—"} />
+              <MetricRow label="Real-time" value={isConnected ? "Active" : "Fallback"} valueClassName={isConnected ? "text-green-400" : "text-amber-400"} />
               <MetricRow label="Your Tier" value={tier.toUpperCase()} valueClassName="text-amber-400" />
             </div>
           </CardShell>
         </div>
 
-        {/* DEX Discoveries - From Real Data */}
+        {/* DEX Discoveries */}
         {sniperDiscoveries > 0 && tierHasFeature(tier, "DEX Sniper") && (
           <CardShell title="🦄 New Token Discoveries" icon="🦄">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -1127,7 +1194,7 @@ export default function MemberDashboard() {
           </CardShell>
         )}
 
-        {/* Upgrade Prompt for missing features */}
+        {/* Upgrade Prompt */}
         {!tierHasFeature(tier, "Staking") && !tierHasFeature(tier, "Yield Farming") && !tierHasFeature(tier, "NFT Marketplace") && (
           <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-2xl p-5 text-center">
             <h3 className="font-bold text-lg mb-2">🚀 Unlock Advanced Features</h3>
@@ -1143,7 +1210,7 @@ export default function MemberDashboard() {
           </div>
         )}
 
-        {/* Recent Trades Feed - From Real Data */}
+        {/* Recent Trades Feed */}
         <CardShell title="📋 Recent Trading Activity" icon="📋">
           {allTrades.length === 0 ? (
             <div className="text-center py-6 text-white/30 text-sm">
@@ -1174,7 +1241,7 @@ export default function MemberDashboard() {
 
               <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
                 {filteredTrades.map((trade, i) => (
-                  <TradeRow key={i} trade={trade} />
+                  <TradeRow key={`${trade.id || i}`} trade={trade} />
                 ))}
               </div>
             </div>
