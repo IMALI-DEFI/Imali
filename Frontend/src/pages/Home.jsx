@@ -196,7 +196,7 @@ function usePromoClaim() {
     data: null,
   });
 
-  const claim = async (email) => {
+  const claim = async (email, tier = "starter") => {
     if (!email) return false;
 
     setState({
@@ -209,7 +209,7 @@ function usePromoClaim() {
     try {
       const res = await axios.post(
         PROMO_CLAIM_URL,
-        { email, tier: "starter" },
+        { email, tier },
         { timeout: 8000 }
       );
 
@@ -277,7 +277,6 @@ function useLiveActivity() {
         const trades = data.recent_trades || [];
         const summary = data.summary || {};
         
-        // Process bot statuses - only main bots
         let botStatuses = [];
         let activeBots = 0;
         let online = false;
@@ -294,7 +293,6 @@ function useLiveActivity() {
           activeBots = botStatuses.filter(b => b.live).length;
           online = activeBots > 0;
         } else {
-          // Fallback to known bots
           botStatuses = [
             { label: "Futures Bot", live: true, details: null },
             { label: "Stock Bot", live: true, details: null },
@@ -390,22 +388,6 @@ function Card({ children, className = "" }) {
   return (
     <div className={`rounded-2xl border border-gray-200 bg-white shadow-sm ${className}`}>
       {children}
-    </div>
-  );
-}
-
-function StepCard({ number, emoji, title, description }) {
-  return (
-    <div className="flex items-start gap-4">
-      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 font-bold text-white shadow-md">
-        {number}
-      </div>
-      <div>
-        <h3 className="text-lg font-bold text-gray-900">
-          {emoji} {title}
-        </h3>
-        <p className="mt-1 text-sm leading-relaxed text-gray-600">{description}</p>
-      </div>
     </div>
   );
 }
@@ -756,6 +738,7 @@ export default function Home() {
 
   const [email, setEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [selectedTier, setSelectedTier] = useState("starter");
 
   const videoId = "x6Dvj1ALs-w";
 
@@ -841,7 +824,7 @@ export default function Home() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                const ok = await promoClaim.claim(email);
+                const ok = await promoClaim.claim(email, selectedTier);
                 if (ok) setShowForm(false);
               }}
               className="mt-4 space-y-3"
@@ -855,6 +838,18 @@ export default function Home() {
                 required
                 autoFocus
               />
+
+              <select
+                value={selectedTier}
+                onChange={(e) => setSelectedTier(e.target.value)}
+                className="w-full rounded-xl border border-emerald-200 bg-white px-4 py-4 text-sm text-gray-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="starter">Starter - Free (30% performance fee)</option>
+                <option value="pro">Pro - $19/mo + 5% fee</option>
+                <option value="elite">Elite - $49/mo + 5% fee</option>
+                <option value="stock">DeFi - $99/mo (DEX trading)</option>
+                <option value="bundle">Bundle - $199/mo (All bots)</option>
+              </select>
 
               {promoClaim.state.error && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
@@ -938,6 +933,31 @@ export default function Home() {
             </Link>
           </div>
 
+          {/* Pricing Banner */}
+          <div className="mx-auto mb-8 max-w-3xl">
+            <Link to="/pricing">
+              <div className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 px-4 py-4 text-left shadow-sm hover:shadow-md transition-shadow sm:px-5 cursor-pointer">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-purple-700">
+                      View Our Pricing Plans
+                    </p>
+                    <h3 className="mt-1 text-lg font-bold text-gray-900 sm:text-xl">
+                      Choose the plan that fits your trading style
+                    </h3>
+                    <p className="mt-1 max-w-2xl text-sm text-gray-600">
+                      From free starter to full bundle - pick the plan that matches your needs.
+                    </p>
+                  </div>
+
+                  <div className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-purple-500 px-5 py-3 font-bold text-white transition-all hover:bg-purple-400">
+                    View Pricing →
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </div>
+
           {/* Referral Banner */}
           <div className="mx-auto mb-8 max-w-3xl">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-left shadow-sm sm:px-5">
@@ -991,10 +1011,10 @@ export default function Home() {
               </Link>
 
               <Link
-                to="/referrals"
+                to="/trade-demo"
                 className="rounded-full border border-gray-200 bg-white px-8 py-4 text-center font-bold text-gray-800 shadow-sm hover:bg-gray-50"
               >
-                Explore Referral Program
+                Try Demo Mode →
               </Link>
             </div>
           </div>
@@ -1045,7 +1065,41 @@ export default function Home() {
                 Invite new users, track your network, and earn 20% of their fees in USDC.
               </p>
             </div>
+
+            <div className="mt-4 text-center">
+              <Link
+                to="/trade-demo"
+                className="inline-block text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+              >
+                🎮 Try the interactive demo →
+              </Link>
+            </div>
           </Card>
+        </div>
+      </section>
+
+      {/* Demo Link at Bottom */}
+      <section className="border-t border-gray-100 bg-gray-50 py-12">
+        <div className="mx-auto max-w-4xl px-4 text-center">
+          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+            Want to see IMALI in action?
+          </h2>
+          <p className="mt-3 text-gray-600">
+            Test our trading bots with virtual money before committing to a plan.
+          </p>
+          <div className="mt-6">
+            <Link
+              to="/trade-demo"
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 to-cyan-600 px-8 py-4 font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500 transition-all"
+            >
+              <span>🎮</span>
+              Launch Demo
+              <span>→</span>
+            </Link>
+          </div>
+          <p className="mt-4 text-xs text-gray-500">
+            No signup required • Practice with $100,000 virtual balance • See real-time trading
+          </p>
         </div>
       </section>
     </div>
