@@ -1,3 +1,4 @@
+// src/App.js
 import React, { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -7,19 +8,19 @@ import Footer from "./components/Footer";
 
 /* Core */
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
-import AdminPanel from "./components/AdminPanel";
+import AdminPanel from "./pages/AdminPanel";
 
 /* Demo */
 import TradeDemo from "./pages/TradeDemo";
 
-/* Auth / Onboarding - Lazy load Stripe-dependent components */
+/* Auth / Onboarding - Lazy load */
 const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
 const Activation = lazy(() => import("./pages/Activation"));
 const Billing = lazy(() => import("./pages/Billing"));
 const BillingDashboard = lazy(() => import("./pages/BillingDashboard"));
 
-/* Marketing - Regular imports (no Stripe) */
+/* Marketing */
 import Home from "./pages/Home";
 import AboutUs from "./pages/AboutUs";
 import HowItWorks from "./pages/HowItWorks";
@@ -64,7 +65,7 @@ function PageLoadingFallback() {
 }
 
 /* =====================================================
-   ROUTE GUARDS
+   ROUTE GUARDS - FIXED WITH ADMIN BYPASS
 ===================================================== */
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -101,6 +102,13 @@ function RequireActivation({ children }) {
     );
   }
 
+  // ADMIN BYPASS - Admins skip activation check
+  const isAdmin = user?.is_admin === true;
+  if (isAdmin) {
+    console.log("[RequireActivation] Admin bypass - allowing access");
+    return children;
+  }
+
   if (!activationComplete) {
     console.log("[RequireActivation] Not complete, redirecting:", {
       path: location.pathname,
@@ -111,15 +119,12 @@ function RequireActivation({ children }) {
       trading: !!activation?.trading_enabled,
     });
 
-    // Check if user has a card on file
     const hasCard = activation?.has_card_on_file || activation?.billing_complete;
     
-    // If no card, go to billing
     if (!hasCard) {
       return <Navigate to="/billing" replace />;
     }
     
-    // If has card but not fully activated, go to activation
     return <Navigate to="/activation" replace />;
   }
 
@@ -159,16 +164,20 @@ function PostLoginRedirect() {
       return;
     }
 
+    // Admin bypass - go directly to dashboard
+    if (user.is_admin === true) {
+      console.log("[PostLoginRedirect] Admin user, going to dashboard");
+      navigate("/dashboard", { replace: true });
+      setRedirecting(false);
+      return;
+    }
+
     const determineRedirect = async () => {
       try {
-        // Import BotAPI dynamically to avoid circular dependencies
         const BotAPI = (await import("./utils/BotAPI")).default;
-        
-        // Get fresh activation status
         const activationRes = await BotAPI.activationStatus();
         const status = activationRes?.status || activationRes;
         
-        // Determine where to go
         if (!status?.has_card_on_file) {
           navigate("/billing", { replace: true });
         } else if (!status?.trading_enabled) {
@@ -310,7 +319,7 @@ function AppContent() {
             />
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
-            {/* ===== Admin ===== */}
+            {/* ===== Admin - No activation required ===== */}
             <Route
               path="/admin"
               element={
