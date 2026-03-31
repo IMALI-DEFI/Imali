@@ -10,12 +10,16 @@ class SocketService {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 1000;
+    
+    // Event listeners
     this.listeners = {
       // Core events
       connect: [],
       disconnect: [],
       connect_error: [],
       error: [],
+      connected: [],
+      disconnected: [],
       
       // Custom events
       trade: [],
@@ -26,10 +30,13 @@ class SocketService {
       leaderboard_update: [],
       system_metric: [],
       subscribed: [],
-      token_expired: []
+      token_expired: [],
+      reconnect_attempt: [],
+      reconnect: [],
+      reconnect_failed: []
     };
     
-    // Store subscription status
+    // Subscription status
     this.subscriptions = {
       trades: false,
       pnl: false,
@@ -42,8 +49,6 @@ class SocketService {
 
   /**
    * Connect to WebSocket server
-   * @param {string} token - WebSocket authentication token
-   * @returns {Promise}
    */
   connect(token) {
     return new Promise((resolve, reject) => {
@@ -55,7 +60,6 @@ class SocketService {
 
       if (this.connecting) {
         console.log('[SocketService] Already connecting');
-        // Wait for connection
         const checkInterval = setInterval(() => {
           if (this.connected) {
             clearInterval(checkInterval);
@@ -72,11 +76,9 @@ class SocketService {
       this.connecting = true;
       this.reconnectAttempts = 0;
 
-      // Get WebSocket URL from environment or construct from current host
       let wsUrl = process.env.REACT_APP_WS_URL;
       
       if (!wsUrl) {
-        // Auto-detect based on current protocol
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         wsUrl = `${protocol}//${host}`;
@@ -85,7 +87,6 @@ class SocketService {
       console.log('[SocketService] Connecting to:', wsUrl);
 
       try {
-        // Initialize Socket.IO with Flask-SocketIO compatible configuration
         this.socket = io(wsUrl, {
           transports: ['websocket', 'polling'],
           reconnection: true,
@@ -101,7 +102,6 @@ class SocketService {
           withCredentials: true
         });
 
-        // Connection timeout handler
         const timeoutId = setTimeout(() => {
           if (!this.connected && this.connecting) {
             console.error('[SocketService] Connection timeout');
@@ -118,10 +118,9 @@ class SocketService {
           this.connecting = false;
           this.reconnectAttempts = 0;
           
-          // Re-subscribe to previously subscribed rooms
           this._resubscribeAll();
-          
           this._emit('connect', { connected: true });
+          this._emit('connected', { connected: true });
           resolve();
         });
 
@@ -130,13 +129,13 @@ class SocketService {
           this.connected = false;
           this.connecting = false;
           this._emit('disconnect', { reason });
+          this._emit('disconnected', { reason });
         });
 
         this.socket.on('connect_error', (error) => {
           console.error('[SocketService] Connection error:', error.message);
           this._emit('connect_error', error);
           
-          // Check if token is invalid
           if (error.message === 'Invalid token' || error.message.includes('token')) {
             this._emit('token_expired', { error });
           }
@@ -164,6 +163,7 @@ class SocketService {
           this.connecting = false;
           this._resubscribeAll();
           this._emit('reconnect', {});
+          this._emit('connected', { connected: true, reconnected: true });
         });
 
         this.socket.on('reconnect_failed', () => {
@@ -172,50 +172,15 @@ class SocketService {
           this._emit('reconnect_failed', {});
         });
 
-        // Custom event handlers from server
-        this.socket.on('trade', (data) => {
-          console.log('[SocketService] Trade received:', data);
-          this._emit('trade', data);
-        });
-
-        this.socket.on('pnl_update', (data) => {
-          console.log('[SocketService] P&L update received:', data);
-          this._emit('pnl_update', data);
-        });
-
-        this.socket.on('announcement', (data) => {
-          console.log('[SocketService] Announcement received:', data);
-          this._emit('announcement', data);
-        });
-
-        this.socket.on('bot_status', (data) => {
-          console.log('[SocketService] Bot status received:', data);
-          this._emit('bot_status', data);
-        });
-
-        this.socket.on('referral', (data) => {
-          console.log('[SocketService] Referral event received:', data);
-          this._emit('referral', data);
-        });
-
-        this.socket.on('leaderboard_update', (data) => {
-          console.log('[SocketService] Leaderboard update received:', data);
-          this._emit('leaderboard_update', data);
-        });
-
-        this.socket.on('system_metric', (data) => {
-          console.log('[SocketService] System metric received:', data);
-          this._emit('system_metric', data);
-        });
-
-        this.socket.on('subscribed', (data) => {
-          console.log('[SocketService] Subscribed to:', data);
-          this._emit('subscribed', data);
-        });
-
-        this.socket.on('connected', (data) => {
-          console.log('[SocketService] Server confirmed connection:', data);
-        });
+        // Custom event handlers
+        this.socket.on('trade', (data) => this._emit('trade', data));
+        this.socket.on('pnl_update', (data) => this._emit('pnl_update', data));
+        this.socket.on('announcement', (data) => this._emit('announcement', data));
+        this.socket.on('bot_status', (data) => this._emit('bot_status', data));
+        this.socket.on('referral', (data) => this._emit('referral', data));
+        this.socket.on('leaderboard_update', (data) => this._emit('leaderboard_update', data));
+        this.socket.on('system_metric', (data) => this._emit('system_metric', data));
+        this.socket.on('subscribed', (data) => this._emit('subscribed', data));
 
       } catch (error) {
         console.error('[SocketService] Failed to create socket:', error);
@@ -225,9 +190,6 @@ class SocketService {
     });
   }
 
-  /**
-   * Disconnect from WebSocket server
-   */
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
@@ -236,7 +198,6 @@ class SocketService {
       this.connecting = false;
       this.currentToken = null;
       
-      // Reset subscriptions
       Object.keys(this.subscriptions).forEach(key => {
         this.subscriptions[key] = false;
       });
@@ -245,21 +206,15 @@ class SocketService {
     }
   }
 
-  /**
-   * Reconnect with new token
-   * @param {string} newToken - New WebSocket token
-   */
-  async reconnect(newToken) {
+  reconnect(newToken) {
     console.log('[SocketService] Reconnecting with new token...');
     this.disconnect();
-    this.currentToken = newToken;
-    return this.connect(newToken);
+    if (newToken) {
+      this.currentToken = newToken;
+    }
+    return this.connect(this.currentToken);
   }
 
-  /**
-   * Resubscribe to all previously subscribed rooms
-   * @private
-   */
   _resubscribeAll() {
     if (!this.socket || !this.connected) return;
     
@@ -283,96 +238,61 @@ class SocketService {
     }
   }
 
-  /**
-   * Subscribe to trade updates
-   */
+  // Subscription methods
   subscribeTrades() {
     if (this.socket && this.connected) {
       this.socket.emit('subscribe_trades', {});
       this.subscriptions.trades = true;
       console.log('[SocketService] Subscribed to trades');
-    } else {
-      console.warn('[SocketService] Cannot subscribe to trades - not connected');
     }
   }
 
-  /**
-   * Subscribe to P&L updates
-   */
   subscribePnl() {
     if (this.socket && this.connected) {
       this.socket.emit('subscribe_pnl', {});
       this.subscriptions.pnl = true;
       console.log('[SocketService] Subscribed to P&L');
-    } else {
-      console.warn('[SocketService] Cannot subscribe to P&L - not connected');
     }
   }
 
-  /**
-   * Subscribe to announcements
-   */
   subscribeAnnouncements() {
     if (this.socket && this.connected) {
       this.socket.emit('subscribe_announcements', {});
       this.subscriptions.announcements = true;
       console.log('[SocketService] Subscribed to announcements');
-    } else {
-      console.warn('[SocketService] Cannot subscribe to announcements - not connected');
     }
   }
 
-  /**
-   * Subscribe to referral events for a specific user
-   * @param {string} userId - User ID to subscribe to
-   */
   subscribeReferrals(userId) {
     if (this.socket && this.connected && userId) {
       this.socket.emit('subscribe_referrals', { user_id: userId });
       this.subscriptions.referrals = true;
       this.referralUserId = userId;
       console.log('[SocketService] Subscribed to referrals for user:', userId);
-    } else {
-      console.warn('[SocketService] Cannot subscribe to referrals - not connected or no userId');
     }
   }
 
-  /**
-   * Subscribe to leaderboard updates
-   */
   subscribeLeaderboard() {
     if (this.socket && this.connected) {
       this.socket.emit('subscribe_leaderboard', {});
       this.subscriptions.leaderboard = true;
       console.log('[SocketService] Subscribed to leaderboard');
-    } else {
-      console.warn('[SocketService] Cannot subscribe to leaderboard - not connected');
     }
   }
 
-  /**
-   * Subscribe to system metrics (admin only)
-   */
   subscribeSystemMetrics() {
     if (this.socket && this.connected) {
       this.socket.emit('subscribe_system_metrics', {});
       this.subscriptions.systemMetrics = true;
       console.log('[SocketService] Subscribed to system metrics');
-    } else {
-      console.warn('[SocketService] Cannot subscribe to system metrics - not connected');
     }
   }
 
-  /**
-   * Unsubscribe from a specific room
-   * @param {string} room - Room name to unsubscribe from
-   */
   unsubscribe(room) {
     if (this.socket && this.connected) {
       this.socket.emit('unsubscribe', { room });
       console.log('[SocketService] Unsubscribed from:', room);
       
-      // Update subscription status
       switch(room) {
         case 'trades':
           this.subscriptions.trades = false;
@@ -398,14 +318,21 @@ class SocketService {
     }
   }
 
-  // ============= Event Listener Registration Methods =============
-
+  // Event listener registration methods
   onConnect(callback) {
     return this._addListener('connect', callback);
   }
 
+  onConnected(callback) {
+    return this._addListener('connected', callback);
+  }
+
   onDisconnect(callback) {
     return this._addListener('disconnect', callback);
+  }
+
+  onDisconnected(callback) {
+    return this._addListener('disconnected', callback);
   }
 
   onConnectError(callback) {
@@ -464,34 +391,20 @@ class SocketService {
     return this._addListener('reconnect_failed', callback);
   }
 
-  /**
-   * Add event listener
-   * @private
-   */
   _addListener(event, callback) {
     if (!this.listeners[event]) {
       this.listeners[event] = [];
     }
     this.listeners[event].push(callback);
-    
-    // Return unsubscribe function
     return () => this._removeListener(event, callback);
   }
 
-  /**
-   * Remove event listener
-   * @private
-   */
   _removeListener(event, callback) {
     if (this.listeners[event]) {
       this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
     }
   }
 
-  /**
-   * Emit event to all listeners
-   * @private
-   */
   _emit(event, data) {
     if (this.listeners[event]) {
       this.listeners[event].forEach(callback => {
@@ -504,28 +417,15 @@ class SocketService {
     }
   }
 
-  // ============= Utility Methods =============
-
-  /**
-   * Check if socket is connected
-   * @returns {boolean}
-   */
+  // Utility methods
   isConnected() {
     return this.connected;
   }
 
-  /**
-   * Get the current socket instance
-   * @returns {object|null}
-   */
   getSocket() {
     return this.socket;
   }
 
-  /**
-   * Get connection status
-   * @returns {object}
-   */
   getStatus() {
     return {
       connected: this.connected,
@@ -536,11 +436,6 @@ class SocketService {
     };
   }
 
-  /**
-   * Manually emit an event to the server
-   * @param {string} event - Event name
-   * @param {object} data - Event data
-   */
   emit(event, data) {
     if (this.socket && this.connected) {
       this.socket.emit(event, data);
@@ -550,7 +445,5 @@ class SocketService {
   }
 }
 
-// Create singleton instance
 const socketService = new SocketService();
-
 export default socketService;
