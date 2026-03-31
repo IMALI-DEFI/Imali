@@ -8,20 +8,19 @@ class SocketService {
     this.connecting = false;
     this.currentToken = null;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
+    this.maxReconnectAttempts = 3; // Reduced for faster fallback
     this.reconnectDelay = 1000;
+    this.wsAvailable = true; // Track if WebSocket is available
+    this.fallbackMode = false; // Track if we're in fallback mode
     
     // Event listeners
     this.listeners = {
-      // Core events
       connect: [],
       disconnect: [],
       connect_error: [],
       error: [],
       connected: [],
       disconnected: [],
-      
-      // Custom events
       trade: [],
       pnl_update: [],
       announcement: [],
@@ -36,7 +35,6 @@ class SocketService {
       reconnect_failed: []
     };
     
-    // Subscription status
     this.subscriptions = {
       trades: false,
       pnl: false,
@@ -48,10 +46,18 @@ class SocketService {
   }
 
   /**
-   * Connect to WebSocket server
+   * Connect to WebSocket server with fallback
    */
   connect(token) {
     return new Promise((resolve, reject) => {
+      // If already in fallback mode, resolve immediately
+      if (this.fallbackMode) {
+        console.log('[SocketService] Running in fallback mode - WebSocket disabled');
+        this._emit('connected', { connected: false, fallback: true });
+        resolve();
+        return;
+      }
+
       if (this.socket && this.connected) {
         console.log('[SocketService] Already connected');
         resolve();
@@ -76,15 +82,28 @@ class SocketService {
       this.connecting = true;
       this.reconnectAttempts = 0;
 
+      // Get WebSocket URL
       let wsUrl = process.env.REACT_APP_WS_URL;
       
       if (!wsUrl) {
+        // Use relative URL for same-origin WebSocket
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         wsUrl = `${protocol}//${host}`;
       }
       
-      console.log('[SocketService] Connecting to:', wsUrl);
+      console.log('[SocketService] Attempting to connect to:', wsUrl);
+
+      // Set a connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (this.connecting) {
+          console.log('[SocketService] Connection timeout - switching to fallback mode');
+          this._enableFallbackMode();
+          this.connecting = false;
+          this._emit('connected', { connected: false, fallback: true });
+          resolve(); // Resolve anyway to not break the app
+        }
+      }, 5000);
 
       try {
         this.socket = io(wsUrl, {
@@ -93,7 +112,7 @@ class SocketService {
           reconnectionAttempts: this.maxReconnectAttempts,
           reconnectionDelay: this.reconnectDelay,
           reconnectionDelayMax: 5000,
-          timeout: 20000,
+          timeout: 10000,
           autoConnect: true,
           forceNew: true,
           path: '/socket.io/',
@@ -102,21 +121,15 @@ class SocketService {
           withCredentials: true
         });
 
-        const timeoutId = setTimeout(() => {
-          if (!this.connected && this.connecting) {
-            console.error('[SocketService] Connection timeout');
-            this.connecting = false;
-            reject(new Error('Connection timeout'));
-          }
-        }, 10000);
-
         // Connection event handlers
         this.socket.on('connect', () => {
-          clearTimeout(timeoutId);
+          clearTimeout(connectionTimeout);
           console.log('[SocketService] Connected successfully');
           this.connected = true;
           this.connecting = false;
           this.reconnectAttempts = 0;
+          this.fallbackMode = false;
+          this.wsAvailable = true;
           
           this._resubscribeAll();
           this._emit('connect', { connected: true });
@@ -130,18 +143,26 @@ class SocketService {
           this.connecting = false;
           this._emit('disconnect', { reason });
           this._emit('disconnected', { reason });
+          
+          // Don't retry on certain disconnects
+          if (reason === 'io server disconnect') {
+            this._enableFallbackMode();
+          }
         });
 
         this.socket.on('connect_error', (error) => {
           console.error('[SocketService] Connection error:', error.message);
           this._emit('connect_error', error);
           
-          if (error.message === 'Invalid token' || error.message.includes('token')) {
-            this._emit('token_expired', { error });
-          }
-          
-          if (!this.connecting) {
-            reject(error);
+          // Don't immediately fail - let Socket.IO try to reconnect
+          if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.log('[SocketService] Max reconnection attempts reached - switching to fallback mode');
+            this._enableFallbackMode();
+            this.connecting = false;
+            if (!this.connected) {
+              this._emit('connected', { connected: false, fallback: true });
+              resolve(); // Resolve with fallback mode
+            }
           }
         });
 
@@ -161,15 +182,16 @@ class SocketService {
           console.log('[SocketService] Reconnected');
           this.connected = true;
           this.connecting = false;
+          this.fallbackMode = false;
           this._resubscribeAll();
           this._emit('reconnect', {});
           this._emit('connected', { connected: true, reconnected: true });
         });
 
         this.socket.on('reconnect_failed', () => {
-          console.error('[SocketService] Reconnection failed');
+          console.error('[SocketService] Reconnection failed - switching to fallback mode');
+          this._enableFallbackMode();
           this.connecting = false;
-          this._emit('reconnect_failed', {});
         });
 
         // Custom event handlers
@@ -184,30 +206,57 @@ class SocketService {
 
       } catch (error) {
         console.error('[SocketService] Failed to create socket:', error);
+        this._enableFallbackMode();
         this.connecting = false;
-        reject(error);
+        clearTimeout(connectionTimeout);
+        this._emit('connected', { connected: false, fallback: true });
+        resolve(); // Resolve with fallback mode
       }
     });
+  }
+
+  /**
+   * Enable fallback mode (WebSocket disabled, use REST API polling)
+   */
+  _enableFallbackMode() {
+    this.fallbackMode = true;
+    this.wsAvailable = false;
+    this.connected = false;
+    this.connecting = false;
+    
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    
+    console.log('[SocketService] Entering fallback mode - using REST API polling');
   }
 
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
-      this.connected = false;
-      this.connecting = false;
-      this.currentToken = null;
-      
-      Object.keys(this.subscriptions).forEach(key => {
-        this.subscriptions[key] = false;
-      });
-      
-      console.log('[SocketService] Disconnected manually');
     }
+    this.connected = false;
+    this.connecting = false;
+    this.currentToken = null;
+    this.fallbackMode = false;
+    
+    Object.keys(this.subscriptions).forEach(key => {
+      this.subscriptions[key] = false;
+    });
+    
+    console.log('[SocketService] Disconnected manually');
   }
 
   reconnect(newToken) {
-    console.log('[SocketService] Reconnecting with new token...');
+    if (this.fallbackMode) {
+      console.log('[SocketService] In fallback mode, attempting to re-enable WebSocket');
+      this.fallbackMode = false;
+      this.wsAvailable = true;
+    }
+    
+    console.log('[SocketService] Reconnecting...');
     this.disconnect();
     if (newToken) {
       this.currentToken = newToken;
@@ -216,7 +265,7 @@ class SocketService {
   }
 
   _resubscribeAll() {
-    if (!this.socket || !this.connected) return;
+    if (!this.socket || !this.connected || this.fallbackMode) return;
     
     if (this.subscriptions.trades) {
       this.socket.emit('subscribe_trades', {});
@@ -238,83 +287,67 @@ class SocketService {
     }
   }
 
-  // Subscription methods
+  // Subscription methods with fallback awareness
   subscribeTrades() {
-    if (this.socket && this.connected) {
+    this.subscriptions.trades = true;
+    if (this.socket && this.connected && !this.fallbackMode) {
       this.socket.emit('subscribe_trades', {});
-      this.subscriptions.trades = true;
       console.log('[SocketService] Subscribed to trades');
+    } else {
+      console.log('[SocketService] Trades subscription stored (will use fallback)');
     }
   }
 
   subscribePnl() {
-    if (this.socket && this.connected) {
+    this.subscriptions.pnl = true;
+    if (this.socket && this.connected && !this.fallbackMode) {
       this.socket.emit('subscribe_pnl', {});
-      this.subscriptions.pnl = true;
       console.log('[SocketService] Subscribed to P&L');
+    } else {
+      console.log('[SocketService] P&L subscription stored (will use fallback)');
     }
   }
 
   subscribeAnnouncements() {
-    if (this.socket && this.connected) {
+    this.subscriptions.announcements = true;
+    if (this.socket && this.connected && !this.fallbackMode) {
       this.socket.emit('subscribe_announcements', {});
-      this.subscriptions.announcements = true;
       console.log('[SocketService] Subscribed to announcements');
+    } else {
+      console.log('[SocketService] Announcements subscription stored (will use fallback)');
     }
   }
 
   subscribeReferrals(userId) {
-    if (this.socket && this.connected && userId) {
-      this.socket.emit('subscribe_referrals', { user_id: userId });
+    if (userId) {
       this.subscriptions.referrals = true;
       this.referralUserId = userId;
-      console.log('[SocketService] Subscribed to referrals for user:', userId);
+      if (this.socket && this.connected && !this.fallbackMode) {
+        this.socket.emit('subscribe_referrals', { user_id: userId });
+        console.log('[SocketService] Subscribed to referrals for user:', userId);
+      } else {
+        console.log('[SocketService] Referrals subscription stored (will use fallback)');
+      }
     }
   }
 
   subscribeLeaderboard() {
-    if (this.socket && this.connected) {
+    this.subscriptions.leaderboard = true;
+    if (this.socket && this.connected && !this.fallbackMode) {
       this.socket.emit('subscribe_leaderboard', {});
-      this.subscriptions.leaderboard = true;
       console.log('[SocketService] Subscribed to leaderboard');
+    } else {
+      console.log('[SocketService] Leaderboard subscription stored (will use fallback)');
     }
   }
 
   subscribeSystemMetrics() {
-    if (this.socket && this.connected) {
+    this.subscriptions.systemMetrics = true;
+    if (this.socket && this.connected && !this.fallbackMode) {
       this.socket.emit('subscribe_system_metrics', {});
-      this.subscriptions.systemMetrics = true;
       console.log('[SocketService] Subscribed to system metrics');
-    }
-  }
-
-  unsubscribe(room) {
-    if (this.socket && this.connected) {
-      this.socket.emit('unsubscribe', { room });
-      console.log('[SocketService] Unsubscribed from:', room);
-      
-      switch(room) {
-        case 'trades':
-          this.subscriptions.trades = false;
-          break;
-        case 'pnl':
-          this.subscriptions.pnl = false;
-          break;
-        case 'announcements':
-          this.subscriptions.announcements = false;
-          break;
-        case 'referrals':
-          this.subscriptions.referrals = false;
-          break;
-        case 'leaderboard':
-          this.subscriptions.leaderboard = false;
-          break;
-        case 'system_metrics':
-          this.subscriptions.systemMetrics = false;
-          break;
-        default:
-          break;
-      }
+    } else {
+      console.log('[SocketService] System metrics subscription stored (will use fallback)');
     }
   }
 
@@ -419,7 +452,11 @@ class SocketService {
 
   // Utility methods
   isConnected() {
-    return this.connected;
+    return this.connected && !this.fallbackMode;
+  }
+
+  isFallbackMode() {
+    return this.fallbackMode;
   }
 
   getSocket() {
@@ -430,6 +467,8 @@ class SocketService {
     return {
       connected: this.connected,
       connecting: this.connecting,
+      fallbackMode: this.fallbackMode,
+      wsAvailable: this.wsAvailable,
       token: this.currentToken ? `${this.currentToken.substring(0, 20)}...` : null,
       subscriptions: { ...this.subscriptions },
       reconnectAttempts: this.reconnectAttempts
@@ -437,10 +476,10 @@ class SocketService {
   }
 
   emit(event, data) {
-    if (this.socket && this.connected) {
+    if (this.socket && this.connected && !this.fallbackMode) {
       this.socket.emit(event, data);
     } else {
-      console.warn('[SocketService] Cannot emit event - not connected');
+      console.warn('[SocketService] Cannot emit event - not connected or in fallback mode');
     }
   }
 }
