@@ -5,6 +5,51 @@ import { useAuth } from './AuthContext';
 
 const SocketContext = createContext();
 
+// Create a safe version that won't throw errors
+export const useSocket = () => {
+  const context = useContext(SocketContext);
+  // Return a default object if context is undefined (for testing or when not wrapped)
+  if (!context) {
+    console.warn('useSocket used outside of SocketProvider - returning mock');
+    return {
+      isConnected: false,
+      isConnecting: false,
+      connectionError: null,
+      reconnect: () => {},
+      socket: null,
+      lastTrade: null,
+      lastPnlUpdate: null,
+      trades: [],
+      announcements: [],
+      liveStats: {
+        totalTrades: 0,
+        totalPnl: 0,
+        activeBots: 0,
+        winRate: 0,
+        wins: 0,
+        losses: 0,
+        totalReferrals: 0,
+        totalRewardsPaid: 0,
+        activeUsers: 0
+      },
+      botStatuses: [],
+      leaderboard: [],
+      referralEvents: [],
+      systemMetrics: { cpu: 0, memory: 0, active_users: 0, tps: 0 },
+      subscribeToTrades: () => {},
+      subscribeToPnl: () => {},
+      subscribeToAnnouncements: () => {},
+      subscribeToReferrals: () => {},
+      subscribeToLeaderboard: () => {},
+      subscribeToSystemMetrics: () => {},
+      clearAnnouncements: () => {},
+      clearTrades: () => {},
+      clearReferralEvents: () => {}
+    };
+  }
+  return context;
+};
+
 export function SocketProvider({ children }) {
   const { token, refreshWebSocketToken } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
@@ -28,14 +73,9 @@ export function SocketProvider({ children }) {
     activeUsers: 0
   });
   
-  // Bot status
   const [botStatuses, setBotStatuses] = useState([]);
-  
-  // Referral data
   const [leaderboard, setLeaderboard] = useState([]);
   const [referralEvents, setReferralEvents] = useState([]);
-  
-  // Admin metrics
   const [systemMetrics, setSystemMetrics] = useState({
     cpu: 0,
     memory: 0,
@@ -108,13 +148,8 @@ export function SocketProvider({ children }) {
       console.log('[SocketContext] New trade received:', trade);
       
       if (mountedRef.current) {
-        // Update last trade
         setLastTrade(trade);
-        
-        // Add to trades list (keep last 500)
         setTrades(prev => [trade, ...prev].slice(0, 500));
-        
-        // Update live stats
         setLiveStats(prev => ({
           ...prev,
           totalTrades: prev.totalTrades + 1,
@@ -145,7 +180,6 @@ export function SocketProvider({ children }) {
       if (mountedRef.current) {
         setAnnouncements(prev => [announcement, ...prev].slice(0, 10));
         
-        // Auto-dismiss after 30 seconds for non-critical announcements
         if (announcement.priority !== 'critical') {
           setTimeout(() => {
             setAnnouncements(prev => prev.filter(a => a.id !== announcement.id));
@@ -188,7 +222,7 @@ export function SocketProvider({ children }) {
       }
     });
 
-    // System metric handler (admin only)
+    // System metric handler
     const unsubscribeSystemMetric = socketService.onSystemMetric((metric) => {
       console.log('[SocketContext] System metric update:', metric);
       if (mountedRef.current) {
@@ -200,7 +234,6 @@ export function SocketProvider({ children }) {
           timestamp: new Date()
         });
         
-        // Update live stats with active users
         setLiveStats(prev => ({
           ...prev,
           activeUsers: metric.active_users || prev.activeUsers
@@ -222,7 +255,6 @@ export function SocketProvider({ children }) {
       console.log('[SocketContext] Socket disconnected:', data?.reason);
       if (mountedRef.current) {
         setIsConnected(false);
-        // Don't set error for normal disconnections
         if (data?.reason !== 'io client disconnect') {
           setConnectionError(data?.reason || 'Disconnected');
         }
@@ -240,14 +272,12 @@ export function SocketProvider({ children }) {
       console.log('[SocketContext] Token expired, refreshing...');
       if (mountedRef.current && refreshWebSocketToken) {
         await refreshWebSocketToken();
-        // Reconnect with new token
         if (token) {
           initializeSocket();
         }
       }
     });
 
-    // Cleanup function
     return () => {
       unsubscribeTrade();
       unsubscribePnl();
@@ -283,7 +313,6 @@ export function SocketProvider({ children }) {
     setIsConnected(false);
     setIsConnecting(false);
     
-    // Small delay before reconnecting
     setTimeout(() => {
       if (mountedRef.current && token) {
         initializeSocket();
@@ -291,7 +320,7 @@ export function SocketProvider({ children }) {
     }, 500);
   }, [token, initializeSocket]);
 
-  // Subscribe to specific rooms
+  // Subscribe methods
   const subscribeToTrades = useCallback(() => {
     if (socketService && isConnected) {
       socketService.subscribeTrades();
@@ -328,57 +357,35 @@ export function SocketProvider({ children }) {
     }
   }, [isConnected]);
 
-  // Clear old data periodically
-  useEffect(() => {
-    const clearOldData = setInterval(() => {
-      if (mountedRef.current) {
-        // Keep only last 500 trades
-        setTrades(prev => prev.slice(0, 500));
-        // Keep only last 100 referral events
-        setReferralEvents(prev => prev.slice(0, 100));
-      }
-    }, 60000); // Clear every minute
-    
-    return () => clearInterval(clearOldData);
-  }, []);
+  // Clear methods
+  const clearAnnouncements = useCallback(() => setAnnouncements([]), []);
+  const clearTrades = useCallback(() => setTrades([]), []);
+  const clearReferralEvents = useCallback(() => setReferralEvents([]), []);
 
   const value = {
-    // Connection state
     isConnected,
     isConnecting,
     connectionError,
     reconnect,
-    
-    // Socket instance for advanced usage
     socket: socketService,
-    
-    // Live data
     lastTrade,
     lastPnlUpdate,
     trades,
     announcements,
     liveStats,
     botStatuses,
-    
-    // Referral data
     leaderboard,
     referralEvents,
-    
-    // Admin metrics
     systemMetrics,
-    
-    // Subscription methods
     subscribeToTrades,
     subscribeToPnl,
     subscribeToAnnouncements,
     subscribeToReferrals,
     subscribeToLeaderboard,
     subscribeToSystemMetrics,
-    
-    // Helper methods
-    clearAnnouncements: () => setAnnouncements([]),
-    clearTrades: () => setTrades([]),
-    clearReferralEvents: () => setReferralEvents([]),
+    clearAnnouncements,
+    clearTrades,
+    clearReferralEvents,
   };
 
   return (
@@ -387,20 +394,3 @@ export function SocketProvider({ children }) {
     </SocketContext.Provider>
   );
 }
-
-// Custom hook for using the socket context
-export const useSocket = () => {
-  const context = useContext(SocketContext);
-  if (!context) {
-    throw new Error('useSocket must be used within a SocketProvider');
-  }
-  return context;
-};
-
-// Optional: Higher-order component for socket-aware components
-export const withSocket = (Component) => {
-  return function WithSocketComponent(props) {
-    const socketContext = useSocket();
-    return <Component {...props} socket={socketContext} />;
-  };
-};
