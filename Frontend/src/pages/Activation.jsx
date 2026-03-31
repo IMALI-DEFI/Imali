@@ -1,6 +1,6 @@
 // src/pages/Activation.jsx
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
@@ -133,15 +133,12 @@ const HelpLink = ({ href, children }) => (
 // ────────────────────────────────────────────────────────────
 const safeData = (response, fallback = {}) => {
   if (!response) return fallback;
-  // Handle { success: true, data: {...} }
   if (response.data && typeof response.data === 'object') {
     return response.data;
   }
-  // Handle { success: true, status: {...} }
   if (response.status && typeof response.status === 'object') {
     return response.status;
   }
-  // Handle direct object
   return response;
 };
 
@@ -151,6 +148,7 @@ const safeData = (response, fallback = {}) => {
 
 export default function Activation() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, activation, refreshActivation, setActivation } = useAuth();
   const hasRedirected = useRef(false);
   const initialLoadDone = useRef(false);
@@ -159,33 +157,43 @@ export default function Activation() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // Get tier from user or location state
+  const tier = useMemo(() => {
+    const userTier = user?.tier?.toLowerCase();
+    const stateTier = location.state?.tier;
+    return userTier || stateTier || "starter";
+  }, [user?.tier, location.state]);
+
   // Form fields
   const [okx, setOkx] = useState({ 
     apiKey: "", 
     apiSecret: "", 
     passphrase: "",
-    isLive: false // Start with paper trading for safety
+    isLive: false
   });
   const [alpaca, setAlpaca] = useState({ 
     apiKey: "", 
     apiSecret: "",
-    isLive: false // Start with paper trading for safety
+    isLive: false
   });
   const [wallet, setWallet] = useState("");
 
-  // Derived state
-  const tier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user]);
-
+  // Determine required connections based on tier
   const needs = useMemo(
     () => ({
+      // All tiers need billing to enable trading
+      billing: true,
+      // OKX required for: starter, pro, bundle
       okx: ["starter", "pro", "bundle"].includes(tier),
+      // Alpaca required for: starter, bundle
       alpaca: ["starter", "bundle"].includes(tier),
+      // Wallet required for: elite, bundle
       wallet: ["elite", "bundle"].includes(tier),
     }),
     [tier]
   );
 
-  // FIXED: Use correct field names from backend
+  // Status from activation data
   const status = useMemo(
     () => ({
       billing: !!activation?.has_card_on_file,
@@ -197,6 +205,7 @@ export default function Activation() {
     [activation]
   );
 
+  // Check if required connections are done
   const connectionsDone = useMemo(
     () =>
       (!needs.okx || status.okx) &&
@@ -255,7 +264,6 @@ export default function Activation() {
         await refreshActivation();
       } else {
         const res = await BotAPI.activationStatus();
-        // Handle nested response
         const fresh = safeData(res);
         if (setActivation) setActivation(fresh);
       }
@@ -391,6 +399,22 @@ export default function Activation() {
     navigate("/dashboard", { replace: true });
   };
 
+  const handleUpgradePlan = () => {
+    navigate("/pricing");
+  };
+
+  // Get plan name for display
+  const getPlanName = () => {
+    switch (tier) {
+      case "starter": return "Starter (Free)";
+      case "pro": return "Pro";
+      case "elite": return "Elite";
+      case "stock": return "DeFi (New Crypto)";
+      case "bundle": return "Bundle";
+      default: return "Current Plan";
+    }
+  };
+
   // Render
   return (
     <div className="min-h-screen bg-black text-white">
@@ -400,12 +424,19 @@ export default function Activation() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Welcome to IMALI! 🚀</h1>
           <p className="text-gray-400 mb-4">
-            Let's set up your automated trading bot. Don't worry - we'll guide you through each step!
+            You've selected the <span className="text-blue-400 font-semibold">{getPlanName()}</span> plan.
+            Let's set up your automated trading bot.
           </p>
-          <InfoBox type="tip">
-            💡 <strong>New to trading?</strong> Start with paper trading (practice mode) to learn without risk. 
-            You can switch to live trading anytime once you're comfortable.
-          </InfoBox>
+          
+          {/* Upgrade banner for free users */}
+          {tier === "starter" && (
+            <InfoBox type="tip">
+              💡 <strong>Want more features?</strong> You can upgrade to Pro, Elite, or Bundle at any time from the 
+              <button onClick={handleUpgradePlan} className="ml-1 text-blue-400 hover:text-blue-300 underline">
+                Pricing page
+              </button>.
+            </InfoBox>
+          )}
         </div>
 
         {/* Fully-activated banner */}
@@ -445,7 +476,7 @@ export default function Activation() {
               <InfoBox type="info">
                 📌 <strong>How billing works:</strong><br />
                 • No upfront costs or monthly fees<br />
-                • We only charge 30% of your profits (performance fee)<br />
+                • We only charge a performance fee on your profits<br />
                 • If you don't make money, you don't pay anything<br />
                 • Your card is securely stored with Stripe (we never see your card details)
               </InfoBox>
@@ -472,7 +503,7 @@ export default function Activation() {
         >
           <div className="space-y-6">
 
-            {/* OKX */}
+            {/* OKX - Required for starter, pro, bundle */}
             {needs.okx && !status.okx && (
               <form onSubmit={connectOKX} className="space-y-4 border-t border-white/10 pt-6">
                 <h3 className="text-lg font-medium text-blue-300">🔷 OKX Exchange (Cryptocurrency)</h3>
@@ -544,7 +575,7 @@ export default function Activation() {
               </form>
             )}
 
-            {/* Alpaca */}
+            {/* Alpaca - Required for starter, bundle */}
             {needs.alpaca && !status.alpaca && (
               <form onSubmit={connectAlpaca} className="space-y-4 border-t border-white/10 pt-6">
                 <h3 className="text-lg font-medium text-green-300">📈 Alpaca (US Stocks)</h3>
@@ -608,7 +639,7 @@ export default function Activation() {
               </form>
             )}
 
-            {/* Wallet */}
+            {/* Wallet - Required for elite, bundle */}
             {needs.wallet && !status.wallet && (
               <form onSubmit={connectWallet} className="space-y-4 border-t border-white/10 pt-6">
                 <h3 className="text-lg font-medium text-purple-300">🦄 DeFi Wallet (Advanced)</h3>
@@ -774,6 +805,10 @@ export default function Activation() {
         <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap gap-4 justify-center text-sm">
           <button onClick={handleSkipToDashboard} className="text-gray-400 hover:text-white">
             Skip to Dashboard →
+          </button>
+          <span className="text-gray-600">•</span>
+          <button onClick={handleUpgradePlan} className="text-gray-400 hover:text-white">
+            Upgrade Plan →
           </button>
           <span className="text-gray-600">•</span>
           <a href="/docs" className="text-gray-400 hover:text-white">
