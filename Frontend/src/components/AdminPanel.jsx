@@ -23,9 +23,9 @@ const TAB_SECTIONS = [
         label: "Overview",
         emoji: "✨",
         description: "Main numbers and summary cards.",
-        help: "Start here to get a quick snapshot of platform performance.",
+        help: "Main platform summary and metrics.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" },
+          { id: "refresh", label: "Refresh Metrics", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" },
         ],
       },
       {
@@ -33,9 +33,9 @@ const TAB_SECTIONS = [
         label: "System Health",
         emoji: "🏥",
         description: "Check if services are running correctly.",
-        help: "Check backend services, bots, and platform health.",
+        help: "Backend and service health details.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/health/detailed", method: "GET" },
+          { id: "refresh", label: "Check Health", icon: "🔄", endpoint: "/api/health/detailed", method: "GET" },
         ],
       },
     ],
@@ -51,10 +51,10 @@ const TAB_SECTIONS = [
         label: "All Users",
         emoji: "👥",
         description: "View and manage user accounts.",
-        help: "Search, review, and manage user accounts.",
+        help: "Review users and export data.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/users", method: "GET" },
-          { id: "export", label: "Export", icon: "📥", endpoint: "/api/export/trades?format=csv", method: "GET" },
+          { id: "refresh", label: "Load Users", icon: "👥", endpoint: "/api/admin/users", method: "GET" },
+          { id: "export", label: "Export Trades CSV", icon: "📥", endpoint: "/api/export/trades?format=csv", method: "GET" },
         ],
       },
       {
@@ -62,9 +62,9 @@ const TAB_SECTIONS = [
         label: "Support",
         emoji: "🎫",
         description: "Handle support issues and questions.",
-        help: "Review support tickets and respond to user problems.",
+        help: "Review support tickets.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/support/tickets", method: "GET" },
+          { id: "refresh", label: "Load Tickets", icon: "🎫", endpoint: "/api/admin/support/tickets", method: "GET" },
         ],
       },
       {
@@ -72,9 +72,9 @@ const TAB_SECTIONS = [
         label: "Waitlist",
         emoji: "⏳",
         description: "Review people waiting to join.",
-        help: "Manage waitlist entries and approvals.",
+        help: "Review waitlist entries.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/waitlist", method: "GET" },
+          { id: "refresh", label: "Load Waitlist", icon: "⏳", endpoint: "/api/admin/waitlist", method: "GET" },
         ],
       },
     ],
@@ -90,9 +90,9 @@ const TAB_SECTIONS = [
         label: "Withdrawals",
         emoji: "💰",
         description: "Approve or review withdrawal requests.",
-        help: "Review pending and historical withdrawals.",
+        help: "Review pending withdrawals.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/withdrawals", method: "GET" },
+          { id: "refresh", label: "Load Withdrawals", icon: "💰", endpoint: "/api/admin/withdrawals", method: "GET" },
         ],
       },
       {
@@ -100,9 +100,9 @@ const TAB_SECTIONS = [
         label: "Fees",
         emoji: "💸",
         description: "Manage fee flows and distributions.",
-        help: "Review fee history and distributions.",
+        help: "Review fee history.",
         actions: [
-          { id: "history", label: "History", icon: "📜", endpoint: "/api/billing/fee-history", method: "GET" },
+          { id: "history", label: "Fee History", icon: "📜", endpoint: "/api/billing/fee-history", method: "GET" },
         ],
       },
       {
@@ -110,9 +110,9 @@ const TAB_SECTIONS = [
         label: "Treasury",
         emoji: "🏦",
         description: "Manage platform-held funds.",
-        help: "View treasury stats and balances.",
+        help: "Review treasury stats.",
         actions: [
-          { id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/treasury/stats", method: "GET" },
+          { id: "stats", label: "Treasury Stats", icon: "📊", endpoint: "/api/admin/treasury/stats", method: "GET" },
         ],
       },
     ],
@@ -128,9 +128,9 @@ const TAB_SECTIONS = [
         label: "Auto Posts",
         emoji: "🤖",
         description: "Schedule automated marketing posts.",
-        help: "Manage automated promotional content and tests.",
+        help: "Review automation jobs and trigger scheduled items.",
         actions: [
-          { id: "refresh", label: "Refresh Jobs", icon: "🔄", endpoint: "/api/admin/automation/jobs", method: "GET" },
+          { id: "refresh", label: "Jobs", icon: "🤖", endpoint: "/api/admin/automation/jobs", method: "GET" },
           { id: "process", label: "Run Scheduled", icon: "⏰", endpoint: "/api/admin/social/process-scheduled", method: "POST" },
           { id: "test", label: "Test Telegram", icon: "📱", endpoint: "/api/admin/social/test", method: "POST" },
         ],
@@ -140,10 +140,10 @@ const TAB_SECTIONS = [
         label: "Promo Codes",
         emoji: "🎟️",
         description: "Create and manage discount codes.",
-        help: "Create and monitor promo codes.",
+        help: "Review and create promo codes.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/promo/list", method: "GET" },
-          { id: "create", label: "Create New", icon: "➕", endpoint: "/api/admin/promo/create", method: "POST" },
+          { id: "refresh", label: "Load Promos", icon: "🎟️", endpoint: "/api/admin/promo/list", method: "GET" },
+          { id: "create", label: "Create Promo", icon: "➕", endpoint: "/api/admin/promo/create", method: "POST" },
         ],
       },
       {
@@ -151,9 +151,9 @@ const TAB_SECTIONS = [
         label: "Announcements",
         emoji: "📣",
         description: "Send updates to users.",
-        help: "View and publish announcements.",
+        help: "Review announcements.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/announcements", method: "GET" },
+          { id: "refresh", label: "Load Announcements", icon: "📣", endpoint: "/api/admin/announcements", method: "GET" },
         ],
       },
       {
@@ -161,9 +161,9 @@ const TAB_SECTIONS = [
         label: "Referrals",
         emoji: "🧲",
         description: "Track user invite performance.",
-        help: "Review referral stats and payouts.",
+        help: "Review referral stats and process payouts.",
         actions: [
-          { id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/referrals/stats", method: "GET" },
+          { id: "stats", label: "Referral Stats", icon: "📊", endpoint: "/api/admin/referrals/stats", method: "GET" },
           { id: "process", label: "Process Payouts", icon: "💰", endpoint: "/api/admin/referrals/process-payouts", method: "POST" },
         ],
       },
@@ -172,11 +172,11 @@ const TAB_SECTIONS = [
         label: "Social Manager",
         emoji: "📱",
         description: "Manage social media activity.",
-        help: "View posts, platform status, and analytics.",
+        help: "Review social posts and platform status.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/social/posts", method: "GET" },
+          { id: "refresh", label: "Load Posts", icon: "📱", endpoint: "/api/admin/social/posts", method: "GET" },
           { id: "status", label: "Platform Status", icon: "🔌", endpoint: "/api/admin/social/status", method: "GET" },
-          { id: "stats", label: "Analytics", icon: "📊", endpoint: "/api/admin/social/stats", method: "GET" },
+          { id: "stats", label: "Social Stats", icon: "📊", endpoint: "/api/admin/social/stats", method: "GET" },
         ],
       },
     ],
@@ -192,11 +192,11 @@ const TAB_SECTIONS = [
         label: "Token",
         emoji: "🪙",
         description: "Mint, burn, and manage token actions.",
-        help: "Manage token stats and supply actions.",
+        help: "Review token stats and actions.",
         actions: [
-          { id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/token/stats", method: "GET" },
-          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/token/mint", method: "POST" },
-          { id: "burn", label: "Burn", icon: "🔥", endpoint: "/api/admin/token/burn", method: "POST" },
+          { id: "stats", label: "Token Stats", icon: "📊", endpoint: "/api/admin/token/stats", method: "GET" },
+          { id: "mint", label: "Mint Token", icon: "🪙", endpoint: "/api/admin/token/mint", method: "POST" },
+          { id: "burn", label: "Burn Token", icon: "🔥", endpoint: "/api/admin/token/burn", method: "POST" },
         ],
       },
       {
@@ -204,10 +204,10 @@ const TAB_SECTIONS = [
         label: "Buyback",
         emoji: "♻️",
         description: "Manage token buybacks.",
-        help: "View buyback stats and trigger buybacks.",
+        help: "Review buyback stats and trigger buybacks.",
         actions: [
-          { id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/buyback/stats", method: "GET" },
-          { id: "trigger", label: "Trigger", icon: "⚡", endpoint: "/api/admin/buyback/trigger", method: "POST" },
+          { id: "stats", label: "Buyback Stats", icon: "📊", endpoint: "/api/admin/buyback/stats", method: "GET" },
+          { id: "trigger", label: "Trigger Buyback", icon: "⚡", endpoint: "/api/admin/buyback/trigger", method: "POST" },
         ],
       },
       {
@@ -217,8 +217,8 @@ const TAB_SECTIONS = [
         description: "Manage NFT tiers and NFT items.",
         help: "List and mint NFTs.",
         actions: [
-          { id: "list", label: "List", icon: "📋", endpoint: "/api/admin/nfts", method: "GET" },
-          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/nfts/mint", method: "POST" },
+          { id: "list", label: "List NFTs", icon: "📋", endpoint: "/api/admin/nfts", method: "GET" },
+          { id: "mint", label: "Mint NFT", icon: "🪙", endpoint: "/api/admin/nfts/mint", method: "POST" },
         ],
       },
       {
@@ -226,9 +226,9 @@ const TAB_SECTIONS = [
         label: "CEX",
         emoji: "🏧",
         description: "Manage centralized exchange controls.",
-        help: "Review centralized exchange balances.",
+        help: "Review CEX balances.",
         actions: [
-          { id: "balances", label: "Balances", icon: "⚖️", endpoint: "/api/admin/cex/balances", method: "GET" },
+          { id: "balances", label: "CEX Balances", icon: "⚖️", endpoint: "/api/admin/cex/balances", method: "GET" },
         ],
       },
       {
@@ -236,9 +236,9 @@ const TAB_SECTIONS = [
         label: "Stocks",
         emoji: "📈",
         description: "Manage stock-related trading tools.",
-        help: "Review stock positions and stock bot data.",
+        help: "Review stock positions.",
         actions: [
-          { id: "positions", label: "Positions", icon: "📊", endpoint: "/api/admin/stocks/positions", method: "GET" },
+          { id: "positions", label: "Stock Positions", icon: "📊", endpoint: "/api/admin/stocks/positions", method: "GET" },
         ],
       },
       {
@@ -246,9 +246,9 @@ const TAB_SECTIONS = [
         label: "Audit Logs",
         emoji: "📋",
         description: "Review admin actions and events.",
-        help: "View audit logs.",
+        help: "Review audit logs.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/audit-logs", method: "GET" },
+          { id: "refresh", label: "Load Audit Logs", icon: "📋", endpoint: "/api/admin/audit-logs", method: "GET" },
         ],
       },
       {
@@ -256,7 +256,7 @@ const TAB_SECTIONS = [
         label: "Permissions",
         emoji: "🔐",
         description: "Control admin access and roles.",
-        help: "Check access and review permissions.",
+        help: "Check permissions and access.",
         actions: [
           { id: "check", label: "Check Access", icon: "🔍", endpoint: "/api/admin/check", method: "GET" },
         ],
@@ -275,12 +275,13 @@ function prettyJson(data) {
   }
 }
 
-function SidebarButton({ tab, active, onClick }) {
+function SidebarTab({ tab, activeTab, onSelect }) {
+  const active = tab.key === activeTab;
   return (
     <button
-      onClick={() => onClick(tab.key)}
+      onClick={() => onSelect(tab.key)}
       className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-        active === tab.key
+        active
           ? "border-emerald-500/40 bg-emerald-500/10"
           : "border-white/10 bg-white/5 hover:bg-white/10"
       }`}
@@ -289,19 +290,19 @@ function SidebarButton({ tab, active, onClick }) {
         <span className="text-xl">{tab.emoji}</span>
         <div className="min-w-0">
           <div className="text-sm font-medium">{tab.label}</div>
-          <div className="text-xs text-white/45 mt-1">{tab.description}</div>
+          <div className="mt-1 text-xs text-white/45">{tab.description}</div>
         </div>
       </div>
     </button>
   );
 }
 
-function QuickActionButton({ action, busy, onRun }) {
+function ActionButton({ action, busy, onClick }) {
   return (
     <button
-      onClick={() => onRun(action)}
+      onClick={() => onClick(action)}
       disabled={busy}
-      className="px-3 py-2 rounded-lg text-xs font-medium border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50"
+      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium hover:bg-white/10 disabled:opacity-50"
     >
       {busy ? "Working..." : `${action.icon} ${action.label}`}
     </button>
@@ -344,13 +345,13 @@ export default function AdminPanel() {
   }, [user?.is_admin, normalizedEmail]);
 
   const activeTab = useMemo(() => {
-    return ALL_TABS.find((t) => t.key === activeTabKey) || ALL_TABS[0];
+    return ALL_TABS.find((tab) => tab.key === activeTabKey) || ALL_TABS[0];
   }, [activeTabKey]);
 
   useEffect(() => {
     if (loading) return;
 
-    if (!token || !user) {
+    if (!user || !token) {
       setAccessError("Please log in first.");
       setCheckingAccess(false);
       return;
@@ -362,9 +363,9 @@ export default function AdminPanel() {
       return;
     }
 
-    setAccessError("");
     setCheckingAccess(false);
-  }, [loading, token, user, hasAdminAccess]);
+    setAccessError("");
+  }, [loading, user, token, hasAdminAccess]);
 
   const runRequest = async (label, endpoint, method = "GET", body = null) => {
     if (!token) {
@@ -376,7 +377,7 @@ export default function AdminPanel() {
     setResults(`Running ${label}...`);
 
     try {
-      const res = await fetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
         method,
         headers: {
           Authorization: `Bearer ${token}`,
@@ -385,10 +386,10 @@ export default function AdminPanel() {
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({}));
 
-      if (!res.ok) {
-        throw new Error(data?.message || data?.error || `Request failed (${res.status})`);
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || `Request failed (${response.status})`);
       }
 
       setResults(prettyJson(data));
@@ -470,7 +471,7 @@ export default function AdminPanel() {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent mx-auto mb-4" />
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
           <p className="text-gray-400">Checking admin access...</p>
         </div>
       </div>
@@ -481,9 +482,9 @@ export default function AdminPanel() {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-8 text-center">
-          <div className="text-6xl mb-4">🔒</div>
-          <h1 className="text-2xl font-bold mb-2">Admin Only</h1>
-          <p className="text-white/65 mb-6">
+          <div className="mb-4 text-6xl">🔒</div>
+          <h1 className="mb-2 text-2xl font-bold">Admin Only</h1>
+          <p className="mb-6 text-white/65">
             {accessError || "You do not have admin access."}
           </p>
           <button
@@ -500,7 +501,7 @@ export default function AdminPanel() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 to-black text-white">
       <div className="max-w-7xl mx-auto p-8">
-        <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
+        <h1 className="mb-2 text-3xl font-bold">Admin Dashboard</h1>
         <p className="mb-6 text-gray-400">
           Logged in as:{" "}
           <strong className="text-green-400">
@@ -508,49 +509,51 @@ export default function AdminPanel() {
           </strong>
         </p>
 
-        <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 mb-6">
+        <div className="mb-6 rounded-lg border border-green-500/30 bg-green-500/20 p-4">
           <p className="text-green-300">
             ✅ Admin privileges: <strong>ACTIVE</strong>
           </p>
-          <p className="text-green-300 text-sm">
+          <p className="text-sm text-green-300">
             Admin flag: {String(user?.is_admin === true || ADMIN_EMAILS.includes(normalizedEmail))}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
           <SummaryCard title="Users" value={stats.users} color="text-blue-400" />
           <SummaryCard title="System Health" value={stats.health} color="text-green-400" />
           <SummaryCard title="Metrics" value={stats.metrics} color="text-purple-400" />
         </div>
 
-        <div className="flex flex-wrap gap-3 mb-8">
+        <div className="mb-8 flex flex-wrap gap-3">
           <button
             onClick={loadUsers}
             disabled={busyAction === "Load Users"}
-            className="px-4 py-2 bg-blue-600 rounded-lg text-sm disabled:opacity-50"
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm disabled:opacity-50"
           >
             {busyAction === "Load Users" ? "Loading..." : "Load Users"}
           </button>
+
           <button
             onClick={checkHealth}
             disabled={busyAction === "Check Health"}
-            className="px-4 py-2 bg-green-600 rounded-lg text-sm disabled:opacity-50"
+            className="rounded-lg bg-green-600 px-4 py-2 text-sm disabled:opacity-50"
           >
             {busyAction === "Check Health" ? "Loading..." : "Check Health"}
           </button>
+
           <button
             onClick={loadMetrics}
             disabled={busyAction === "Load Metrics"}
-            className="px-4 py-2 bg-purple-600 rounded-lg text-sm disabled:opacity-50"
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm disabled:opacity-50"
           >
             {busyAction === "Load Metrics" ? "Loading..." : "Load Metrics"}
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
           <aside className="space-y-6">
             {TAB_SECTIONS.map((section) => (
-              <div key={section.id} className="bg-white/5 border border-white/10 rounded-2xl p-4">
+              <div key={section.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <span className="text-xl">{section.emoji}</span>
                   <div>
@@ -561,11 +564,11 @@ export default function AdminPanel() {
 
                 <div className="space-y-2">
                   {section.tabs.map((tab) => (
-                    <SidebarButton
+                    <SidebarTab
                       key={tab.key}
                       tab={tab}
-                      active={activeTabKey}
-                      onClick={setActiveTabKey}
+                      activeTab={activeTabKey}
+                      onSelect={setActiveTabKey}
                     />
                   ))}
                 </div>
@@ -574,27 +577,25 @@ export default function AdminPanel() {
           </aside>
 
           <main className="space-y-6">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-              <div className="flex items-start gap-3 mb-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+              <div className="mb-4 flex items-start gap-3">
                 <span className="text-4xl">{activeTab.emoji}</span>
                 <div>
                   <h2 className="text-2xl font-bold">{activeTab.label}</h2>
-                  <p className="text-white/60 mt-1">{activeTab.description}</p>
+                  <p className="mt-1 text-white/60">{activeTab.description}</p>
                 </div>
               </div>
 
-              <div className="mb-6 text-sm text-white/70">
-                {activeTab.help}
-              </div>
+              <div className="mb-6 text-sm text-white/70">{activeTab.help}</div>
 
               {activeTab.actions?.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {activeTab.actions.map((action) => (
-                    <QuickActionButton
+                    <ActionButton
                       key={action.id}
                       action={action}
                       busy={busyAction === action.label}
-                      onRun={runAction}
+                      onClick={runAction}
                     />
                   ))}
                 </div>
@@ -603,8 +604,8 @@ export default function AdminPanel() {
               )}
             </div>
 
-            <div className="bg-black/30 border border-white/10 rounded-xl p-4 overflow-auto max-h-[34rem]">
-              <pre className="text-xs text-gray-200 whitespace-pre-wrap break-words">
+            <div className="max-h-[34rem] overflow-auto rounded-xl border border-white/10 bg-black/30 p-4">
+              <pre className="whitespace-pre-wrap break-words text-xs text-gray-200">
                 {results}
               </pre>
             </div>
