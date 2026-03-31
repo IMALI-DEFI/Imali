@@ -1,9 +1,9 @@
 // src/pages/admin/AdminPanel.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { useSocket } from "../../context/SocketContext";
-import BotAPI from "../../utils/BotAPI";
+import { useAuth } from "../context/AuthContext";
+import { useSocket } from "../context/SocketContext";
+import BotAPI from "../utils/BotAPI";
 
 // ... (keep all imports and constants)
 
