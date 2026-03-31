@@ -38,7 +38,6 @@ const withRetry = async (fn, retries = MAX_RETRIES) => {
       
       // Don't retry auth errors on billing pages (redirect instead)
       if (error.response?.status === 401 && isStripePage()) {
-        // Clear token and redirect to login
         clearToken();
         if (typeof window !== 'undefined') {
           window.location.href = '/login?expired=true';
@@ -106,11 +105,8 @@ api.interceptors.response.use(
     // Handle 401 Unauthorized
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      
-      // Clear invalid token
       clearToken();
       
-      // Don't redirect on API calls that are checking auth
       if (originalRequest.url !== '/api/me' && !isStripePage()) {
         if (typeof window !== 'undefined') {
           window.location.href = '/login?expired=true';
@@ -170,7 +166,6 @@ export const login = async (email, password) => {
   if (response.data?.success && response.data?.data?.token) {
     setToken(response.data.data.token);
     
-    // Also fetch WebSocket token after login
     try {
       const wsResponse = await getWebSocketToken();
       if (wsResponse?.success && wsResponse?.data?.token) {
@@ -204,9 +199,7 @@ export const logout = () => {
 };
 
 export const getWebSocketToken = async () => {
-  const response = await withRetry(() => 
-    api.get('/api/ws/token')
-  );
+  const response = await withRetry(() => api.get('/api/ws/token'));
   return response.data;
 };
 
@@ -217,6 +210,8 @@ export const getMe = async () => {
   const response = await withRetry(() => api.get('/api/me'));
   return response.data;
 };
+
+export const me = getMe;
 
 export const getUserProfile = async () => {
   return getMe();
@@ -632,109 +627,109 @@ export const checkAdmin = async () => {
   return response.data;
 };
 
-// Export the API instance for advanced usage
-export default {
-  // Auth
-  login,
-  signup,
-  logout,
-  getToken,
-  setToken,
-  clearToken,
-  getWebSocketToken,
-  
-  // User
-  getMe,
-  getUserProfile,
-  getActivationStatus,
-  activationStatus,
-  
-  // Trading
-  getTrades,
-  getSniperTrades,
-  getNotableTrades,
-  getBotTrades,
-  enableTrading,
-  startBot,
-  
-  // Bot
-  getBotStatus,
-  getBotExecutions,
-  getBotPerformance,
-  getBotPositions,
-  
-  // Public
-  getPublicLiveStats,
-  getPublicHistorical,
-  getRecentTrades,
-  getBotActivityHistory,
-  
-  // Analytics
-  getAnalyticsSummary,
-  getPnlAnalytics,
-  getWinLossAnalytics,
-  getFeeAnalytics,
-  
-  // Billing
-  getSetupIntent,
-  confirmCard,
-  getCardStatus,
-  setDefaultPaymentMethod,
-  getSubscription,
-  createSubscription,
-  cancelSubscription,
-  updateSubscription,
-  getInvoices,
-  getUpcomingInvoice,
-  createPortalSession,
-  calculateFee,
-  chargeFee,
-  getFeeHistory,
-  
-  // Referral
-  getReferralInfo,
-  getReferralStats,
-  getReferralHistory,
-  validateReferralCode,
-  applyReferralCode,
-  claimReferralRewards,
-  getReferralLinkStats,
-  getReferralLeaderboard,
-  
-  // Discovery
-  getDiscoveries,
-  
-  // Promo
-  getPromoStatus,
-  claimPromo,
-  getMyPromoStatus,
-  applyPromoCode,
-  
-  // Waitlist
-  joinWaitlist,
-  getWaitlistPosition,
-  
-  // Announcements
-  getAnnouncements,
-  markAnnouncementRead,
-  
-  // Support
-  createSupportTicket,
-  getSupportTickets,
-  getSupportTicket,
-  addTicketMessage,
-  
-  // Withdrawals
-  createWithdrawal,
-  getWithdrawals,
-  
-  // Export
-  exportTrades,
-  
-  // Utility
-  checkHealth,
-  checkAdmin,
-  
-  // API instance
-  api,
-};
+// =========================
+// CLASS WRAPPER FOR BACKWARD COMPATIBILITY
+// =========================
+class BotAPIClass {
+  constructor() {
+    this.api = api;
+  }
+
+  setToken(token) {
+    setToken(token);
+  }
+
+  getToken() {
+    return getToken();
+  }
+
+  clearToken() {
+    clearToken();
+  }
+
+  async login(email, password) {
+    return login(email, password);
+  }
+
+  async signup(userData) {
+    return signup(userData);
+  }
+
+  async logout() {
+    logout();
+  }
+
+  async getMe() {
+    return getMe();
+  }
+
+  async me() {
+    return getMe();
+  }
+
+  async getActivationStatus() {
+    return getActivationStatus();
+  }
+
+  async activationStatus() {
+    return getActivationStatus();
+  }
+
+  async getWebSocketToken() {
+    return getWebSocketToken();
+  }
+
+  async getTrades(limit = 100) {
+    return getTrades(limit);
+  }
+
+  async getSniperTrades(limit = 100) {
+    return getSniperTrades(limit);
+  }
+
+  async getDiscoveries(limit = 20) {
+    return getDiscoveries(limit);
+  }
+
+  async getBotStatus() {
+    return getBotStatus();
+  }
+
+  async getAnalyticsSummary() {
+    return getAnalyticsSummary();
+  }
+
+  async getPublicHistorical() {
+    return getPublicHistorical();
+  }
+
+  async getPublicLiveStats() {
+    return getPublicLiveStats();
+  }
+
+  async getReferralInfo() {
+    return getReferralInfo();
+  }
+
+  async getReferralStats() {
+    return getReferralStats();
+  }
+
+  async validateReferralCode(code) {
+    return validateReferralCode(code);
+  }
+
+  async applyReferralCode(code) {
+    return applyReferralCode(code);
+  }
+
+  async claimReferralRewards(amount, walletAddress, claimAll = false) {
+    return claimReferralRewards(amount, walletAddress, claimAll);
+  }
+}
+
+// Create singleton instance
+const BotAPI = new BotAPIClass();
+
+// Export both the class instance and individual functions
+export default BotAPI;
