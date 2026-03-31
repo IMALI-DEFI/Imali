@@ -1,4 +1,4 @@
-// src/pages/AdminPanel.jsx
+// src/components/AdminPanel.jsx
 import React, { useEffect, useState, useCallback, Suspense, lazy, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
@@ -86,32 +86,15 @@ const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.j
 
 /* -------------------- Config -------------------- */
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
-
-/* -------------------- Admin allowlists -------------------- */
-const ADMIN_EMAILS = [
-  "wayne@imali-defi.com",
-  "admin@imali-defi.com",
-];
-
-const ADMIN_WALLETS = [
-  // Add your real owner/admin wallets here
-  // "0x1234...abcd".toLowerCase(),
-];
+const ADMIN_EMAIL = "wayne@imali-defi.com";
 
 /* -------------------- Helpers -------------------- */
 const getAuthToken = () => BotAPI.getToken();
-
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
-const normalizeWallet = (wallet) => String(wallet || "").trim().toLowerCase();
 
-const isAdminUser = (user, wallet) => {
+const isAdminUser = (user) => {
   const email = normalizeEmail(user?.email);
-  const acct = normalizeWallet(wallet);
-
-  const emailMatch = !!email && ADMIN_EMAILS.includes(email);
-  const walletMatch = !!acct && ADMIN_WALLETS.includes(acct);
-
-  return user?.is_admin === true || emailMatch || walletMatch;
+  return user?.is_admin === true || email === ADMIN_EMAIL;
 };
 
 /* -------------------- Enhanced API Helper -------------------- */
@@ -188,9 +171,7 @@ const TAB_SECTIONS = [
         component: DashboardOverview,
         description: "Main numbers and summary cards.",
         help: "Start here to get a quick snapshot of platform performance. Key metrics include total users, active bots, pending withdrawals, and support tickets. Use the refresh button to update numbers.",
-        actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" },
-        ],
+        actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" }],
       },
       {
         key: "health",
@@ -199,9 +180,7 @@ const TAB_SECTIONS = [
         component: SystemHealth,
         description: "Check if services are running correctly.",
         help: "Monitor backend services, bots, and connected APIs. If something seems broken, check this page first for error reports and uptime status.",
-        actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/health/detailed", method: "GET" },
-        ],
+        actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/health/detailed", method: "GET" }],
       },
     ],
   },
@@ -230,9 +209,7 @@ const TAB_SECTIONS = [
         component: SupportTickets,
         description: "Handle support issues and questions.",
         help: "View and respond to user support tickets. Mark as resolved when done. Red badges indicate urgent or overdue tickets.",
-        actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/support/tickets", method: "GET" },
-        ],
+        actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/support/tickets", method: "GET" }],
       },
       {
         key: "waitlist",
@@ -241,9 +218,7 @@ const TAB_SECTIONS = [
         component: WaitlistManagement,
         description: "Review people waiting to join.",
         help: "Manage users who have signed up but aren't yet approved. You can approve, reject, or export waitlist entries.",
-        actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/waitlist", method: "GET" },
-        ],
+        actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/waitlist", method: "GET" }],
       },
     ],
   },
@@ -260,9 +235,7 @@ const TAB_SECTIONS = [
         component: WithdrawalManagement,
         description: "Approve or review withdrawal requests.",
         help: "Review pending withdrawal requests. Verify user balances and approve or reject. Use filters to see approved/rejected history.",
-        actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/withdrawals", method: "GET" },
-        ],
+        actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/withdrawals", method: "GET" }],
       },
       {
         key: "fees",
@@ -271,9 +244,7 @@ const TAB_SECTIONS = [
         component: FeeDistributor,
         description: "Manage fee flows and distributions.",
         help: "View collected fees and distribution history. Adjust fee splits and trigger manual distributions if needed.",
-        actions: [
-          { id: "history", label: "History", icon: "📜", endpoint: "/api/billing/fee-history", method: "GET" },
-        ],
+        actions: [{ id: "history", label: "History", icon: "📜", endpoint: "/api/billing/fee-history", method: "GET" }],
       },
       {
         key: "treasury",
@@ -282,9 +253,7 @@ const TAB_SECTIONS = [
         component: TreasuryManagement,
         description: "Manage platform-held funds.",
         help: "Monitor treasury balances across chains. Initiate fund movements, view transaction history, and set reserve limits.",
-        actions: [
-          { id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/treasury/stats", method: "GET" },
-        ],
+        actions: [{ id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/treasury/stats", method: "GET" }],
       },
     ],
   },
@@ -326,9 +295,7 @@ const TAB_SECTIONS = [
         component: Announcements,
         description: "Send updates to users.",
         help: "Draft and publish announcements that appear in-app or via email. Schedule future announcements or send immediately.",
-        actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/announcements", method: "GET" },
-        ],
+        actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/announcements", method: "GET" }],
       },
       {
         key: "referrals",
@@ -407,9 +374,7 @@ const TAB_SECTIONS = [
         component: CexManagement,
         description: "Manage centralized exchange controls.",
         help: "View exchange balances, transfer funds between exchanges and treasury, and manage API keys securely.",
-        actions: [
-          { id: "balances", label: "Balances", icon: "⚖️", endpoint: "/api/admin/cex/balances", method: "GET" },
-        ],
+        actions: [{ id: "balances", label: "Balances", icon: "⚖️", endpoint: "/api/admin/cex/balances", method: "GET" }],
       },
       {
         key: "stocks",
@@ -418,9 +383,7 @@ const TAB_SECTIONS = [
         component: StocksManagement,
         description: "Manage stock-related trading tools.",
         help: "Monitor stock trading bots, view open positions, and adjust trading parameters. For advanced users only.",
-        actions: [
-          { id: "positions", label: "Positions", icon: "📊", endpoint: "/api/admin/stocks/positions", method: "GET" },
-        ],
+        actions: [{ id: "positions", label: "Positions", icon: "📊", endpoint: "/api/admin/stocks/positions", method: "GET" }],
       },
       {
         key: "audit",
@@ -429,9 +392,7 @@ const TAB_SECTIONS = [
         component: AuditLogs,
         description: "Review admin actions and events.",
         help: "See a chronological log of all admin actions (user changes, financial moves, settings updates). Useful for security reviews.",
-        actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/audit-logs", method: "GET" },
-        ],
+        actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/audit-logs", method: "GET" }],
       },
       {
         key: "access",
@@ -439,10 +400,8 @@ const TAB_SECTIONS = [
         emoji: "🔐",
         component: AccessControl,
         description: "Control admin access and roles.",
-        help: "Manage which wallet addresses have admin access and what permissions they hold (view only, full control, etc.).",
-        actions: [
-          { id: "check", label: "Check Access", icon: "🔍", endpoint: "/api/admin/check", method: "GET" },
-        ],
+        help: "Manage which addresses have admin access and what permissions they hold.",
+        actions: [{ id: "check", label: "Check Access", icon: "🔍", endpoint: "/api/admin/check", method: "GET" }],
       },
     ],
   },
@@ -613,11 +572,18 @@ export default function AdminPanel({ forceOwner = false }) {
       return;
     }
 
-    const admin = isAdminUser(authUser, account);
+    const admin = isAdminUser(authUser);
+
+    console.log("[AdminPanel] email-only admin check", {
+      email: authUser?.email,
+      is_admin: authUser?.is_admin,
+      admin,
+    });
+
     setIsAdmin(admin);
     setError(admin ? "" : "You do not have admin access.");
     setChecking(false);
-  }, [authLoading, authUser, account, forceOwner, BYPASS, TEST_BYPASS]);
+  }, [authLoading, authUser, forceOwner, BYPASS, TEST_BYPASS]);
 
   useEffect(() => {
     if (!allowAccess) return;
