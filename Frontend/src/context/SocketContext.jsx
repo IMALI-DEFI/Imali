@@ -3,14 +3,15 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import socketService from '../services/socketService';
 import { useAuth } from './AuthContext';
 
-const SocketContext = createContext();
+// Create and EXPORT the context
+export const SocketContext = createContext(null);
 
-// Create a safe version that won't throw errors
+// Export the hook
 export const useSocket = () => {
   const context = useContext(SocketContext);
-  // Return a default object if context is undefined (for testing or when not wrapped)
   if (!context) {
     console.warn('useSocket used outside of SocketProvider - returning mock');
+    // Return mock data instead of throwing error
     return {
       isConnected: false,
       isConnecting: false,
@@ -50,6 +51,51 @@ export const useSocket = () => {
   return context;
 };
 
+// Export safe version that won't throw
+export const useSafeSocket = () => {
+  const context = useContext(SocketContext);
+  if (!context) {
+    console.warn('useSafeSocket used outside of SocketProvider - returning mock');
+    return {
+      isConnected: false,
+      isConnecting: false,
+      connectionError: null,
+      reconnect: () => {},
+      socket: null,
+      lastTrade: null,
+      lastPnlUpdate: null,
+      trades: [],
+      announcements: [],
+      liveStats: {
+        totalTrades: 0,
+        totalPnl: 0,
+        activeBots: 0,
+        winRate: 0,
+        wins: 0,
+        losses: 0,
+        totalReferrals: 0,
+        totalRewardsPaid: 0,
+        activeUsers: 0
+      },
+      botStatuses: [],
+      leaderboard: [],
+      referralEvents: [],
+      systemMetrics: { cpu: 0, memory: 0, active_users: 0, tps: 0 },
+      subscribeToTrades: () => {},
+      subscribeToPnl: () => {},
+      subscribeToAnnouncements: () => {},
+      subscribeToReferrals: () => {},
+      subscribeToLeaderboard: () => {},
+      subscribeToSystemMetrics: () => {},
+      clearAnnouncements: () => {},
+      clearTrades: () => {},
+      clearReferralEvents: () => {}
+    };
+  }
+  return context;
+};
+
+// Export the Provider
 export function SocketProvider({ children }) {
   const { token, refreshWebSocketToken } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
@@ -143,10 +189,7 @@ export function SocketProvider({ children }) {
   useEffect(() => {
     if (!socketService) return;
 
-    // Trade event handler
     const unsubscribeTrade = socketService.onTrade((trade) => {
-      console.log('[SocketContext] New trade received:', trade);
-      
       if (mountedRef.current) {
         setLastTrade(trade);
         setTrades(prev => [trade, ...prev].slice(0, 500));
@@ -162,9 +205,7 @@ export function SocketProvider({ children }) {
       }
     });
 
-    // P&L update handler
     const unsubscribePnl = socketService.onPnlUpdate((pnlData) => {
-      console.log('[SocketContext] P&L update received:', pnlData);
       if (mountedRef.current) {
         setLastPnlUpdate(pnlData);
         setLiveStats(prev => ({
@@ -174,9 +215,7 @@ export function SocketProvider({ children }) {
       }
     });
 
-    // Announcement handler
     const unsubscribeAnnouncement = socketService.onAnnouncement((announcement) => {
-      console.log('[SocketContext] New announcement:', announcement);
       if (mountedRef.current) {
         setAnnouncements(prev => [announcement, ...prev].slice(0, 10));
         
@@ -188,9 +227,7 @@ export function SocketProvider({ children }) {
       }
     });
 
-    // Bot status handler
     const unsubscribeBotStatus = socketService.onBotStatus((status) => {
-      console.log('[SocketContext] Bot status update:', status);
       if (mountedRef.current) {
         setBotStatuses(status.bots || []);
         setLiveStats(prev => ({
@@ -201,9 +238,7 @@ export function SocketProvider({ children }) {
       }
     });
 
-    // Referral event handler
     const unsubscribeReferral = socketService.onReferralEvent((event) => {
-      console.log('[SocketContext] Referral event:', event);
       if (mountedRef.current) {
         setReferralEvents(prev => [event, ...prev].slice(0, 50));
         setLiveStats(prev => ({
@@ -214,17 +249,13 @@ export function SocketProvider({ children }) {
       }
     });
 
-    // Leaderboard update handler
     const unsubscribeLeaderboard = socketService.onLeaderboardUpdate((data) => {
-      console.log('[SocketContext] Leaderboard update:', data);
       if (mountedRef.current) {
         setLeaderboard(data.leaderboard || []);
       }
     });
 
-    // System metric handler
     const unsubscribeSystemMetric = socketService.onSystemMetric((metric) => {
-      console.log('[SocketContext] System metric update:', metric);
       if (mountedRef.current) {
         setSystemMetrics({
           cpu: metric.cpu || 0,
@@ -241,9 +272,7 @@ export function SocketProvider({ children }) {
       }
     });
 
-    // Connection event handlers
     const unsubscribeConnected = socketService.onConnected(() => {
-      console.log('[SocketContext] Socket connected event');
       if (mountedRef.current) {
         setIsConnected(true);
         setIsConnecting(false);
@@ -252,7 +281,6 @@ export function SocketProvider({ children }) {
     });
 
     const unsubscribeDisconnected = socketService.onDisconnected((data) => {
-      console.log('[SocketContext] Socket disconnected:', data?.reason);
       if (mountedRef.current) {
         setIsConnected(false);
         if (data?.reason !== 'io client disconnect') {
@@ -300,7 +328,6 @@ export function SocketProvider({ children }) {
     }
   }, [token, isConnected, isConnecting, initializeSocket]);
 
-  // Manual reconnect function
   const reconnect = useCallback(async () => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -320,7 +347,6 @@ export function SocketProvider({ children }) {
     }, 500);
   }, [token, initializeSocket]);
 
-  // Subscribe methods
   const subscribeToTrades = useCallback(() => {
     if (socketService && isConnected) {
       socketService.subscribeTrades();
@@ -357,7 +383,6 @@ export function SocketProvider({ children }) {
     }
   }, [isConnected]);
 
-  // Clear methods
   const clearAnnouncements = useCallback(() => setAnnouncements([]), []);
   const clearTrades = useCallback(() => setTrades([]), []);
   const clearReferralEvents = useCallback(() => setReferralEvents([]), []);
@@ -394,3 +419,6 @@ export function SocketProvider({ children }) {
     </SocketContext.Provider>
   );
 }
+
+// Default export for convenience
+export default SocketProvider;
