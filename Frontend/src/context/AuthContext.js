@@ -65,9 +65,12 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setActivation(null);
     setAuthError(null);
-    // Clear any cached activation data
+    // Clear all cached data
     localStorage.removeItem("imali_activation");
+    localStorage.removeItem("imali_user");
+    localStorage.removeItem("imali_user_debug");
     sessionStorage.removeItem("imali_activation");
+    sessionStorage.removeItem("imali_user");
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -76,6 +79,15 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await BotAPI.me();
       const freshUser = response?.user || response || null;
+      
+      if (freshUser) {
+        // Ensure is_admin is properly set
+        freshUser.is_admin = freshUser.is_admin === true || ADMIN_EMAILS.includes(freshUser.email);
+        // Store in localStorage for persistence
+        localStorage.setItem("imali_user", JSON.stringify(freshUser));
+        localStorage.setItem("imali_user_debug", JSON.stringify(freshUser));
+      }
+      
       setUser(freshUser);
       return freshUser;
     } catch (error) {
@@ -154,6 +166,20 @@ export const AuthProvider = ({ children }) => {
         // Ensure is_admin is properly set from user data
         if (freshUser) {
           freshUser.is_admin = freshUser.is_admin === true || ADMIN_EMAILS.includes(freshUser.email);
+          console.log("[Auth] Loaded user:", freshUser.email, "is_admin:", freshUser.is_admin);
+          
+          // Store in localStorage for persistence
+          localStorage.setItem("imali_user", JSON.stringify(freshUser));
+          localStorage.setItem("imali_user_debug", JSON.stringify(freshUser));
+        } else {
+          // Try to load from localStorage as fallback
+          const storedUser = localStorage.getItem("imali_user");
+          if (storedUser) {
+            try {
+              freshUser = JSON.parse(storedUser);
+              console.log("[Auth] Using stored user from localStorage:", freshUser.email);
+            } catch (e) {}
+          }
         }
         
         setUser(freshUser);
@@ -319,11 +345,14 @@ export const AuthProvider = ({ children }) => {
         // CRITICAL: Refresh activation data after login
         await refreshActivation();
 
+        // Get the current user after loading
+        const currentUser = user || JSON.parse(localStorage.getItem("imali_user") || "{}");
+        const isAdmin = currentUser?.is_admin === true || ADMIN_EMAILS.includes(email);
+        
+        console.log("[Auth] Login successful - isAdmin:", isAdmin);
+        
         // Determine where to redirect based on activation status
         let redirectPath = "/dashboard";
-        
-        // Check if user is admin
-        const isAdmin = user?.is_admin === true || ADMIN_EMAILS.includes(email);
         
         if (isAdmin) {
           // Admins go directly to dashboard
@@ -409,9 +438,12 @@ export const AuthProvider = ({ children }) => {
     clearAuthState();
     bootstrappedRef.current = false;
     loadingRef.current = false;
-    // Clear cached data
+    // Clear all cached data
     localStorage.removeItem("imali_activation");
+    localStorage.removeItem("imali_user");
+    localStorage.removeItem("imali_user_debug");
     sessionStorage.removeItem("imali_activation");
+    sessionStorage.removeItem("imali_user");
     navigate("/login", { replace: true });
   }, [clearAuthState, navigate]);
 
