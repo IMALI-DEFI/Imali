@@ -3,55 +3,19 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import socketService from '../services/socketService';
 import { useAuth } from './AuthContext';
 
-// Create and EXPORT the context
+// Create and export the context
 export const SocketContext = createContext(null);
 
-// Export the hook
+// Main hook that throws if used outside provider
 export const useSocket = () => {
   const context = useContext(SocketContext);
   if (!context) {
-    console.warn('useSocket used outside of SocketProvider - returning mock');
-    // Return mock data instead of throwing error
-    return {
-      isConnected: false,
-      isConnecting: false,
-      connectionError: null,
-      reconnect: () => {},
-      socket: null,
-      lastTrade: null,
-      lastPnlUpdate: null,
-      trades: [],
-      announcements: [],
-      liveStats: {
-        totalTrades: 0,
-        totalPnl: 0,
-        activeBots: 0,
-        winRate: 0,
-        wins: 0,
-        losses: 0,
-        totalReferrals: 0,
-        totalRewardsPaid: 0,
-        activeUsers: 0
-      },
-      botStatuses: [],
-      leaderboard: [],
-      referralEvents: [],
-      systemMetrics: { cpu: 0, memory: 0, active_users: 0, tps: 0 },
-      subscribeToTrades: () => {},
-      subscribeToPnl: () => {},
-      subscribeToAnnouncements: () => {},
-      subscribeToReferrals: () => {},
-      subscribeToLeaderboard: () => {},
-      subscribeToSystemMetrics: () => {},
-      clearAnnouncements: () => {},
-      clearTrades: () => {},
-      clearReferralEvents: () => {}
-    };
+    throw new Error('useSocket must be used within a SocketProvider');
   }
   return context;
 };
 
-// Export safe version that won't throw
+// Safe hook that returns mock data instead of throwing
 export const useSafeSocket = () => {
   const context = useContext(SocketContext);
   if (!context) {
@@ -95,7 +59,6 @@ export const useSafeSocket = () => {
   return context;
 };
 
-// Export the Provider
 export function SocketProvider({ children }) {
   const { token, refreshWebSocketToken } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
@@ -174,7 +137,6 @@ export function SocketProvider({ children }) {
         setIsConnecting(false);
         setConnectionError(error.message || 'Connection failed');
         
-        // Attempt reconnect after 5 seconds
         reconnectTimeoutRef.current = setTimeout(() => {
           if (mountedRef.current && !isConnected && token) {
             console.log('[SocketContext] Attempting reconnection...');
@@ -218,7 +180,6 @@ export function SocketProvider({ children }) {
     const unsubscribeAnnouncement = socketService.onAnnouncement((announcement) => {
       if (mountedRef.current) {
         setAnnouncements(prev => [announcement, ...prev].slice(0, 10));
-        
         if (announcement.priority !== 'critical') {
           setTimeout(() => {
             setAnnouncements(prev => prev.filter(a => a.id !== announcement.id));
@@ -264,7 +225,6 @@ export function SocketProvider({ children }) {
           tps: metric.tps || 0,
           timestamp: new Date()
         });
-        
         setLiveStats(prev => ({
           ...prev,
           activeUsers: metric.active_users || prev.activeUsers
@@ -420,5 +380,4 @@ export function SocketProvider({ children }) {
   );
 }
 
-// Default export for convenience
 export default SocketProvider;
