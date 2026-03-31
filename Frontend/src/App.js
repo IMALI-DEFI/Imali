@@ -8,7 +8,7 @@ import Footer from "./components/Footer";
 
 /* Core */
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
-import AdminPanel from "./pages/AdminPanel";
+import AdminPanel from "./components/AdminPanel";
 
 /* Demo */
 import TradeDemo from "./pages/TradeDemo";
