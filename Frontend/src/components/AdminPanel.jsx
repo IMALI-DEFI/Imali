@@ -2,8 +2,8 @@
 import React, { useEffect, useState, useCallback, Suspense, lazy, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
+import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
-import MarketingAutomation from "../admin/MarketingAutomation";
 
 /* -------------------- Error Boundary -------------------- */
 class TabErrorBoundary extends React.Component {
@@ -87,9 +87,34 @@ const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.j
 /* -------------------- Config -------------------- */
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
 
-/* -------------------- Enhanced API Helper with Rate Limit Handling -------------------- */
+/* -------------------- Admin allowlists -------------------- */
+const ADMIN_EMAILS = [
+  "wayne@imali-defi.com",
+  "admin@imali-defi.com",
+];
+
+const ADMIN_WALLETS = [
+  // Add your real owner/admin wallets here
+  // "0x1234...abcd".toLowerCase(),
+];
+
+/* -------------------- Helpers -------------------- */
 const getAuthToken = () => BotAPI.getToken();
 
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeWallet = (wallet) => String(wallet || "").trim().toLowerCase();
+
+const isAdminUser = (user, wallet) => {
+  const email = normalizeEmail(user?.email);
+  const acct = normalizeWallet(wallet);
+
+  const emailMatch = !!email && ADMIN_EMAILS.includes(email);
+  const walletMatch = !!acct && ADMIN_WALLETS.includes(acct);
+
+  return user?.is_admin === true || emailMatch || walletMatch;
+};
+
+/* -------------------- Enhanced API Helper -------------------- */
 const adminFetch = async (endpoint, options = {}, retries = 3) => {
   const token = getAuthToken();
   if (!token) throw new Error("No authentication token found");
@@ -104,24 +129,23 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
         ...options,
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           ...(options.headers || {}),
         },
       });
 
-      // Handle rate limiting with exponential backoff
       if (response.status === 429) {
-        const retryAfter = parseInt(response.headers.get('Retry-After')) || Math.pow(2, attempt) * 5;
-        console.log(`Rate limited. Retry after ${retryAfter} seconds (attempt ${attempt + 1}/${retries})`);
-        
+        const retryAfter =
+          parseInt(response.headers.get("Retry-After"), 10) || Math.pow(2, attempt) * 5;
+
         if (attempt < retries) {
-          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
           continue;
         }
+
         throw new Error(`Rate limited. Please wait ${retryAfter} seconds.`);
       }
 
-      // Handle 401 Unauthorized - might need to refresh token or re-login
       if (response.status === 401) {
         throw new Error("Authentication failed. Please log in again.");
       }
@@ -135,8 +159,11 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
       return data;
     } catch (error) {
       lastError = error;
-      if (attempt < retries && !error.message.includes('429') && !error.message.includes('401')) {
-        // Exponential backoff for network errors
+      if (
+        attempt < retries &&
+        !String(error.message).includes("429") &&
+        !String(error.message).includes("401")
+      ) {
         const delay = Math.pow(2, attempt) * 1000;
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
@@ -146,17 +173,7 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
   throw lastError;
 };
 
-const checkAdminStatus = async () => {
-  try {
-    const data = await adminFetch("/api/admin/check", { method: "GET" });
-    return data?.is_admin === true;
-  } catch (error) {
-    console.warn("[AdminPanel] Admin check failed:", error);
-    return false;
-  }
-};
-
-/* -------------------- Sections with Correct Endpoints -------------------- */
+/* -------------------- Sections -------------------- */
 const TAB_SECTIONS = [
   {
     id: "dashboard",
@@ -495,11 +512,12 @@ function ActionButton({ action, onAction, busy }) {
 
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
+  const { user: authUser, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [checking, setChecking] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(null);
   const [error, setError] = useState("");
   const [active, setActive] = useState("overview");
   const [tabResetKey, setTabResetKey] = useState(0);
@@ -509,18 +527,17 @@ export default function AdminPanel({ forceOwner = false }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [actionHistory, setActionHistory] = useState([]);
-  const [rateLimitRetry, setRateLimitRetry] = useState(0);
 
   const isDevelopment =
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
   const BYPASS = isDevelopment && process.env.REACT_APP_BYPASS_OWNER === "1";
   const TEST_BYPASS = location.pathname.startsWith("/test/admin");
 
-  const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdmin;
-
   const activeTab = useMemo(() => {
     return ALL_TABS.find((tab) => tab.key === active) || ALL_TABS[0];
   }, [active]);
+
+  const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdmin === true;
 
   const showToast = useCallback((message, type = "success", duration = 4000) => {
     setToast({ message, type });
@@ -552,6 +569,7 @@ export default function AdminPanel({ forceOwner = false }) {
   const fetchStats = useCallback(async () => {
     try {
       const data = await adminFetch("/api/admin/metrics", { method: "GET" });
+
       setStats({
         totalUsers: data.users?.total || 0,
         pendingWithdrawals: data.revenue?.pending_withdrawals || 0,
@@ -562,60 +580,50 @@ export default function AdminPanel({ forceOwner = false }) {
         totalRevenue: data.revenue?.total_fees || 0,
         activeBots: data.bots?.active || 0,
       });
-      setRateLimitRetry(0);
     } catch (err) {
       console.error("[AdminPanel] Stats fetch error:", err);
-      if (err.message?.includes('401')) {
+      if (String(err.message).includes("401")) {
         showToast("Session expired. Please log in again.", "error");
         BotAPI.clearToken();
         navigate("/login");
-      } else if (!err.message?.includes('429')) {
+      } else if (!String(err.message).includes("429")) {
         showToast("Could not load metrics", "error");
       }
     }
-  }, [showToast, navigate]);
+  }, [navigate, showToast]);
 
   useEffect(() => {
-    let mounted = true;
+    if (authLoading) {
+      setChecking(true);
+      return;
+    }
 
-    const checkAccess = async () => {
-      try {
-        if (forceOwner || BYPASS || TEST_BYPASS) {
-          if (mounted) setIsAdmin(true);
-          return;
-        }
+    if (forceOwner || BYPASS || TEST_BYPASS) {
+      setIsAdmin(true);
+      setError("");
+      setChecking(false);
+      return;
+    }
 
-        const token = getAuthToken();
-        if (!token) {
-          if (mounted) setError("Please log in first.");
-          return;
-        }
+    const token = BotAPI.getToken();
+    if (!token || !authUser) {
+      setIsAdmin(false);
+      setError("Please log in first.");
+      setChecking(false);
+      return;
+    }
 
-        const admin = await checkAdminStatus();
-        if (!mounted) return;
-
-        setIsAdmin(admin);
-        if (!admin) setError("You do not have admin access.");
-      } catch (e) {
-        console.error("[AdminPanel] Access check error:", e);
-        if (mounted) setError("Could not verify admin permissions.");
-      } finally {
-        if (mounted) setChecking(false);
-      }
-    };
-
-    checkAccess();
-
-    return () => {
-      mounted = false;
-    };
-  }, [forceOwner, BYPASS, TEST_BYPASS]);
+    const admin = isAdminUser(authUser, account);
+    setIsAdmin(admin);
+    setError(admin ? "" : "You do not have admin access.");
+    setChecking(false);
+  }, [authLoading, authUser, account, forceOwner, BYPASS, TEST_BYPASS]);
 
   useEffect(() => {
     if (!allowAccess) return;
 
     fetchStats();
-    const interval = setInterval(fetchStats, 300000); // 5 minutes
+    const interval = setInterval(fetchStats, 300000);
 
     return () => clearInterval(interval);
   }, [allowAccess, fetchStats]);
@@ -644,7 +652,7 @@ export default function AdminPanel({ forceOwner = false }) {
         logAction(actionName, "success", { data });
         showToast(`${actionName} completed successfully.`, "success");
 
-        if (action?.id === "refresh" || action?.id === "stats" || action?.id === "list") {
+        if (["refresh", "stats", "list"].includes(action?.id)) {
           fetchStats();
         }
 
@@ -652,15 +660,15 @@ export default function AdminPanel({ forceOwner = false }) {
       } catch (err) {
         const errorMessage = err?.message || `${actionName} failed.`;
         logAction(actionName, "error", { error: errorMessage });
-        
-        if (errorMessage.includes('401')) {
+
+        if (errorMessage.includes("401")) {
           showToast("Session expired. Please log in again.", "error");
           BotAPI.clearToken();
           navigate("/login");
-        } else if (!errorMessage.includes('429')) {
+        } else if (!errorMessage.includes("429")) {
           showToast(errorMessage, "error");
         }
-        
+
         throw err;
       } finally {
         setBusyAction((prev) => {
@@ -670,7 +678,7 @@ export default function AdminPanel({ forceOwner = false }) {
         });
       }
     },
-    [activeTab, fetchStats, logAction, showToast, navigate]
+    [activeTab, fetchStats, logAction, navigate, showToast]
   );
 
   const navigateToTab = useCallback((tabKey) => {
@@ -706,7 +714,7 @@ export default function AdminPanel({ forceOwner = false }) {
     [account, actionHistory, busyAction, fetchStats, handleAction, resetCurrentTab, showToast, stats, tabResetKey]
   );
 
-  if (checking && !allowAccess) {
+  if (checking) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-4 text-white">
         <div className="text-center">
