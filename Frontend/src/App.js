@@ -36,8 +36,9 @@ import PublicDashboard from "./pages/PublicDashboard";
 /* Referral Page */
 import ReferralSystem from "./components/ReferralSystem";
 
-/* Auth */
+/* Context Providers */
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { SocketProvider } from "./context/SocketContext"; // ✅ Import SocketProvider
 
 /* =====================================================
    LOADING SPINNER
@@ -211,6 +212,78 @@ function PostLoginRedirect() {
 }
 
 /* =====================================================
+   WEBSOCKET CONNECTION STATUS INDICATOR
+===================================================== */
+function WebSocketStatus() {
+  const { isConnected, connectionError, isConnecting } = useSocket();
+  
+  // Don't show on public pages
+  const location = useLocation();
+  const publicPaths = ['/', '/pricing', '/signup', '/login', '/live', '/demo'];
+  if (publicPaths.includes(location.pathname)) return null;
+  
+  if (isConnecting) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 bg-yellow-500/90 text-black px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm">
+        <span className="inline-block w-2 h-2 rounded-full bg-yellow-700 animate-pulse mr-2" />
+        Connecting to live feed...
+      </div>
+    );
+  }
+  
+  if (!isConnected && connectionError) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 bg-red-500/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm">
+        <span className="inline-block w-2 h-2 rounded-full bg-red-300 mr-2" />
+        Using fallback mode
+      </div>
+    );
+  }
+  
+  if (isConnected) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 bg-green-500/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm animate-pulse">
+        <span className="inline-block w-2 h-2 rounded-full bg-green-200 mr-2" />
+        Live
+      </div>
+    );
+  }
+  
+  return null;
+}
+
+/* =====================================================
+   CONNECTION ERROR BANNER
+===================================================== */
+function ConnectionErrorBanner() {
+  const { connectionError, reconnect, isConnected, isConnecting } = useSocket();
+  const location = useLocation();
+  
+  // Don't show on public pages or if connected
+  const publicPaths = ['/', '/pricing', '/signup', '/login', '/live', '/demo'];
+  if (publicPaths.includes(location.pathname) || isConnected || isConnecting) return null;
+  
+  if (connectionError) {
+    return (
+      <div className="fixed top-16 left-0 right-0 z-50 bg-red-600 text-white px-4 py-2 text-sm flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">⚠️</span>
+          <span>Connection issue: {connectionError}</span>
+        </div>
+        <button 
+          onClick={reconnect}
+          className="bg-white text-red-600 px-3 py-1 rounded-md text-xs font-semibold hover:bg-gray-100 transition"
+        >
+          Reconnect
+        </button>
+      </div>
+    );
+  }
+  
+  return null;
+}
+
+/* =====================================================
    404
 ===================================================== */
 function NotFound() {
@@ -240,6 +313,10 @@ function AppContent() {
   return (
     <>
       <Header />
+      
+      {/* Connection status indicators */}
+      <ConnectionErrorBanner />
+      <WebSocketStatus />
 
       <main className="min-h-screen pt-16 bg-black text-white">
         <Suspense fallback={<PageLoadingFallback />}>
@@ -341,12 +418,64 @@ function AppContent() {
 }
 
 /* =====================================================
-   APP ROOT
+   APP ROOT - WITH SOCKET PROVIDER
 ===================================================== */
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <SocketProvider> {/* ✅ Wrap with SocketProvider */}
+        <AppContent />
+      </SocketProvider>
     </AuthProvider>
   );
+}
+
+/* =====================================================
+   SAFE USE SOCKET HOOK (for components that need it)
+===================================================== */
+// This is a helper hook that won't throw errors if used outside SocketProvider
+import { useContext } from 'react';
+import { SocketContext } from './context/SocketContext';
+
+export function useSafeSocket() {
+  const context = useContext(SocketContext);
+  if (!context) {
+    console.warn('useSafeSocket used outside SocketProvider - returning mock');
+    return {
+      isConnected: false,
+      isConnecting: false,
+      connectionError: null,
+      reconnect: () => {},
+      socket: null,
+      lastTrade: null,
+      lastPnlUpdate: null,
+      trades: [],
+      announcements: [],
+      liveStats: {
+        totalTrades: 0,
+        totalPnl: 0,
+        activeBots: 0,
+        winRate: 0,
+        wins: 0,
+        losses: 0,
+        totalReferrals: 0,
+        totalRewardsPaid: 0,
+        activeUsers: 0
+      },
+      botStatuses: [],
+      leaderboard: [],
+      referralEvents: [],
+      systemMetrics: { cpu: 0, memory: 0, active_users: 0, tps: 0 },
+      subscribeToTrades: () => {},
+      subscribeToPnl: () => {},
+      subscribeToAnnouncements: () => {},
+      subscribeToReferrals: () => {},
+      subscribeToLeaderboard: () => {},
+      subscribeToSystemMetrics: () => {},
+      clearAnnouncements: () => {},
+      clearTrades: () => {},
+      clearReferralEvents: () => {}
+    };
+  }
+  return context;
 }
