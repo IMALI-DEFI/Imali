@@ -1,6 +1,6 @@
 // src/utils/BotAPI.js
 import axios from "axios";
-const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "http://129.213.90.84:3002";
+const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "http:/api.imali-defi.com";
 const TOKEN_KEY = "imali_token";
 const WS_TOKEN_KEY = "imali_ws_token";
 
