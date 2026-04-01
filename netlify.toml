@@ -1,42 +1,15 @@
 [build]
-  command = "npm install && npm run build"
-  publish = "build"
+  command = "cd Frontend && npm install && npm run build"
+  publish = "Frontend/build"
 
-# Auth endpoints go to Node.js (port 3002)
-[[redirects]]
-  from = "/api/auth/*"
-  to = "http://129.213.90.84:3002/api/auth/:splat"
-  status = 200
-  force = true
-
-# User endpoints go to Node.js (port 3002)
-[[redirects]]
-  from = "/api/user/*"
-  to = "http://129.213.90.84:3002/api/user/:splat"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/me"
-  to = "http://129.213.90.84:3002/api/me"
-  status = 200
-  force = true
-
-# All other API endpoints go to Python (port 8001)
-[[redirects]]
-  from = "/api/*"
-  to = "http://129.213.90.84:8001/api/:splat"
-  status = 200
-  force = true
-
-# WebSocket goes to Python WebSocket server
+# WebSocket proxy (keep this for Socket.IO to work properly)
 [[redirects]]
   from = "/socket.io/*"
   to = "http://129.213.90.84:8080/socket.io/:splat"
   status = 200
   force = true
 
-# Catch all for React routing
+# Catch all for React routing - serve index.html for all routes
 [[redirects]]
   from = "/*"
   to = "/index.html"
