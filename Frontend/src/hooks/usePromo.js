@@ -2,6 +2,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
+// Add this constant at the top
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+
 export const usePromoStatus = () => {
   const [promoState, setPromoState] = useState({
     limit: 50,
@@ -18,7 +21,8 @@ export const usePromoStatus = () => {
   useEffect(() => {
     const fetchPromoStatus = async () => {
       try {
-        const response = await axios.get('/api/promo/status');
+        // ✅ Use full API URL
+        const response = await axios.get(`${API_BASE}/api/promo/status`);
         const data = response.data;
         
         if (data.success && data.data) {
@@ -68,7 +72,8 @@ export const usePromoClaim = () => {
     setState({ loading: true, success: false, error: null, data: null });
 
     try {
-      const res = await axios.post('/api/promo/claim', { email, tier });
+      // ✅ Use full API URL
+      const res = await axios.post(`${API_BASE}/api/promo/claim`, { email, tier });
       const result = res.data.data || res.data;
 
       setState({ loading: false, success: true, error: null, data: result });
