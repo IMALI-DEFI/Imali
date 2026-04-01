@@ -1,6 +1,6 @@
 [build]
-  command = "cd Frontend && npm install && npm run build"
-  publish = "Frontend/build"
+  command = "npm install && npm run build"
+  publish = "build"
 
 # Auth endpoints go to Node.js (port 3002)
 [[redirects]]
