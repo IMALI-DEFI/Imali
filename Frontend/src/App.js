@@ -1,6 +1,13 @@
 // src/App.js
 import React, { lazy, Suspense, useContext } from "react";
-import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Navigate,
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
 /* Layout */
 import Header from "./components/Header";
@@ -38,52 +45,96 @@ import ReferralSystem from "./components/ReferralSystem";
 
 /* Context Providers */
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { SocketProvider, SocketContext } from "./context/SocketContext"; // ✅ Import SocketContext
+import { SocketContext } from "./context/SocketContext";
 
 /* =====================================================
-   SAFE USE SOCKET HOOK
+   SAFE SOCKET FALLBACK
 ===================================================== */
+const SAFE_SOCKET_FALLBACK = {
+  isConnected: false,
+  isConnecting: false,
+  connectionError: null,
+  reconnect: () => {},
+  socket: null,
+  lastTrade: null,
+  lastPnlUpdate: null,
+  trades: [],
+  announcements: [],
+  liveStats: {
+    totalTrades: 0,
+    totalPnl: 0,
+    activeBots: 0,
+    winRate: 0,
+    wins: 0,
+    losses: 0,
+    totalReferrals: 0,
+    totalRewardsPaid: 0,
+    activeUsers: 0,
+  },
+  botStatuses: [],
+  leaderboard: [],
+  referralEvents: [],
+  systemMetrics: { cpu: 0, memory: 0, active_users: 0, tps: 0 },
+  subscribeToTrades: () => {},
+  subscribeToPnl: () => {},
+  subscribeToAnnouncements: () => {},
+  subscribeToReferrals: () => {},
+  subscribeToLeaderboard: () => {},
+  subscribeToSystemMetrics: () => {},
+  clearAnnouncements: () => {},
+  clearTrades: () => {},
+  clearReferralEvents: () => {},
+};
+
 function useSafeSocket() {
   const context = useContext(SocketContext);
-  if (!context) {
-    console.warn('useSafeSocket used outside SocketProvider - returning mock');
-    return {
-      isConnected: false,
-      isConnecting: false,
-      connectionError: null,
-      reconnect: () => {},
-      socket: null,
-      lastTrade: null,
-      lastPnlUpdate: null,
-      trades: [],
-      announcements: [],
-      liveStats: {
-        totalTrades: 0,
-        totalPnl: 0,
-        activeBots: 0,
-        winRate: 0,
-        wins: 0,
-        losses: 0,
-        totalReferrals: 0,
-        totalRewardsPaid: 0,
-        activeUsers: 0
-      },
-      botStatuses: [],
-      leaderboard: [],
-      referralEvents: [],
-      systemMetrics: { cpu: 0, memory: 0, active_users: 0, tps: 0 },
-      subscribeToTrades: () => {},
-      subscribeToPnl: () => {},
-      subscribeToAnnouncements: () => {},
-      subscribeToReferrals: () => {},
-      subscribeToLeaderboard: () => {},
-      subscribeToSystemMetrics: () => {},
-      clearAnnouncements: () => {},
-      clearTrades: () => {},
-      clearReferralEvents: () => {}
-    };
+  return context || SAFE_SOCKET_FALLBACK;
+}
+
+/* =====================================================
+   ERROR BOUNDARY
+===================================================== */
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
   }
-  return context;
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("[AppErrorBoundary] App crashed:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
+          <div className="max-w-xl w-full text-center">
+            <h1 className="text-3xl font-bold mb-4">Something went wrong</h1>
+            <p className="text-gray-400 mb-6">
+              The app hit a runtime error, but this screen confirms React is still loading.
+            </p>
+            <pre className="text-left text-xs bg-zinc-900 border border-zinc-800 rounded-lg p-4 overflow-auto whitespace-pre-wrap">
+              {String(this.state.error)}
+            </pre>
+            <div className="mt-6">
+              <a
+                href="/"
+                className="inline-block px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 transition"
+              >
+                Reload Home
+              </a>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 /* =====================================================
@@ -157,11 +208,11 @@ function RequireActivation({ children }) {
 
   if (!activationComplete) {
     const hasCard = activation?.has_card_on_file || activation?.billing_complete;
-    
+
     if (!hasCard) {
       return <Navigate to="/billing" replace />;
     }
-    
+
     return <Navigate to="/activation" replace />;
   }
 
@@ -185,7 +236,7 @@ function RedirectIfActivated({ children }) {
 }
 
 /* =====================================================
-   POST-LOGIN REDIRECT COMPONENT
+   POST-LOGIN REDIRECT
 ===================================================== */
 function PostLoginRedirect() {
   const navigate = useNavigate();
@@ -194,13 +245,13 @@ function PostLoginRedirect() {
 
   React.useEffect(() => {
     if (loading) return;
-    
+
     if (!user) {
       navigate("/login", { replace: true });
       return;
     }
 
-    if (user.is_admin === true) {
+    if (user?.is_admin === true) {
       navigate("/dashboard", { replace: true });
       setRedirecting(false);
       return;
@@ -211,7 +262,7 @@ function PostLoginRedirect() {
         const BotAPI = (await import("./utils/BotAPI")).default;
         const activationRes = await BotAPI.activationStatus();
         const status = activationRes?.status || activationRes;
-        
+
         if (!status?.has_card_on_file) {
           navigate("/billing", { replace: true });
         } else if (!status?.trading_enabled) {
@@ -245,15 +296,15 @@ function PostLoginRedirect() {
 }
 
 /* =====================================================
-   WEBSOCKET CONNECTION STATUS INDICATOR
+   LIVE STATUS
 ===================================================== */
 function WebSocketStatus() {
-  const { isConnected, connectionError, isConnecting } = useSafeSocket(); // ✅ Use safe hook
-  
+  const { isConnected, connectionError, isConnecting } = useSafeSocket();
   const location = useLocation();
-  const publicPaths = ['/', '/pricing', '/signup', '/login', '/live', '/demo'];
+
+  const publicPaths = ["/", "/pricing", "/signup", "/login", "/live", "/demo"];
   if (publicPaths.includes(location.pathname)) return null;
-  
+
   if (isConnecting) {
     return (
       <div className="fixed bottom-4 right-4 z-50 bg-yellow-500/90 text-black px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm">
@@ -262,7 +313,7 @@ function WebSocketStatus() {
       </div>
     );
   }
-  
+
   if (!isConnected && connectionError) {
     return (
       <div className="fixed bottom-4 right-4 z-50 bg-red-500/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm">
@@ -271,7 +322,7 @@ function WebSocketStatus() {
       </div>
     );
   }
-  
+
   if (isConnected) {
     return (
       <div className="fixed bottom-4 right-4 z-50 bg-green-500/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm animate-pulse">
@@ -280,7 +331,7 @@ function WebSocketStatus() {
       </div>
     );
   }
-  
+
   return null;
 }
 
@@ -288,12 +339,12 @@ function WebSocketStatus() {
    CONNECTION ERROR BANNER
 ===================================================== */
 function ConnectionErrorBanner() {
-  const { connectionError, reconnect, isConnected, isConnecting } = useSafeSocket(); // ✅ Use safe hook
+  const { connectionError, reconnect, isConnected, isConnecting } = useSafeSocket();
   const location = useLocation();
-  
-  const publicPaths = ['/', '/pricing', '/signup', '/login', '/live', '/demo'];
+
+  const publicPaths = ["/", "/pricing", "/signup", "/login", "/live", "/demo"];
   if (publicPaths.includes(location.pathname) || isConnected || isConnecting) return null;
-  
+
   if (connectionError) {
     return (
       <div className="fixed top-16 left-0 right-0 z-50 bg-red-600 text-white px-4 py-2 text-sm flex items-center justify-between">
@@ -301,7 +352,7 @@ function ConnectionErrorBanner() {
           <span className="text-lg">⚠️</span>
           <span>Connection issue: {connectionError}</span>
         </div>
-        <button 
+        <button
           onClick={reconnect}
           className="bg-white text-red-600 px-3 py-1 rounded-md text-xs font-semibold hover:bg-gray-100 transition"
         >
@@ -310,7 +361,7 @@ function ConnectionErrorBanner() {
       </div>
     );
   }
-  
+
   return null;
 }
 
@@ -344,7 +395,6 @@ function AppContent() {
   return (
     <>
       <Header />
-      
       <ConnectionErrorBanner />
       <WebSocketStatus />
 
@@ -363,15 +413,63 @@ function AppContent() {
             <Route path="/demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
             <Route path="/signup" element={<Signup />} />
-            <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
-            <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
-            <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
-            <Route path="/activation" element={<RedirectIfActivated><Activation /></RedirectIfActivated>} />
-            <Route path="/billing-dashboard" element={<RequireAuth><BillingDashboard /></RequireAuth>} />
-            <Route path="/settings/billing" element={<Navigate to="/billing-dashboard" replace />} />
-            <Route path="/dashboard" element={<RequireActivation><MemberDashboard /></RequireActivation>} />
+            <Route
+              path="/login"
+              element={user ? <Navigate to="/after-login" replace /> : <Login />}
+            />
+            <Route
+              path="/after-login"
+              element={
+                <RequireAuth>
+                  <PostLoginRedirect />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/billing"
+              element={
+                <RequireAuth>
+                  <Billing />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/activation"
+              element={
+                <RedirectIfActivated>
+                  <Activation />
+                </RedirectIfActivated>
+              }
+            />
+            <Route
+              path="/billing-dashboard"
+              element={
+                <RequireAuth>
+                  <BillingDashboard />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings/billing"
+              element={<Navigate to="/billing-dashboard" replace />}
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <RequireActivation>
+                  <MemberDashboard />
+                </RequireActivation>
+              }
+            />
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/admin" element={<RequireAuth><AdminPanel /></RequireAuth>} />
+            <Route
+              path="/admin"
+              element={
+                <RequireAuth>
+                  <AdminPanel />
+                </RequireAuth>
+              }
+            />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
@@ -384,13 +482,14 @@ function AppContent() {
 
 /* =====================================================
    APP ROOT
+   TEMP FIX: SocketProvider removed to stop app-wide crash
 ===================================================== */
 export default function App() {
   return (
-    <AuthProvider>
-      <SocketProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
         <AppContent />
-      </SocketProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }
