@@ -1,27 +1,42 @@
 [build]
-  base = "Frontend"
-  command = "npm install --legacy-peer-deps && npm run build"
-  publish = "build"
+  command = "cd Frontend && npm install && npm run build"
+  publish = "Frontend/build"
 
-[build.environment]
-  NODE_VERSION = "18.20.8"
-  NODE_OPTIONS = "--openssl-legacy-provider"
-  CI = "false"
+# Auth endpoints go to Node.js (port 3002)
+[[redirects]]
+  from = "/api/auth/*"
+  to = "http://129.213.90.84:3002/api/auth/:splat"
+  status = 200
+  force = true
 
-# Redirect /api/* calls to your Oracle server
+# User endpoints go to Node.js (port 3002)
+[[redirects]]
+  from = "/api/user/*"
+  to = "http://129.213.90.84:3002/api/user/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/me"
+  to = "http://129.213.90.84:3002/api/me"
+  status = 200
+  force = true
+
+# All other API endpoints go to Python (port 8001)
 [[redirects]]
   from = "/api/*"
-  to = "https://api.imali-defi.com/api/:splat"
+  to = "http://129.213.90.84:8001/api/:splat"
   status = 200
   force = true
 
-# Your existing redirects
+# WebSocket goes to Python WebSocket server
 [[redirects]]
-  from = "/bot-api/*"
-  to = "http://129.213.90.84:8001/:splat"
+  from = "/socket.io/*"
+  to = "http://129.213.90.84:8080/socket.io/:splat"
   status = 200
   force = true
 
+# Catch all for React routing
 [[redirects]]
   from = "/*"
   to = "/index.html"
