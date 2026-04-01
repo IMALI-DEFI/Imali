@@ -1,5 +1,5 @@
 // src/App.js
-import React, { lazy, Suspense } from "react";
+import React, { lazy, Suspense, useContext } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 
 /* Layout */
@@ -38,7 +38,53 @@ import ReferralSystem from "./components/ReferralSystem";
 
 /* Context Providers */
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { SocketProvider } from "./context/SocketContext"; // ✅ Import SocketProvider
+import { SocketProvider, SocketContext } from "./context/SocketContext"; // ✅ Import SocketContext
+
+/* =====================================================
+   SAFE USE SOCKET HOOK
+===================================================== */
+function useSafeSocket() {
+  const context = useContext(SocketContext);
+  if (!context) {
+    console.warn('useSafeSocket used outside SocketProvider - returning mock');
+    return {
+      isConnected: false,
+      isConnecting: false,
+      connectionError: null,
+      reconnect: () => {},
+      socket: null,
+      lastTrade: null,
+      lastPnlUpdate: null,
+      trades: [],
+      announcements: [],
+      liveStats: {
+        totalTrades: 0,
+        totalPnl: 0,
+        activeBots: 0,
+        winRate: 0,
+        wins: 0,
+        losses: 0,
+        totalReferrals: 0,
+        totalRewardsPaid: 0,
+        activeUsers: 0
+      },
+      botStatuses: [],
+      leaderboard: [],
+      referralEvents: [],
+      systemMetrics: { cpu: 0, memory: 0, active_users: 0, tps: 0 },
+      subscribeToTrades: () => {},
+      subscribeToPnl: () => {},
+      subscribeToAnnouncements: () => {},
+      subscribeToReferrals: () => {},
+      subscribeToLeaderboard: () => {},
+      subscribeToSystemMetrics: () => {},
+      clearAnnouncements: () => {},
+      clearTrades: () => {},
+      clearReferralEvents: () => {}
+    };
+  }
+  return context;
+}
 
 /* =====================================================
    LOADING SPINNER
@@ -66,7 +112,7 @@ function PageLoadingFallback() {
 }
 
 /* =====================================================
-   ROUTE GUARDS - FIXED WITH ADMIN BYPASS
+   ROUTE GUARDS
 ===================================================== */
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -103,7 +149,6 @@ function RequireActivation({ children }) {
     );
   }
 
-  // ADMIN BYPASS - Admins skip activation check
   const isAdmin = user?.is_admin === true;
   if (isAdmin) {
     console.log("[RequireActivation] Admin bypass - allowing access");
@@ -111,15 +156,6 @@ function RequireActivation({ children }) {
   }
 
   if (!activationComplete) {
-    console.log("[RequireActivation] Not complete, redirecting:", {
-      path: location.pathname,
-      hasCard: !!activation?.has_card_on_file,
-      okx: !!activation?.okx_connected,
-      alpaca: !!activation?.alpaca_connected,
-      wallet: !!activation?.wallet_connected,
-      trading: !!activation?.trading_enabled,
-    });
-
     const hasCard = activation?.has_card_on_file || activation?.billing_complete;
     
     if (!hasCard) {
@@ -142,7 +178,6 @@ function RedirectIfActivated({ children }) {
   }
 
   if (activationComplete) {
-    console.log("[RedirectIfActivated] Already activated, redirecting to /dashboard");
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -165,9 +200,7 @@ function PostLoginRedirect() {
       return;
     }
 
-    // Admin bypass - go directly to dashboard
     if (user.is_admin === true) {
-      console.log("[PostLoginRedirect] Admin user, going to dashboard");
       navigate("/dashboard", { replace: true });
       setRedirecting(false);
       return;
@@ -215,9 +248,8 @@ function PostLoginRedirect() {
    WEBSOCKET CONNECTION STATUS INDICATOR
 ===================================================== */
 function WebSocketStatus() {
-  const { isConnected, connectionError, isConnecting } = useSocket();
+  const { isConnected, connectionError, isConnecting } = useSafeSocket(); // ✅ Use safe hook
   
-  // Don't show on public pages
   const location = useLocation();
   const publicPaths = ['/', '/pricing', '/signup', '/login', '/live', '/demo'];
   if (publicPaths.includes(location.pathname)) return null;
@@ -256,10 +288,9 @@ function WebSocketStatus() {
    CONNECTION ERROR BANNER
 ===================================================== */
 function ConnectionErrorBanner() {
-  const { connectionError, reconnect, isConnected, isConnecting } = useSocket();
+  const { connectionError, reconnect, isConnected, isConnecting } = useSafeSocket(); // ✅ Use safe hook
   const location = useLocation();
   
-  // Don't show on public pages or if connected
   const publicPaths = ['/', '/pricing', '/signup', '/login', '/live', '/demo'];
   if (publicPaths.includes(location.pathname) || isConnected || isConnecting) return null;
   
@@ -314,14 +345,12 @@ function AppContent() {
     <>
       <Header />
       
-      {/* Connection status indicators */}
       <ConnectionErrorBanner />
       <WebSocketStatus />
 
       <main className="min-h-screen pt-16 bg-black text-white">
         <Suspense fallback={<PageLoadingFallback />}>
           <Routes>
-            {/* ===== Public Marketing Pages ===== */}
             <Route path="/" element={<Home />} />
             <Route path="/about-us" element={<AboutUs />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
@@ -331,82 +360,18 @@ function AppContent() {
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
-
-            {/* ===== Public Demo & Live Dashboard ===== */}
             <Route path="/demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
-
-            {/* ===== Auth ===== */}
             <Route path="/signup" element={<Signup />} />
-            <Route
-              path="/login"
-              element={user ? <Navigate to="/after-login" replace /> : <Login />}
-            />
-
-            {/* ===== Post-Login Redirect ===== */}
-            <Route
-              path="/after-login"
-              element={
-                <RequireAuth>
-                  <PostLoginRedirect />
-                </RequireAuth>
-              }
-            />
-
-            {/* ===== Onboarding ===== */}
-            <Route
-              path="/billing"
-              element={
-                <RequireAuth>
-                  <Billing />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/activation"
-              element={
-                <RedirectIfActivated>
-                  <Activation />
-                </RedirectIfActivated>
-              }
-            />
-
-            {/* ===== Billing Management ===== */}
-            <Route
-              path="/billing-dashboard"
-              element={
-                <RequireAuth>
-                  <BillingDashboard />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/settings/billing"
-              element={<Navigate to="/billing-dashboard" replace />}
-            />
-
-            {/* ===== Protected Member Dashboard ===== */}
-            <Route
-              path="/dashboard"
-              element={
-                <RequireActivation>
-                  <MemberDashboard />
-                </RequireActivation>
-              }
-            />
+            <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
+            <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
+            <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
+            <Route path="/activation" element={<RedirectIfActivated><Activation /></RedirectIfActivated>} />
+            <Route path="/billing-dashboard" element={<RequireAuth><BillingDashboard /></RequireAuth>} />
+            <Route path="/settings/billing" element={<Navigate to="/billing-dashboard" replace />} />
+            <Route path="/dashboard" element={<RequireActivation><MemberDashboard /></RequireActivation>} />
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
-
-            {/* ===== Admin - No activation required ===== */}
-            <Route
-              path="/admin"
-              element={
-                <RequireAuth>
-                  <AdminPanel />
-                </RequireAuth>
-              }
-            />
-
-            {/* ===== 404 ===== */}
+            <Route path="/admin" element={<RequireAuth><AdminPanel /></RequireAuth>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
@@ -418,64 +383,14 @@ function AppContent() {
 }
 
 /* =====================================================
-   APP ROOT - WITH SOCKET PROVIDER
+   APP ROOT
 ===================================================== */
 export default function App() {
   return (
     <AuthProvider>
-      <SocketProvider> {/* ✅ Wrap with SocketProvider */}
+      <SocketProvider>
         <AppContent />
       </SocketProvider>
     </AuthProvider>
   );
-}
-
-/* =====================================================
-   SAFE USE SOCKET HOOK (for components that need it)
-===================================================== */
-// This is a helper hook that won't throw errors if used outside SocketProvider
-import { useContext } from 'react';
-import { SocketContext } from './context/SocketContext';
-
-export function useSafeSocket() {
-  const context = useContext(SocketContext);
-  if (!context) {
-    console.warn('useSafeSocket used outside SocketProvider - returning mock');
-    return {
-      isConnected: false,
-      isConnecting: false,
-      connectionError: null,
-      reconnect: () => {},
-      socket: null,
-      lastTrade: null,
-      lastPnlUpdate: null,
-      trades: [],
-      announcements: [],
-      liveStats: {
-        totalTrades: 0,
-        totalPnl: 0,
-        activeBots: 0,
-        winRate: 0,
-        wins: 0,
-        losses: 0,
-        totalReferrals: 0,
-        totalRewardsPaid: 0,
-        activeUsers: 0
-      },
-      botStatuses: [],
-      leaderboard: [],
-      referralEvents: [],
-      systemMetrics: { cpu: 0, memory: 0, active_users: 0, tps: 0 },
-      subscribeToTrades: () => {},
-      subscribeToPnl: () => {},
-      subscribeToAnnouncements: () => {},
-      subscribeToReferrals: () => {},
-      subscribeToLeaderboard: () => {},
-      subscribeToSystemMetrics: () => {},
-      clearAnnouncements: () => {},
-      clearTrades: () => {},
-      clearReferralEvents: () => {}
-    };
-  }
-  return context;
 }
