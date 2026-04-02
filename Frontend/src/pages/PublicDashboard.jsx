@@ -13,6 +13,7 @@ import {
   Filler,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { useSocket } from "../context/SocketContext";
 
 ChartJS.register(
   LineElement,
@@ -25,7 +26,6 @@ ChartJS.register(
 );
 
 const API_BASE = "https://api.imali-defi.com";
-const WS_URL = "wss://api.imali-defi.com/socket.io";
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;
 
@@ -118,7 +118,7 @@ function buildActivitySeries(trades = []) {
 }
 
 // Bot Activity Chart
-function BotActivityChart({ trades = [], stats }) {
+function BotActivityChart({ trades = [] }) {
   const series = buildActivitySeries(trades);
   
   const chartData = useMemo(
@@ -484,103 +484,9 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   );
 }
 
-// WebSocket Manager
-class WebSocketManager {
-  constructor() {
-    this.socket = null;
-    this.listeners = new Map();
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 10;
-    this.reconnectDelay = 3000;
-    this.isConnecting = false;
-  }
-
-  connect() {
-    if (this.isConnecting) return;
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) return;
-
-    this.isConnecting = true;
-    
-    try {
-      // Connect to Socket.IO server
-      const socketUrl = `${WS_URL}?transport=websocket`;
-      this.socket = new WebSocket(socketUrl);
-      
-      this.socket.onopen = () => {
-        console.log("[WebSocket] Connected to public dashboard");
-        this.reconnectAttempts = 0;
-        this.isConnecting = false;
-        this.emit("connected", { status: "connected" });
-      };
-      
-      this.socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.emit(data.type, data.payload);
-        } catch (error) {
-          console.error("[WebSocket] Parse error:", error);
-        }
-      };
-      
-      this.socket.onclose = () => {
-        console.log("[WebSocket] Disconnected");
-        this.isConnecting = false;
-        this.reconnect();
-      };
-      
-      this.socket.onerror = (error) => {
-        console.error("[WebSocket] Error:", error);
-        this.isConnecting = false;
-      };
-    } catch (error) {
-      console.error("[WebSocket] Connection error:", error);
-      this.isConnecting = false;
-    }
-  }
-
-  reconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log("[WebSocket] Max reconnect attempts reached");
-      return;
-    }
-    
-    setTimeout(() => {
-      this.reconnectAttempts++;
-      console.log(`[WebSocket] Reconnecting attempt ${this.reconnectAttempts}...`);
-      this.connect();
-    }, this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts));
-  }
-
-  disconnect() {
-    if (this.socket) {
-      this.socket.close();
-      this.socket = null;
-    }
-  }
-
-  on(event, callback) {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event).add(callback);
-  }
-
-  off(event, callback) {
-    if (this.listeners.has(event)) {
-      this.listeners.get(event).delete(callback);
-    }
-  }
-
-  emit(event, data) {
-    if (this.listeners.has(event)) {
-      this.listeners.get(event).forEach(callback => callback(data));
-    }
-  }
-}
-
-const wsManager = new WebSocketManager();
-
 export default function PublicDashboard() {
+  const { isConnected, socket, subscribeToTrades, subscribeToPnl, subscribeToSystemMetrics } = useSocket();
+  
   const [data, setData] = useState({
     trades: [],
     summary: {},
@@ -588,8 +494,7 @@ export default function PublicDashboard() {
     notableTrades: {},
     loading: true,
     error: null,
-    lastUpdate: null,
-    wsConnected: false
+    lastUpdate: null
   });
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [activeTab, setActiveTab] = useState("all");
@@ -597,7 +502,7 @@ export default function PublicDashboard() {
   
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
-  const MIN_FETCH_INTERVAL = 60000;
+  const MIN_FETCH_INTERVAL = 30000; // 30 seconds minimum between fetches
 
   // Initial data fetch
   const fetchData = useCallback(async () => {
@@ -688,86 +593,91 @@ export default function PublicDashboard() {
     }
   }, [data.lastUpdate]);
 
-  // WebSocket event handlers
-  const handleNewTrade = useCallback((trade) => {
-    console.log("📊 New trade via WebSocket:", trade);
-    
-    setData(prev => {
-      // Add new trade to the beginning of the list
-      const newTrades = [{
-        ...trade,
-        qty: trade.qty !== undefined ? safeNumber(trade.qty) : 0,
-        exit_price: trade.exit_price !== undefined ? trade.exit_price : null,
-        price: safeNumber(trade.price, 0),
-        pnl_usd: safeNumber(trade.pnl_usd, 0),
-        pnl_percent: safeNumber(trade.pnl_percent, 0),
-      }, ...prev.trades].slice(0, 500); // Keep last 500 trades
-      
-      // Update summary stats if needed
-      const newSummary = { ...prev.summary };
-      if (trade.pnl_usd) {
-        newSummary.total_trades = (prev.summary.total_trades || 0) + 1;
-        newSummary.total_pnl = (prev.summary.total_pnl || 0) + safeNumber(trade.pnl_usd);
-        if (trade.pnl_usd > 0) {
-          newSummary.wins = (prev.summary.wins || 0) + 1;
-        } else if (trade.pnl_usd < 0) {
-          newSummary.losses = (prev.summary.losses || 0) + 1;
-        }
-        newSummary.win_rate = newSummary.wins + newSummary.losses > 0 
-          ? (newSummary.wins / (newSummary.wins + newSummary.losses)) * 100 
-          : 0;
-      }
-      
-      return {
-        ...prev,
-        trades: newTrades,
-        summary: newSummary,
-        lastUpdate: new Date()
-      };
-    });
-  }, []);
-
-  const handlePnLUpdate = useCallback((pnlData) => {
-    console.log("💰 P&L Update via WebSocket:", pnlData);
-    // Refresh data to get latest stats
-    fetchData();
-  }, [fetchData]);
-
-  // WebSocket connection
+  // Subscribe to WebSocket events
   useEffect(() => {
-    // Connect to WebSocket
-    wsManager.connect();
+    if (!isConnected) return;
     
-    // Set up event listeners
-    wsManager.on("trade", handleNewTrade);
-    wsManager.on("pnl_update", handlePnLUpdate);
-    wsManager.on("connected", () => {
-      console.log("✅ WebSocket connected for public dashboard");
-      setData(prev => ({ ...prev, wsConnected: true }));
-    });
-    wsManager.on("disconnected", () => {
-      console.log("❌ WebSocket disconnected");
-      setData(prev => ({ ...prev, wsConnected: false }));
-    });
+    console.log("📡 Subscribing to WebSocket events for public dashboard");
+    subscribeToTrades?.();
+    subscribeToPnl?.();
+    subscribeToSystemMetrics?.();
+  }, [isConnected, subscribeToTrades, subscribeToPnl, subscribeToSystemMetrics]);
+
+  // Handle incoming trade events
+  useEffect(() => {
+    if (!socket || !isConnected) return;
     
-    // Initial data fetch
+    const handleTrade = (incomingTrade) => {
+      console.log("📊 New trade via WebSocket:", incomingTrade);
+      
+      const trade = {
+        ...incomingTrade,
+        qty: incomingTrade?.qty !== undefined ? safeNumber(incomingTrade.qty) : 0,
+        exit_price: incomingTrade?.exit_price !== undefined ? incomingTrade.exit_price : null,
+        price: safeNumber(incomingTrade?.price, 0),
+        pnl_usd: safeNumber(incomingTrade?.pnl_usd ?? incomingTrade?.pnl, 0),
+        pnl_percent: safeNumber(incomingTrade?.pnl_percent, 0),
+      };
+      
+      setData(prev => {
+        // Check if trade already exists
+        const tradeId = trade.id || `${trade.symbol}-${trade.created_at}-${trade.bot}`;
+        const exists = prev.trades.some(t => {
+          const existingId = t.id || `${t.symbol}-${t.created_at}-${t.bot}`;
+          return existingId === tradeId;
+        });
+        
+        if (exists) return prev;
+        
+        // Add new trade to the beginning of the list
+        const nextTrades = [trade, ...prev.trades].slice(0, 500);
+        
+        // Update summary stats
+        const nextSummary = { ...prev.summary };
+        nextSummary.total_trades = Math.max(
+          safeNumber(prev.summary?.total_trades, 0),
+          nextTrades.length
+        );
+        
+        return {
+          ...prev,
+          trades: nextTrades,
+          summary: nextSummary,
+          lastUpdate: new Date()
+        };
+      });
+    };
+    
+    const handlePnLUpdate = (pnlData) => {
+      console.log("💰 P&L Update via WebSocket:", pnlData);
+      // Refresh data to get latest stats
+      fetchData();
+    };
+    
+    // Listen for events
+    socket.on("trade", handleTrade);
+    socket.on("pnl_update", handlePnLUpdate);
+    
+    return () => {
+      socket.off("trade", handleTrade);
+      socket.off("pnl_update", handlePnLUpdate);
+    };
+  }, [socket, isConnected, fetchData]);
+
+  // Initial data fetch and polling fallback
+  useEffect(() => {
     fetchData();
     
-    // Fallback polling interval (in case WebSocket fails)
+    // Polling fallback - only when WebSocket is not connected
     const interval = setInterval(() => {
-      if (!data.wsConnected) {
-        console.log("🔄 Fallback polling (WebSocket not connected)");
+      if (!isConnected) {
+        console.log("🔄 Polling fallback (WebSocket not connected)");
         fetchData();
       }
     }, REFRESH_INTERVAL);
     
-    return () => {
-      wsManager.off("trade", handleNewTrade);
-      wsManager.off("pnl_update", handlePnLUpdate);
-      clearInterval(interval);
-      wsManager.disconnect();
-    };
-  }, [fetchData, handleNewTrade, handlePnLUpdate, data.wsConnected]);
+    return () => clearInterval(interval);
+  }, [fetchData, isConnected]);
 
   const allTrades = data.trades || [];
   const botStats = data.botStats || {};
@@ -828,14 +738,16 @@ export default function PublicDashboard() {
               <Link to="/" className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-transparent">
                 IMALI
               </Link>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full ${data.wsConnected ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-yellow-100 text-yellow-700'}`}>
-                {data.wsConnected ? 'LIVE' : 'UPDATING'}
+              <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                isConnected ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-yellow-100 text-yellow-700'
+              }`}>
+                {isConnected ? 'LIVE' : 'UPDATING'}
               </span>
             </div>
             <div className="flex items-center gap-2 text-[10px] text-gray-500">
               <span>{formatNumber(totalTrades)} trades tracked</span>
               <span>•</span>
-              <span>Real-time WebSocket</span>
+              <span>{isConnected ? 'Real-time WebSocket' : 'Polling every 60s'}</span>
               <span>•</span>
               <span>{activeBots} active bots</span>
               <Link to="/signup" className="px-2 py-1 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-[10px] font-medium">
@@ -859,7 +771,7 @@ export default function PublicDashboard() {
           </h1>
           <p className="text-gray-500 text-xs">
             {formatNumber(totalTrades)} total trades • {activeBots} active bots • 
-            {data.wsConnected ? ' Real-time updates via WebSocket' : ' Updating every 60 seconds'}
+            {isConnected ? ' Real-time updates via WebSocket' : ' Updating every 60 seconds'}
           </p>
         </div>
 
@@ -867,7 +779,7 @@ export default function PublicDashboard() {
         <div className="mb-5 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="flex items-center gap-2 font-bold text-gray-900">
-              <span className={`h-2.5 w-2.5 rounded-full ${data.wsConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+              <span className={`h-2.5 w-2.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
               Bot Activity
             </h3>
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
@@ -967,10 +879,10 @@ export default function PublicDashboard() {
         </div>
 
         <div className="text-center text-[9px] text-gray-400 mt-4 pb-4">
-          {data.wsConnected ? (
+          {isConnected ? (
             <>🟢 Live WebSocket connected • Real-time updates • Last update: {data.lastUpdate?.toLocaleTimeString() || "—"}</>
           ) : (
-            <>🔴 WebSocket disconnected • Fallback to polling • Last update: {data.lastUpdate?.toLocaleTimeString() || "—"}</>
+            <>🟡 WebSocket disconnected • Polling every 60s • Last update: {data.lastUpdate?.toLocaleTimeString() || "—"}</>
           )}
         </div>
       </main>
