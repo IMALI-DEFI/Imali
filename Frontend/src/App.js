@@ -1,4 +1,3 @@
-// src/App.js
 import React, { lazy, Suspense, useContext } from "react";
 import {
   Routes,
@@ -45,7 +44,7 @@ import ReferralSystem from "./components/ReferralSystem";
 
 /* Context Providers */
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { SocketContext } from "./context/SocketContext";
+import { SocketProvider, SocketContext } from "./context/SocketContext";
 
 /* =====================================================
    SAFE SOCKET FALLBACK
@@ -201,10 +200,7 @@ function RequireActivation({ children }) {
   }
 
   const isAdmin = user?.is_admin === true;
-  if (isAdmin) {
-    console.log("[RequireActivation] Admin bypass - allowing access");
-    return children;
-  }
+  if (isAdmin) return children;
 
   if (!activationComplete) {
     const hasCard = activation?.has_card_on_file || activation?.billing_complete;
@@ -302,7 +298,15 @@ function WebSocketStatus() {
   const { isConnected, connectionError, isConnecting } = useSafeSocket();
   const location = useLocation();
 
-  const publicPaths = ["/", "/pricing", "/signup", "/login", "/live", "/demo"];
+  const publicPaths = [
+    "/",
+    "/pricing",
+    "/signup",
+    "/login",
+    "/live",
+    "/demo",
+    "/trade-demo",
+  ];
   if (publicPaths.includes(location.pathname)) return null;
 
   if (isConnecting) {
@@ -342,7 +346,15 @@ function ConnectionErrorBanner() {
   const { connectionError, reconnect, isConnected, isConnecting } = useSafeSocket();
   const location = useLocation();
 
-  const publicPaths = ["/", "/pricing", "/signup", "/login", "/live", "/demo"];
+  const publicPaths = [
+    "/",
+    "/pricing",
+    "/signup",
+    "/login",
+    "/live",
+    "/demo",
+    "/trade-demo",
+  ];
   if (publicPaths.includes(location.pathname) || isConnected || isConnecting) return null;
 
   if (connectionError) {
@@ -410,7 +422,8 @@ function AppContent() {
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
-            <Route path="/demo" element={<TradeDemo />} />
+            <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
+            <Route path="/trade-demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
             <Route path="/signup" element={<Signup />} />
             <Route
@@ -482,13 +495,14 @@ function AppContent() {
 
 /* =====================================================
    APP ROOT
-   TEMP FIX: SocketProvider removed to stop app-wide crash
 ===================================================== */
 export default function App() {
   return (
     <AppErrorBoundary>
       <AuthProvider>
-        <AppContent />
+        <SocketProvider>
+          <AppContent />
+        </SocketProvider>
       </AuthProvider>
     </AppErrorBoundary>
   );
