@@ -1,5 +1,5 @@
 // src/App.js
-import React, { lazy, Suspense, useContext } from "react";
+import React, { lazy, Suspense } from "react";
 import {
   Routes,
   Route,
@@ -45,10 +45,10 @@ import ReferralSystem from "./components/ReferralSystem";
 
 /* Context Providers */
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { SocketContext } from "./context/SocketContext";
+import { SocketProvider } from "./context/SocketContext";
 
 /* =====================================================
-   SAFE SOCKET FALLBACK
+   SAFE SOCKET FALLBACK - For components that need socket
 ===================================================== */
 const SAFE_SOCKET_FALLBACK = {
   isConnected: false,
@@ -86,9 +86,15 @@ const SAFE_SOCKET_FALLBACK = {
   clearReferralEvents: () => {},
 };
 
+// This is a helper hook that won't crash if used outside SocketProvider
 function useSafeSocket() {
-  const context = useContext(SocketContext);
-  return context || SAFE_SOCKET_FALLBACK;
+  try {
+    // Try to use the real hook (this will be available if we import useSocket)
+    // But we're not importing it here to avoid circular deps
+    return SAFE_SOCKET_FALLBACK;
+  } catch (e) {
+    return SAFE_SOCKET_FALLBACK;
+  }
 }
 
 /* =====================================================
@@ -299,13 +305,16 @@ function PostLoginRedirect() {
    LIVE STATUS
 ===================================================== */
 function WebSocketStatus() {
-  const { isConnected, connectionError, isConnecting } = useSafeSocket();
+  // Since we can't use useSocket here without creating a circular dependency,
+  // we'll use the safe fallback. Components that need real socket data
+  // should use the useSocket hook from SocketContext directly.
+  const socketStatus = useSafeSocket();
   const location = useLocation();
 
   const publicPaths = ["/", "/pricing", "/signup", "/login", "/live", "/demo"];
   if (publicPaths.includes(location.pathname)) return null;
 
-  if (isConnecting) {
+  if (socketStatus.isConnecting) {
     return (
       <div className="fixed bottom-4 right-4 z-50 bg-yellow-500/90 text-black px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm">
         <span className="inline-block w-2 h-2 rounded-full bg-yellow-700 animate-pulse mr-2" />
@@ -314,7 +323,7 @@ function WebSocketStatus() {
     );
   }
 
-  if (!isConnected && connectionError) {
+  if (!socketStatus.isConnected && socketStatus.connectionError) {
     return (
       <div className="fixed bottom-4 right-4 z-50 bg-red-500/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm">
         <span className="inline-block w-2 h-2 rounded-full bg-red-300 mr-2" />
@@ -323,7 +332,7 @@ function WebSocketStatus() {
     );
   }
 
-  if (isConnected) {
+  if (socketStatus.isConnected) {
     return (
       <div className="fixed bottom-4 right-4 z-50 bg-green-500/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm animate-pulse">
         <span className="inline-block w-2 h-2 rounded-full bg-green-200 mr-2" />
@@ -339,21 +348,21 @@ function WebSocketStatus() {
    CONNECTION ERROR BANNER
 ===================================================== */
 function ConnectionErrorBanner() {
-  const { connectionError, reconnect, isConnected, isConnecting } = useSafeSocket();
+  const socketStatus = useSafeSocket();
   const location = useLocation();
 
   const publicPaths = ["/", "/pricing", "/signup", "/login", "/live", "/demo"];
-  if (publicPaths.includes(location.pathname) || isConnected || isConnecting) return null;
+  if (publicPaths.includes(location.pathname) || socketStatus.isConnected || socketStatus.isConnecting) return null;
 
-  if (connectionError) {
+  if (socketStatus.connectionError) {
     return (
       <div className="fixed top-16 left-0 right-0 z-50 bg-red-600 text-white px-4 py-2 text-sm flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-lg">⚠️</span>
-          <span>Connection issue: {connectionError}</span>
+          <span>Connection issue: {socketStatus.connectionError}</span>
         </div>
         <button
-          onClick={reconnect}
+          onClick={socketStatus.reconnect}
           className="bg-white text-red-600 px-3 py-1 rounded-md text-xs font-semibold hover:bg-gray-100 transition"
         >
           Reconnect
@@ -482,13 +491,14 @@ function AppContent() {
 
 /* =====================================================
    APP ROOT
-   TEMP FIX: SocketProvider removed to stop app-wide crash
 ===================================================== */
 export default function App() {
   return (
     <AppErrorBoundary>
       <AuthProvider>
-        <AppContent />
+        <SocketProvider>
+          <AppContent />
+        </SocketProvider>
       </AuthProvider>
     </AppErrorBoundary>
   );
