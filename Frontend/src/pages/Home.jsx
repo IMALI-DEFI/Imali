@@ -24,8 +24,7 @@ ChartJS.register(
   Filler
 );
 
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
 const safeNumber = (value, fallback = 0) => {
@@ -42,8 +41,7 @@ const formatCurrency = (value) => {
 };
 
 const formatNumber = (value) => {
-  const n = safeNumber(value);
-  return n.toLocaleString();
+  return safeNumber(value).toLocaleString();
 };
 
 const timeAgo = (timestamp) => {
@@ -81,7 +79,7 @@ const getBotIcon = (botName) => {
 const normalizeBotType = (trade) => {
   const raw = (trade?.bot || trade?.source || trade?.bot_name || "").toLowerCase();
   if (raw.includes("futures") || raw.includes("perp")) return "futures";
-  if (raw.includes("stock") || raw.includes("alpaca")) return "stock";
+  if (raw.includes("stock") || raw.includes("alpaca")) return "stocks";
   if (raw.includes("sniper") || raw.includes("dex") || raw.includes("uniswap")) return "sniper";
   if (raw.includes("okx") || raw.includes("spot") || raw.includes("crypto")) return "okx";
   return raw || "unknown";
@@ -89,16 +87,13 @@ const normalizeBotType = (trade) => {
 
 function buildActivitySeries(trades = []) {
   if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
-  return trades
-    .slice(0, 7)
-    .reverse()
-    .map((trade, index) => {
-      const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
-      if (usd !== null && Number.isFinite(Number(usd))) {
-        return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
-      }
-      return index + 4;
-    });
+  return trades.slice(0, 7).reverse().map((trade, index) => {
+    const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
+    if (usd !== null && Number.isFinite(Number(usd))) {
+      return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
+    }
+    return index + 4;
+  });
 }
 
 const Card = ({ children, className = "" }) => (
@@ -140,27 +135,19 @@ const StatMiniCard = ({ title, value, valueClassName = "text-gray-900", subtext 
   </div>
 );
 
-const PromoMeter = ({
-  claimed,
-  limit,
-  spotsLeft,
-  loading,
-  feePercent,
-  durationDays,
-  userCount,
-}) => {
-  const pct = limit > 0 ? (claimed / limit) * 100 : 0;
+function PromoMeter({ promo }) {
+  const pct = promo.limit > 0 ? (promo.claimed / promo.limit) * 100 : 0;
   const urgency =
-    spotsLeft <= 10 ? "text-red-600" : spotsLeft <= 25 ? "text-amber-600" : "text-emerald-600";
+    promo.spotsLeft <= 10 ? "text-red-600" : promo.spotsLeft <= 25 ? "text-amber-600" : "text-emerald-600";
 
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-xs sm:text-sm">
         <span className="text-gray-500">
-          {loading ? "Loading..." : `${claimed} of ${limit} spots claimed`}
+          {promo.loading ? "Loading..." : `${promo.claimed} of ${promo.limit} spots claimed`}
         </span>
         <span className={`font-bold ${urgency}`}>
-          {loading ? "…" : `${spotsLeft} left!`}
+          {promo.loading ? "…" : `${promo.spotsLeft} left!`}
         </span>
       </div>
       <div className="h-3 overflow-hidden rounded-full bg-gray-100">
@@ -169,19 +156,19 @@ const PromoMeter = ({
           style={{ width: `${pct}%` }}
         />
       </div>
-      {!loading && (
+      {!promo.loading && (
         <div className="text-center space-y-1">
           <p className="text-[10px] text-gray-500">
-            Only {feePercent}% fee on profits over {durationDays} days
+            Only {promo.feePercent}% fee on profits over {promo.thresholdPercent}% for {promo.durationDays} days
           </p>
-          {userCount > 0 && (
-            <p className="text-[9px] text-gray-400">📊 {userCount} total users signed up</p>
+          {promo.userCount > 0 && (
+            <p className="text-[9px] text-gray-400">📊 {promo.userCount} total users signed up</p>
           )}
         </div>
       )}
     </div>
   );
-};
+}
 
 const LiveTicker = () => {
   const messages = [
@@ -289,10 +276,7 @@ function LiveActivityWidget({ activity }) {
           />
           Live Dashboard
         </h3>
-        <Link
-          to="/live"
-          className="text-xs font-medium text-emerald-600 hover:text-emerald-700"
-        >
+        <Link to="/live" className="text-xs font-medium text-emerald-600 hover:text-emerald-700">
           Full Dashboard →
         </Link>
       </div>
@@ -321,108 +305,36 @@ function LiveActivityWidget({ activity }) {
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3">
-        <StatMiniCard
-          title="Total Trades"
-          value={formatNumber(stats.totalTrades)}
-          valueClassName="text-purple-600"
-        />
-        <StatMiniCard
-          title="Win Rate"
-          value={`${safeNumber(stats.winRate).toFixed(1)}%`}
-          valueClassName="text-emerald-600"
-          subtext={`${stats.wins}W / ${stats.losses}L`}
-        />
+        <StatMiniCard title="Total Trades" value={formatNumber(stats.totalTrades)} valueClassName="text-purple-600" />
+        <StatMiniCard title="Win Rate" value={`${safeNumber(stats.winRate).toFixed(1)}%`} valueClassName="text-emerald-600" subtext={`${stats.wins}W / ${stats.losses}L`} />
       </div>
 
-      <div className="mb-4">
-        <div className="mb-2 text-[10px] uppercase tracking-wide text-gray-500">Bot Status</div>
-        <div className="grid grid-cols-2 gap-2">
-          {stats.botStatuses.length > 0 ? (
-            stats.botStatuses.map((bot) => (
-              <div
-                key={bot.label}
-                className={`flex items-center justify-between gap-2 rounded-lg border p-3 text-xs ${
-                  bot.live ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-gray-50"
+      <div className="grid grid-cols-2 gap-2">
+        {stats.botStatuses.length > 0 ? (
+          stats.botStatuses.map((bot) => (
+            <div
+              key={bot.label}
+              className={`flex items-center justify-between gap-2 rounded-lg border p-3 text-xs ${
+                bot.live ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-gray-50"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">{getBotIcon(bot.label)}</span>
+                <span className={bot.live ? "font-semibold text-gray-800" : "text-gray-500"}>
+                  {bot.label}
+                </span>
+              </div>
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  bot.live ? "bg-emerald-500 animate-pulse" : "bg-gray-400"
                 }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{getBotIcon(bot.label)}</span>
-                  <span className={bot.live ? "font-semibold text-gray-800" : "text-gray-500"}>
-                    {bot.label}
-                  </span>
-                </div>
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    bot.live ? "bg-emerald-500 animate-pulse" : "bg-gray-400"
-                  }`}
-                />
-              </div>
-            ))
-          ) : (
-            <div className="col-span-2 text-center text-gray-400 py-2">No bot data available</div>
-          )}
-        </div>
-      </div>
-
-      {activity.error && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 py-3 text-center text-xs text-amber-700">
-          ⚠️ {activity.error}
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <h4 className="mb-1 text-xs font-semibold text-gray-500">Recent Trades</h4>
-        {activity.trades.length > 0 ? (
-          activity.trades.slice(0, 4).map((trade, i) => {
-            const side = String(trade?.side || "buy").toLowerCase();
-            const isBuy = side === "buy" || side === "long";
-            const pnlValue = trade?.pnl_usd ?? trade?.pnl ?? null;
-            const botType = normalizeBotType(trade);
-            const botDisplay = getBotDisplayName(botType);
-
-            return (
-              <div
-                key={trade?.id || `${trade?.symbol || "trade"}-${i}`}
-                className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs"
-              >
-                <div className="min-w-0 flex items-center gap-2">
-                  <span className="text-sm">{getBotIcon(botDisplay)}</span>
-                  <div className="min-w-0">
-                    <div className="truncate font-medium text-gray-800">
-                      {trade?.symbol || "Unknown"}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] ${
-                          isBuy ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {side.toUpperCase()}
-                      </span>
-                      <span className="text-[10px] text-gray-500">
-                        {timeAgo(trade?.created_at || trade?.timestamp)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className={`shrink-0 font-semibold ${
-                    pnlValue === null || !Number.isFinite(Number(pnlValue))
-                      ? "text-gray-500"
-                      : Number(pnlValue) >= 0
-                      ? "text-emerald-600"
-                      : "text-red-600"
-                  }`}
-                >
-                  {pnlValue === null || !Number.isFinite(Number(pnlValue))
-                    ? formatCurrency(trade?.price || 0)
-                    : formatCurrency(Number(pnlValue))}
-                </div>
-              </div>
-            );
-          })
+              />
+            </div>
+          ))
         ) : (
-          <div className="py-2 text-center text-xs text-gray-400">No recent trades</div>
+          <div className="col-span-2 py-2 text-center text-xs text-gray-400">
+            No bot data available
+          </div>
         )}
       </div>
     </Card>
@@ -430,7 +342,7 @@ function LiveActivityWidget({ activity }) {
 }
 
 export default function Home() {
-  const { user } = useAuth();
+  useAuth(); // keep auth subscription active for future personalization
   const {
     isConnected,
     liveStats,
@@ -459,7 +371,6 @@ export default function Home() {
       online: false,
       botStatuses: [],
     },
-    pnlHistory: [],
     loading: true,
     error: null,
   });
@@ -468,13 +379,11 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [selectedTier, setSelectedTier] = useState("starter");
-
   const videoId = "x6Dvj1ALs-w";
 
   const fetchActivity = useCallback(async () => {
     try {
       const statsRes = await axios.get(PUBLIC_STATS_URL, { timeout: 10000 });
-
       if (statsRes.data?.success) {
         const data = statsRes.data.data || {};
         const trades = Array.isArray(data?.recent_trades) ? data.recent_trades : [];
@@ -482,7 +391,7 @@ export default function Home() {
         const botStatuses = Array.isArray(data?.bots)
           ? data.bots.map((bot) => ({
               label: getBotDisplayName(bot?.name),
-              live: (bot?.total_trades || 0) > 0 || bot?.status === "live" || bot?.online === true,
+              live: safeNumber(bot?.total_trades) > 0 || safeNumber(bot?.open_positions) > 0,
               details: bot,
             }))
           : [];
@@ -499,7 +408,6 @@ export default function Home() {
             online: botStatuses.some((b) => b.live),
             botStatuses,
           },
-          pnlHistory: data?.daily_pnl || [],
           loading: false,
           error: null,
         });
@@ -522,12 +430,11 @@ export default function Home() {
 
   useEffect(() => {
     if (!isConnected) return;
-
-    subscribeToTrades();
-    subscribeToPnl();
-    subscribeToAnnouncements();
-    subscribeToLeaderboard();
-    subscribeToSystemMetrics();
+    subscribeToTrades?.();
+    subscribeToPnl?.();
+    subscribeToAnnouncements?.();
+    subscribeToLeaderboard?.();
+    subscribeToSystemMetrics?.();
   }, [
     isConnected,
     subscribeToTrades,
@@ -541,7 +448,7 @@ export default function Home() {
     const mappedStatuses = Array.isArray(socketBotStatuses)
       ? socketBotStatuses.map((bot) => ({
           label: getBotDisplayName(bot?.name || bot?.label),
-          live: bot?.live ?? bot?.is_active ?? bot?.online ?? (bot?.total_trades || 0) > 0,
+          live: bot?.live ?? bot?.is_active ?? bot?.online ?? safeNumber(bot?.total_trades) > 0,
           details: bot,
         }))
       : [];
@@ -559,7 +466,7 @@ export default function Home() {
       stats: {
         ...prev.stats,
         currentStatus: isConnected ? "Live" : prev.stats.currentStatus,
-        activeBots: safeNumber(liveStats?.activeBots, mappedStatuses.filter((b) => b.live).length || prev.stats.activeBots),
+        activeBots: safeNumber(liveStats?.activeBots, mappedStatuses.filter((b) => b.live).length),
         totalTrades: safeNumber(liveStats?.totalTrades, prev.stats.totalTrades),
         wins: safeNumber(liveStats?.wins, prev.stats.wins),
         losses: safeNumber(liveStats?.losses, prev.stats.losses),
@@ -574,9 +481,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white text-gray-900">
-      <div className="fixed top-0 right-4 z-50 flex items-center gap-2 text-xs bg-white/90 px-3 py-1 rounded-full shadow-sm mt-2">
+      <div className="fixed right-4 top-0 z-50 mt-2 flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-xs shadow-sm">
         <span
-          className={`inline-block w-2 h-2 rounded-full ${
+          className={`inline-block h-2 w-2 rounded-full ${
             isConnected ? "bg-green-500 animate-pulse" : "bg-yellow-500"
           }`}
         />
@@ -584,7 +491,7 @@ export default function Home() {
       </div>
 
       {announcements && announcements.length > 0 && (
-        <div className="bg-indigo-600 text-white py-2 px-4 text-center text-sm animate-pulse">
+        <div className="bg-indigo-600 px-4 py-2 text-center text-sm text-white animate-pulse">
           📢 {announcements[0]?.title}: {announcements[0]?.content}
         </div>
       )}
@@ -592,10 +499,8 @@ export default function Home() {
       <div className="relative w-full bg-black">
         <div className="relative pt-[56.25%]">
           <iframe
-            className="absolute top-0 left-0 w-full h-full"
-            src={`https://www.youtube.com/embed/${videoId}?autoplay=0&loop=1&mute=${
-              isMuted ? 1 : 0
-            }&controls=1&modestbranding=1&rel=0&playsinline=1&playlist=${videoId}`}
+            className="absolute left-0 top-0 h-full w-full"
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=0&loop=1&mute=${isMuted ? 1 : 0}&controls=1&modestbranding=1&rel=0&playsinline=1&playlist=${videoId}`}
             title="IMALI Trading AI Demo"
             frameBorder="0"
             allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -607,50 +512,30 @@ export default function Home() {
           className="absolute bottom-4 right-4 z-10 rounded-full bg-black/70 p-3 text-white backdrop-blur-sm transition-all hover:bg-black/90"
           aria-label={isMuted ? "Unmute video" : "Mute video"}
         >
-          {isMuted ? (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-            </svg>
-          )}
+          {isMuted ? "🔇" : "🔊"}
         </button>
       </div>
 
       <section className="mx-auto max-w-3xl px-3 py-10 sm:px-4 sm:py-12">
-        <Card className="p-5 sm:p-6 shadow-xl">
+        <Card className="p-5 shadow-xl sm:p-6">
           <div className="mb-4 flex items-start gap-3 sm:items-center">
             <span className="flex-shrink-0 text-3xl">🎁</span>
             <div>
               <h3 className="text-xl font-bold text-gray-900 sm:text-2xl">Early Bird Special</h3>
               <p className="text-sm text-gray-500">
-                First {promo.limit} users get a <b className="text-emerald-600">special deal</b>
+                Same live promo data as Pricing
               </p>
             </div>
           </div>
 
           <div className="mb-4 space-y-2 rounded-xl border border-gray-100 bg-gradient-to-r from-emerald-50 to-cyan-50 p-4">
-            <FeatureRow
-              icon="✅"
-              label={`Only ${promo.feePercent}% fee on profits over ${promo.thresholdPercent}% (normally 30%)`}
-            />
+            <FeatureRow icon="✅" label={`Only ${promo.feePercent}% fee on profits over ${promo.thresholdPercent}%`} />
             <FeatureRow icon="✅" label={`Locked in for ${promo.durationDays} days`} />
             <FeatureRow icon="✅" label="Full access to all bot features" />
             <FeatureRow icon="✅" label="Referral program available for users who invite others" />
           </div>
 
-          <PromoMeter
-            claimed={promo.claimed}
-            limit={promo.limit}
-            spotsLeft={promo.spotsLeft}
-            loading={promo.loading}
-            feePercent={promo.feePercent}
-            durationDays={promo.durationDays}
-            userCount={promo.userCount}
-          />
+          <PromoMeter promo={promo} />
 
           {!showForm && !promoClaim.state.success && promo.active && (
             <button
@@ -684,17 +569,19 @@ export default function Home() {
                 onChange={(e) => setSelectedTier(e.target.value)}
                 className="w-full rounded-xl border border-emerald-200 bg-white px-4 py-4 text-sm text-gray-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
               >
-                <option value="starter">Starter - Free (30% performance fee)</option>
-                <option value="pro">Pro - $19/mo + 5% fee</option>
-                <option value="elite">Elite - $49/mo + 5% fee</option>
-                <option value="stock">DeFi - $99/mo (DEX trading)</option>
-                <option value="bundle">Bundle - $199/mo (All bots)</option>
+                <option value="starter">Starter - Free</option>
+                <option value="pro">Pro - $19/mo</option>
+                <option value="elite">Elite - $49/mo</option>
+                <option value="stock">DeFi - $99/mo</option>
+                <option value="bundle">Bundle - $199/mo</option>
               </select>
+
               {promoClaim.state.error && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
                   ⚠️ {promoClaim.state.error}
                 </div>
               )}
+
               <div className="flex gap-3">
                 <button
                   type="submit"
@@ -723,7 +610,7 @@ export default function Home() {
               <p className="text-lg font-bold text-emerald-700">You're in!</p>
               <p className="mt-1 text-sm text-gray-600">
                 Check your email, then{" "}
-                <Link to="/signup" className="text-emerald-600 underline">
+                <Link to={`/signup?tier=${selectedTier}`} className="text-emerald-600 underline">
                   create your account
                 </Link>{" "}
                 to get started.
@@ -749,17 +636,17 @@ export default function Home() {
 
           <div className="mx-auto mb-8 max-w-3xl">
             <Link to="/pricing">
-              <div className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 px-4 py-4 text-left shadow-sm hover:shadow-md transition-shadow sm:px-5 cursor-pointer">
+              <div className="cursor-pointer rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 px-4 py-4 text-left shadow-sm transition-shadow hover:shadow-md sm:px-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-purple-700">
                       View Our Pricing Plans
                     </p>
                     <h3 className="mt-1 text-lg font-bold text-gray-900 sm:text-xl">
-                      Choose the plan that fits your trading style
+                      Same live promo data as this page
                     </h3>
                     <p className="mt-1 max-w-2xl text-sm text-gray-600">
-                      From free starter to full bundle - pick the plan that matches your needs.
+                      Pricing and Home now read the same promo source instead of separate counters.
                     </p>
                   </div>
                   <div className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-purple-500 px-5 py-3 font-bold text-white transition-all hover:bg-purple-400">
@@ -768,30 +655,6 @@ export default function Home() {
                 </div>
               </div>
             </Link>
-          </div>
-
-          <div className="mx-auto mb-8 max-w-3xl">
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-left shadow-sm sm:px-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
-                    Referral Program Offer
-                  </p>
-                  <h3 className="mt-1 text-lg font-bold text-gray-900 sm:text-xl">
-                    Invite friends and earn 20% of their fees in USDC
-                  </h3>
-                  <p className="mt-1 max-w-2xl text-sm text-gray-600">
-                    Share your referral link, bring in new members, and earn rewards as the IMALI ecosystem grows.
-                  </p>
-                </div>
-                <Link
-                  to="/referrals"
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-amber-500 px-5 py-3 font-bold text-black transition-all hover:bg-amber-400"
-                >
-                  View Referral Offer
-                </Link>
-              </div>
-            </div>
           </div>
 
           <div className="text-center">
@@ -805,7 +668,7 @@ export default function Home() {
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-2 px-2 sm:mt-6 sm:gap-3">
               <Pill color="emerald">✅ No experience needed</Pill>
-              <Pill color="amber">🎁 Referral rewards available</Pill>
+              <Pill color="amber">🎁 Live promo spots</Pill>
               <Pill color="purple">🦾 AI-powered trading bots</Pill>
             </div>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
@@ -834,63 +697,39 @@ export default function Home() {
             <p className="mb-4 text-sm text-gray-600">
               Choose a plan, connect your accounts, and let IMALI handle stock and crypto automation with a simpler user experience.
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <span className="text-3xl block mb-2">📊</span>
+                <span className="mb-2 block text-3xl">📊</span>
                 <p className="text-xs font-semibold text-gray-700">Futures Bot</p>
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <span className="text-3xl block mb-2">📈</span>
+                <span className="mb-2 block text-3xl">📈</span>
                 <p className="text-xs font-semibold text-gray-700">Stock Bot</p>
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <span className="text-3xl block mb-2">🎯</span>
+                <span className="mb-2 block text-3xl">🎯</span>
                 <p className="text-xs font-semibold text-gray-700">Sniper Bot</p>
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <span className="text-3xl block mb-2">🔷</span>
+                <span className="mb-2 block text-3xl">🔷</span>
                 <p className="text-xs font-semibold text-gray-700">OKX Spot</p>
               </div>
             </div>
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
               <h4 className="font-semibold text-amber-800">Partner perk: referral rewards</h4>
               <p className="mt-1 text-sm text-gray-700">
-                Invite new users, track your network, and earn 20% of their fees in USDC.
+                Invite new users, track your network, and earn rewards as the IMALI ecosystem grows.
               </p>
             </div>
             <div className="mt-4 text-center">
               <Link
                 to="/trade-demo"
-                className="inline-block text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                className="inline-block text-sm font-medium text-emerald-600 hover:text-emerald-700"
               >
                 🎮 Try the interactive demo →
               </Link>
             </div>
           </Card>
-        </div>
-      </section>
-
-      <section className="border-t border-gray-100 bg-gray-50 py-12">
-        <div className="mx-auto max-w-4xl px-4 text-center">
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
-            Want to see IMALI in action?
-          </h2>
-          <p className="mt-3 text-gray-600">
-            Test our trading bots with virtual money before committing to a plan.
-          </p>
-          <div className="mt-6">
-            <Link
-              to="/trade-demo"
-              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 to-cyan-600 px-8 py-4 font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500 transition-all"
-            >
-              <span>🎮</span>
-              Launch Demo
-              <span>→</span>
-            </Link>
-          </div>
-          <p className="mt-4 text-xs text-gray-500">
-            No signup required • Practice with $100,000 virtual balance • See real-time trading
-          </p>
         </div>
       </section>
     </div>
