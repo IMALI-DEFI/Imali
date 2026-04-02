@@ -25,19 +25,15 @@ ChartJS.register(
 );
 
 // ============================================================================
-// CORRECTED ENDPOINTS - Updated to match your backend routes
+// CORRECT API ENDPOINTS (from api_main.py)
 // ============================================================================
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 
-// Try these corrected endpoints based on common patterns
-const PUBLIC_STATS_URL = `${API_BASE}/api/public/stats`;        // Changed from /live-stats
-const NOTABLE_TRADES_URL = `${API_BASE}/api/public/notable-trades`;  // Changed from /notable-trades
-const RECENT_TRADES_URL = `${API_BASE}/api/public/trades`;      // New endpoint for recent trades
-const BOTS_URL = `${API_BASE}/api/public/bots`;                 // New endpoint for bot list
-
-// Fallback endpoints if the above don't work
-const FALLBACK_STATS_URL = `${API_BASE}/api/stats/public`;
-const FALLBACK_TRADES_URL = `${API_BASE}/api/trades/public`;
+// These endpoints exist in your api_main.py:
+const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;  // ✅ EXISTS (line ~6300)
+const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;    // ✅ EXISTS (line ~3900)
+const RECENT_TRADES_URL = `${API_BASE}/api/trades/recent`;      // ✅ EXISTS (line ~6850)
+const BOT_ACTIVITY_URL = `${API_BASE}/api/bot-activity/history`; // ✅ EXISTS (line ~6150)
 
 const REFRESH_INTERVAL = 60000;
 const MIN_FETCH_INTERVAL = 30000;
@@ -128,7 +124,7 @@ function getBotDisplayName(botName) {
 function normalizeTrade(trade) {
   return {
     ...trade,
-    id: trade?.id || `${trade?.symbol || "unknown"}-${trade?.created_at || trade?.timestamp || Date.now()}-${normalizeBotName(trade?.bot || trade?.bot_name || trade?.source)}`,
+    id: trade?.id || `${trade?.symbol || "unknown"}-${trade?.created_at || trade?.timestamp || Date.now()}`,
     bot: normalizeBotName(trade?.bot || trade?.bot_name || trade?.source),
     qty: trade?.qty !== undefined ? safeNumber(trade.qty) : 0,
     exit_price: trade?.exit_price !== undefined ? trade.exit_price : null,
@@ -141,7 +137,6 @@ function normalizeTrade(trade) {
 
 function buildActivitySeries(trades = []) {
   if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
-
   return trades.slice(0, 7).reverse().map((trade, index) => {
     const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
     if (usd !== null && Number.isFinite(Number(usd))) {
@@ -153,7 +148,6 @@ function buildActivitySeries(trades = []) {
 
 function BotActivityChart({ trades = [] }) {
   const series = buildActivitySeries(trades);
-
   const chartData = useMemo(() => ({
     labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     datasets: [{
@@ -185,12 +179,8 @@ function BotActivityChart({ trades = [] }) {
       },
     },
     scales: {
-      x: {
-        display: true,
-        grid: { display: false },
-        ticks: { color: "#9ca3af", font: { size: 10 } },
-      },
-      y: { display: false, grid: { color: "rgba(229,231,235,0.5)" } },
+      x: { display: true, grid: { display: false }, ticks: { color: "#9ca3af", font: { size: 10 } } },
+      y: { display: false },
     },
   }), []);
 
@@ -214,7 +204,6 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   const totalTrades = safeNumber(stats?.total_trades);
   const wins = safeNumber(stats?.wins);
   const losses = safeNumber(stats?.losses);
-
   const botNotableTrades = Array.isArray(notableTrades?.[bot]) ? notableTrades[bot].map(normalizeTrade) : [];
 
   if (!hasTrades) return null;
@@ -247,48 +236,25 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
       {expanded && (
         <div className="border-t border-gray-100 bg-gray-50/50 p-4">
           <div className="mb-4 grid grid-cols-3 gap-3">
-            <div className="text-center">
-              <div className="text-lg font-bold text-emerald-600">{wins.toLocaleString()}</div>
-              <div className="text-[9px] text-gray-500">Wins</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-red-600">{losses.toLocaleString()}</div>
-              <div className="text-[9px] text-gray-500">Losses</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-green-600">
-                {botNotableTrades[0] ? formatPercent(botNotableTrades[0].pnl_percent) : "0%"}
-              </div>
-              <div className="text-[9px] text-gray-500">Best Trade</div>
-            </div>
+            <div className="text-center"><div className="text-lg font-bold text-emerald-600">{wins.toLocaleString()}</div><div className="text-[9px] text-gray-500">Wins</div></div>
+            <div className="text-center"><div className="text-lg font-bold text-red-600">{losses.toLocaleString()}</div><div className="text-[9px] text-gray-500">Losses</div></div>
+            <div className="text-center"><div className="text-lg font-bold text-green-600">{botNotableTrades[0] ? formatPercent(botNotableTrades[0].pnl_percent) : "0%"}</div><div className="text-[9px] text-gray-500">Best Trade</div></div>
           </div>
-
           {botNotableTrades.length > 0 && (
             <div>
               <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-600">
                 <span>🏆</span> Notable Trades (Ranked by Highest % Return)
-                <span className="text-[9px] text-gray-400">Top {botNotableTrades.length} winning trades</span>
               </div>
               <div className="max-h-[500px] space-y-2 overflow-y-auto pr-1">
                 {botNotableTrades.map((trade, idx) => (
-                  <div
-                    key={trade.id || idx}
-                    className="flex cursor-pointer items-center justify-between rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-3 transition-colors hover:from-green-100 hover:to-emerald-100"
-                    onClick={(e) => { e.stopPropagation(); onTradeClick(trade); }}
-                  >
+                  <div key={trade.id || idx} className="flex cursor-pointer items-center justify-between rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-3 transition-colors hover:from-green-100 hover:to-emerald-100" onClick={(e) => { e.stopPropagation(); onTradeClick(trade); }}>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs font-bold text-gray-900">{trade.symbol}</span>
-                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${trade.side === "buy" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
-                          {trade.side?.toUpperCase()}
-                        </span>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${trade.side === "buy" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>{trade.side?.toUpperCase()}</span>
                         <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600">#{idx + 1}</span>
                       </div>
-                      <div className="mt-0.5 text-[9px] text-gray-500">
-                        {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
-                        {trade.exit_price && ` • Exit: ${formatCurrency(trade.exit_price)}`}
-                        {trade.qty ? ` • Qty: ${safeNumber(trade.qty).toFixed(6)}` : ""}
-                      </div>
+                      <div className="mt-0.5 text-[9px] text-gray-500">{timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}{trade.exit_price && ` • Exit: ${formatCurrency(trade.exit_price)}`}</div>
                     </div>
                     <div className="ml-4 shrink-0 text-right">
                       <div className="text-base font-bold text-green-600">{formatPercent(safeNumber(trade.pnl_percent))}</div>
@@ -305,54 +271,34 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   );
 }
 
-function TradeRow({ trade, onClick, isNotable = false }) {
+function TradeRow({ trade, onClick }) {
   const pnl = safeNumber(trade.pnl_usd);
   const pnlPercent = safeNumber(trade.pnl_percent);
   const side = trade.side || "buy";
   const bot = getBotDisplayName(trade.bot);
-  const timestamp = trade.created_at;
   const isOpen = trade.status === "open";
-  const exitPrice = trade.exit_price;
-  const quantity = trade.qty;
 
   return (
-    <div
-      className={`flex cursor-pointer items-center justify-between rounded-lg p-3 transition-all hover:shadow-md ${
-        isNotable ? "border-2 border-amber-300 bg-amber-50/30" :
-        !isOpen && pnl > 0 ? "bg-emerald-50 hover:bg-emerald-100" :
-        !isOpen && pnl < 0 ? "bg-red-50 hover:bg-red-100" :
-        isOpen ? "bg-blue-50 hover:bg-blue-100" : "bg-gray-50 hover:bg-gray-100"
-      }`}
-      onClick={() => onClick(trade)}
-    >
+    <div className={`flex cursor-pointer items-center justify-between rounded-lg p-3 transition-all hover:shadow-md ${!isOpen && pnl > 0 ? "bg-emerald-50 hover:bg-emerald-100" : !isOpen && pnl < 0 ? "bg-red-50 hover:bg-red-100" : isOpen ? "bg-blue-50 hover:bg-blue-100" : "bg-gray-50 hover:bg-gray-100"}`} onClick={() => onClick(trade)}>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1">
-          {isNotable && <span className="text-xs text-amber-500">🏆</span>}
           <span className="text-sm font-semibold text-gray-900">{trade.symbol || "Unknown"}</span>
-          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-            {side.toUpperCase()}
-          </span>
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{side.toUpperCase()}</span>
           <span className="text-[9px] text-gray-400">{getBotIcon(bot)} {bot}</span>
           {isOpen && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] text-blue-700">OPEN</span>}
         </div>
-        <div className="mt-0.5 text-[10px] text-gray-400">{timeAgo(timestamp)}</div>
+        <div className="mt-0.5 text-[10px] text-gray-400">{timeAgo(trade.created_at)}</div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500">
           <span>Entry: {formatCurrency(trade.price || 0)}</span>
-          {!isOpen && exitPrice && <span>Exit: {formatCurrency(exitPrice)}</span>}
-          {quantity && quantity > 0 && <span>Qty: {safeNumber(quantity).toFixed(6)}</span>}
+          {!isOpen && trade.exit_price && <span>Exit: {formatCurrency(trade.exit_price)}</span>}
+          {trade.qty > 0 && <span>Qty: {safeNumber(trade.qty).toFixed(6)}</span>}
         </div>
       </div>
       <div className="ml-2 shrink-0 text-right">
         {!isOpen ? (
           <>
-            <div className={`text-sm font-semibold ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
-              {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(trade.price || 0)}
-            </div>
-            {pnlPercent !== 0 && (
-              <div className={`text-[11px] font-medium ${pnlPercent > 0 ? "text-emerald-500" : "text-red-500"}`}>
-                {formatPercent(pnlPercent)}
-              </div>
-            )}
+            <div className={`text-sm font-semibold ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>{pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(trade.price || 0)}</div>
+            {pnlPercent !== 0 && <div className={`text-[11px] font-medium ${pnlPercent > 0 ? "text-emerald-500" : "text-red-500"}`}>{formatPercent(pnlPercent)}</div>}
           </>
         ) : (
           <div className="text-sm font-semibold text-blue-600">Open Position</div>
@@ -364,20 +310,11 @@ function TradeRow({ trade, onClick, isNotable = false }) {
 
 function TradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
-
   const pnl = safeNumber(trade.pnl_usd);
   const pnlPercent = safeNumber(trade.pnl_percent);
-  const symbol = trade.symbol || "Unknown";
-  const side = trade.side || "buy";
-  const bot = getBotDisplayName(trade.bot);
-  const timestamp = trade.created_at;
-  const entryPrice = safeNumber(trade.price);
-  const exitPrice = trade.exit_price ? safeNumber(trade.exit_price) : null;
-  const qty = safeNumber(trade.qty);
   const status = trade.status === "open" ? "Open" : "Closed";
-  const risk = trade.risk_level || "medium";
-  const entryReason = trade.entry_reason || "AI detected favorable market conditions";
-
+  const exitPrice = trade.exit_price ? safeNumber(trade.exit_price) : null;
+  const entryPrice = safeNumber(trade.price);
   const priceChangePercent = exitPrice && entryPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : null;
 
   return (
@@ -386,89 +323,41 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
         <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white p-3">
           <h3 className="text-base font-bold text-gray-900">Trade Details</h3>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-
         <div className="space-y-4 p-4">
           <div className="flex items-start justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-1">
-                <span className="text-xl font-bold text-gray-900">{symbol}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                  {side.toUpperCase()}
-                </span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${status === "Closed" ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600"}`}>
-                  {status}
-                </span>
+                <span className="text-xl font-bold text-gray-900">{trade.symbol}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${trade.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{trade.side?.toUpperCase()}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${status === "Closed" ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600"}`}>{status}</span>
               </div>
-              <div className="mt-1 text-xs text-gray-500">{timeAgo(timestamp)} • {bot}</div>
+              <div className="mt-1 text-xs text-gray-500">{timeAgo(trade.created_at)} • {getBotDisplayName(trade.bot)}</div>
             </div>
             {pnl !== 0 && (
               <div className="text-right">
-                <div className={`text-xl font-bold ${pnl > 0 ? "text-green-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
-                  {formatCurrencySigned(pnl)}
-                </div>
-                {pnlPercent !== 0 && (
-                  <div className={`text-xs font-semibold ${pnlPercent > 0 ? "text-green-600" : "text-red-600"}`}>
-                    {formatPercent(pnlPercent)} return
-                  </div>
-                )}
+                <div className={`text-xl font-bold ${pnl > 0 ? "text-green-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>{formatCurrencySigned(pnl)}</div>
+                {pnlPercent !== 0 && <div className={`text-xs font-semibold ${pnlPercent > 0 ? "text-green-600" : "text-red-600"}`}>{formatPercent(pnlPercent)} return</div>}
               </div>
             )}
           </div>
-
           <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 text-xs">
-            <div>
-              <div className="text-gray-500">Quantity</div>
-              <div className="font-semibold">{qty > 0 ? qty.toFixed(6) : "—"}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Entry Price</div>
-              <div className="font-semibold">{formatCurrency(entryPrice)}</div>
-            </div>
+            <div><div className="text-gray-500">Quantity</div><div className="font-semibold">{trade.qty > 0 ? safeNumber(trade.qty).toFixed(6) : "—"}</div></div>
+            <div><div className="text-gray-500">Entry Price</div><div className="font-semibold">{formatCurrency(entryPrice)}</div></div>
             {status === "Closed" && exitPrice && (
               <>
-                <div>
-                  <div className="text-gray-500">Exit Price</div>
-                  <div className="font-semibold">{formatCurrency(exitPrice)}</div>
-                </div>
-                <div>
-                  <div className="text-gray-500">Price Change</div>
-                  <div className={`font-semibold ${priceChangePercent > 0 ? "text-green-600" : priceChangePercent < 0 ? "text-red-600" : "text-gray-600"}`}>
-                    {formatPercent(priceChangePercent)}
-                  </div>
-                </div>
+                <div><div className="text-gray-500">Exit Price</div><div className="font-semibold">{formatCurrency(exitPrice)}</div></div>
+                <div><div className="text-gray-500">Price Change</div><div className={`font-semibold ${priceChangePercent > 0 ? "text-green-600" : "text-red-600"}`}>{formatPercent(priceChangePercent)}</div></div>
               </>
             )}
-            {status === "Closed" && !exitPrice && (
-              <div className="col-span-2">
-                <div className="text-gray-500">Exit Price</div>
-                <div className="font-semibold text-gray-400">Not recorded</div>
-              </div>
-            )}
-            {status === "Open" && (
-              <div className="col-span-2">
-                <div className="text-gray-500">Current Status</div>
-                <div className="font-semibold text-blue-600">Active Position</div>
-              </div>
-            )}
-            <div>
-              <div className="text-gray-500">Risk Level</div>
-              <div className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${getRiskColor(risk)}`}>
-                {risk.toUpperCase()}
-              </div>
-            </div>
+            {status === "Open" && <div className="col-span-2"><div className="text-gray-500">Current Status</div><div className="font-semibold text-blue-600">Active Position</div></div>}
+            <div><div className="text-gray-500">Risk Level</div><div className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${getRiskColor(trade.risk_level || "medium")}`}>{(trade.risk_level || "MEDIUM").toUpperCase()}</div></div>
           </div>
-
           <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3">
-            <div className="mb-2 flex items-center gap-1">
-              <span className="text-lg">🤖</span>
-              <span className="text-sm font-semibold text-gray-900">AI Analysis</span>
-            </div>
-            <p className="text-xs text-gray-700">{entryReason}</p>
+            <div className="mb-2 flex items-center gap-1"><span className="text-lg">🤖</span><span className="text-sm font-semibold text-gray-900">AI Analysis</span></div>
+            <p className="text-xs text-gray-700">{trade.entry_reason || "AI detected favorable market conditions based on technical indicators and volume analysis."}</p>
           </div>
         </div>
       </div>
@@ -494,68 +383,6 @@ export default function PublicDashboard() {
 
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
-  const endpointAttemptedRef = useRef(false);
-
-  // Function to try multiple endpoints with fallback
-  const fetchWithFallback = useCallback(async () => {
-    const endpoints = [
-      { url: PUBLIC_STATS_URL, name: "primary stats" },
-      { url: FALLBACK_STATS_URL, name: "fallback stats" },
-    ];
-
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint.url, { timeout: 10000 });
-        if (response.data?.success || response.data?.data) {
-          return { data: response.data, endpoint: endpoint.name };
-        }
-      } catch (err) {
-        console.warn(`Endpoint ${endpoint.name} failed:`, err.message);
-        continue;
-      }
-    }
-    throw new Error("All stats endpoints failed");
-  }, []);
-
-  const fetchTradesWithFallback = useCallback(async () => {
-    const endpoints = [
-      { url: RECENT_TRADES_URL, name: "primary trades" },
-      { url: FALLBACK_TRADES_URL, name: "fallback trades" },
-    ];
-
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint.url, { timeout: 10000 });
-        if (response.data?.success || Array.isArray(response.data)) {
-          return { data: response.data, endpoint: endpoint.name };
-        }
-      } catch (err) {
-        console.warn(`Trades endpoint ${endpoint.name} failed:`, err.message);
-        continue;
-      }
-    }
-    return { data: { trades: [] }, endpoint: "none" };
-  }, []);
-
-  const fetchNotableWithFallback = useCallback(async () => {
-    const endpoints = [
-      { url: NOTABLE_TRADES_URL, name: "primary notable" },
-      { url: `${API_BASE}/api/notable-trades`, name: "legacy notable" },
-    ];
-
-    for (const endpoint of endpoints) {
-      try {
-        const response = await axios.get(endpoint.url, { timeout: 10000, params: { limit: 10 } });
-        if (response.data?.success) {
-          return { data: response.data, endpoint: endpoint.name };
-        }
-      } catch (err) {
-        console.warn(`Notable endpoint ${endpoint.name} failed:`, err.message);
-        continue;
-      }
-    }
-    return { data: { data: {} }, endpoint: "none" };
-  }, []);
 
   const fetchData = useCallback(async (force = false) => {
     if (isFetchingRef.current) return;
@@ -570,127 +397,83 @@ export default function PublicDashboard() {
     try {
       lastFetchTimeRef.current = now;
 
-      // Fetch all three data sources in parallel with fallbacks
-      const [statsResult, tradesResult, notableResult] = await Promise.all([
-        fetchWithFallback(),
-        fetchTradesWithFallback(),
-        fetchNotableWithFallback(),
+      // Fetch both endpoints in parallel
+      const [statsResponse, notableResponse] = await Promise.all([
+        axios.get(PUBLIC_STATS_URL, { timeout: 15000 }),
+        axios.get(NOTABLE_TRADES_URL, { timeout: 15000, params: { limit: 10 } }),
       ]);
 
-      // Process stats data
-      const statsData = statsResult.data?.data || statsResult.data || {};
-      const summary = {
-        total_trades: statsData.total_trades || statsData.totalTrades || 0,
-        wins: statsData.wins || 0,
-        losses: statsData.losses || 0,
-        win_rate: statsData.win_rate || statsData.winRate || 0,
-      };
+      // Process stats data (from /api/public/live-stats)
+      if (statsResponse.data?.success) {
+        const apiData = statsResponse.data.data || {};
 
-      // Process trades data
-      let trades = [];
-      if (tradesResult.data?.data?.trades) {
-        trades = tradesResult.data.data.trades.map(normalizeTrade);
-      } else if (tradesResult.data?.trades) {
-        trades = tradesResult.data.trades.map(normalizeTrade);
-      } else if (Array.isArray(tradesResult.data)) {
-        trades = tradesResult.data.map(normalizeTrade);
-      }
+        // Extract trades from response
+        const trades = (apiData.recent_trades || []).map(normalizeTrade);
+        const summary = apiData.summary || {};
 
-      // Process bot stats
-      const botStats = {};
-      const mainBots = ["okx", "futures", "stocks", "sniper"];
-      const botsData = statsData.bots || statsData.bot_stats || [];
+        // Build bot stats from the bots array
+        const botStats = {};
+        const mainBots = ["okx", "futures", "stocks", "sniper"];
 
-      (Array.isArray(botsData) ? botsData : []).forEach((bot) => {
-        const botName = normalizeBotName(bot.name || bot.bot_name);
-        if (!mainBots.includes(botName)) return;
+        (apiData.bots || []).forEach((bot) => {
+          const botName = normalizeBotName(bot.name);
+          if (!mainBots.includes(botName)) return;
 
-        const totalTrades = safeNumber(bot.total_trades || bot.totalTrades);
-        if (totalTrades === 0) return;
+          const totalTrades = safeNumber(bot.total_trades);
+          if (totalTrades === 0) return;
 
-        const wins = safeNumber(bot.wins);
-        const losses = safeNumber(bot.losses);
-        const closedTrades = wins + losses;
+          const wins = safeNumber(bot.wins);
+          const losses = safeNumber(bot.losses);
+          const closedTrades = wins + losses;
 
-        botStats[botName] = {
-          total_trades: totalTrades,
-          wins,
-          losses,
-          win_rate: closedTrades > 0 ? (wins / closedTrades) * 100 : 0,
-          best_return: 0,
-        };
-      });
+          botStats[botName] = {
+            total_trades: totalTrades,
+            wins,
+            losses,
+            win_rate: closedTrades > 0 ? (wins / closedTrades) * 100 : 0,
+            best_return: 0,
+          };
+        });
 
-      // Process notable trades
-      const nextNotableTrades = {};
-      const notableData = notableResult.data?.data || {};
-      Object.entries(notableData).forEach(([bot, tradesList]) => {
-        if (Array.isArray(tradesList)) {
-          nextNotableTrades[normalizeBotName(bot)] = tradesList.map(normalizeTrade);
+        // Process notable trades (from /api/notable-trades)
+        const nextNotableTrades = {};
+        if (notableResponse.data?.success) {
+          const notableData = notableResponse.data.data || {};
+          Object.entries(notableData).forEach(([bot, tradesList]) => {
+            if (Array.isArray(tradesList)) {
+              nextNotableTrades[normalizeBotName(bot)] = tradesList.map(normalizeTrade);
+            }
+          });
         }
-      });
 
-      setData((prev) => ({
-        ...prev,
-        trades: trades.length > 0 ? trades : prev.trades,
-        summary,
-        botStats: Object.keys(botStats).length > 0 ? botStats : prev.botStats,
-        notableTrades: nextNotableTrades,
-        loading: false,
-        error: null,
-        lastUpdate: new Date(),
-      }));
-
-      endpointAttemptedRef.current = true;
+        setData((prev) => ({
+          ...prev,
+          trades: trades.length > 0 ? trades : prev.trades,
+          summary,
+          botStats: Object.keys(botStats).length > 0 ? botStats : prev.botStats,
+          notableTrades: nextNotableTrades,
+          loading: false,
+          error: null,
+          lastUpdate: new Date(),
+        }));
+      } else {
+        setData((prev) => ({
+          ...prev,
+          loading: false,
+          error: statsResponse.data?.error || "No data received from server",
+        }));
+      }
     } catch (error) {
       console.error("❌ Error fetching data:", error);
       setData((prev) => ({
         ...prev,
         loading: false,
-        error: "Unable to connect to server. Using demo data mode.",
-        lastUpdate: prev.lastUpdate,
+        error: error.response?.data?.message || error.message || "Failed to fetch trading data. Make sure the API server is running.",
       }));
-
-      // Set demo data if no real data exists
-      if (!endpointAttemptedRef.current && prev.trades.length === 0) {
-        setData((prev) => ({
-          ...prev,
-          trades: [
-            {
-              id: "demo-1",
-              symbol: "BTC/USD",
-              side: "buy",
-              price: 43250.75,
-              pnl_usd: 1250.50,
-              pnl_percent: 2.89,
-              status: "closed",
-              bot: "okx",
-              created_at: new Date().toISOString(),
-            },
-            {
-              id: "demo-2",
-              symbol: "ETH/USD",
-              side: "sell",
-              price: 2250.30,
-              pnl_usd: -85.20,
-              pnl_percent: -3.79,
-              status: "closed",
-              bot: "futures",
-              created_at: new Date(Date.now() - 3600000).toISOString(),
-            },
-          ],
-          summary: { total_trades: 2, wins: 1, losses: 1, win_rate: 50 },
-          botStats: {
-            okx: { total_trades: 1, wins: 1, losses: 0, win_rate: 100 },
-            futures: { total_trades: 1, wins: 0, losses: 1, win_rate: 0 },
-          },
-          loading: false,
-        }));
-      }
     } finally {
       isFetchingRef.current = false;
     }
-  }, [fetchWithFallback, fetchTradesWithFallback, fetchNotableWithFallback]);
+  }, []);
 
   useEffect(() => {
     fetchData(true);
@@ -803,9 +586,7 @@ export default function PublicDashboard() {
         <div className="mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Link to="/" className="bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-xl font-bold text-transparent">
-                IMALI
-              </Link>
+              <Link to="/" className="bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-xl font-bold text-transparent">IMALI</Link>
               <span className={`rounded-full px-2 py-0.5 text-[10px] ${isConnected ? "bg-green-100 text-green-700 animate-pulse" : "bg-yellow-100 text-yellow-700"}`}>
                 {isConnected ? "LIVE" : "UPDATING"}
               </span>
@@ -816,9 +597,7 @@ export default function PublicDashboard() {
               <span>{isConnected ? "Real-time WebSocket" : "Polling every 60s"}</span>
               <span>•</span>
               <span>{activeBots} active bots</span>
-              <Link to="/signup" className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-2 py-1 text-[10px] font-medium text-white">
-                Join
-              </Link>
+              <Link to="/signup" className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-2 py-1 text-[10px] font-medium text-white">Join</Link>
             </div>
           </div>
         </div>
@@ -832,9 +611,7 @@ export default function PublicDashboard() {
         )}
 
         <div className="mb-4 text-center">
-          <h1 className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-2xl font-bold text-transparent">
-            Trading in Public
-          </h1>
+          <h1 className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-2xl font-bold text-transparent">Trading in Public</h1>
           <p className="text-xs text-gray-500">
             {formatNumber(totalTrades)} total trades • {activeBots} active bots •
             {isConnected ? " Real-time updates via WebSocket" : " Updating every 60 seconds"}
@@ -849,9 +626,7 @@ export default function PublicDashboard() {
             </h3>
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Last 7 Days</span>
           </div>
-          <div className="h-80">
-            <BotActivityChart trades={allTrades} />
-          </div>
+          <div className="h-80"><BotActivityChart trades={allTrades} /></div>
           <p className="mt-2 text-center text-[9px] text-gray-400">Weekly trading activity based on recent trades</p>
         </div>
 
@@ -862,8 +637,7 @@ export default function PublicDashboard() {
 
         <div className="mb-5">
           <h2 className="mb-2 flex items-center gap-2 text-base font-bold text-gray-900">
-            <span>🏆</span>
-            Notable Trades by Bot
+            <span>🏆</span> Notable Trades by Bot
             <span className="ml-1 text-[10px] font-normal text-gray-400">Ranked by highest percentage return - Click to collapse</span>
           </h2>
           <div className="grid grid-cols-1 gap-3">
@@ -880,11 +654,7 @@ export default function PublicDashboard() {
                 <h2 className="text-sm font-bold text-gray-900">Recent Trades</h2>
                 <div className="flex gap-1">
                   {tabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-all ${activeTab === tab.id ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
-                    >
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-all ${activeTab === tab.id ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}>
                       {tab.label} ({tab.count})
                     </button>
                   ))}
