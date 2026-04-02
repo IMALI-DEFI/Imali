@@ -5,36 +5,11 @@ import StripeElements from "../components/StripeElements";
 import BotAPI from "../utils/BotAPI";
 
 const TIER_COPY = {
-  starter: {
-    label: "Starter",
-    price: "$0/mo",
-    badge: "🌱",
-    summary: "Paper trading and beginner tools",
-  },
-  pro: {
-    label: "Pro",
-    price: "$19/mo",
-    badge: "⭐",
-    summary: "Advanced trading signals and analytics",
-  },
-  elite: {
-    label: "Elite",
-    price: "$49/mo",
-    badge: "👑",
-    summary: "Full access to advanced trading features",
-  },
-  stock: {
-    label: "DeFi",
-    price: "$99/mo",
-    badge: "📈",
-    summary: "DEX-focused trading and market intelligence",
-  },
-  bundle: {
-    label: "Bundle",
-    price: "$199/mo",
-    badge: "🧩",
-    summary: "Everything included in one plan",
-  },
+  starter: { label: "Starter", price: "$0/mo", badge: "🌱", summary: "Paper trading and beginner tools" },
+  pro: { label: "Pro", price: "$19/mo", badge: "⭐", summary: "Advanced trading signals and analytics" },
+  elite: { label: "Elite", price: "$49/mo", badge: "👑", summary: "Full access to advanced trading features" },
+  stock: { label: "DeFi", price: "$99/mo", badge: "📈", summary: "DEX-focused trading and market intelligence" },
+  bundle: { label: "Bundle", price: "$199/mo", badge: "🧩", summary: "Everything included in one plan" },
 };
 
 function normalizeTier(value) {
@@ -51,7 +26,7 @@ function safeExtract(response, fallback = {}) {
 export default function Billing() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, activation, refreshActivation } = useAuth();
+  const { user, isAdmin, activation, refreshActivation } = useAuth();
 
   const tier = useMemo(() => {
     return normalizeTier(
@@ -68,21 +43,25 @@ export default function Billing() {
   const [loading, setLoading] = useState(true);
   const [clientSecret, setClientSecret] = useState("");
   const [hasCard, setHasCard] = useState(false);
+  const [billingAvailable, setBillingAvailable] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const email = useMemo(() => {
-    return (
-      location.state?.email ||
-      user?.email ||
-      localStorage.getItem("IMALI_EMAIL") ||
-      ""
-    );
+    return location.state?.email || user?.email || localStorage.getItem("IMALI_EMAIL") || "";
   }, [location.state?.email, user?.email]);
 
   const loadBillingState = useCallback(async () => {
     if (!email && !user?.email) {
+      setLoading(false);
+      return;
+    }
+
+    if (isAdmin || user?.is_admin === true || user?.email === "wayne@imali-defi.com") {
+      setHasCard(true);
+      setClientSecret("");
+      setBillingAvailable(true);
       setLoading(false);
       return;
     }
@@ -92,6 +71,15 @@ export default function Billing() {
     setSuccess("");
 
     try {
+      const probe = await BotAPI.probeBillingRoutes();
+      if (!probe.cardStatusAvailable || !probe.setupIntentAvailable) {
+        setBillingAvailable(false);
+        setHasCard(!!activation?.has_card_on_file || !!activation?.billing_complete);
+        setLoading(false);
+        setError("Billing routes are not deployed in this environment yet.");
+        return;
+      }
+
       const cardStatusRes = await BotAPI.getCardStatus();
       const cardStatus = safeExtract(cardStatusRes, {});
 
@@ -105,14 +93,11 @@ export default function Billing() {
 
       if (alreadyHasCard) {
         setClientSecret("");
+        setLoading(false);
         return;
       }
 
-      const intentRes = await BotAPI.createSetupIntent({
-        email,
-        tier,
-      });
-
+      const intentRes = await BotAPI.createSetupIntent({ email, tier });
       const intentData = safeExtract(intentRes, {});
       const secret = intentData?.client_secret || intentData?.clientSecret || "";
 
@@ -121,6 +106,7 @@ export default function Billing() {
       }
 
       setClientSecret(secret);
+      setBillingAvailable(true);
     } catch (err) {
       console.error("[Billing] Failed to initialize billing:", err);
       setError(
@@ -132,7 +118,7 @@ export default function Billing() {
     } finally {
       setLoading(false);
     }
-  }, [activation?.billing_complete, activation?.has_card_on_file, email, tier, user?.email]);
+  }, [activation?.billing_complete, activation?.has_card_on_file, email, isAdmin, tier, user?.email, user?.is_admin]);
 
   useEffect(() => {
     loadBillingState();
@@ -151,24 +137,7 @@ export default function Billing() {
       setTimeout(() => {
         navigate("/activation", {
           replace: true,
-          state: {
-            tier,
-            fromBilling: true,
-          },
-        });
-      }, 900);
-    } catch (err) {
-      console.error("[Billing] Card success refresh failed:", err);
-      setHasCard(true);
-      setClientSecret("");
-      setSuccess("✅ Card added successfully.");
-      setTimeout(() => {
-        navigate("/activation", {
-          replace: true,
-          state: {
-            tier,
-            fromBilling: true,
-          },
+          state: { tier, fromBilling: true },
         });
       }, 900);
     } finally {
@@ -177,25 +146,14 @@ export default function Billing() {
   }, [navigate, refreshActivation, tier]);
 
   const handleCardError = useCallback((err) => {
-    setError(
-      err?.response?.data?.message ||
-        err?.message ||
-        "Failed to save payment method."
-    );
+    setError(err?.response?.data?.message || err?.message || "Failed to save payment method.");
   }, []);
 
   const handleContinue = () => {
     navigate("/activation", {
       replace: true,
-      state: {
-        tier,
-        fromBilling: true,
-      },
+      state: { tier, fromBilling: true },
     });
-  };
-
-  const handleRetry = () => {
-    loadBillingState();
   };
 
   if (!user && !email) {
@@ -203,9 +161,6 @@ export default function Billing() {
       <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
         <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-white/5 p-8 text-center">
           <h1 className="text-2xl font-bold mb-3">Billing setup requires login</h1>
-          <p className="text-white/60 mb-6">
-            Please log in first so we can securely attach your payment method.
-          </p>
           <button
             onClick={() => navigate("/login", { replace: true })}
             className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold"
@@ -226,54 +181,18 @@ export default function Billing() {
               <span className="text-3xl">{tierInfo.badge}</span>
               <div>
                 <h1 className="text-2xl md:text-3xl font-bold">Billing Setup</h1>
-                <p className="text-white/50 text-sm">
-                  Securely add your payment method to continue onboarding
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="text-sm text-white/50">Selected Plan</div>
-                  <div className="text-lg font-semibold">
-                    {tierInfo.label} <span className="text-emerald-400">{tierInfo.price}</span>
-                  </div>
-                  <div className="text-sm text-white/60">{tierInfo.summary}</div>
-                </div>
-                <button
-                  onClick={() => navigate("/pricing")}
-                  className="text-sm px-4 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10"
-                >
-                  Change Plan
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4 text-sm text-white/70">
-              <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4">
-                <div className="font-semibold text-blue-300 mb-2">How billing works</div>
-                <ul className="space-y-1 list-disc pl-5">
-                  <li>Your card is stored securely with Stripe.</li>
-                  <li>We do not store full card details.</li>
-                  <li>Billing setup is required before activation can complete.</li>
-                </ul>
-              </div>
-
-              <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-                <div className="font-semibold mb-2">Account</div>
-                <div className="text-white/60 break-all">{email}</div>
+                <p className="text-white/50 text-sm">Securely add your payment method to continue onboarding</p>
               </div>
             </div>
 
             {error && (
-              <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                 ⚠️ {error}
               </div>
             )}
 
             {success && (
-              <div className="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+              <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
                 {success}
               </div>
             )}
@@ -285,10 +204,7 @@ export default function Billing() {
               </div>
             ) : hasCard ? (
               <div className="mt-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5">
-                <div className="text-emerald-300 font-semibold mb-2">✅ Card already on file</div>
-                <p className="text-sm text-white/70 mb-4">
-                  Your payment method is already saved. Continue to activation to finish connecting your accounts.
-                </p>
+                <div className="text-emerald-300 font-semibold mb-2">✅ Billing complete</div>
                 <button
                   onClick={handleContinue}
                   disabled={busy}
@@ -296,6 +212,29 @@ export default function Billing() {
                 >
                   Continue to Activation
                 </button>
+              </div>
+            ) : !billingAvailable ? (
+              <div className="mt-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-5">
+                <div className="text-yellow-300 font-semibold mb-2">
+                  Billing is not available in this environment
+                </div>
+                <p className="text-sm text-white/70 mb-4">
+                  The backend billing endpoints are not deployed yet. You can continue to activation or dashboard if you are owner/admin.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleContinue}
+                    className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold"
+                  >
+                    Continue
+                  </button>
+                  <button
+                    onClick={() => navigate("/dashboard")}
+                    className="px-6 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10"
+                  >
+                    Dashboard
+                  </button>
+                </div>
               </div>
             ) : clientSecret ? (
               <div className="mt-6">
@@ -307,14 +246,9 @@ export default function Billing() {
               </div>
             ) : (
               <div className="mt-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-5">
-                <div className="text-yellow-300 font-semibold mb-2">
-                  Billing form is not ready yet
-                </div>
-                <p className="text-sm text-white/70 mb-4">
-                  We couldn’t load your secure payment form on the first try.
-                </p>
+                <div className="text-yellow-300 font-semibold mb-2">Billing form is not ready yet</div>
                 <button
-                  onClick={handleRetry}
+                  onClick={loadBillingState}
                   className="px-6 py-3 rounded-xl bg-yellow-600 hover:bg-yellow-700 font-semibold"
                 >
                   Retry Billing Setup
@@ -325,47 +259,16 @@ export default function Billing() {
 
           <aside className="rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
             <h2 className="text-xl font-bold mb-4">Next steps</h2>
-
-            <div className="space-y-4">
+            <div className="space-y-4 text-sm text-white/70">
               <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-                <div className="text-sm font-semibold mb-1">1. Add payment method</div>
-                <div className="text-sm text-white/50">
-                  Required before onboarding can be completed.
-                </div>
+                1. Billing
               </div>
-
               <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-                <div className="text-sm font-semibold mb-1">2. Connect trading accounts</div>
-                <div className="text-sm text-white/50">
-                  Link OKX, Alpaca, or wallet connections based on your tier.
-                </div>
+                2. Connect accounts
               </div>
-
               <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-                <div className="text-sm font-semibold mb-1">3. Turn on trading</div>
-                <div className="text-sm text-white/50">
-                  Activate your bot after billing and account connections are complete.
-                </div>
+                3. Enable trading
               </div>
-            </div>
-
-            <div className="mt-6 rounded-xl border border-purple-500/20 bg-purple-500/10 p-4 text-sm text-purple-200">
-              💡 New users can start with safer paper-trading account connections first, then switch to live trading later in activation.
-            </div>
-
-            <div className="mt-6 flex flex-col gap-3">
-              <button
-                onClick={() => navigate("/activation", { state: { tier } })}
-                className="px-5 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm"
-              >
-                Skip for now
-              </button>
-              <button
-                onClick={() => navigate("/pricing")}
-                className="px-5 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm"
-              >
-                Review Plans
-              </button>
             </div>
           </aside>
         </div>
