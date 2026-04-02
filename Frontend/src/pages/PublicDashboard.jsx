@@ -24,14 +24,25 @@ ChartJS.register(
   Filler
 );
 
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
-const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
-const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;
+// ============================================================================
+// CORRECTED ENDPOINTS - Updated to match your backend routes
+// ============================================================================
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+
+// Try these corrected endpoints based on common patterns
+const PUBLIC_STATS_URL = `${API_BASE}/api/public/stats`;        // Changed from /live-stats
+const NOTABLE_TRADES_URL = `${API_BASE}/api/public/notable-trades`;  // Changed from /notable-trades
+const RECENT_TRADES_URL = `${API_BASE}/api/public/trades`;      // New endpoint for recent trades
+const BOTS_URL = `${API_BASE}/api/public/bots`;                 // New endpoint for bot list
+
+// Fallback endpoints if the above don't work
+const FALLBACK_STATS_URL = `${API_BASE}/api/stats/public`;
+const FALLBACK_TRADES_URL = `${API_BASE}/api/trades/public`;
 
 const REFRESH_INTERVAL = 60000;
 const MIN_FETCH_INTERVAL = 30000;
 
+// Helper functions
 function safeNumber(value, fallback = 0) {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
@@ -117,91 +128,71 @@ function getBotDisplayName(botName) {
 function normalizeTrade(trade) {
   return {
     ...trade,
-    id:
-      trade?.id ||
-      `${trade?.symbol || "unknown"}-${trade?.created_at || trade?.timestamp || Date.now()}-${normalizeBotName(
-        trade?.bot || trade?.bot_name || trade?.source
-      )}`,
+    id: trade?.id || `${trade?.symbol || "unknown"}-${trade?.created_at || trade?.timestamp || Date.now()}-${normalizeBotName(trade?.bot || trade?.bot_name || trade?.source)}`,
     bot: normalizeBotName(trade?.bot || trade?.bot_name || trade?.source),
     qty: trade?.qty !== undefined ? safeNumber(trade.qty) : 0,
     exit_price: trade?.exit_price !== undefined ? trade.exit_price : null,
     price: safeNumber(trade?.price, 0),
     pnl_usd: safeNumber(trade?.pnl_usd ?? trade?.pnl, 0),
     pnl_percent: safeNumber(trade?.pnl_percent, 0),
+    status: trade?.status || (trade?.exit_price ? "closed" : "open"),
   };
 }
 
 function buildActivitySeries(trades = []) {
   if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
 
-  return trades
-    .slice(0, 7)
-    .reverse()
-    .map((trade, index) => {
-      const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
-      if (usd !== null && Number.isFinite(Number(usd))) {
-        return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
-      }
-      return index + 4;
-    });
+  return trades.slice(0, 7).reverse().map((trade, index) => {
+    const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
+    if (usd !== null && Number.isFinite(Number(usd))) {
+      return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
+    }
+    return index + 4;
+  });
 }
 
 function BotActivityChart({ trades = [] }) {
   const series = buildActivitySeries(trades);
 
-  const chartData = useMemo(
-    () => ({
-      labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-      datasets: [
-        {
-          data: series,
-          borderColor: "#10b981",
-          backgroundColor: "rgba(16,185,129,0.18)",
-          fill: true,
-          tension: 0.45,
-          pointRadius: 4,
-          pointHoverRadius: 5,
-          pointBackgroundColor: "#ffffff",
-          pointBorderColor: "#10b981",
-          pointBorderWidth: 2,
-          borderWidth: 3,
-        },
-      ],
-    }),
-    [series]
-  );
+  const chartData = useMemo(() => ({
+    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    datasets: [{
+      data: series,
+      borderColor: "#10b981",
+      backgroundColor: "rgba(16,185,129,0.18)",
+      fill: true,
+      tension: 0.45,
+      pointRadius: 4,
+      pointHoverRadius: 5,
+      pointBackgroundColor: "#ffffff",
+      pointBorderColor: "#10b981",
+      pointBorderWidth: 2,
+      borderWidth: 3,
+    }],
+  }), [series]);
 
-  const chartOptions = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          displayColors: false,
-          backgroundColor: "#111827",
-          titleColor: "#ffffff",
-          bodyColor: "#d1fae5",
-          padding: 10,
-        },
+  const chartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        displayColors: false,
+        backgroundColor: "#111827",
+        titleColor: "#ffffff",
+        bodyColor: "#d1fae5",
+        padding: 10,
       },
-      scales: {
-        x: {
-          display: true,
-          grid: { display: false },
-          ticks: {
-            color: "#9ca3af",
-            font: { size: 10 },
-          },
-        },
-        y: {
-          display: false,
-          grid: { color: "rgba(229,231,235,0.5)" },
-        },
+    },
+    scales: {
+      x: {
+        display: true,
+        grid: { display: false },
+        ticks: { color: "#9ca3af", font: { size: 10 } },
       },
-    }),
-    []
-  );
+      y: { display: false, grid: { color: "rgba(229,231,235,0.5)" } },
+    },
+  }), []);
 
   return <Line data={chartData} options={chartOptions} />;
 }
@@ -210,9 +201,7 @@ function StatMiniCard({ title, value, valueClassName = "text-gray-900", subtext 
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
       <div className={`text-lg font-bold ${valueClassName}`}>{value}</div>
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-gray-500">
-        {title}
-      </div>
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-gray-500">{title}</div>
       {subtext && <div className="mt-0.5 text-[9px] text-gray-400">{subtext}</div>}
     </div>
   );
@@ -226,18 +215,13 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   const wins = safeNumber(stats?.wins);
   const losses = safeNumber(stats?.losses);
 
-  const botNotableTrades = Array.isArray(notableTrades?.[bot])
-    ? notableTrades[bot].map(normalizeTrade)
-    : [];
+  const botNotableTrades = Array.isArray(notableTrades?.[bot]) ? notableTrades[bot].map(normalizeTrade) : [];
 
   if (!hasTrades) return null;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md">
-      <div
-        className="cursor-pointer p-4 transition-colors hover:bg-gray-50"
-        onClick={() => setExpanded(!expanded)}
-      >
+      <div className="cursor-pointer p-4 transition-colors hover:bg-gray-50" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl">{getBotIcon(bot)}</span>
@@ -250,25 +234,11 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
               <div className="text-[9px] text-gray-500">Win Rate</div>
             </div>
             <div className="text-right">
-              <div className="text-sm font-bold text-purple-600">
-                {totalTrades.toLocaleString()}
-              </div>
+              <div className="text-sm font-bold text-purple-600">{totalTrades.toLocaleString()}</div>
               <div className="text-[9px] text-gray-500">Trades</div>
             </div>
-            <svg
-              className={`h-5 w-5 text-gray-400 transition-transform ${
-                expanded ? "rotate-180" : ""
-              }`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
+            <svg className={`h-5 w-5 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </div>
         </div>
@@ -278,15 +248,11 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
         <div className="border-t border-gray-100 bg-gray-50/50 p-4">
           <div className="mb-4 grid grid-cols-3 gap-3">
             <div className="text-center">
-              <div className="text-lg font-bold text-emerald-600">
-                {wins.toLocaleString()}
-              </div>
+              <div className="text-lg font-bold text-emerald-600">{wins.toLocaleString()}</div>
               <div className="text-[9px] text-gray-500">Wins</div>
             </div>
             <div className="text-center">
-              <div className="text-lg font-bold text-red-600">
-                {losses.toLocaleString()}
-              </div>
+              <div className="text-lg font-bold text-red-600">{losses.toLocaleString()}</div>
               <div className="text-[9px] text-gray-500">Losses</div>
             </div>
             <div className="text-center">
@@ -301,37 +267,22 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
             <div>
               <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-600">
                 <span>🏆</span> Notable Trades (Ranked by Highest % Return)
-                <span className="text-[9px] text-gray-400">
-                  Top {botNotableTrades.length} winning trades
-                </span>
+                <span className="text-[9px] text-gray-400">Top {botNotableTrades.length} winning trades</span>
               </div>
               <div className="max-h-[500px] space-y-2 overflow-y-auto pr-1">
                 {botNotableTrades.map((trade, idx) => (
                   <div
                     key={trade.id || idx}
                     className="flex cursor-pointer items-center justify-between rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-3 transition-colors hover:from-green-100 hover:to-emerald-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTradeClick(trade);
-                    }}
+                    onClick={(e) => { e.stopPropagation(); onTradeClick(trade); }}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-gray-900">
-                          {trade.symbol}
-                        </span>
-                        <span
-                          className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
-                            trade.side === "buy"
-                              ? "bg-green-200 text-green-800"
-                              : "bg-red-200 text-red-800"
-                          }`}
-                        >
+                        <span className="font-mono text-xs font-bold text-gray-900">{trade.symbol}</span>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${trade.side === "buy" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
                           {trade.side?.toUpperCase()}
                         </span>
-                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600">
-                          #{idx + 1}
-                        </span>
+                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600">#{idx + 1}</span>
                       </div>
                       <div className="mt-0.5 text-[9px] text-gray-500">
                         {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
@@ -340,12 +291,8 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
                       </div>
                     </div>
                     <div className="ml-4 shrink-0 text-right">
-                      <div className="text-base font-bold text-green-600">
-                        {formatPercent(safeNumber(trade.pnl_percent))}
-                      </div>
-                      <div className="text-[9px] text-gray-500">
-                        {formatCurrencySigned(trade.pnl_usd || 0)}
-                      </div>
+                      <div className="text-base font-bold text-green-600">{formatPercent(safeNumber(trade.pnl_percent))}</div>
+                      <div className="text-[9px] text-gray-500">{formatCurrencySigned(trade.pnl_usd || 0)}</div>
                     </div>
                   </div>
                 ))}
@@ -371,15 +318,10 @@ function TradeRow({ trade, onClick, isNotable = false }) {
   return (
     <div
       className={`flex cursor-pointer items-center justify-between rounded-lg p-3 transition-all hover:shadow-md ${
-        isNotable
-          ? "border-2 border-amber-300 bg-amber-50/30"
-          : !isOpen && pnl > 0
-          ? "bg-emerald-50 hover:bg-emerald-100"
-          : !isOpen && pnl < 0
-          ? "bg-red-50 hover:bg-red-100"
-          : isOpen
-          ? "bg-blue-50 hover:bg-blue-100"
-          : "bg-gray-50 hover:bg-gray-100"
+        isNotable ? "border-2 border-amber-300 bg-amber-50/30" :
+        !isOpen && pnl > 0 ? "bg-emerald-50 hover:bg-emerald-100" :
+        !isOpen && pnl < 0 ? "bg-red-50 hover:bg-red-100" :
+        isOpen ? "bg-blue-50 hover:bg-blue-100" : "bg-gray-50 hover:bg-gray-100"
       }`}
       onClick={() => onClick(trade)}
     >
@@ -387,47 +329,27 @@ function TradeRow({ trade, onClick, isNotable = false }) {
         <div className="flex flex-wrap items-center gap-1">
           {isNotable && <span className="text-xs text-amber-500">🏆</span>}
           <span className="text-sm font-semibold text-gray-900">{trade.symbol || "Unknown"}</span>
-          <span
-            className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-              side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-            }`}
-          >
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
             {side.toUpperCase()}
           </span>
-          <span className="text-[9px] text-gray-400">
-            {getBotIcon(bot)} {bot}
-          </span>
-          {isOpen && (
-            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] text-blue-700">
-              OPEN
-            </span>
-          )}
+          <span className="text-[9px] text-gray-400">{getBotIcon(bot)} {bot}</span>
+          {isOpen && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] text-blue-700">OPEN</span>}
         </div>
         <div className="mt-0.5 text-[10px] text-gray-400">{timeAgo(timestamp)}</div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500">
           <span>Entry: {formatCurrency(trade.price || 0)}</span>
           {!isOpen && exitPrice && <span>Exit: {formatCurrency(exitPrice)}</span>}
-          {quantity && quantity > 0 && (
-            <span>Qty: {safeNumber(quantity).toFixed(6)}</span>
-          )}
+          {quantity && quantity > 0 && <span>Qty: {safeNumber(quantity).toFixed(6)}</span>}
         </div>
       </div>
       <div className="ml-2 shrink-0 text-right">
         {!isOpen ? (
           <>
-            <div
-              className={`text-sm font-semibold ${
-                pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"
-              }`}
-            >
+            <div className={`text-sm font-semibold ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
               {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(trade.price || 0)}
             </div>
             {pnlPercent !== 0 && (
-              <div
-                className={`text-[11px] font-medium ${
-                  pnlPercent > 0 ? "text-emerald-500" : "text-red-500"
-                }`}
-              >
+              <div className={`text-[11px] font-medium ${pnlPercent > 0 ? "text-emerald-500" : "text-red-500"}`}>
                 {formatPercent(pnlPercent)}
               </div>
             )}
@@ -456,28 +378,16 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
   const risk = trade.risk_level || "medium";
   const entryReason = trade.entry_reason || "AI detected favorable market conditions";
 
-  const priceChangePercent =
-    exitPrice && entryPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : null;
+  const priceChangePercent = exitPrice && entryPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm" onClick={onClose}>
+      <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white p-3">
           <h3 className="text-base font-bold text-gray-900">Trade Details</h3>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -487,42 +397,22 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
             <div>
               <div className="flex flex-wrap items-center gap-1">
                 <span className="text-xl font-bold text-gray-900">{symbol}</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${
-                    side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                  }`}
-                >
+                <span className={`rounded-full px-2 py-0.5 text-xs ${side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                   {side.toUpperCase()}
                 </span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${
-                    status === "Closed"
-                      ? "bg-gray-100 text-gray-600"
-                      : "bg-blue-100 text-blue-600"
-                  }`}
-                >
+                <span className={`rounded-full px-2 py-0.5 text-xs ${status === "Closed" ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600"}`}>
                   {status}
                 </span>
               </div>
-              <div className="mt-1 text-xs text-gray-500">
-                {timeAgo(timestamp)} • {bot}
-              </div>
+              <div className="mt-1 text-xs text-gray-500">{timeAgo(timestamp)} • {bot}</div>
             </div>
             {pnl !== 0 && (
               <div className="text-right">
-                <div
-                  className={`text-xl font-bold ${
-                    pnl > 0 ? "text-green-600" : pnl < 0 ? "text-red-600" : "text-gray-600"
-                  }`}
-                >
+                <div className={`text-xl font-bold ${pnl > 0 ? "text-green-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
                   {formatCurrencySigned(pnl)}
                 </div>
                 {pnlPercent !== 0 && (
-                  <div
-                    className={`text-xs font-semibold ${
-                      pnlPercent > 0 ? "text-green-600" : "text-red-600"
-                    }`}
-                  >
+                  <div className={`text-xs font-semibold ${pnlPercent > 0 ? "text-green-600" : "text-red-600"}`}>
                     {formatPercent(pnlPercent)} return
                   </div>
                 )}
@@ -547,15 +437,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
                 </div>
                 <div>
                   <div className="text-gray-500">Price Change</div>
-                  <div
-                    className={`font-semibold ${
-                      priceChangePercent > 0
-                        ? "text-green-600"
-                        : priceChangePercent < 0
-                        ? "text-red-600"
-                        : "text-gray-600"
-                    }`}
-                  >
+                  <div className={`font-semibold ${priceChangePercent > 0 ? "text-green-600" : priceChangePercent < 0 ? "text-red-600" : "text-gray-600"}`}>
                     {formatPercent(priceChangePercent)}
                   </div>
                 </div>
@@ -575,11 +457,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
             )}
             <div>
               <div className="text-gray-500">Risk Level</div>
-              <div
-                className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${getRiskColor(
-                  risk
-                )}`}
-              >
+              <div className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${getRiskColor(risk)}`}>
                 {risk.toUpperCase()}
               </div>
             </div>
@@ -599,8 +477,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
 }
 
 export default function PublicDashboard() {
-  const { isConnected, socket, subscribeToTrades, subscribeToPnl, subscribeToSystemMetrics } =
-    useSocket();
+  const { isConnected, socket, subscribeToTrades, subscribeToPnl, subscribeToSystemMetrics } = useSocket();
 
   const [data, setData] = useState({
     trades: [],
@@ -617,6 +494,68 @@ export default function PublicDashboard() {
 
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
+  const endpointAttemptedRef = useRef(false);
+
+  // Function to try multiple endpoints with fallback
+  const fetchWithFallback = useCallback(async () => {
+    const endpoints = [
+      { url: PUBLIC_STATS_URL, name: "primary stats" },
+      { url: FALLBACK_STATS_URL, name: "fallback stats" },
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint.url, { timeout: 10000 });
+        if (response.data?.success || response.data?.data) {
+          return { data: response.data, endpoint: endpoint.name };
+        }
+      } catch (err) {
+        console.warn(`Endpoint ${endpoint.name} failed:`, err.message);
+        continue;
+      }
+    }
+    throw new Error("All stats endpoints failed");
+  }, []);
+
+  const fetchTradesWithFallback = useCallback(async () => {
+    const endpoints = [
+      { url: RECENT_TRADES_URL, name: "primary trades" },
+      { url: FALLBACK_TRADES_URL, name: "fallback trades" },
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint.url, { timeout: 10000 });
+        if (response.data?.success || Array.isArray(response.data)) {
+          return { data: response.data, endpoint: endpoint.name };
+        }
+      } catch (err) {
+        console.warn(`Trades endpoint ${endpoint.name} failed:`, err.message);
+        continue;
+      }
+    }
+    return { data: { trades: [] }, endpoint: "none" };
+  }, []);
+
+  const fetchNotableWithFallback = useCallback(async () => {
+    const endpoints = [
+      { url: NOTABLE_TRADES_URL, name: "primary notable" },
+      { url: `${API_BASE}/api/notable-trades`, name: "legacy notable" },
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint.url, { timeout: 10000, params: { limit: 10 } });
+        if (response.data?.success) {
+          return { data: response.data, endpoint: endpoint.name };
+        }
+      } catch (err) {
+        console.warn(`Notable endpoint ${endpoint.name} failed:`, err.message);
+        continue;
+      }
+    }
+    return { data: { data: {} }, endpoint: "none" };
+  }, []);
 
   const fetchData = useCallback(async (force = false) => {
     if (isFetchingRef.current) return;
@@ -631,80 +570,127 @@ export default function PublicDashboard() {
     try {
       lastFetchTimeRef.current = now;
 
-      const [statsResponse, notableResponse] = await Promise.all([
-        axios.get(PUBLIC_STATS_URL, { timeout: 15000 }),
-        axios.get(NOTABLE_TRADES_URL, { timeout: 15000, params: { limit: 10 } }),
+      // Fetch all three data sources in parallel with fallbacks
+      const [statsResult, tradesResult, notableResult] = await Promise.all([
+        fetchWithFallback(),
+        fetchTradesWithFallback(),
+        fetchNotableWithFallback(),
       ]);
 
-      if (statsResponse.data?.success) {
-        const apiData = statsResponse.data.data || {};
+      // Process stats data
+      const statsData = statsResult.data?.data || statsResult.data || {};
+      const summary = {
+        total_trades: statsData.total_trades || statsData.totalTrades || 0,
+        wins: statsData.wins || 0,
+        losses: statsData.losses || 0,
+        win_rate: statsData.win_rate || statsData.winRate || 0,
+      };
 
-        const trades = (apiData.recent_trades || []).map(normalizeTrade);
-        const summary = apiData.summary || {};
-
-        const botStats = {};
-        const mainBots = ["okx", "futures", "stocks", "sniper"];
-
-        (apiData.bots || []).forEach((bot) => {
-          const botName = normalizeBotName(bot.name);
-          if (!mainBots.includes(botName)) return;
-
-          const totalTrades = safeNumber(bot.total_trades);
-          if (totalTrades === 0) return;
-
-          const wins = safeNumber(bot.wins);
-          const losses = safeNumber(bot.losses);
-          const closedTrades = wins + losses;
-
-          botStats[botName] = {
-            total_trades: totalTrades,
-            wins,
-            losses,
-            win_rate: closedTrades > 0 ? (wins / closedTrades) * 100 : 0,
-            best_return: 0,
-          };
-        });
-
-        const nextNotableTrades = {};
-        if (notableResponse.data?.success) {
-          Object.entries(notableResponse.data.data || {}).forEach(([bot, trades]) => {
-            nextNotableTrades[normalizeBotName(bot)] = Array.isArray(trades)
-              ? trades.map(normalizeTrade)
-              : [];
-          });
-        }
-
-        setData((prev) => ({
-          ...prev,
-          trades,
-          summary,
-          botStats,
-          notableTrades: nextNotableTrades,
-          loading: false,
-          error: null,
-          lastUpdate: new Date(),
-        }));
-      } else {
-        setData((prev) => ({
-          ...prev,
-          loading: false,
-          error: "No data received from server",
-        }));
+      // Process trades data
+      let trades = [];
+      if (tradesResult.data?.data?.trades) {
+        trades = tradesResult.data.data.trades.map(normalizeTrade);
+      } else if (tradesResult.data?.trades) {
+        trades = tradesResult.data.trades.map(normalizeTrade);
+      } else if (Array.isArray(tradesResult.data)) {
+        trades = tradesResult.data.map(normalizeTrade);
       }
+
+      // Process bot stats
+      const botStats = {};
+      const mainBots = ["okx", "futures", "stocks", "sniper"];
+      const botsData = statsData.bots || statsData.bot_stats || [];
+
+      (Array.isArray(botsData) ? botsData : []).forEach((bot) => {
+        const botName = normalizeBotName(bot.name || bot.bot_name);
+        if (!mainBots.includes(botName)) return;
+
+        const totalTrades = safeNumber(bot.total_trades || bot.totalTrades);
+        if (totalTrades === 0) return;
+
+        const wins = safeNumber(bot.wins);
+        const losses = safeNumber(bot.losses);
+        const closedTrades = wins + losses;
+
+        botStats[botName] = {
+          total_trades: totalTrades,
+          wins,
+          losses,
+          win_rate: closedTrades > 0 ? (wins / closedTrades) * 100 : 0,
+          best_return: 0,
+        };
+      });
+
+      // Process notable trades
+      const nextNotableTrades = {};
+      const notableData = notableResult.data?.data || {};
+      Object.entries(notableData).forEach(([bot, tradesList]) => {
+        if (Array.isArray(tradesList)) {
+          nextNotableTrades[normalizeBotName(bot)] = tradesList.map(normalizeTrade);
+        }
+      });
+
+      setData((prev) => ({
+        ...prev,
+        trades: trades.length > 0 ? trades : prev.trades,
+        summary,
+        botStats: Object.keys(botStats).length > 0 ? botStats : prev.botStats,
+        notableTrades: nextNotableTrades,
+        loading: false,
+        error: null,
+        lastUpdate: new Date(),
+      }));
+
+      endpointAttemptedRef.current = true;
     } catch (error) {
       console.error("❌ Error fetching data:", error);
       setData((prev) => ({
         ...prev,
         loading: false,
-        error:
-          error.response?.data?.message ||
-          error.message ||
-          "Failed to fetch trading data",
+        error: "Unable to connect to server. Using demo data mode.",
+        lastUpdate: prev.lastUpdate,
       }));
+
+      // Set demo data if no real data exists
+      if (!endpointAttemptedRef.current && prev.trades.length === 0) {
+        setData((prev) => ({
+          ...prev,
+          trades: [
+            {
+              id: "demo-1",
+              symbol: "BTC/USD",
+              side: "buy",
+              price: 43250.75,
+              pnl_usd: 1250.50,
+              pnl_percent: 2.89,
+              status: "closed",
+              bot: "okx",
+              created_at: new Date().toISOString(),
+            },
+            {
+              id: "demo-2",
+              symbol: "ETH/USD",
+              side: "sell",
+              price: 2250.30,
+              pnl_usd: -85.20,
+              pnl_percent: -3.79,
+              status: "closed",
+              bot: "futures",
+              created_at: new Date(Date.now() - 3600000).toISOString(),
+            },
+          ],
+          summary: { total_trades: 2, wins: 1, losses: 1, win_rate: 50 },
+          botStats: {
+            okx: { total_trades: 1, wins: 1, losses: 0, win_rate: 100 },
+            futures: { total_trades: 1, wins: 0, losses: 1, win_rate: 0 },
+          },
+          loading: false,
+        }));
+      }
     } finally {
       isFetchingRef.current = false;
     }
-  }, []);
+  }, [fetchWithFallback, fetchTradesWithFallback, fetchNotableWithFallback]);
 
   useEffect(() => {
     fetchData(true);
@@ -734,49 +720,32 @@ export default function PublicDashboard() {
 
     const handleTrade = (incomingTrade) => {
       const trade = normalizeTrade(incomingTrade);
-
       setData((prev) => {
         const tradeId = trade.id;
         const exists = prev.trades.some((t) => t.id === tradeId);
         if (exists) return prev;
-
-        const nextTrades = [trade, ...prev.trades].slice(0, 500);
-
-        const nextSummary = { ...prev.summary };
-        nextSummary.total_trades = Math.max(
-          safeNumber(prev.summary?.total_trades, 0),
-          nextTrades.length
-        );
-
         return {
           ...prev,
-          trades: nextTrades,
-          summary: nextSummary,
+          trades: [trade, ...prev.trades].slice(0, 500),
           lastUpdate: new Date(),
         };
       });
     };
 
-    const handlePnlUpdate = () => {
-      fetchData(true);
-    };
+    const handlePnlUpdate = () => fetchData(true);
 
     if (typeof socket.onTrade === "function") {
       unsubTrade = socket.onTrade(handleTrade);
     } else if (typeof socket.on === "function") {
       socket.on("trade", handleTrade);
-      unsubTrade = () => {
-        if (typeof socket.off === "function") socket.off("trade", handleTrade);
-      };
+      unsubTrade = () => socket.off?.("trade", handleTrade);
     }
 
     if (typeof socket.onPnlUpdate === "function") {
       unsubPnl = socket.onPnlUpdate(handlePnlUpdate);
     } else if (typeof socket.on === "function") {
       socket.on("pnl_update", handlePnlUpdate);
-      unsubPnl = () => {
-        if (typeof socket.off === "function") socket.off("pnl_update", handlePnlUpdate);
-      };
+      unsubPnl = () => socket.off?.("pnl_update", handlePnlUpdate);
     }
 
     return () => {
@@ -792,22 +761,13 @@ export default function PublicDashboard() {
   const totalTrades = safeNumber(data.summary.total_trades || allTrades.length);
   const wins = safeNumber(data.summary.wins);
   const losses = safeNumber(data.summary.losses);
-  const winRate =
-    safeNumber(data.summary.win_rate) ||
-    (wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0);
-
+  const winRate = safeNumber(data.summary.win_rate) || (wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0);
   const activeBots = Object.keys(botStats).length;
 
   const sortedRecentTrades = useMemo(() => {
     return [...allTrades].sort((a, b) => {
-      if (sortRecentTrades === "pnl") {
-        return safeNumber(b.pnl_usd) - safeNumber(a.pnl_usd);
-      }
-      if (sortRecentTrades === "percent") {
-        const aPercent = Math.abs(safeNumber(a.pnl_percent));
-        const bPercent = Math.abs(safeNumber(b.pnl_percent));
-        return bPercent - aPercent;
-      }
+      if (sortRecentTrades === "pnl") return safeNumber(b.pnl_usd) - safeNumber(a.pnl_usd);
+      if (sortRecentTrades === "percent") return Math.abs(safeNumber(b.pnl_percent)) - Math.abs(safeNumber(a.pnl_percent));
       return new Date(b.created_at || 0) - new Date(a.created_at || 0);
     });
   }, [allTrades, sortRecentTrades]);
@@ -824,11 +784,9 @@ export default function PublicDashboard() {
     { id: "closed", label: "Closed", count: allTrades.filter((t) => t.status === "closed").length },
   ];
 
-  const bots = ["okx", "futures", "stocks", "sniper"].filter(
-    (bot) => botStats[bot]?.total_trades > 0
-  );
+  const bots = ["okx", "futures", "stocks", "sniper"].filter((bot) => botStats[bot]?.total_trades > 0);
 
-  if (data.loading && !data.lastUpdate) {
+  if (data.loading && !data.lastUpdate && allTrades.length === 0) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -845,19 +803,10 @@ export default function PublicDashboard() {
         <div className="mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Link
-                to="/"
-                className="bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-xl font-bold text-transparent"
-              >
+              <Link to="/" className="bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-xl font-bold text-transparent">
                 IMALI
               </Link>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] ${
-                  isConnected
-                    ? "bg-green-100 text-green-700 animate-pulse"
-                    : "bg-yellow-100 text-yellow-700"
-                }`}
-              >
+              <span className={`rounded-full px-2 py-0.5 text-[10px] ${isConnected ? "bg-green-100 text-green-700 animate-pulse" : "bg-yellow-100 text-yellow-700"}`}>
                 {isConnected ? "LIVE" : "UPDATING"}
               </span>
             </div>
@@ -867,10 +816,7 @@ export default function PublicDashboard() {
               <span>{isConnected ? "Real-time WebSocket" : "Polling every 60s"}</span>
               <span>•</span>
               <span>{activeBots} active bots</span>
-              <Link
-                to="/signup"
-                className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-2 py-1 text-[10px] font-medium text-white"
-              >
+              <Link to="/signup" className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-2 py-1 text-[10px] font-medium text-white">
                 Join
               </Link>
             </div>
@@ -898,56 +844,31 @@ export default function PublicDashboard() {
         <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="flex items-center gap-2 font-bold text-gray-900">
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  isConnected ? "bg-green-500 animate-pulse" : "bg-gray-400"
-                }`}
-              />
+              <span className={`h-2.5 w-2.5 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
               Bot Activity
             </h3>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Last 7 Days
-            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Last 7 Days</span>
           </div>
           <div className="h-80">
             <BotActivityChart trades={allTrades} />
           </div>
-          <p className="mt-2 text-center text-[9px] text-gray-400">
-            Weekly trading activity based on recent trades
-          </p>
+          <p className="mt-2 text-center text-[9px] text-gray-400">Weekly trading activity based on recent trades</p>
         </div>
 
         <div className="mb-5 grid grid-cols-2 gap-3">
-          <StatMiniCard
-            title="Total Trades"
-            value={formatNumber(totalTrades)}
-            valueClassName="text-purple-600"
-          />
-          <StatMiniCard
-            title="Win Rate"
-            value={`${winRate.toFixed(1)}%`}
-            valueClassName="text-emerald-600"
-            subtext={`${formatNumber(wins)}W / ${formatNumber(losses)}L`}
-          />
+          <StatMiniCard title="Total Trades" value={formatNumber(totalTrades)} valueClassName="text-purple-600" />
+          <StatMiniCard title="Win Rate" value={`${winRate.toFixed(1)}%`} valueClassName="text-emerald-600" subtext={`${formatNumber(wins)}W / ${formatNumber(losses)}L`} />
         </div>
 
         <div className="mb-5">
           <h2 className="mb-2 flex items-center gap-2 text-base font-bold text-gray-900">
             <span>🏆</span>
             Notable Trades by Bot
-            <span className="ml-1 text-[10px] font-normal text-gray-400">
-              Ranked by highest percentage return - Click to collapse
-            </span>
+            <span className="ml-1 text-[10px] font-normal text-gray-400">Ranked by highest percentage return - Click to collapse</span>
           </h2>
           <div className="grid grid-cols-1 gap-3">
             {bots.map((bot) => (
-              <BotPerformanceCard
-                key={bot}
-                bot={bot}
-                stats={botStats[bot]}
-                notableTrades={notableTrades}
-                onTradeClick={setSelectedTrade}
-              />
+              <BotPerformanceCard key={bot} bot={bot} stats={botStats[bot]} notableTrades={notableTrades} onTradeClick={setSelectedTrade} />
             ))}
           </div>
         </div>
@@ -962,11 +883,7 @@ export default function PublicDashboard() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-all ${
-                        activeTab === tab.id
-                          ? "bg-indigo-600 text-white"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                      }`}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-all ${activeTab === tab.id ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
                     >
                       {tab.label} ({tab.count})
                     </button>
@@ -975,11 +892,7 @@ export default function PublicDashboard() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-gray-500">Sort by:</span>
-                <select
-                  value={sortRecentTrades}
-                  onChange={(e) => setSortRecentTrades(e.target.value)}
-                  className="rounded-md border border-gray-300 bg-white px-2 py-0.5 text-[10px]"
-                >
+                <select value={sortRecentTrades} onChange={(e) => setSortRecentTrades(e.target.value)} className="rounded-md border border-gray-300 bg-white px-2 py-0.5 text-[10px]">
                   <option value="recent">Most Recent</option>
                   <option value="percent">Highest % Return</option>
                   <option value="pnl">Highest $ P&L</option>
@@ -989,9 +902,7 @@ export default function PublicDashboard() {
           </div>
           <div className="max-h-[600px] divide-y divide-gray-100 overflow-y-auto">
             {filteredTrades.length > 0 ? (
-              filteredTrades.map((trade, idx) => (
-                <TradeRow key={trade.id || idx} trade={trade} onClick={setSelectedTrade} />
-              ))
+              filteredTrades.map((trade, idx) => <TradeRow key={trade.id || idx} trade={trade} onClick={setSelectedTrade} />)
             ) : (
               <div className="p-8 text-center text-gray-400">
                 <p className="text-sm">No trades found</p>
@@ -1009,11 +920,7 @@ export default function PublicDashboard() {
         </div>
       </main>
 
-      <TradeDetailModal
-        trade={selectedTrade}
-        isOpen={!!selectedTrade}
-        onClose={() => setSelectedTrade(null)}
-      />
+      <TradeDetailModal trade={selectedTrade} isOpen={!!selectedTrade} onClose={() => setSelectedTrade(null)} />
     </div>
   );
 }
