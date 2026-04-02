@@ -1016,4 +1016,4 @@ export default function PublicDashboard() {
       />
     </div>
   );
-}. fix the issues this may have with socket style and things
+}
