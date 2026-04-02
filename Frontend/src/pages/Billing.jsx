@@ -1,4 +1,3 @@
-// src/pages/Billing.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -25,10 +24,10 @@ const TIER_COPY = {
     summary: "Full access to advanced trading features",
   },
   stock: {
-    label: "Stocks",
+    label: "DeFi",
     price: "$99/mo",
     badge: "📈",
-    summary: "Stock-focused tools and market intelligence",
+    summary: "DEX-focused trading and market intelligence",
   },
   bundle: {
     label: "Bundle",
@@ -54,9 +53,16 @@ export default function Billing() {
   const location = useLocation();
   const { user, activation, refreshActivation } = useAuth();
 
-  const tier = normalizeTier(
-    location.state?.tier || user?.tier || localStorage.getItem("IMALI_TIER") || "starter"
-  );
+  const tier = useMemo(() => {
+    return normalizeTier(
+      location.state?.tier ||
+        user?.tier ||
+        localStorage.getItem("IMALI_TIER") ||
+        localStorage.getItem("imali_selected_tier") ||
+        "starter"
+    );
+  }, [location.state?.tier, user?.tier]);
+
   const tierInfo = TIER_COPY[tier];
 
   const [loading, setLoading] = useState(true);
@@ -76,7 +82,7 @@ export default function Billing() {
   }, [location.state?.email, user?.email]);
 
   const loadBillingState = useCallback(async () => {
-    if (!user?.email && !email) {
+    if (!email && !user?.email) {
       setLoading(false);
       return;
     }
@@ -88,8 +94,10 @@ export default function Billing() {
     try {
       const cardStatusRes = await BotAPI.getCardStatus();
       const cardStatus = safeExtract(cardStatusRes, {});
+
       const alreadyHasCard =
         !!cardStatus?.has_card ||
+        !!cardStatus?.has_card_on_file ||
         !!activation?.has_card_on_file ||
         !!activation?.billing_complete;
 
@@ -97,7 +105,6 @@ export default function Billing() {
 
       if (alreadyHasCard) {
         setClientSecret("");
-        setLoading(false);
         return;
       }
 
@@ -105,9 +112,10 @@ export default function Billing() {
         email,
         tier,
       });
-      const intentData = safeExtract(intentRes, {});
 
+      const intentData = safeExtract(intentRes, {});
       const secret = intentData?.client_secret || intentData?.clientSecret || "";
+
       if (!secret) {
         throw new Error("Unable to initialize secure billing form.");
       }
@@ -120,10 +128,11 @@ export default function Billing() {
           err?.message ||
           "Failed to load billing setup."
       );
+      setClientSecret("");
     } finally {
       setLoading(false);
     }
-  }, [user?.email, email, tier, activation?.has_card_on_file, activation?.billing_complete]);
+  }, [activation?.billing_complete, activation?.has_card_on_file, email, tier, user?.email]);
 
   useEffect(() => {
     loadBillingState();
@@ -140,18 +149,32 @@ export default function Billing() {
       setClientSecret("");
       setSuccess("✅ Card added successfully. Taking you to activation...");
       setTimeout(() => {
-        navigate("/activation", { replace: true });
+        navigate("/activation", {
+          replace: true,
+          state: {
+            tier,
+            fromBilling: true,
+          },
+        });
       }, 900);
     } catch (err) {
       console.error("[Billing] Card success refresh failed:", err);
+      setHasCard(true);
+      setClientSecret("");
       setSuccess("✅ Card added successfully.");
       setTimeout(() => {
-        navigate("/activation", { replace: true });
+        navigate("/activation", {
+          replace: true,
+          state: {
+            tier,
+            fromBilling: true,
+          },
+        });
       }, 900);
     } finally {
       setBusy(false);
     }
-  }, [navigate, refreshActivation]);
+  }, [navigate, refreshActivation, tier]);
 
   const handleCardError = useCallback((err) => {
     setError(
@@ -162,7 +185,13 @@ export default function Billing() {
   }, []);
 
   const handleContinue = () => {
-    navigate("/activation", { replace: true });
+    navigate("/activation", {
+      replace: true,
+      state: {
+        tier,
+        fromBilling: true,
+      },
+    });
   };
 
   const handleRetry = () => {
@@ -326,7 +355,7 @@ export default function Billing() {
 
             <div className="mt-6 flex flex-col gap-3">
               <button
-                onClick={() => navigate("/activation")}
+                onClick={() => navigate("/activation", { state: { tier } })}
                 className="px-5 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm"
               >
                 Skip for now
