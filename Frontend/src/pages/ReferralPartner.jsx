@@ -1,581 +1,255 @@
-// app/components/ReferralDashboard.tsx
-'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { useUser } from '@clerk/nextjs';
-import {
-  Loader2,
-  Copy,
-  Check,
-  Users,
-  DollarSign,
-  Gift,
-  History,
-  Wallet,
-} from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { useWallet } from "../context/WalletContext";
+import { QRCodeCanvas } from "qrcode.react";
+import { Link } from "react-router-dom";
+import { FaUserFriends, FaShareAlt, FaCoins, FaChartLine, FaTelegram, FaCopy, FaRobot } from "react-icons/fa";
+import referralImg from "../assets/images/referral_program.png";
+import referralBot from "../assets/images/cards/referralbot.png"; // ← NEW
 
-interface ReferralInfo {
-  code: string | null;
-  count: number;
-  earned: number;
-  paid_out: number;
-  pending: number;
-  referral_link: string | null;
-  reward_percentage: number;
-  reward_currency: string;
-  total_referred: number;
-  referral_history: any[];
-}
+const Tile = ({ title, value, icon: Icon, accent = "emerald" }) => (
+  <div className={`rounded-2xl p-5 border bg-gradient-to-br from-${accent}-500/10 to-${accent}-900/10 border-${accent}-400/30`}>
+    <div className="flex items-center justify-between mb-2">
+      <h4 className="text-sm uppercase tracking-wide text-white/70">{title}</h4>
+      {Icon && <Icon className={`text-${accent}-300`} />}
+    </div>
+    <div className="text-2xl font-extrabold">{value}</div>
+  </div>
+);
 
-interface ReferralStats {
-  total_referrals: number;
-  qualified_referrals: number;
-  pending_referrals: number;
-  total_fees_generated: number;
-  total_rewards_earned: number;
-  pending_rewards: number;
-  paid_out: number;
-  conversion_rate: number;
-  avg_reward_per_referral: number;
-  monthly_breakdown: {
-    this_month_fees: number;
-    last_month_fees: number;
-    growth: number;
-  };
-  reward_percentage: number;
-}
+const ReferralSystem = () => {
+  const { account } = useWallet();
 
-interface ReferralHistory {
-  referrals: Array<{
-    id: string;
-    referred_email: string;
-    referred_id: string;
-    status: string;
-    total_fees: number;
-    total_rewards: number;
-    reward_paid: number;
-    reward_pending: number;
-    created_at: number;
-    qualified_at: number | null;
-    paid_at: number | null;
-    trades: any[];
-  }>;
-  earnings_history: any[];
-  total_referred: number;
-  qualified_referrals: number;
-}
-
-interface ReferralClaim {
-  id: string;
-  amount: number;
-  currency: string;
-  wallet_address: string;
-  status: 'pending' | 'completed' | 'rejected';
-  created_at: number;
-  processed_at: number | null;
-  tx_hash: string | null;
-  rejection_reason: string | null;
-}
-
-export default function ReferralDashboard() {
-  const { user, isLoaded } = useUser();
-
-  const [referralInfo, setReferralInfo] = useState<ReferralInfo | null>(null);
-  const [stats, setStats] = useState<ReferralStats | null>(null);
-  const [history, setHistory] = useState<ReferralHistory | null>(null);
-  const [claims, setClaims] = useState<ReferralClaim[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [referralData, setReferralData] = useState({
+    code: "",
+    totalReferrals: 0,
+    level1Earnings: 0,
+    level2Earnings: 0,
+    pendingRewards: 0,
+  });
+  const [referralInput, setReferralInput] = useState("");
   const [copied, setCopied] = useState(false);
-  const [claimAmount, setClaimAmount] = useState('');
-  const [walletAddress, setWalletAddress] = useState('');
-  const [claiming, setClaiming] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'claims'>('overview');
+
+  const referralUrl = referralData.code ? `${window.location.origin}/signup?ref=${referralData.code}` : "";
 
   useEffect(() => {
-    if (user) {
-      fetchReferralData();
-    }
-  }, [user]);
+    if (!account) return;
+    const code = account.slice(2, 10).toUpperCase();
+    setReferralData((prev) => ({
+      ...prev,
+      code,
+      // TODO: Replace demo stats with backend/contract reads
+      totalReferrals: 12,
+      level1Earnings: 5.42,
+      level2Earnings: 1.23,
+      pendingRewards: 2.15,
+    }));
+  }, [account]);
 
-  const fetchReferralData = async () => {
-    try {
-      setLoading(true);
-
-      const [infoRes, statsRes, historyRes, claimsRes] = await Promise.allSettled([
-        fetch('/api/referrals/info', { credentials: 'include' }),
-        fetch('/api/referrals/stats', { credentials: 'include' }),
-        fetch('/api/referrals/history', { credentials: 'include' }),
-        fetch('/api/referrals/claims', { credentials: 'include' }),
-      ]);
-
-      if (infoRes.status === 'fulfilled') {
-        const infoData = await infoRes.value.json();
-        if (infoData.success) setReferralInfo(infoData.data);
-      }
-
-      if (statsRes.status === 'fulfilled') {
-        const statsData = await statsRes.value.json();
-        if (statsData.success) setStats(statsData.data);
-      }
-
-      if (historyRes.status === 'fulfilled') {
-        const historyData = await historyRes.value.json();
-        if (historyData.success) setHistory(historyData.data);
-      }
-
-      if (claimsRes.status === 'fulfilled') {
-        const claimsData = await claimsRes.value.json();
-        if (claimsData.success) setClaims(claimsData.data.claims || []);
-      }
-    } catch (error) {
-      console.error('Error fetching referral data:', error);
-    } finally {
-      setLoading(false);
-    }
+  const copyToClipboard = async () => {
+    if (!referralUrl) return;
+    await navigator.clipboard.writeText(referralUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
-  const signupReferralLink = useMemo(() => {
-    if (typeof window === 'undefined') return '';
-
-    const code = referralInfo?.code?.trim();
-    if (!code) return '';
-
-    return `${window.location.origin}/signup?ref=${encodeURIComponent(code)}`;
-  }, [referralInfo?.code]);
-
-  const displayReferralLink = referralInfo?.referral_link || signupReferralLink || '';
-
-  const copyToClipboard = async (text: string) => {
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Copy failed:', err);
-    }
+  const registerReferral = async () => {
+    // TODO: backend/contract
+    alert(`Referral code ${referralInput.trim()} registered!`);
+    setReferralInput("");
   };
 
-  const handleClaimRewards = async () => {
-    if (!walletAddress) {
-      alert('Please enter a wallet address to receive USDC');
-      return;
-    }
-
-    if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-      alert('Please enter a valid Ethereum wallet address');
-      return;
-    }
-
-    const amountToClaim = claimAmount ? parseFloat(claimAmount) : (stats?.pending_rewards || 0);
-
-    if (amountToClaim <= 0) {
-      alert('Please enter a valid amount to claim');
-      return;
-    }
-
-    if (amountToClaim < 10) {
-      alert('Minimum claim amount is $10 USDC');
-      return;
-    }
-
-    if (stats && amountToClaim > stats.pending_rewards) {
-      alert(`Cannot claim more than your pending rewards ($${stats.pending_rewards.toFixed(2)})`);
-      return;
-    }
-
-    try {
-      setClaiming(true);
-
-      const response = await fetch('/api/referrals/claim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          amount: amountToClaim,
-          wallet_address: walletAddress,
-          claim_all: !claimAmount,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        alert(`✅ ${data.message || 'Claim submitted successfully.'}`);
-        await fetchReferralData();
-        setClaimAmount('');
-        setWalletAddress('');
-      } else {
-        alert(`❌ Error: ${data.message || 'Failed to submit claim'}`);
-      }
-    } catch (error) {
-      console.error('Error claiming rewards:', error);
-      alert('Failed to claim rewards. Please try again.');
-    } finally {
-      setClaiming(false);
-    }
+  const claimRewards = async () => {
+    // TODO: contract claim
+    alert("Rewards claimed successfully!");
+    setReferralData((p) => ({ ...p, pendingRewards: 0 }));
   };
-
-  if (!isLoaded || loading) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
-
-  if (!referralInfo) {
-    return (
-      <div className="min-h-screen bg-white">
-        <div className="max-w-7xl mx-auto p-6">
-          <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-8 text-center shadow-sm">
-            <Gift className="mx-auto mb-4 h-12 w-12 text-yellow-500" />
-            <h2 className="mb-2 text-xl font-semibold text-gray-900">Referral Program Coming Soon</h2>
-            <p className="text-gray-600">
-              Your referral code is being generated. Check back shortly or contact support if this keeps happening.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const tabs: Array<'overview' | 'history' | 'claims'> = ['overview', 'history', 'claims'];
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-          <h1 className="text-3xl font-bold">Referral Program</h1>
-          <p className="mt-2 text-gray-600">
-            Earn {referralInfo.reward_percentage}% of fees paid by users you refer, paid in{' '}
-            {referralInfo.reward_currency || 'USDC'}.
+    <div className="relative min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white overflow-hidden">
+      {/* Ambient glows */}
+      <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-violet-500/10 blur-3xl" />
+
+      <div className="max-w-6xl mx-auto px-6 py-12">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-300 via-yellow-300 to-pink-300 bg-clip-text text-transparent animate-pulse flex items-center justify-center gap-3">
+            <FaUserFriends /> Boost With Referrals
+          </h1>
+          <p className="mt-3 text-white/80 max-w-2xl mx-auto">
+            Share your link, level up rewards, and unlock perks. Earnings pay out in USDC/IMALI.
+            Your <span className="font-semibold">Referral Bot</span> grows its value as the IMALI bot scales.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <Users className="h-8 w-8 text-blue-600" />
-              <span className="text-2xl font-bold">{referralInfo.total_referred || 0}</span>
-            </div>
-            <p className="mt-2 text-sm text-gray-600">Total Referrals</p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <DollarSign className="h-8 w-8 text-green-600" />
-              <span className="text-2xl font-bold">${referralInfo.earned?.toFixed(2) || '0.00'}</span>
-            </div>
-            <p className="mt-2 text-sm text-gray-600">Total Earned</p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <Gift className="h-8 w-8 text-amber-500" />
-              <span className="text-2xl font-bold">${referralInfo.pending?.toFixed(2) || '0.00'}</span>
-            </div>
-            <p className="mt-2 text-sm text-gray-600">Pending Rewards</p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <Wallet className="h-8 w-8 text-purple-600" />
-              <span className="text-2xl font-bold">{referralInfo.reward_currency || 'USDC'}</span>
-            </div>
-            <p className="mt-2 text-sm text-gray-600">Reward Currency</p>
-          </div>
-        </div>
-
-        {displayReferralLink && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold">Your Referral Link</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              This link sends people to signup and automatically applies your code.
-            </p>
-
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <input
-                type="text"
-                value={displayReferralLink}
-                readOnly
-                className="flex-1 rounded-xl border border-gray-300 bg-gray-50 p-3 font-mono text-sm text-gray-800"
-              />
-              <button
-                onClick={() => copyToClipboard(displayReferralLink)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
+        {/* Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          {/* LEFT COLUMN: Explainer + QR + Referral Bot */}
+          <aside className="lg:col-span-2 space-y-6">
+            {/* Explainer card */}
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-5">
+              <img src={referralImg} alt="IMALI Referral overview" className="w-full rounded-xl mb-4" />
+              <h3 className="text-lg font-bold mb-2">How it works</h3>
+              <ol className="list-decimal list-inside text-white/80 space-y-1 text-sm">
+                <li>Connect your wallet to generate a unique code.</li>
+                <li>Share your link/QR. Friends sign up for any tier.</li>
+                <li>You earn a revenue share. Track and claim here.</li>
+              </ol>
+              <a
+                href="https://t.me/Imalitradingbot"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center mt-4 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
               >
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                {copied ? 'Copied!' : 'Copy Link'}
-              </button>
+                <FaTelegram className="mr-2" /> Start via Telegram
+              </a>
             </div>
 
-            {referralInfo.code && (
-              <p className="mt-3 text-sm text-gray-500">
-                Referral Code: <span className="font-mono font-semibold text-gray-900">{referralInfo.code}</span>
+            {/* NEW: Referral Bot value card */}
+            <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-br from-amber-500/10 to-amber-900/10 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <FaRobot /> Your Referral Bot
+                </h3>
+                <span className="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-200 border border-amber-400/30">
+                  Value Accrual
+                </span>
+              </div>
+              <img src={referralBot} alt="IMALI Referral Bot" className="w-full rounded-xl border border-amber-400/20 mb-4" />
+              <p className="text-sm text-white/80">
+                As the <b>IMALI bot</b> grows (more users, more signals, more partner volume), your Referral Bot gains utility and
+                long-term value:
               </p>
-            )}
-          </div>
-        )}
+              <ul className="mt-3 text-sm space-y-2 text-white/85">
+                <li>• <b>Tier Boosts:</b> Higher member tiers you refer can increase your rev-share multipliers.</li>
+                <li>• <b>Volume Rewards:</b> A % of trading volume from your network can unlock milestone bonuses.</li>
+                <li>• <b>Staking Synergy:</b> Holding/staking IMALI can boost your partner payout percentages.</li>
+                <li>• <b>Seasonal Leaderboards:</b> Top referrers earn bonus pools, cosmetics, and rare collectibles.</li>
+                <li>• <b>Partner Utilities:</b> Access to partner-only signals, early betas, and DAO proposals.</li>
+              </ul>
+              <p className="mt-3 text-xs text-white/60">
+                (Program specifics are on-chain & backend-driven; evolving as IMALI scales. Visual bot badge shown in your dashboard.)
+              </p>
+            </div>
 
-        <div className="border-b border-gray-200">
-          <nav className="flex gap-6">
-            {tabs.map((tab) => (
+            {/* Your QR + link */}
+            <div className="rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-600/20 to-emerald-900/30 p-5">
+              <h3 className="text-lg font-bold mb-3">Your Referral Link</h3>
+              <div className="flex flex-col items-center gap-3 mb-4">
+                <div className="p-3 bg-black/40 rounded-xl border border-emerald-500/30">
+                  <QRCodeCanvas value={referralUrl || "https://imali-defi.com/signup"} size={140} />
+                </div>
+                <code className="text-xs break-all text-emerald-200/90 text-center">
+                  {referralUrl || "Connect your wallet to generate"}
+                </code>
+              </div>
+              <div className="flex">
+                <input
+                  type="text"
+                  readOnly
+                  value={referralUrl}
+                  className="flex-1 p-3 rounded-l-xl bg-black/40 border border-emerald-500/30 text-sm"
+                  placeholder="Connect a wallet to generate your link"
+                />
+                <button
+                  onClick={copyToClipboard}
+                  disabled={!referralUrl}
+                  className={`px-4 rounded-r-xl flex items-center gap-2 ${referralUrl ? "bg-emerald-600 hover:bg-emerald-700" : "bg-gray-500/50 cursor-not-allowed"}`}
+                >
+                  <FaCopy /> {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`border-b-2 px-1 py-3 text-sm font-medium capitalize transition ${
-                  activeTab === tab
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
-                }`}
+                onClick={() => {
+                  if (!referralUrl) return;
+                  const text = encodeURIComponent("Join me on IMALI — crypto trading made simple:");
+                  const url = encodeURIComponent(referralUrl);
+                  window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, "_blank");
+                }}
+                className="mt-3 w-full py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white inline-flex items-center justify-center"
+                disabled={!referralUrl}
               >
-                {tab}
+                <FaShareAlt className="mr-2" /> Share on X/Twitter
               </button>
-            ))}
-          </nav>
+            </div>
+          </aside>
+
+          {/* RIGHT COLUMN: Stats + Actions */}
+          <section className="lg:col-span-3 space-y-6">
+            {/* Stat tiles */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Tile title="Referrals" value={referralData.totalReferrals} icon={FaUserFriends} accent="emerald" />
+              <Tile title="Level 1" value={`${referralData.level1Earnings} IMALI`} icon={FaCoins} accent="yellow" />
+              <Tile title="Level 2" value={`${referralData.level2Earnings} IMALI`} icon={FaCoins} accent="amber" />
+              <Tile title="Pending" value={`${referralData.pendingRewards} IMALI`} icon={FaChartLine} accent="violet" />
+            </div>
+
+            {/* Claim + Program rules */}
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-bold">Claim your rewards</h3>
+                  <p className="text-sm text-white/70">Payouts in USDC or IMALI. Requires connected wallet.</p>
+                </div>
+                <button
+                  onClick={claimRewards}
+                  disabled={referralData.pendingRewards <= 0}
+                  className={`px-6 py-3 rounded-2xl font-semibold ${referralData.pendingRewards > 0 ? "bg-emerald-600 hover:bg-emerald-700" : "bg-gray-600/40 cursor-not-allowed"}`}
+                >
+                  Claim Rewards
+                </button>
+              </div>
+              <div className="mt-6 grid sm:grid-cols-2 gap-4 text-sm">
+                <ul className="space-y-2 list-disc list-inside text-white/80">
+                  <li>20% referral share on signups from your link (paid in USDC).</li>
+                  <li>Influencers may receive a global 2% pool via monthly statement.</li>
+                </ul>
+                <ul className="space-y-2 list-disc list-inside text-white/80">
+                  <li>Rewards unlock once users pick a tier & connect a wallet.</li>
+                  <li>Track live stats in your Partner Dashboard.</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Apply a Code */}
+            <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-br from-amber-500/10 to-amber-900/10 p-6">
+              <h3 className="font-semibold mb-3">Have a referral code?</h3>
+              <div className="flex">
+                <input
+                  type="text"
+                  placeholder="Enter referral code"
+                  value={referralInput}
+                  onChange={(e) => setReferralInput(e.target.value)}
+                  className="flex-1 p-3 rounded-l-xl bg-black/40 border border-amber-400/30"
+                />
+                <button
+                  onClick={registerReferral}
+                  disabled={!referralInput.trim()}
+                  className={`px-6 py-3 rounded-r-xl ${referralInput.trim() ? "bg-amber-500 hover:bg-amber-600" : "bg-gray-500/40 cursor-not-allowed"}`}
+                >
+                  Apply
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-white/70">Tip: Ask a friend for their code to earn them a bonus.</p>
+            </div>
+
+            {/* CTA: Drive to pricing/signup */}
+            <div className="rounded-2xl border border-indigo-400/30 p-6 bg-gradient-to-r from-indigo-600/20 to-purple-700/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold">Ready to invite friends?</h3>
+                <p className="text-sm text-white/80">Choose a tier first so your rewards can track instantly.</p>
+              </div>
+              <div className="flex gap-3">
+                <Link to="/pricing" className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold">View Pricing</Link>
+                <Link to="/signup" className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold">Go to Signup</Link>
+              </div>
+            </div>
+          </section>
         </div>
-
-        {activeTab === 'overview' && stats && (
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold">Performance Stats</h2>
-              <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-3">
-                <div>
-                  <p className="text-sm text-gray-500">Qualified Referrals</p>
-                  <p className="text-2xl font-bold">{stats.qualified_referrals || 0}</p>
-                  <p className="text-xs text-gray-400">of {stats.total_referrals || 0} total</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Conversion Rate</p>
-                  <p className="text-2xl font-bold">{stats.conversion_rate || 0}%</p>
-                  <p className="text-xs text-gray-400">referrals that qualified</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Avg Reward / Referral</p>
-                  <p className="text-2xl font-bold">${(stats.avg_reward_per_referral || 0).toFixed(2)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold">Monthly Growth</h2>
-              <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-3">
-                <div>
-                  <p className="text-sm text-gray-500">This Month Fees</p>
-                  <p className="text-2xl font-bold">
-                    ${(stats.monthly_breakdown?.this_month_fees || 0).toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Last Month Fees</p>
-                  <p className="text-2xl font-bold">
-                    ${(stats.monthly_breakdown?.last_month_fees || 0).toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Growth</p>
-                  <p
-                    className={`text-2xl font-bold ${
-                      (stats.monthly_breakdown?.growth || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  >
-                    {(stats.monthly_breakdown?.growth || 0) >= 0 ? '+' : ''}
-                    {stats.monthly_breakdown?.growth || 0}%
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {stats.pending_rewards > 0 && (
-              <div className="rounded-2xl border border-green-200 bg-green-50 p-6 shadow-sm">
-                <h2 className="text-xl font-semibold text-green-900">Claim Your Rewards</h2>
-                <p className="mt-2 text-green-800">
-                  You have <strong className="text-2xl">${stats.pending_rewards.toFixed(2)}</strong> in pending rewards.
-                </p>
-
-                <div className="mt-6 space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
-                      Wallet Address
-                    </label>
-                    <input
-                      type="text"
-                      value={walletAddress}
-                      onChange={(e) => setWalletAddress(e.target.value)}
-                      placeholder="0x..."
-                      className="w-full rounded-xl border border-gray-300 bg-white p-3 focus:border-green-500 focus:outline-none"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">
-                      Enter your Ethereum or Polygon wallet address to receive USDC.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
-                      Amount to Claim (Minimum $10)
-                    </label>
-                    <div className="flex gap-3">
-                      <input
-                        type="number"
-                        value={claimAmount}
-                        onChange={(e) => setClaimAmount(e.target.value)}
-                        placeholder={`Max: $${stats.pending_rewards.toFixed(2)}`}
-                        className="flex-1 rounded-xl border border-gray-300 bg-white p-3 focus:border-green-500 focus:outline-none"
-                        step="10"
-                        min="10"
-                        max={stats.pending_rewards}
-                      />
-                      <button
-                        onClick={() => setClaimAmount(stats.pending_rewards.toString())}
-                        className="rounded-xl bg-gray-200 px-4 py-2 hover:bg-gray-300"
-                      >
-                        Max
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleClaimRewards}
-                    disabled={claiming || !walletAddress}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-3 font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {claiming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
-                    {claiming ? 'Processing...' : 'Claim Rewards'}
-                  </button>
-
-                  <p className="text-center text-xs text-gray-500">
-                    Claims are processed within 24–48 hours.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'history' && history && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold">Referral History</h2>
-
-            {!history.referrals || history.referrals.length === 0 ? (
-              <div className="py-12 text-center">
-                <Users className="mx-auto mb-3 h-12 w-12 text-gray-300" />
-                <p className="text-gray-500">No referrals yet</p>
-                <p className="mt-1 text-sm text-gray-400">Share your referral link to start earning rewards.</p>
-              </div>
-            ) : (
-              <div className="mt-4 space-y-4">
-                {history.referrals.map((ref) => (
-                  <div key={ref.id} className="rounded-xl border border-gray-200 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <p className="font-medium break-all">{ref.referred_email}</p>
-                        <p className="text-sm text-gray-500">
-                          Joined: {new Date(ref.created_at).toLocaleDateString()}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Status:{' '}
-                          <span
-                            className={`font-medium ${
-                              ref.status === 'qualified' ? 'text-green-600' : 'text-amber-600'
-                            }`}
-                          >
-                            {ref.status === 'qualified' ? '✓ Qualified' : '⏳ Pending'}
-                          </span>
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-green-600">+${ref.total_rewards?.toFixed(2) || '0.00'}</p>
-                        <p className="text-xs text-gray-500">${ref.total_fees?.toFixed(2) || '0.00'} fees</p>
-                      </div>
-                    </div>
-
-                    {ref.trades && ref.trades.length > 0 && (
-                      <div className="mt-3 border-t border-gray-200 pt-3">
-                        <p className="mb-2 text-xs text-gray-500">Recent earnings:</p>
-                        <div className="space-y-1">
-                          {ref.trades.slice(-3).map((trade: any, i: number) => (
-                            <div key={i} className="flex justify-between text-xs text-gray-600">
-                              <span>Trade fee: ${trade.fee_amount?.toFixed(2)}</span>
-                              <span className="text-green-600">+${trade.reward_amount?.toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'claims' && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold">Claim History</h2>
-
-            {claims.length === 0 ? (
-              <div className="py-12 text-center">
-                <History className="mx-auto mb-3 h-12 w-12 text-gray-300" />
-                <p className="text-gray-500">No claim history</p>
-                <p className="mt-1 text-sm text-gray-400">
-                  Once you have at least $10 in pending rewards, you can request a payout.
-                </p>
-              </div>
-            ) : (
-              <div className="mt-4 space-y-4">
-                {claims.map((claim) => (
-                  <div key={claim.id} className="rounded-xl border border-gray-200 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="font-medium">Claim #{claim.id.slice(-8)}</p>
-                        <p className="text-sm text-gray-500">
-                          Requested: {new Date(claim.created_at).toLocaleDateString()}
-                        </p>
-                        <p className="text-sm text-gray-500 break-all">
-                          Wallet: {claim.wallet_address?.slice(0, 10)}...{claim.wallet_address?.slice(-8)}
-                        </p>
-                        {claim.tx_hash && (
-                          <p className="mt-1 text-xs text-blue-600">TX: {claim.tx_hash.slice(0, 16)}...</p>
-                        )}
-                      </div>
-
-                      <div className="text-right">
-                        <p className="font-bold text-green-600">${claim.amount.toFixed(2)}</p>
-                        <p
-                          className={`text-sm font-medium ${
-                            claim.status === 'completed'
-                              ? 'text-green-600'
-                              : claim.status === 'pending'
-                              ? 'text-amber-600'
-                              : 'text-red-600'
-                          }`}
-                        >
-                          {claim.status === 'completed'
-                            ? '✓ Completed'
-                            : claim.status === 'pending'
-                            ? '⏳ Pending'
-                            : '✗ Rejected'}
-                        </p>
-
-                        {claim.processed_at && (
-                          <p className="mt-1 text-xs text-gray-500">
-                            Processed: {new Date(claim.processed_at).toLocaleDateString()}
-                          </p>
-                        )}
-
-                        {claim.rejection_reason && (
-                          <p className="mt-1 max-w-xs text-xs text-red-500">{claim.rejection_reason}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
-}
+};
+
+export default ReferralSystem; rewrite to fix and update with backend endpoints
