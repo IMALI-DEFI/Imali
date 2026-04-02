@@ -1,12 +1,7 @@
-// src/pages/Activation.jsx
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
-
-// ────────────────────────────────────────────────────────────
-// Presentational Components
-// ────────────────────────────────────────────────────────────
 
 const StatusBadge = ({ done }) => (
   <span
@@ -38,7 +33,15 @@ const SectionCard = ({ number, title, description, status, children }) => (
   </div>
 );
 
-const SimpleInput = ({ label, type = "text", value, onChange, placeholder, disabled, helper }) => (
+const SimpleInput = ({
+  label,
+  type = "text",
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  helper,
+}) => (
   <div className="space-y-1">
     <label className="text-sm text-gray-400">{label}</label>
     <input
@@ -61,8 +64,8 @@ const ModeToggle = ({ isLive, onChange, disabled }) => (
       onClick={() => onChange(false)}
       disabled={disabled}
       className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-        !isLive 
-          ? "bg-orange-500/20 text-orange-300 border border-orange-500/30" 
+        !isLive
+          ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
           : "bg-gray-800 text-gray-500 hover:text-gray-300"
       }`}
     >
@@ -73,8 +76,8 @@ const ModeToggle = ({ isLive, onChange, disabled }) => (
       onClick={() => onChange(true)}
       disabled={disabled}
       className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-        isLive 
-          ? "bg-green-500/20 text-green-300 border border-green-500/30" 
+        isLive
+          ? "bg-green-500/20 text-green-300 border border-green-500/30"
           : "bg-gray-800 text-gray-500 hover:text-gray-300"
       }`}
     >
@@ -83,7 +86,14 @@ const ModeToggle = ({ isLive, onChange, disabled }) => (
   </div>
 );
 
-const ActionButton = ({ onClick, disabled, loading, children, color = "blue", type = "button" }) => {
+const ActionButton = ({
+  onClick,
+  disabled,
+  loading,
+  children,
+  color = "blue",
+  type = "button",
+}) => {
   const colors = {
     blue: "bg-blue-600 hover:bg-blue-700",
     green: "bg-green-600 hover:bg-green-700",
@@ -110,11 +120,7 @@ const InfoBox = ({ type = "info", children }) => {
     tip: "bg-purple-500/10 border-purple-500/30 text-purple-200",
   };
 
-  return (
-    <div className={`p-4 rounded-lg border ${styles[type]} text-sm`}>
-      {children}
-    </div>
-  );
+  return <div className={`p-4 rounded-lg border ${styles[type]} text-sm`}>{children}</div>;
 };
 
 const HelpLink = ({ href, children }) => (
@@ -128,28 +134,19 @@ const HelpLink = ({ href, children }) => (
   </a>
 );
 
-// ────────────────────────────────────────────────────────────
-// Helper function to safely extract data
-// ────────────────────────────────────────────────────────────
-const safeData = (response, fallback = {}) => {
-  if (!response) return fallback;
-  if (response.data && typeof response.data === 'object') {
-    return response.data;
-  }
-  if (response.status && typeof response.status === 'object') {
-    return response.status;
-  }
-  return response;
-};
-
-// ────────────────────────────────────────────────────────────
-// Main Component
-// ────────────────────────────────────────────────────────────
+const extractStatus = (activation) => ({
+  billing: !!activation?.has_card_on_file || !!activation?.billing_complete,
+  okx: !!activation?.okx_connected,
+  alpaca: !!activation?.alpaca_connected,
+  wallet: !!activation?.wallet_connected,
+  trading: !!activation?.trading_enabled,
+});
 
 export default function Activation() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, activation, refreshActivation, setActivation } = useAuth();
+  const { user, activation, refreshActivation } = useAuth();
+
   const hasRedirected = useRef(false);
   const initialLoadDone = useRef(false);
 
@@ -157,55 +154,40 @@ export default function Activation() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Get tier from user or location state
   const tier = useMemo(() => {
     const userTier = user?.tier?.toLowerCase();
     const stateTier = location.state?.tier;
-    return userTier || stateTier || "starter";
-  }, [user?.tier, location.state]);
+    const savedTier = localStorage.getItem("IMALI_TIER");
+    return userTier || stateTier || savedTier || "starter";
+  }, [location.state?.tier, user?.tier]);
 
-  // Form fields
-  const [okx, setOkx] = useState({ 
-    apiKey: "", 
-    apiSecret: "", 
-    passphrase: "",
-    isLive: false
-  });
-  const [alpaca, setAlpaca] = useState({ 
-    apiKey: "", 
+  const [okx, setOkx] = useState({
+    apiKey: "",
     apiSecret: "",
-    isLive: false
+    passphrase: "",
+    isLive: false,
   });
+
+  const [alpaca, setAlpaca] = useState({
+    apiKey: "",
+    apiSecret: "",
+    isLive: false,
+  });
+
   const [wallet, setWallet] = useState("");
 
-  // Determine required connections based on tier
   const needs = useMemo(
     () => ({
-      // All tiers need billing to enable trading
       billing: true,
-      // OKX required for: starter, pro, bundle
       okx: ["starter", "pro", "bundle"].includes(tier),
-      // Alpaca required for: starter, bundle
       alpaca: ["starter", "bundle"].includes(tier),
-      // Wallet required for: elite, bundle
       wallet: ["elite", "bundle"].includes(tier),
     }),
     [tier]
   );
 
-  // Status from activation data
-  const status = useMemo(
-    () => ({
-      billing: !!activation?.has_card_on_file,
-      okx: !!activation?.okx_connected,
-      alpaca: !!activation?.alpaca_connected,
-      wallet: !!activation?.wallet_connected,
-      trading: !!activation?.trading_enabled,
-    }),
-    [activation]
-  );
+  const status = useMemo(() => extractStatus(activation || {}), [activation]);
 
-  // Check if required connections are done
   const connectionsDone = useMemo(
     () =>
       (!needs.okx || status.okx) &&
@@ -224,15 +206,13 @@ export default function Activation() {
     [status.billing, connectionsDone, status.trading]
   );
 
-  // Load initial data
   useEffect(() => {
     const loadInitialData = async () => {
       if (initialLoadDone.current) return;
       initialLoadDone.current = true;
-      
+
       try {
-        if (!activation && refreshActivation) {
-          console.log("[Activation] Loading initial activation data");
+        if (refreshActivation) {
           await refreshActivation();
         }
       } catch (err) {
@@ -241,38 +221,26 @@ export default function Activation() {
     };
 
     loadInitialData();
-  }, [activation, refreshActivation]);
+  }, [refreshActivation]);
 
-  // Redirect when fully activated
   useEffect(() => {
     if (fullyActivated && !hasRedirected.current) {
-      console.log("[Activation] ✅ Fully activated — redirecting to /dashboard");
       hasRedirected.current = true;
-
       const timer = setTimeout(() => {
         navigate("/dashboard", { replace: true });
       }, 600);
-
       return () => clearTimeout(timer);
     }
   }, [fullyActivated, navigate]);
 
-  // Refresh helper
   const refreshAfterAction = useCallback(async () => {
     try {
-      if (refreshActivation) {
-        await refreshActivation();
-      } else {
-        const res = await BotAPI.activationStatus();
-        const fresh = safeData(res);
-        if (setActivation) setActivation(fresh);
-      }
+      await refreshActivation?.();
     } catch (err) {
       console.error("[Activation] Refresh after action failed:", err);
     }
-  }, [refreshActivation, setActivation]);
+  }, [refreshActivation]);
 
-  // Connection handlers
   const connectOKX = async (e) => {
     e.preventDefault();
     setError("");
@@ -292,14 +260,18 @@ export default function Activation() {
         passphrase: okx.passphrase.trim(),
         mode: okx.isLive ? "live" : "paper",
       });
-      setSuccess(`✅ OKX connected successfully in ${okx.isLive ? "LIVE" : "PAPER"} mode!`);
+
+      setSuccess(
+        `✅ OKX connected successfully in ${okx.isLive ? "LIVE" : "PAPER"} mode!`
+      );
       setOkx({ apiKey: "", apiSecret: "", passphrase: "", isLive: false });
       await refreshAfterAction();
     } catch (err) {
-      const errorMsg = err?.response?.data?.message || 
-                       err?.response?.data?.error || 
-                       "Failed to connect OKX. Please double-check your API keys.";
-      setError(errorMsg);
+      setError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          "Failed to connect OKX. Please double-check your API keys."
+      );
     } finally {
       setBusy("");
     }
@@ -323,14 +295,18 @@ export default function Activation() {
         api_secret: alpaca.apiSecret.trim(),
         mode: alpaca.isLive ? "live" : "paper",
       });
-      setSuccess(`✅ Alpaca connected successfully in ${alpaca.isLive ? "LIVE" : "PAPER"} mode!`);
+
+      setSuccess(
+        `✅ Alpaca connected successfully in ${alpaca.isLive ? "LIVE" : "PAPER"} mode!`
+      );
       setAlpaca({ apiKey: "", apiSecret: "", isLive: false });
       await refreshAfterAction();
     } catch (err) {
-      const errorMsg = err?.response?.data?.message || 
-                       err?.response?.data?.error || 
-                       "Failed to connect Alpaca. Please double-check your API keys.";
-      setError(errorMsg);
+      setError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          "Failed to connect Alpaca. Please double-check your API keys."
+      );
     } finally {
       setBusy("");
     }
@@ -348,6 +324,7 @@ export default function Activation() {
       setBusy("");
       return;
     }
+
     if (!addr.startsWith("0x") || addr.length !== 42) {
       setError("Wallet address must start with '0x' and be exactly 42 characters long");
       setBusy("");
@@ -355,15 +332,16 @@ export default function Activation() {
     }
 
     try {
-      await BotAPI.connectWallet({ wallet: addr, address: addr });
+      await BotAPI.connectWallet({ wallet: addr });
       setSuccess("✅ Wallet connected successfully!");
       setWallet("");
       await refreshAfterAction();
     } catch (err) {
-      const errorMsg = err?.response?.data?.message || 
-                       err?.response?.data?.error || 
-                       "Failed to connect wallet";
-      setError(errorMsg);
+      setError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          "Failed to connect wallet"
+      );
     } finally {
       setBusy("");
     }
@@ -383,13 +361,18 @@ export default function Activation() {
     try {
       const enabling = !status.trading;
       await BotAPI.toggleTrading(enabling);
-      setSuccess(enabling ? "✅ Trading enabled! Redirecting to your dashboard…" : "Trading has been turned off");
       await refreshAfterAction();
+      setSuccess(
+        enabling
+          ? "✅ Trading enabled! Redirecting to your dashboard…"
+          : "Trading has been turned off"
+      );
     } catch (err) {
-      const errorMsg = err?.response?.data?.message || 
-                       err?.response?.data?.error || 
-                       "Could not update trading status";
-      setError(errorMsg);
+      setError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          "Could not update trading status"
+      );
     } finally {
       setBusy("");
     }
@@ -403,43 +386,49 @@ export default function Activation() {
     navigate("/pricing");
   };
 
-  // Get plan name for display
   const getPlanName = () => {
     switch (tier) {
-      case "starter": return "Starter (Free)";
-      case "pro": return "Pro";
-      case "elite": return "Elite";
-      case "stock": return "DeFi (New Crypto)";
-      case "bundle": return "Bundle";
-      default: return "Current Plan";
+      case "starter":
+        return "Starter (Free)";
+      case "pro":
+        return "Pro";
+      case "elite":
+        return "Elite";
+      case "stock":
+        return "DeFi (New Crypto)";
+      case "bundle":
+        return "Bundle";
+      default:
+        return "Current Plan";
     }
   };
 
-  // Render
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-3xl mx-auto p-6">
-
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Welcome to IMALI! 🚀</h1>
           <p className="text-gray-400 mb-4">
-            You've selected the <span className="text-blue-400 font-semibold">{getPlanName()}</span> plan.
-            Let's set up your automated trading bot.
+            You&apos;ve selected the{" "}
+            <span className="text-blue-400 font-semibold">{getPlanName()}</span> plan.
+            Let&apos;s set up your automated trading bot.
           </p>
-          
-          {/* Upgrade banner for free users */}
+
           {tier === "starter" && (
             <InfoBox type="tip">
-              💡 <strong>Want more features?</strong> You can upgrade to Pro, Elite, or Bundle at any time from the 
-              <button onClick={handleUpgradePlan} className="ml-1 text-blue-400 hover:text-blue-300 underline">
+              💡 <strong>Want more features?</strong> You can upgrade to Pro, Elite, or
+              Bundle at any time from the{" "}
+              <button
+                onClick={handleUpgradePlan}
+                className="ml-1 text-blue-400 hover:text-blue-300 underline"
+              >
                 Pricing page
-              </button>.
+              </button>
+              .
             </InfoBox>
           )}
         </div>
 
-        {/* Fully-activated banner */}
         {fullyActivated && (
           <div className="mb-6 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 flex items-center justify-between">
             <span>🎉 Your account is fully activated! Redirecting to your dashboard…</span>
@@ -452,36 +441,34 @@ export default function Activation() {
           </div>
         )}
 
-        {/* Messages */}
         {error && (
           <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-200">
             ⚠️ {error}
           </div>
         )}
+
         {success && !fullyActivated && (
           <div className="mb-6 p-4 rounded-lg bg-green-500/10 border border-green-500/30 text-green-200">
             {success}
           </div>
         )}
 
-        {/* Step 1: Billing */}
         <SectionCard
           number="1"
           title="Add Payment Method"
-          description="Set up billing for when you start making profits"
+          description="Set up billing before activation"
           status={status.billing}
         >
           {!status.billing ? (
             <div className="space-y-4">
               <InfoBox type="info">
                 📌 <strong>How billing works:</strong><br />
-                • No upfront costs or monthly fees<br />
-                • We only charge a performance fee on your profits<br />
-                • If you don't make money, you don't pay anything<br />
-                • Your card is securely stored with Stripe (we never see your card details)
+                • Your card is securely stored with Stripe<br />
+                • Billing setup is required before activation can complete<br />
+                • You can review your billing flow before turning on trading
               </InfoBox>
               <div className="flex flex-col sm:flex-row gap-3">
-                <ActionButton onClick={() => navigate("/billing")} color="blue">
+                <ActionButton onClick={() => navigate("/billing", { state: { tier } })} color="blue">
                   Add Credit Card
                 </ActionButton>
                 <HelpLink href="https://imali-defi.com/faq#billing">
@@ -494,7 +481,6 @@ export default function Activation() {
           )}
         </SectionCard>
 
-        {/* Step 2: Connect Accounts */}
         <SectionCard
           number="2"
           title="Connect Your Trading Accounts"
@@ -502,33 +488,23 @@ export default function Activation() {
           status={connectionsDone}
         >
           <div className="space-y-6">
-
-            {/* OKX - Required for starter, pro, bundle */}
             {needs.okx && !status.okx && (
               <form onSubmit={connectOKX} className="space-y-4 border-t border-white/10 pt-6">
                 <h3 className="text-lg font-medium text-blue-300">🔷 OKX Exchange (Cryptocurrency)</h3>
-                
+
                 <InfoBox type="info">
-                  <strong>What is OKX?</strong> A cryptocurrency exchange where you can trade Bitcoin, Ethereum, and other digital assets.<br />
-                  <strong>Getting started:</strong>
-                  <ol className="mt-2 ml-4 list-decimal">
-                    <li>Create an account at <HelpLink href="https://www.okx.com">OKX.com</HelpLink></li>
-                    <li>Complete identity verification (KYC)</li>
-                    <li>Go to Account → API → Create API Key</li>
-                    <li>Enable "Trading" permission (keep "Withdrawal" disabled for security)</li>
-                    <li>Save your API credentials and enter them below</li>
-                  </ol>
+                  <strong>What is OKX?</strong> A cryptocurrency exchange where you can trade Bitcoin, Ethereum, and other digital assets.
                 </InfoBox>
 
-                <ModeToggle 
-                  isLive={okx.isLive} 
+                <ModeToggle
+                  isLive={okx.isLive}
                   onChange={(isLive) => setOkx({ ...okx, isLive })}
                   disabled={busy === "okx"}
                 />
 
                 {okx.isLive && (
                   <InfoBox type="warning">
-                    ⚠️ <strong>Live Mode:</strong> The bot will trade with real money. Make sure you understand the risks.
+                    ⚠️ <strong>Live Mode:</strong> The bot will trade with real money.
                   </InfoBox>
                 )}
 
@@ -537,7 +513,6 @@ export default function Activation() {
                   value={okx.apiKey}
                   onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })}
                   placeholder="Enter your OKX API key"
-                  helper="This usually starts with random letters and numbers"
                   disabled={busy === "okx"}
                 />
                 <SimpleInput
@@ -546,7 +521,6 @@ export default function Activation() {
                   value={okx.apiSecret}
                   onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })}
                   placeholder="Enter your OKX secret key"
-                  helper="Keep this private - never share it with anyone"
                   disabled={busy === "okx"}
                 />
                 <SimpleInput
@@ -554,8 +528,7 @@ export default function Activation() {
                   type="password"
                   value={okx.passphrase}
                   onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })}
-                  placeholder="Enter the passphrase you set"
-                  helper="The passphrase you created when generating the API key"
+                  placeholder="Enter your OKX passphrase"
                   disabled={busy === "okx"}
                 />
 
@@ -568,49 +541,29 @@ export default function Activation() {
                   >
                     Connect OKX ({okx.isLive ? "Live" : "Paper"})
                   </ActionButton>
-                  <HelpLink href="https://www.okx.com/docs/en/#overview">
-                    OKX API Documentation →
-                  </HelpLink>
                 </div>
               </form>
             )}
 
-            {/* Alpaca - Required for starter, bundle */}
             {needs.alpaca && !status.alpaca && (
               <form onSubmit={connectAlpaca} className="space-y-4 border-t border-white/10 pt-6">
                 <h3 className="text-lg font-medium text-green-300">📈 Alpaca (US Stocks)</h3>
-                
+
                 <InfoBox type="info">
-                  <strong>What is Alpaca?</strong> A commission-free stock trading platform for US markets.<br />
-                  <strong>Getting started:</strong>
-                  <ol className="mt-2 ml-4 list-decimal">
-                    <li>Sign up at <HelpLink href="https://alpaca.markets">Alpaca Markets</HelpLink></li>
-                    <li>Complete account verification</li>
-                    <li>Go to your dashboard → API Keys</li>
-                    <li>Generate new API keys (paper or live)</li>
-                    <li>Copy and paste them below</li>
-                  </ol>
+                  <strong>What is Alpaca?</strong> A stock trading platform for US markets.
                 </InfoBox>
 
-                <ModeToggle 
-                  isLive={alpaca.isLive} 
+                <ModeToggle
+                  isLive={alpaca.isLive}
                   onChange={(isLive) => setAlpaca({ ...alpaca, isLive })}
                   disabled={busy === "alpaca"}
                 />
-
-                {!alpaca.isLive && (
-                  <InfoBox type="tip">
-                    🎮 <strong>Paper Trading:</strong> Alpaca provides free paper trading with \$100,000 in virtual money. 
-                    Perfect for testing strategies risk-free!
-                  </InfoBox>
-                )}
 
                 <SimpleInput
                   label="API Key ID"
                   value={alpaca.apiKey}
                   onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })}
                   placeholder="PK..."
-                  helper={alpaca.isLive ? "Use your LIVE API key" : "Use your PAPER API key"}
                   disabled={busy === "alpaca"}
                 />
                 <SimpleInput
@@ -619,7 +572,6 @@ export default function Activation() {
                   value={alpaca.apiSecret}
                   onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })}
                   placeholder="Enter your secret key"
-                  helper="Keep this private - it's like a password for your account"
                   disabled={busy === "alpaca"}
                 />
 
@@ -632,27 +584,16 @@ export default function Activation() {
                   >
                     Connect Alpaca ({alpaca.isLive ? "Live" : "Paper"})
                   </ActionButton>
-                  <HelpLink href="https://alpaca.markets/learn/api-documentation/">
-                    Alpaca Setup Guide →
-                  </HelpLink>
                 </div>
               </form>
             )}
 
-            {/* Wallet - Required for elite, bundle */}
             {needs.wallet && !status.wallet && (
               <form onSubmit={connectWallet} className="space-y-4 border-t border-white/10 pt-6">
-                <h3 className="text-lg font-medium text-purple-300">🦄 DeFi Wallet (Advanced)</h3>
-                
+                <h3 className="text-lg font-medium text-purple-300">🦄 DeFi Wallet</h3>
+
                 <InfoBox type="info">
-                  <strong>What is a DeFi wallet?</strong> A cryptocurrency wallet for decentralized finance trading.<br />
-                  <strong>Popular wallets:</strong>
-                  <ul className="mt-2 ml-4 list-disc">
-                    <li><HelpLink href="https://metamask.io">MetaMask</HelpLink> (recommended for beginners)</li>
-                    <li><HelpLink href="https://trustwallet.com">Trust Wallet</HelpLink></li>
-                    <li><HelpLink href="https://www.coinbase.com/wallet">Coinbase Wallet</HelpLink></li>
-                  </ul>
-                  <strong className="text-yellow-300">Important:</strong> Never share your private key or seed phrase!
+                  <strong>What is a DeFi wallet?</strong> A crypto wallet for decentralized trading.
                 </InfoBox>
 
                 <SimpleInput
@@ -660,7 +601,7 @@ export default function Activation() {
                   value={wallet}
                   onChange={(e) => setWallet(e.target.value)}
                   placeholder="0x..."
-                  helper="Your public wallet address (42 characters starting with 0x)"
+                  helper="42 characters starting with 0x"
                   disabled={busy === "wallet"}
                 />
 
@@ -673,33 +614,28 @@ export default function Activation() {
                   >
                     Connect Wallet
                   </ActionButton>
-                  <HelpLink href="https://metamask.io/faqs/">
-                    How to find my wallet address →
-                  </HelpLink>
                 </div>
               </form>
             )}
 
-            {/* Connected indicators */}
             {needs.okx && status.okx && (
               <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                ✅ OKX exchange connected successfully
+                ✅ OKX connected successfully
               </div>
             )}
             {needs.alpaca && status.alpaca && (
               <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                ✅ Alpaca trading connected successfully
+                ✅ Alpaca connected successfully
               </div>
             )}
             {needs.wallet && status.wallet && (
               <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                ✅ DeFi wallet connected successfully
+                ✅ Wallet connected successfully
               </div>
             )}
           </div>
         </SectionCard>
 
-        {/* Step 3: Start Trading */}
         <SectionCard
           number="3"
           title="Activate Trading Bot"
@@ -715,16 +651,17 @@ export default function Activation() {
               <div className="space-y-4">
                 <InfoBox type="info">
                   🤖 <strong>How the bot works:</strong><br />
-                  • Analyzes market conditions 24/7<br />
-                  • Executes trades based on proven strategies<br />
-                  • Manages risk automatically<br />
+                  • Analyzes market conditions<br />
+                  • Executes trades based on configured strategies<br />
                   • You can monitor everything from your dashboard
                 </InfoBox>
-                
+
                 {status.trading && (
                   <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
                     <p className="text-green-300 font-medium mb-2">🟢 Trading bot is currently ACTIVE</p>
-                    <p className="text-sm text-gray-400">Your bot is running and looking for trading opportunities.</p>
+                    <p className="text-sm text-gray-400">
+                      Your bot is running and looking for trading opportunities.
+                    </p>
                   </div>
                 )}
 
@@ -736,16 +673,11 @@ export default function Activation() {
                 >
                   {status.trading ? "⏸ Pause Trading Bot" : "▶️ Start Trading Bot"}
                 </ActionButton>
-
-                <HelpLink href="https://imali-defi.com/how-it-works">
-                  Learn more about our trading strategies →
-                </HelpLink>
               </div>
             )}
           </div>
         </SectionCard>
 
-        {/* Help Section */}
         <div className="mt-8 p-6 bg-white/5 border border-white/10 rounded-xl">
           <h3 className="text-lg font-semibold mb-4">Need Help? 🤝</h3>
           <div className="grid gap-3">
@@ -761,33 +693,7 @@ export default function Activation() {
                 <div className="text-xs text-gray-400">Step-by-step walkthrough for beginners</div>
               </div>
             </a>
-            
-            <a
-              href="https://imali-defi.com/funding-guide"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors"
-            >
-              <span>💰</span>
-              <div>
-                <div className="font-medium">Funding Your Account</div>
-                <div className="text-xs text-gray-400">How to deposit money for trading</div>
-              </div>
-            </a>
-            
-            <a
-              href="https://imali-defi.com/faq"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors"
-            >
-              <span>❓</span>
-              <div>
-                <div className="font-medium">Frequently Asked Questions</div>
-                <div className="text-xs text-gray-400">Common questions and answers</div>
-              </div>
-            </a>
-            
+
             <a
               href="mailto:support@imali-defi.com"
               className="flex items-center gap-2 p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors"
@@ -801,7 +707,6 @@ export default function Activation() {
           </div>
         </div>
 
-        {/* Quick Links */}
         <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap gap-4 justify-center text-sm">
           <button onClick={handleSkipToDashboard} className="text-gray-400 hover:text-white">
             Skip to Dashboard →
@@ -810,14 +715,6 @@ export default function Activation() {
           <button onClick={handleUpgradePlan} className="text-gray-400 hover:text-white">
             Upgrade Plan →
           </button>
-          <span className="text-gray-600">•</span>
-          <a href="/docs" className="text-gray-400 hover:text-white">
-            Documentation
-          </a>
-          <span className="text-gray-600">•</span>
-          <a href="/status" className="text-gray-400 hover:text-white">
-            System Status
-          </a>
         </div>
       </div>
     </div>
