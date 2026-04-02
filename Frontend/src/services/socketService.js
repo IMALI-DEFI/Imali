@@ -63,20 +63,17 @@ class SocketService {
   connect(token) {
     return new Promise((resolve) => {
       if (this.fallbackMode) {
-        console.log("[SocketService] Running in fallback mode - WebSocket disabled");
         this._emit("connected", { connected: false, fallback: true });
         resolve();
         return;
       }
 
       if (this.socket && this.connected) {
-        console.log("[SocketService] Already connected");
         resolve();
         return;
       }
 
       if (this.connecting) {
-        console.log("[SocketService] Already connecting");
         resolve();
         return;
       }
@@ -95,6 +92,8 @@ class SocketService {
           this.socket = null;
         }
 
+        const authPayload = token ? { token: `Bearer ${token}` } : {};
+
         this.socket = io(serverUrl, {
           path: "/socket.io/",
           transports: ["websocket", "polling"],
@@ -106,8 +105,7 @@ class SocketService {
           reconnectionDelay: this.reconnectDelay,
           reconnectionDelayMax: 5000,
           timeout: 10000,
-          auth: token ? { token } : {},
-          query: token ? { token } : {},
+          auth: authPayload,
         });
 
         this.connectionTimeout = setTimeout(() => {
@@ -121,8 +119,6 @@ class SocketService {
 
         this.socket.on("connect", () => {
           this.clearConnectionTimeout();
-          console.log("[SocketService] Connected successfully");
-
           this.connected = true;
           this.connecting = false;
           this.reconnectAttempts = 0;
@@ -136,7 +132,6 @@ class SocketService {
         });
 
         this.socket.on("disconnect", (reason) => {
-          console.log("[SocketService] Disconnected:", reason);
           this.connected = false;
           this.connecting = false;
 
@@ -150,9 +145,7 @@ class SocketService {
 
         this.socket.on("connect_error", (error) => {
           console.error("[SocketService] Connection error:", error?.message || error);
-
           this._emit("connect_error", error);
-
           this.reconnectAttempts += 1;
 
           if (this.reconnectAttempts >= this.maxReconnectAttempts) {
@@ -169,13 +162,11 @@ class SocketService {
         });
 
         this.socket.io.on("reconnect_attempt", (attemptNumber) => {
-          console.log("[SocketService] Reconnect attempt:", attemptNumber);
           this.reconnectAttempts = attemptNumber;
           this._emit("reconnect_attempt", { attempt: attemptNumber });
         });
 
         this.socket.io.on("reconnect", (attemptNumber) => {
-          console.log("[SocketService] Reconnected");
           this.connected = true;
           this.connecting = false;
           this.fallbackMode = false;
@@ -187,7 +178,6 @@ class SocketService {
         });
 
         this.socket.io.on("reconnect_failed", () => {
-          console.error("[SocketService] Reconnection failed - switching to fallback mode");
           this._enableFallbackMode();
           this._emit("reconnect_failed", {});
         });
@@ -245,18 +235,14 @@ class SocketService {
     Object.keys(this.subscriptions).forEach((key) => {
       this.subscriptions[key] = false;
     });
-
-    console.log("[SocketService] Disconnected manually");
   }
 
   reconnect(newToken) {
     if (this.fallbackMode) {
-      console.log("[SocketService] In fallback mode, attempting to re-enable WebSocket");
       this.fallbackMode = false;
       this.wsAvailable = true;
     }
 
-    console.log("[SocketService] Reconnecting...");
     this.disconnect();
 
     if (newToken) {
@@ -269,21 +255,13 @@ class SocketService {
   _resubscribeAll() {
     if (!this.socket || !this.connected || this.fallbackMode) return;
 
-    if (this.subscriptions.trades) {
-      this.socket.emit("subscribe_trades", {});
-    }
-    if (this.subscriptions.pnl) {
-      this.socket.emit("subscribe_pnl", {});
-    }
-    if (this.subscriptions.announcements) {
-      this.socket.emit("subscribe_announcements", {});
-    }
+    if (this.subscriptions.trades) this.socket.emit("subscribe_trades", {});
+    if (this.subscriptions.pnl) this.socket.emit("subscribe_pnl", {});
+    if (this.subscriptions.announcements) this.socket.emit("subscribe_announcements", {});
     if (this.subscriptions.referrals && this.referralUserId) {
       this.socket.emit("subscribe_referrals", { user_id: this.referralUserId });
     }
-    if (this.subscriptions.leaderboard) {
-      this.socket.emit("subscribe_leaderboard", {});
-    }
+    if (this.subscriptions.leaderboard) this.socket.emit("subscribe_leaderboard", {});
     if (this.subscriptions.systemMetrics) {
       this.socket.emit("subscribe_system_metrics", {});
     }
@@ -334,85 +312,28 @@ class SocketService {
     }
   }
 
-  onConnect(callback) {
-    return this._addListener("connect", callback);
-  }
-
-  onConnected(callback) {
-    return this._addListener("connected", callback);
-  }
-
-  onDisconnect(callback) {
-    return this._addListener("disconnect", callback);
-  }
-
-  onDisconnected(callback) {
-    return this._addListener("disconnected", callback);
-  }
-
-  onConnectError(callback) {
-    return this._addListener("connect_error", callback);
-  }
-
-  onError(callback) {
-    return this._addListener("error", callback);
-  }
-
-  onTrade(callback) {
-    return this._addListener("trade", callback);
-  }
-
-  onPnlUpdate(callback) {
-    return this._addListener("pnl_update", callback);
-  }
-
-  onAnnouncement(callback) {
-    return this._addListener("announcement", callback);
-  }
-
-  onBotStatus(callback) {
-    return this._addListener("bot_status", callback);
-  }
-
-  onReferralEvent(callback) {
-    return this._addListener("referral", callback);
-  }
-
-  onLeaderboardUpdate(callback) {
-    return this._addListener("leaderboard_update", callback);
-  }
-
-  onSystemMetric(callback) {
-    return this._addListener("system_metric", callback);
-  }
-
-  onSubscribed(callback) {
-    return this._addListener("subscribed", callback);
-  }
-
-  onTokenExpired(callback) {
-    return this._addListener("token_expired", callback);
-  }
-
-  onReconnectAttempt(callback) {
-    return this._addListener("reconnect_attempt", callback);
-  }
-
-  onReconnect(callback) {
-    return this._addListener("reconnect", callback);
-  }
-
-  onReconnectFailed(callback) {
-    return this._addListener("reconnect_failed", callback);
-  }
+  onConnect(callback) { return this._addListener("connect", callback); }
+  onConnected(callback) { return this._addListener("connected", callback); }
+  onDisconnect(callback) { return this._addListener("disconnect", callback); }
+  onDisconnected(callback) { return this._addListener("disconnected", callback); }
+  onConnectError(callback) { return this._addListener("connect_error", callback); }
+  onError(callback) { return this._addListener("error", callback); }
+  onTrade(callback) { return this._addListener("trade", callback); }
+  onPnlUpdate(callback) { return this._addListener("pnl_update", callback); }
+  onAnnouncement(callback) { return this._addListener("announcement", callback); }
+  onBotStatus(callback) { return this._addListener("bot_status", callback); }
+  onReferralEvent(callback) { return this._addListener("referral", callback); }
+  onLeaderboardUpdate(callback) { return this._addListener("leaderboard_update", callback); }
+  onSystemMetric(callback) { return this._addListener("system_metric", callback); }
+  onSubscribed(callback) { return this._addListener("subscribed", callback); }
+  onTokenExpired(callback) { return this._addListener("token_expired", callback); }
+  onReconnectAttempt(callback) { return this._addListener("reconnect_attempt", callback); }
+  onReconnect(callback) { return this._addListener("reconnect", callback); }
+  onReconnectFailed(callback) { return this._addListener("reconnect_failed", callback); }
 
   _addListener(event, callback) {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
-
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-
     return () => this._removeListener(event, callback);
   }
 
@@ -423,7 +344,6 @@ class SocketService {
 
   _emit(event, data) {
     if (!this.listeners[event]) return;
-
     this.listeners[event].forEach((callback) => {
       try {
         callback(data);
@@ -451,7 +371,6 @@ class SocketService {
       connecting: this.connecting,
       fallbackMode: this.fallbackMode,
       wsAvailable: this.wsAvailable,
-      token: this.currentToken ? `${this.currentToken.substring(0, 20)}...` : null,
       subscriptions: { ...this.subscriptions },
       reconnectAttempts: this.reconnectAttempts,
     };
@@ -460,8 +379,6 @@ class SocketService {
   emit(event, data) {
     if (this.socket && this.connected && !this.fallbackMode) {
       this.socket.emit(event, data);
-    } else {
-      console.warn("[SocketService] Cannot emit event - not connected or in fallback mode");
     }
   }
 }
