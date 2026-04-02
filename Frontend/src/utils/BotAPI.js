@@ -1,7 +1,8 @@
 import axios from "axios";
 
 const API_BASE =
-  (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
+  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
+  "https://api.imali-defi.com";
 
 const TOKEN_KEY = "imali_token";
 const WS_TOKEN_KEY = "imali_ws_token";
@@ -11,7 +12,27 @@ const RETRY_DELAY = 1000;
 
 const isBrowser = typeof window !== "undefined";
 
+const isAuthPage = () => {
+  if (!isBrowser) return false;
+  const path = window.location.pathname;
+  return (
+    path.includes("/login") ||
+    path.includes("/signup") ||
+    path.includes("/billing") ||
+    path.includes("/activation")
+  );
+};
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const normalizeErrorMessage = (error, fallback = "Request failed") => {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
+  );
+};
 
 const withRetry = async (fn, retries = MAX_RETRIES) => {
   let lastError;
@@ -23,7 +44,9 @@ const withRetry = async (fn, retries = MAX_RETRIES) => {
       lastError = error;
       const status = error?.response?.status;
 
-      if (status === 401 || status === 403) throw error;
+      if (status === 401) {
+        throw error;
+      }
 
       if (status === 429) {
         await sleep(RETRY_DELAY * Math.pow(2, i));
@@ -92,6 +115,30 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const requestUrl = error?.config?.url || "";
+
+    if (status === 401) {
+      const isProfileRequest =
+        requestUrl.includes("/api/me") ||
+        requestUrl.includes("/api/auth/me") ||
+        requestUrl.includes("/activation-status");
+
+      if (!isProfileRequest && !isAuthPage()) {
+        clearToken();
+        if (isBrowser) {
+          window.location.href = "/login?expired=true";
+        }
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 const unwrap = (response) => response?.data ?? response;
 
 /* =========================
@@ -112,7 +159,7 @@ export const login = async (email, password) => {
       const wsToken = ws?.data?.token || ws?.token || null;
       if (wsToken) setWsToken(wsToken);
     } catch (err) {
-      console.warn("[BotAPI] Failed to fetch websocket token:", err);
+      console.warn("[BotAPI] Unable to load websocket token:", err);
     }
   }
 
@@ -120,32 +167,55 @@ export const login = async (email, password) => {
 };
 
 export const signup = async (userData) => {
-  const response = await withRetry(() => api.post("/api/signup", userData));
-  const data = unwrap(response);
+  // Use the auth namespace first; fall back if your backend still uses /api/signup
+  try {
+    const response = await withRetry(() => api.post("/api/auth/signup", userData));
+    const data = unwrap(response);
+    const token = data?.data?.token || data?.token || null;
+    if (token) setToken(token);
+    return data;
+  } catch (err) {
+    if (err?.response?.status && err.response.status !== 404) throw err;
 
-  const token = data?.data?.token || data?.token || null;
-  if (token) {
-    setToken(token);
+    const fallbackResponse = await withRetry(() => api.post("/api/signup", userData));
+    const fallbackData = unwrap(fallbackResponse);
+    const token = fallbackData?.data?.token || fallbackData?.token || null;
+    if (token) setToken(token);
+    return fallbackData;
   }
-
-  return data;
 };
 
 export const logout = () => {
   clearToken();
-  if (isBrowser) window.location.href = "/login";
+  if (isBrowser) {
+    window.location.href = "/login";
+  }
 };
 
 export const getMe = async () => {
-  const response = await withRetry(() => api.get("/api/me"));
-  return unwrap(response);
+  try {
+    const response = await withRetry(() => api.get("/api/auth/me"));
+    return unwrap(response);
+  } catch (err) {
+    if (err?.response?.status === 404) {
+      const fallback = await withRetry(() => api.get("/api/me"));
+      return unwrap(fallback);
+    }
+    throw err;
+  }
 };
 
-export const me = getMe;
-
 export const getActivationStatus = async () => {
-  const response = await withRetry(() => api.get("/api/me/activation-status"));
-  return unwrap(response);
+  try {
+    const response = await withRetry(() => api.get("/api/auth/activation-status"));
+    return unwrap(response);
+  } catch (err) {
+    if (err?.response?.status === 404) {
+      const fallback = await withRetry(() => api.get("/api/me/activation-status"));
+      return unwrap(fallback);
+    }
+    throw err;
+  }
 };
 
 export const activationStatus = getActivationStatus;
@@ -172,33 +242,23 @@ export const createSetupIntent = async (payload = {}) => {
 };
 
 /* =========================
-   INTEGRATIONS
+   CONNECTIONS / ACTIVATION
 ========================= */
 
-export const connectWallet = async (payload) => {
-  const response = await withRetry(() =>
-    api.post("/api/integrations/wallet", payload)
-  );
-  return unwrap(response);
-};
-
 export const connectOKX = async (payload) => {
-  const response = await withRetry(() =>
-    api.post("/api/integrations/okx", payload)
-  );
+  const response = await withRetry(() => api.post("/api/connections/okx", payload));
   return unwrap(response);
 };
 
 export const connectAlpaca = async (payload) => {
-  const response = await withRetry(() =>
-    api.post("/api/integrations/alpaca", payload)
-  );
+  const response = await withRetry(() => api.post("/api/connections/alpaca", payload));
   return unwrap(response);
 };
 
-/* =========================
-   TRADING
-========================= */
+export const connectWallet = async (payload) => {
+  const response = await withRetry(() => api.post("/api/connections/wallet", payload));
+  return unwrap(response);
+};
 
 export const toggleTrading = async (enabled) => {
   const response = await withRetry(() =>
@@ -207,16 +267,38 @@ export const toggleTrading = async (enabled) => {
   return unwrap(response);
 };
 
-export const startBot = async (mode = "paper", strategy = "ai_weighted") => {
+/* =========================
+   MISC USED IN CURRENT FLOW
+========================= */
+
+export const forgotPassword = async (email) => {
   const response = await withRetry(() =>
-    api.post("/api/bot/start", { mode, strategy })
+    api.post("/api/auth/forgot-password", { email })
   );
   return unwrap(response);
 };
 
-/* =========================
-   DASHBOARD / ANALYTICS
-========================= */
+export const getPromoStatus = async () => {
+  const response = await withRetry(() => api.get("/api/promo/status"));
+  return unwrap(response);
+};
+
+export const claimPromo = async (email, tier = "starter", wallet = null) => {
+  const response = await withRetry(() =>
+    api.post("/api/promo/claim", { email, tier, wallet })
+  );
+  return unwrap(response);
+};
+
+export const getPublicLiveStats = async () => {
+  const response = await withRetry(() => api.get("/api/public/live-stats"));
+  return unwrap(response);
+};
+
+export const getPublicHistorical = async () => {
+  const response = await withRetry(() => api.get("/api/public/historical"));
+  return unwrap(response);
+};
 
 export const getTrades = async (limit = 100) => {
   const response = await withRetry(() =>
@@ -241,35 +323,6 @@ export const getBotStatus = async () => {
 
 export const getAnalyticsSummary = async () => {
   const response = await withRetry(() => api.get("/api/analytics/summary"));
-  return unwrap(response);
-};
-
-export const getPublicLiveStats = async () => {
-  const response = await withRetry(() => api.get("/api/public/live-stats"));
-  return unwrap(response);
-};
-
-export const getPublicHistorical = async () => {
-  const response = await withRetry(() => api.get("/api/public/historical"));
-  return unwrap(response);
-};
-
-export const forgotPassword = async (email) => {
-  const response = await withRetry(() =>
-    api.post("/api/auth/forgot-password", { email })
-  );
-  return unwrap(response);
-};
-
-export const getPromoStatus = async () => {
-  const response = await withRetry(() => api.get("/api/promo/status"));
-  return unwrap(response);
-};
-
-export const claimPromo = async (email, tier = "starter", wallet = null) => {
-  const response = await withRetry(() =>
-    api.post("/api/promo/claim", { email, tier, wallet })
-  );
   return unwrap(response);
 };
 
@@ -306,10 +359,6 @@ class BotAPIClass {
     return getMe();
   }
 
-  me() {
-    return getMe();
-  }
-
   getActivationStatus() {
     return getActivationStatus();
   }
@@ -330,10 +379,6 @@ class BotAPIClass {
     return createSetupIntent(payload);
   }
 
-  connectWallet(payload) {
-    return connectWallet(payload);
-  }
-
   connectOKX(payload) {
     return connectOKX(payload);
   }
@@ -342,12 +387,32 @@ class BotAPIClass {
     return connectAlpaca(payload);
   }
 
+  connectWallet(payload) {
+    return connectWallet(payload);
+  }
+
   toggleTrading(enabled) {
     return toggleTrading(enabled);
   }
 
-  startBot(mode, strategy) {
-    return startBot(mode, strategy);
+  forgotPassword(email) {
+    return forgotPassword(email);
+  }
+
+  getPromoStatus() {
+    return getPromoStatus();
+  }
+
+  claimPromo(email, tier, wallet) {
+    return claimPromo(email, tier, wallet);
+  }
+
+  getPublicLiveStats() {
+    return getPublicLiveStats();
+  }
+
+  getPublicHistorical() {
+    return getPublicHistorical();
   }
 
   getTrades(limit = 100) {
@@ -368,26 +433,6 @@ class BotAPIClass {
 
   getAnalyticsSummary() {
     return getAnalyticsSummary();
-  }
-
-  getPublicLiveStats() {
-    return getPublicLiveStats();
-  }
-
-  getPublicHistorical() {
-    return getPublicHistorical();
-  }
-
-  forgotPassword(email) {
-    return forgotPassword(email);
-  }
-
-  getPromoStatus() {
-    return getPromoStatus();
-  }
-
-  claimPromo(email, tier, wallet) {
-    return claimPromo(email, tier, wallet);
   }
 }
 
