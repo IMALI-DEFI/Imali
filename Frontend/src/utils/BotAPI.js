@@ -25,7 +25,7 @@ const isAuthPage = () => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const normalizeErrorMessage = (error, fallback = "Request failed") => {
+export const normalizeErrorMessage = (error, fallback = "Request failed") => {
   return (
     error?.response?.data?.message ||
     error?.response?.data?.error ||
@@ -125,7 +125,8 @@ api.interceptors.response.use(
       const isProfileRequest =
         requestUrl.includes("/api/me") ||
         requestUrl.includes("/api/auth/me") ||
-        requestUrl.includes("/activation-status");
+        requestUrl.includes("/activation-status") ||
+        requestUrl.includes("/api/admin/check");
 
       if (!isProfileRequest && !isAuthPage()) {
         clearToken();
@@ -167,7 +168,6 @@ export const login = async (email, password) => {
 };
 
 export const signup = async (userData) => {
-  // Use the auth namespace first; fall back if your backend still uses /api/signup
   try {
     const response = await withRetry(() => api.post("/api/auth/signup", userData));
     const data = unwrap(response);
@@ -246,18 +246,42 @@ export const createSetupIntent = async (payload = {}) => {
 ========================= */
 
 export const connectOKX = async (payload) => {
-  const response = await withRetry(() => api.post("/api/connections/okx", payload));
-  return unwrap(response);
+  try {
+    const response = await withRetry(() => api.post("/api/connections/okx", payload));
+    return unwrap(response);
+  } catch (err) {
+    if (err?.response?.status === 404) {
+      const fallback = await withRetry(() => api.post("/api/integrations/okx", payload));
+      return unwrap(fallback);
+    }
+    throw err;
+  }
 };
 
 export const connectAlpaca = async (payload) => {
-  const response = await withRetry(() => api.post("/api/connections/alpaca", payload));
-  return unwrap(response);
+  try {
+    const response = await withRetry(() => api.post("/api/connections/alpaca", payload));
+    return unwrap(response);
+  } catch (err) {
+    if (err?.response?.status === 404) {
+      const fallback = await withRetry(() => api.post("/api/integrations/alpaca", payload));
+      return unwrap(fallback);
+    }
+    throw err;
+  }
 };
 
 export const connectWallet = async (payload) => {
-  const response = await withRetry(() => api.post("/api/connections/wallet", payload));
-  return unwrap(response);
+  try {
+    const response = await withRetry(() => api.post("/api/connections/wallet", payload));
+    return unwrap(response);
+  } catch (err) {
+    if (err?.response?.status === 404) {
+      const fallback = await withRetry(() => api.post("/api/integrations/wallet", payload));
+      return unwrap(fallback);
+    }
+    throw err;
+  }
 };
 
 export const toggleTrading = async (enabled) => {
@@ -265,6 +289,46 @@ export const toggleTrading = async (enabled) => {
     api.post("/api/trading/enable", { enabled })
   );
   return unwrap(response);
+};
+
+/* =========================
+   ADMIN
+========================= */
+
+export const getAdminCheck = async () => {
+  const response = await withRetry(() => api.get("/api/admin/check"));
+  return unwrap(response);
+};
+
+export const adminGetUsers = async (params = {}) => {
+  const response = await withRetry(() =>
+    api.get("/api/admin/users", { params })
+  );
+  return unwrap(response);
+};
+
+export const adminUpdateUserTier = async (userId, tier) => {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+  if (!tier) {
+    throw new Error("tier is required");
+  }
+
+  try {
+    const response = await withRetry(() =>
+      api.patch(`/api/admin/users/${userId}/tier`, { tier })
+    );
+    return unwrap(response);
+  } catch (err) {
+    if (err?.response?.status === 404) {
+      const fallback = await withRetry(() =>
+        api.post("/api/admin/update-tier", { userId, tier })
+      );
+      return unwrap(fallback);
+    }
+    throw err;
+  }
 };
 
 /* =========================
@@ -393,6 +457,18 @@ class BotAPIClass {
 
   toggleTrading(enabled) {
     return toggleTrading(enabled);
+  }
+
+  getAdminCheck() {
+    return getAdminCheck();
+  }
+
+  adminGetUsers(params = {}) {
+    return adminGetUsers(params);
+  }
+
+  adminUpdateUserTier(userId, tier) {
+    return adminUpdateUserTier(userId, tier);
   }
 
   forgotPassword(email) {
