@@ -27,7 +27,7 @@ ChartJS.register(
 // ============================================================================
 // CORRECT API ENDPOINTS (from api_main.py)
 // ============================================================================
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const API_BASE = ""; 
 
 // These endpoints exist in your api_main.py:
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;  // ✅ EXISTS (line ~6300)
