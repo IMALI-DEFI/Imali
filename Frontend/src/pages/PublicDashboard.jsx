@@ -116,16 +116,22 @@ function getBotDisplayName(botName) {
 }
 
 function normalizeTrade(trade) {
+  // Handle both 'price' and 'entry_price' fields from API
+  const entryPrice = trade.entry_price || trade.price || 0;
+  
   return {
     ...trade,
     id: trade?.id || `${trade?.symbol || "unknown"}-${trade?.created_at || trade?.timestamp || Date.now()}`,
     bot: normalizeBotName(trade?.bot || trade?.bot_name || trade?.source),
     qty: trade?.qty !== undefined ? safeNumber(trade.qty) : 0,
     exit_price: trade?.exit_price !== undefined ? trade.exit_price : null,
-    price: safeNumber(trade?.price, 0),
+    price: safeNumber(entryPrice, 0),
     pnl_usd: safeNumber(trade?.pnl_usd ?? trade?.pnl, 0),
     pnl_percent: safeNumber(trade?.pnl_percent, 0),
     status: trade?.status || (trade?.exit_price ? "closed" : "open"),
+    symbol: trade?.symbol || "Unknown",
+    side: trade?.side || trade?.position_side || "buy",
+    created_at: trade?.created_at || trade?.timestamp,
   };
 }
 
@@ -289,7 +295,7 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs font-bold text-gray-900">{trade.symbol}</span>
-                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${trade.side === "buy" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${trade.side === "buy" || trade.side === "long" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
                           {trade.side?.toUpperCase()}
                         </span>
                         <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600">#{idx + 1}</span>
@@ -298,9 +304,6 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
                         {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
                         {trade.exit_price && ` → Exit: ${formatCurrency(trade.exit_price)}`}
                       </div>
-                      {trade.exit_reason && (
-                        <div className="mt-0.5 text-[8px] text-gray-400">Exit: {trade.exit_reason}</div>
-                      )}
                     </div>
                     <div className="ml-4 shrink-0 text-right">
                       <div className="text-base font-bold text-green-600">
@@ -340,7 +343,7 @@ function TradeRow({ trade, onClick }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-sm font-semibold text-gray-900">{trade.symbol || "Unknown"}</span>
-          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${side === "buy" || side === "long" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
             {side.toUpperCase()}
           </span>
           <span className="text-[9px] text-gray-400">{getBotIcon(bot)} {bot}</span>
@@ -398,7 +401,7 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
             <div>
               <div className="flex flex-wrap items-center gap-1">
                 <span className="text-xl font-bold text-gray-900">{trade.symbol}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${trade.side === "buy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${trade.side === "buy" || trade.side === "long" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                   {trade.side?.toUpperCase()}
                 </span>
                 <span className={`rounded-full px-2 py-0.5 text-xs ${status === "Closed" ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600"}`}>
@@ -539,10 +542,14 @@ export default function PublicDashboard() {
           const notableData = notableResponse.data.data || {};
           Object.entries(notableData).forEach(([bot, tradesList]) => {
             if (Array.isArray(tradesList)) {
-              nextNotableTrades[normalizeBotName(bot)] = tradesList.map(normalizeTrade);
+              nextNotableTrades[normalizeBotName(bot)] = tradesList.map(trade => normalizeTrade(trade));
             }
           });
         }
+
+        console.log("📊 Bot Stats:", botStats);
+        console.log("🏆 Notable Trades by Bot:", Object.keys(nextNotableTrades));
+        console.log("🔍 Futures Bot Details:", botStats.futures);
 
         setData((prev) => ({
           ...prev,
