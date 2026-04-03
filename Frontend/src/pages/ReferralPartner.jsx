@@ -252,4 +252,4 @@ const ReferralSystem = () => {
   );
 };
 
-export default ReferralSystem; rewrite to fix and update with backend endpoints
+export default ReferralSystem;
