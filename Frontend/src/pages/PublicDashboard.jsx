@@ -116,7 +116,6 @@ function getBotDisplayName(botName) {
 }
 
 function normalizeTrade(trade) {
-  // Handle both 'price' and 'entry_price' fields from API
   const entryPrice = trade.entry_price || trade.price || 0;
   
   return {
@@ -512,31 +511,64 @@ export default function PublicDashboard() {
         const trades = (apiData.recent_trades || []).map(normalizeTrade);
         const summary = apiData.summary || {};
 
-        // Build bot stats - ensure futures bot gets wins/losses from the API
+        // Build bot stats - DIRECTLY USE API VALUES
         const botStats = {};
         const mainBots = ["okx", "futures", "stocks", "sniper"];
 
+        // Log raw API bots for debugging
+        console.log("🔍 Raw API bots:", apiData.bots);
+
         (apiData.bots || []).forEach((bot) => {
           const botName = normalizeBotName(bot.name);
+          
+          // Only process our 4 main bots
           if (!mainBots.includes(botName)) return;
 
-          const totalTrades = safeNumber(bot.total_trades);
+          // DIRECTLY USE the API values - NO recalculation
+          const totalTrades = Number(bot.total_trades) || 0;
+          
+          // Skip if no trades
           if (totalTrades === 0) return;
 
-          // Use the wins/losses directly from the API response
-          const wins = safeNumber(bot.wins);
-          const losses = safeNumber(bot.losses);
+          // Take wins/losses DIRECTLY from API
+          const wins = Number(bot.wins) || 0;
+          const losses = Number(bot.losses) || 0;
+          const totalPnl = Number(bot.total_pnl) || 0;
+          
+          // Calculate win rate from actual wins/losses
           const closedTrades = wins + losses;
+          const winRate = closedTrades > 0 ? (wins / closedTrades) * 100 : 0;
 
           botStats[botName] = {
             total_trades: totalTrades,
             wins: wins,
             losses: losses,
-            win_rate: closedTrades > 0 ? (wins / closedTrades) * 100 : 0,
+            total_pnl: totalPnl,
+            win_rate: winRate,
+            open_positions: Number(bot.open_positions) || 0,
+            last_activity: bot.last_activity
           };
+          
+          console.log(`✅ ${botName} stats:`, botStats[botName]);
         });
 
-        // Process notable trades - ensure entry price is shown
+        // Ensure all main bots are present (even with zero trades)
+        mainBots.forEach(botName => {
+          if (!botStats[botName]) {
+            botStats[botName] = {
+              total_trades: 0,
+              wins: 0,
+              losses: 0,
+              total_pnl: 0,
+              win_rate: 0,
+              open_positions: 0,
+              last_activity: null
+            };
+            console.log(`⚠️ Added missing bot: ${botName} with zeros`);
+          }
+        });
+
+        // Process notable trades
         const nextNotableTrades = {};
         if (notableResponse.data?.success) {
           const notableData = notableResponse.data.data || {};
@@ -547,15 +579,14 @@ export default function PublicDashboard() {
           });
         }
 
-        console.log("📊 Bot Stats:", botStats);
-        console.log("🏆 Notable Trades by Bot:", Object.keys(nextNotableTrades));
-        console.log("🔍 Futures Bot Details:", botStats.futures);
+        console.log("📊 Final Bot Stats:", botStats);
+        console.log("🔍 Futures Bot Final:", botStats.futures);
 
         setData((prev) => ({
           ...prev,
           trades: trades.length > 0 ? trades : prev.trades,
           summary,
-          botStats: Object.keys(botStats).length > 0 ? botStats : prev.botStats,
+          botStats: botStats,
           notableTrades: nextNotableTrades,
           loading: false,
           error: null,
@@ -594,7 +625,7 @@ export default function PublicDashboard() {
   const wins = safeNumber(data.summary.wins);
   const losses = safeNumber(data.summary.losses);
   const winRate = safeNumber(data.summary.win_rate) || (wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0);
-  const activeBots = Object.keys(botStats).length;
+  const activeBots = Object.keys(botStats).filter(bot => botStats[bot]?.total_trades > 0).length;
 
   const sortedRecentTrades = useMemo(() => {
     return [...allTrades].sort((a, b) => {
@@ -617,6 +648,10 @@ export default function PublicDashboard() {
   ];
 
   const bots = ["okx", "futures", "stocks", "sniper"].filter((bot) => botStats[bot]?.total_trades > 0);
+
+  // Debug log for rendering
+  console.log("🎯 Rendering dashboard with botStats:", botStats);
+  console.log("🎯 Futures bot data for render:", botStats.futures);
 
   if (data.loading && !data.lastUpdate && allTrades.length === 0) {
     return (
