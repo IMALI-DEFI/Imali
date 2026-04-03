@@ -12,7 +12,6 @@ import {
   Filler,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
-import { useSocket } from "../context/SocketContext";
 
 ChartJS.register(
   LineElement,
@@ -25,18 +24,15 @@ ChartJS.register(
 );
 
 // ============================================================================
-// CORRECT API ENDPOINTS (from api_main.py)
-// ============================================================================
-const API_BASE = ""; 
+// API ENDPOINTS - Update this to match your setup
+// ============================================================================// For development with proxyconst API_BASE = "";
+// For direct connection to API (if proxy not working)
+const API_BASE = "https://api.imali-defi.com";
 
-// These endpoints exist in your api_main.py:
-const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;  // ✅ EXISTS (line ~6300)
-const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;    // ✅ EXISTS (line ~3900)
-const RECENT_TRADES_URL = `${API_BASE}/api/trades/recent`;      // ✅ EXISTS (line ~6850)
-const BOT_ACTIVITY_URL = `${API_BASE}/api/bot-activity/history`; // ✅ EXISTS (line ~6150)
+const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
+const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;
 
-const REFRESH_INTERVAL = 60000;
-const MIN_FETCH_INTERVAL = 30000;
+const REFRESH_INTERVAL = 60000; // Poll every 60 seconds
 
 // Helper functions
 function safeNumber(value, fallback = 0) {
@@ -366,8 +362,6 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
 }
 
 export default function PublicDashboard() {
-  const { isConnected, socket, subscribeToTrades, subscribeToPnl, subscribeToSystemMetrics } = useSocket();
-
   const [data, setData] = useState({
     trades: [],
     summary: {},
@@ -388,7 +382,7 @@ export default function PublicDashboard() {
     if (isFetchingRef.current) return;
 
     const now = Date.now();
-    if (!force && now - lastFetchTimeRef.current < MIN_FETCH_INTERVAL && lastFetchTimeRef.current) {
+    if (!force && now - lastFetchTimeRef.current < 30000 && lastFetchTimeRef.current) {
       return;
     }
 
@@ -397,21 +391,22 @@ export default function PublicDashboard() {
     try {
       lastFetchTimeRef.current = now;
 
-      // Fetch both endpoints in parallel
+      console.log("📡 Fetching data from:", PUBLIC_STATS_URL);
+
       const [statsResponse, notableResponse] = await Promise.all([
         axios.get(PUBLIC_STATS_URL, { timeout: 15000 }),
         axios.get(NOTABLE_TRADES_URL, { timeout: 15000, params: { limit: 10 } }),
       ]);
 
-      // Process stats data (from /api/public/live-stats)
+      console.log("📊 Stats response:", statsResponse.data);
+      console.log("🏆 Notable response:", notableResponse.data);
+
       if (statsResponse.data?.success) {
         const apiData = statsResponse.data.data || {};
 
-        // Extract trades from response
         const trades = (apiData.recent_trades || []).map(normalizeTrade);
         const summary = apiData.summary || {};
 
-        // Build bot stats from the bots array
         const botStats = {};
         const mainBots = ["okx", "futures", "stocks", "sniper"];
 
@@ -435,7 +430,6 @@ export default function PublicDashboard() {
           };
         });
 
-        // Process notable trades (from /api/notable-trades)
         const nextNotableTrades = {};
         if (notableResponse.data?.success) {
           const notableData = notableResponse.data.data || {};
@@ -479,63 +473,11 @@ export default function PublicDashboard() {
     fetchData(true);
 
     const interval = setInterval(() => {
-      if (!isConnected) {
-        fetchData(true);
-      }
+      fetchData(true);
     }, REFRESH_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [fetchData, isConnected]);
-
-  useEffect(() => {
-    if (!isConnected) return;
-
-    subscribeToTrades?.();
-    subscribeToPnl?.();
-    subscribeToSystemMetrics?.();
-  }, [isConnected, subscribeToTrades, subscribeToPnl, subscribeToSystemMetrics]);
-
-  useEffect(() => {
-    if (!socket || !isConnected) return;
-
-    let unsubTrade = null;
-    let unsubPnl = null;
-
-    const handleTrade = (incomingTrade) => {
-      const trade = normalizeTrade(incomingTrade);
-      setData((prev) => {
-        const tradeId = trade.id;
-        const exists = prev.trades.some((t) => t.id === tradeId);
-        if (exists) return prev;
-        return {
-          ...prev,
-          trades: [trade, ...prev.trades].slice(0, 500),
-          lastUpdate: new Date(),
-        };
-      });
-    };
-
-    const handlePnlUpdate = () => fetchData(true);
-
-    if (typeof socket.onTrade === "function") {
-      unsubTrade = socket.onTrade(handleTrade);
-    } else if (typeof socket.on === "function") {
-      socket.on("trade", handleTrade);
-      unsubTrade = () => socket.off?.("trade", handleTrade);
-    }
-
-    if (typeof socket.onPnlUpdate === "function") {
-      unsubPnl = socket.onPnlUpdate(handlePnlUpdate);
-    } else if (typeof socket.on === "function") {
-      socket.on("pnl_update", handlePnlUpdate);
-      unsubPnl = () => socket.off?.("pnl_update", handlePnlUpdate);
-    }
-
-    return () => {
-      if (typeof unsubTrade === "function") unsubTrade();
-      if (typeof unsubPnl === "function") unsubPnl();
-    };
-  }, [socket, isConnected, fetchData]);
+  }, [fetchData]);
 
   const allTrades = data.trades || [];
   const botStats = data.botStats || {};
@@ -587,14 +529,12 @@ export default function PublicDashboard() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Link to="/" className="bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-xl font-bold text-transparent">IMALI</Link>
-              <span className={`rounded-full px-2 py-0.5 text-[10px] ${isConnected ? "bg-green-100 text-green-700 animate-pulse" : "bg-yellow-100 text-yellow-700"}`}>
-                {isConnected ? "LIVE" : "UPDATING"}
-              </span>
+              <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] text-yellow-700">UPDATING</span>
             </div>
             <div className="flex items-center gap-2 text-[10px] text-gray-500">
               <span>{formatNumber(totalTrades)} trades tracked</span>
               <span>•</span>
-              <span>{isConnected ? "Real-time WebSocket" : "Polling every 60s"}</span>
+              <span>Polling every 60s</span>
               <span>•</span>
               <span>{activeBots} active bots</span>
               <Link to="/signup" className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-2 py-1 text-[10px] font-medium text-white">Join</Link>
@@ -613,15 +553,14 @@ export default function PublicDashboard() {
         <div className="mb-4 text-center">
           <h1 className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-2xl font-bold text-transparent">Trading in Public</h1>
           <p className="text-xs text-gray-500">
-            {formatNumber(totalTrades)} total trades • {activeBots} active bots •
-            {isConnected ? " Real-time updates via WebSocket" : " Updating every 60 seconds"}
+            {formatNumber(totalTrades)} total trades • {activeBots} active bots • Updating every 60 seconds
           </p>
         </div>
 
         <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="flex items-center gap-2 font-bold text-gray-900">
-              <span className={`h-2.5 w-2.5 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
+              <span className="h-2.5 w-2.5 rounded-full bg-gray-400" />
               Bot Activity
             </h3>
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Last 7 Days</span>
@@ -682,11 +621,7 @@ export default function PublicDashboard() {
         </div>
 
         <div className="pb-4 pt-4 text-center text-[9px] text-gray-400">
-          {isConnected ? (
-            <>🟢 Live WebSocket connected • Real-time updates • Last update: {data.lastUpdate?.toLocaleTimeString() || "—"}</>
-          ) : (
-            <>🟡 WebSocket disconnected • Polling every 60s • Last update: {data.lastUpdate?.toLocaleTimeString() || "—"}</>
-          )}
+          🟡 Polling every 60 seconds • Last update: {data.lastUpdate?.toLocaleTimeString() || "—"}
         </div>
       </main>
 
