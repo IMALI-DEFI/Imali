@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { useSocket } from "../context/SocketContext";
 import { useAuth } from "../context/AuthContext";
 import { usePromoStatus, usePromoClaim } from "../hooks/usePromo";
 import axios from "axios";
@@ -26,6 +25,8 @@ ChartJS.register(
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
+const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;
+const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
 
 const safeNumber = (value, fallback = 0) => {
   const num = Number(value);
@@ -74,15 +75,6 @@ const getBotIcon = (botName) => {
   if (name.includes("sniper")) return "🎯";
   if (name.includes("okx")) return "🔷";
   return "🤖";
-};
-
-const normalizeBotType = (trade) => {
-  const raw = (trade?.bot || trade?.source || trade?.bot_name || "").toLowerCase();
-  if (raw.includes("futures") || raw.includes("perp")) return "futures";
-  if (raw.includes("stock") || raw.includes("alpaca")) return "stocks";
-  if (raw.includes("sniper") || raw.includes("dex") || raw.includes("uniswap")) return "sniper";
-  if (raw.includes("okx") || raw.includes("spot") || raw.includes("crypto")) return "okx";
-  return raw || "unknown";
 };
 
 function buildActivitySeries(trades = []) {
@@ -343,18 +335,6 @@ function LiveActivityWidget({ activity }) {
 
 export default function Home() {
   useAuth(); // keep auth subscription active for future personalization
-  const {
-    isConnected,
-    liveStats,
-    announcements,
-    trades: socketTrades,
-    botStatuses: socketBotStatuses,
-    subscribeToTrades,
-    subscribeToPnl,
-    subscribeToAnnouncements,
-    subscribeToLeaderboard,
-    subscribeToSystemMetrics,
-  } = useSocket();
 
   const promo = usePromoStatus();
   const promoClaim = usePromoClaim();
@@ -388,6 +368,8 @@ export default function Home() {
         const data = statsRes.data.data || {};
         const trades = Array.isArray(data?.recent_trades) ? data.recent_trades : [];
         const summary = data?.summary || {};
+        
+        // Get bot statuses from the bots array in the response
         const botStatuses = Array.isArray(data?.bots)
           ? data.bots.map((bot) => ({
               label: getBotDisplayName(bot?.name),
@@ -422,79 +404,19 @@ export default function Home() {
     }
   }, []);
 
+  // Initial fetch and polling every 30 seconds
   useEffect(() => {
     fetchActivity();
     const interval = setInterval(fetchActivity, 30000);
     return () => clearInterval(interval);
   }, [fetchActivity]);
 
-  useEffect(() => {
-    if (!isConnected) return;
-    subscribeToTrades?.();
-    subscribeToPnl?.();
-    subscribeToAnnouncements?.();
-    subscribeToLeaderboard?.();
-    subscribeToSystemMetrics?.();
-  }, [
-    isConnected,
-    subscribeToTrades,
-    subscribeToPnl,
-    subscribeToAnnouncements,
-    subscribeToLeaderboard,
-    subscribeToSystemMetrics,
-  ]);
-
-  useEffect(() => {
-    const mappedStatuses = Array.isArray(socketBotStatuses)
-      ? socketBotStatuses.map((bot) => ({
-          label: getBotDisplayName(bot?.name || bot?.label),
-          live: bot?.live ?? bot?.is_active ?? bot?.online ?? safeNumber(bot?.total_trades) > 0,
-          details: bot,
-        }))
-      : [];
-
-    const hasLiveData =
-      (Array.isArray(socketTrades) && socketTrades.length > 0) ||
-      (liveStats && Object.values(liveStats).some((v) => Number(v) > 0)) ||
-      mappedStatuses.length > 0;
-
-    if (!hasLiveData) return;
-
-    setActivity((prev) => ({
-      ...prev,
-      trades: Array.isArray(socketTrades) && socketTrades.length > 0 ? socketTrades.slice(0, 20) : prev.trades,
-      stats: {
-        ...prev.stats,
-        currentStatus: isConnected ? "Live" : prev.stats.currentStatus,
-        activeBots: safeNumber(liveStats?.activeBots, mappedStatuses.filter((b) => b.live).length),
-        totalTrades: safeNumber(liveStats?.totalTrades, prev.stats.totalTrades),
-        wins: safeNumber(liveStats?.wins, prev.stats.wins),
-        losses: safeNumber(liveStats?.losses, prev.stats.losses),
-        winRate: safeNumber(liveStats?.winRate, prev.stats.winRate),
-        online: !!isConnected,
-        botStatuses: mappedStatuses.length > 0 ? mappedStatuses : prev.stats.botStatuses,
-      },
-      loading: false,
-      error: null,
-    }));
-  }, [socketTrades, liveStats, socketBotStatuses, isConnected]);
-
   return (
     <div className="min-h-screen overflow-x-hidden bg-white text-gray-900">
       <div className="fixed right-4 top-0 z-50 mt-2 flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-xs shadow-sm">
-        <span
-          className={`inline-block h-2 w-2 rounded-full ${
-            isConnected ? "bg-green-500 animate-pulse" : "bg-yellow-500"
-          }`}
-        />
-        <span className="text-gray-600">{isConnected ? "Live" : "Updates every 30s"}</span>
+        <span className="inline-block h-2 w-2 rounded-full bg-yellow-500" />
+        <span className="text-gray-600">Updates every 30s</span>
       </div>
-
-      {announcements && announcements.length > 0 && (
-        <div className="bg-indigo-600 px-4 py-2 text-center text-sm text-white animate-pulse">
-          📢 {announcements[0]?.title}: {announcements[0]?.content}
-        </div>
-      )}
 
       <div className="relative w-full bg-black">
         <div className="relative pt-[56.25%]">
