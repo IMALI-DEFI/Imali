@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useContext } from "react";
+import React, { lazy, Suspense } from "react";
 import {
   Routes,
   Route,
@@ -44,51 +44,6 @@ import ReferralSystem from "./components/ReferralSystem";
 
 /* Context Providers */
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { SocketProvider, SocketContext } from "./context/SocketContext";
-
-/* =====================================================
-   SAFE SOCKET FALLBACK
-===================================================== */
-const SAFE_SOCKET_FALLBACK = {
-  isConnected: false,
-  isConnecting: false,
-  connectionError: null,
-  reconnect: () => {},
-  socket: null,
-  lastTrade: null,
-  lastPnlUpdate: null,
-  trades: [],
-  announcements: [],
-  liveStats: {
-    totalTrades: 0,
-    totalPnl: 0,
-    activeBots: 0,
-    winRate: 0,
-    wins: 0,
-    losses: 0,
-    totalReferrals: 0,
-    totalRewardsPaid: 0,
-    activeUsers: 0,
-  },
-  botStatuses: [],
-  leaderboard: [],
-  referralEvents: [],
-  systemMetrics: { cpu: 0, memory: 0, active_users: 0, tps: 0 },
-  subscribeToTrades: () => {},
-  subscribeToPnl: () => {},
-  subscribeToAnnouncements: () => {},
-  subscribeToReferrals: () => {},
-  subscribeToLeaderboard: () => {},
-  subscribeToSystemMetrics: () => {},
-  clearAnnouncements: () => {},
-  clearTrades: () => {},
-  clearReferralEvents: () => {},
-};
-
-function useSafeSocket() {
-  const context = useContext(SocketContext);
-  return context || SAFE_SOCKET_FALLBACK;
-}
 
 /* =====================================================
    ERROR BOUNDARY
@@ -110,19 +65,19 @@ class AppErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
+        <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center px-6">
           <div className="max-w-xl w-full text-center">
             <h1 className="text-3xl font-bold mb-4">Something went wrong</h1>
-            <p className="text-gray-400 mb-6">
+            <p className="text-gray-600 mb-6">
               The app hit a runtime error, but this screen confirms React is still loading.
             </p>
-            <pre className="text-left text-xs bg-zinc-900 border border-zinc-800 rounded-lg p-4 overflow-auto whitespace-pre-wrap">
+            <pre className="text-left text-xs bg-gray-100 border border-gray-200 rounded-lg p-4 overflow-auto whitespace-pre-wrap">
               {String(this.state.error)}
             </pre>
             <div className="mt-6">
               <a
                 href="/"
-                className="inline-block px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 transition"
+                className="inline-block px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 transition text-white"
               >
                 Reload Home
               </a>
@@ -141,7 +96,7 @@ class AppErrorBoundary extends React.Component {
 ===================================================== */
 function LoadingSpinner() {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white">
       <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
     </div>
   );
@@ -155,7 +110,7 @@ function PageLoadingFallback() {
     <div className="min-h-[60vh] flex items-center justify-center">
       <div className="text-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-4" />
-        <p className="text-gray-400 text-sm">Loading...</p>
+        <p className="text-gray-500 text-sm">Loading...</p>
       </div>
     </div>
   );
@@ -279,97 +234,11 @@ function PostLoginRedirect() {
 
   if (redirecting || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-4" />
-          <p className="text-gray-400">Setting up your account...</p>
+          <p className="text-gray-500">Setting up your account...</p>
         </div>
-      </div>
-    );
-  }
-
-  return null;
-}
-
-/* =====================================================
-   LIVE STATUS
-===================================================== */
-function WebSocketStatus() {
-  const { isConnected, connectionError, isConnecting } = useSafeSocket();
-  const location = useLocation();
-
-  const publicPaths = [
-    "/",
-    "/pricing",
-    "/signup",
-    "/login",
-    "/live",
-    "/demo",
-    "/trade-demo",
-  ];
-  if (publicPaths.includes(location.pathname)) return null;
-
-  if (isConnecting) {
-    return (
-      <div className="fixed bottom-4 right-4 z-50 bg-yellow-500/90 text-black px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm">
-        <span className="inline-block w-2 h-2 rounded-full bg-yellow-700 animate-pulse mr-2" />
-        Connecting to live feed...
-      </div>
-    );
-  }
-
-  if (!isConnected && connectionError) {
-    return (
-      <div className="fixed bottom-4 right-4 z-50 bg-red-500/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm">
-        <span className="inline-block w-2 h-2 rounded-full bg-red-300 mr-2" />
-        Using fallback mode
-      </div>
-    );
-  }
-
-  if (isConnected) {
-    return (
-      <div className="fixed bottom-4 right-4 z-50 bg-green-500/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-sm animate-pulse">
-        <span className="inline-block w-2 h-2 rounded-full bg-green-200 mr-2" />
-        Live
-      </div>
-    );
-  }
-
-  return null;
-}
-
-/* =====================================================
-   CONNECTION ERROR BANNER
-===================================================== */
-function ConnectionErrorBanner() {
-  const { connectionError, reconnect, isConnected, isConnecting } = useSafeSocket();
-  const location = useLocation();
-
-  const publicPaths = [
-    "/",
-    "/pricing",
-    "/signup",
-    "/login",
-    "/live",
-    "/demo",
-    "/trade-demo",
-  ];
-  if (publicPaths.includes(location.pathname) || isConnected || isConnecting) return null;
-
-  if (connectionError) {
-    return (
-      <div className="fixed top-16 left-0 right-0 z-50 bg-red-600 text-white px-4 py-2 text-sm flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">⚠️</span>
-          <span>Connection issue: {connectionError}</span>
-        </div>
-        <button
-          onClick={reconnect}
-          className="bg-white text-red-600 px-3 py-1 rounded-md text-xs font-semibold hover:bg-gray-100 transition"
-        >
-          Reconnect
-        </button>
       </div>
     );
   }
@@ -384,11 +253,11 @@ function NotFound() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-6 text-center">
       <div>
-        <h1 className="mb-2 text-3xl font-bold text-white">Page not found</h1>
-        <p className="mb-4 text-gray-400">
+        <h1 className="mb-2 text-3xl font-bold text-gray-900">Page not found</h1>
+        <p className="mb-4 text-gray-600">
           The page you&apos;re looking for doesn&apos;t exist.
         </p>
-        <Link to="/" className="text-emerald-400 underline">
+        <Link to="/" className="text-emerald-600 underline">
           Go home
         </Link>
       </div>
@@ -407,10 +276,7 @@ function AppContent() {
   return (
     <>
       <Header />
-      <ConnectionErrorBanner />
-      <WebSocketStatus />
-
-      <main className="min-h-screen pt-16 bg-black text-white">
+      <main className="min-h-screen pt-16 bg-white text-gray-900">
         <Suspense fallback={<PageLoadingFallback />}>
           <Routes>
             <Route path="/" element={<Home />} />
@@ -487,7 +353,6 @@ function AppContent() {
           </Routes>
         </Suspense>
       </main>
-
       <Footer />
     </>
   );
@@ -500,9 +365,7 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <AuthProvider>
-        <SocketProvider>
-          <AppContent />
-        </SocketProvider>
+        <AppContent />
       </AuthProvider>
     </AppErrorBoundary>
   );
