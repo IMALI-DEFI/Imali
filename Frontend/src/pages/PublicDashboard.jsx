@@ -30,7 +30,7 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.c
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
 const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;
 
-const REFRESH_INTERVAL = 30000; // Refresh every 30 seconds
+const REFRESH_INTERVAL = 30000;
 
 // Helper functions
 function safeNumber(value, fallback = 0) {
@@ -116,12 +116,6 @@ function getBotDisplayName(botName) {
 }
 
 function normalizeTrade(trade) {
-  // Calculate price change if exit_price and price exist
-  let priceChangePercent = 0;
-  if (trade.exit_price && trade.price && trade.exit_price !== trade.price) {
-    priceChangePercent = ((trade.exit_price - trade.price) / trade.price) * 100;
-  }
-  
   return {
     ...trade,
     id: trade?.id || `${trade?.symbol || "unknown"}-${trade?.created_at || trade?.timestamp || Date.now()}`,
@@ -132,29 +126,12 @@ function normalizeTrade(trade) {
     pnl_usd: safeNumber(trade?.pnl_usd ?? trade?.pnl, 0),
     pnl_percent: safeNumber(trade?.pnl_percent, 0),
     status: trade?.status || (trade?.exit_price ? "closed" : "open"),
-    price_change_percent: priceChangePercent,
   };
-}
-
-// Calculate actual P&L from price change when pnl is missing
-function calculateActualPnL(trade) {
-  if (trade.pnl_usd && trade.pnl_usd !== 0) {
-    return { pnl_usd: trade.pnl_usd, pnl_percent: trade.pnl_percent };
-  }
-  
-  if (trade.exit_price && trade.price && trade.qty) {
-    const pnlUsd = (trade.exit_price - trade.price) * trade.qty;
-    const pnlPercent = ((trade.exit_price - trade.price) / trade.price) * 100;
-    return { pnl_usd: pnlUsd, pnl_percent: pnlPercent };
-  }
-  
-  return { pnl_usd: 0, pnl_percent: 0 };
 }
 
 function buildActivitySeries(trades = []) {
   if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
   
-  // Group trades by day of week for the last 7 days
   const dayMap = {
     Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
   };
@@ -171,10 +148,9 @@ function buildActivitySeries(trades = []) {
     }
   });
   
-  // Calculate average P&L per day, with minimum values for visual interest
   return dayOrder.map(day => {
     const pnls = dayMap[day];
-    if (pnls.length === 0) return 5; // Default value for days with no trades
+    if (pnls.length === 0) return 5;
     const avg = pnls.reduce((a, b) => a + b, 0) / pnls.length;
     return Math.max(3, Math.min(15, avg / 50 + 3));
   });
@@ -249,10 +225,9 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
   const totalTrades = safeNumber(stats?.total_trades);
   const wins = safeNumber(stats?.wins);
   const losses = safeNumber(stats?.losses);
-  const totalPnl = safeNumber(stats?.total_pnl);
   
   const botNotableTrades = Array.isArray(notableTrades?.[bot]) 
-    ? notableTrades[bot].map(normalizeTrade).slice(0, 5)
+    ? notableTrades[bot].slice(0, 5)
     : [];
 
   if (!hasTrades) return null;
@@ -274,12 +249,6 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
             <div className="text-right">
               <div className="text-sm font-bold text-purple-600">{totalTrades.toLocaleString()}</div>
               <div className="text-[9px] text-gray-500">Trades</div>
-            </div>
-            <div className="text-right">
-              <div className={`text-sm font-bold ${totalPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                {formatCurrencySigned(totalPnl)}
-              </div>
-              <div className="text-[9px] text-gray-500">Total P&L</div>
             </div>
             <svg className={`h-5 w-5 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -311,50 +280,38 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
                 <span>🏆</span> Notable Trades (Top {botNotableTrades.length} by % Return)
               </div>
               <div className="max-h-[400px] space-y-2 overflow-y-auto pr-1">
-                {botNotableTrades.map((trade, idx) => {
-                  const actualPnL = calculateActualPnL(trade);
-                  const priceChange = trade.exit_price && trade.price 
-                    ? ((trade.exit_price - trade.price) / trade.price) * 100 
-                    : trade.pnl_percent;
-                  
-                  return (
-                    <div 
-                      key={trade.id || idx} 
-                      className="flex cursor-pointer items-center justify-between rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-3 transition-colors hover:from-green-100 hover:to-emerald-100" 
-                      onClick={(e) => { e.stopPropagation(); onTradeClick({...trade, ...actualPnL}); }}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-gray-900">{trade.symbol}</span>
-                          <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${trade.side === "buy" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
-                            {trade.side?.toUpperCase()}
-                          </span>
-                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600">#{idx + 1}</span>
-                        </div>
-                        <div className="mt-0.5 text-[9px] text-gray-500">
-                          {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
-                          {trade.exit_price && ` → Exit: ${formatCurrency(trade.exit_price)}`}
-                          {trade.exit_price && trade.price && (
-                            <span className={`ml-1 ${priceChange >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                              ({formatPercent(priceChange)})
-                            </span>
-                          )}
-                        </div>
-                        {trade.exit_reason && (
-                          <div className="mt-0.5 text-[8px] text-gray-400">Exit: {trade.exit_reason}</div>
-                        )}
+                {botNotableTrades.map((trade, idx) => (
+                  <div 
+                    key={trade.id || idx} 
+                    className="flex cursor-pointer items-center justify-between rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-3 transition-colors hover:from-green-100 hover:to-emerald-100" 
+                    onClick={(e) => { e.stopPropagation(); onTradeClick(trade); }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-gray-900">{trade.symbol}</span>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${trade.side === "buy" ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}>
+                          {trade.side?.toUpperCase()}
+                        </span>
+                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600">#{idx + 1}</span>
                       </div>
-                      <div className="ml-4 shrink-0 text-right">
-                        <div className="text-base font-bold text-green-600">
-                          {formatPercent(actualPnL.pnl_percent || trade.pnl_percent)}
-                        </div>
-                        <div className="text-[9px] text-gray-500">
-                          {formatCurrencySigned(actualPnL.pnl_usd || trade.pnl_usd)}
-                        </div>
+                      <div className="mt-0.5 text-[9px] text-gray-500">
+                        {timeAgo(trade.created_at)} • Entry: {formatCurrency(trade.price)}
+                        {trade.exit_price && ` → Exit: ${formatCurrency(trade.exit_price)}`}
+                      </div>
+                      {trade.exit_reason && (
+                        <div className="mt-0.5 text-[8px] text-gray-400">Exit: {trade.exit_reason}</div>
+                      )}
+                    </div>
+                    <div className="ml-4 shrink-0 text-right">
+                      <div className="text-base font-bold text-green-600">
+                        {formatPercent(trade.pnl_percent)}
+                      </div>
+                      <div className="text-[9px] text-gray-500">
+                        {formatCurrencySigned(trade.pnl_usd)}
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -365,15 +322,11 @@ function BotPerformanceCard({ bot, stats, notableTrades, onTradeClick }) {
 }
 
 function TradeRow({ trade, onClick }) {
-  const actualPnL = calculateActualPnL(trade);
-  const pnl = actualPnL.pnl_usd || trade.pnl_usd;
-  const pnlPercent = actualPnL.pnl_percent || trade.pnl_percent;
+  const pnl = safeNumber(trade.pnl_usd);
+  const pnlPercent = safeNumber(trade.pnl_percent);
   const side = trade.side || "buy";
   const bot = getBotDisplayName(trade.bot);
   const isOpen = trade.status === "open";
-  const priceChange = trade.exit_price && trade.price 
-    ? ((trade.exit_price - trade.price) / trade.price) * 100 
-    : pnlPercent;
 
   return (
     <div 
@@ -382,7 +335,7 @@ function TradeRow({ trade, onClick }) {
         !isOpen && pnl < 0 ? "bg-red-50 hover:bg-red-100" : 
         isOpen ? "bg-blue-50 hover:bg-blue-100" : "bg-gray-50 hover:bg-gray-100"
       }`} 
-      onClick={() => onClick({...trade, ...actualPnL})}
+      onClick={() => onClick(trade)}
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1">
@@ -392,11 +345,6 @@ function TradeRow({ trade, onClick }) {
           </span>
           <span className="text-[9px] text-gray-400">{getBotIcon(bot)} {bot}</span>
           {isOpen && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] text-blue-700">OPEN</span>}
-          {!isOpen && trade.exit_price && (
-            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${priceChange >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-              {formatPercent(priceChange)}
-            </span>
-          )}
         </div>
         <div className="mt-0.5 text-[10px] text-gray-400">{timeAgo(trade.created_at)}</div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500">
@@ -428,13 +376,11 @@ function TradeRow({ trade, onClick }) {
 function TradeDetailModal({ trade, isOpen, onClose }) {
   if (!isOpen || !trade) return null;
   
-  const actualPnL = calculateActualPnL(trade);
-  const pnl = actualPnL.pnl_usd || trade.pnl_usd;
-  const pnlPercent = actualPnL.pnl_percent || trade.pnl_percent;
+  const pnl = safeNumber(trade.pnl_usd);
+  const pnlPercent = safeNumber(trade.pnl_percent);
   const status = trade.status === "open" ? "Open" : "Closed";
   const exitPrice = trade.exit_price ? safeNumber(trade.exit_price) : null;
   const entryPrice = safeNumber(trade.price);
-  const priceChangePercent = exitPrice && entryPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : pnlPercent;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm" onClick={onClose}>
@@ -492,8 +438,8 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
                 </div>
                 <div>
                   <div className="text-gray-500">Price Change</div>
-                  <div className={`font-semibold ${priceChangePercent > 0 ? "text-green-600" : "text-red-600"}`}>
-                    {formatPercent(priceChangePercent)}
+                  <div className={`font-semibold ${trade.pnl_percent > 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatPercent(trade.pnl_percent)}
                   </div>
                 </div>
               </>
@@ -514,12 +460,6 @@ function TradeDetailModal({ trade, isOpen, onClose }) {
               <div className="col-span-2">
                 <div className="text-gray-500">Entry Reason</div>
                 <div className="text-xs text-gray-700">{trade.entry_reason}</div>
-              </div>
-            )}
-            {trade.exit_reason && (
-              <div className="col-span-2">
-                <div className="text-gray-500">Exit Reason</div>
-                <div className="text-xs text-gray-700">{trade.exit_reason}</div>
               </div>
             )}
           </div>
@@ -569,7 +509,7 @@ export default function PublicDashboard() {
         const trades = (apiData.recent_trades || []).map(normalizeTrade);
         const summary = apiData.summary || {};
 
-        // Build bot stats with correct wins/losses
+        // Build bot stats - ensure futures bot gets wins/losses from the API
         const botStats = {};
         const mainBots = ["okx", "futures", "stocks", "sniper"];
 
@@ -580,31 +520,26 @@ export default function PublicDashboard() {
           const totalTrades = safeNumber(bot.total_trades);
           if (totalTrades === 0) return;
 
+          // Use the wins/losses directly from the API response
           const wins = safeNumber(bot.wins);
           const losses = safeNumber(bot.losses);
           const closedTrades = wins + losses;
-          const totalPnl = safeNumber(bot.total_pnl);
 
           botStats[botName] = {
             total_trades: totalTrades,
             wins: wins,
             losses: losses,
-            total_pnl: totalPnl,
             win_rate: closedTrades > 0 ? (wins / closedTrades) * 100 : 0,
-            best_return: 0,
           };
         });
 
-        // Process notable trades
+        // Process notable trades - ensure entry price is shown
         const nextNotableTrades = {};
         if (notableResponse.data?.success) {
           const notableData = notableResponse.data.data || {};
           Object.entries(notableData).forEach(([bot, tradesList]) => {
             if (Array.isArray(tradesList)) {
-              nextNotableTrades[normalizeBotName(bot)] = tradesList.map(trade => ({
-                ...normalizeTrade(trade),
-                ...calculateActualPnL(trade)
-              }));
+              nextNotableTrades[normalizeBotName(bot)] = tradesList.map(normalizeTrade);
             }
           });
         }
@@ -651,7 +586,6 @@ export default function PublicDashboard() {
   const totalTrades = safeNumber(data.summary.total_trades || allTrades.length);
   const wins = safeNumber(data.summary.wins);
   const losses = safeNumber(data.summary.losses);
-  const totalPnl = safeNumber(data.summary.total_pnl);
   const winRate = safeNumber(data.summary.win_rate) || (wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0);
   const activeBots = Object.keys(botStats).length;
 
@@ -719,7 +653,7 @@ export default function PublicDashboard() {
         <div className="mb-4 text-center">
           <h1 className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-2xl font-bold text-transparent">Trading in Public</h1>
           <p className="text-xs text-gray-500">
-            {formatNumber(totalTrades)} total trades • {formatCurrencySigned(totalPnl)} total P&L • {activeBots} active bots • Updating every 30 seconds
+            {formatNumber(totalTrades)} total trades • {activeBots} active bots • Updating every 30 seconds
           </p>
         </div>
 
@@ -737,10 +671,9 @@ export default function PublicDashboard() {
           <p className="mt-2 text-center text-[9px] text-gray-400">Relative trading activity based on P&L volume</p>
         </div>
 
-        <div className="mb-5 grid grid-cols-3 gap-3">
+        <div className="mb-5 grid grid-cols-2 gap-3">
           <StatMiniCard title="Total Trades" value={formatNumber(totalTrades)} valueClassName="text-purple-600" />
           <StatMiniCard title="Win Rate" value={`${winRate.toFixed(1)}%`} valueClassName="text-emerald-600" subtext={`${formatNumber(wins)}W / ${formatNumber(losses)}L`} />
-          <StatMiniCard title="Total P&L" value={formatCurrencySigned(totalPnl)} valueClassName={totalPnl >= 0 ? "text-emerald-600" : "text-red-600"} />
         </div>
 
         <div className="mb-5">
