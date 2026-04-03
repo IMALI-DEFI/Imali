@@ -25,8 +25,6 @@ ChartJS.register(
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
-const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;
-const BOT_STATUS_URL = `${API_BASE}/api/bot/status`;
 
 const safeNumber = (value, fallback = 0) => {
   const num = Number(value);
@@ -43,20 +41,6 @@ const formatCurrency = (value) => {
 
 const formatNumber = (value) => {
   return safeNumber(value).toLocaleString();
-};
-
-const timeAgo = (timestamp) => {
-  if (!timestamp) return "";
-  try {
-    const diffMs = Date.now() - new Date(timestamp).getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-    return `${Math.floor(diffMins / 1440)}d ago`;
-  } catch {
-    return "";
-  }
 };
 
 const getBotDisplayName = (botName) => {
@@ -77,14 +61,33 @@ const getBotIcon = (botName) => {
   return "🤖";
 };
 
+// Improved chart series builder that shows actual trading activity
 function buildActivitySeries(trades = []) {
   if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
-  return trades.slice(0, 7).reverse().map((trade, index) => {
-    const usd = trade?.pnl_usd ?? trade?.pnl ?? null;
-    if (usd !== null && Number.isFinite(Number(usd))) {
-      return Math.max(2, Math.min(16, Math.abs(Number(usd)) / 25 + 3));
+  
+  // Group trades by day of week
+  const dayMap = {
+    Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
+  };
+  const dayOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  
+  trades.slice(0, 100).forEach((trade) => {
+    if (trade.created_at) {
+      const date = new Date(trade.created_at);
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+      if (dayMap[dayName]) {
+        const pnl = Math.abs(trade.pnl_usd || trade.pnl || 0);
+        dayMap[dayName].push(pnl);
+      }
     }
-    return index + 4;
+  });
+  
+  // Calculate average activity per day
+  return dayOrder.map(day => {
+    const activities = dayMap[day];
+    if (activities.length === 0) return 5; // Default baseline
+    const avg = activities.reduce((a, b) => a + b, 0) / activities.length;
+    return Math.max(3, Math.min(15, avg / 50 + 3));
   });
 }
 
@@ -205,15 +208,15 @@ function LiveActivityWidget({ activity }) {
         {
           data: series,
           borderColor: "#10b981",
-          backgroundColor: "rgba(16,185,129,0.18)",
+          backgroundColor: "rgba(16,185,129,0.1)",
           fill: true,
-          tension: 0.45,
+          tension: 0.3,
           pointRadius: 4,
-          pointHoverRadius: 5,
-          pointBackgroundColor: "#ffffff",
-          pointBorderColor: "#10b981",
+          pointHoverRadius: 6,
+          pointBackgroundColor: "#10b981",
+          pointBorderColor: "#ffffff",
           pointBorderWidth: 2,
-          borderWidth: 3,
+          borderWidth: 2,
         },
       ],
     }),
@@ -227,20 +230,25 @@ function LiveActivityWidget({ activity }) {
       plugins: {
         legend: { display: false },
         tooltip: {
-          displayColors: false,
-          backgroundColor: "#111827",
+          callbacks: {
+            label: (context) => `Activity: ${context.raw.toFixed(1)}`,
+          },
+          backgroundColor: "#1f2937",
           titleColor: "#ffffff",
           bodyColor: "#d1fae5",
-          padding: 10,
+          padding: 8,
         },
       },
       scales: {
-        x: {
-          display: true,
+        x: { 
           grid: { display: false },
-          ticks: { color: "#9ca3af", font: { size: 10 } },
+          ticks: { color: "#6b7280", font: { size: 11, weight: '500' } },
         },
-        y: { display: false, grid: { color: "rgba(229,231,235,0.5)" } },
+        y: { 
+          display: false,
+          min: 0,
+          max: 16,
+        },
       },
     }),
     []
@@ -334,7 +342,7 @@ function LiveActivityWidget({ activity }) {
 }
 
 export default function Home() {
-  useAuth(); // keep auth subscription active for future personalization
+  useAuth();
 
   const promo = usePromoStatus();
   const promoClaim = usePromoClaim();
@@ -369,13 +377,16 @@ export default function Home() {
         const trades = Array.isArray(data?.recent_trades) ? data.recent_trades : [];
         const summary = data?.summary || {};
         
-        // Get bot statuses from the bots array in the response
+        // Only show the 4 main bots
+        const mainBots = ["okx", "futures", "stocks", "sniper"];
         const botStatuses = Array.isArray(data?.bots)
-          ? data.bots.map((bot) => ({
-              label: getBotDisplayName(bot?.name),
-              live: safeNumber(bot?.total_trades) > 0 || safeNumber(bot?.open_positions) > 0,
-              details: bot,
-            }))
+          ? data.bots
+              .filter((bot) => mainBots.includes(normalizeBotName(bot?.name)))
+              .map((bot) => ({
+                label: getBotDisplayName(bot?.name),
+                live: safeNumber(bot?.total_trades) > 0 || safeNumber(bot?.open_positions) > 0,
+                details: bot,
+              }))
           : [];
 
         setActivity({
@@ -404,7 +415,15 @@ export default function Home() {
     }
   }, []);
 
-  // Initial fetch and polling every 30 seconds
+  function normalizeBotName(botName) {
+    const name = String(botName || "").toLowerCase();
+    if (name.includes("okx")) return "okx";
+    if (name.includes("future")) return "futures";
+    if (name.includes("stock") || name.includes("alpaca")) return "stocks";
+    if (name.includes("sniper") || name.includes("dex")) return "sniper";
+    return name || "unknown";
+  }
+
   useEffect(() => {
     fetchActivity();
     const interval = setInterval(fetchActivity, 30000);
