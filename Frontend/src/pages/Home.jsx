@@ -13,6 +13,7 @@ import {
   Filler,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { FaShareAlt } from "react-icons/fa";
 
 ChartJS.register(
   LineElement,
@@ -61,11 +62,9 @@ const getBotIcon = (botName) => {
   return "🤖";
 };
 
-// Improved chart series builder that shows actual trading activity
 function buildActivitySeries(trades = []) {
   if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
   
-  // Group trades by day of week
   const dayMap = {
     Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
   };
@@ -82,10 +81,9 @@ function buildActivitySeries(trades = []) {
     }
   });
   
-  // Calculate average activity per day
   return dayOrder.map(day => {
     const activities = dayMap[day];
-    if (activities.length === 0) return 5; // Default baseline
+    if (activities.length === 0) return 5;
     const avg = activities.reduce((a, b) => a + b, 0) / activities.length;
     return Math.max(3, Math.min(15, avg / 50 + 3));
   });
@@ -274,7 +272,7 @@ function LiveActivityWidget({ activity }) {
               stats.online ? "bg-green-500 animate-pulse" : "bg-gray-400"
             }`}
           />
-          Live Dashboard
+          Live Bot Activity
         </h3>
         <Link to="/live" className="text-xs font-medium text-emerald-600 hover:text-emerald-700">
           Full Dashboard →
@@ -342,7 +340,7 @@ function LiveActivityWidget({ activity }) {
 }
 
 export default function Home() {
-  useAuth();
+  const { user } = useAuth();
 
   const promo = usePromoStatus();
   const promoClaim = usePromoClaim();
@@ -369,6 +367,11 @@ export default function Home() {
   const [selectedTier, setSelectedTier] = useState("starter");
   const videoId = "x6Dvj1ALs-w";
 
+  const userReferralLink = useMemo(() => {
+    if (!user?.referral_code) return null;
+    return `${window.location.origin}/signup?ref=${user.referral_code}`;
+  }, [user]);
+
   const fetchActivity = useCallback(async () => {
     try {
       const statsRes = await axios.get(PUBLIC_STATS_URL, { timeout: 10000 });
@@ -377,7 +380,6 @@ export default function Home() {
         const trades = Array.isArray(data?.recent_trades) ? data.recent_trades : [];
         const summary = data?.summary || {};
         
-        // Only show the 4 main bots
         const mainBots = ["okx", "futures", "stocks", "sniper"];
         const botStatuses = Array.isArray(data?.bots)
           ? data.bots
@@ -575,6 +577,31 @@ export default function Home() {
             </Link>
           </div>
 
+          {/* REFERRAL LINK BANNER - Shows for logged-in users */}
+          {userReferralLink && (
+            <div className="mx-auto mb-8 max-w-3xl">
+              <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-4 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                      Your Referral Link
+                    </p>
+                    <h3 className="text-lg font-bold text-gray-900">Invite friends & earn rewards</h3>
+                    <code className="mt-1 block text-xs text-emerald-600 break-all">
+                      {userReferralLink}
+                    </code>
+                  </div>
+                  <Link
+                    to="/referrals"
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-emerald-600 px-5 py-3 font-bold text-white transition-all hover:bg-emerald-500"
+                  >
+                    <FaShareAlt className="mr-2" /> Go to Referral Hub →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="mx-auto mb-8 max-w-3xl">
             <Link to="/pricing">
               <div className="cursor-pointer rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 px-4 py-4 text-left shadow-sm transition-shadow hover:shadow-md sm:px-5">
@@ -639,28 +666,43 @@ export default function Home() {
               Choose a plan, connect your accounts, and let IMALI handle stock and crypto automation with a simpler user experience.
             </p>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <span className="mb-2 block text-3xl">📊</span>
-                <p className="text-xs font-semibold text-gray-700">Futures Bot</p>
-              </div>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <span className="mb-2 block text-3xl">📈</span>
-                <p className="text-xs font-semibold text-gray-700">Stock Bot</p>
-              </div>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <span className="mb-2 block text-3xl">🎯</span>
-                <p className="text-xs font-semibold text-gray-700">Sniper Bot</p>
-              </div>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
-                <span className="mb-2 block text-3xl">🔷</span>
-                <p className="text-xs font-semibold text-gray-700">OKX Spot</p>
-              </div>
+              {activity.stats.botStatuses.length > 0 ? (
+                activity.stats.botStatuses.map((bot) => (
+                  <div key={bot.label} className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                    <span className="mb-2 block text-3xl">{getBotIcon(bot.label)}</span>
+                    <p className="text-xs font-semibold text-gray-700">{bot.label}</p>
+                    {bot.live && <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                  </div>
+                ))
+              ) : (
+                <>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                    <span className="mb-2 block text-3xl">📊</span>
+                    <p className="text-xs font-semibold text-gray-700">Futures Bot</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                    <span className="mb-2 block text-3xl">📈</span>
+                    <p className="text-xs font-semibold text-gray-700">Stock Bot</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                    <span className="mb-2 block text-3xl">🎯</span>
+                    <p className="text-xs font-semibold text-gray-700">Sniper Bot</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+                    <span className="mb-2 block text-3xl">🔷</span>
+                    <p className="text-xs font-semibold text-gray-700">OKX Spot</p>
+                  </div>
+                </>
+              )}
             </div>
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
               <h4 className="font-semibold text-amber-800">Partner perk: referral rewards</h4>
               <p className="mt-1 text-sm text-gray-700">
                 Invite new users, track your network, and earn rewards as the IMALI ecosystem grows.
               </p>
+              <Link to="/referrals" className="mt-3 inline-block text-sm font-medium text-amber-700 hover:text-amber-800">
+                View your referral dashboard →
+              </Link>
             </div>
             <div className="mt-4 text-center">
               <Link
