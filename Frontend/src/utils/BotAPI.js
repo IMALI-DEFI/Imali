@@ -1,515 +1,268 @@
+// src/utils/BotAPI.js
 import axios from "axios";
 
-const API_BASE =
-  process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
-  "https://api.imali-defi.com";
-
+const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "https://api.imali-defi.com";
 const TOKEN_KEY = "imali_token";
-const WS_TOKEN_KEY = "imali_ws_token";
-
-const MAX_RETRIES = 2;
-const RETRY_DELAY = 1000;
-
 const isBrowser = typeof window !== "undefined";
 
-const isAuthPage = () => {
-  if (!isBrowser) return false;
-  const path = window.location.pathname;
-  return (
-    path.includes("/login") ||
-    path.includes("/signup") ||
-    path.includes("/billing") ||
-    path.includes("/activation")
-  );
-};
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-export const normalizeErrorMessage = (error, fallback = "Request failed") => {
-  return (
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    fallback
-  );
-};
-
-const withRetry = async (fn, retries = MAX_RETRIES) => {
-  let lastError;
-
-  for (let i = 0; i <= retries; i += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      const status = error?.response?.status;
-
-      if (status === 401) {
-        throw error;
-      }
-
-      if (status === 429) {
-        await sleep(RETRY_DELAY * Math.pow(2, i));
-        continue;
-      }
-
-      if (error?.code === "ECONNABORTED" || error?.message === "Network Error") {
-        if (i === retries) break;
-        await sleep(RETRY_DELAY * (i + 1));
-        continue;
-      }
-
-      if (i === retries) break;
-      await sleep(RETRY_DELAY * (i + 1));
-    }
-  }
-
-  throw lastError;
-};
-
+// Simple API client
 const api = axios.create({
   baseURL: API_BASE,
   timeout: 30000,
-  headers: {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  },
+  headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-export const getToken = () => {
-  if (!isBrowser) return null;
-  return localStorage.getItem(TOKEN_KEY);
-};
-
+// Token helpers
+export const getToken = () => (isBrowser ? localStorage.getItem(TOKEN_KEY) : null);
 export const setToken = (token) => {
   if (!isBrowser) return;
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
 };
-
-export const getWsToken = () => {
-  if (!isBrowser) return null;
-  return localStorage.getItem(WS_TOKEN_KEY);
-};
-
-export const setWsToken = (token) => {
-  if (!isBrowser) return;
-  if (token) localStorage.setItem(WS_TOKEN_KEY, token);
-  else localStorage.removeItem(WS_TOKEN_KEY);
-};
-
 export const clearToken = () => {
   if (!isBrowser) return;
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(WS_TOKEN_KEY);
 };
 
-api.interceptors.request.use(
-  (config) => {
-    const token = getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Add token to requests
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
+// Handle 401 responses
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const status = error?.response?.status;
-    const requestUrl = error?.config?.url || "";
-
-    if (status === 401) {
-      const isProfileRequest =
-        requestUrl.includes("/api/me") ||
-        requestUrl.includes("/api/auth/me") ||
-        requestUrl.includes("/activation-status") ||
-        requestUrl.includes("/api/admin/check");
-
-      if (!isProfileRequest && !isAuthPage()) {
+    if (error?.response?.status === 401) {
+      const isAuthPage = window.location.pathname.includes("/login") || 
+                        window.location.pathname.includes("/signup");
+      if (!isAuthPage) {
         clearToken();
-        if (isBrowser) {
-          window.location.href = "/login?expired=true";
-        }
+        window.location.href = "/login?expired=true";
       }
     }
-
     return Promise.reject(error);
   }
 );
 
 const unwrap = (response) => response?.data ?? response;
 
-/* =========================
-   AUTH
-========================= */
-
-export const login = async (email, password) => {
-  const response = await withRetry(() =>
-    api.post("/api/auth/login", { email, password })
-  );
-  const data = unwrap(response);
-
-  const token = data?.data?.token || data?.token || null;
-  if (token) {
-    setToken(token);
-    try {
-      const ws = await getWebSocketToken();
-      const wsToken = ws?.data?.token || ws?.token || null;
-      if (wsToken) setWsToken(wsToken);
-    } catch (err) {
-      console.warn("[BotAPI] Unable to load websocket token:", err);
-    }
-  }
-
-  return data;
-};
-
+// ========== AUTH API ==========
 export const signup = async (userData) => {
   try {
-    const response = await withRetry(() => api.post("/api/auth/signup", userData));
+    const response = await api.post("/api/auth/signup", userData);
     const data = unwrap(response);
-    const token = data?.data?.token || data?.token || null;
+    const token = data?.token || data?.data?.token;
     if (token) setToken(token);
-    return data;
-  } catch (err) {
-    if (err?.response?.status && err.response.status !== 404) throw err;
+    return { success: true, data, token };
+  } catch (error) {
+    const message = error?.response?.data?.message || error?.message || "Signup failed";
+    return { success: false, error: message };
+  }
+};
 
-    const fallbackResponse = await withRetry(() => api.post("/api/signup", userData));
-    const fallbackData = unwrap(fallbackResponse);
-    const token = fallbackData?.data?.token || fallbackData?.token || null;
+export const login = async (email, password) => {
+  try {
+    const response = await api.post("/api/auth/login", { email, password });
+    const data = unwrap(response);
+    const token = data?.token || data?.data?.token;
     if (token) setToken(token);
-    return fallbackData;
+    return { success: true, data, token };
+  } catch (error) {
+    const message = error?.response?.data?.message || error?.message || "Login failed";
+    return { success: false, error: message };
   }
 };
 
 export const logout = () => {
   clearToken();
-  if (isBrowser) {
-    window.location.href = "/login";
-  }
+  if (isBrowser) window.location.href = "/login";
 };
 
 export const getMe = async () => {
   try {
-    const response = await withRetry(() => api.get("/api/auth/me"));
+    const response = await api.get("/api/auth/me");
     return unwrap(response);
-  } catch (err) {
-    if (err?.response?.status === 404) {
-      const fallback = await withRetry(() => api.get("/api/me"));
-      return unwrap(fallback);
-    }
-    throw err;
+  } catch (error) {
+    throw error;
   }
 };
 
 export const getActivationStatus = async () => {
   try {
-    const response = await withRetry(() => api.get("/api/auth/activation-status"));
+    const response = await api.get("/api/auth/activation-status");
     return unwrap(response);
-  } catch (err) {
-    if (err?.response?.status === 404) {
-      const fallback = await withRetry(() => api.get("/api/me/activation-status"));
-      return unwrap(fallback);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      // Try fallback endpoint
+      try {
+        const fallback = await api.get("/api/me/activation-status");
+        return unwrap(fallback);
+      } catch {
+        return { has_card_on_file: false, trading_enabled: false };
+      }
     }
-    throw err;
+    return { has_card_on_file: false, trading_enabled: false };
   }
 };
 
-export const activationStatus = getActivationStatus;
-
-export const getWebSocketToken = async () => {
-  const response = await withRetry(() => api.get("/api/ws/token"));
-  return unwrap(response);
-};
-
-/* =========================
-   BILLING
-========================= */
-
+// ========== BILLING API ==========
 export const getCardStatus = async () => {
-  const response = await withRetry(() => api.get("/api/billing/card-status"));
+  try {
+    const response = await api.get("/api/billing/card-status");
+    return unwrap(response);
+  } catch {
+    return { has_card: false };
+  }
+};
+
+export const createSetupIntent = async (payload) => {
+  const response = await api.post("/api/billing/setup-intent", payload);
   return unwrap(response);
 };
 
-export const createSetupIntent = async (payload = {}) => {
-  const response = await withRetry(() =>
-    api.post("/api/billing/setup-intent", payload)
-  );
-  return unwrap(response);
-};
-
-/* =========================
-   CONNECTIONS / ACTIVATION
-========================= */
-
+// ========== CONNECTIONS API ==========
 export const connectOKX = async (payload) => {
   try {
-    const response = await withRetry(() => api.post("/api/connections/okx", payload));
+    const response = await api.post("/api/connections/okx", payload);
     return unwrap(response);
-  } catch (err) {
-    if (err?.response?.status === 404) {
-      const fallback = await withRetry(() => api.post("/api/integrations/okx", payload));
-      return unwrap(fallback);
-    }
-    throw err;
+  } catch (error) {
+    throw error;
   }
 };
 
 export const connectAlpaca = async (payload) => {
   try {
-    const response = await withRetry(() => api.post("/api/connections/alpaca", payload));
+    const response = await api.post("/api/connections/alpaca", payload);
     return unwrap(response);
-  } catch (err) {
-    if (err?.response?.status === 404) {
-      const fallback = await withRetry(() => api.post("/api/integrations/alpaca", payload));
-      return unwrap(fallback);
-    }
-    throw err;
+  } catch (error) {
+    throw error;
   }
 };
 
 export const connectWallet = async (payload) => {
   try {
-    const response = await withRetry(() => api.post("/api/connections/wallet", payload));
+    const response = await api.post("/api/connections/wallet", payload);
     return unwrap(response);
-  } catch (err) {
-    if (err?.response?.status === 404) {
-      const fallback = await withRetry(() => api.post("/api/integrations/wallet", payload));
-      return unwrap(fallback);
-    }
-    throw err;
+  } catch (error) {
+    throw error;
   }
 };
 
 export const toggleTrading = async (enabled) => {
-  const response = await withRetry(() =>
-    api.post("/api/trading/enable", { enabled })
-  );
+  const response = await api.post("/api/trading/enable", { enabled });
   return unwrap(response);
 };
 
-/* =========================
-   ADMIN
-========================= */
+// ========== DASHBOARD API ==========
+export const getTrades = async (limit = 100) => {
+  try {
+    const response = await api.get(`/api/sniper/trades?limit=${limit}`);
+    return unwrap(response);
+  } catch {
+    return { trades: [] };
+  }
+};
 
+export const getDiscoveries = async (limit = 20) => {
+  try {
+    const response = await api.get(`/api/sniper/discoveries?limit=${limit}`);
+    return unwrap(response);
+  } catch {
+    return { discoveries: [] };
+  }
+};
+
+export const getBotStatus = async () => {
+  try {
+    const response = await api.get("/api/bot/status");
+    return unwrap(response);
+  } catch {
+    return { bots: [] };
+  }
+};
+
+export const getAnalyticsSummary = async () => {
+  try {
+    const response = await api.get("/api/analytics/summary");
+    return unwrap(response);
+  } catch {
+    return { summary: { total_trades: 0, total_pnl: 0, wins: 0, losses: 0 } };
+  }
+};
+
+export const getPublicHistorical = async () => {
+  try {
+    const response = await api.get("/api/public/historical");
+    return unwrap(response);
+  } catch {
+    return { daily: [], weekly: [], monthly: [] };
+  }
+};
+
+export const getPublicLiveStats = async () => {
+  try {
+    const response = await api.get("/api/public/live-stats");
+    return unwrap(response);
+  } catch {
+    return { total_pnl: 0, win_rate: 0, active_bots: 0 };
+  }
+};
+
+// ========== ADMIN API ==========
 export const getAdminCheck = async () => {
-  const response = await withRetry(() => api.get("/api/admin/check"));
+  const response = await api.get("/api/admin/check");
   return unwrap(response);
 };
 
 export const adminGetUsers = async (params = {}) => {
-  const response = await withRetry(() =>
-    api.get("/api/admin/users", { params })
-  );
+  const response = await api.get("/api/admin/users", { params });
   return unwrap(response);
 };
 
 export const adminUpdateUserTier = async (userId, tier) => {
-  if (!userId) {
-    throw new Error("userId is required");
-  }
-  if (!tier) {
-    throw new Error("tier is required");
-  }
-
-  try {
-    const response = await withRetry(() =>
-      api.patch(`/api/admin/users/${userId}/tier`, { tier })
-    );
-    return unwrap(response);
-  } catch (err) {
-    if (err?.response?.status === 404) {
-      const fallback = await withRetry(() =>
-        api.post("/api/admin/update-tier", { userId, tier })
-      );
-      return unwrap(fallback);
-    }
-    throw err;
-  }
+  const response = await api.patch(`/api/admin/users/${userId}/tier`, { tier });
+  return unwrap(response);
 };
 
-/* =========================
-   MISC USED IN CURRENT FLOW
-========================= */
-
+// ========== MISC ==========
 export const forgotPassword = async (email) => {
-  const response = await withRetry(() =>
-    api.post("/api/auth/forgot-password", { email })
-  );
+  const response = await api.post("/api/auth/forgot-password", { email });
   return unwrap(response);
 };
 
-export const getPromoStatus = async () => {
-  const response = await withRetry(() => api.get("/api/promo/status"));
-  return unwrap(response);
-};
-
-export const claimPromo = async (email, tier = "starter", wallet = null) => {
-  const response = await withRetry(() =>
-    api.post("/api/promo/claim", { email, tier, wallet })
-  );
-  return unwrap(response);
-};
-
-export const getPublicLiveStats = async () => {
-  const response = await withRetry(() => api.get("/api/public/live-stats"));
-  return unwrap(response);
-};
-
-export const getPublicHistorical = async () => {
-  const response = await withRetry(() => api.get("/api/public/historical"));
-  return unwrap(response);
-};
-
-export const getTrades = async (limit = 100) => {
-  const response = await withRetry(() =>
-    api.get(`/api/sniper/trades?limit=${limit}`)
-  );
-  return unwrap(response);
-};
-
-export const getSniperTrades = getTrades;
-
-export const getDiscoveries = async (limit = 20) => {
-  const response = await withRetry(() =>
-    api.get(`/api/sniper/discoveries?limit=${limit}`)
-  );
-  return unwrap(response);
-};
-
-export const getBotStatus = async () => {
-  const response = await withRetry(() => api.get("/api/bot/status"));
-  return unwrap(response);
-};
-
-export const getAnalyticsSummary = async () => {
-  const response = await withRetry(() => api.get("/api/analytics/summary"));
-  return unwrap(response);
-};
-
+// BotAPI Class for easy importing
 class BotAPIClass {
   constructor() {
     this.api = api;
   }
-
-  setToken(token) {
-    setToken(token);
-  }
-
-  getToken() {
-    return getToken();
-  }
-
-  clearToken() {
-    clearToken();
-  }
-
-  login(email, password) {
-    return login(email, password);
-  }
-
-  signup(userData) {
-    return signup(userData);
-  }
-
-  logout() {
-    return logout();
-  }
-
-  getMe() {
-    return getMe();
-  }
-
-  getActivationStatus() {
-    return getActivationStatus();
-  }
-
-  activationStatus() {
-    return getActivationStatus();
-  }
-
-  getWebSocketToken() {
-    return getWebSocketToken();
-  }
-
-  getCardStatus() {
-    return getCardStatus();
-  }
-
-  createSetupIntent(payload) {
-    return createSetupIntent(payload);
-  }
-
-  connectOKX(payload) {
-    return connectOKX(payload);
-  }
-
-  connectAlpaca(payload) {
-    return connectAlpaca(payload);
-  }
-
-  connectWallet(payload) {
-    return connectWallet(payload);
-  }
-
-  toggleTrading(enabled) {
-    return toggleTrading(enabled);
-  }
-
-  getAdminCheck() {
-    return getAdminCheck();
-  }
-
-  adminGetUsers(params = {}) {
-    return adminGetUsers(params);
-  }
-
-  adminUpdateUserTier(userId, tier) {
-    return adminUpdateUserTier(userId, tier);
-  }
-
-  forgotPassword(email) {
-    return forgotPassword(email);
-  }
-
-  getPromoStatus() {
-    return getPromoStatus();
-  }
-
-  claimPromo(email, tier, wallet) {
-    return claimPromo(email, tier, wallet);
-  }
-
-  getPublicLiveStats() {
-    return getPublicLiveStats();
-  }
-
-  getPublicHistorical() {
-    return getPublicHistorical();
-  }
-
-  getTrades(limit = 100) {
-    return getTrades(limit);
-  }
-
-  getSniperTrades(limit = 100) {
-    return getSniperTrades(limit);
-  }
-
-  getDiscoveries(limit = 20) {
-    return getDiscoveries(limit);
-  }
-
-  getBotStatus() {
-    return getBotStatus();
-  }
-
-  getAnalyticsSummary() {
-    return getAnalyticsSummary();
-  }
+  setToken(token) { setToken(token); }
+  getToken() { return getToken(); }
+  clearToken() { clearToken(); }
+  signup(userData) { return signup(userData); }
+  login(email, password) { return login(email, password); }
+  logout() { logout(); }
+  getMe() { return getMe(); }
+  getActivationStatus() { return getActivationStatus(); }
+  activationStatus() { return getActivationStatus(); }
+  getCardStatus() { return getCardStatus(); }
+  createSetupIntent(payload) { return createSetupIntent(payload); }
+  connectOKX(payload) { return connectOKX(payload); }
+  connectAlpaca(payload) { return connectAlpaca(payload); }
+  connectWallet(payload) { return connectWallet(payload); }
+  toggleTrading(enabled) { return toggleTrading(enabled); }
+  getTrades(limit) { return getTrades(limit); }
+  getDiscoveries(limit) { return getDiscoveries(limit); }
+  getBotStatus() { return getBotStatus(); }
+  getAnalyticsSummary() { return getAnalyticsSummary(); }
+  getPublicHistorical() { return getPublicHistorical(); }
+  getPublicLiveStats() { return getPublicLiveStats(); }
+  getAdminCheck() { return getAdminCheck(); }
+  adminGetUsers(params) { return adminGetUsers(params); }
+  adminUpdateUserTier(userId, tier) { return adminUpdateUserTier(userId, tier); }
+  forgotPassword(email) { return forgotPassword(email); }
 }
 
 const BotAPI = new BotAPIClass();
