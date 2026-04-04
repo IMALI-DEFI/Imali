@@ -1,21 +1,10 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-} from "react";
+// src/context/AuthContext.js
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import BotAPI from "../utils/BotAPI";
 
 const AuthContext = createContext(null);
-
 const TOKEN_KEY = "imali_token";
 const USER_KEY = "imali_user";
-
-const extractUser = (response) => response?.data?.user || response?.user || null;
-const extractActivation = (response) =>
-  response?.data?.status || response?.status || response?.data || response || null;
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -27,240 +16,186 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [activation, setActivation] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setTokenState] = useState(null);
+  const [error, setError] = useState(null);
 
-  const persistUser = useCallback((nextUser) => {
-    setUser(nextUser);
-    if (nextUser) localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-    else localStorage.removeItem(USER_KEY);
+  // Save user to state and localStorage
+  const saveUser = useCallback((userData) => {
+    setUser(userData);
+    if (userData) {
+      localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    } else {
+      localStorage.removeItem(USER_KEY);
+    }
   }, []);
 
-  const persistToken = useCallback((nextToken) => {
-    setTokenState(nextToken || null);
-    BotAPI.setToken(nextToken || null);
-    if (nextToken) localStorage.setItem(TOKEN_KEY, nextToken);
-    else localStorage.removeItem(TOKEN_KEY);
-  }, []);
-
+  // Clear all auth data
   const clearAuth = useCallback(() => {
-    persistToken(null);
-    persistUser(null);
+    setUser(null);
     setActivation(null);
-    localStorage.removeItem("imali_ws_token");
-  }, [persistToken, persistUser]);
+    BotAPI.clearToken();
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+  }, []);
 
+  // Refresh activation status
   const refreshActivation = useCallback(async () => {
     try {
-      const response = await BotAPI.getActivationStatus();
-      const nextActivation = extractActivation(response);
-      setActivation(nextActivation || null);
-      return nextActivation;
+      const status = await BotAPI.getActivationStatus();
+      setActivation(status);
+      return status;
     } catch (err) {
       console.warn("[Auth] Failed to refresh activation:", err);
       return null;
     }
   }, []);
 
+  // Load user from API or localStorage
   const loadUser = useCallback(async () => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
-    const storedUserRaw = localStorage.getItem(USER_KEY);
-
-    if (!storedToken) {
+    const token = localStorage.getItem(TOKEN_KEY);
+    
+    if (!token) {
       clearAuth();
       setLoading(false);
       return null;
     }
 
-    persistToken(storedToken);
-
-    if (storedUserRaw) {
+    // Try to get user from localStorage first
+    const storedUser = localStorage.getItem(USER_KEY);
+    if (storedUser) {
       try {
-        const parsed = JSON.parse(storedUserRaw);
-        if (parsed) setUser(parsed);
-      } catch {
+        const parsed = JSON.parse(storedUser);
+        setUser(parsed);
+      } catch (e) {
         localStorage.removeItem(USER_KEY);
       }
     }
 
     try {
       const response = await BotAPI.getMe();
-      const nextUser = extractUser(response);
-
-      if (!nextUser) {
+      const userData = response?.user || response?.data?.user || response;
+      
+      if (userData && userData.id) {
+        saveUser(userData);
+        await refreshActivation();
+        return userData;
+      } else {
         clearAuth();
-        setLoading(false);
         return null;
       }
-
-      persistUser(nextUser);
-      await refreshActivation();
-      return nextUser;
-    } catch (error) {
-      console.error("[Auth] Failed to load user:", error);
-
-      const status = error?.response?.status;
-      if (status === 401 || status === 403) {
+    } catch (err) {
+      console.error("[Auth] Load user failed:", err);
+      // Keep stored user as fallback, but clear if 401
+      if (err?.response?.status === 401) {
         clearAuth();
-      } else {
-        console.warn("[Auth] Keeping stored auth because this was not a confirmed auth rejection.");
       }
-
       return null;
     } finally {
       setLoading(false);
     }
-  }, [clearAuth, persistToken, persistUser, refreshActivation]);
+  }, [clearAuth, saveUser, refreshActivation]);
 
+  // Initial load
   useEffect(() => {
     loadUser();
   }, [loadUser]);
 
-  const login = useCallback(
-    async (email, password) => {
-      try {
-        const response = await BotAPI.login(email, password);
-
-        const nextToken = response?.data?.token || response?.token || null;
-        const nextUser = response?.data?.user || response?.user || null;
-        const twofaRequired = response?.data?.twofaRequired || response?.twofaRequired || false;
-        const tempToken = response?.data?.tempToken || response?.tempToken || null;
-
-        if (twofaRequired) {
-          return {
-            success: true,
-            twofaRequired: true,
-            tempToken,
-          };
-        }
-
-        if (!nextToken) {
-          return {
-            success: false,
-            error: response?.message || "Login failed",
-          };
-        }
-
-        persistToken(nextToken);
-        if (nextUser) persistUser(nextUser);
-
-        const loadedUser = await loadUser();
-
-        return {
-          success: true,
-          user: loadedUser || nextUser || null,
-        };
-      } catch (error) {
-        console.error("[Auth] Login error:", error);
-        return {
-          success: false,
-          error:
-            error?.response?.data?.message ||
-            error?.message ||
-            "Login failed",
-        };
+  // Signup
+  const signup = useCallback(async (userData) => {
+    setError(null);
+    try {
+      const result = await BotAPI.signup(userData);
+      
+      if (!result.success) {
+        return { success: false, error: result.error };
       }
-    },
-    [loadUser, persistToken, persistUser]
-  );
-
-  const signup = useCallback(
-    async (userData) => {
-      try {
-        const response = await BotAPI.signup(userData);
-
-        const nextToken = response?.data?.token || response?.token || null;
-        const nextUser = response?.data?.user || response?.user || null;
-
-        if (!nextToken) {
-          return {
-            success: false,
-            error: response?.message || "Signup failed",
-          };
-        }
-
-        persistToken(nextToken);
-        if (nextUser) persistUser(nextUser);
-
-        const loadedUser = await loadUser();
-
-        return {
-          success: true,
-          user: loadedUser || nextUser || null,
-        };
-      } catch (error) {
-        console.error("[Auth] Signup error:", error);
-        return {
-          success: false,
-          error:
-            error?.response?.data?.message ||
-            error?.message ||
-            "Signup failed",
-        };
+      
+      // Extract user from response
+      const newUser = result.data?.user || result.data?.data?.user;
+      const token = result.token;
+      
+      if (token) {
+        localStorage.setItem(TOKEN_KEY, token);
       }
-    },
-    [loadUser, persistToken, persistUser]
-  );
+      
+      if (newUser) {
+        saveUser(newUser);
+      }
+      
+      await refreshActivation();
+      
+      return { success: true, user: newUser };
+    } catch (err) {
+      const message = err?.response?.data?.message || err?.message || "Signup failed";
+      setError(message);
+      return { success: false, error: message };
+    }
+  }, [saveUser, refreshActivation]);
 
+  // Login
+  const login = useCallback(async (email, password) => {
+    setError(null);
+    try {
+      const result = await BotAPI.login(email, password);
+      
+      if (!result.success) {
+        return { success: false, error: result.error };
+      }
+      
+      const userData = result.data?.user || result.data?.data?.user;
+      const token = result.token;
+      
+      if (token) {
+        localStorage.setItem(TOKEN_KEY, token);
+      }
+      
+      if (userData) {
+        saveUser(userData);
+      }
+      
+      await refreshActivation();
+      
+      return { success: true, user: userData };
+    } catch (err) {
+      const message = err?.response?.data?.message || err?.message || "Login failed";
+      setError(message);
+      return { success: false, error: message };
+    }
+  }, [saveUser, refreshActivation]);
+
+  // Logout
   const logout = useCallback(() => {
     clearAuth();
+    window.location.href = "/login";
   }, [clearAuth]);
 
-  const refreshWebSocketToken = useCallback(async () => {
-    try {
-      const response = await BotAPI.getWebSocketToken();
-      const wsToken = response?.data?.token || response?.token || null;
-      if (wsToken) {
-        localStorage.setItem("imali_ws_token", wsToken);
-        return wsToken;
-      }
-    } catch (error) {
-      console.error("[Auth] Failed to refresh WebSocket token:", error);
-    }
-    return null;
-  }, []);
-
+  // Computed values
   const activationComplete = activation?.trading_enabled === true;
-  const hasCardOnFile =
-    activation?.has_card_on_file === true || activation?.billing_complete === true;
+  const hasCardOnFile = activation?.has_card_on_file === true || activation?.billing_complete === true;
+  const isAuthenticated = !!user && !!localStorage.getItem(TOKEN_KEY);
+  const isAdmin = user?.is_admin === true || user?.email === "wayne@imali-defi.com";
 
-  const value = useMemo(
-    () => ({
-      user,
-      setUser: persistUser,
-      activation,
-      setActivation,
-      token,
-      loading,
-      isAuthenticated: !!user && !!token,
-      activationComplete,
-      hasCardOnFile,
-      login,
-      signup,
-      logout,
-      loadUser,
-      refreshActivation,
-      refreshWebSocketToken,
-      clearAuth,
-    }),
-    [
-      user,
-      persistUser,
-      activation,
-      token,
-      loading,
-      activationComplete,
-      hasCardOnFile,
-      login,
-      signup,
-      logout,
-      loadUser,
-      refreshActivation,
-      refreshWebSocketToken,
-      clearAuth,
-    ]
+  const value = useMemo(() => ({
+    user,
+    activation,
+    loading,
+    error,
+    isAuthenticated,
+    activationComplete,
+    hasCardOnFile,
+    isAdmin,
+    signup,
+    login,
+    logout,
+    loadUser,
+    refreshActivation,
+    clearAuth,
+  }), [user, activation, loading, error, isAuthenticated, activationComplete, hasCardOnFile, isAdmin, signup, login, logout, loadUser, refreshActivation, clearAuth]);
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
   );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export default AuthProvider;
