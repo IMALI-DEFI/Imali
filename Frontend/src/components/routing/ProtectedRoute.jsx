@@ -2,63 +2,104 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
-const ACTIVATION_EXEMPT = ["/activation", "/billing", "/settings"];
-const ADMIN_EMAILS = ["wayne@imali-defi.com", "admin@imali-defi.com"];
+// Pages that don't require activation
+const ACTIVATION_EXEMPT = ["/activation", "/billing", "/billing-dashboard", "/settings"];
+
+// Admin emails
+const ADMIN_EMAILS = ["wayne@imali-defi.com"];
 
 export default function ProtectedRoute({ requireActivation = false }) {
   const location = useLocation();
-  const { user, activation, loading, activationComplete, isAuthenticated } = useAuth();
+  const { user, loading, activationComplete, hasCardOnFile, isAdmin, isAuthenticated } = useAuth();
 
+  // Show loading spinner while checking auth
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
-          <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-gray-400">Loading...</p>
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-600 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-500">Loading...</p>
         </div>
       </div>
     );
   }
 
+  // Not logged in - redirect to login
   if (!user && !isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  // 🔥 CRITICAL: Check admin FIRST - BEFORE activation check
-  const isAdmin = user?.is_admin === true || ADMIN_EMAILS.includes(user?.email);
-  
-  // Admin bypass - allow access to everything
+  // ADMIN RULE: Admins can access everything, skip activation checks
   if (isAdmin) {
-    console.log("[ProtectedRoute] ✅ Admin bypass - allowing access to:", location.pathname);
-    // If admin is on billing/activation, redirect to dashboard
-    if (location.pathname === "/billing" || location.pathname === "/activation") {
-      console.log("[ProtectedRoute] Admin on billing/activation, redirecting to dashboard");
+    // If admin tries to go to activation/billing, send to dashboard
+    if (location.pathname === "/activation" || location.pathname === "/billing") {
       return <Navigate to="/dashboard" replace />;
     }
     return <Outlet />;
   }
 
-  // For regular users, check activation
+  // REGULAR USER RULES
+  
+  // Check if current page is exempt from activation
   const isExempt = ACTIVATION_EXEMPT.some(path => location.pathname.startsWith(path));
 
+  // If activation is required but not complete, redirect
   if (requireActivation && !activationComplete && !isExempt) {
-    console.log("[ProtectedRoute] Not activated, redirecting:", {
-      path: location.pathname,
-      hasCard: activation?.has_card_on_file,
-      isAdmin: isAdmin
-    });
-
-    const hasCard = activation?.has_card_on_file === true || activation?.billing_complete === true;
-    
-    if (!hasCard) {
+    // Decide where to redirect based on billing status
+    if (!hasCardOnFile) {
       return <Navigate to="/billing" replace />;
     }
     return <Navigate to="/activation" replace />;
   }
 
+  // If activation is complete, prevent going back to activation/billing
   if (activationComplete && (location.pathname === "/activation" || location.pathname === "/billing")) {
     return <Navigate to="/dashboard" replace />;
   }
 
+  // All good - render the route
   return <Outlet />;
+}
+
+// Simplified version for routes that just need auth (no activation check)
+export function RequireAuth({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="animate-spin h-8 w-8 border-4 border-emerald-600 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  return children;
+}
+
+// For routes that should redirect if already activated
+export function RedirectIfActivated({ children }) {
+  const { user, activationComplete, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="animate-spin h-8 w-8 border-4 border-emerald-600 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (activationComplete) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
 }
