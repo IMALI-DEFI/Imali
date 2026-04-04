@@ -54,7 +54,7 @@ const unwrap = (response) => response?.data ?? response;
 // ========== AUTH API ==========
 export const signup = async (userData) => {
   try {
-    const response = await api.post("/api/auth/signup", userData);
+    const response = await api.post("/api/auth/register", userData);
     const data = unwrap(response);
     const token = data?.token || data?.data?.token;
     if (token) setToken(token);
@@ -83,7 +83,6 @@ export const logout = () => {
   if (isBrowser) window.location.href = "/login";
 };
 
-// ✅ FIXED: Use /api/me endpoint (not /api/auth/me)
 export const getMe = async () => {
   try {
     const response = await api.get("/api/me");
@@ -99,10 +98,9 @@ export const getMe = async () => {
   }
 };
 
-// ✅ FIXED: Use correct activation endpoint
 export const getActivationStatus = async () => {
   try {
-    const response = await api.get("/api/activation-status");
+    const response = await api.get("/api/me/activation-status");
     const data = unwrap(response);
     
     // Extract status from response
@@ -221,6 +219,25 @@ export const getPublicLiveStats = async () => {
   }
 };
 
+// ========== PROMO API ==========
+export const getPromoStatus = async () => {
+  try {
+    const response = await api.get("/api/promo/status");
+    return unwrap(response);
+  } catch {
+    return { limit: 50, claimed: 0, spots_left: 50, active: true, fee_percent: 5 };
+  }
+};
+
+export const claimPromo = async (email, tier, wallet) => {
+  try {
+    const response = await api.post("/api/promo/claim", { email, tier, wallet });
+    return unwrap(response);
+  } catch (error) {
+    return { success: false, error: error?.response?.data?.message || "Claim failed" };
+  }
+};
+
 // ========== ADMIN API ==========
 export const getAdminCheck = async () => {
   const response = await api.get("/api/admin/check");
@@ -269,6 +286,8 @@ class BotAPIClass {
   getAnalyticsSummary() { return getAnalyticsSummary(); }
   getPublicHistorical() { return getPublicHistorical(); }
   getPublicLiveStats() { return getPublicLiveStats(); }
+  getPromoStatus() { return getPromoStatus(); }
+  claimPromo(email, tier, wallet) { return claimPromo(email, tier, wallet); }
   getAdminCheck() { return getAdminCheck(); }
   adminGetUsers(params) { return adminGetUsers(params); }
   adminUpdateUserTier(userId, tier) { return adminUpdateUserTier(userId, tier); }
