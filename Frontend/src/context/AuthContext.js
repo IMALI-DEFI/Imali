@@ -45,11 +45,19 @@ export function AuthProvider({ children }) {
       return status;
     } catch (err) {
       console.warn("[Auth] Failed to refresh activation:", err);
+      setActivation({
+        has_card_on_file: false,
+        billing_complete: false,
+        trading_enabled: false,
+        okx_connected: false,
+        alpaca_connected: false,
+        wallet_connected: false,
+      });
       return null;
     }
   }, []);
 
-  // Load user from API or localStorage
+  // Load user from API
   const loadUser = useCallback(async () => {
     const token = localStorage.getItem(TOKEN_KEY);
     
@@ -59,38 +67,30 @@ export function AuthProvider({ children }) {
       return null;
     }
 
-    // Try to get user from localStorage first
-    const storedUser = localStorage.getItem(USER_KEY);
-    if (storedUser) {
-      try {
-        const parsed = JSON.parse(storedUser);
-        setUser(parsed);
-      } catch (e) {
-        localStorage.removeItem(USER_KEY);
-      }
-    }
-
     try {
-      const response = await BotAPI.getMe();
-      const userData = response?.user || response?.data?.user || response;
+      const userData = await BotAPI.getMe();
       
-      if (userData && userData.id) {
+      if (userData && (userData.id || userData.email)) {
         saveUser(userData);
         await refreshActivation();
+        setLoading(false);
         return userData;
       } else {
+        // Token exists but no user data - clear auth
         clearAuth();
+        setLoading(false);
         return null;
       }
     } catch (err) {
       console.error("[Auth] Load user failed:", err);
-      // Keep stored user as fallback, but clear if 401
+      
+      // Only clear auth if it's a 401 unauthorized error
       if (err?.response?.status === 401) {
         clearAuth();
       }
-      return null;
-    } finally {
+      
       setLoading(false);
+      return null;
     }
   }, [clearAuth, saveUser, refreshActivation]);
 
@@ -109,27 +109,21 @@ export function AuthProvider({ children }) {
         return { success: false, error: result.error };
       }
       
-      // Extract user from response
-      const newUser = result.data?.user || result.data?.data?.user;
       const token = result.token;
-      
       if (token) {
         localStorage.setItem(TOKEN_KEY, token);
       }
       
-      if (newUser) {
-        saveUser(newUser);
-      }
+      // After signup, load the user profile
+      const loadedUser = await loadUser();
       
-      await refreshActivation();
-      
-      return { success: true, user: newUser };
+      return { success: true, user: loadedUser };
     } catch (err) {
       const message = err?.response?.data?.message || err?.message || "Signup failed";
       setError(message);
       return { success: false, error: message };
     }
-  }, [saveUser, refreshActivation]);
+  }, [loadUser]);
 
   // Login
   const login = useCallback(async (email, password) => {
@@ -141,26 +135,21 @@ export function AuthProvider({ children }) {
         return { success: false, error: result.error };
       }
       
-      const userData = result.data?.user || result.data?.data?.user;
       const token = result.token;
-      
       if (token) {
         localStorage.setItem(TOKEN_KEY, token);
       }
       
-      if (userData) {
-        saveUser(userData);
-      }
+      // After login, load the user profile
+      const loadedUser = await loadUser();
       
-      await refreshActivation();
-      
-      return { success: true, user: userData };
+      return { success: true, user: loadedUser };
     } catch (err) {
       const message = err?.response?.data?.message || err?.message || "Login failed";
       setError(message);
       return { success: false, error: message };
     }
-  }, [saveUser, refreshActivation]);
+  }, [loadUser]);
 
   // Logout
   const logout = useCallback(() => {
@@ -171,7 +160,7 @@ export function AuthProvider({ children }) {
   // Computed values
   const activationComplete = activation?.trading_enabled === true;
   const hasCardOnFile = activation?.has_card_on_file === true || activation?.billing_complete === true;
-  const isAuthenticated = !!user && !!localStorage.getItem(TOKEN_KEY);
+  const isAuthenticated = !!localStorage.getItem(TOKEN_KEY);
   const isAdmin = user?.is_admin === true || user?.email === "wayne@imali-defi.com";
 
   const value = useMemo(() => ({
