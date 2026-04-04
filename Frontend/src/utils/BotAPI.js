@@ -36,11 +36,13 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error?.response?.status === 401) {
-      const isAuthPage = window.location.pathname.includes("/login") || 
-                        window.location.pathname.includes("/signup");
+      const isAuthPage = isBrowser && (
+        window.location.pathname.includes("/login") || 
+        window.location.pathname.includes("/signup")
+      );
       if (!isAuthPage) {
         clearToken();
-        window.location.href = "/login?expired=true";
+        if (isBrowser) window.location.href = "/login?expired=true";
       }
     }
     return Promise.reject(error);
@@ -81,30 +83,50 @@ export const logout = () => {
   if (isBrowser) window.location.href = "/login";
 };
 
+// ✅ FIXED: Use /api/me endpoint (not /api/auth/me)
 export const getMe = async () => {
   try {
-    const response = await api.get("/api/auth/me");
-    return unwrap(response);
+    const response = await api.get("/api/me");
+    const data = unwrap(response);
+    
+    // Extract user from response structure: { success: true, data: { user: {...} } }
+    const userData = data?.data?.user || data?.user || data;
+    
+    return userData;
   } catch (error) {
+    console.error("[BotAPI] getMe failed:", error);
     throw error;
   }
 };
 
+// ✅ FIXED: Use correct activation endpoint
 export const getActivationStatus = async () => {
   try {
-    const response = await api.get("/api/auth/activation-status");
-    return unwrap(response);
+    const response = await api.get("/api/activation-status");
+    const data = unwrap(response);
+    
+    // Extract status from response
+    const status = data?.data?.status || data?.status || data;
+    
+    return {
+      has_card_on_file: status?.has_card_on_file || false,
+      billing_complete: status?.billing_complete || false,
+      trading_enabled: status?.trading_enabled || false,
+      okx_connected: status?.okx_connected || false,
+      alpaca_connected: status?.alpaca_connected || false,
+      wallet_connected: status?.wallet_connected || false,
+    };
   } catch (error) {
-    if (error?.response?.status === 404) {
-      // Try fallback endpoint
-      try {
-        const fallback = await api.get("/api/me/activation-status");
-        return unwrap(fallback);
-      } catch {
-        return { has_card_on_file: false, trading_enabled: false };
-      }
-    }
-    return { has_card_on_file: false, trading_enabled: false };
+    console.warn("[BotAPI] getActivationStatus failed:", error);
+    // Return default status
+    return {
+      has_card_on_file: false,
+      billing_complete: false,
+      trading_enabled: false,
+      okx_connected: false,
+      alpaca_connected: false,
+      wallet_connected: false,
+    };
   }
 };
 
@@ -125,30 +147,18 @@ export const createSetupIntent = async (payload) => {
 
 // ========== CONNECTIONS API ==========
 export const connectOKX = async (payload) => {
-  try {
-    const response = await api.post("/api/connections/okx", payload);
-    return unwrap(response);
-  } catch (error) {
-    throw error;
-  }
+  const response = await api.post("/api/connections/okx", payload);
+  return unwrap(response);
 };
 
 export const connectAlpaca = async (payload) => {
-  try {
-    const response = await api.post("/api/connections/alpaca", payload);
-    return unwrap(response);
-  } catch (error) {
-    throw error;
-  }
+  const response = await api.post("/api/connections/alpaca", payload);
+  return unwrap(response);
 };
 
 export const connectWallet = async (payload) => {
-  try {
-    const response = await api.post("/api/connections/wallet", payload);
-    return unwrap(response);
-  } catch (error) {
-    throw error;
-  }
+  const response = await api.post("/api/connections/wallet", payload);
+  return unwrap(response);
 };
 
 export const toggleTrading = async (enabled) => {
