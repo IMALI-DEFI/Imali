@@ -5,39 +5,102 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "htt
 const TOKEN_KEY = "imali_token";
 const isBrowser = typeof window !== "undefined";
 
-// Simple API client
+// ==============================================
+// CONFIGURATION
+// ==============================================
+
+const API_CONFIG = {
+  timeout: 30000,
+  retryAttempts: 3,
+  retryDelay: 1000,
+  cacheTTL: 60000, // 1 minute cache for non-sensitive data
+};
+
+// Simple in-memory cache
+const cache = new Map();
+
+const getCached = (key, ttl = API_CONFIG.cacheTTL) => {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < ttl) {
+    return cached.data;
+  }
+  return null;
+};
+
+const setCached = (key, data) => {
+  cache.set(key, { data, timestamp: Date.now() });
+};
+
+const clearCache = (pattern) => {
+  if (pattern) {
+    for (const key of cache.keys()) {
+      if (key.includes(pattern)) cache.delete(key);
+    }
+  } else {
+    cache.clear();
+  }
+};
+
+// ==============================================
+// API CLIENT
+// ==============================================
+
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 30000,
+  timeout: API_CONFIG.timeout,
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-// Token helpers
-export const getToken = () => (isBrowser ? localStorage.getItem(TOKEN_KEY) : null);
-export const setToken = (token) => {
-  if (!isBrowser) return;
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-};
-export const clearToken = () => {
-  if (!isBrowser) return;
-  localStorage.removeItem(TOKEN_KEY);
-};
+// Request interceptor with retry logic
+api.interceptors.request.use(
+  (config) => {
+    const token = getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    // Add request timestamp for debugging
+    config.metadata = { startTime: Date.now() };
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-// Add token to requests
-api.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-// Handle 401 responses
+// Response interceptor with retry logic
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error?.response?.status === 401) {
+  (response) => {
+    // Log slow requests in development
+    if (process.env.NODE_ENV === "development") {
+      const duration = Date.now() - response.config.metadata.startTime;
+      if (duration > 3000) {
+        console.warn(`[BotAPI] Slow request: ${response.config.url} took ${duration}ms`);
+      }
+    }
+    return response;
+  },
+  async (error) => {
+    const { config, response } = error;
+    
+    // Retry logic for network errors and 5xx responses
+    if (config && config.retryCount !== undefined) {
+      const shouldRetry = !response || (response?.status >= 500 && response?.status < 600);
+      if (shouldRetry && config.retryCount < API_CONFIG.retryAttempts) {
+        config.retryCount += 1;
+        await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay * config.retryCount));
+        return api(config);
+      }
+    } else if (config) {
+      config.retryCount = 0;
+      const shouldRetry = !response || (response?.status >= 500 && response?.status < 600);
+      if (shouldRetry) {
+        await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay));
+        return api(config);
+      }
+    }
+    
+    // Handle 401 Unauthorized
+    if (response?.status === 401) {
       const isAuthPage = isBrowser && (
-        window.location.pathname.includes("/login") || 
+        window.location.pathname.includes("/login") ||
         window.location.pathname.includes("/signup")
       );
       if (!isAuthPage) {
@@ -45,23 +108,76 @@ api.interceptors.response.use(
         if (isBrowser) window.location.href = "/login?expired=true";
       }
     }
+    
     return Promise.reject(error);
   }
 );
 
+// ==============================================
+// TOKEN HELPERS
+// ==============================================
+
+export const getToken = () => {
+  if (!isBrowser) return null;
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch (e) {
+    console.warn("[BotAPI] Failed to get token:", e);
+    return null;
+  }
+};
+
+export const setToken = (token) => {
+  if (!isBrowser) return;
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch (e) {
+    console.warn("[BotAPI] Failed to set token:", e);
+  }
+};
+
+export const clearToken = () => {
+  if (!isBrowser) return;
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch (e) {
+    console.warn("[BotAPI] Failed to clear token:", e);
+  }
+};
+
+export const isAuthenticated = () => !!getToken();
+
+// ==============================================
+// UTILITY FUNCTIONS
+// ==============================================
+
 const unwrap = (response) => response?.data ?? response;
 
-// ========== AUTH API ==========
+const handleApiError = (error, fallbackMessage) => {
+  const message = error?.response?.data?.message || error?.response?.data?.error || error?.message || fallbackMessage;
+  console.error(`[BotAPI] ${fallbackMessage}:`, message);
+  return { success: false, error: message, status: error?.response?.status };
+};
+
+// ==============================================
+// AUTH API
+// ==============================================
+
 export const signup = async (userData) => {
   try {
     const response = await api.post("/api/auth/register", userData);
     const data = unwrap(response);
     const token = data?.token || data?.data?.token;
     if (token) setToken(token);
+    clearCache("user");
+    clearCache("activation");
     return { success: true, data, token };
   } catch (error) {
-    const message = error?.response?.data?.message || error?.message || "Signup failed";
-    return { success: false, error: message };
+    return handleApiError(error, "Signup failed");
   }
 };
 
@@ -71,23 +187,33 @@ export const login = async (email, password) => {
     const data = unwrap(response);
     const token = data?.token || data?.data?.token;
     if (token) setToken(token);
+    clearCache("user");
+    clearCache("activation");
     return { success: true, data, token };
   } catch (error) {
-    const message = error?.response?.data?.message || error?.message || "Login failed";
-    return { success: false, error: message };
+    return handleApiError(error, "Login failed");
   }
 };
 
 export const logout = () => {
   clearToken();
+  clearCache();
   if (isBrowser) window.location.href = "/login";
 };
 
-export const getMe = async () => {
+export const getMe = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("user_me");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await api.get("/api/me");
     const data = unwrap(response);
     const userData = data?.data?.user || data?.user || data;
+    if (userData && userData.id) {
+      setCached("user_me", userData);
+    }
     return userData;
   } catch (error) {
     console.error("[BotAPI] getMe failed:", error);
@@ -95,20 +221,30 @@ export const getMe = async () => {
   }
 };
 
-export const getActivationStatus = async () => {
+export const getActivationStatus = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("activation_status");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await api.get("/api/me/activation-status");
     const data = unwrap(response);
     const status = data?.data?.status || data?.status || data;
     
-    return {
+    const result = {
       has_card_on_file: status?.has_card_on_file || false,
       billing_complete: status?.billing_complete || false,
       trading_enabled: status?.trading_enabled || false,
       okx_connected: status?.okx_connected || false,
       alpaca_connected: status?.alpaca_connected || false,
       wallet_connected: status?.wallet_connected || false,
+      tier: status?.tier || "starter",
+      activation_complete: status?.activation_complete || false,
     };
+    
+    setCached("activation_status", result);
+    return result;
   } catch (error) {
     console.warn("[BotAPI] getActivationStatus failed:", error);
     return {
@@ -118,24 +254,33 @@ export const getActivationStatus = async () => {
       okx_connected: false,
       alpaca_connected: false,
       wallet_connected: false,
+      tier: "starter",
+      activation_complete: false,
     };
   }
 };
 
-// ========== BILLING API ==========
+export const refreshActivation = () => getActivationStatus(true);
+
+// ==============================================
+// BILLING API
+// ==============================================
+
 export const probeBillingRoutes = async () => {
   try {
     const response = await api.get("/api/billing/probe");
     const data = unwrap(response);
     const routes = data?.data?.routes || data?.routes || [];
     return {
+      success: true,
       cardStatusAvailable: true,
       setupIntentAvailable: true,
-      routes: routes,
+      routes,
     };
   } catch (error) {
     console.warn("[BotAPI] probeBillingRoutes failed:", error);
     return {
+      success: false,
       cardStatusAvailable: true,
       setupIntentAvailable: true,
       routes: [],
@@ -146,108 +291,227 @@ export const probeBillingRoutes = async () => {
 export const getCardStatus = async () => {
   try {
     const response = await api.get("/api/billing/card-status");
-    return unwrap(response);
-  } catch {
-    return { has_card: false };
+    const data = unwrap(response);
+    return {
+      success: true,
+      has_card: data?.data?.has_card || data?.has_card || false,
+      billing_complete: data?.data?.billing_complete || data?.billing_complete || false,
+      card_details: data?.data?.card_details || null,
+    };
+  } catch (error) {
+    console.warn("[BotAPI] getCardStatus failed:", error);
+    return { success: false, has_card: false, billing_complete: false };
   }
 };
 
 export const createSetupIntent = async (payload) => {
-  const response = await api.post("/api/billing/setup-intent", payload);
-  return unwrap(response);
-};
-
-export const confirmCard = async () => {
   try {
-    const response = await api.post("/api/billing/confirm-card");
-    return unwrap(response);
-  } catch {
-    return { confirmed: false };
+    const response = await api.post("/api/billing/setup-intent", payload);
+    const data = unwrap(response);
+    return {
+      success: true,
+      client_secret: data?.data?.client_secret || data?.client_secret,
+      setup_intent_id: data?.data?.setup_intent_id || data?.setup_intent_id,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to create setup intent");
   }
 };
 
-// ========== CONNECTIONS API ==========
+export const confirmCard = async (payload = {}) => {
+  try {
+    const response = await api.post("/api/billing/confirm-card", payload);
+    const data = unwrap(response);
+    clearCache("activation_status");
+    return {
+      success: true,
+      confirmed: data?.data?.confirmed || data?.confirmed || true,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to confirm card");
+  }
+};
+
+// ==============================================
+// CONNECTIONS API
+// ==============================================
+
 export const connectOKX = async (payload) => {
-  const response = await api.post("/api/integrations/okx", payload);
-  return unwrap(response);
+  try {
+    const response = await api.post("/api/integrations/okx", payload);
+    const data = unwrap(response);
+    clearCache("activation_status");
+    return { success: true, data };
+  } catch (error) {
+    return handleApiError(error, "Failed to connect OKX");
+  }
 };
 
 export const connectAlpaca = async (payload) => {
-  const response = await api.post("/api/integrations/alpaca", payload);
-  return unwrap(response);
+  try {
+    const response = await api.post("/api/integrations/alpaca", payload);
+    const data = unwrap(response);
+    clearCache("activation_status");
+    return { success: true, data };
+  } catch (error) {
+    return handleApiError(error, "Failed to connect Alpaca");
+  }
 };
 
 export const connectWallet = async (payload) => {
-  const response = await api.post("/api/integrations/wallet", payload);
-  return unwrap(response);
+  try {
+    const response = await api.post("/api/integrations/wallet", payload);
+    const data = unwrap(response);
+    clearCache("activation_status");
+    return { success: true, data };
+  } catch (error) {
+    return handleApiError(error, "Failed to connect wallet");
+  }
 };
 
 export const toggleTrading = async (enabled) => {
-  const response = await api.post("/api/trading/enable", { enabled });
-  return unwrap(response);
+  try {
+    const response = await api.post("/api/trading/enable", { enabled });
+    const data = unwrap(response);
+    clearCache("activation_status");
+    return { success: true, enabled: data?.data?.enabled || data?.enabled || enabled };
+  } catch (error) {
+    return handleApiError(error, "Failed to toggle trading");
+  }
 };
 
-// ========== DASHBOARD API ==========
-export const getTrades = async (limit = 100) => {
+// ==============================================
+// DASHBOARD API (with caching)
+// ==============================================
+
+export const getTrades = async (limit = 100, skipCache = false) => {
+  const cacheKey = `trades_${limit}`;
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+  
   try {
     const response = await api.get(`/api/sniper/trades?limit=${limit}`);
-    return unwrap(response);
-  } catch {
-    return { trades: [] };
+    const data = unwrap(response);
+    const result = data?.data?.trades || data?.trades || [];
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getTrades failed:", error);
+    return [];
   }
 };
 
-export const getDiscoveries = async (limit = 20) => {
+export const getDiscoveries = async (limit = 20, skipCache = false) => {
+  const cacheKey = `discoveries_${limit}`;
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+  
   try {
     const response = await api.get(`/api/sniper/discoveries?limit=${limit}`);
-    return unwrap(response);
-  } catch {
-    return { discoveries: [] };
+    const data = unwrap(response);
+    const result = data?.data?.discoveries || data?.discoveries || [];
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getDiscoveries failed:", error);
+    return [];
   }
 };
 
-export const getBotStatus = async () => {
+export const getBotStatus = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("bot_status");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await api.get("/api/bot/status");
-    return unwrap(response);
-  } catch {
-    return { bots: [] };
+    const data = unwrap(response);
+    const result = data?.data?.bots || data?.bots || [];
+    setCached("bot_status", result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getBotStatus failed:", error);
+    return [];
   }
 };
 
-export const getAnalyticsSummary = async () => {
+export const getAnalyticsSummary = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("analytics_summary");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await api.get("/api/analytics/summary");
-    return unwrap(response);
-  } catch {
-    return { summary: { total_trades: 0, total_pnl: 0, wins: 0, losses: 0 } };
+    const data = unwrap(response);
+    const result = data?.data?.summary || data?.summary || { total_trades: 0, total_pnl: 0, wins: 0, losses: 0 };
+    setCached("analytics_summary", result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getAnalyticsSummary failed:", error);
+    return { total_trades: 0, total_pnl: 0, wins: 0, losses: 0 };
   }
 };
 
-export const getPublicHistorical = async () => {
+export const getPublicHistorical = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("public_historical");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await api.get("/api/public/historical");
-    return unwrap(response);
-  } catch {
+    const data = unwrap(response);
+    const result = data?.data || data || { daily: [], weekly: [], monthly: [] };
+    setCached("public_historical", result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getPublicHistorical failed:", error);
     return { daily: [], weekly: [], monthly: [] };
   }
 };
 
-export const getPublicLiveStats = async () => {
+export const getPublicLiveStats = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("public_live_stats");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await api.get("/api/public/live-stats");
-    return unwrap(response);
-  } catch {
+    const data = unwrap(response);
+    const result = data?.data || data || { total_pnl: 0, win_rate: 0, active_bots: 0 };
+    setCached("public_live_stats", result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getPublicLiveStats failed:", error);
     return { total_pnl: 0, win_rate: 0, active_bots: 0 };
   }
 };
 
-// ========== PROMO API ==========
-export const getPromoStatus = async () => {
+// ==============================================
+// PROMO API
+// ==============================================
+
+export const getPromoStatus = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("promo_status");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await api.get("/api/promo/status");
-    return unwrap(response);
-  } catch {
+    const data = unwrap(response);
+    const result = data?.data || data || { limit: 50, claimed: 0, spots_left: 50, active: true, fee_percent: 5 };
+    setCached("promo_status", result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getPromoStatus failed:", error);
     return { limit: 50, claimed: 0, spots_left: 50, active: true, fee_percent: 5 };
   }
 };
@@ -255,68 +519,121 @@ export const getPromoStatus = async () => {
 export const claimPromo = async (email, tier, wallet) => {
   try {
     const response = await api.post("/api/promo/claim", { email, tier, wallet });
-    return unwrap(response);
+    const data = unwrap(response);
+    clearCache("promo_status");
+    return { success: true, data: data?.data || data };
   } catch (error) {
-    return { success: false, error: error?.response?.data?.message || "Claim failed" };
+    return handleApiError(error, "Claim failed");
   }
 };
 
-// ========== ADMIN API ==========
+// ==============================================
+// ADMIN API
+// ==============================================
+
 export const getAdminCheck = async () => {
-  const response = await api.get("/api/admin/check");
-  return unwrap(response);
+  try {
+    const response = await api.get("/api/admin/check");
+    const data = unwrap(response);
+    return { success: true, is_admin: data?.data?.is_admin || data?.is_admin || false };
+  } catch (error) {
+    return { success: false, is_admin: false };
+  }
 };
 
 export const adminGetUsers = async (params = {}) => {
-  const response = await api.get("/api/admin/users", { params });
-  return unwrap(response);
+  try {
+    const response = await api.get("/api/admin/users", { params });
+    const data = unwrap(response);
+    return { success: true, users: data?.data?.users || data?.users || [], count: data?.data?.count || 0 };
+  } catch (error) {
+    return handleApiError(error, "Failed to fetch users");
+  }
 };
 
 export const adminUpdateUserTier = async (userId, tier) => {
-  const response = await api.patch(`/api/admin/users/${userId}/tier`, { tier });
-  return unwrap(response);
+  try {
+    const response = await api.patch(`/api/admin/users/${userId}/tier`, { tier });
+    const data = unwrap(response);
+    clearCache("user_me");
+    return { success: true, data: data?.data || data };
+  } catch (error) {
+    return handleApiError(error, "Failed to update user tier");
+  }
 };
 
-// ========== MISC ==========
+// ==============================================
+// MISC API
+// ==============================================
+
 export const forgotPassword = async (email) => {
-  const response = await api.post("/api/auth/forgot-password", { email });
-  return unwrap(response);
+  try {
+    const response = await api.post("/api/auth/forgot-password", { email });
+    const data = unwrap(response);
+    return { success: true, message: data?.message || "Password reset email sent" };
+  } catch (error) {
+    return handleApiError(error, "Failed to send reset email");
+  }
 };
 
-// BotAPI Class for easy importing
+// ==============================================
+// BOTAPI CLASS
+// ==============================================
+
 class BotAPIClass {
   constructor() {
     this.api = api;
   }
+  
+  // Token helpers
   setToken(token) { setToken(token); }
   getToken() { return getToken(); }
   clearToken() { clearToken(); }
+  isAuthenticated() { return isAuthenticated(); }
+  
+  // Auth
   signup(userData) { return signup(userData); }
   login(email, password) { return login(email, password); }
   logout() { logout(); }
-  getMe() { return getMe(); }
-  getActivationStatus() { return getActivationStatus(); }
-  activationStatus() { return getActivationStatus(); }
+  getMe(skipCache) { return getMe(skipCache); }
+  getActivationStatus(skipCache) { return getActivationStatus(skipCache); }
+  activationStatus(skipCache) { return getActivationStatus(skipCache); }
+  refreshActivation() { return refreshActivation(); }
+  
+  // Billing
   probeBillingRoutes() { return probeBillingRoutes(); }
   getCardStatus() { return getCardStatus(); }
   createSetupIntent(payload) { return createSetupIntent(payload); }
-  confirmCard() { return confirmCard(); }
+  confirmCard(payload) { return confirmCard(payload); }
+  
+  // Connections
   connectOKX(payload) { return connectOKX(payload); }
   connectAlpaca(payload) { return connectAlpaca(payload); }
   connectWallet(payload) { return connectWallet(payload); }
   toggleTrading(enabled) { return toggleTrading(enabled); }
-  getTrades(limit) { return getTrades(limit); }
-  getDiscoveries(limit) { return getDiscoveries(limit); }
-  getBotStatus() { return getBotStatus(); }
-  getAnalyticsSummary() { return getAnalyticsSummary(); }
-  getPublicHistorical() { return getPublicHistorical(); }
-  getPublicLiveStats() { return getPublicLiveStats(); }
-  getPromoStatus() { return getPromoStatus(); }
+  
+  // Dashboard
+  getTrades(limit, skipCache) { return getTrades(limit, skipCache); }
+  getDiscoveries(limit, skipCache) { return getDiscoveries(limit, skipCache); }
+  getBotStatus(skipCache) { return getBotStatus(skipCache); }
+  getAnalyticsSummary(skipCache) { return getAnalyticsSummary(skipCache); }
+  getPublicHistorical(skipCache) { return getPublicHistorical(skipCache); }
+  getPublicLiveStats(skipCache) { return getPublicLiveStats(skipCache); }
+  
+  // Promo
+  getPromoStatus(skipCache) { return getPromoStatus(skipCache); }
   claimPromo(email, tier, wallet) { return claimPromo(email, tier, wallet); }
+  
+  // Admin
   getAdminCheck() { return getAdminCheck(); }
   adminGetUsers(params) { return adminGetUsers(params); }
   adminUpdateUserTier(userId, tier) { return adminUpdateUserTier(userId, tier); }
+  
+  // Misc
   forgotPassword(email) { return forgotPassword(email); }
+  
+  // Utilities
+  clearCache(pattern) { clearCache(pattern); }
 }
 
 const BotAPI = new BotAPIClass();
