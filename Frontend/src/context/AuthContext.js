@@ -1,5 +1,5 @@
 // src/context/AuthContext.js
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import BotAPI from "../utils/BotAPI";
 
 const AuthContext = createContext(null);
@@ -17,14 +17,25 @@ export function AuthProvider({ children }) {
   const [activation, setActivation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const loadAttempted = useRef(false);
 
   // Save user to state and localStorage
   const saveUser = useCallback((userData) => {
-    setUser(userData);
-    if (userData) {
-      localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    if (userData && (userData.id || userData.email)) {
+      setUser(userData);
+      try {
+        localStorage.setItem(USER_KEY, JSON.stringify(userData));
+      } catch (e) {
+        console.warn("[Auth] Failed to save user to localStorage:", e);
+      }
     } else {
-      localStorage.removeItem(USER_KEY);
+      setUser(null);
+      try {
+        localStorage.removeItem(USER_KEY);
+      } catch (e) {
+        console.warn("[Auth] Failed to remove user from localStorage:", e);
+      }
     }
   }, []);
 
@@ -32,9 +43,14 @@ export function AuthProvider({ children }) {
   const clearAuth = useCallback(() => {
     setUser(null);
     setActivation(null);
+    setError(null);
     BotAPI.clearToken();
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(TOKEN_KEY);
+    try {
+      localStorage.removeItem(USER_KEY);
+      localStorage.removeItem(TOKEN_KEY);
+    } catch (e) {
+      console.warn("[Auth] Failed to clear localStorage:", e);
+    }
   }, []);
 
   // Refresh activation status
@@ -44,27 +60,37 @@ export function AuthProvider({ children }) {
       setActivation(status);
       return status;
     } catch (err) {
-      console.warn("[Auth] Failed to refresh activation:", err);
-      setActivation({
+      console.warn("[Auth] Failed to refresh activation:", err?.message || err);
+      // Return default activation status instead of failing
+      const defaultStatus = {
         has_card_on_file: false,
         billing_complete: false,
         trading_enabled: false,
         okx_connected: false,
         alpaca_connected: false,
         wallet_connected: false,
-      });
-      return null;
+      };
+      setActivation(defaultStatus);
+      return defaultStatus;
     }
   }, []);
 
   // Load user from API
-  const loadUser = useCallback(async () => {
-    const token = localStorage.getItem(TOKEN_KEY);
+  const loadUser = useCallback(async (skipCache = false) => {
+    const token = BotAPI.getToken();
     
     if (!token) {
       clearAuth();
       setLoading(false);
+      setIsInitialized(true);
       return null;
+    }
+
+    // Check if we already have a cached user and don't need to reload
+    if (!skipCache && user && user.id) {
+      setLoading(false);
+      setIsInitialized(true);
+      return user;
     }
 
     try {
@@ -73,30 +99,44 @@ export function AuthProvider({ children }) {
       if (userData && (userData.id || userData.email)) {
         saveUser(userData);
         await refreshActivation();
+        setError(null);
         setLoading(false);
+        setIsInitialized(true);
         return userData;
       } else {
         // Token exists but no user data - clear auth
+        console.warn("[Auth] Token exists but no user data returned");
         clearAuth();
         setLoading(false);
+        setIsInitialized(true);
         return null;
       }
     } catch (err) {
-      console.error("[Auth] Load user failed:", err);
+      console.error("[Auth] Load user failed:", err?.message || err);
       
       // Only clear auth if it's a 401 unauthorized error
-      if (err?.response?.status === 401) {
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
         clearAuth();
+      } else {
+        // For network errors, keep the existing user if available
+        if (!user) {
+          clearAuth();
+        }
       }
       
+      setError(err?.response?.data?.message || err?.message || "Failed to load user");
       setLoading(false);
+      setIsInitialized(true);
       return null;
     }
-  }, [clearAuth, saveUser, refreshActivation]);
+  }, [clearAuth, saveUser, refreshActivation, user]);
 
-  // Initial load
+  // Initial load - only once
   useEffect(() => {
-    loadUser();
+    if (!loadAttempted.current) {
+      loadAttempted.current = true;
+      loadUser();
+    }
   }, [loadUser]);
 
   // Signup
@@ -106,18 +146,19 @@ export function AuthProvider({ children }) {
       const result = await BotAPI.signup(userData);
       
       if (!result.success) {
+        setError(result.error);
         return { success: false, error: result.error };
       }
       
       const token = result.token;
       if (token) {
-        localStorage.setItem(TOKEN_KEY, token);
+        BotAPI.setToken(token);
       }
       
       // After signup, load the user profile
-      const loadedUser = await loadUser();
+      const loadedUser = await loadUser(true);
       
-      return { success: true, user: loadedUser };
+      return { success: true, user: loadedUser, token };
     } catch (err) {
       const message = err?.response?.data?.message || err?.message || "Signup failed";
       setError(message);
@@ -132,18 +173,19 @@ export function AuthProvider({ children }) {
       const result = await BotAPI.login(email, password);
       
       if (!result.success) {
+        setError(result.error);
         return { success: false, error: result.error };
       }
       
       const token = result.token;
       if (token) {
-        localStorage.setItem(TOKEN_KEY, token);
+        BotAPI.setToken(token);
       }
       
       // After login, load the user profile
-      const loadedUser = await loadUser();
+      const loadedUser = await loadUser(true);
       
-      return { success: true, user: loadedUser };
+      return { success: true, user: loadedUser, token };
     } catch (err) {
       const message = err?.response?.data?.message || err?.message || "Login failed";
       setError(message);
@@ -152,21 +194,43 @@ export function AuthProvider({ children }) {
   }, [loadUser]);
 
   // Logout
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     clearAuth();
+    // Optional: Call logout endpoint if needed
+    // await BotAPI.logout().catch(console.warn);
     window.location.href = "/login";
   }, [clearAuth]);
 
+  // Update activation status (after billing or connections)
+  const updateActivation = useCallback(async (updates) => {
+    setActivation(prev => ({ ...prev, ...updates }));
+    // Refresh to get latest from server
+    await refreshActivation();
+  }, [refreshActivation]);
+
   // Computed values
-  const activationComplete = activation?.trading_enabled === true;
-  const hasCardOnFile = activation?.has_card_on_file === true || activation?.billing_complete === true;
-  const isAuthenticated = !!localStorage.getItem(TOKEN_KEY);
-  const isAdmin = user?.is_admin === true || user?.email === "wayne@imali-defi.com";
+  const activationComplete = useMemo(() => {
+    return activation?.trading_enabled === true;
+  }, [activation?.trading_enabled]);
+  
+  const hasCardOnFile = useMemo(() => {
+    return activation?.has_card_on_file === true || activation?.billing_complete === true;
+  }, [activation?.has_card_on_file, activation?.billing_complete]);
+  
+  const isAuthenticated = useMemo(() => {
+    return !!BotAPI.getToken();
+  }, []);
+  
+  const isAdmin = useMemo(() => {
+    return user?.is_admin === true || user?.email === "wayne@imali-defi.com";
+  }, [user?.is_admin, user?.email]);
+
+  const isLoading = loading || !isInitialized;
 
   const value = useMemo(() => ({
     user,
     activation,
-    loading,
+    loading: isLoading,
     error,
     isAuthenticated,
     activationComplete,
@@ -177,8 +241,25 @@ export function AuthProvider({ children }) {
     logout,
     loadUser,
     refreshActivation,
+    updateActivation,
     clearAuth,
-  }), [user, activation, loading, error, isAuthenticated, activationComplete, hasCardOnFile, isAdmin, signup, login, logout, loadUser, refreshActivation, clearAuth]);
+  }), [
+    user,
+    activation,
+    isLoading,
+    error,
+    isAuthenticated,
+    activationComplete,
+    hasCardOnFile,
+    isAdmin,
+    signup,
+    login,
+    logout,
+    loadUser,
+    refreshActivation,
+    updateActivation,
+    clearAuth,
+  ]);
 
   return (
     <AuthContext.Provider value={value}>
