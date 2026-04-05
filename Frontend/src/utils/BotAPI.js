@@ -87,10 +87,7 @@ export const getMe = async () => {
   try {
     const response = await api.get("/api/me");
     const data = unwrap(response);
-    
-    // Extract user from response structure: { success: true, data: { user: {...} } }
     const userData = data?.data?.user || data?.user || data;
-    
     return userData;
   } catch (error) {
     console.error("[BotAPI] getMe failed:", error);
@@ -102,8 +99,6 @@ export const getActivationStatus = async () => {
   try {
     const response = await api.get("/api/me/activation-status");
     const data = unwrap(response);
-    
-    // Extract status from response
     const status = data?.data?.status || data?.status || data;
     
     return {
@@ -116,7 +111,6 @@ export const getActivationStatus = async () => {
     };
   } catch (error) {
     console.warn("[BotAPI] getActivationStatus failed:", error);
-    // Return default status
     return {
       has_card_on_file: false,
       billing_complete: false,
@@ -129,6 +123,26 @@ export const getActivationStatus = async () => {
 };
 
 // ========== BILLING API ==========
+export const probeBillingRoutes = async () => {
+  try {
+    const response = await api.get("/api/billing/probe");
+    const data = unwrap(response);
+    const routes = data?.data?.routes || data?.routes || [];
+    return {
+      cardStatusAvailable: true,
+      setupIntentAvailable: true,
+      routes: routes,
+    };
+  } catch (error) {
+    console.warn("[BotAPI] probeBillingRoutes failed:", error);
+    return {
+      cardStatusAvailable: true,
+      setupIntentAvailable: true,
+      routes: [],
+    };
+  }
+};
+
 export const getCardStatus = async () => {
   try {
     const response = await api.get("/api/billing/card-status");
@@ -143,19 +157,28 @@ export const createSetupIntent = async (payload) => {
   return unwrap(response);
 };
 
+export const confirmCard = async () => {
+  try {
+    const response = await api.post("/api/billing/confirm-card");
+    return unwrap(response);
+  } catch {
+    return { confirmed: false };
+  }
+};
+
 // ========== CONNECTIONS API ==========
 export const connectOKX = async (payload) => {
-  const response = await api.post("/api/connections/okx", payload);
+  const response = await api.post("/api/integrations/okx", payload);
   return unwrap(response);
 };
 
 export const connectAlpaca = async (payload) => {
-  const response = await api.post("/api/connections/alpaca", payload);
+  const response = await api.post("/api/integrations/alpaca", payload);
   return unwrap(response);
 };
 
 export const connectWallet = async (payload) => {
-  const response = await api.post("/api/connections/wallet", payload);
+  const response = await api.post("/api/integrations/wallet", payload);
   return unwrap(response);
 };
 
@@ -274,8 +297,10 @@ class BotAPIClass {
   getMe() { return getMe(); }
   getActivationStatus() { return getActivationStatus(); }
   activationStatus() { return getActivationStatus(); }
+  probeBillingRoutes() { return probeBillingRoutes(); }
   getCardStatus() { return getCardStatus(); }
   createSetupIntent(payload) { return createSetupIntent(payload); }
+  confirmCard() { return confirmCard(); }
   connectOKX(payload) { return connectOKX(payload); }
   connectAlpaca(payload) { return connectAlpaca(payload); }
   connectWallet(payload) { return connectWallet(payload); }
