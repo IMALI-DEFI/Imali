@@ -379,6 +379,7 @@ export default function Activation() {
   };
 
   const handleSkipToDashboard = () => {
+    // Clear any pending state and navigate directly to dashboard
     navigate("/dashboard", { replace: true });
   };
 
@@ -708,11 +709,14 @@ export default function Activation() {
         </div>
 
         <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap gap-4 justify-center text-sm">
-          <button onClick={handleSkipToDashboard} className="text-gray-400 hover:text-white">
+          <button 
+            onClick={handleSkipToDashboard} 
+            className="text-gray-400 hover:text-white transition-colors"
+          >
             Skip to Dashboard →
           </button>
           <span className="text-gray-600">•</span>
-          <button onClick={handleUpgradePlan} className="text-gray-400 hover:text-white">
+          <button onClick={handleUpgradePlan} className="text-gray-400 hover:text-white transition-colors">
             Upgrade Plan →
           </button>
         </div>
