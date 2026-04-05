@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Elements } from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
 import { useAuth } from "../context/AuthContext";
 import StripeElements from "../components/StripeElements";
 import BotAPI from "../utils/BotAPI";
@@ -11,6 +13,9 @@ const TIER_COPY = {
   stock: { label: "DeFi", price: "$99/mo", badge: "📈", summary: "DEX-focused trading and market intelligence" },
   bundle: { label: "Bundle", price: "$199/mo", badge: "🧩", summary: "Everything included in one plan" },
 };
+
+// Initialize Stripe with your publishable key
+const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || "pk_test_default");
 
 function normalizeTier(value) {
   const tier = String(value || "starter").toLowerCase().trim();
@@ -71,15 +76,11 @@ export default function Billing() {
     setSuccess("");
 
     try {
-      const probe = await BotAPI.probeBillingRoutes();
-      if (!probe.cardStatusAvailable || !probe.setupIntentAvailable) {
-        setBillingAvailable(false);
-        setHasCard(!!activation?.has_card_on_file || !!activation?.billing_complete);
-        setLoading(false);
-        setError("Billing routes are not deployed in this environment yet.");
-        return;
+      // Check if probeBillingRoutes exists
+      if (BotAPI.probeBillingRoutes) {
+        await BotAPI.probeBillingRoutes();
       }
-
+      
       const cardStatusRes = await BotAPI.getCardStatus();
       const cardStatus = safeExtract(cardStatusRes, {});
 
@@ -97,6 +98,7 @@ export default function Billing() {
         return;
       }
 
+      // Create SetupIntent for card collection
       const intentRes = await BotAPI.createSetupIntent({ email, tier });
       const intentData = safeExtract(intentRes, {});
       const secret = intentData?.client_secret || intentData?.clientSecret || "";
@@ -213,36 +215,15 @@ export default function Billing() {
                   Continue to Activation
                 </button>
               </div>
-            ) : !billingAvailable ? (
-              <div className="mt-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-5">
-                <div className="text-yellow-300 font-semibold mb-2">
-                  Billing is not available in this environment
-                </div>
-                <p className="text-sm text-white/70 mb-4">
-                  The backend billing endpoints are not deployed yet. You can continue to activation or dashboard if you are owner/admin.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleContinue}
-                    className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold"
-                  >
-                    Continue
-                  </button>
-                  <button
-                    onClick={() => navigate("/dashboard")}
-                    className="px-6 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10"
-                  >
-                    Dashboard
-                  </button>
-                </div>
-              </div>
             ) : clientSecret ? (
               <div className="mt-6">
-                <StripeElements
-                  clientSecret={clientSecret}
-                  onSuccess={handleCardSuccess}
-                  onError={handleCardError}
-                />
+                <Elements stripe={stripePromise}>
+                  <StripeElements
+                    clientSecret={clientSecret}
+                    onSuccess={handleCardSuccess}
+                    onError={handleCardError}
+                  />
+                </Elements>
               </div>
             ) : (
               <div className="mt-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-5">
