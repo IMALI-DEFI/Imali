@@ -1,7 +1,7 @@
 // src/components/Header.js
 import React, { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import logo from "../assets/imali-logo.png"; // <-- logo file
+import logo from "../assets/imali-logo.png";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -48,13 +48,19 @@ export default function Header() {
           </NavLink>
         </nav>
 
-        {/* Member Login - goes to public dashboard */}
+        {/* Desktop Buttons */}
         <div className="hidden md:flex items-center gap-3">
           <Link
             to="/live"
-            className="text-sm font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition"
+            className="text-sm font-semibold px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 transition"
           >
             Live Dashboard
+          </Link>
+          <Link
+            to="/dashboard"
+            className="text-sm font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition"
+          >
+            Member Login
           </Link>
         </div>
 
@@ -101,9 +107,16 @@ export default function Header() {
             <Link
               to="/live"
               onClick={() => setOpen(false)}
-              className="mt-2 text-center text-sm font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition"
+              className="mt-2 text-center text-sm font-semibold px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 transition"
             >
               Live Dashboard
+            </Link>
+            <Link
+              to="/dashboard"
+              onClick={() => setOpen(false)}
+              className="text-center text-sm font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition"
+            >
+              Member Login
             </Link>
           </nav>
         </div>
