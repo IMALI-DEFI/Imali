@@ -19,7 +19,7 @@ export default function Header() {
           <img
             src={logo}
             alt="IMALI Trading Bot"
-            className="h-14 w-auto object-contain" // bigger + no crop
+            className="h-14 w-auto object-contain"
             loading="eager"
           />
           <div className="flex flex-col leading-tight">
@@ -43,18 +43,18 @@ export default function Header() {
           <NavLink to="/pricing" className={active}>
             Pricing
           </NavLink>
-          <NavLink to="/referral" className={active}>
+          <NavLink to="/referrals" className={active}>
             Referral Partner
           </NavLink>
         </nav>
 
-        {/* Member Login */}
+        {/* Member Login - goes to public dashboard */}
         <div className="hidden md:flex items-center gap-3">
           <Link
-            to="/dashboard"
+            to="/live"
             className="text-sm font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition"
           >
-            Member Login
+            Live Dashboard
           </Link>
         </div>
 
@@ -93,17 +93,17 @@ export default function Header() {
             </NavLink>
             <NavLink
               onClick={() => setOpen(false)}
-              to="/referral"
+              to="/referrals"
               className={active}
             >
               Referral Partner
             </NavLink>
             <Link
-              to="/dashboard"
+              to="/live"
               onClick={() => setOpen(false)}
               className="mt-2 text-center text-sm font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition"
             >
-              Member Login
+              Live Dashboard
             </Link>
           </nav>
         </div>
