@@ -1,35 +1,152 @@
+// src/pages/Activation.jsx
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
+// ==============================================
+// GAMIFIED COMPONENTS
+// ==============================================
+
+const XPToast = ({ xp, onComplete }) => {
+  useEffect(() => {
+    const timer = setTimeout(onComplete, 2000);
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+  
+  return (
+    <div className="fixed top-20 right-4 z-50 animate-slide-in">
+      <div className="bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg px-4 py-2 shadow-lg">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl animate-bounce">⭐</span>
+          <div>
+            <p className="font-bold text-white">+{xp} XP</p>
+            <p className="text-xs text-yellow-100">Quest Complete!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const StatusBadge = ({ done }) => (
   <span
-    className={`px-3 py-1 rounded-full text-sm font-medium ${
+    className={`px-3 py-1 rounded-full text-sm font-medium transition-all duration-300 ${
       done
-        ? "bg-green-500/20 text-green-300 border border-green-500/30"
+        ? "bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-300 border border-green-500/30"
         : "bg-gray-800 text-gray-400 border border-gray-700"
     }`}
   >
-    {done ? "✓ DONE" : "⋯ PENDING"}
+    {done ? "✓ QUEST COMPLETE!" : "🔒 LOCKED"}
   </span>
 );
 
-const SectionCard = ({ number, title, description, status, children }) => (
-  <div className="bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
-    <div className="flex items-start justify-between mb-4">
-      <div className="flex items-center gap-3">
-        <span className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500/20 text-blue-300 font-bold text-lg">
-          {number}
-        </span>
-        <div>
-          <h2 className="text-xl font-semibold text-white">{title}</h2>
-          <p className="text-sm text-gray-400">{description}</p>
+const QuestCard = ({ 
+  number, 
+  title, 
+  description, 
+  status, 
+  children, 
+  xpReward = 100,
+  isBoss = false,
+  onComplete
+}) => {
+  const [showXP, setShowXP] = useState(false);
+  const prevStatus = useRef(status);
+  
+  useEffect(() => {
+    if (status === true && prevStatus.current === false) {
+      setShowXP(true);
+      onComplete?.(xpReward);
+    }
+    prevStatus.current = status;
+  }, [status, xpReward, onComplete]);
+  
+  return (
+    <div className={`relative rounded-2xl border-2 transition-all duration-300 overflow-hidden
+      ${status 
+        ? 'border-green-500/50 bg-gradient-to-br from-green-500/10 to-emerald-500/5 shadow-lg shadow-green-500/20' 
+        : isBoss
+          ? 'border-purple-500/50 bg-gradient-to-br from-purple-500/10 to-pink-500/5'
+          : 'border-yellow-500/30 bg-gradient-to-br from-yellow-500/5 to-orange-500/5'
+      }
+      hover:scale-[1.02] transition-transform
+    `}>
+      {showXP && <XPToast xp={xpReward} onComplete={() => setShowXP(false)} />}
+      
+      {/* XP Badge */}
+      <div className="absolute top-4 right-4 z-10">
+        <div className="flex items-center gap-1 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full text-xs border border-yellow-500/30">
+          <span className="text-yellow-400">⭐</span>
+          <span className="text-yellow-300 font-bold">{xpReward} XP</span>
         </div>
       </div>
-      <StatusBadge done={status} />
+
+      {/* Quest Number */}
+      <div className="absolute top-4 left-4 z-10">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg">
+          {number}
+        </div>
+      </div>
+
+      <div className="p-6 pt-16">
+        <div className="flex items-start justify-between mb-4 ml-12">
+          <div>
+            <h2 className="text-xl font-bold text-white">{title}</h2>
+            <p className="text-sm text-gray-400">{description}</p>
+          </div>
+          <StatusBadge done={status} />
+        </div>
+        
+        {children}
+        
+        {/* Quest Progress Bar */}
+        {!status && (
+          <div className="mt-4 h-1 bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full animate-pulse" style={{ width: '30%' }} />
+          </div>
+        )}
+      </div>
     </div>
-    {children}
+  );
+};
+
+const ScreenshotGuide = ({ imagePath, alt, steps, link }) => (
+  <div className="bg-black/40 rounded-xl p-4 border border-white/10">
+    <div className="flex gap-4 flex-wrap">
+      {imagePath && (
+        <img 
+          src={imagePath} 
+          alt={alt}
+          className="w-48 h-auto rounded-lg border border-white/20 cursor-pointer hover:scale-105 transition-transform"
+          onClick={() => window.open(imagePath, '_blank')}
+          onError={(e) => {
+            e.target.style.display = 'none';
+            console.warn(`Image not found: ${imagePath}`);
+          }}
+        />
+      )}
+      <div className="flex-1">
+        <div className="text-sm text-gray-300 space-y-2">
+          {steps.map((step, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-green-400">{i + 1}.</span>
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+        {link && (
+          <a
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block mt-3 text-sm text-blue-400 hover:text-blue-300 underline"
+          >
+            🔗 Need more help? Click here →
+          </a>
+        )}
+      </div>
+    </div>
   </div>
 );
 
@@ -41,47 +158,51 @@ const SimpleInput = ({
   placeholder,
   disabled,
   helper,
+  icon
 }) => (
   <div className="space-y-1">
-    <label className="text-sm text-gray-400">{label}</label>
+    <label className="text-sm text-gray-400 flex items-center gap-2">
+      {icon && <span>{icon}</span>}
+      {label}
+    </label>
     <input
       type={type}
       value={value}
       onChange={onChange}
       placeholder={placeholder}
       disabled={disabled}
-      className="w-full px-4 py-3 rounded-lg bg-black/40 border border-white/10 text-white placeholder:text-gray-600 focus:border-blue-500/50 focus:outline-none transition-colors"
+      className="w-full px-4 py-3 rounded-lg bg-black/60 border border-white/10 text-white placeholder:text-gray-600 focus:border-blue-500/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all"
     />
     {helper && <p className="text-xs text-gray-500">{helper}</p>}
   </div>
 );
 
 const ModeToggle = ({ isLive, onChange, disabled }) => (
-  <div className="flex items-center gap-3 p-3 bg-black/30 rounded-lg">
-    <span className="text-sm text-gray-400">Mode:</span>
+  <div className="flex items-center gap-3 p-3 bg-black/40 rounded-lg border border-white/10">
+    <span className="text-sm text-gray-400">🎮 Mode:</span>
     <button
       type="button"
       onClick={() => onChange(false)}
       disabled={disabled}
-      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
         !isLive
-          ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
+          ? "bg-gradient-to-r from-orange-500/30 to-orange-600/30 text-orange-300 border border-orange-500/50 shadow-lg"
           : "bg-gray-800 text-gray-500 hover:text-gray-300"
       }`}
     >
-      🎮 Paper Trading
+      🎮 Paper Trading (Safe)
     </button>
     <button
       type="button"
       onClick={() => onChange(true)}
       disabled={disabled}
-      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
         isLive
-          ? "bg-green-500/20 text-green-300 border border-green-500/30"
+          ? "bg-gradient-to-r from-green-500/30 to-emerald-600/30 text-green-300 border border-green-500/50 shadow-lg"
           : "bg-gray-800 text-gray-500 hover:text-gray-300"
       }`}
     >
-      💰 Live Trading
+      💰 Live Trading (Real Money)
     </button>
   </div>
 );
@@ -93,12 +214,14 @@ const ActionButton = ({
   children,
   color = "blue",
   type = "button",
+  icon
 }) => {
   const colors = {
-    blue: "bg-blue-600 hover:bg-blue-700",
-    green: "bg-green-600 hover:bg-green-700",
-    gray: "bg-gray-700 hover:bg-gray-600",
-    orange: "bg-orange-600 hover:bg-orange-700",
+    blue: "from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600",
+    green: "from-green-600 to-emerald-700 hover:from-green-500 hover:to-emerald-600",
+    gray: "from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700",
+    orange: "from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600",
+    purple: "from-purple-600 to-pink-700 hover:from-purple-500 hover:to-pink-600",
   };
 
   return (
@@ -106,54 +229,74 @@ const ActionButton = ({
       type={type}
       onClick={onClick}
       disabled={disabled || loading}
-      className={`px-6 py-3 rounded-lg font-medium transition-all ${colors[color]} disabled:opacity-50 disabled:cursor-not-allowed text-white`}
+      className={`px-6 py-3 rounded-lg font-bold transition-all bg-gradient-to-r ${colors[color]} disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg hover:shadow-xl transform hover:scale-105`}
     >
-      {loading ? "Working..." : children}
+      {loading ? (
+        <span className="flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          Working...
+        </span>
+      ) : (
+        <span className="flex items-center gap-2">
+          {icon && <span>{icon}</span>}
+          {children}
+        </span>
+      )}
     </button>
   );
 };
 
-const InfoBox = ({ type = "info", children }) => {
+const InfoBox = ({ type = "info", children, icon }) => {
   const styles = {
-    info: "bg-blue-500/10 border-blue-500/30 text-blue-200",
-    warning: "bg-yellow-500/10 border-yellow-500/30 text-yellow-200",
-    tip: "bg-purple-500/10 border-purple-500/30 text-purple-200",
+    info: "from-blue-500/10 to-blue-600/5 border-blue-500/30 text-blue-200",
+    warning: "from-yellow-500/10 to-orange-600/5 border-yellow-500/30 text-yellow-200",
+    tip: "from-purple-500/10 to-pink-600/5 border-purple-500/30 text-purple-200",
+    success: "from-green-500/10 to-emerald-600/5 border-green-500/30 text-green-200",
+  };
+  
+  const icons = {
+    info: "💡",
+    warning: "⚠️",
+    tip: "🎯",
+    success: "✅"
   };
 
-  return <div className={`p-4 rounded-lg border ${styles[type]} text-sm`}>{children}</div>;
+  return (
+    <div className={`p-4 rounded-xl border bg-gradient-to-r ${styles[type]} text-sm backdrop-blur-sm`}>
+      <div className="flex items-start gap-2">
+        <span className="text-lg">{icon || icons[type]}</span>
+        <div className="flex-1">{children}</div>
+      </div>
+    </div>
+  );
 };
 
-const HelpLink = ({ href, children }) => (
-  <a
-    href={href}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors underline"
-  >
-    {children}
-  </a>
-);
-
-const extractStatus = (activation) => ({
-  billing: !!activation?.has_card_on_file || !!activation?.billing_complete,
-  okx: !!activation?.okx_connected,
-  alpaca: !!activation?.alpaca_connected,
-  wallet: !!activation?.wallet_connected,
-  trading: !!activation?.trading_enabled,
-});
+// ==============================================
+// MAIN ACTIVATION COMPONENT
+// ==============================================
 
 export default function Activation() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, activation, refreshActivation } = useAuth();
 
-  const hasRedirected = useRef(false);
-  const initialLoadDone = useRef(false);
-  const billingCheckInterval = useRef(null);
-
+  const [totalXP, setTotalXP] = useState(() => {
+    try {
+      return parseInt(localStorage.getItem('imali_xp') || '0');
+    } catch {
+      return 0;
+    }
+  });
+  const [level, setLevel] = useState(() => {
+    return Math.floor(totalXP / 500) + 1;
+  });
+  
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showConfetti, setShowConfetti] = useState(false);
+  
+  const hasRedirected = useRef(false);
 
   const tier = useMemo(() => {
     const userTier = user?.tier?.toLowerCase();
@@ -177,6 +320,7 @@ export default function Activation() {
 
   const [wallet, setWallet] = useState("");
 
+  // Quest requirements
   const needs = useMemo(
     () => ({
       billing: true,
@@ -187,7 +331,13 @@ export default function Activation() {
     [tier]
   );
 
-  const status = useMemo(() => extractStatus(activation || {}), [activation]);
+  const status = useMemo(() => ({
+    billing: !!activation?.has_card_on_file || !!activation?.billing_complete,
+    okx: !!activation?.okx_connected,
+    alpaca: !!activation?.alpaca_connected,
+    wallet: !!activation?.wallet_connected,
+    trading: !!activation?.trading_enabled,
+  }), [activation]);
 
   const connectionsDone = useMemo(
     () =>
@@ -207,67 +357,44 @@ export default function Activation() {
     [status.billing, connectionsDone, status.trading]
   );
 
-  // Initial load
-  useEffect(() => {
-    const loadInitialData = async () => {
-      if (initialLoadDone.current) return;
-      initialLoadDone.current = true;
+  const addXP = useCallback((amount) => {
+    const newXP = totalXP + amount;
+    setTotalXP(newXP);
+    try {
+      localStorage.setItem('imali_xp', newXP.toString());
+    } catch (e) {
+      console.warn('Failed to save XP:', e);
+    }
+    const newLevel = Math.floor(newXP / 500) + 1;
+    if (newLevel > level) {
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 3000);
+    }
+    setLevel(newLevel);
+  }, [totalXP, level]);
 
-      try {
-        if (refreshActivation) {
-          await refreshActivation();
-        }
-      } catch (err) {
-        console.warn("[Activation] Initial load failed:", err);
+  useEffect(() => {
+    const loadData = async () => {
+      if (refreshActivation) {
+        await refreshActivation();
       }
     };
-
-    loadInitialData();
+    loadData();
   }, [refreshActivation]);
 
-  // Check for billing status periodically (in case user comes from billing page)
-  useEffect(() => {
-    const checkBillingStatus = async () => {
-      try {
-        const cardStatus = await BotAPI.getCardStatus();
-        if (cardStatus?.has_card || cardStatus?.billing_complete) {
-          await refreshActivation();
-        }
-      } catch (err) {
-        console.warn("[Activation] Failed to check billing status:", err);
-      }
-    };
-
-    // Check immediately when component mounts
-    checkBillingStatus();
-
-    // Set up interval to check every 5 seconds (for when returning from billing)
-    billingCheckInterval.current = setInterval(checkBillingStatus, 5000);
-
-    return () => {
-      if (billingCheckInterval.current) {
-        clearInterval(billingCheckInterval.current);
-      }
-    };
-  }, [refreshActivation]);
-
-  // Auto-redirect when fully activated
   useEffect(() => {
     if (fullyActivated && !hasRedirected.current) {
       hasRedirected.current = true;
+      addXP(500);
       const timer = setTimeout(() => {
         navigate("/dashboard", { replace: true });
-      }, 600);
+      }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [fullyActivated, navigate]);
+  }, [fullyActivated, navigate, addXP]);
 
   const refreshAfterAction = useCallback(async () => {
-    try {
-      await refreshActivation?.();
-    } catch (err) {
-      console.error("[Activation] Refresh after action failed:", err);
-    }
+    await refreshActivation?.();
   }, [refreshActivation]);
 
   const connectOKX = async (e) => {
@@ -277,7 +404,7 @@ export default function Activation() {
     setBusy("okx");
 
     if (!okx.apiKey || !okx.apiSecret || !okx.passphrase) {
-      setError("Please fill in all OKX fields");
+      setError("Please fill in all OKX fields!");
       setBusy("");
       return;
     }
@@ -290,17 +417,12 @@ export default function Activation() {
         mode: okx.isLive ? "live" : "paper",
       });
 
-      setSuccess(
-        `✅ OKX connected successfully in ${okx.isLive ? "LIVE" : "PAPER"} mode!`
-      );
+      setSuccess(`🎉 OKX connected successfully in ${okx.isLive ? "LIVE" : "PAPER"} mode! +100 XP`);
+      addXP(100);
       setOkx({ apiKey: "", apiSecret: "", passphrase: "", isLive: false });
       await refreshAfterAction();
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          "Failed to connect OKX. Please double-check your API keys."
-      );
+      setError(err?.response?.data?.message || "Failed to connect OKX. Double-check your API keys!");
     } finally {
       setBusy("");
     }
@@ -313,7 +435,7 @@ export default function Activation() {
     setBusy("alpaca");
 
     if (!alpaca.apiKey || !alpaca.apiSecret) {
-      setError("Please fill in both Alpaca fields");
+      setError("Please fill in both Alpaca fields!");
       setBusy("");
       return;
     }
@@ -325,17 +447,12 @@ export default function Activation() {
         mode: alpaca.isLive ? "live" : "paper",
       });
 
-      setSuccess(
-        `✅ Alpaca connected successfully in ${alpaca.isLive ? "LIVE" : "PAPER"} mode!`
-      );
+      setSuccess(`🎉 Alpaca connected successfully in ${alpaca.isLive ? "LIVE" : "PAPER"} mode! +100 XP`);
+      addXP(100);
       setAlpaca({ apiKey: "", apiSecret: "", isLive: false });
       await refreshAfterAction();
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          "Failed to connect Alpaca. Please double-check your API keys."
-      );
+      setError(err?.response?.data?.message || "Failed to connect Alpaca. Double-check your API keys!");
     } finally {
       setBusy("");
     }
@@ -349,28 +466,25 @@ export default function Activation() {
 
     const addr = wallet.trim();
     if (!addr) {
-      setError("Please enter your wallet address");
+      setError("Please enter your wallet address!");
       setBusy("");
       return;
     }
 
     if (!addr.startsWith("0x") || addr.length !== 42) {
-      setError("Wallet address must start with '0x' and be exactly 42 characters long");
+      setError("Wallet address must start with '0x' and be exactly 42 characters!");
       setBusy("");
       return;
     }
 
     try {
       await BotAPI.connectWallet({ wallet: addr });
-      setSuccess("✅ Wallet connected successfully!");
+      setSuccess(`🎉 Wallet connected successfully! +100 XP`);
+      addXP(100);
       setWallet("");
       await refreshAfterAction();
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          "Failed to connect wallet"
-      );
+      setError(err?.response?.data?.message || "Failed to connect wallet!");
     } finally {
       setBusy("");
     }
@@ -382,7 +496,7 @@ export default function Activation() {
     setBusy("trading");
 
     if (!canEnableTrading && !status.trading) {
-      setError("Please complete billing and connect your accounts first");
+      setError("Complete all quests first before activating the trading bot!");
       setBusy("");
       return;
     }
@@ -391,364 +505,456 @@ export default function Activation() {
       const enabling = !status.trading;
       await BotAPI.toggleTrading(enabling);
       await refreshAfterAction();
-      setSuccess(
-        enabling
-          ? "✅ Trading enabled! Redirecting to your dashboard…"
-          : "Trading has been turned off"
-      );
+      if (enabling) {
+        setSuccess("🎉 TRADING BOT ACTIVATED! +200 XP! Preparing your dashboard...");
+        addXP(200);
+      } else {
+        setSuccess("Trading bot paused. Come back anytime to resume!");
+      }
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          "Could not update trading status"
-      );
+      setError(err?.response?.data?.message || "Could not update trading status!");
     } finally {
       setBusy("");
     }
   };
 
-  const handleSkipToDashboard = () => {
-    navigate("/dashboard", { replace: true });
-  };
-
-  const handleUpgradePlan = () => {
-    navigate("/pricing");
+  const getPlanIcon = () => {
+    switch (tier) {
+      case "starter": return "🌱";
+      case "pro": return "⭐";
+      case "elite": return "👑";
+      case "stock": return "📈";
+      case "bundle": return "🧩";
+      default: return "🎮";
+    }
   };
 
   const getPlanName = () => {
     switch (tier) {
-      case "starter":
-        return "Starter (Free)";
-      case "pro":
-        return "Pro";
-      case "elite":
-        return "Elite";
-      case "stock":
-        return "DeFi (New Crypto)";
-      case "bundle":
-        return "Bundle";
-      default:
-        return "Current Plan";
+      case "starter": return "Starter (Free)";
+      case "pro": return "Pro";
+      case "elite": return "Elite";
+      case "stock": return "DeFi";
+      case "bundle": return "Bundle";
+      default: return "Current Plan";
     }
   };
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="max-w-3xl mx-auto p-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Welcome to IMALI! 🚀</h1>
-          <p className="text-gray-400 mb-4">
-            You&apos;ve selected the{" "}
-            <span className="text-blue-400 font-semibold">{getPlanName()}</span> plan.
-            Let&apos;s set up your automated trading bot.
-          </p>
+    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 text-white">
+      {/* Simple Confetti Effect using CSS only */}
+      {showConfetti && (
+        <div className="fixed inset-0 pointer-events-none z-50">
+          <div className="absolute inset-0 overflow-hidden">
+            {[...Array(30)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute w-2 h-2 rounded-full animate-confetti"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `-10px`,
+                  animationDelay: `${Math.random() * 2}s`,
+                  backgroundColor: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
-          {tier === "starter" && (
-            <InfoBox type="tip">
-              💡 <strong>Want more features?</strong> You can upgrade to Pro, Elite, or
-              Bundle at any time from the{" "}
-              <button
-                onClick={handleUpgradePlan}
-                className="ml-1 text-blue-400 hover:text-blue-300 underline"
-              >
-                Pricing page
-              </button>
-              .
-            </InfoBox>
+      {/* Level Up Banner */}
+      <div className="sticky top-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/10">
+        <div className="max-w-4xl mx-auto px-6 py-3">
+          <div className="flex justify-between items-center text-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">🏆</span>
+              <div>
+                <span className="font-bold text-white">Level {level}</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="w-32 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full" style={{ width: `${(totalXP % 500) / 5}%` }} />
+                  </div>
+                  <span className="text-xs text-gray-400">{totalXP} / {level * 500} XP</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full">
+              <span>{getPlanIcon()}</span>
+              <span className="font-semibold text-sm">{getPlanName()}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        {/* Hero Section */}
+        <div className="text-center mb-12">
+          <div className="inline-block mb-4">
+            <div className="text-7xl animate-bounce">🎮</div>
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400 bg-clip-text text-transparent mb-3">
+            Welcome, Hero!
+          </h1>
+          <p className="text-gray-400 text-lg">
+            Complete these quests to unlock your trading bot and start earning rewards!
+          </p>
+          {fullyActivated && (
+            <div className="mt-4 p-4 bg-green-500/20 border border-green-500/50 rounded-xl inline-block animate-pulse">
+              <p className="text-green-300 font-bold">🎉 ALL QUESTS COMPLETE! Redirecting to dashboard... 🎉</p>
+            </div>
           )}
         </div>
 
-        {fullyActivated && (
-          <div className="mb-6 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 flex items-center justify-between">
-            <span>🎉 Your account is fully activated! Redirecting to your dashboard…</span>
-            <button
-              onClick={handleSkipToDashboard}
-              className="underline hover:text-white transition-colors"
-            >
-              Go now →
-            </button>
-          </div>
-        )}
-
+        {/* Error/Success Messages */}
         {error && (
-          <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-200">
-            ⚠️ {error}
+          <div className="mb-6 p-4 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200 backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">⚠️</span>
+              <span>{error}</span>
+            </div>
           </div>
         )}
 
         {success && !fullyActivated && (
-          <div className="mb-6 p-4 rounded-lg bg-green-500/10 border border-green-500/30 text-green-200">
-            {success}
+          <div className="mb-6 p-4 rounded-xl bg-green-500/20 border border-green-500/50 text-green-200 backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🎉</span>
+              <span>{success}</span>
+            </div>
           </div>
         )}
 
-        <SectionCard
+        {/* Quest 1: Billing */}
+        <QuestCard
           number="1"
-          title="Add Payment Method"
-          description="Set up billing before activation"
+          title="💰 Payment Method Quest"
+          description="Secure your billing to unlock premium features"
           status={status.billing}
+          xpReward={100}
+          onComplete={addXP}
         >
           {!status.billing ? (
             <div className="space-y-4">
-              <InfoBox type="info">
-                📌 <strong>How billing works:</strong><br />
-                • Your card is securely stored with Stripe<br />
-                • Billing setup is required before activation can complete<br />
-                • You can review your billing flow before turning on trading
+              <InfoBox type="info" icon="🔒">
+                <strong>Why this quest?</strong> We need a payment method on file to ensure secure trading. Your card is encrypted and never stored on our servers!
               </InfoBox>
               <div className="flex flex-col sm:flex-row gap-3">
-                <ActionButton onClick={() => navigate("/billing", { state: { tier } })} color="blue">
-                  Add Credit Card
+                <ActionButton onClick={() => navigate("/billing", { state: { tier } })} color="blue" icon="💳">
+                  Start Billing Quest
                 </ActionButton>
-                <HelpLink href="https://imali-defi.com/faq#billing">
-                  Learn more about billing →
-                </HelpLink>
+                <a href="https://stripe.com/docs/payments" target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:text-blue-300 underline flex items-center gap-1">
+                  🔗 Learn about secure payments
+                </a>
               </div>
             </div>
           ) : (
-            <div className="text-green-300">✅ Payment method saved successfully</div>
+            <div className="text-green-300 font-bold text-center py-4 animate-pulse">
+              ✅ Quest Complete! +100 XP
+            </div>
           )}
-        </SectionCard>
+        </QuestCard>
 
-        <SectionCard
+        {/* Quest 2: Trading Connections */}
+        <QuestCard
           number="2"
-          title="Connect Your Trading Accounts"
-          description="Link the platforms where you want the bot to trade"
+          title="🔗 Connect Trading Platforms"
+          description="Link your exchange accounts to enable trading"
           status={connectionsDone}
+          xpReward={300}
+          onComplete={addXP}
         >
           <div className="space-y-6">
+            {/* OKX Quest */}
             {needs.okx && !status.okx && (
-              <form onSubmit={connectOKX} className="space-y-4 border-t border-white/10 pt-6">
-                <h3 className="text-lg font-medium text-blue-300">🔷 OKX Exchange (Cryptocurrency)</h3>
-
-                <InfoBox type="info">
-                  <strong>What is OKX?</strong> A cryptocurrency exchange where you can trade Bitcoin, Ethereum, and other digital assets.
-                </InfoBox>
-
-                <ModeToggle
-                  isLive={okx.isLive}
-                  onChange={(isLive) => setOkx({ ...okx, isLive })}
-                  disabled={busy === "okx"}
-                />
-
-                {okx.isLive && (
-                  <InfoBox type="warning">
-                    ⚠️ <strong>Live Mode:</strong> The bot will trade with real money.
-                  </InfoBox>
-                )}
-
-                <SimpleInput
-                  label="API Key"
-                  value={okx.apiKey}
-                  onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })}
-                  placeholder="Enter your OKX API key"
-                  disabled={busy === "okx"}
-                />
-                <SimpleInput
-                  label="Secret Key"
-                  type="password"
-                  value={okx.apiSecret}
-                  onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })}
-                  placeholder="Enter your OKX secret key"
-                  disabled={busy === "okx"}
-                />
-                <SimpleInput
-                  label="Passphrase"
-                  type="password"
-                  value={okx.passphrase}
-                  onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })}
-                  placeholder="Enter your OKX passphrase"
-                  disabled={busy === "okx"}
-                />
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <ActionButton
-                    type="submit"
-                    disabled={busy === "okx"}
-                    loading={busy === "okx"}
-                    color={okx.isLive ? "green" : "orange"}
-                  >
-                    Connect OKX ({okx.isLive ? "Live" : "Paper"})
-                  </ActionButton>
+              <div className="border border-blue-500/30 rounded-xl p-4 bg-blue-500/5">
+                <h3 className="text-lg font-bold text-blue-300 mb-3 flex items-center gap-2">
+                  <span>🔷</span> OKX Exchange Quest
+                </h3>
+                
+                <div className="space-y-4">
+                  {/* Screenshot Guide */}
+                  <ScreenshotGuide
+                    imagePath="/oxksignup.jpg"
+                    alt="OKX API Setup Guide"
+                    steps={[
+                      "Log into your OKX account",
+                      "Go to API section (usually under Profile)",
+                      "Create a new API key with trading permissions",
+                      "Copy your API Key, Secret Key, and Passphrase",
+                      "Paste them below to complete the quest!"
+                    ]}
+                    link="https://www.okx.com/support"
+                  />
+                  
+                  <form onSubmit={connectOKX} className="space-y-4 mt-4">
+                    <ModeToggle
+                      isLive={okx.isLive}
+                      onChange={(isLive) => setOkx({ ...okx, isLive })}
+                      disabled={busy === "okx"}
+                    />
+                    
+                    <SimpleInput
+                      label="🔑 API Key"
+                      value={okx.apiKey}
+                      onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })}
+                      placeholder="Enter your OKX API key"
+                      disabled={busy === "okx"}
+                      icon="🔐"
+                    />
+                    <SimpleInput
+                      label="🤫 Secret Key"
+                      type="password"
+                      value={okx.apiSecret}
+                      onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })}
+                      placeholder="Enter your OKX secret key"
+                      disabled={busy === "okx"}
+                      icon="🤫"
+                    />
+                    <SimpleInput
+                      label="🔢 Passphrase"
+                      type="password"
+                      value={okx.passphrase}
+                      onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })}
+                      placeholder="Enter your OKX passphrase"
+                      disabled={busy === "okx"}
+                      icon="🔢"
+                    />
+                    
+                    <ActionButton type="submit" disabled={busy === "okx"} loading={busy === "okx"} color={okx.isLive ? "green" : "orange"} icon="🔗">
+                      Complete OKX Quest!
+                    </ActionButton>
+                  </form>
                 </div>
-              </form>
+              </div>
             )}
 
+            {/* Alpaca Quest */}
             {needs.alpaca && !status.alpaca && (
-              <form onSubmit={connectAlpaca} className="space-y-4 border-t border-white/10 pt-6">
-                <h3 className="text-lg font-medium text-green-300">📈 Alpaca (US Stocks)</h3>
-
-                <InfoBox type="info">
-                  <strong>What is Alpaca?</strong> A stock trading platform for US markets.
-                </InfoBox>
-
-                <ModeToggle
-                  isLive={alpaca.isLive}
-                  onChange={(isLive) => setAlpaca({ ...alpaca, isLive })}
-                  disabled={busy === "alpaca"}
-                />
-
-                <SimpleInput
-                  label="API Key ID"
-                  value={alpaca.apiKey}
-                  onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })}
-                  placeholder="PK..."
-                  disabled={busy === "alpaca"}
-                />
-                <SimpleInput
-                  label="Secret Key"
-                  type="password"
-                  value={alpaca.apiSecret}
-                  onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })}
-                  placeholder="Enter your secret key"
-                  disabled={busy === "alpaca"}
-                />
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <ActionButton
-                    type="submit"
-                    disabled={busy === "alpaca"}
-                    loading={busy === "alpaca"}
-                    color={alpaca.isLive ? "green" : "orange"}
-                  >
-                    Connect Alpaca ({alpaca.isLive ? "Live" : "Paper"})
-                  </ActionButton>
+              <div className="border border-green-500/30 rounded-xl p-4 bg-green-500/5">
+                <h3 className="text-lg font-bold text-green-300 mb-3 flex items-center gap-2">
+                  <span>📈</span> Alpaca Trading Quest
+                </h3>
+                
+                <div className="space-y-4">
+                  <ScreenshotGuide
+                    imagePath="/alpacasignup.jpg"
+                    alt="Alpaca API Setup Guide"
+                    steps={[
+                      "Create an Alpaca account at alpaca.markets",
+                      "Go to your Dashboard → API Keys",
+                      "Generate a new API key pair",
+                      "Copy your API Key ID and Secret Key",
+                      "Paste them below to claim your reward!"
+                    ]}
+                    link="https://alpaca.markets/learn/connect-to-alpaca/"
+                  />
+                  
+                  <form onSubmit={connectAlpaca} className="space-y-4 mt-4">
+                    <ModeToggle
+                      isLive={alpaca.isLive}
+                      onChange={(isLive) => setAlpaca({ ...alpaca, isLive })}
+                      disabled={busy === "alpaca"}
+                    />
+                    
+                    <SimpleInput
+                      label="🔑 API Key ID"
+                      value={alpaca.apiKey}
+                      onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })}
+                      placeholder="PK..."
+                      disabled={busy === "alpaca"}
+                      icon="🔐"
+                    />
+                    <SimpleInput
+                      label="🤫 Secret Key"
+                      type="password"
+                      value={alpaca.apiSecret}
+                      onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })}
+                      placeholder="Enter your secret key"
+                      disabled={busy === "alpaca"}
+                      icon="🤫"
+                    />
+                    
+                    <ActionButton type="submit" disabled={busy === "alpaca"} loading={busy === "alpaca"} color={alpaca.isLive ? "green" : "orange"} icon="🔗">
+                      Complete Alpaca Quest!
+                    </ActionButton>
+                  </form>
                 </div>
-              </form>
+              </div>
             )}
 
+            {/* Wallet Quest */}
             {needs.wallet && !status.wallet && (
-              <form onSubmit={connectWallet} className="space-y-4 border-t border-white/10 pt-6">
-                <h3 className="text-lg font-medium text-purple-300">🦄 DeFi Wallet</h3>
-
-                <InfoBox type="info">
-                  <strong>What is a DeFi wallet?</strong> A crypto wallet for decentralized trading.
-                </InfoBox>
-
-                <SimpleInput
-                  label="Ethereum Wallet Address"
-                  value={wallet}
-                  onChange={(e) => setWallet(e.target.value)}
-                  placeholder="0x..."
-                  helper="42 characters starting with 0x"
-                  disabled={busy === "wallet"}
-                />
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <ActionButton
-                    type="submit"
-                    disabled={busy === "wallet"}
-                    loading={busy === "wallet"}
-                    color="blue"
-                  >
-                    Connect Wallet
-                  </ActionButton>
+              <div className="border border-purple-500/30 rounded-xl p-4 bg-purple-500/5">
+                <h3 className="text-lg font-bold text-purple-300 mb-3 flex items-center gap-2">
+                  <span>🦄</span> DeFi Wallet Quest
+                </h3>
+                
+                <div className="space-y-4">
+                  <InfoBox type="tip" icon="🦄">
+                    <strong>What's a DeFi wallet?</strong> A crypto wallet like MetaMask or Trust Wallet for decentralized trading on Ethereum, BSC, and other chains.
+                  </InfoBox>
+                  
+                  <form onSubmit={connectWallet} className="space-y-4">
+                    <SimpleInput
+                      label="💰 Wallet Address"
+                      value={wallet}
+                      onChange={(e) => setWallet(e.target.value)}
+                      placeholder="0x..."
+                      helper="Must start with 0x and be exactly 42 characters long"
+                      disabled={busy === "wallet"}
+                      icon="🦄"
+                    />
+                    
+                    <ActionButton type="submit" disabled={busy === "wallet"} loading={busy === "wallet"} color="purple" icon="🔗">
+                      Connect Wallet & Claim XP!
+                    </ActionButton>
+                  </form>
                 </div>
-              </form>
+              </div>
             )}
 
+            {/* Completed Connections */}
             {needs.okx && status.okx && (
-              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                ✅ OKX connected successfully
+              <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/50 rounded-lg p-4 text-center">
+                <p className="text-green-300 font-bold">✅ OKX Quest Complete! +100 XP</p>
               </div>
             )}
             {needs.alpaca && status.alpaca && (
-              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                ✅ Alpaca connected successfully
+              <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/50 rounded-lg p-4 text-center">
+                <p className="text-green-300 font-bold">✅ Alpaca Quest Complete! +100 XP</p>
               </div>
             )}
             {needs.wallet && status.wallet && (
-              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                ✅ Wallet connected successfully
+              <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/50 rounded-lg p-4 text-center">
+                <p className="text-green-300 font-bold">✅ Wallet Quest Complete! +100 XP</p>
               </div>
             )}
           </div>
-        </SectionCard>
+        </QuestCard>
 
-        <SectionCard
+        {/* Quest 3: Boss Battle - Activate Bot */}
+        <QuestCard
           number="3"
-          title="Activate Trading Bot"
-          description="Turn on automated trading when you're ready"
+          title="👾 FINAL BOSS: Activate Trading Bot"
+          description="Defeat the final boss by activating your automated trading bot"
           status={status.trading}
+          xpReward={500}
+          isBoss={true}
+          onComplete={addXP}
         >
           <div className="space-y-4">
             {!canEnableTrading && !status.trading ? (
-              <InfoBox type="warning">
-                ⏳ Please complete steps 1 and 2 first before activating the trading bot.
+              <InfoBox type="warning" icon="⚔️">
+                <strong>Boss is too strong!</strong> You need to complete Quests 1 and 2 first to unlock this battle!
               </InfoBox>
             ) : (
-              <div className="space-y-4">
-                <InfoBox type="info">
-                  🤖 <strong>How the bot works:</strong><br />
-                  • Analyzes market conditions<br />
-                  • Executes trades based on configured strategies<br />
-                  • You can monitor everything from your dashboard
+              <>
+                <InfoBox type="tip" icon="🤖">
+                  <strong>Ready for battle?</strong> Once activated, your bot will automatically analyze markets and execute trades based on your strategy. You can monitor everything from your dashboard!
                 </InfoBox>
 
-                {status.trading && (
-                  <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
-                    <p className="text-green-300 font-medium mb-2">🟢 Trading bot is currently ACTIVE</p>
-                    <p className="text-sm text-gray-400">
-                      Your bot is running and looking for trading opportunities.
-                    </p>
+                {status.trading ? (
+                  <div className="p-6 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-500 rounded-xl text-center">
+                    <div className="text-4xl mb-3 animate-bounce">🏆</div>
+                    <p className="text-green-300 font-bold text-lg mb-2">BOSS DEFEATED!</p>
+                    <p className="text-sm text-gray-300">Your trading bot is ACTIVE and protecting your portfolio!</p>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/50 rounded-xl">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="text-4xl animate-pulse">👾</div>
+                      <div>
+                        <p className="font-bold text-purple-300">Final Boss: The Trading Bot</p>
+                        <p className="text-xs text-gray-400">Defeat it by clicking the button below!</p>
+                      </div>
+                    </div>
+                    <ActionButton
+                      onClick={toggleTrading}
+                      disabled={busy === "trading"}
+                      loading={busy === "trading"}
+                      color="purple"
+                      icon="⚔️"
+                    >
+                      {status.trading ? "Bot Already Active!" : "DEFEAT THE BOSS!"}
+                    </ActionButton>
                   </div>
                 )}
-
-                <ActionButton
-                  onClick={toggleTrading}
-                  disabled={busy === "trading" || (!canEnableTrading && !status.trading)}
-                  loading={busy === "trading"}
-                  color={status.trading ? "gray" : "green"}
-                >
-                  {status.trading ? "⏸ Pause Trading Bot" : "▶️ Start Trading Bot"}
-                </ActionButton>
-              </div>
+              </>
             )}
           </div>
-        </SectionCard>
+        </QuestCard>
 
-        <div className="mt-8 p-6 bg-white/5 border border-white/10 rounded-xl">
-          <h3 className="text-lg font-semibold mb-4">Need Help? 🤝</h3>
+        {/* Help & Resources */}
+        <div className="mt-8 p-6 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-white/10 rounded-xl">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>🎮</span> Need Help? Check These Power-Ups!
+          </h3>
           <div className="grid gap-3">
             <a
               href="https://imali-defi.com/getting-started"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors"
+              className="flex items-center gap-3 p-3 bg-black/40 rounded-lg hover:bg-black/60 transition-all hover:scale-105"
             >
-              <span>📚</span>
+              <span className="text-2xl">📚</span>
               <div>
-                <div className="font-medium">Getting Started Guide</div>
+                <div className="font-medium text-white">Getting Started Guide</div>
                 <div className="text-xs text-gray-400">Step-by-step walkthrough for beginners</div>
               </div>
             </a>
-
             <a
               href="mailto:support@imali-defi.com"
-              className="flex items-center gap-2 p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors"
+              className="flex items-center gap-3 p-3 bg-black/40 rounded-lg hover:bg-black/60 transition-all hover:scale-105"
             >
-              <span>📧</span>
+              <span className="text-2xl">📧</span>
               <div>
-                <div className="font-medium">Email Support</div>
-                <div className="text-xs text-gray-400">Get help from our team</div>
+                <div className="font-medium text-white">Hero Support Team</div>
+                <div className="text-xs text-gray-400">We're here 24/7 to help you!</div>
               </div>
             </a>
           </div>
         </div>
 
-        <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap gap-4 justify-center text-sm">
+        {/* Skip Option */}
+        <div className="mt-8 text-center">
           <button 
-            onClick={handleSkipToDashboard} 
-            className="text-gray-400 hover:text-white transition-colors"
+            onClick={() => navigate("/dashboard", { replace: true })} 
+            className="text-gray-500 hover:text-gray-300 transition-colors text-sm underline"
           >
-            Skip to Dashboard →
-          </button>
-          <span className="text-gray-600">•</span>
-          <button onClick={handleUpgradePlan} className="text-gray-400 hover:text-white transition-colors">
-            Upgrade Plan →
+            Skip to Dashboard (Not Recommended)
           </button>
         </div>
       </div>
+
+      {/* CSS Animations - Added to ensure compatibility */}
+      <style>{`
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        @keyframes slide-in {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes confetti {
+          0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+        .animate-bounce { animation: bounce 1s ease-in-out infinite; }
+        .animate-pulse { animation: pulse 2s ease-in-out infinite; }
+        .animate-slide-in { animation: slide-in 0.3s ease-out; }
+        .animate-confetti {
+          animation: confetti 3s ease-in-out forwards;
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          border-radius: 2px;
+        }
+      `}</style>
     </div>
   );
 }
