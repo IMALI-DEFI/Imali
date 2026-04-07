@@ -8,27 +8,6 @@ import BotAPI from "../utils/BotAPI";
 // COMPONENTS
 // ==============================================
 
-const SuccessToast = ({ message, onComplete }) => {
-  useEffect(() => {
-    const timer = setTimeout(onComplete, 2000);
-    return () => clearTimeout(timer);
-  }, [onComplete]);
-  
-  return (
-    <div className="fixed top-20 right-4 z-50 animate-slide-in">
-      <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg px-4 py-2 shadow-lg">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">✓</span>
-          <div>
-            <p className="font-bold text-white">Complete!</p>
-            <p className="text-xs text-green-100">{message}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const StatusBadge = ({ done }) => (
   <span
     className={`px-3 py-1 rounded-full text-sm font-medium transition-all duration-300 ${
@@ -41,53 +20,30 @@ const StatusBadge = ({ done }) => (
   </span>
 );
 
-const StepCard = ({ 
-  number, 
-  title, 
-  description, 
-  status, 
-  children, 
-  onComplete 
-}) => {
-  const [showSuccess, setShowSuccess] = useState(false);
-  const prevStatus = useRef(status);
-  
-  useEffect(() => {
-    if (status === true && prevStatus.current === false) {
-      setShowSuccess(true);
-      onComplete?.();
+const StepCard = ({ number, title, description, status, children }) => (
+  <div className={`relative rounded-2xl border-2 transition-all duration-300 overflow-hidden
+    ${status 
+      ? 'border-green-500/50 bg-gradient-to-br from-green-500/10 to-emerald-500/5' 
+      : 'border-gray-700 bg-gradient-to-br from-gray-800/50 to-gray-900/50'
     }
-    prevStatus.current = status;
-  }, [status, onComplete]);
-  
-  return (
-    <div className={`relative rounded-2xl border-2 transition-all duration-300 overflow-hidden
-      ${status 
-        ? 'border-green-500/50 bg-gradient-to-br from-green-500/10 to-emerald-500/5' 
-        : 'border-gray-700 bg-gradient-to-br from-gray-800/50 to-gray-900/50'
-      }
-    `}>
-      {showSuccess && <SuccessToast message="Step Complete!" onComplete={() => setShowSuccess(false)} />}
-      
-      <div className="p-6">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg">
-              {number}
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white">{title}</h2>
-              <p className="text-sm text-gray-400">{description}</p>
-            </div>
+  `}>
+    <div className="p-6">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg">
+            {number}
           </div>
-          <StatusBadge done={status} />
+          <div>
+            <h2 className="text-xl font-bold text-white">{title}</h2>
+            <p className="text-sm text-gray-400">{description}</p>
+          </div>
         </div>
-        
-        {children}
+        <StatusBadge done={status} />
       </div>
+      {children}
     </div>
-  );
-};
+  </div>
+);
 
 const ScreenshotGuide = ({ imagePath, alt, steps, link }) => (
   <div className="bg-black/40 rounded-xl p-4 border border-white/10">
@@ -127,16 +83,7 @@ const ScreenshotGuide = ({ imagePath, alt, steps, link }) => (
   </div>
 );
 
-const SimpleInput = ({
-  label,
-  type = "text",
-  value,
-  onChange,
-  placeholder,
-  disabled,
-  helper,
-  icon
-}) => (
+const SimpleInput = ({ label, type = "text", value, onChange, placeholder, disabled, helper, icon }) => (
   <div className="space-y-1">
     <label className="text-sm text-gray-400 flex items-center gap-2">
       {icon && <span>{icon}</span>}
@@ -184,15 +131,7 @@ const ModeToggle = ({ isLive, onChange, disabled }) => (
   </div>
 );
 
-const ActionButton = ({
-  onClick,
-  disabled,
-  loading,
-  children,
-  color = "blue",
-  type = "button",
-  icon
-}) => {
+const ActionButton = ({ onClick, disabled, loading, children, color = "blue", type = "button", icon }) => {
   const colors = {
     blue: "from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600",
     green: "from-green-600 to-emerald-700 hover:from-green-500 hover:to-emerald-600",
@@ -231,12 +170,7 @@ const InfoBox = ({ type = "info", children, icon }) => {
     success: "from-green-500/10 to-emerald-600/5 border-green-500/30 text-green-200",
   };
   
-  const icons = {
-    info: "💡",
-    warning: "⚠️",
-    tip: "📌",
-    success: "✅"
-  };
+  const icons = { info: "💡", warning: "⚠️", tip: "📌", success: "✅" };
 
   return (
     <div className={`p-4 rounded-xl border bg-gradient-to-r ${styles[type]} text-sm backdrop-blur-sm`}>
@@ -260,8 +194,10 @@ export default function Activation() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [checkingBilling, setCheckingBilling] = useState(false);
   
   const hasRedirected = useRef(false);
+  const billingCheckInterval = useRef(null);
 
   const tier = useMemo(() => {
     const userTier = user?.tier?.toLowerCase();
@@ -269,30 +205,16 @@ export default function Activation() {
     return userTier || stateTier || "starter";
   }, [location.state?.tier, user?.tier]);
 
-  const [okx, setOkx] = useState({
-    apiKey: "",
-    apiSecret: "",
-    passphrase: "",
-    isLive: false,
-  });
-
-  const [alpaca, setAlpaca] = useState({
-    apiKey: "",
-    apiSecret: "",
-    isLive: false,
-  });
-
+  const [okx, setOkx] = useState({ apiKey: "", apiSecret: "", passphrase: "", isLive: false });
+  const [alpaca, setAlpaca] = useState({ apiKey: "", apiSecret: "", isLive: false });
   const [wallet, setWallet] = useState("");
 
-  const needs = useMemo(
-    () => ({
-      billing: true,
-      okx: ["starter", "pro", "bundle"].includes(tier),
-      alpaca: ["starter", "bundle"].includes(tier),
-      wallet: ["elite", "bundle"].includes(tier),
-    }),
-    [tier]
-  );
+  const needs = useMemo(() => ({
+    billing: true,
+    okx: ["starter", "pro", "bundle"].includes(tier),
+    alpaca: ["starter", "bundle"].includes(tier),
+    wallet: ["elite", "bundle"].includes(tier),
+  }), [tier]);
 
   const status = useMemo(() => ({
     billing: !!activation?.has_card_on_file || !!activation?.billing_complete,
@@ -302,40 +224,73 @@ export default function Activation() {
     trading: !!activation?.trading_enabled,
   }), [activation]);
 
-  const connectionsDone = useMemo(
-    () =>
-      (!needs.okx || status.okx) &&
-      (!needs.alpaca || status.alpaca) &&
-      (!needs.wallet || status.wallet),
+  const connectionsDone = useMemo(() =>
+    (!needs.okx || status.okx) &&
+    (!needs.alpaca || status.alpaca) &&
+    (!needs.wallet || status.wallet),
     [needs, status]
   );
 
-  const canEnableTrading = useMemo(
-    () => status.billing && connectionsDone,
-    [status.billing, connectionsDone]
-  );
+  const canEnableTrading = useMemo(() => status.billing && connectionsDone, [status.billing, connectionsDone]);
+  const fullyActivated = useMemo(() => status.billing && connectionsDone && status.trading, [status.billing, connectionsDone, status.trading]);
+  const comingFromBilling = useMemo(() => location.state?.fromBilling === true, [location.state]);
 
-  const fullyActivated = useMemo(
-    () => status.billing && connectionsDone && status.trading,
-    [status.billing, connectionsDone, status.trading]
-  );
+  // Force check billing status
+  const forceCheckBilling = useCallback(async () => {
+    if (checkingBilling) return;
+    setCheckingBilling(true);
+    try {
+      const cardStatus = await BotAPI.getCardStatus();
+      if (cardStatus?.has_card || cardStatus?.billing_complete) {
+        await refreshActivation();
+        setSuccess("Payment method detected!");
+        setTimeout(() => setSuccess(""), 3000);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.warn("Billing check failed:", err);
+      return false;
+    } finally {
+      setCheckingBilling(false);
+    }
+  }, [refreshActivation, checkingBilling]);
 
+  // Initial load
   useEffect(() => {
     const loadData = async () => {
-      if (refreshActivation) {
-        await refreshActivation();
-      }
+      if (refreshActivation) await refreshActivation();
+      if (comingFromBilling && !status.billing) await forceCheckBilling();
     };
     loadData();
-  }, [refreshActivation]);
+  }, [refreshActivation, comingFromBilling, forceCheckBilling, status.billing]);
 
+  // Periodic billing check
+  useEffect(() => {
+    if (status.billing) return;
+    const checkBillingStatus = async () => {
+      try {
+        const cardStatus = await BotAPI.getCardStatus();
+        if (cardStatus?.has_card || cardStatus?.billing_complete) {
+          await refreshActivation();
+          setSuccess("Payment method detected!");
+          setTimeout(() => setSuccess(""), 3000);
+          if (billingCheckInterval.current) clearInterval(billingCheckInterval.current);
+        }
+      } catch (err) {
+        console.warn("Billing check failed:", err);
+      }
+    };
+    const intervalDelay = comingFromBilling ? 3000 : 10000;
+    billingCheckInterval.current = setInterval(checkBillingStatus, intervalDelay);
+    return () => { if (billingCheckInterval.current) clearInterval(billingCheckInterval.current); };
+  }, [refreshActivation, status.billing, comingFromBilling]);
+
+  // Auto-redirect when fully activated
   useEffect(() => {
     if (fullyActivated && !hasRedirected.current) {
       hasRedirected.current = true;
-      const timer = setTimeout(() => {
-        navigate("/dashboard", { replace: true });
-      }, 1500);
-      return () => clearTimeout(timer);
+      setTimeout(() => navigate("/dashboard", { replace: true }), 1500);
     }
   }, [fullyActivated, navigate]);
 
@@ -362,7 +317,6 @@ export default function Activation() {
         passphrase: okx.passphrase.trim(),
         mode: okx.isLive ? "live" : "paper",
       });
-
       setSuccess(`OKX connected (${okx.isLive ? "Live" : "Paper"} mode)`);
       setOkx({ apiKey: "", apiSecret: "", passphrase: "", isLive: false });
       await refreshAfterAction();
@@ -391,7 +345,6 @@ export default function Activation() {
         api_secret: alpaca.apiSecret.trim(),
         mode: alpaca.isLive ? "live" : "paper",
       });
-
       setSuccess(`Alpaca connected (${alpaca.isLive ? "Live" : "Paper"} mode)`);
       setAlpaca({ apiKey: "", apiSecret: "", isLive: false });
       await refreshAfterAction();
@@ -414,7 +367,6 @@ export default function Activation() {
       setBusy("");
       return;
     }
-
     if (!addr.startsWith("0x") || addr.length !== 42) {
       setError("Wallet must start with 0x and be 42 characters");
       setBusy("");
@@ -448,11 +400,7 @@ export default function Activation() {
       const enabling = !status.trading;
       await BotAPI.toggleTrading(enabling);
       await refreshAfterAction();
-      if (enabling) {
-        setSuccess("Trading bot activated!");
-      } else {
-        setSuccess("Trading bot paused");
-      }
+      setSuccess(enabling ? "Trading bot activated!" : "Trading bot paused");
     } catch (err) {
       setError(err?.response?.data?.message || "Could not update trading status");
     } finally {
@@ -475,17 +423,22 @@ export default function Activation() {
     }
   };
 
+  const showBillingCheck = comingFromBilling && !status.billing && checkingBilling;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 text-white">
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-            Account Activation
-          </h1>
-          <p className="text-gray-400">
-            {getPlanName()} Plan • Complete the steps below to start trading
-          </p>
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Account Activation</h1>
+          <p className="text-gray-400">{getPlanName()} Plan • Complete the steps below to start trading</p>
+          
+          {showBillingCheck && (
+            <div className="mt-4 p-3 bg-blue-500/20 border border-blue-500/50 rounded-xl">
+              <p className="text-blue-300">Verifying your payment method...</p>
+            </div>
+          )}
+          
           {fullyActivated && (
             <div className="mt-4 p-4 bg-green-500/20 border border-green-500/50 rounded-xl">
               <p className="text-green-300 font-semibold">✓ All steps complete! Redirecting to dashboard...</p>
@@ -493,13 +446,21 @@ export default function Activation() {
           )}
         </div>
 
+        {/* Manual refresh button */}
+        {!status.billing && comingFromBilling && (
+          <div className="mb-4 text-center">
+            <button onClick={forceCheckBilling} disabled={checkingBilling} className="text-sm text-blue-400 hover:text-blue-300 underline">
+              {checkingBilling ? "Checking..." : "Refresh billing status"}
+            </button>
+          </div>
+        )}
+
         {/* Error/Success Messages */}
         {error && (
           <div className="mb-6 p-4 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200">
             <span>⚠️ {error}</span>
           </div>
         )}
-
         {success && !fullyActivated && (
           <div className="mb-6 p-4 rounded-xl bg-green-500/20 border border-green-500/50 text-green-200">
             <span>✓ {success}</span>
@@ -507,43 +468,26 @@ export default function Activation() {
         )}
 
         {/* Step 1: Billing */}
-        <StepCard
-          number="1"
-          title="Payment Method"
-          description="Add a payment method to continue"
-          status={status.billing}
-          onComplete={() => {}}
-        >
+        <StepCard number="1" title="Payment Method" description="Add a payment method to continue" status={status.billing}>
           {!status.billing ? (
             <div className="space-y-4">
-              <InfoBox type="info">
-                Your payment information is encrypted and securely stored.
-              </InfoBox>
+              <InfoBox type="info">Your payment information is encrypted and securely stored.</InfoBox>
               <ActionButton onClick={() => navigate("/billing", { state: { tier } })} color="blue">
                 Add Payment Method
               </ActionButton>
             </div>
           ) : (
-            <div className="text-green-300 font-medium text-center py-2">
-              ✓ Payment method on file
-            </div>
+            <div className="text-green-300 font-medium text-center py-2">✓ Payment method on file</div>
           )}
         </StepCard>
 
         {/* Step 2: Connections */}
-        <StepCard
-          number="2"
-          title="Connect Platforms"
-          description="Link your trading accounts"
-          status={connectionsDone}
-          onComplete={() => {}}
-        >
+        <StepCard number="2" title="Connect Platforms" description="Link your trading accounts" status={connectionsDone}>
           <div className="space-y-6">
             {/* OKX */}
             {needs.okx && !status.okx && (
               <div className="border border-blue-500/30 rounded-xl p-4 bg-blue-500/5">
                 <h3 className="text-lg font-semibold text-blue-300 mb-3">OKX Exchange</h3>
-                
                 <ScreenshotGuide
                   imagePath="/oxksignup.jpg"
                   alt="OKX API Setup"
@@ -556,41 +500,12 @@ export default function Activation() {
                   ]}
                   link="https://www.okx.com/support"
                 />
-                
                 <form onSubmit={connectOKX} className="space-y-4 mt-4">
-                  <ModeToggle
-                    isLive={okx.isLive}
-                    onChange={(isLive) => setOkx({ ...okx, isLive })}
-                    disabled={busy === "okx"}
-                  />
-                  
-                  <SimpleInput
-                    label="API Key"
-                    value={okx.apiKey}
-                    onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })}
-                    placeholder="Enter API key"
-                    disabled={busy === "okx"}
-                  />
-                  <SimpleInput
-                    label="Secret Key"
-                    type="password"
-                    value={okx.apiSecret}
-                    onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })}
-                    placeholder="Enter secret key"
-                    disabled={busy === "okx"}
-                  />
-                  <SimpleInput
-                    label="Passphrase"
-                    type="password"
-                    value={okx.passphrase}
-                    onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })}
-                    placeholder="Enter passphrase"
-                    disabled={busy === "okx"}
-                  />
-                  
-                  <ActionButton type="submit" disabled={busy === "okx"} loading={busy === "okx"} color={okx.isLive ? "green" : "orange"}>
-                    Connect OKX
-                  </ActionButton>
+                  <ModeToggle isLive={okx.isLive} onChange={(isLive) => setOkx({ ...okx, isLive })} disabled={busy === "okx"} />
+                  <SimpleInput label="API Key" value={okx.apiKey} onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })} placeholder="Enter API key" disabled={busy === "okx"} />
+                  <SimpleInput label="Secret Key" type="password" value={okx.apiSecret} onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })} placeholder="Enter secret key" disabled={busy === "okx"} />
+                  <SimpleInput label="Passphrase" type="password" value={okx.passphrase} onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })} placeholder="Enter passphrase" disabled={busy === "okx"} />
+                  <ActionButton type="submit" disabled={busy === "okx"} loading={busy === "okx"} color={okx.isLive ? "green" : "orange"}>Connect OKX</ActionButton>
                 </form>
               </div>
             )}
@@ -599,7 +514,6 @@ export default function Activation() {
             {needs.alpaca && !status.alpaca && (
               <div className="border border-green-500/30 rounded-xl p-4 bg-green-500/5">
                 <h3 className="text-lg font-semibold text-green-300 mb-3">Alpaca Trading</h3>
-                
                 <ScreenshotGuide
                   imagePath="/alpacasignup.jpg"
                   alt="Alpaca API Setup"
@@ -612,33 +526,11 @@ export default function Activation() {
                   ]}
                   link="https://alpaca.markets/learn/connect-to-alpaca/"
                 />
-                
                 <form onSubmit={connectAlpaca} className="space-y-4 mt-4">
-                  <ModeToggle
-                    isLive={alpaca.isLive}
-                    onChange={(isLive) => setAlpaca({ ...alpaca, isLive })}
-                    disabled={busy === "alpaca"}
-                  />
-                  
-                  <SimpleInput
-                    label="API Key ID"
-                    value={alpaca.apiKey}
-                    onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })}
-                    placeholder="PK..."
-                    disabled={busy === "alpaca"}
-                  />
-                  <SimpleInput
-                    label="Secret Key"
-                    type="password"
-                    value={alpaca.apiSecret}
-                    onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })}
-                    placeholder="Enter secret key"
-                    disabled={busy === "alpaca"}
-                  />
-                  
-                  <ActionButton type="submit" disabled={busy === "alpaca"} loading={busy === "alpaca"} color={alpaca.isLive ? "green" : "orange"}>
-                    Connect Alpaca
-                  </ActionButton>
+                  <ModeToggle isLive={alpaca.isLive} onChange={(isLive) => setAlpaca({ ...alpaca, isLive })} disabled={busy === "alpaca"} />
+                  <SimpleInput label="API Key ID" value={alpaca.apiKey} onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })} placeholder="PK..." disabled={busy === "alpaca"} />
+                  <SimpleInput label="Secret Key" type="password" value={alpaca.apiSecret} onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })} placeholder="Enter secret key" disabled={busy === "alpaca"} />
+                  <ActionButton type="submit" disabled={busy === "alpaca"} loading={busy === "alpaca"} color={alpaca.isLive ? "green" : "orange"}>Connect Alpaca</ActionButton>
                 </form>
               </div>
             )}
@@ -647,79 +539,35 @@ export default function Activation() {
             {needs.wallet && !status.wallet && (
               <div className="border border-purple-500/30 rounded-xl p-4 bg-purple-500/5">
                 <h3 className="text-lg font-semibold text-purple-300 mb-3">DeFi Wallet</h3>
-                
-                <InfoBox type="tip">
-                  Use MetaMask or Trust Wallet for decentralized trading
-                </InfoBox>
-                
+                <InfoBox type="tip">Use MetaMask or Trust Wallet for decentralized trading</InfoBox>
                 <form onSubmit={connectWallet} className="space-y-4 mt-4">
-                  <SimpleInput
-                    label="Wallet Address"
-                    value={wallet}
-                    onChange={(e) => setWallet(e.target.value)}
-                    placeholder="0x..."
-                    helper="Must start with 0x (42 characters)"
-                    disabled={busy === "wallet"}
-                  />
-                  
-                  <ActionButton type="submit" disabled={busy === "wallet"} loading={busy === "wallet"} color="purple">
-                    Connect Wallet
-                  </ActionButton>
+                  <SimpleInput label="Wallet Address" value={wallet} onChange={(e) => setWallet(e.target.value)} placeholder="0x..." helper="Must start with 0x (42 characters)" disabled={busy === "wallet"} />
+                  <ActionButton type="submit" disabled={busy === "wallet"} loading={busy === "wallet"} color="purple">Connect Wallet</ActionButton>
                 </form>
               </div>
             )}
 
             {/* Completed status */}
-            {needs.okx && status.okx && (
-              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">
-                ✓ OKX connected
-              </div>
-            )}
-            {needs.alpaca && status.alpaca && (
-              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">
-                ✓ Alpaca connected
-              </div>
-            )}
-            {needs.wallet && status.wallet && (
-              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">
-                ✓ Wallet connected
-              </div>
-            )}
+            {needs.okx && status.okx && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ OKX connected</div>}
+            {needs.alpaca && status.alpaca && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ Alpaca connected</div>}
+            {needs.wallet && status.wallet && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ Wallet connected</div>}
           </div>
         </StepCard>
 
         {/* Step 3: Activate Bot */}
-        <StepCard
-          number="3"
-          title="Activate Trading"
-          description="Turn on automated trading"
-          status={status.trading}
-          onComplete={() => {}}
-        >
+        <StepCard number="3" title="Activate Trading" description="Turn on automated trading" status={status.trading}>
           <div className="space-y-4">
             {!canEnableTrading && !status.trading ? (
-              <InfoBox type="warning">
-                Complete steps 1 and 2 first
-              </InfoBox>
+              <InfoBox type="warning">Complete steps 1 and 2 first</InfoBox>
             ) : (
               <>
-                <InfoBox type="tip">
-                  The bot analyzes markets and executes trades based on your strategy
-                </InfoBox>
-
+                <InfoBox type="tip">The bot analyzes markets and executes trades based on your strategy</InfoBox>
                 {status.trading ? (
                   <div className="p-4 bg-green-500/20 border border-green-500 rounded-xl text-center">
                     <p className="text-green-300 font-semibold">✓ Trading bot is ACTIVE</p>
                   </div>
                 ) : (
-                  <ActionButton
-                    onClick={toggleTrading}
-                    disabled={busy === "trading"}
-                    loading={busy === "trading"}
-                    color="green"
-                  >
-                    Activate Trading Bot
-                  </ActionButton>
+                  <ActionButton onClick={toggleTrading} disabled={busy === "trading"} loading={busy === "trading"} color="green">Activate Trading Bot</ActionButton>
                 )}
               </>
             )}
@@ -730,29 +578,14 @@ export default function Activation() {
         <div className="mt-8 p-6 bg-white/5 border border-white/10 rounded-xl">
           <h3 className="text-lg font-semibold mb-3">Need Help?</h3>
           <div className="flex gap-4">
-            <a
-              href="https://imali-defi.com/getting-started"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300"
-            >
-              Getting Started Guide
-            </a>
-            <a
-              href="mailto:support@imali-defi.com"
-              className="text-blue-400 hover:text-blue-300"
-            >
-              Email Support
-            </a>
+            <a href="https://imali-defi.com/getting-started" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">Getting Started Guide</a>
+            <a href="mailto:support@imali-defi.com" className="text-blue-400 hover:text-blue-300">Email Support</a>
           </div>
         </div>
 
         {/* Skip to Dashboard */}
         <div className="mt-6 text-center">
-          <button 
-            onClick={handleSkipToDashboard}
-            className="text-gray-500 hover:text-gray-300 transition-colors text-sm underline"
-          >
+          <button onClick={handleSkipToDashboard} className="text-gray-500 hover:text-gray-300 transition-colors text-sm underline">
             Skip to Dashboard
           </button>
         </div>
