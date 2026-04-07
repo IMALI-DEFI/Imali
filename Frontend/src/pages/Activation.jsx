@@ -194,10 +194,9 @@ export default function Activation() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [checkingBilling, setCheckingBilling] = useState(false);
   
   const hasRedirected = useRef(false);
-  const billingCheckInterval = useRef(null);
+  const billingCheckedRef = useRef(false);
 
   const tier = useMemo(() => {
     const userTier = user?.tier?.toLowerCase();
@@ -235,56 +234,32 @@ export default function Activation() {
   const fullyActivated = useMemo(() => status.billing && connectionsDone && status.trading, [status.billing, connectionsDone, status.trading]);
   const comingFromBilling = useMemo(() => location.state?.fromBilling === true, [location.state]);
 
-  // Force check billing status
-  const forceCheckBilling = useCallback(async () => {
-    if (checkingBilling) return;
-    setCheckingBilling(true);
-    try {
-      const cardStatus = await BotAPI.getCardStatus();
-      if (cardStatus?.has_card || cardStatus?.billing_complete) {
-        await refreshActivation();
-        setSuccess("Payment method detected!");
-        setTimeout(() => setSuccess(""), 3000);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.warn("Billing check failed:", err);
-      return false;
-    } finally {
-      setCheckingBilling(false);
-    }
-  }, [refreshActivation, checkingBilling]);
-
-  // Initial load
+  // Single billing check on mount (no intervals to prevent jumping)
   useEffect(() => {
-    const loadData = async () => {
-      if (refreshActivation) await refreshActivation();
-      if (comingFromBilling && !status.billing) await forceCheckBilling();
-    };
-    loadData();
-  }, [refreshActivation, comingFromBilling, forceCheckBilling, status.billing]);
-
-  // Periodic billing check
-  useEffect(() => {
-    if (status.billing) return;
-    const checkBillingStatus = async () => {
+    const checkBillingOnce = async () => {
+      if (billingCheckedRef.current) return;
+      billingCheckedRef.current = true;
+      
       try {
         const cardStatus = await BotAPI.getCardStatus();
         if (cardStatus?.has_card || cardStatus?.billing_complete) {
           await refreshActivation();
-          setSuccess("Payment method detected!");
-          setTimeout(() => setSuccess(""), 3000);
-          if (billingCheckInterval.current) clearInterval(billingCheckInterval.current);
         }
       } catch (err) {
         console.warn("Billing check failed:", err);
       }
     };
-    const intervalDelay = comingFromBilling ? 3000 : 10000;
-    billingCheckInterval.current = setInterval(checkBillingStatus, intervalDelay);
-    return () => { if (billingCheckInterval.current) clearInterval(billingCheckInterval.current); };
-  }, [refreshActivation, status.billing, comingFromBilling]);
+    
+    checkBillingOnce();
+  }, [refreshActivation]);
+
+  // Initial load
+  useEffect(() => {
+    const loadData = async () => {
+      if (refreshActivation) await refreshActivation();
+    };
+    loadData();
+  }, [refreshActivation]);
 
   // Auto-redirect when fully activated
   useEffect(() => {
@@ -423,8 +398,6 @@ export default function Activation() {
     }
   };
 
-  const showBillingCheck = comingFromBilling && !status.billing && checkingBilling;
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 text-white">
       <div className="max-w-4xl mx-auto px-6 py-8">
@@ -433,9 +406,9 @@ export default function Activation() {
           <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Account Activation</h1>
           <p className="text-gray-400">{getPlanName()} Plan • Complete the steps below to start trading</p>
           
-          {showBillingCheck && (
+          {comingFromBilling && !status.billing && (
             <div className="mt-4 p-3 bg-blue-500/20 border border-blue-500/50 rounded-xl">
-              <p className="text-blue-300">Verifying your payment method...</p>
+              <p className="text-blue-300">Payment method detected! You can continue setup.</p>
             </div>
           )}
           
@@ -445,15 +418,6 @@ export default function Activation() {
             </div>
           )}
         </div>
-
-        {/* Manual refresh button */}
-        {!status.billing && comingFromBilling && (
-          <div className="mb-4 text-center">
-            <button onClick={forceCheckBilling} disabled={checkingBilling} className="text-sm text-blue-400 hover:text-blue-300 underline">
-              {checkingBilling ? "Checking..." : "Refresh billing status"}
-            </button>
-          </div>
-        )}
 
         {/* Error/Success Messages */}
         {error && (
