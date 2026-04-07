@@ -1,4 +1,4 @@
-// App.js (without SocketContext)
+// App.js (with BillingSuccess route added)
 import React, { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import Header from "./components/Header";
@@ -13,6 +13,7 @@ const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
 const Activation = lazy(() => import("./pages/Activation"));
 const Billing = lazy(() => import("./pages/Billing"));
+const BillingSuccess = lazy(() => import("./pages/BillingSuccess")); // ✅ ADD THIS LINE
 const BillingDashboard = lazy(() => import("./pages/BillingDashboard"));
 
 // Marketing pages
@@ -177,6 +178,7 @@ function AppContent() {
       <main className="min-h-screen pt-16 bg-white text-gray-900">
         <Suspense fallback={<PageLoadingFallback />}>
           <Routes>
+            {/* Marketing Routes */}
             <Route path="/" element={<Home />} />
             <Route path="/about-us" element={<AboutUs />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
@@ -186,19 +188,32 @@ function AppContent() {
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
+            
+            {/* Demo Routes */}
             <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
             <Route path="/trade-demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
+            
+            {/* Auth Routes */}
             <Route path="/signup" element={<Signup />} />
             <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
             <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
+            
+            {/* Billing Flow Routes - ORDER MATTERS! */}
+            <Route path="/billing/success" element={<BillingSuccess />} />  {/* ✅ ADD THIS ROUTE - More specific first */}
             <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
-            <Route path="/activation" element={<RedirectIfActivated><Activation /></RedirectIfActivated>} />
             <Route path="/billing-dashboard" element={<RequireAuth><BillingDashboard /></RequireAuth>} />
             <Route path="/settings/billing" element={<Navigate to="/billing-dashboard" replace />} />
+            
+            {/* Activation & Dashboard */}
+            <Route path="/activation" element={<RedirectIfActivated><Activation /></RedirectIfActivated>} />
             <Route path="/dashboard" element={<RequireActivation><MemberDashboard /></RequireActivation>} />
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
+            
+            {/* Admin */}
             <Route path="/admin" element={<RequireAuth><AdminPanel /></RequireAuth>} />
+            
+            {/* 404 - Must be last */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
