@@ -149,6 +149,7 @@ export default function Activation() {
 
   const hasRedirected = useRef(false);
   const initialLoadDone = useRef(false);
+  const billingCheckInterval = useRef(null);
 
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -206,6 +207,7 @@ export default function Activation() {
     [status.billing, connectionsDone, status.trading]
   );
 
+  // Initial load
   useEffect(() => {
     const loadInitialData = async () => {
       if (initialLoadDone.current) return;
@@ -223,6 +225,33 @@ export default function Activation() {
     loadInitialData();
   }, [refreshActivation]);
 
+  // Check for billing status periodically (in case user comes from billing page)
+  useEffect(() => {
+    const checkBillingStatus = async () => {
+      try {
+        const cardStatus = await BotAPI.getCardStatus();
+        if (cardStatus?.has_card || cardStatus?.billing_complete) {
+          await refreshActivation();
+        }
+      } catch (err) {
+        console.warn("[Activation] Failed to check billing status:", err);
+      }
+    };
+
+    // Check immediately when component mounts
+    checkBillingStatus();
+
+    // Set up interval to check every 5 seconds (for when returning from billing)
+    billingCheckInterval.current = setInterval(checkBillingStatus, 5000);
+
+    return () => {
+      if (billingCheckInterval.current) {
+        clearInterval(billingCheckInterval.current);
+      }
+    };
+  }, [refreshActivation]);
+
+  // Auto-redirect when fully activated
   useEffect(() => {
     if (fullyActivated && !hasRedirected.current) {
       hasRedirected.current = true;
@@ -379,7 +408,6 @@ export default function Activation() {
   };
 
   const handleSkipToDashboard = () => {
-    // Clear any pending state and navigate directly to dashboard
     navigate("/dashboard", { replace: true });
   };
 
