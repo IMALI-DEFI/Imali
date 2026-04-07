@@ -1,4 +1,4 @@
-// src/pages/member/MemberDashboard.jsx (WebSocket-free version)
+// src/pages/member/MemberDashboard.jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -16,7 +16,7 @@ import {
   Filler,
   ArcElement,
 } from 'chart.js';
-import { Line, Bar, Doughnut } from 'react-chartjs-2';
+import { Line, Bar } from 'react-chartjs-2';
 
 ChartJS.register(
   CategoryScale,
@@ -47,14 +47,6 @@ const PLANS = [
   { value: "bundle", label: "Bundle", icon: "🧩", price: 199, features: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "Staking"], color: "amber", priceLabel: "$199/mo" },
 ];
 
-const TIER_BOTS = {
-  starter: ["OKX Spot", "Stock Bot"],
-  pro: ["OKX Spot", "Stock Bot", "Staking"],
-  elite: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "Staking"],
-  stock: ["Stock Bot", "DEX Sniper"],
-  bundle: ["OKX Spot", "Stock Bot", "DEX Sniper", "Futures", "Staking"],
-};
-
 // Helper functions
 const safeNumber = (v, f = 0) => {
   const n = Number(v);
@@ -74,8 +66,6 @@ const formatUsd = (n) => {
   const sign = num >= 0 ? "+" : "-";
   return `${sign}$${Math.abs(num).toFixed(2)}`;
 };
-
-const formatUsdPlain = (n) => `$${safeNumber(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const formatPercent = (v, digits = 2) => {
   const num = safeNumber(v);
@@ -106,7 +96,6 @@ const getTradePnlPercent = (trade) => trade?.pnl_percentage ?? trade?.pnl_pct ??
 const getTradeSide = (trade) => String(trade?.side || trade?.action || "").toLowerCase();
 const getTradeBot = (trade) => trade?.bot || trade?.source || "Unknown";
 const getTradePrice = (trade) => trade?.price ?? trade?.entry_price ?? 0;
-const getTradeQty = (trade) => trade?.qty ?? trade?.quantity ?? 0;
 
 const dedupeTrades = (trades) => {
   const seen = new Set();
@@ -125,8 +114,6 @@ const normalizeTier = (tier) => {
   const t = String(tier || "starter").toLowerCase().trim();
   return PLANS.some((p) => p.value === t) ? t : "starter";
 };
-
-const tierHasFeature = (userTier, feature) => TIER_BOTS[normalizeTier(userTier)]?.includes(feature) || false;
 
 const getBotIcon = (botName) => {
   const name = String(botName || "").toLowerCase();
@@ -293,17 +280,192 @@ const TradeRow = ({ trade }) => {
             <div className={`text-xs ${pnlPercent > 0 ? 'text-green-500' : 'text-red-500'}`}>{formatPercent(pnlPercent)}</div>
           </>
         ) : (
-          <div className="font-bold text-sm text-gray-700">{formatUsdPlain(getTradePrice(trade))}</div>
+          <div className="font-bold text-sm text-gray-700">{formatUsd(getTradePrice(trade))}</div>
         )}
       </div>
     </div>
   );
 };
 
+// Settings Modal Component
+function SettingsModal({ isOpen, onClose, currentStrategy, onStrategyChange, user }) {
+  const [selectedStrategy, setSelectedStrategy] = useState(currentStrategy);
+  const [updating, setUpdating] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const handleSave = async () => {
+    setUpdating(true);
+    setMessage("");
+    try {
+      // Call API to update strategy
+      const response = await BotAPI.updateStrategy?.(selectedStrategy);
+      if (response?.success) {
+        setMessage("Strategy updated successfully!");
+        onStrategyChange(selectedStrategy);
+        setTimeout(() => onClose(), 1500);
+      } else {
+        setMessage("Failed to update strategy");
+      }
+    } catch (err) {
+      setMessage("Error updating strategy");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-900">Settings</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+        </div>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Trading Strategy</label>
+            <select 
+              value={selectedStrategy}
+              onChange={(e) => setSelectedStrategy(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
+            >
+              {STRATEGIES.map(s => (
+                <option key={s.value} value={s.value}>{s.label} - {s.description}</option>
+              ))}
+            </select>
+          </div>
+          
+          {message && (
+            <div className={`p-3 rounded-lg text-sm ${message.includes("success") ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+              {message}
+            </div>
+          )}
+          
+          <button
+            onClick={handleSave}
+            disabled={updating}
+            className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {updating ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// API Keys Modal
+function ApiKeysModal({ isOpen, onClose }) {
+  const [apiKeys, setApiKeys] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadApiKeys();
+    }
+  }, [isOpen]);
+
+  const loadApiKeys = async () => {
+    try {
+      const keys = await BotAPI.listApiKeys?.() || [];
+      setApiKeys(keys);
+    } catch (err) {
+      console.error("Failed to load API keys:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createApiKey = async () => {
+    if (!newKeyName.trim()) return;
+    setCreating(true);
+    try {
+      const result = await BotAPI.createApiKey?.({ name: newKeyName, permissions: ["read"] });
+      if (result?.success) {
+        await loadApiKeys();
+        setNewKeyName("");
+      }
+    } catch (err) {
+      console.error("Failed to create API key:", err);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const revokeApiKey = async (keyId) => {
+    if (!confirm("Are you sure you want to revoke this API key?")) return;
+    try {
+      await BotAPI.revokeApiKey?.(keyId);
+      await loadApiKeys();
+    } catch (err) {
+      console.error("Failed to revoke API key:", err);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-900">API Keys</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+        </div>
+        
+        <div className="mb-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              placeholder="Key name"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+            />
+            <button
+              onClick={createApiKey}
+              disabled={creating || !newKeyName.trim()}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {creating ? "Creating..." : "Create Key"}
+            </button>
+          </div>
+        </div>
+        
+        {loading ? (
+          <div className="text-center py-4">Loading...</div>
+        ) : apiKeys.length === 0 ? (
+          <div className="text-center py-4 text-gray-500">No API keys yet</div>
+        ) : (
+          <div className="space-y-3">
+            {apiKeys.map((key) => (
+              <div key={key.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="font-medium text-gray-900">{key.name}</div>
+                  <div className="text-xs text-gray-500">Created: {new Date(key.created_at).toLocaleDateString()}</div>
+                </div>
+                <button
+                  onClick={() => revokeApiKey(key.id)}
+                  className="text-red-600 hover:text-red-700 text-sm"
+                >
+                  Revoke
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Main Dashboard Component
 export default function MemberDashboard() {
   const navigate = useNavigate();
-  const { user, activation } = useAuth();
+  const { user, activation, refreshActivation } = useAuth();
   const [dashboardData, setDashboardData] = useState({
     trades: [],
     discoveries: [],
@@ -317,6 +479,9 @@ export default function MemberDashboard() {
   const [historicalType, setHistoricalType] = useState("daily");
   const [activeTab, setActiveTab] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showApiKeys, setShowApiKeys] = useState(false);
+  const [currentStrategy, setCurrentStrategy] = useState(user?.strategy || "ai_weighted");
 
   const mountedRef = useRef(true);
 
@@ -331,7 +496,7 @@ export default function MemberDashboard() {
     
     try {
       const [tradesRes, discoveriesRes, botStatusRes, analyticsRes, historicalRes] = await Promise.allSettled([
-        BotAPI.getTrades?.(100).catch(() => ({ trades: [] })),
+        BotAPI.getUserTrades?.({ limit: 100 }).catch(() => ({ trades: [] })),
         BotAPI.getDiscoveries?.(20).catch(() => ({ discoveries: [] })),
         BotAPI.getBotStatus?.().catch(() => ({ bots: [] })),
         BotAPI.getAnalyticsSummary?.().catch(() => ({ summary: {} })),
@@ -341,10 +506,10 @@ export default function MemberDashboard() {
       if (!mountedRef.current) return;
 
       setDashboardData({
-        trades: dedupeTrades(tradesRes.status === "fulfilled" ? safeExtract(tradesRes.value)?.trades || [] : []),
-        discoveries: discoveriesRes.status === "fulfilled" ? safeExtract(discoveriesRes.value)?.discoveries || [] : [],
-        bots: botStatusRes.status === "fulfilled" ? safeExtract(botStatusRes.value)?.bots || [] : [],
-        analytics: analyticsRes.status === "fulfilled" ? safeExtract(analyticsRes.value) : { summary: {} },
+        trades: dedupeTrades(tradesRes.status === "fulfilled" ? tradesRes.value?.trades || [] : []),
+        discoveries: discoveriesRes.status === "fulfilled" ? discoveriesRes.value?.discoveries || [] : [],
+        bots: botStatusRes.status === "fulfilled" ? botStatusRes.value?.bots || [] : [],
+        analytics: analyticsRes.status === "fulfilled" ? analyticsRes.value : { summary: {} },
         historical: historicalRes.status === "fulfilled" ? historicalRes.value : { daily: [], weekly: [], monthly: [] }
       });
       setLastUpdate(new Date());
@@ -360,7 +525,6 @@ export default function MemberDashboard() {
     }
   }, [refreshing]);
 
-  // Initial load and auto-refresh every 30 seconds
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
@@ -387,21 +551,14 @@ export default function MemberDashboard() {
   const losses = dashboardData.analytics?.summary?.losses || 0;
   const winRate = wins + losses > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
 
-  const todayPnL = useMemo(() => {
-    const today = new Date().toDateString();
-    return allTrades.filter(t => new Date(getTradeTimestamp(t) || 0).toDateString() === today)
-      .reduce((sum, t) => sum + safeNumber(getTradePnlUsd(t), 0), 0);
-  }, [allTrades]);
-
   const activeBots = dashboardData.bots.filter(b => b.status === "operational" || b.status === "scanning").length;
   const sniperDiscoveries = dashboardData.discoveries.length;
   const tier = normalizeTier(user?.tier);
   const plan = PLANS.find(p => p.value === tier) || PLANS[0];
   const isLive = activation?.has_card_on_file || false;
 
-  const handleRefresh = () => {
-    fetchData();
-  };
+  const handleRefresh = () => fetchData();
+  const handleStrategyChange = (newStrategy) => setCurrentStrategy(newStrategy);
 
   if (loading) {
     return (
@@ -450,25 +607,32 @@ export default function MemberDashboard() {
               <button onClick={handleRefresh} disabled={refreshing} className="text-sm text-gray-500 hover:text-gray-700">
                 {refreshing ? "⟳" : "🔄 Refresh"}
               </button>
+              <button onClick={() => setShowSettings(true)} className="text-sm bg-gray-100 px-3 py-1.5 rounded-lg">
+                ⚙️ Settings
+              </button>
+              <button onClick={() => setShowApiKeys(true)} className="text-sm bg-gray-100 px-3 py-1.5 rounded-lg">
+                🔑 API Keys
+              </button>
               <Link to="/pricing" className="text-sm bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2 rounded-lg text-white">Upgrade →</Link>
             </div>
           </div>
           <div className="text-xs text-gray-400 mt-2">Last update: {lastUpdate?.toLocaleTimeString() || 'Never'}</div>
         </div>
 
+        {/* Quick Links */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+          <div className="flex flex-wrap gap-2">
+            <Link to="/billing-dashboard" className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm">💳 Billing Dashboard</Link>
+            <Link to="/billing" className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm">💰 Change Payment Method</Link>
+            <Link to="/activation" className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm">⚡ Activation Status</Link>
+            <Link to="/pricing" className="px-3 py-1.5 rounded-lg bg-amber-100 text-amber-700 text-sm">⭐ Upgrade Plan</Link>
+          </div>
+        </div>
+
         {/* Error */}
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-sm">{error}</div>
         )}
-
-        {/* Quick Links */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-          <div className="flex flex-wrap gap-2">
-            <Link to="/billing" className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm">💳 Billing</Link>
-            <Link to="/activation" className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm">⚡ Activation</Link>
-            <Link to="/pricing" className="px-3 py-1.5 rounded-lg bg-amber-100 text-amber-700 text-sm">⭐ Upgrade</Link>
-          </div>
-        </div>
 
         {/* Performance Chart */}
         <CardShell title="Performance History" icon="📈">
@@ -479,8 +643,8 @@ export default function MemberDashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard title="Total P&L" value={formatUsd(totalPnL)} color={totalPnL >= 0 ? "emerald" : "red"} />
           <StatCard title="Win Rate" value={`${winRate}%`} subtext={`${wins}W / ${losses}L`} color="purple" />
-          <StatCard title="Today's P&L" value={formatUsd(todayPnL)} color={todayPnL >= 0 ? "emerald" : "red"} />
           <StatCard title="Active Bots" value={activeBots} color="cyan" />
+          <StatCard title="Strategy" value={STRATEGIES.find(s => s.value === currentStrategy)?.label || "Balanced"} color="blue" />
         </div>
 
         {/* Bot Status */}
@@ -502,7 +666,7 @@ export default function MemberDashboard() {
         </CardShell>
 
         {/* DEX Discoveries */}
-        {sniperDiscoveries > 0 && tierHasFeature(tier, "DEX Sniper") && (
+        {sniperDiscoveries > 0 && (
           <CardShell title="New Token Discoveries" icon="🦄">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {dashboardData.discoveries.slice(0, 6).map((d, i) => (
@@ -541,8 +705,24 @@ export default function MemberDashboard() {
         <div className="text-center pt-4 border-t border-gray-200 flex justify-center gap-4 text-sm">
           <Link to="/pricing" className="text-amber-600 hover:text-amber-700">Upgrade Plan</Link>
           <Link to="/live" className="text-emerald-600 hover:text-emerald-700">Public Dashboard</Link>
+          <Link to="/billing-dashboard" className="text-blue-600 hover:text-blue-700">Billing</Link>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      <SettingsModal 
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        currentStrategy={currentStrategy}
+        onStrategyChange={handleStrategyChange}
+        user={user}
+      />
+
+      {/* API Keys Modal */}
+      <ApiKeysModal 
+        isOpen={showApiKeys}
+        onClose={() => setShowApiKeys(false)}
+      />
     </div>
   );
 }
