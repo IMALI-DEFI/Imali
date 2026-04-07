@@ -47,6 +47,7 @@ export default function Billing() {
 
   const [loading, setLoading] = useState(true);
   const [clientSecret, setClientSecret] = useState("");
+  const [setupIntentId, setSetupIntentId] = useState("");
   const [hasCard, setHasCard] = useState(false);
   const [billingAvailable, setBillingAvailable] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -94,6 +95,7 @@ export default function Billing() {
 
       if (alreadyHasCard) {
         setClientSecret("");
+        setSetupIntentId("");
         setLoading(false);
         return;
       }
@@ -102,12 +104,14 @@ export default function Billing() {
       const intentRes = await BotAPI.createSetupIntent({ email, tier });
       const intentData = safeExtract(intentRes, {});
       const secret = intentData?.client_secret || intentData?.clientSecret || "";
+      const intentId = intentData?.setup_intent_id || intentData?.setupIntentId || "";
 
       if (!secret) {
         throw new Error("Unable to initialize secure billing form.");
       }
 
       setClientSecret(secret);
+      setSetupIntentId(intentId);
       setBillingAvailable(true);
     } catch (err) {
       console.error("[Billing] Failed to initialize billing:", err);
@@ -117,6 +121,7 @@ export default function Billing() {
           "Failed to load billing setup."
       );
       setClientSecret("");
+      setSetupIntentId("");
     } finally {
       setLoading(false);
     }
@@ -126,29 +131,48 @@ export default function Billing() {
     loadBillingState();
   }, [loadBillingState]);
 
-  const handleCardSuccess = useCallback(async () => {
+  const handleCardSuccess = useCallback(async (setupIntentIdFromStripe) => {
     setBusy(true);
     setError("");
     setSuccess("");
 
     try {
+      // Use the setupIntentId from Stripe or the one we have
+      const intentId = setupIntentIdFromStripe || setupIntentId;
+      
+      if (intentId) {
+        // Confirm the card was added successfully
+        const confirmResult = await BotAPI.confirmCard({ setup_intent_id: intentId });
+        if (!confirmResult?.confirmed) {
+          throw new Error("Card confirmation failed");
+        }
+      }
+      
+      // Refresh activation status to update billing flag
       await refreshActivation?.();
+      
       setHasCard(true);
       setClientSecret("");
+      setSetupIntentId("");
       setSuccess("✅ Card added successfully. Taking you to activation...");
+      
       setTimeout(() => {
         navigate("/activation", {
           replace: true,
           state: { tier, fromBilling: true },
         });
-      }, 900);
+      }, 1500);
+    } catch (err) {
+      console.error("[Billing] Card success error:", err);
+      setError(err?.response?.data?.message || err?.message || "Failed to save payment method.");
     } finally {
       setBusy(false);
     }
-  }, [navigate, refreshActivation, tier]);
+  }, [navigate, refreshActivation, setupIntentId, tier]);
 
   const handleCardError = useCallback((err) => {
-    setError(err?.response?.data?.message || err?.message || "Failed to save payment method.");
+    console.error("[Billing] Card error:", err);
+    setError(err?.response?.data?.message || err?.message || "Failed to save payment method. Please try again.");
   }, []);
 
   const handleContinue = () => {
