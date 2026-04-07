@@ -234,7 +234,7 @@ export default function Activation() {
   const fullyActivated = useMemo(() => status.billing && connectionsDone && status.trading, [status.billing, connectionsDone, status.trading]);
   const comingFromBilling = useMemo(() => location.state?.fromBilling === true, [location.state]);
 
-  // Single billing check on mount (no intervals to prevent jumping)
+  // Single billing check on mount
   useEffect(() => {
     const checkBillingOnce = async () => {
       if (billingCheckedRef.current) return;
@@ -383,6 +383,7 @@ export default function Activation() {
     }
   };
 
+  // FIXED: Always navigate to dashboard regardless of completion
   const handleSkipToDashboard = () => {
     navigate("/dashboard", { replace: true });
   };
@@ -547,9 +548,12 @@ export default function Activation() {
           </div>
         </div>
 
-        {/* Skip to Dashboard */}
+        {/* Skip to Dashboard - FIXED: Always works */}
         <div className="mt-6 text-center">
-          <button onClick={handleSkipToDashboard} className="text-gray-500 hover:text-gray-300 transition-colors text-sm underline">
+          <button 
+            onClick={handleSkipToDashboard}
+            className="text-gray-500 hover:text-gray-300 transition-colors text-sm underline"
+          >
             Skip to Dashboard
           </button>
         </div>
