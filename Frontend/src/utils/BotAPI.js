@@ -244,6 +244,88 @@ export const getAnalyticsSummary = async (skipCache = false) => {
 };
 
 // ==============================================
+// USER-SPECIFIC API (Node API - port 3002)
+// ==============================================
+
+// ========== USER TRADES ==========
+export const getUserTrades = async (options = {}) => {
+  const { limit = 100, status, bot } = options;
+  let url = `/api/user/trades?limit=${limit}`;
+  if (status) url += `&status=${status}`;
+  if (bot) url += `&bot=${bot}`;
+  
+  try {
+    const response = await userApi.get(url);
+    const data = unwrap(response);
+    return {
+      success: true,
+      trades: data?.data?.trades || [],
+      summary: data?.data?.summary || { total_trades: 0, total_pnl: 0, wins: 0, losses: 0, win_rate: 0 }
+    };
+  } catch (error) {
+    console.error("[BotAPI] getUserTrades failed:", error);
+    return { success: false, trades: [], summary: { total_trades: 0, total_pnl: 0, wins: 0, losses: 0, win_rate: 0 }, error: error.message };
+  }
+};
+
+// ========== USER POSITIONS ==========
+export const getUserPositions = async () => {
+  try {
+    const response = await userApi.get("/api/user/positions");
+    const data = unwrap(response);
+    return {
+      success: true,
+      positions: data?.data?.positions || [],
+      count: data?.data?.count || 0
+    };
+  } catch (error) {
+    console.error("[BotAPI] getUserPositions failed:", error);
+    return { success: false, positions: [], count: 0, error: error.message };
+  }
+};
+
+// ========== USER BOT EXECUTIONS ==========
+export const getUserBotExecutions = async (limit = 50) => {
+  try {
+    const response = await userApi.get(`/api/user/bot-executions?limit=${limit}`);
+    const data = unwrap(response);
+    return {
+      success: true,
+      executions: data?.data?.executions || [],
+      count: data?.data?.count || 0
+    };
+  } catch (error) {
+    console.error("[BotAPI] getUserBotExecutions failed:", error);
+    return { success: false, executions: [], count: 0, error: error.message };
+  }
+};
+
+// ========== USER STATS ==========
+export const getUserStats = async () => {
+  try {
+    const [tradesRes, positionsRes] = await Promise.all([
+      getUserTrades({ limit: 1000 }),
+      getUserPositions()
+    ]);
+    
+    return {
+      success: true,
+      stats: {
+        total_trades: tradesRes.summary?.total_trades || 0,
+        total_pnl: tradesRes.summary?.total_pnl || 0,
+        wins: tradesRes.summary?.wins || 0,
+        losses: tradesRes.summary?.losses || 0,
+        win_rate: tradesRes.summary?.win_rate || 0,
+        open_positions: positionsRes.count || 0
+      }
+    };
+  } catch (error) {
+    console.error("[BotAPI] getUserStats failed:", error);
+    return { success: false, stats: { total_trades: 0, total_pnl: 0, wins: 0, losses: 0, win_rate: 0, open_positions: 0 } };
+  }
+};
+
+// ==============================================
 // AUTH API (Node API - port 3002)
 // ==============================================
 
@@ -395,10 +477,8 @@ export const createSetupIntent = async (payload) => {
 
 export const confirmCard = async (payload = {}) => {
   try {
-    // Make sure we have a valid setup_intent_id
     if (!payload.setup_intent_id) {
       console.warn("[BotAPI] confirmCard called without setup_intent_id");
-      // Return success anyway for demo mode
       return { success: true, confirmed: true, demo: true };
     }
     
@@ -414,8 +494,6 @@ export const confirmCard = async (payload = {}) => {
   } catch (error) {
     console.error("[BotAPI] confirmCard error:", error);
     
-    // If the endpoint doesn't exist or fails, return success for demo mode
-    // This allows the billing flow to continue even if backend isn't ready
     if (error?.response?.status === 404 || error?.response?.status === 500) {
       console.warn("[BotAPI] confirmCard endpoint not available, using demo mode");
       return { success: true, confirmed: true, demo: true };
@@ -640,8 +718,9 @@ export const forgotPassword = async (email) => {
 // ==============================================
 
 export const getTrades = async (limit = 100) => {
-  console.warn("[BotAPI] getTrades is deprecated. Use getPublicLiveStats instead.");
-  return [];
+  console.warn("[BotAPI] getTrades is deprecated. Use getUserTrades() instead.");
+  const result = await getUserTrades({ limit });
+  return result.trades || [];
 };
 
 export const getDiscoveries = async (limit = 20) => {
@@ -680,13 +759,17 @@ class BotAPIClass {
   getBotStatus(skipCache) { return getBotStatus(skipCache); }
   getAnalyticsSummary(skipCache) { return getAnalyticsSummary(skipCache); }
   
+  // User-specific API (NEW)
+  getUserTrades(options) { return getUserTrades(options); }
+  getUserPositions() { return getUserPositions(); }
+  getUserBotExecutions(limit) { return getUserBotExecutions(limit); }
+  getUserStats() { return getUserStats(); }
+  
   // Billing
   probeBillingRoutes() { return probeBillingRoutes(); }
   getCardStatus() { return getCardStatus(); }
   createSetupIntent(payload) { return createSetupIntent(payload); }
-  confirmCard(payload) { 
-    return confirmCard(payload); 
-  }
+  confirmCard(payload) { return confirmCard(payload); }
   
   // Connections
   connectOKX(payload) { return connectOKX(payload); }
