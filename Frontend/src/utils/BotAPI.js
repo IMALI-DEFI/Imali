@@ -1,9 +1,11 @@
 // src/utils/BotAPI.js
 import axios from "axios";
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "https://api.imali-defi.com";
-const USER_API_BASE = process.env.REACT_APP_USER_API_URL?.replace(/\/+$/, "") || "https://user-api.imali-defi.com";
-const SNIPER_API_BASE = process.env.REACT_APP_SNIPER_API_URL?.replace(/\/+$/, "") || "https://sniper.imali-defi.com";
+// Use relative paths - Netlify will proxy these to your backend
+const API_BASE = "";  // Empty = use same origin
+const USER_API_BASE = "";  // Empty = use same origin  
+const SNIPER_API_BASE = "";  // Empty = use same origin
+
 const TOKEN_KEY = "imali_token";
 const API_KEY_KEY = "imali_api_key";
 const isBrowser = typeof window !== "undefined";
@@ -63,7 +65,6 @@ const getCached = (key, ttl = API_CONFIG.cacheTTL) => {
 
 const setCached = (key, data, ttl = API_CONFIG.cacheTTL) => {
   cache.set(key, { data, timestamp: Date.now(), ttl });
-  // Clean up old cache entries periodically
   if (cache.size > 100) {
     const now = Date.now();
     for (const [k, v] of cache.entries()) {
@@ -88,21 +89,18 @@ const clearCache = (pattern) => {
 // API CLIENTS
 // ==============================================
 
-// Public API client (for endpoints that don't require auth)
 const publicApi = axios.create({
   baseURL: API_BASE,
   timeout: API_CONFIG.timeout,
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-// User API client (for authenticated user endpoints)
 const userApi = axios.create({
   baseURL: USER_API_BASE,
   timeout: API_CONFIG.timeout,
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-// Sniper API client (for bot-specific endpoints)
 const sniperApi = axios.create({
   baseURL: SNIPER_API_BASE,
   timeout: API_CONFIG.timeout,
@@ -117,7 +115,6 @@ const addAuthInterceptor = (apiClient) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Add API key if available
     const apiKey = getApiKey();
     if (apiKey) {
       config.headers["X-API-Key"] = apiKey;
@@ -146,14 +143,12 @@ const addResponseInterceptor = (apiClient) => {
     async (error) => {
       const { config, response } = error;
       
-      // Retry logic for network errors
       if (!response && config?.retryCount < API_CONFIG.retryAttempts) {
         config.retryCount = (config.retryCount || 0) + 1;
         await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay * config.retryCount));
         return apiClient(config);
       }
       
-      // Handle 401 Unauthorized
       if (response?.status === 401) {
         const isAuthPage = isBrowser && (
           window.location.pathname.includes("/login") ||
@@ -260,10 +255,9 @@ const handleApiError = (error, fallbackMessage) => {
 };
 
 // ==============================================
-// SNIPER BOT API (For bot authentication & trading)
+// SNIPER BOT API
 // ==============================================
 
-// Validate API key for sniper bot
 export const validateSniperApiKey = async (apiKey, skipCache = false) => {
   const cacheKey = `sniper_validate_${apiKey}`;
   if (!skipCache) {
@@ -279,7 +273,7 @@ export const validateSniperApiKey = async (apiKey, skipCache = false) => {
       user: data?.user || null
     };
     if (result.valid) {
-      setCached(cacheKey, result, 300000); // Cache for 5 minutes
+      setCached(cacheKey, result, 300000);
     }
     return result;
   } catch (error) {
@@ -288,7 +282,6 @@ export const validateSniperApiKey = async (apiKey, skipCache = false) => {
   }
 };
 
-// Get trading limits for user
 export const getSniperTradingLimits = async () => {
   const apiKey = getApiKey();
   if (!apiKey) return { daily_trades: 0, daily_trades_used: 0, position_size_usd: 0, remaining_trades: 0 };
@@ -311,7 +304,6 @@ export const getSniperTradingLimits = async () => {
   }
 };
 
-// Get user balance for sniper bot
 export const getSniperBalance = async () => {
   const apiKey = getApiKey();
   if (!apiKey) return { balance_usd: 0, balance_eth: 0, available_for_trading: 0 };
@@ -332,7 +324,6 @@ export const getSniperBalance = async () => {
   }
 };
 
-// Track trade from sniper bot
 export const trackSniperTrade = async (tradeData) => {
   const apiKey = getApiKey();
   if (!apiKey) return { success: false, error: "No API key" };
@@ -350,7 +341,6 @@ export const trackSniperTrade = async (tradeData) => {
   }
 };
 
-// Verify 2FA for sniper bot
 export const verifySniper2FA = async (code) => {
   const apiKey = getApiKey();
   if (!apiKey) return { verified: false };
@@ -368,7 +358,7 @@ export const verifySniper2FA = async (code) => {
 };
 
 // ==============================================
-// PUBLIC DASHBOARD API (Python API - port 8001)
+// PUBLIC DASHBOARD API
 // ==============================================
 
 export const getPublicLiveStats = async (skipCache = false) => {
@@ -463,10 +453,9 @@ export const getAnalyticsSummary = async (skipCache = false) => {
 };
 
 // ==============================================
-// USER-SPECIFIC API (Node API - port 3002)
+// USER-SPECIFIC API
 // ==============================================
 
-// ========== USER TRADES ==========
 export const getUserTrades = async (options = {}) => {
   const { limit = 100, status, bot, skipCache = false } = options;
   const cacheKey = `user_trades_${limit}_${status}_${bot}`;
@@ -496,7 +485,6 @@ export const getUserTrades = async (options = {}) => {
   }
 };
 
-// ========== USER POSITIONS ==========
 export const getUserPositions = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("user_positions");
@@ -519,7 +507,6 @@ export const getUserPositions = async (skipCache = false) => {
   }
 };
 
-// ========== USER BOT EXECUTIONS ==========
 export const getUserBotExecutions = async (limit = 50, skipCache = false) => {
   const cacheKey = `user_bot_executions_${limit}`;
   if (!skipCache) {
@@ -543,7 +530,6 @@ export const getUserBotExecutions = async (limit = 50, skipCache = false) => {
   }
 };
 
-// ========== USER TRADING STATS ==========
 export const getUserTradingStats = async (days = 30, skipCache = false) => {
   const cacheKey = `user_trading_stats_${days}`;
   if (!skipCache) {
@@ -563,7 +549,6 @@ export const getUserTradingStats = async (days = 30, skipCache = false) => {
   }
 };
 
-// ========== USER STATS (legacy compatibility) ==========
 export const getUserStats = async () => {
   try {
     const [tradesRes, positionsRes] = await Promise.all([
@@ -589,7 +574,7 @@ export const getUserStats = async () => {
 };
 
 // ==============================================
-// AUTH API (Node API - port 3002)
+// AUTH API
 // ==============================================
 
 export const signup = async (userData) => {
@@ -647,7 +632,6 @@ export const getMe = async (skipCache = false) => {
     const userData = data?.data?.user || data?.user || data;
     if (userData && userData.id) {
       setCached("user_me", userData);
-      // Save API key if present
       if (userData.api_key) setApiKey(userData.api_key);
     }
     return userData;
@@ -703,7 +687,7 @@ export const getActivationStatus = async (skipCache = false) => {
 export const refreshActivation = () => getActivationStatus(true);
 
 // ==============================================
-// BILLING API (Node API)
+// BILLING API
 // ==============================================
 
 export const probeBillingRoutes = async () => {
@@ -790,7 +774,7 @@ export const confirmCard = async (payload = {}) => {
 };
 
 // ==============================================
-// INTEGRATIONS API (Node API)
+// INTEGRATIONS API
 // ==============================================
 
 export const connectOKX = async (payload) => {
@@ -859,7 +843,7 @@ export const getIntegrationStatus = async (skipCache = false) => {
 };
 
 // ==============================================
-// REFERRAL API (Node API)
+// REFERRAL API
 // ==============================================
 
 export const getReferralInfo = async (skipCache = false) => {
@@ -953,7 +937,7 @@ export const claimReferralRewards = async (amount) => {
 };
 
 // ==============================================
-// PROMO API (Node API)
+// PROMO API
 // ==============================================
 
 export const getPromoStatus = async (skipCache = false) => {
@@ -986,7 +970,7 @@ export const claimPromo = async (email, tier, wallet) => {
 };
 
 // ==============================================
-// ADMIN API (Node API)
+// ADMIN API
 // ==============================================
 
 export const getAdminCheck = async (skipCache = false) => {
@@ -1076,7 +1060,6 @@ class BotAPIClass {
     this.sniperApi = sniperApi;
   }
   
-  // Token & API Key helpers
   setToken(token) { setToken(token); }
   getToken() { return getToken(); }
   clearToken() { clearToken(); }
@@ -1085,14 +1068,12 @@ class BotAPIClass {
   clearApiKey() { clearApiKey(); }
   isAuthenticated() { return isAuthenticated(); }
   
-  // Sniper Bot API (NEW)
   validateSniperApiKey(apiKey, skipCache) { return validateSniperApiKey(apiKey, skipCache); }
   getSniperTradingLimits() { return getSniperTradingLimits(); }
   getSniperBalance() { return getSniperBalance(); }
   trackSniperTrade(tradeData) { return trackSniperTrade(tradeData); }
   verifySniper2FA(code) { return verifySniper2FA(code); }
   
-  // Auth
   signup(userData) { return signup(userData); }
   login(email, password) { return login(email, password); }
   logout() { logout(); }
@@ -1101,34 +1082,29 @@ class BotAPIClass {
   activationStatus(skipCache) { return getActivationStatus(skipCache); }
   refreshActivation() { return refreshActivation(); }
   
-  // Public Dashboard (Python API)
   getPublicLiveStats(skipCache) { return getPublicLiveStats(skipCache); }
   getPublicHistorical(skipCache) { return getPublicHistorical(skipCache); }
   getNotableTrades(limit, skipCache) { return getNotableTrades(limit, skipCache); }
   getBotStatus(skipCache) { return getBotStatus(skipCache); }
   getAnalyticsSummary(skipCache) { return getAnalyticsSummary(skipCache); }
   
-  // User-specific API
   getUserTrades(options) { return getUserTrades(options); }
   getUserPositions(skipCache) { return getUserPositions(skipCache); }
   getUserBotExecutions(limit, skipCache) { return getUserBotExecutions(limit, skipCache); }
   getUserTradingStats(days, skipCache) { return getUserTradingStats(days, skipCache); }
   getUserStats() { return getUserStats(); }
   
-  // Billing
   probeBillingRoutes() { return probeBillingRoutes(); }
   getCardStatus(skipCache) { return getCardStatus(skipCache); }
   createSetupIntent(payload) { return createSetupIntent(payload); }
   confirmCard(payload) { return confirmCard(payload); }
   
-  // Connections
   connectOKX(payload) { return connectOKX(payload); }
   connectAlpaca(payload) { return connectAlpaca(payload); }
   connectWallet(payload) { return connectWallet(payload); }
   toggleTrading(enabled) { return toggleTrading(enabled); }
   getIntegrationStatus(skipCache) { return getIntegrationStatus(skipCache); }
   
-  // Referral
   getReferralInfo(skipCache) { return getReferralInfo(skipCache); }
   getReferralStats(skipCache) { return getReferralStats(skipCache); }
   getReferralHistory(skipCache) { return getReferralHistory(skipCache); }
@@ -1136,23 +1112,18 @@ class BotAPIClass {
   applyReferralCode(code) { return applyReferralCode(code); }
   claimReferralRewards(amount) { return claimReferralRewards(amount); }
   
-  // Promo
   getPromoStatus(skipCache) { return getPromoStatus(skipCache); }
   claimPromo(email, tier, wallet) { return claimPromo(email, tier, wallet); }
   
-  // Admin
   getAdminCheck(skipCache) { return getAdminCheck(skipCache); }
   adminGetUsers(params) { return adminGetUsers(params); }
   adminUpdateUserTier(userId, tier) { return adminUpdateUserTier(userId, tier); }
   adminRevokeApiKey(userId) { return adminRevokeApiKey(userId); }
   
-  // Misc
   forgotPassword(email) { return forgotPassword(email); }
   
-  // Utilities
   clearCache(pattern) { clearCache(pattern); }
   
-  // Deprecated
   getTrades(limit) { return getTrades(limit); }
   getDiscoveries(limit) { return getDiscoveries(limit); }
 }
