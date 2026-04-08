@@ -19,9 +19,6 @@ const TIER_REQUIREMENTS = {
   "/starter-only": ["starter"],
 };
 
-// Admin emails (consider moving to env variable)
-const ADMIN_EMAILS = ["wayne@imali-defi.com", "admin@imali-defi.com"];
-
 // Loading spinner component for reuse
 const LoadingSpinner = () => (
   <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -60,16 +57,24 @@ export default function ProtectedRoute({
     return <LoadingSpinner />;
   }
 
-  // Check if user is admin (case-insensitive email check)
-  const isUserAdmin = isAdmin || (user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
+  // DEBUG: Log admin status
+  console.log("[ProtectedRoute] User:", user?.email);
+  console.log("[ProtectedRoute] isAdmin from hook:", isAdmin);
+  console.log("[ProtectedRoute] user.is_admin:", user?.is_admin);
+  console.log("[ProtectedRoute] isAuthenticated:", isAuthenticated);
+
+  // Check if user is admin - FIXED: Check both isAdmin flag AND user.is_admin
+  const isUserAdmin = isAdmin === true || user?.is_admin === true;
 
   // NOT LOGGED IN - redirect to login
   if (!user && !isAuthenticated) {
+    console.log("[ProtectedRoute] Not logged in, redirecting to login");
     return <Navigate to={redirectTo} replace state={{ from: location.pathname }} />;
   }
 
   // ADMIN RULE: Admins can access everything, skip all checks
   if (isUserAdmin) {
+    console.log("[ProtectedRoute] Admin access granted to:", location.pathname);
     // Admin trying to access activation/billing? Send to dashboard
     if (location.pathname === "/activation" || location.pathname === "/billing") {
       return <Navigate to="/dashboard" replace />;
@@ -157,6 +162,7 @@ export function RequireAuth({ children, redirectTo = "/login" }) {
 // =============================================================================
 export function RedirectIfActivated({ children, redirectTo = "/dashboard" }) {
   const { user, activationComplete, loading, isAdmin } = useAuth();
+  const isUserAdmin = isAdmin === true || user?.is_admin === true;
 
   if (loading) {
     return <LoadingSpinner />;
@@ -167,7 +173,7 @@ export function RedirectIfActivated({ children, redirectTo = "/dashboard" }) {
   }
 
   // Admins bypass activation redirect
-  if (isAdmin) {
+  if (isUserAdmin) {
     return children;
   }
 
@@ -184,6 +190,7 @@ export function RedirectIfActivated({ children, redirectTo = "/dashboard" }) {
 export function RequireTier({ children, requiredTier, fallbackPath = "/upgrade" }) {
   const { user, loading, isAdmin } = useAuth();
   const location = useLocation();
+  const isUserAdmin = isAdmin === true || user?.is_admin === true;
 
   if (loading) {
     return <LoadingSpinner />;
@@ -194,7 +201,7 @@ export function RequireTier({ children, requiredTier, fallbackPath = "/upgrade" 
   }
 
   // Admins can access any tier
-  if (isAdmin) {
+  if (isUserAdmin) {
     return children;
   }
 
@@ -243,8 +250,9 @@ export function RequireTradingEnabled({ children, redirectTo = "/activation" }) 
 // Integration check protection
 // =============================================================================
 export function RequireIntegration({ children, requiredIntegrations = [], redirectTo = "/integrations" }) {
-  const { user, activation, loading } = useAuth();
+  const { user, activation, loading, isAdmin } = useAuth();
   const location = useLocation();
+  const isUserAdmin = isAdmin === true || user?.is_admin === true;
 
   if (loading) {
     return <LoadingSpinner />;
@@ -252,6 +260,11 @@ export function RequireIntegration({ children, requiredIntegrations = [], redire
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Admins bypass integration checks
+  if (isUserAdmin) {
+    return children;
   }
 
   // Check each required integration
@@ -290,7 +303,8 @@ export const useRouteProtection = () => {
     const { requireActivation = false, requiredTier = null } = options;
     
     if (!auth.isAuthenticated) return false;
-    if (auth.isAdmin) return true;
+    // Check both isAdmin flags
+    if (auth.isAdmin === true || auth.user?.is_admin === true) return true;
     
     if (requiredTier && !hasRequiredTier(auth.user?.tier, requiredTier)) return false;
     if (requireActivation && !auth.activationComplete) return false;
