@@ -6,6 +6,9 @@ const TOKEN_KEY = "imali_token";
 const USER_KEY = "imali_user";
 const ACTIVATION_KEY = "imali_activation";
 
+// API Base URL - CHANGE THIS TO YOUR CORRECT API URL
+const API_BASE_URL = "https://api.imali-defi.com";
+
 // Simple token helpers - NO circular dependency
 const getToken = () => {
   try {
@@ -180,8 +183,8 @@ export function AuthProvider({ children }) {
         return null;
       }
       
-      // Direct fetch to avoid circular dependency
-      const response = await fetch('https://user-api.imali-defi.com/api/me/activation-status', {
+      // Direct fetch to API
+      const response = await fetch(`${API_BASE_URL}/api/me/activation-status`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -264,8 +267,8 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      // Direct fetch to avoid circular dependency
-      const response = await fetch('https://user-api.imali-defi.com/api/me', {
+      // Direct fetch to API
+      const response = await fetch(`${API_BASE_URL}/api/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -344,7 +347,7 @@ export function AuthProvider({ children }) {
     }
     
     try {
-      const response = await fetch('https://user-api.imali-defi.com/api/auth/register', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData)
@@ -385,7 +388,7 @@ export function AuthProvider({ children }) {
     }
     
     try {
-      const response = await fetch('https://user-api.imali-defi.com/api/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -432,7 +435,7 @@ export function AuthProvider({ children }) {
     await refreshActivation(true);
   }, [activation, refreshActivation]);
 
-  // Computed values - FIXED: isAuthenticated is now a boolean, not async
+  // Computed values
   const isAuthenticated = useMemo(() => {
     const token = getToken();
     return !!token && !!user;
