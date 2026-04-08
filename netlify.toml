@@ -1,23 +1,16 @@
 [build]
   base = "Frontend"
   command = "npm install && npm run build"
-  publish = "build"
+  publish = "Frontend/build"
 
 [build.environment]
   NODE_VERSION = "18"
   NODE_OPTIONS = "--openssl-legacy-provider"
 
-# Proxy all API requests to your backend server
+# Proxy API requests to your backend
 [[redirects]]
   from = "/api/*"
   to = "http://129.213.90.84:3002/api/:splat"
-  status = 200
-  force = true
-
-# Also proxy sniper API if needed
-[[redirects]]
-  from = "/sniper-api/*"
-  to = "http://129.213.90.84:5004/:splat"
   status = 200
   force = true
 
