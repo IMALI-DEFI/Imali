@@ -1,15 +1,13 @@
+# Frontend/netlify.toml
 [build]
+  base = "Frontend"  # ← THIS tells Netlify to go into the Frontend folder first
   command = "npm install && npm run build"
   publish = "build"
 
-# WebSocket proxy
-[[redirects]]
-  from = "/socket.io/*"
-  to = "http://129.213.90.84:8080/socket.io/:splat"
-  status = 200
-  force = true
+[build.environment]
+  NODE_VERSION = "18"
+  NODE_OPTIONS = "--openssl-legacy-provider"
 
-# Catch all for React routing
 [[redirects]]
   from = "/*"
   to = "/index.html"
