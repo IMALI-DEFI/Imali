@@ -6,10 +6,10 @@ const TOKEN_KEY = "imali_token";
 const USER_KEY = "imali_user";
 const ACTIVATION_KEY = "imali_activation";
 
-// API Base URL - CHANGE THIS TO YOUR CORRECT API URL
+// API Base URL
 const API_BASE_URL = "https://api.imali-defi.com";
 
-// Simple token helpers - NO circular dependency
+// Simple token helpers
 const getToken = () => {
   try {
     return localStorage.getItem(TOKEN_KEY);
@@ -55,6 +55,13 @@ export function AuthProvider({ children }) {
   const lastRefreshTime = useRef(0);
   const REFRESH_COOLDOWN_MS = 30000;
 
+  // Helper to normalize boolean values (handles string "true"/"false")
+  const normalizeBoolean = (value) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    return !!value;
+  };
+
   // Save user to state and localStorage with validation
   const saveUser = useCallback((userData) => {
     if (!userData || (!userData.id && !userData.email)) {
@@ -68,15 +75,16 @@ export function AuthProvider({ children }) {
       return;
     }
 
+    // Normalize boolean values including is_admin
     const validatedUser = {
       id: userData.id,
       email: userData.email,
       tier: userData.tier || "starter",
       strategy: userData.strategy || "ai_weighted",
-      trading_enabled: userData.trading_enabled || false,
-      is_admin: userData.is_admin || false,
-      has_card_on_file: userData.has_card_on_file || false,
-      billing_complete: userData.billing_complete || false,
+      trading_enabled: normalizeBoolean(userData.trading_enabled),
+      is_admin: normalizeBoolean(userData.is_admin),  // ← FIXED: handles string "true"
+      has_card_on_file: normalizeBoolean(userData.has_card_on_file),
+      billing_complete: normalizeBoolean(userData.billing_complete),
       referral_code: userData.referral_code || null,
       api_key: userData.api_key || null,
       wallet_addresses: userData.wallet_addresses || [],
@@ -85,6 +93,8 @@ export function AuthProvider({ children }) {
       updated_at: userData.updated_at
     };
 
+    console.log("[Auth] Saved user - is_admin:", validatedUser.is_admin, "type:", typeof validatedUser.is_admin);
+    
     setUser(validatedUser);
     try {
       localStorage.setItem(USER_KEY, JSON.stringify(validatedUser));
@@ -99,14 +109,14 @@ export function AuthProvider({ children }) {
     
     const validatedActivation = {
       tier: activationData.tier || "starter",
-      has_card_on_file: activationData.has_card_on_file || false,
-      billing_complete: activationData.billing_complete || false,
-      trading_enabled: activationData.trading_enabled || false,
-      wallet_connected: activationData.wallet_connected || false,
-      okx_connected: activationData.okx_connected || false,
-      alpaca_connected: activationData.alpaca_connected || false,
-      activation_complete: activationData.activation_complete || false,
-      tier_requirements_met: activationData.tier_requirements_met || false,
+      has_card_on_file: normalizeBoolean(activationData.has_card_on_file),
+      billing_complete: normalizeBoolean(activationData.billing_complete),
+      trading_enabled: normalizeBoolean(activationData.trading_enabled),
+      wallet_connected: normalizeBoolean(activationData.wallet_connected),
+      okx_connected: normalizeBoolean(activationData.okx_connected),
+      alpaca_connected: normalizeBoolean(activationData.alpaca_connected),
+      activation_complete: normalizeBoolean(activationData.activation_complete),
+      tier_requirements_met: normalizeBoolean(activationData.tier_requirements_met),
       tier_required_integration: activationData.tier_required_integration || "Alpaca & OKX (both)"
     };
     
@@ -125,7 +135,12 @@ export function AuthProvider({ children }) {
       if (cachedUser) {
         const parsed = JSON.parse(cachedUser);
         if (parsed && parsed.id) {
+          // Normalize is_admin from cache as well
+          if (parsed.is_admin !== undefined) {
+            parsed.is_admin = normalizeBoolean(parsed.is_admin);
+          }
           setUser(parsed);
+          console.log("[Auth] Loaded cached user - is_admin:", parsed.is_admin);
         }
       }
       
@@ -183,7 +198,6 @@ export function AuthProvider({ children }) {
         return null;
       }
       
-      // Direct fetch to API
       const response = await fetch(`${API_BASE_URL}/api/me/activation-status`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -193,15 +207,15 @@ export function AuthProvider({ children }) {
       
       if (status) {
         const result = {
-          has_card_on_file: status?.has_card_on_file || false,
-          billing_complete: status?.billing_complete || false,
-          trading_enabled: status?.trading_enabled || false,
-          okx_connected: status?.okx_connected || false,
-          alpaca_connected: status?.alpaca_connected || false,
-          wallet_connected: status?.wallet_connected || false,
+          has_card_on_file: normalizeBoolean(status?.has_card_on_file),
+          billing_complete: normalizeBoolean(status?.billing_complete),
+          trading_enabled: normalizeBoolean(status?.trading_enabled),
+          okx_connected: normalizeBoolean(status?.okx_connected),
+          alpaca_connected: normalizeBoolean(status?.alpaca_connected),
+          wallet_connected: normalizeBoolean(status?.wallet_connected),
           tier: status?.tier || "starter",
-          activation_complete: status?.activation_complete || false,
-          tier_requirements_met: status?.tier_requirements_met || false,
+          activation_complete: normalizeBoolean(status?.activation_complete),
+          tier_requirements_met: normalizeBoolean(status?.tier_requirements_met),
           tier_required_integration: status?.tier_required_integration || "Alpaca & OKX (both)"
         };
         saveActivation(result);
@@ -267,7 +281,6 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      // Direct fetch to API
       const response = await fetch(`${API_BASE_URL}/api/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -435,7 +448,7 @@ export function AuthProvider({ children }) {
     await refreshActivation(true);
   }, [activation, refreshActivation]);
 
-  // Computed values
+  // Computed values - FIXED: Handle both boolean and string values for is_admin
   const isAuthenticated = useMemo(() => {
     const token = getToken();
     return !!token && !!user;
@@ -460,8 +473,19 @@ export function AuthProvider({ children }) {
     return activation.wallet_connected || activation.alpaca_connected || activation.okx_connected;
   }, [activation, user?.tier]);
   
+  // FIXED: Handle both boolean and string values for is_admin
   const isAdmin = useMemo(() => {
-    return user?.is_admin === true || user?.email === "wayne@imali-defi.com";
+    // Normalize the is_admin value (could be boolean or string "true"/"false")
+    const isAdminFlag = user?.is_admin === true || user?.is_admin === "true";
+    const isOwnerEmail = user?.email === "wayne@imali-defi.com";
+    const result = isAdminFlag || isOwnerEmail;
+    
+    // Debug logging
+    if (result) {
+      console.log("[Auth] Admin access granted - is_admin:", user?.is_admin, "email:", user?.email);
+    }
+    
+    return result;
   }, [user?.is_admin, user?.email]);
 
   const canTrade = useMemo(() => {
