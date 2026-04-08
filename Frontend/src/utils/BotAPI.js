@@ -2,9 +2,9 @@
 import axios from "axios";
 
 // Use relative paths - Netlify will proxy these to your backend
-const API_BASE = "http://129.213.90.84:3002";
-const USER_API_BASE = "http://129.213.90.84:3002";
-const SNIPER_API_BASE = "http://129.213.90.84:5004";
+const API_BASE = "https://api.imali-defi.com";
+const USER_API_BASE = "https://api.imali-defi.com";
+const SNIPER_API_BASE = "https://api.imali-defi.com";
 
 const TOKEN_KEY = "imali_token";
 const API_KEY_KEY = "imali_api_key";
