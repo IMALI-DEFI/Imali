@@ -1,6 +1,5 @@
-# Frontend/netlify.toml
 [build]
-  base = "Frontend"  # ← THIS tells Netlify to go into the Frontend folder first
+  base = "."
   command = "npm install && npm run build"
   publish = "build"
 
@@ -8,6 +7,21 @@
   NODE_VERSION = "18"
   NODE_OPTIONS = "--openssl-legacy-provider"
 
+# Proxy all API requests to your backend server
+[[redirects]]
+  from = "/api/*"
+  to = "http://129.213.90.84:3002/api/:splat"
+  status = 200
+  force = true
+
+# Also proxy sniper API if needed
+[[redirects]]
+  from = "/sniper-api/*"
+  to = "http://129.213.90.84:5004/:splat"
+  status = 200
+  force = true
+
+# Catch all for React routing (must be last)
 [[redirects]]
   from = "/*"
   to = "/index.html"
