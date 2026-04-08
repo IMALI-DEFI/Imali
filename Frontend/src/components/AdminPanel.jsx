@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, Suspense, lazy, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
+import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 import MarketingAutomation from "../admin/MarketingAutomation";
 
@@ -109,7 +110,6 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
         },
       });
 
-      // Handle rate limiting with exponential backoff
       if (response.status === 429) {
         const retryAfter = parseInt(response.headers.get('Retry-After')) || Math.pow(2, attempt) * 5;
         console.log(`Rate limited. Retry after ${retryAfter} seconds (attempt ${attempt + 1}/${retries})`);
@@ -121,7 +121,6 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
         throw new Error(`Rate limited. Please wait ${retryAfter} seconds.`);
       }
 
-      // Handle 401 Unauthorized - might need to refresh token or re-login
       if (response.status === 401) {
         throw new Error("Authentication failed. Please log in again.");
       }
@@ -136,7 +135,6 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
     } catch (error) {
       lastError = error;
       if (attempt < retries && !error.message.includes('429') && !error.message.includes('401')) {
-        // Exponential backoff for network errors
         const delay = Math.pow(2, attempt) * 1000;
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
@@ -144,16 +142,6 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
   }
 
   throw lastError;
-};
-
-const checkAdminStatus = async () => {
-  try {
-    const data = await adminFetch("/api/admin/check", { method: "GET" });
-    return data?.is_admin === true;
-  } catch (error) {
-    console.warn("[AdminPanel] Admin check failed:", error);
-    return false;
-  }
 };
 
 /* -------------------- Sections with Correct Endpoints -------------------- */
@@ -495,11 +483,11 @@ function ActionButton({ action, onAction, busy }) {
 
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
+  const { user, isAdmin: isAdminFromAuth } = useAuth(); // ✅ Get isAdmin from AuthContext
   const navigate = useNavigate();
   const location = useLocation();
 
   const [checking, setChecking] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState("");
   const [active, setActive] = useState("overview");
   const [tabResetKey, setTabResetKey] = useState(0);
@@ -509,14 +497,14 @@ export default function AdminPanel({ forceOwner = false }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [actionHistory, setActionHistory] = useState([]);
-  const [rateLimitRetry, setRateLimitRetry] = useState(0);
 
   const isDevelopment =
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
   const BYPASS = isDevelopment && process.env.REACT_APP_BYPASS_OWNER === "1";
   const TEST_BYPASS = location.pathname.startsWith("/test/admin");
 
-  const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdmin;
+  // ✅ Use isAdminFromAuth from context
+  const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdminFromAuth;
 
   const activeTab = useMemo(() => {
     return ALL_TABS.find((tab) => tab.key === active) || ALL_TABS[0];
@@ -562,7 +550,6 @@ export default function AdminPanel({ forceOwner = false }) {
         totalRevenue: data.revenue?.total_fees || 0,
         activeBots: data.bots?.active || 0,
       });
-      setRateLimitRetry(0);
     } catch (err) {
       console.error("[AdminPanel] Stats fetch error:", err);
       if (err.message?.includes('401')) {
@@ -574,51 +561,6 @@ export default function AdminPanel({ forceOwner = false }) {
       }
     }
   }, [showToast, navigate]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const checkAccess = async () => {
-      try {
-        if (forceOwner || BYPASS || TEST_BYPASS) {
-          if (mounted) setIsAdmin(true);
-          return;
-        }
-
-        const token = getAuthToken();
-        if (!token) {
-          if (mounted) setError("Please log in first.");
-          return;
-        }
-
-        const admin = await checkAdminStatus();
-        if (!mounted) return;
-
-        setIsAdmin(admin);
-        if (!admin) setError("You do not have admin access.");
-      } catch (e) {
-        console.error("[AdminPanel] Access check error:", e);
-        if (mounted) setError("Could not verify admin permissions.");
-      } finally {
-        if (mounted) setChecking(false);
-      }
-    };
-
-    checkAccess();
-
-    return () => {
-      mounted = false;
-    };
-  }, [forceOwner, BYPASS, TEST_BYPASS]);
-
-  useEffect(() => {
-    if (!allowAccess) return;
-
-    fetchStats();
-    const interval = setInterval(fetchStats, 300000); // 5 minutes
-
-    return () => clearInterval(interval);
-  }, [allowAccess, fetchStats]);
 
   const handleAction = useCallback(
     async (action, payload = null, overrideEndpoint = null) => {
@@ -705,6 +647,19 @@ export default function AdminPanel({ forceOwner = false }) {
     },
     [account, actionHistory, busyAction, fetchStats, handleAction, resetCurrentTab, showToast, stats, tabResetKey]
   );
+
+  // ✅ Simplified access check - just use isAdminFromAuth
+  useEffect(() => {
+    // Short delay to allow auth context to load
+    const timer = setTimeout(() => {
+      setChecking(false);
+      if (!isAdminFromAuth && !forceOwner && !BYPASS && !TEST_BYPASS) {
+        setError("You do not have admin access.");
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [isAdminFromAuth, forceOwner, BYPASS, TEST_BYPASS]);
 
   if (checking && !allowAccess) {
     return (
