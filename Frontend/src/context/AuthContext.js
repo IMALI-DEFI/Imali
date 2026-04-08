@@ -1,11 +1,19 @@
 // src/context/AuthContext.js
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
-import BotAPI from "../utils/BotAPI";
 
 const AuthContext = createContext(null);
 const TOKEN_KEY = "imali_token";
 const USER_KEY = "imali_user";
 const ACTIVATION_KEY = "imali_activation";
+
+// Dynamically import BotAPI to avoid circular dependency
+let BotAPI = null;
+const getBotAPI = async () => {
+  if (!BotAPI) {
+    BotAPI = (await import("../utils/BotAPI")).default;
+  }
+  return BotAPI;
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -23,7 +31,7 @@ export function AuthProvider({ children }) {
   const loadAttempted = useRef(false);
   const refreshTimeoutRef = useRef(null);
   const lastRefreshTime = useRef(0);
-  const REFRESH_COOLDOWN_MS = 30000; // 30 seconds cooldown
+  const REFRESH_COOLDOWN_MS = 30000;
 
   // Save user to state and localStorage with validation
   const saveUser = useCallback((userData) => {
@@ -38,7 +46,6 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    // Validate required fields
     const validatedUser = {
       id: userData.id,
       email: userData.email,
@@ -89,7 +96,7 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Load cached user data (for faster initial load)
+  // Load cached user data
   const loadCachedUser = useCallback(() => {
     try {
       const cachedUser = localStorage.getItem(USER_KEY);
@@ -113,12 +120,15 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Clear all auth data
-  const clearAuth = useCallback(() => {
+  const clearAuth = useCallback(async () => {
     setUser(null);
     setActivation(null);
     setError(null);
     setRefreshing(false);
-    BotAPI.clearToken();
+    
+    const api = await getBotAPI();
+    api.clearToken();
+    
     try {
       localStorage.removeItem(USER_KEY);
       localStorage.removeItem(TOKEN_KEY);
@@ -132,7 +142,6 @@ export function AuthProvider({ children }) {
   const refreshActivation = useCallback(async (force = false) => {
     const now = Date.now();
     
-    // Check cooldown
     if (!force && (now - lastRefreshTime.current) < REFRESH_COOLDOWN_MS) {
       console.debug("[Auth] Refresh activation cooldown, using cached");
       return activation;
@@ -147,20 +156,21 @@ export function AuthProvider({ children }) {
     lastRefreshTime.current = now;
     
     try {
-      const token = BotAPI.getToken();
+      const api = await getBotAPI();
+      const token = api.getToken();
+      
       if (!token) {
         setActivation(null);
         return null;
       }
       
-      const status = await BotAPI.getActivationStatus();
+      const status = await api.getActivationStatus();
       
       if (status) {
         saveActivation(status);
         return status;
       }
       
-      // Return default activation status
       const defaultStatus = {
         tier: "starter",
         has_card_on_file: false,
@@ -179,16 +189,14 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.warn("[Auth] Failed to refresh activation:", err?.message || err);
       
-      // If 401, clear auth
       if (err?.response?.status === 401) {
-        clearAuth();
+        await clearAuth();
         return null;
       }
       
-      // Return cached activation or default
       if (activation) return activation;
       
-      const defaultStatus = {
+      return {
         tier: "starter",
         has_card_on_file: false,
         billing_complete: false,
@@ -200,7 +208,6 @@ export function AuthProvider({ children }) {
         tier_requirements_met: false,
         tier_required_integration: "Alpaca & OKX (both)"
       };
-      return defaultStatus;
       
     } finally {
       setRefreshing(false);
@@ -209,36 +216,33 @@ export function AuthProvider({ children }) {
 
   // Load user from API
   const loadUser = useCallback(async (skipCache = false) => {
-    const token = BotAPI.getToken();
+    const api = await getBotAPI();
+    const token = api.getToken();
     
     if (!token) {
-      clearAuth();
+      await clearAuth();
       setLoading(false);
       setIsInitialized(true);
       return null;
     }
 
-    // Load cached data immediately for faster UI
     if (!skipCache && !user) {
       loadCachedUser();
     }
 
     try {
-      const userData = await BotAPI.getMe();
+      const userData = await api.getMe();
       
       if (userData && (userData.id || userData.email)) {
         saveUser(userData);
-        
-        // Load activation status in parallel
         await refreshActivation(true);
-        
         setError(null);
         setLoading(false);
         setIsInitialized(true);
         return userData;
       } else {
         console.warn("[Auth] Token exists but no user data returned");
-        clearAuth();
+        await clearAuth();
         setLoading(false);
         setIsInitialized(true);
         return null;
@@ -246,22 +250,20 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.error("[Auth] Load user failed:", err?.message || err);
       
-      // Check if it's an auth error
       const isAuthError = err?.response?.status === 401 || err?.response?.status === 403;
       
       if (isAuthError) {
-        clearAuth();
+        await clearAuth();
       } else {
-        // For network errors, keep cached user if available
         if (!user) {
-          clearAuth();
+          await clearAuth();
         }
         setError(err?.response?.data?.message || err?.message || "Failed to load user");
       }
       
       setLoading(false);
       setIsInitialized(true);
-      return user || null; // Return cached user if available
+      return user || null;
     }
   }, [clearAuth, saveUser, refreshActivation, loadCachedUser, user]);
 
@@ -269,15 +271,10 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!loadAttempted.current) {
       loadAttempted.current = true;
-      
-      // Load cached data immediately for faster perceived performance
       loadCachedUser();
-      
-      // Then load fresh data from API
       loadUser();
     }
     
-    // Cleanup refresh timeout on unmount
     return () => {
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
@@ -285,13 +282,13 @@ export function AuthProvider({ children }) {
     };
   }, [loadUser, loadCachedUser]);
 
-  // Auto-refresh activation status periodically (every 5 minutes when authenticated)
+  // Auto-refresh activation status periodically
   useEffect(() => {
     if (!isAuthenticated || !user) return;
     
     const intervalId = setInterval(() => {
       refreshActivation();
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000);
     
     return () => clearInterval(intervalId);
   }, [isAuthenticated, user, refreshActivation]);
@@ -300,7 +297,6 @@ export function AuthProvider({ children }) {
   const signup = useCallback(async (userData) => {
     setError(null);
     
-    // Validate input
     if (!userData.email || !userData.password) {
       const errorMsg = "Email and password are required";
       setError(errorMsg);
@@ -314,7 +310,8 @@ export function AuthProvider({ children }) {
     }
     
     try {
-      const result = await BotAPI.signup(userData);
+      const api = await getBotAPI();
+      const result = await api.signup(userData);
       
       if (!result.success) {
         setError(result.error || "Signup failed");
@@ -323,13 +320,10 @@ export function AuthProvider({ children }) {
       
       const token = result.token;
       if (token) {
-        BotAPI.setToken(token);
+        api.setToken(token);
       }
       
-      // After signup, load the user profile
       const loadedUser = await loadUser(true);
-      
-      // Also refresh activation status
       await refreshActivation(true);
       
       return { 
@@ -356,7 +350,8 @@ export function AuthProvider({ children }) {
     }
     
     try {
-      const result = await BotAPI.login(email, password);
+      const api = await getBotAPI();
+      const result = await api.login(email, password);
       
       if (!result.success) {
         setError(result.error || "Login failed");
@@ -365,13 +360,10 @@ export function AuthProvider({ children }) {
       
       const token = result.token;
       if (token) {
-        BotAPI.setToken(token);
+        api.setToken(token);
       }
       
-      // After login, load the user profile
       const loadedUser = await loadUser(true);
-      
-      // Also refresh activation status
       await refreshActivation(true);
       
       return { success: true, user: loadedUser, token };
@@ -385,21 +377,19 @@ export function AuthProvider({ children }) {
   // Logout with cleanup
   const logout = useCallback(async () => {
     try {
-      // Optional: Call logout endpoint to invalidate token on server
-      await BotAPI.logout().catch(() => {});
+      const api = await getBotAPI();
+      await api.logout().catch(() => {});
     } catch (e) {
       console.warn("[Auth] Logout API call failed:", e);
     } finally {
-      clearAuth();
-      // Redirect to login page
+      await clearAuth();
       window.location.href = "/login";
     }
   }, [clearAuth]);
 
-  // Update activation status (after billing or connections)
+  // Update activation status
   const updateActivation = useCallback(async (updates) => {
     setActivation(prev => ({ ...prev, ...updates }));
-    // Save to cache
     if (activation) {
       const updated = { ...activation, ...updates };
       try {
@@ -408,11 +398,10 @@ export function AuthProvider({ children }) {
         console.warn("[Auth] Failed to update activation cache:", e);
       }
     }
-    // Refresh to get latest from server (bypass cooldown)
     await refreshActivation(true);
   }, [activation, refreshActivation]);
 
-  // Computed values with memoization
+  // Computed values
   const activationComplete = useMemo(() => {
     return activation?.trading_enabled === true && activation?.activation_complete === true;
   }, [activation?.trading_enabled, activation?.activation_complete]);
@@ -423,9 +412,7 @@ export function AuthProvider({ children }) {
   
   const hasRequiredIntegrations = useMemo(() => {
     if (!activation) return false;
-    
     const tier = activation.tier || user?.tier || "starter";
-    
     if (tier === "starter") {
       return activation.alpaca_connected && activation.okx_connected;
     } else if (tier === "elite") {
@@ -434,8 +421,9 @@ export function AuthProvider({ children }) {
     return activation.wallet_connected || activation.alpaca_connected || activation.okx_connected;
   }, [activation, user?.tier]);
   
-  const isAuthenticated = useMemo(() => {
-    const token = BotAPI.getToken();
+  const isAuthenticated = useMemo(async () => {
+    const api = await getBotAPI();
+    const token = api.getToken();
     return !!token && !!user;
   }, [user]);
   
