@@ -45,7 +45,7 @@ const StepCard = ({ number, title, description, status, children }) => (
   </div>
 );
 
-const ScreenshotGuide = ({ imagePath, alt, steps, link }) => (
+const ScreenshotGuide = ({ imagePath, alt, steps, link, linkText }) => (
   <div className="bg-black/40 rounded-xl p-4 border border-white/10">
     <div className="flex gap-4 flex-wrap">
       {imagePath && (
@@ -75,7 +75,7 @@ const ScreenshotGuide = ({ imagePath, alt, steps, link }) => (
             rel="noopener noreferrer"
             className="inline-block mt-3 text-sm text-blue-400 hover:text-blue-300 underline"
           >
-            Need more help? →
+            {linkText || "Create API Key →"}
           </a>
         )}
       </div>
@@ -261,9 +261,9 @@ export default function Activation() {
     loadData();
   }, [refreshActivation]);
 
-  // Auto-redirect when fully activated
+  // Auto-redirect when fully activated - ONLY if not skipped
   useEffect(() => {
-    if (fullyActivated && !hasRedirected.current) {
+    if (fullyActivated && !hasRedirected.current && !sessionStorage.getItem("activation_skipped")) {
       hasRedirected.current = true;
       setTimeout(() => navigate("/dashboard", { replace: true }), 1500);
     }
@@ -383,8 +383,10 @@ export default function Activation() {
     }
   };
 
-  // FIXED: Always navigate to dashboard regardless of completion
+  // FIXED: Skip to dashboard - always works, bypasses activation
   const handleSkipToDashboard = () => {
+    // Set a flag to prevent auto-redirect if they come back
+    sessionStorage.setItem("activation_skipped", "true");
     navigate("/dashboard", { replace: true });
   };
 
@@ -419,6 +421,13 @@ export default function Activation() {
             </div>
           )}
         </div>
+
+        {/* Info Box for Skipped Activation */}
+        {sessionStorage.getItem("activation_skipped") && !fullyActivated && (
+          <div className="mb-6 p-4 rounded-xl bg-yellow-500/20 border border-yellow-500/50 text-yellow-200">
+            <span>⚠️ You've skipped activation. Some trading features may be limited. Complete the steps below to enable full trading.</span>
+          </div>
+        )}
 
         {/* Error/Success Messages */}
         {error && (
@@ -463,7 +472,8 @@ export default function Activation() {
                     "Copy API Key, Secret, and Passphrase",
                     "Paste below to connect"
                   ]}
-                  link="https://www.okx.com/support"
+                  link="https://www.okx.com/account/login?forward=%2Faccount%2Fmy-api"
+                  linkText="Create OKX API Key →"
                 />
                 <form onSubmit={connectOKX} className="space-y-4 mt-4">
                   <ModeToggle isLive={okx.isLive} onChange={(isLive) => setOkx({ ...okx, isLive })} disabled={busy === "okx"} />
@@ -489,7 +499,8 @@ export default function Activation() {
                     "Copy Key ID and Secret",
                     "Paste below to connect"
                   ]}
-                  link="https://alpaca.markets/learn/connect-to-alpaca/"
+                  link="https://app.alpaca.markets/signup"
+                  linkText="Sign up for Alpaca →"
                 />
                 <form onSubmit={connectAlpaca} className="space-y-4 mt-4">
                   <ModeToggle isLive={alpaca.isLive} onChange={(isLive) => setAlpaca({ ...alpaca, isLive })} disabled={busy === "alpaca"} />
@@ -542,13 +553,13 @@ export default function Activation() {
         {/* Help Section */}
         <div className="mt-8 p-6 bg-white/5 border border-white/10 rounded-xl">
           <h3 className="text-lg font-semibold mb-3">Need Help?</h3>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <a href="https://imali-defi.com/getting-started" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">Getting Started Guide</a>
             <a href="mailto:support@imali-defi.com" className="text-blue-400 hover:text-blue-300">Email Support</a>
           </div>
         </div>
 
-        {/* Skip to Dashboard - FIXED: Always works */}
+        {/* Skip to Dashboard - FIXED: Always works, goes to MemberDashboard */}
         <div className="mt-6 text-center">
           <button 
             onClick={handleSkipToDashboard}
@@ -556,6 +567,9 @@ export default function Activation() {
           >
             Skip to Dashboard
           </button>
+          <p className="text-xs text-gray-600 mt-2">
+            You can always complete activation later from Settings
+          </p>
         </div>
       </div>
 
