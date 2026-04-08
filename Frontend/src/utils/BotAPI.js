@@ -2,7 +2,10 @@
 import axios from "axios";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") || "https://api.imali-defi.com";
+const USER_API_BASE = process.env.REACT_APP_USER_API_URL?.replace(/\/+$/, "") || "https://user-api.imali-defi.com";
+const SNIPER_API_BASE = process.env.REACT_APP_SNIPER_API_URL?.replace(/\/+$/, "") || "https://sniper.imali-defi.com";
 const TOKEN_KEY = "imali_token";
+const API_KEY_KEY = "imali_api_key";
 const isBrowser = typeof window !== "undefined";
 
 // ==============================================
@@ -14,9 +17,40 @@ const API_CONFIG = {
   retryAttempts: 3,
   retryDelay: 1000,
   cacheTTL: 60000,
+  maxConcurrentRequests: 5,
 };
 
-// Simple in-memory cache
+// Request queue for rate limiting
+let activeRequests = 0;
+const requestQueue = [];
+
+const processQueue = async () => {
+  if (requestQueue.length === 0 || activeRequests >= API_CONFIG.maxConcurrentRequests) {
+    return;
+  }
+  
+  activeRequests++;
+  const { resolve, reject, request } = requestQueue.shift();
+  
+  try {
+    const result = await request();
+    resolve(result);
+  } catch (error) {
+    reject(error);
+  } finally {
+    activeRequests--;
+    processQueue();
+  }
+};
+
+const rateLimitRequest = (requestFn) => {
+  return new Promise((resolve, reject) => {
+    requestQueue.push({ resolve, reject, request: requestFn });
+    processQueue();
+  });
+};
+
+// Simple in-memory cache with TTL
 const cache = new Map();
 
 const getCached = (key, ttl = API_CONFIG.cacheTTL) => {
@@ -27,8 +61,17 @@ const getCached = (key, ttl = API_CONFIG.cacheTTL) => {
   return null;
 };
 
-const setCached = (key, data) => {
-  cache.set(key, { data, timestamp: Date.now() });
+const setCached = (key, data, ttl = API_CONFIG.cacheTTL) => {
+  cache.set(key, { data, timestamp: Date.now(), ttl });
+  // Clean up old cache entries periodically
+  if (cache.size > 100) {
+    const now = Date.now();
+    for (const [k, v] of cache.entries()) {
+      if (now - v.timestamp > v.ttl) {
+        cache.delete(k);
+      }
+    }
+  }
 };
 
 const clearCache = (pattern) => {
@@ -52,54 +95,87 @@ const publicApi = axios.create({
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-// User API client (for endpoints that require auth)
+// User API client (for authenticated user endpoints)
 const userApi = axios.create({
-  baseURL: API_BASE,
+  baseURL: USER_API_BASE,
   timeout: API_CONFIG.timeout,
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-// Add token to userApi requests
-userApi.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  config.metadata = { startTime: Date.now() };
-  return config;
+// Sniper API client (for bot-specific endpoints)
+const sniperApi = axios.create({
+  baseURL: SNIPER_API_BASE,
+  timeout: API_CONFIG.timeout,
+  headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-// Response interceptor for userApi
-userApi.interceptors.response.use(
-  (response) => {
-    if (process.env.NODE_ENV === "development") {
-      const duration = Date.now() - response.config.metadata.startTime;
-      if (duration > 3000) {
-        console.warn(`[BotAPI] Slow request: ${response.config.url} took ${duration}ms`);
-      }
-    }
-    return response;
-  },
-  async (error) => {
-    const { config, response } = error;
-    
-    if (response?.status === 401) {
-      const isAuthPage = isBrowser && (
-        window.location.pathname.includes("/login") ||
-        window.location.pathname.includes("/signup")
-      );
-      if (!isAuthPage) {
-        clearToken();
-        if (isBrowser) window.location.href = "/login?expired=true";
-      }
+// Add token to userApi and sniperApi requests
+const addAuthInterceptor = (apiClient) => {
+  apiClient.interceptors.request.use((config) => {
+    const token = getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     
-    return Promise.reject(error);
-  }
-);
+    // Add API key if available
+    const apiKey = getApiKey();
+    if (apiKey) {
+      config.headers["X-API-Key"] = apiKey;
+    }
+    
+    config.metadata = { startTime: Date.now() };
+    return config;
+  });
+};
+
+addAuthInterceptor(userApi);
+addAuthInterceptor(sniperApi);
+
+// Response interceptor for error handling
+const addResponseInterceptor = (apiClient) => {
+  apiClient.interceptors.response.use(
+    (response) => {
+      if (process.env.NODE_ENV === "development") {
+        const duration = Date.now() - response.config.metadata.startTime;
+        if (duration > 3000) {
+          console.warn(`[BotAPI] Slow request: ${response.config.url} took ${duration}ms`);
+        }
+      }
+      return response;
+    },
+    async (error) => {
+      const { config, response } = error;
+      
+      // Retry logic for network errors
+      if (!response && config?.retryCount < API_CONFIG.retryAttempts) {
+        config.retryCount = (config.retryCount || 0) + 1;
+        await new Promise(resolve => setTimeout(resolve, API_CONFIG.retryDelay * config.retryCount));
+        return apiClient(config);
+      }
+      
+      // Handle 401 Unauthorized
+      if (response?.status === 401) {
+        const isAuthPage = isBrowser && (
+          window.location.pathname.includes("/login") ||
+          window.location.pathname.includes("/signup")
+        );
+        if (!isAuthPage) {
+          clearToken();
+          clearApiKey();
+          if (isBrowser) window.location.href = "/login?expired=true";
+        }
+      }
+      
+      return Promise.reject(error);
+    }
+  );
+};
+
+addResponseInterceptor(userApi);
+addResponseInterceptor(sniperApi);
 
 // ==============================================
-// TOKEN HELPERS
+// TOKEN & API KEY HELPERS
 // ==============================================
 
 export const getToken = () => {
@@ -134,6 +210,38 @@ export const clearToken = () => {
   }
 };
 
+export const getApiKey = () => {
+  if (!isBrowser) return null;
+  try {
+    return localStorage.getItem(API_KEY_KEY);
+  } catch (e) {
+    console.warn("[BotAPI] Failed to get API key:", e);
+    return null;
+  }
+};
+
+export const setApiKey = (apiKey) => {
+  if (!isBrowser) return;
+  try {
+    if (apiKey) {
+      localStorage.setItem(API_KEY_KEY, apiKey);
+    } else {
+      localStorage.removeItem(API_KEY_KEY);
+    }
+  } catch (e) {
+    console.warn("[BotAPI] Failed to set API key:", e);
+  }
+};
+
+export const clearApiKey = () => {
+  if (!isBrowser) return;
+  try {
+    localStorage.removeItem(API_KEY_KEY);
+  } catch (e) {
+    console.warn("[BotAPI] Failed to clear API key:", e);
+  }
+};
+
 export const isAuthenticated = () => !!getToken();
 
 // ==============================================
@@ -143,9 +251,120 @@ export const isAuthenticated = () => !!getToken();
 const unwrap = (response) => response?.data ?? response;
 
 const handleApiError = (error, fallbackMessage) => {
-  const message = error?.response?.data?.message || error?.response?.data?.error || error?.message || fallbackMessage;
+  const message = error?.response?.data?.message || 
+                  error?.response?.data?.error || 
+                  error?.message || 
+                  fallbackMessage;
   console.error(`[BotAPI] ${fallbackMessage}:`, message);
   return { success: false, error: message, status: error?.response?.status };
+};
+
+// ==============================================
+// SNIPER BOT API (For bot authentication & trading)
+// ==============================================
+
+// Validate API key for sniper bot
+export const validateSniperApiKey = async (apiKey, skipCache = false) => {
+  const cacheKey = `sniper_validate_${apiKey}`;
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+  
+  try {
+    const response = await sniperApi.post("/api/v1/validate", { api_key: apiKey });
+    const data = unwrap(response);
+    const result = {
+      valid: data?.valid || false,
+      user: data?.user || null
+    };
+    if (result.valid) {
+      setCached(cacheKey, result, 300000); // Cache for 5 minutes
+    }
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] validateSniperApiKey failed:", error);
+    return { valid: false, user: null };
+  }
+};
+
+// Get trading limits for user
+export const getSniperTradingLimits = async () => {
+  const apiKey = getApiKey();
+  if (!apiKey) return { daily_trades: 0, daily_trades_used: 0, position_size_usd: 0, remaining_trades: 0 };
+  
+  try {
+    const response = await sniperApi.get("/api/v1/trading-limits", {
+      headers: { "X-API-Key": apiKey }
+    });
+    const data = unwrap(response);
+    return {
+      daily_trades: data?.daily_trades || 0,
+      daily_trades_used: data?.daily_trades_used || 0,
+      position_size_usd: data?.position_size_usd || 0,
+      remaining_trades: data?.remaining_trades || 0,
+      total_volume_today_usd: data?.total_volume_today_usd || 0
+    };
+  } catch (error) {
+    console.warn("[BotAPI] getSniperTradingLimits failed:", error);
+    return { daily_trades: 0, daily_trades_used: 0, position_size_usd: 0, remaining_trades: 0 };
+  }
+};
+
+// Get user balance for sniper bot
+export const getSniperBalance = async () => {
+  const apiKey = getApiKey();
+  if (!apiKey) return { balance_usd: 0, balance_eth: 0, available_for_trading: 0 };
+  
+  try {
+    const response = await sniperApi.get("/api/v1/balance", {
+      headers: { "X-API-Key": apiKey }
+    });
+    const data = unwrap(response);
+    return {
+      balance_usd: data?.balance_usd || 0,
+      balance_eth: data?.balance_eth || 0,
+      available_for_trading: data?.available_for_trading || 0
+    };
+  } catch (error) {
+    console.warn("[BotAPI] getSniperBalance failed:", error);
+    return { balance_usd: 0, balance_eth: 0, available_for_trading: 0 };
+  }
+};
+
+// Track trade from sniper bot
+export const trackSniperTrade = async (tradeData) => {
+  const apiKey = getApiKey();
+  if (!apiKey) return { success: false, error: "No API key" };
+  
+  try {
+    const response = await sniperApi.post("/api/v1/track-trade", tradeData, {
+      headers: { "X-API-Key": apiKey }
+    });
+    const data = unwrap(response);
+    clearCache("user_trades");
+    clearCache("user_stats");
+    return { success: true, data };
+  } catch (error) {
+    return handleApiError(error, "Failed to track trade");
+  }
+};
+
+// Verify 2FA for sniper bot
+export const verifySniper2FA = async (code) => {
+  const apiKey = getApiKey();
+  if (!apiKey) return { verified: false };
+  
+  try {
+    const response = await sniperApi.post("/api/v1/verify-2fa", { code }, {
+      headers: { "X-API-Key": apiKey }
+    });
+    const data = unwrap(response);
+    return { verified: data?.verified || false };
+  } catch (error) {
+    console.warn("[BotAPI] verifySniper2FA failed:", error);
+    return { verified: false };
+  }
 };
 
 // ==============================================
@@ -249,7 +468,14 @@ export const getAnalyticsSummary = async (skipCache = false) => {
 
 // ========== USER TRADES ==========
 export const getUserTrades = async (options = {}) => {
-  const { limit = 100, status, bot } = options;
+  const { limit = 100, status, bot, skipCache = false } = options;
+  const cacheKey = `user_trades_${limit}_${status}_${bot}`;
+  
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+  
   let url = `/api/user/trades?limit=${limit}`;
   if (status) url += `&status=${status}`;
   if (bot) url += `&bot=${bot}`;
@@ -257,11 +483,13 @@ export const getUserTrades = async (options = {}) => {
   try {
     const response = await userApi.get(url);
     const data = unwrap(response);
-    return {
+    const result = {
       success: true,
       trades: data?.data?.trades || [],
       summary: data?.data?.summary || { total_trades: 0, total_pnl: 0, wins: 0, losses: 0, win_rate: 0 }
     };
+    setCached(cacheKey, result);
+    return result;
   } catch (error) {
     console.error("[BotAPI] getUserTrades failed:", error);
     return { success: false, trades: [], summary: { total_trades: 0, total_pnl: 0, wins: 0, losses: 0, win_rate: 0 }, error: error.message };
@@ -269,15 +497,22 @@ export const getUserTrades = async (options = {}) => {
 };
 
 // ========== USER POSITIONS ==========
-export const getUserPositions = async () => {
+export const getUserPositions = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("user_positions");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await userApi.get("/api/user/positions");
     const data = unwrap(response);
-    return {
+    const result = {
       success: true,
       positions: data?.data?.positions || [],
       count: data?.data?.count || 0
     };
+    setCached("user_positions", result);
+    return result;
   } catch (error) {
     console.error("[BotAPI] getUserPositions failed:", error);
     return { success: false, positions: [], count: 0, error: error.message };
@@ -285,22 +520,50 @@ export const getUserPositions = async () => {
 };
 
 // ========== USER BOT EXECUTIONS ==========
-export const getUserBotExecutions = async (limit = 50) => {
+export const getUserBotExecutions = async (limit = 50, skipCache = false) => {
+  const cacheKey = `user_bot_executions_${limit}`;
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+  
   try {
     const response = await userApi.get(`/api/user/bot-executions?limit=${limit}`);
     const data = unwrap(response);
-    return {
+    const result = {
       success: true,
       executions: data?.data?.executions || [],
       count: data?.data?.count || 0
     };
+    setCached(cacheKey, result);
+    return result;
   } catch (error) {
     console.error("[BotAPI] getUserBotExecutions failed:", error);
     return { success: false, executions: [], count: 0, error: error.message };
   }
 };
 
-// ========== USER STATS ==========
+// ========== USER TRADING STATS ==========
+export const getUserTradingStats = async (days = 30, skipCache = false) => {
+  const cacheKey = `user_trading_stats_${days}`;
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+  
+  try {
+    const response = await userApi.get(`/api/user/trading-stats?days=${days}`);
+    const data = unwrap(response);
+    const result = data?.data || data || { summary: {}, daily_performance: [] };
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error("[BotAPI] getUserTradingStats failed:", error);
+    return { summary: {}, daily_performance: [] };
+  }
+};
+
+// ========== USER STATS (legacy compatibility) ==========
 export const getUserStats = async () => {
   try {
     const [tradesRes, positionsRes] = await Promise.all([
@@ -334,10 +597,14 @@ export const signup = async (userData) => {
     const response = await userApi.post("/api/auth/register", userData);
     const data = unwrap(response);
     const token = data?.token || data?.data?.token;
+    const apiKey = data?.data?.user?.api_key || data?.api_key;
+    
     if (token) setToken(token);
+    if (apiKey) setApiKey(apiKey);
+    
     clearCache("user");
     clearCache("activation");
-    return { success: true, data, token };
+    return { success: true, data, token, api_key: apiKey };
   } catch (error) {
     return handleApiError(error, "Signup failed");
   }
@@ -348,10 +615,14 @@ export const login = async (email, password) => {
     const response = await userApi.post("/api/auth/login", { email, password });
     const data = unwrap(response);
     const token = data?.token || data?.data?.token;
+    const apiKey = data?.data?.user?.api_key || data?.api_key;
+    
     if (token) setToken(token);
+    if (apiKey) setApiKey(apiKey);
+    
     clearCache("user");
     clearCache("activation");
-    return { success: true, data, token };
+    return { success: true, data, token, api_key: apiKey };
   } catch (error) {
     return handleApiError(error, "Login failed");
   }
@@ -359,6 +630,7 @@ export const login = async (email, password) => {
 
 export const logout = () => {
   clearToken();
+  clearApiKey();
   clearCache();
   if (isBrowser) window.location.href = "/login";
 };
@@ -375,6 +647,8 @@ export const getMe = async (skipCache = false) => {
     const userData = data?.data?.user || data?.user || data;
     if (userData && userData.id) {
       setCached("user_me", userData);
+      // Save API key if present
+      if (userData.api_key) setApiKey(userData.api_key);
     }
     return userData;
   } catch (error) {
@@ -403,6 +677,8 @@ export const getActivationStatus = async (skipCache = false) => {
       wallet_connected: status?.wallet_connected || false,
       tier: status?.tier || "starter",
       activation_complete: status?.activation_complete || false,
+      tier_requirements_met: status?.tier_requirements_met || false,
+      tier_required_integration: status?.tier_required_integration || "Alpaca & OKX (both)"
     };
     
     setCached("activation_status", result);
@@ -418,6 +694,8 @@ export const getActivationStatus = async (skipCache = false) => {
       wallet_connected: false,
       tier: "starter",
       activation_complete: false,
+      tier_requirements_met: false,
+      tier_required_integration: "Alpaca & OKX (both)"
     };
   }
 };
@@ -445,16 +723,23 @@ export const probeBillingRoutes = async () => {
   }
 };
 
-export const getCardStatus = async () => {
+export const getCardStatus = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("card_status");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await userApi.get("/api/billing/card-status");
     const data = unwrap(response);
-    return {
+    const result = {
       success: true,
       has_card: data?.data?.has_card || data?.has_card || false,
       billing_complete: data?.data?.billing_complete || data?.billing_complete || false,
       card_details: data?.data?.card_details || null,
     };
+    setCached("card_status", result);
+    return result;
   } catch (error) {
     console.warn("[BotAPI] getCardStatus failed:", error);
     return { success: false, has_card: false, billing_complete: false };
@@ -485,6 +770,7 @@ export const confirmCard = async (payload = {}) => {
     const response = await userApi.post("/api/billing/confirm-card", payload);
     const data = unwrap(response);
     clearCache("activation_status");
+    clearCache("card_status");
     
     return { 
       success: true, 
@@ -512,6 +798,7 @@ export const connectOKX = async (payload) => {
     const response = await userApi.post("/api/integrations/okx", payload);
     const data = unwrap(response);
     clearCache("activation_status");
+    clearCache("integration_status");
     return { success: true, data };
   } catch (error) {
     return handleApiError(error, "Failed to connect OKX");
@@ -523,6 +810,7 @@ export const connectAlpaca = async (payload) => {
     const response = await userApi.post("/api/integrations/alpaca", payload);
     const data = unwrap(response);
     clearCache("activation_status");
+    clearCache("integration_status");
     return { success: true, data };
   } catch (error) {
     return handleApiError(error, "Failed to connect Alpaca");
@@ -534,6 +822,7 @@ export const connectWallet = async (payload) => {
     const response = await userApi.post("/api/integrations/wallet", payload);
     const data = unwrap(response);
     clearCache("activation_status");
+    clearCache("integration_status");
     return { success: true, data };
   } catch (error) {
     return handleApiError(error, "Failed to connect wallet");
@@ -551,12 +840,20 @@ export const toggleTrading = async (enabled) => {
   }
 };
 
-export const getIntegrationStatus = async () => {
+export const getIntegrationStatus = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("integration_status");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await userApi.get("/api/integrations/status");
     const data = unwrap(response);
-    return data?.data || data || { wallet_connected: false, alpaca_connected: false, okx_connected: false };
+    const result = data?.data || data || { wallet_connected: false, alpaca_connected: false, okx_connected: false };
+    setCached("integration_status", result);
+    return result;
   } catch (error) {
+    console.warn("[BotAPI] getIntegrationStatus failed:", error);
     return { wallet_connected: false, alpaca_connected: false, okx_connected: false };
   }
 };
@@ -565,33 +862,54 @@ export const getIntegrationStatus = async () => {
 // REFERRAL API (Node API)
 // ==============================================
 
-export const getReferralInfo = async () => {
+export const getReferralInfo = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("referral_info");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await userApi.get("/api/referrals/info");
     const data = unwrap(response);
-    return data?.data || data || { code: null, count: 0, earned: 0, pending: 0 };
+    const result = data?.data || data || { code: null, count: 0, earned: 0, pending: 0 };
+    setCached("referral_info", result);
+    return result;
   } catch (error) {
     console.warn("[BotAPI] getReferralInfo failed:", error);
     return { code: null, count: 0, earned: 0, pending: 0 };
   }
 };
 
-export const getReferralStats = async () => {
+export const getReferralStats = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("referral_stats");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await userApi.get("/api/referrals/stats");
     const data = unwrap(response);
-    return data?.data || data || { total_referrals: 0, total_earned: 0, pending_rewards: 0 };
+    const result = data?.data || data || { total_referrals: 0, total_earned: 0, pending_rewards: 0 };
+    setCached("referral_stats", result);
+    return result;
   } catch (error) {
     console.warn("[BotAPI] getReferralStats failed:", error);
     return { total_referrals: 0, total_earned: 0, pending_rewards: 0 };
   }
 };
 
-export const getReferralHistory = async () => {
+export const getReferralHistory = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("referral_history");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await userApi.get("/api/referrals/history");
     const data = unwrap(response);
-    return data?.data || data || { referrals: [], earnings_history: [] };
+    const result = data?.data || data || { referrals: [], earnings_history: [] };
+    setCached("referral_history", result);
+    return result;
   } catch (error) {
     console.warn("[BotAPI] getReferralHistory failed:", error);
     return { referrals: [], earnings_history: [] };
@@ -613,6 +931,7 @@ export const applyReferralCode = async (code) => {
   try {
     const response = await userApi.post("/api/referrals/apply", { code });
     const data = unwrap(response);
+    clearCache("referral_info");
     return data?.data || data || { applied: true };
   } catch (error) {
     console.warn("[BotAPI] applyReferralCode failed:", error);
@@ -624,6 +943,8 @@ export const claimReferralRewards = async (amount) => {
   try {
     const response = await userApi.post("/api/referrals/claim", { amount });
     const data = unwrap(response);
+    clearCache("referral_info");
+    clearCache("referral_stats");
     return data?.data || data || { claimed: true };
   } catch (error) {
     console.warn("[BotAPI] claimReferralRewards failed:", error);
@@ -668,11 +989,18 @@ export const claimPromo = async (email, tier, wallet) => {
 // ADMIN API (Node API)
 // ==============================================
 
-export const getAdminCheck = async () => {
+export const getAdminCheck = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("admin_check");
+    if (cached) return cached;
+  }
+  
   try {
     const response = await userApi.get("/api/admin/check");
     const data = unwrap(response);
-    return { success: true, is_admin: data?.data?.is_admin || data?.is_admin || false };
+    const result = { success: true, is_admin: data?.data?.is_admin || data?.is_admin || false };
+    setCached("admin_check", result);
+    return result;
   } catch (error) {
     return { success: false, is_admin: false };
   }
@@ -696,6 +1024,16 @@ export const adminUpdateUserTier = async (userId, tier) => {
     return { success: true, data: data?.data || data };
   } catch (error) {
     return handleApiError(error, "Failed to update user tier");
+  }
+};
+
+export const adminRevokeApiKey = async (userId) => {
+  try {
+    const response = await userApi.post(`/api/admin/users/${userId}/revoke-api-key`);
+    const data = unwrap(response);
+    return { success: true, data: data?.data || data };
+  } catch (error) {
+    return handleApiError(error, "Failed to revoke API key");
   }
 };
 
@@ -735,13 +1073,24 @@ export const getDiscoveries = async (limit = 20) => {
 class BotAPIClass {
   constructor() {
     this.api = userApi;
+    this.sniperApi = sniperApi;
   }
   
-  // Token helpers
+  // Token & API Key helpers
   setToken(token) { setToken(token); }
   getToken() { return getToken(); }
   clearToken() { clearToken(); }
+  setApiKey(apiKey) { setApiKey(apiKey); }
+  getApiKey() { return getApiKey(); }
+  clearApiKey() { clearApiKey(); }
   isAuthenticated() { return isAuthenticated(); }
+  
+  // Sniper Bot API (NEW)
+  validateSniperApiKey(apiKey, skipCache) { return validateSniperApiKey(apiKey, skipCache); }
+  getSniperTradingLimits() { return getSniperTradingLimits(); }
+  getSniperBalance() { return getSniperBalance(); }
+  trackSniperTrade(tradeData) { return trackSniperTrade(tradeData); }
+  verifySniper2FA(code) { return verifySniper2FA(code); }
   
   // Auth
   signup(userData) { return signup(userData); }
@@ -759,15 +1108,16 @@ class BotAPIClass {
   getBotStatus(skipCache) { return getBotStatus(skipCache); }
   getAnalyticsSummary(skipCache) { return getAnalyticsSummary(skipCache); }
   
-  // User-specific API (NEW)
+  // User-specific API
   getUserTrades(options) { return getUserTrades(options); }
-  getUserPositions() { return getUserPositions(); }
-  getUserBotExecutions(limit) { return getUserBotExecutions(limit); }
+  getUserPositions(skipCache) { return getUserPositions(skipCache); }
+  getUserBotExecutions(limit, skipCache) { return getUserBotExecutions(limit, skipCache); }
+  getUserTradingStats(days, skipCache) { return getUserTradingStats(days, skipCache); }
   getUserStats() { return getUserStats(); }
   
   // Billing
   probeBillingRoutes() { return probeBillingRoutes(); }
-  getCardStatus() { return getCardStatus(); }
+  getCardStatus(skipCache) { return getCardStatus(skipCache); }
   createSetupIntent(payload) { return createSetupIntent(payload); }
   confirmCard(payload) { return confirmCard(payload); }
   
@@ -776,12 +1126,12 @@ class BotAPIClass {
   connectAlpaca(payload) { return connectAlpaca(payload); }
   connectWallet(payload) { return connectWallet(payload); }
   toggleTrading(enabled) { return toggleTrading(enabled); }
-  getIntegrationStatus() { return getIntegrationStatus(); }
+  getIntegrationStatus(skipCache) { return getIntegrationStatus(skipCache); }
   
   // Referral
-  getReferralInfo() { return getReferralInfo(); }
-  getReferralStats() { return getReferralStats(); }
-  getReferralHistory() { return getReferralHistory(); }
+  getReferralInfo(skipCache) { return getReferralInfo(skipCache); }
+  getReferralStats(skipCache) { return getReferralStats(skipCache); }
+  getReferralHistory(skipCache) { return getReferralHistory(skipCache); }
   validateReferralCode(code) { return validateReferralCode(code); }
   applyReferralCode(code) { return applyReferralCode(code); }
   claimReferralRewards(amount) { return claimReferralRewards(amount); }
@@ -791,9 +1141,10 @@ class BotAPIClass {
   claimPromo(email, tier, wallet) { return claimPromo(email, tier, wallet); }
   
   // Admin
-  getAdminCheck() { return getAdminCheck(); }
+  getAdminCheck(skipCache) { return getAdminCheck(skipCache); }
   adminGetUsers(params) { return adminGetUsers(params); }
   adminUpdateUserTier(userId, tier) { return adminUpdateUserTier(userId, tier); }
+  adminRevokeApiKey(userId) { return adminRevokeApiKey(userId); }
   
   // Misc
   forgotPassword(email) { return forgotPassword(email); }
