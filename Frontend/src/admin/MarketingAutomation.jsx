@@ -1,964 +1,694 @@
-// src/pages/admin/MarketingAutomation.jsx
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import useAdmin from '../hooks/useAdmin';
+// src/admin/MarketingAutomation.jsx
+import React, { useState, useEffect, useCallback } from "react";
+import { 
+  FaTelegram, 
+  FaTwitter, 
+  FaDiscord, 
+  FaEnvelope, 
+  FaPlus, 
+  FaTrash, 
+  FaEdit, 
+  FaPlay, 
+  FaPause,
+  FaSpinner,
+  FaClock,
+  FaRobot,
+  FaChartLine,
+  FaHashtag,
+  FaUsers,
+  FaBell,
+  FaCalendarAlt,
+  FaSave,
+  FaTimes,
+  FaCopy,
+  FaCheckCircle
+} from "react-icons/fa";
 
-// Platform configuration with fallback
-const PLATFORMS = [
-  { id: 'telegram', name: 'Telegram', icon: '📱', color: 'bg-sky-500', maxLength: 4096 },
-  { id: 'twitter', name: 'Twitter/X', icon: '𝕏', color: 'bg-sky-600', maxLength: 280 },
-  { id: 'discord', name: 'Discord', icon: '💬', color: 'bg-indigo-600', maxLength: 2000 },
-  { id: 'email', name: 'Email', icon: '📧', color: 'bg-emerald-600', maxLength: 10000 },
-  { id: 'in_app', name: 'In-App', icon: '🖥️', color: 'bg-purple-600', maxLength: 500 },
-  { id: 'internal', name: 'Internal', icon: '⚙️', color: 'bg-gray-600', maxLength: 5000 }
-];
-
-// Available template variables with descriptions
-const TEMPLATE_VARS = [
-  { name: '{pnl}', description: 'Today\'s P&L' },
-  { name: '{winRate}', description: 'Win rate percentage' },
-  { name: '{trades}', description: 'Total trades today' },
-  { name: '{wins}', description: 'Number of winning trades' },
-  { name: '{losses}', description: 'Number of losing trades' },
-  { name: '{dashboardUrl}', description: 'Dashboard link' },
-  { name: '{date}', description: 'Current date' },
-  { name: '{botCount}', description: 'Active bots count' },
-  { name: '{discoveries}', description: 'New discoveries' },
-  { name: '{user}', description: 'Username' },
-  { name: '{balance}', description: 'User balance' }
-];
-
-// Preset schedules with descriptions
-const SCHEDULE_PRESETS = [
-  { value: '*/5 * * * *', label: 'Every 5 minutes', desc: 'For frequent updates' },
-  { value: '*/15 * * * *', label: 'Every 15 minutes', desc: 'Regular interval' },
-  { value: '*/30 * * * *', label: 'Every 30 minutes', desc: 'Half-hourly' },
-  { value: '0 * * * *', label: 'Every hour', desc: 'Hourly summary' },
-  { value: '0 9 * * *', label: 'Daily 9 AM', desc: 'Morning report' },
-  { value: '0 12 * * *', label: 'Daily noon', desc: 'Midday update' },
-  { value: '0 18 * * *', label: 'Daily 6 PM', desc: 'Evening recap' },
-  { value: '0 0 * * *', label: 'Daily midnight', desc: 'End of day' },
-  { value: '0 0 * * 1', label: 'Weekly Monday', desc: 'Weekly kickoff' },
-  { value: '0 0 1 * *', label: 'Monthly 1st', desc: 'Monthly summary' }
-];
-
-// Message editor component with preview
-function MessageEditor({ platform, value = '', onChange, variables = [] }) {
-  const [preview, setPreview] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
-  const [charCount, setCharCount] = useState(0);
-
-  useEffect(() => {
-    setCharCount(value?.length || 0);
-  }, [value]);
-
-  if (!platform) return null;
-
-  const platformInfo = PLATFORMS.find(p => p?.id === platform) || PLATFORMS[0];
-
-  const insertVariable = (varName) => {
-    if (!varName) return;
-    const textarea = document.getElementById(`message-${platform}`);
-    if (!textarea) return;
-    
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const newValue = (value || '').substring(0, start) + varName + (value || '').substring(end);
-    onChange(newValue);
-  };
-
-  const generatePreview = () => {
-    let previewText = value || '';
-    const sampleValues = {
-      '{pnl}': '+$1,234',
-      '{winRate}': '68%',
-      '{trades}': '42',
-      '{wins}': '28',
-      '{losses}': '14',
-      '{dashboardUrl}': 'https://imali-defi.com/live',
-      '{date}': new Date().toLocaleDateString(),
-      '{botCount}': '5',
-      '{discoveries}': '3',
-      '{user}': 'trader123',
-      '{balance}': '$5,678'
-    };
-    
-    Object.entries(sampleValues).forEach(([key, val]) => {
-      previewText = previewText.replace(new RegExp(key.replace(/{/g, '\\{').replace(/}/g, '\\}'), 'g'), val);
-    });
-    
-    setPreview(previewText);
-    setShowPreview(true);
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">{platformInfo?.icon || '📱'}</span>
-          <h4 className="font-medium capitalize">{platformInfo?.name || platform}</h4>
-        </div>
-        <span className={`text-xs ${charCount > (platformInfo?.maxLength || 4096) ? 'text-red-400' : 'text-white/40'}`}>
-          {charCount}/{platformInfo?.maxLength || 4096}
-        </span>
-      </div>
-
-      <textarea
-        id={`message-${platform}`}
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        rows={4}
-        className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm font-mono"
-        placeholder={`Enter ${platformInfo?.name || platform} message...`}
-        maxLength={platformInfo?.maxLength || 4096}
-      />
-
-      <div className="flex flex-wrap gap-2">
-        {(variables || []).map(v => v?.name ? (
-          <button
-            key={v.name}
-            onClick={() => insertVariable(v.name)}
-            className="text-xs px-2 py-1 bg-purple-500/20 text-purple-300 rounded hover:bg-purple-500/30 transition"
-            title={v.description || ''}
-          >
-            {v.name}
-          </button>
-        ) : null)}
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={generatePreview}
-          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-medium transition"
-        >
-          👁️ Preview
-        </button>
-        <button
-          onClick={() => setShowPreview(false)}
-          className={`px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-medium transition ${!showPreview ? 'opacity-50' : ''}`}
-        >
-          Hide Preview
-        </button>
-      </div>
-
-      {showPreview && (
-        <div className="bg-black/30 border border-white/10 rounded-lg p-3 text-sm whitespace-pre-wrap">
-          <div className="text-xs text-white/40 mb-1">Preview:</div>
-          {preview || value || ''}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Job card component
-function JobCard({ job, onEdit, onToggle, onRunNow, onDelete, onViewLogs }) {
-  if (!job?.id) return null;
-
-  const getStatusColor = (status) => {
-    switch(status?.toLowerCase()) {
-      case 'active': return 'bg-green-400';
-      case 'paused': return 'bg-amber-400';
-      case 'error': return 'bg-red-400';
-      default: return 'bg-gray-400';
-    }
-  };
-
-  const formatSchedule = (schedule) => {
-    if (!schedule) return 'Not set';
-    const preset = SCHEDULE_PRESETS.find(p => p.value === schedule);
-    return preset ? preset.label : schedule;
-  };
-
-  return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-4 hover:border-indigo-500/30 transition-all">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <h3 className="font-semibold">{job.name || 'Unnamed Job'}</h3>
-          <p className="text-xs text-white/50">{job.description || 'No description'}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${getStatusColor(job.status)}`} />
-          <span className="text-xs capitalize">{job.status || 'unknown'}</span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-        <div className="bg-black/30 rounded p-2">
-          <div className="text-white/40">Schedule</div>
-          <div className="font-mono text-emerald-400">{formatSchedule(job.schedule)}</div>
-        </div>
-        <div className="bg-black/30 rounded p-2">
-          <div className="text-white/40">Next Run</div>
-          <div className="text-white">{job.nextRun || '—'}</div>
-        </div>
-        <div className="bg-black/30 rounded p-2">
-          <div className="text-white/40">Last Run</div>
-          <div className="text-white/60">{job.lastRun || 'Never'}</div>
-        </div>
-        <div className="bg-black/30 rounded p-2">
-          <div className="text-white/40">Platforms</div>
-          <div className="flex gap-1 flex-wrap">
-            {(job.channels || []).map(ch => {
-              if (!ch) return null;
-              const p = PLATFORMS.find(p => p?.id === ch);
-              return p ? (
-                <span key={ch} title={p.name} className={`${p.color}/20 text-${p.color.split('-')[1]}-300 px-1.5 py-0.5 rounded text-xs`}>
-                  {p.icon}
-                </span>
-              ) : (
-                <span key={ch} title={ch} className="bg-gray-600/20 text-gray-300 px-1.5 py-0.5 rounded text-xs">
-                  🔧
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={() => onToggle(job.id)}
-          className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-            job.status === 'active'
-              ? 'bg-amber-600 hover:bg-amber-500'
-              : 'bg-emerald-600 hover:bg-emerald-500'
-          }`}
-        >
-          {job.status === 'active' ? '⏸️ Pause' : '▶️ Resume'}
-        </button>
-        <button
-          onClick={() => onRunNow(job.id)}
-          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-medium transition"
-        >
-          ⚡ Run Now
-        </button>
-        <button
-          onClick={() => onEdit(job)}
-          className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium transition"
-        >
-          ✏️ Edit
-        </button>
-        <button
-          onClick={() => onViewLogs(job.id)}
-          className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium transition"
-        >
-          📋 Logs
-        </button>
-        <button
-          onClick={() => onDelete(job.id)}
-          className="px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-xs font-medium transition text-red-300"
-        >
-          🗑️
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Job modal component
-function JobModal({ job, onClose, onSave }) {
-  const [formData, setFormData] = useState(() => job || {
-    name: '',
-    description: '',
-    schedule: '0 9 * * *',
-    channels: ['telegram'],
-    messages: {},
-    status: 'active',
-    icon: '📢'
+export default function MarketingAutomation({ apiBase, showToast }) {
+  const [activeTab, setActiveTab] = useState("jobs");
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingJob, setEditingJob] = useState(null);
+  const [jobForm, setJobForm] = useState({
+    name: "",
+    platform: "telegram",
+    channel: "",
+    message_template: "",
+    schedule: "daily",
+    schedule_time: "09:00",
+    active: true,
+    variables: []
   });
   const [saving, setSaving] = useState(false);
+  const [testMessage, setTestMessage] = useState("");
+  const [testLoading, setTestLoading] = useState(false);
+  const [stats, setStats] = useState({
+    total_jobs: 0,
+    active_jobs: 0,
+    total_sent: 0,
+    success_rate: 0
+  });
 
-  if (!onClose || !onSave) return null;
+  const platforms = [
+    { id: "telegram", name: "Telegram", icon: FaTelegram, color: "bg-blue-500" },
+    { id: "twitter", name: "Twitter/X", icon: FaTwitter, color: "bg-sky-500" },
+    { id: "discord", name: "Discord", icon: FaDiscord, color: "bg-indigo-500" },
+    { id: "email", name: "Email", icon: FaEnvelope, color: "bg-gray-500" }
+  ];
 
-  const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  const scheduleOptions = [
+    { value: "hourly", label: "Every Hour" },
+    { value: "daily", label: "Daily" },
+    { value: "weekly", label: "Weekly" },
+    { value: "monthly", label: "Monthly" }
+  ];
 
-  const handleMessageChange = (platform, value) => {
-    setFormData(prev => ({
-      ...prev,
-      messages: { ...(prev.messages || {}), [platform]: value }
-    }));
-  };
+  const variableOptions = [
+    { key: "{pnl}", description: "Today's PnL" },
+    { key: "{total_pnl}", description: "Total Platform PnL" },
+    { key: "{total_trades}", description: "Total Trades" },
+    { key: "{win_rate}", description: "Win Rate" },
+    { key: "{active_users}", description: "Active Users" },
+    { key: "{top_bot}", description: "Best Performing Bot" },
+    { key: "{date}", description: "Current Date" }
+  ];
 
-  const toggleChannel = (channelId) => {
-    setFormData(prev => {
-      const channels = prev.channels || [];
-      const newChannels = channels.includes(channelId)
-        ? channels.filter(c => c !== channelId)
-        : [...channels, channelId];
-      return { ...prev, channels: newChannels };
-    });
-  };
+  const fetchJobs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${apiBase}/api/admin/automation/jobs`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setJobs(data.data?.jobs || []);
+        setStats({
+          total_jobs: data.data?.total || 0,
+          active_jobs: (data.data?.jobs || []).filter(j => j.active).length,
+          total_sent: data.data?.total_sent || 0,
+          success_rate: data.data?.success_rate || 0
+        });
+      }
+    } catch (error) {
+      console.error("Failed to fetch jobs:", error);
+      showToast("Failed to load automation jobs", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiBase, showToast]);
 
-  const handleSubmit = async () => {
-    if (!formData.name?.trim()) {
-      alert('Please enter a job name');
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  const createJob = async () => {
+    if (!jobForm.name || !jobForm.message_template) {
+      showToast("Please fill in all required fields", "error");
       return;
     }
+
     setSaving(true);
     try {
-      await onSave(formData);
+      const response = await fetch(`${apiBase}/api/admin/automation/jobs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
+        },
+        body: JSON.stringify(jobForm)
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast("Job created successfully", "success");
+        setShowCreateModal(false);
+        resetForm();
+        fetchJobs();
+      } else {
+        showToast(data.error || "Failed to create job", "error");
+      }
+    } catch (error) {
+      showToast("Failed to create job", "error");
     } finally {
       setSaving(false);
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-gray-900 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-white/10 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-bold">{job ? 'Edit Job' : 'Create New Job'}</h3>
-          <button onClick={onClose} className="text-white/60 hover:text-white">✕</button>
-        </div>
-
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-white/50 mb-1">Job Name</label>
-              <input
-                type="text"
-                value={formData.name || ''}
-                onChange={(e) => handleChange('name', e.target.value)}
-                className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2"
-                placeholder="e.g., Daily Performance Summary"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-white/50 mb-1">Icon (emoji)</label>
-              <input
-                type="text"
-                value={formData.icon || ''}
-                onChange={(e) => handleChange('icon', e.target.value)}
-                className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2"
-                placeholder="📊"
-                maxLength="2"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm text-white/50 mb-1">Description</label>
-            <textarea
-              value={formData.description || ''}
-              onChange={(e) => handleChange('description', e.target.value)}
-              rows={2}
-              className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2"
-              placeholder="What does this job do?"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-white/50 mb-1">Schedule</label>
-            <select
-              value={formData.schedule || '0 9 * * *'}
-              onChange={(e) => handleChange('schedule', e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2"
-            >
-              {SCHEDULE_PRESETS.map(p => (
-                <option key={p.value} value={p.value}>{p.label} — {p.desc}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={formData.schedule || ''}
-              onChange={(e) => handleChange('schedule', e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 mt-2"
-              placeholder="Custom cron expression"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-white/50 mb-2">Platforms</label>
-            <div className="flex flex-wrap gap-2">
-              {PLATFORMS.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => toggleChannel(p.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1 ${
-                    (formData.channels || []).includes(p.id)
-                      ? `${p.color} text-white`
-                      : 'bg-white/10 hover:bg-white/20'
-                  }`}
-                >
-                  <span>{p.icon}</span> {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {(formData.channels || []).length > 0 && (
-            <div>
-              <label className="block text-sm text-white/50 mb-2">Message Templates</label>
-              <p className="text-xs text-white/40 mb-3">
-                Use variables like {'{pnl}'} to insert dynamic data.
-              </p>
-              <div className="space-y-6">
-                {(formData.channels || []).map(channel => (
-                  <MessageEditor
-                    key={channel}
-                    platform={channel}
-                    value={formData.messages?.[channel] || ''}
-                    onChange={(val) => handleMessageChange(channel, val)}
-                    variables={TEMPLATE_VARS}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : (job ? 'Save Changes' : 'Create Job')}
-            </button>
-            <button
-              onClick={onClose}
-              disabled={saving}
-              className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-medium transition disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Logs viewer component
-function JobLogs({ jobId, logs = [], onClose }) {
-  if (!jobId || !onClose) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-2xl max-w-3xl w-full max-h-[80vh] overflow-hidden border border-white/10">
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
-          <h3 className="font-bold">Logs for Job {jobId}</h3>
-          <button onClick={onClose} className="text-white/60 hover:text-white">✕</button>
-        </div>
-        <div className="p-4 overflow-y-auto max-h-[60vh]">
-          {!logs || logs.length === 0 ? (
-            <div className="text-center py-8 text-white/40">No logs yet</div>
-          ) : (
-            <div className="space-y-2">
-              {logs.map((log, i) => (
-                <div key={i} className="bg-black/30 rounded-lg p-3 text-xs font-mono">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-white/40">{log?.timestamp || 'Unknown time'}</span>
-                    <span className={`px-2 py-0.5 rounded-full ${
-                      log?.level === 'success' ? 'bg-green-500/20 text-green-300' :
-                      log?.level === 'error' ? 'bg-red-500/20 text-red-300' :
-                      'bg-amber-500/20 text-amber-300'
-                    }`}>
-                      {log?.level || 'info'}
-                    </span>
-                  </div>
-                  <div className="text-white/80">{log?.message || 'No message'}</div>
-                  {log?.details && <pre className="text-red-400 mt-1 text-xs overflow-x-auto">{JSON.stringify(log.details, null, 2)}</pre>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Main component
-export default function MarketingAutomation() {
-  const { adminFetch, showToast, user, isLoading: userLoading, error: userError, hasToken } = useAdmin();
-  const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState(null);
-  const [editingJob, setEditingJob] = useState(null);
-  const [viewingLogs, setViewingLogs] = useState(null);
-  const [logs, setLogs] = useState([]);
-  const [stats, setStats] = useState({
-    totalPosts: 0,
-    activeJobs: 0,
-    pendingPosts: 0
-  });
-  
-  // Refs to manage rate limiting
-  const fetchInProgress = useRef(false);
-  const retryCountRef = useRef(0);
-  const retryTimeoutRef = useRef(null);
-
-  // Cleanup function for retry timeout
-  const clearRetryTimeout = useCallback(() => {
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
-  }, []);
-
-  // Parse error to determine type
-  const parseError = (error) => {
-    if (error.message?.includes('429') || error.message?.includes('Too many requests')) {
-      return 'rate_limit';
-    }
-    if (error.message?.includes('401') || error.status === 401 || error.message?.includes('unauthorized')) {
-      return 'unauthorized';
-    }
-    if (error.message?.includes('403') || error.status === 403) {
-      return 'forbidden';
-    }
-    if (error.message?.includes('404') || error.status === 404) {
-      return 'not_found';
-    }
-    if (error.message?.includes('500') || error.status === 500 || error.message?.includes('Internal Server Error')) {
-      return 'server_error';
-    }
-    if (error.message?.includes('Failed to fetch') || error.message?.includes('Network')) {
-      return 'network';
-    }
-    if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
-      return 'timeout';
-    }
-    return 'unknown';
-  };
-
-  // Calculate stats from jobs data
-  const calculateStatsFromJobs = (jobsList) => {
-    const activeJobs = jobsList.filter(j => j?.status === 'active').length;
-    
-    // Calculate total posts from all jobs
-    const totalPosts = jobsList.reduce((sum, job) => {
-      const jobStats = job.stats || {};
-      return sum + (jobStats.posts || 0) + (jobStats.messages || 0);
-    }, 0);
-    
-    // Calculate pending posts (jobs with scheduled status or pending in stats)
-    const pendingPosts = jobsList.reduce((sum, job) => {
-      if (job.status === 'scheduled') return sum + 1;
-      const jobStats = job.stats || {};
-      return sum + (jobStats.pending || 0);
-    }, 0);
-    
-    return { totalPosts, activeJobs, pendingPosts };
-  };
-
-  // Fetch jobs only - stats are calculated from jobs data
-  const fetchJobs = useCallback(async (isRetry = false) => {
-    if (fetchInProgress.current) {
-      console.log('⏭️ Fetch already in progress, skipping...');
-      return;
-    }
-    
-    clearRetryTimeout();
-    fetchInProgress.current = true;
-    setLoading(true);
-    setFetchError(null);
-    
+  const updateJob = async () => {
+    setSaving(true);
     try {
-      const data = await adminFetch('/api/admin/automation/jobs', { method: 'GET' });
-      
-      // Reset retry count on success
-      retryCountRef.current = 0;
-      
-      const jobsList = Array.isArray(data?.jobs) ? data.jobs : [];
-      setJobs(jobsList);
-      
-      // Calculate stats from jobs data (no separate API call needed)
-      const newStats = calculateStatsFromJobs(jobsList);
-      setStats(newStats);
-      
-    } catch (error) {
-      console.error('Failed to fetch jobs:', error);
-      
-      const errorType = parseError(error);
-      
-      switch(errorType) {
-        case 'rate_limit':
-          // Don't show toast for rate limits on initial load
-          if (retryCountRef.current < 3) {
-            retryCountRef.current += 1;
-            const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
-            console.log(`Rate limited, retrying in ${delay/1000}s (attempt ${retryCountRef.current}/3)`);
-            
-            retryTimeoutRef.current = setTimeout(() => {
-              fetchJobs(true);
-              retryTimeoutRef.current = null;
-            }, delay);
-          } else {
-            setFetchError('Unable to load jobs due to rate limiting. Please try again later.');
-            showToast('Rate limit exceeded. Please wait a few minutes.', 'warning');
-          }
-          break;
-          
-        case 'unauthorized':
-          setFetchError('Your session has expired. Please log in again.');
-          showToast('Session expired. Redirecting to login...', 'error');
-          setTimeout(() => {
-            window.location.href = '/login';
-          }, 2000);
-          break;
-          
-        case 'server_error':
-          setFetchError('Server error. Our team has been notified.');
-          showToast('Server error. Please try again later.', 'error');
-          break;
-          
-        case 'network':
-          setFetchError('Network error. Please check your connection.');
-          showToast('Network error. Check your internet connection.', 'error');
-          break;
-          
-        default:
-          setFetchError(error.message || 'Failed to load jobs');
-          showToast(error.message || 'Failed to load jobs', 'error');
+      const response = await fetch(`${apiBase}/api/admin/automation/jobs/${editingJob.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
+        },
+        body: JSON.stringify(jobForm)
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast("Job updated successfully", "success");
+        setShowCreateModal(false);
+        setEditingJob(null);
+        resetForm();
+        fetchJobs();
+      } else {
+        showToast(data.error || "Failed to update job", "error");
       }
+    } catch (error) {
+      showToast("Failed to update job", "error");
     } finally {
-      fetchInProgress.current = false;
-      setLoading(false);
+      setSaving(false);
     }
-  }, [adminFetch, showToast, clearRetryTimeout]);
+  };
 
-  // Manual refresh function
-  const refreshJobs = useCallback(() => {
-    clearRetryTimeout();
-    retryCountRef.current = 0;
-    if (!fetchInProgress.current) {
-      fetchJobs();
-    } else {
-      showToast('Fetch already in progress', 'info');
-    }
-  }, [fetchJobs, clearRetryTimeout, showToast]);
-
-  // Initial fetch
-  useEffect(() => {
-    fetchJobs();
-    return () => {
-      clearRetryTimeout();
-    };
-  }, [fetchJobs, clearRetryTimeout]);
-
-  // Handle job toggle
-  const handleToggle = async (jobId) => {
-    if (!jobId) return;
+  const deleteJob = async (jobId) => {
+    if (!confirm("Delete this automation job?")) return;
     try {
-      await adminFetch('/api/admin/automation/jobs/toggle', {
+      const response = await fetch(`${apiBase}/api/admin/automation/jobs/${jobId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast("Job deleted", "success");
+        fetchJobs();
+      } else {
+        showToast(data.error || "Failed to delete job", "error");
+      }
+    } catch (error) {
+      showToast("Failed to delete job", "error");
+    }
+  };
+
+  const toggleJobStatus = async (jobId, currentStatus) => {
+    try {
+      const response = await fetch(`${apiBase}/api/admin/automation/jobs/${jobId}/toggle`, {
         method: 'POST',
-        body: JSON.stringify({ jobId })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
+        },
+        body: JSON.stringify({ active: !currentStatus })
       });
-      showToast('Job toggled successfully', 'success');
-      // Refresh jobs after a short delay
-      setTimeout(refreshJobs, 1500);
-    } catch (error) {
-      const errorType = parseError(error);
-      if (errorType === 'rate_limit') {
-        showToast('Rate limited. Please wait a moment.', 'warning');
-      } else {
-        showToast('Failed to toggle job', 'error');
+      const data = await response.json();
+      if (data.success) {
+        showToast(`Job ${!currentStatus ? 'activated' : 'paused'}`, "success");
+        fetchJobs();
       }
+    } catch (error) {
+      showToast("Failed to toggle job status", "error");
     }
   };
 
-  // Handle run now
-  const handleRunNow = async (jobId) => {
-    if (!jobId) return;
+  const runJobNow = async (jobId) => {
     try {
-      await adminFetch('/api/admin/automation/jobs/run', {
+      const response = await fetch(`${apiBase}/api/admin/automation/jobs/${jobId}/run`, {
         method: 'POST',
-        body: JSON.stringify({ jobId })
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
       });
-      showToast('Job triggered successfully', 'success');
-      // Refresh jobs after a short delay
-      setTimeout(refreshJobs, 1500);
-    } catch (error) {
-      const errorType = parseError(error);
-      if (errorType === 'rate_limit') {
-        showToast('Rate limited. Please wait a moment.', 'warning');
+      const data = await response.json();
+      if (data.success) {
+        showToast("Job executed successfully", "success");
       } else {
-        showToast('Failed to run job', 'error');
+        showToast(data.error || "Failed to execute job", "error");
       }
+    } catch (error) {
+      showToast("Failed to execute job", "error");
     }
   };
 
-  // Handle save job
-  const handleSaveJob = async (jobData) => {
-    if (!jobData) return;
+  const sendTestMessage = async () => {
+    if (!testMessage) return;
+    setTestLoading(true);
     try {
-      const method = jobData.id ? 'PUT' : 'POST';
-      const endpoint = jobData.id 
-        ? `/api/admin/automation/jobs/${jobData.id}` 
-        : '/api/admin/automation/jobs';
-      
-      await adminFetch(endpoint, {
-        method,
-        body: JSON.stringify(jobData)
-      });
-      
-      showToast(jobData.id ? 'Job updated' : 'Job created', 'success');
-      setEditingJob(null);
-      // Refresh jobs after a short delay
-      setTimeout(refreshJobs, 1500);
-    } catch (error) {
-      const errorType = parseError(error);
-      if (errorType === 'rate_limit') {
-        showToast('Rate limited. Please wait a moment.', 'warning');
-      } else {
-        showToast('Failed to save job', 'error');
-      }
-    }
-  };
-
-  // Handle delete
-  const handleDelete = async (jobId) => {
-    if (!jobId) return;
-    if (!window.confirm('Are you sure you want to delete this job? This action cannot be undone.')) return;
-    
-    try {
-      await adminFetch(`/api/admin/automation/jobs/${jobId}`, { method: 'DELETE' });
-      showToast('Job deleted', 'success');
-      // Refresh jobs after a short delay
-      setTimeout(refreshJobs, 1500);
-    } catch (error) {
-      const errorType = parseError(error);
-      if (errorType === 'rate_limit') {
-        showToast('Rate limited. Please wait a moment.', 'warning');
-      } else {
-        showToast('Failed to delete job', 'error');
-      }
-    }
-  };
-
-  // Handle view logs
-  const handleViewLogs = async (jobId) => {
-    if (!jobId) return;
-    try {
-      const data = await adminFetch(`/api/admin/automation/logs/${jobId}`, { method: 'GET' });
-      setLogs(Array.isArray(data?.logs) ? data.logs : []);
-      setViewingLogs(jobId);
-    } catch (error) {
-      const errorType = parseError(error);
-      if (errorType === 'rate_limit') {
-        showToast('Rate limited. Please wait a moment.', 'warning');
-      } else {
-        showToast('Failed to fetch logs', 'error');
-      }
-    }
-  };
-
-  // Handle test integration
-  const handleTestIntegration = async (platform) => {
-    if (!platform) return;
-    try {
-      await adminFetch('/api/admin/social/test', {
+      const response = await fetch(`${apiBase}/api/admin/social/test`, {
         method: 'POST',
-        body: JSON.stringify({ 
-          platform, 
-          message: `Test from IMALI Admin at ${new Date().toLocaleString()}` 
-        })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
+        },
+        body: JSON.stringify({ message: testMessage, platform: jobForm.platform })
       });
-      showToast(`Test sent to ${platform}`, 'success');
-    } catch (error) {
-      const errorType = parseError(error);
-      if (errorType === 'rate_limit') {
-        showToast('Rate limited. Please wait a moment.', 'warning');
-      } else if (errorType === 'server_error') {
-        showToast(`${platform} integration may not be configured`, 'warning');
+      const data = await response.json();
+      if (data.success) {
+        showToast("Test message sent", "success");
+        setTestMessage("");
       } else {
-        showToast(`Failed to send to ${platform}`, 'error');
+        showToast(data.error || "Failed to send test", "error");
       }
+    } catch (error) {
+      showToast("Failed to send test message", "error");
+    } finally {
+      setTestLoading(false);
     }
   };
 
-  // Conditional rendering
-  if (userLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent mx-auto mb-4" />
-          <p className="text-white/60">Loading user data...</p>
-        </div>
-      </div>
-    );
-  }
+  const resetForm = () => {
+    setJobForm({
+      name: "",
+      platform: "telegram",
+      channel: "",
+      message_template: "",
+      schedule: "daily",
+      schedule_time: "09:00",
+      active: true,
+      variables: []
+    });
+    setEditingJob(null);
+  };
 
-  if (userError) {
-    return (
-      <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-4">⚠️</div>
-        <h3 className="text-xl font-bold text-red-300 mb-2">Authentication Error</h3>
-        <p className="text-white/70 mb-4">{userError}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition"
-        >
-          Reload Page
-        </button>
-      </div>
-    );
-  }
+  const openEditModal = (job) => {
+    setEditingJob(job);
+    setJobForm({
+      name: job.name,
+      platform: job.platform,
+      channel: job.channel || "",
+      message_template: job.message_template,
+      schedule: job.schedule,
+      schedule_time: job.schedule_time || "09:00",
+      active: job.active,
+      variables: job.variables || []
+    });
+    setShowCreateModal(true);
+  };
 
-  if (!hasToken) {
-    return (
-      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-4">🔒</div>
-        <h3 className="text-xl font-bold text-amber-300 mb-2">Not Logged In</h3>
-        <p className="text-white/70 mb-4">Please log in to access the automation panel.</p>
-        <button
-          onClick={() => window.location.href = '/login'}
-          className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition"
-        >
-          Go to Login
-        </button>
-      </div>
-    );
-  }
+  const insertVariable = (variable) => {
+    setJobForm({
+      ...jobForm,
+      message_template: jobForm.message_template + variable
+    });
+  };
 
-  if (loading && !jobs.length) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent" />
-      </div>
-    );
-  }
+  const getPlatformIcon = (platformId) => {
+    const platform = platforms.find(p => p.id === platformId);
+    return platform ? <platform.icon className="text-sm" /> : <FaRobot />;
+  };
 
-  if (fetchError) {
+  const getPlatformColor = (platformId) => {
+    const platform = platforms.find(p => p.id === platformId);
+    return platform?.color || "bg-gray-500";
+  };
+
+  if (loading && jobs.length === 0) {
     return (
-      <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-4">⚠️</div>
-        <h3 className="text-xl font-bold text-red-300 mb-2">Failed to Load Jobs</h3>
-        <p className="text-white/70 mb-4">{fetchError}</p>
-        <div className="flex gap-3 justify-center">
-          <button
-            onClick={() => {
-              setLoading(true);
-              retryCountRef.current = 0;
-              clearRetryTimeout();
-              fetchJobs();
-            }}
-            className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition"
-          >
-            Try Again
-          </button>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition"
-          >
-            Reload Page
-          </button>
-        </div>
+      <div className="flex items-center justify-center py-12">
+        <FaSpinner className="animate-spin text-3xl text-emerald-500" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Marketing Automation</h2>
-          <p className="text-white/60">Schedule and manage automated posts to social channels and emails.</p>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
+          <FaRobot className="mx-auto mb-2 text-xl text-emerald-400" />
+          <div className="text-2xl font-bold text-white">{stats.total_jobs}</div>
+          <div className="text-xs text-white/50">Total Jobs</div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={refreshJobs}
-            className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-medium transition flex items-center gap-2 text-sm"
-            disabled={fetchInProgress.current}
-          >
-            <span className={fetchInProgress.current ? 'animate-spin' : ''}>🔄</span>
-            Refresh
-          </button>
-          <button
-            onClick={() => setEditingJob({})}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition flex items-center gap-2"
-          >
-            <span>➕</span> New Job
-          </button>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
+          <FaPlay className="mx-auto mb-2 text-xl text-green-400" />
+          <div className="text-2xl font-bold text-white">{stats.active_jobs}</div>
+          <div className="text-xs text-white/50">Active Jobs</div>
         </div>
-      </div>
-
-      {/* Stats Cards - Calculated from jobs data, no separate API call */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
-          <div className="text-emerald-400 text-2xl mb-1">📊</div>
-          <div className="text-2xl font-bold text-white">{stats.totalPosts}</div>
-          <div className="text-sm text-white/50">Total Posts</div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
+          <FaBell className="mx-auto mb-2 text-xl text-blue-400" />
+          <div className="text-2xl font-bold text-white">{stats.total_sent}</div>
+          <div className="text-xs text-white/50">Messages Sent</div>
         </div>
-        <div className="bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 rounded-xl p-4">
-          <div className="text-blue-400 text-2xl mb-1">🤖</div>
-          <div className="text-2xl font-bold text-white">{stats.activeJobs}</div>
-          <div className="text-sm text-white/50">Active Jobs</div>
-        </div>
-        <div className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-4">
-          <div className="text-amber-400 text-2xl mb-1">⏳</div>
-          <div className="text-2xl font-bold text-white">{stats.pendingPosts}</div>
-          <div className="text-sm text-white/50">Pending Posts</div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
+          <FaChartLine className="mx-auto mb-2 text-xl text-purple-400" />
+          <div className="text-2xl font-bold text-white">{stats.success_rate}%</div>
+          <div className="text-xs text-white/50">Success Rate</div>
         </div>
       </div>
 
-      {/* Jobs Grid */}
-      {!jobs || jobs.length === 0 ? (
-        <div className="bg-white/5 border border-white/10 rounded-xl p-12 text-center">
-          <p className="text-white/50 mb-4">No automation jobs yet.</p>
-          <button
-            onClick={() => setEditingJob({})}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition"
-          >
-            Create your first job
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {jobs.map(job => (
-            <JobCard
-              key={job.id}
-              job={job}
-              onEdit={setEditingJob}
-              onToggle={handleToggle}
-              onRunNow={handleRunNow}
-              onDelete={handleDelete}
-              onViewLogs={handleViewLogs}
-            />
-          ))}
-        </div>
+      {/* Tab Navigation */}
+      <div className="flex gap-2 border-b border-white/10 pb-2">
+        <button
+          onClick={() => setActiveTab("jobs")}
+          className={`px-4 py-2 text-sm font-medium transition ${
+            activeTab === "jobs" 
+              ? "border-b-2 border-emerald-500 text-emerald-400" 
+              : "text-white/50 hover:text-white"
+          }`}
+        >
+          <FaRobot className="inline mr-2" /> Automation Jobs
+        </button>
+        <button
+          onClick={() => setActiveTab("templates")}
+          className={`px-4 py-2 text-sm font-medium transition ${
+            activeTab === "templates" 
+              ? "border-b-2 border-emerald-500 text-emerald-400" 
+              : "text-white/50 hover:text-white"
+          }`}
+        >
+          <FaHashtag className="inline mr-2" /> Templates
+        </button>
+        <button
+          onClick={() => setActiveTab("analytics")}
+          className={`px-4 py-2 text-sm font-medium transition ${
+            activeTab === "analytics" 
+              ? "border-b-2 border-emerald-500 text-emerald-400" 
+              : "text-white/50 hover:text-white"
+          }`}
+        >
+          <FaChartLine className="inline mr-2" /> Analytics
+        </button>
+      </div>
+
+      {/* Jobs Tab */}
+      {activeTab === "jobs" && (
+        <>
+          {/* Create Job Button */}
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                resetForm();
+                setShowCreateModal(true);
+              }}
+              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500"
+            >
+              <FaPlus /> Create Automation Job
+            </button>
+          </div>
+
+          {/* Jobs List */}
+          <div className="space-y-3">
+            {jobs.length === 0 ? (
+              <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
+                <FaRobot className="mx-auto mb-3 text-4xl text-white/30" />
+                <p className="text-white/50">No automation jobs yet</p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="mt-3 text-sm text-emerald-400 hover:text-emerald-300"
+                >
+                  Create your first job →
+                </button>
+              </div>
+            ) : (
+              jobs.map((job) => (
+                <div key={job.id} className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className={`rounded-lg p-2 ${getPlatformColor(job.platform)} bg-opacity-20`}>
+                        {getPlatformIcon(job.platform)}
+                      </div>
+                      <div>
+                        <h4 className="font-semibold">{job.name}</h4>
+                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/50">
+                          <span className="flex items-center gap-1">
+                            <FaClock /> {job.schedule}
+                          </span>
+                          <span>•</span>
+                          <span>Channel: {job.channel || "Default"}</span>
+                          {job.last_run && (
+                            <>
+                              <span>•</span>
+                              <span>Last run: {new Date(job.last_run).toLocaleString()}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => runJobNow(job.id)}
+                        className="rounded-lg border border-white/10 p-2 text-sm hover:bg-white/5"
+                        title="Run Now"
+                      >
+                        <FaPlay className="text-green-400" />
+                      </button>
+                      <button
+                        onClick={() => openEditModal(job)}
+                        className="rounded-lg border border-white/10 p-2 text-sm hover:bg-white/5"
+                        title="Edit"
+                      >
+                        <FaEdit className="text-amber-400" />
+                      </button>
+                      <button
+                        onClick={() => toggleJobStatus(job.id, job.active)}
+                        className={`rounded-lg border p-2 text-sm hover:bg-white/5 ${
+                          job.active ? 'border-green-500/30 text-green-400' : 'border-gray-500/30 text-gray-400'
+                        }`}
+                        title={job.active ? "Pause" : "Activate"}
+                      >
+                        {job.active ? <FaPause /> : <FaPlay />}
+                      </button>
+                      <button
+                        onClick={() => deleteJob(job.id)}
+                        className="rounded-lg border border-white/10 p-2 text-sm hover:bg-white/5"
+                        title="Delete"
+                      >
+                        <FaTrash className="text-red-400" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-lg bg-black/30 p-3">
+                    <div className="text-xs text-white/50 mb-1">Message Template:</div>
+                    <div className="text-sm break-all">{job.message_template}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
       )}
 
-      {/* Test Integrations Section */}
-      <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-cyan-300 mb-2">🧪 Test Your Integrations</h3>
-        <p className="text-sm text-white/70 mb-4">
-          Send a test message to verify your social channels are working correctly.
-        </p>
-        <div className="flex flex-wrap gap-3">
-          {['telegram', 'twitter', 'discord'].map(platform => {
-            const p = PLATFORMS.find(p => p?.id === platform);
-            return p ? (
+      {/* Templates Tab */}
+      {activeTab === "templates" && (
+        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+          <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+            <FaHashtag /> Available Variables
+          </h3>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {variableOptions.map((variable) => (
+              <div key={variable.key} className="rounded-lg border border-white/10 bg-black/30 p-3">
+                <code className="text-sm text-emerald-400">{variable.key}</code>
+                <p className="mt-1 text-xs text-white/50">{variable.description}</p>
+              </div>
+            ))}
+          </div>
+
+          <h3 className="mb-4 mt-6 flex items-center gap-2 text-lg font-semibold">
+            <FaCopy /> Message Templates
+          </h3>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+              <div className="text-sm text-white/80">
+                🚀 <strong>Daily Performance Update</strong>
+              </div>
+              <div className="mt-2 text-xs text-white/50 break-all">
+                Today's PnL: {pnl} | Total Trades: {total_trades} | Win Rate: {win_rate}%
+              </div>
               <button
-                key={p.id}
-                onClick={() => handleTestIntegration(p.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${p.color} hover:opacity-80`}
+                onClick={() => {
+                  setJobForm({
+                    ...jobForm,
+                    message_template: "Today's PnL: {pnl} | Total Trades: {total_trades} | Win Rate: {win_rate}%"
+                  });
+                  showToast("Template copied", "success");
+                }}
+                className="mt-2 text-xs text-emerald-400 hover:text-emerald-300"
               >
-                <span>{p.icon}</span> Test {p.name}
+                Use Template
               </button>
-            ) : null;
-          })}
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* Modals */}
-      {editingJob !== null && (
-        <JobModal
-          job={editingJob?.id ? editingJob : null}
-          onClose={() => setEditingJob(null)}
-          onSave={handleSaveJob}
-        />
       )}
 
-      {viewingLogs && (
-        <JobLogs
-          jobId={viewingLogs}
-          logs={logs}
-          onClose={() => setViewingLogs(null)}
-        />
+      {/* Analytics Tab */}
+      {activeTab === "analytics" && (
+        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+          <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+            <FaChartLine /> Automation Analytics
+          </h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="rounded-lg border border-white/10 bg-black/30 p-4 text-center">
+              <FaTelegram className="mx-auto mb-2 text-2xl text-blue-400" />
+              <div className="text-lg font-bold text-white">Telegram</div>
+              <div className="text-xs text-white/50">Active: {jobs.filter(j => j.platform === "telegram" && j.active).length}</div>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-black/30 p-4 text-center">
+              <FaTwitter className="mx-auto mb-2 text-2xl text-sky-400" />
+              <div className="text-lg font-bold text-white">Twitter/X</div>
+              <div className="text-xs text-white/50">Active: {jobs.filter(j => j.platform === "twitter" && j.active).length}</div>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-black/30 p-4 text-center">
+              <FaEnvelope className="mx-auto mb-2 text-2xl text-gray-400" />
+              <div className="text-lg font-bold text-white">Email</div>
+              <div className="text-xs text-white/50">Active: {jobs.filter(j => j.platform === "email" && j.active).length}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xl font-bold">
+                {editingJob ? "Edit Automation Job" : "Create Automation Job"}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowCreateModal(false);
+                  resetForm();
+                }}
+                className="text-white/50 hover:text-white"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm text-white/70">Job Name *</label>
+                <input
+                  type="text"
+                  value={jobForm.name}
+                  onChange={(e) => setJobForm({ ...jobForm, name: e.target.value })}
+                  placeholder="e.g., Daily Performance Update"
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white placeholder:text-white/30"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/70">Platform *</label>
+                <div className="flex gap-3">
+                  {platforms.map((platform) => (
+                    <button
+                      key={platform.id}
+                      onClick={() => setJobForm({ ...jobForm, platform: platform.id })}
+                      className={`flex-1 rounded-lg px-4 py-2 text-sm transition ${
+                        jobForm.platform === platform.id
+                          ? `${platform.color} text-white shadow-lg`
+                          : "border border-white/10 hover:bg-white/5"
+                      }`}
+                    >
+                      <platform.icon className="inline mr-2" /> {platform.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/70">Channel / Recipient</label>
+                <input
+                  type="text"
+                  value={jobForm.channel}
+                  onChange={(e) => setJobForm({ ...jobForm, channel: e.target.value })}
+                  placeholder={jobForm.platform === "telegram" ? "@username or channel ID" : "Email address"}
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white placeholder:text-white/30"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/70">Message Template *</label>
+                <textarea
+                  value={jobForm.message_template}
+                  onChange={(e) => setJobForm({ ...jobForm, message_template: e.target.value })}
+                  placeholder="Enter your message here. Use {variables} for dynamic content."
+                  rows={4}
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white placeholder:text-white/30"
+                />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {variableOptions.map((v) => (
+                    <button
+                      key={v.key}
+                      onClick={() => insertVariable(v.key)}
+                      className="rounded bg-white/10 px-2 py-0.5 text-xs hover:bg-white/20"
+                    >
+                      {v.key}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm text-white/70">Schedule</label>
+                  <select
+                    value={jobForm.schedule}
+                    onChange={(e) => setJobForm({ ...jobForm, schedule: e.target.value })}
+                    className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+                  >
+                    {scheduleOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-white/70">Schedule Time</label>
+                  <input
+                    type="time"
+                    value={jobForm.schedule_time}
+                    onChange={(e) => setJobForm({ ...jobForm, schedule_time: e.target.value })}
+                    className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-white/70">Active</label>
+                <button
+                  onClick={() => setJobForm({ ...jobForm, active: !jobForm.active })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                    jobForm.active ? 'bg-emerald-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
+                    jobForm.active ? 'right-1' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Test Section */}
+              <div className="border-t border-white/10 pt-4">
+                <label className="mb-2 block text-sm text-white/70">Test Message</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={testMessage}
+                    onChange={(e) => setTestMessage(e.target.value)}
+                    placeholder="Enter test message..."
+                    className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white placeholder:text-white/30"
+                  />
+                  <button
+                    onClick={sendTestMessage}
+                    disabled={testLoading}
+                    className="rounded-lg bg-purple-600 px-4 py-2 text-sm hover:bg-purple-500 disabled:opacity-50"
+                  >
+                    {testLoading ? <FaSpinner className="animate-spin" /> : "Send Test"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={editingJob ? updateJob : createJob}
+                  disabled={saving}
+                  className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {saving ? <FaSpinner className="mx-auto animate-spin" /> : <FaSave className="inline mr-2" />}
+                  {saving ? "Saving..." : editingJob ? "Update Job" : "Create Job"}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetForm();
+                  }}
+                  className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
