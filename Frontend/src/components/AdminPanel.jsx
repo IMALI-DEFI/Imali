@@ -4,7 +4,6 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
-import MarketingAutomation from "../admin/MarketingAutomation";
 
 /* -------------------- Error Boundary -------------------- */
 class TabErrorBoundary extends React.Component {
@@ -50,7 +49,6 @@ class TabErrorBoundary extends React.Component {
         </div>
       );
     }
-
     return this.props.children;
   }
 }
@@ -84,11 +82,12 @@ const TreasuryManagement = lazy(() => import("../admin/TreasuryManagement.jsx"))
 const CexManagement = lazy(() => import("../admin/CexManagement.jsx"));
 const StocksManagement = lazy(() => import("../admin/StocksManagement.jsx"));
 const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.jsx"));
+const ReportsTab = lazy(() => import("../admin/ReportsTab.jsx"));
 
 /* -------------------- Config -------------------- */
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
 
-/* -------------------- Enhanced API Helper with Rate Limit Handling -------------------- */
+/* -------------------- API Helper -------------------- */
 const getAuthToken = () => BotAPI.getToken();
 
 const adminFetch = async (endpoint, options = {}, retries = 3) => {
@@ -101,7 +100,7 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const response = await fetch(`${API_BASE}${safeEndpoint}`, {
-        method: options.method || "POST",
+        method: options.method || "GET",
         ...options,
         headers: {
           "Content-Type": "application/json",
@@ -112,8 +111,7 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
 
       if (response.status === 429) {
         const retryAfter = parseInt(response.headers.get('Retry-After')) || Math.pow(2, attempt) * 5;
-        console.log(`Rate limited. Retry after ${retryAfter} seconds (attempt ${attempt + 1}/${retries})`);
-        
+        console.log(`Rate limited. Retry after ${retryAfter}s (attempt ${attempt + 1}/${retries})`);
         if (attempt < retries) {
           await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
           continue;
@@ -140,11 +138,10 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
       }
     }
   }
-
   throw lastError;
 };
 
-/* -------------------- Sections with Correct Endpoints -------------------- */
+/* -------------------- Tab Sections with Correct Endpoints -------------------- */
 const TAB_SECTIONS = [
   {
     id: "dashboard",
@@ -158,9 +155,9 @@ const TAB_SECTIONS = [
         emoji: "✨",
         component: DashboardOverview,
         description: "Main numbers and summary cards.",
-        help: "Start here to get a quick snapshot of platform performance. Key metrics include total users, active bots, pending withdrawals, and support tickets. Use the refresh button to update numbers.",
+        help: "Start here to get a quick snapshot of platform performance. Key metrics include total users, total trades, total PnL, and win rate.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" },
+          { id: "refresh", label: "Refresh Metrics", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" },
         ],
       },
       {
@@ -169,9 +166,9 @@ const TAB_SECTIONS = [
         emoji: "🏥",
         component: SystemHealth,
         description: "Check if services are running correctly.",
-        help: "Monitor backend services, bots, and connected APIs. If something seems broken, check this page first for error reports and uptime status.",
+        help: "Monitor backend services, database connectivity, and API health.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/health/detailed", method: "GET" },
+          { id: "refresh", label: "Check Health", icon: "🔄", endpoint: "/api/health/detailed", method: "GET" },
         ],
       },
     ],
@@ -180,7 +177,7 @@ const TAB_SECTIONS = [
     id: "users",
     name: "Users",
     emoji: "👥",
-    description: "Manage accounts and help people using the platform.",
+    description: "Manage accounts and user data.",
     tabs: [
       {
         key: "users",
@@ -188,32 +185,40 @@ const TAB_SECTIONS = [
         emoji: "👥",
         component: UserManagement,
         description: "View and manage user accounts.",
-        help: "Search for users by wallet address, email, or username. You can view user details, ban/unban accounts, and manually adjust balances if needed. Export user list as CSV for external analysis.",
+        help: "Search for users by email. View user details, edit tiers, enable/disable trading, and revoke API keys.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/users", method: "GET" },
-          { id: "export", label: "Export", icon: "📥", endpoint: "/api/export/trades?format=csv", method: "GET" },
+          { id: "refresh", label: "Refresh List", icon: "🔄", endpoint: "/api/admin/users?page=1&limit=50", method: "GET" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "trading",
+    name: "Trading",
+    emoji: "📈",
+    description: "Monitor trading activity.",
+    tabs: [
+      {
+        key: "trades",
+        label: "All Trades",
+        emoji: "📊",
+        component: lazy(() => import("../admin/TradesManagement.jsx")),
+        description: "View all platform trades.",
+        help: "See all trades across the platform. Filter by status, bot, or user. Export data for analysis.",
+        actions: [
+          { id: "refresh", label: "Refresh Trades", icon: "🔄", endpoint: "/api/admin/trades?page=1&limit=50", method: "GET" },
         ],
       },
       {
-        key: "tickets",
-        label: "Support",
-        emoji: "🎫",
-        component: SupportTickets,
-        description: "Handle support issues and questions.",
-        help: "View and respond to user support tickets. Mark as resolved when done. Red badges indicate urgent or overdue tickets.",
+        key: "reports",
+        label: "Reports",
+        emoji: "📋",
+        component: ReportsTab,
+        description: "Generate trade and user reports.",
+        help: "Generate detailed reports on trading activity. Export as CSV for external analysis.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/support/tickets", method: "GET" },
-        ],
-      },
-      {
-        key: "waitlist",
-        label: "Waitlist",
-        emoji: "⏳",
-        component: WaitlistManagement,
-        description: "Review people waiting to join.",
-        help: "Manage users who have signed up but aren't yet approved. You can approve, reject, or export waitlist entries.",
-        actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/waitlist", method: "GET" },
+          { id: "trade-report", label: "Trade Report", icon: "📊", endpoint: "/api/admin/reports/trades", method: "GET" },
+          { id: "user-report", label: "User Report", icon: "👥", endpoint: "/api/admin/reports/users", method: "GET" },
         ],
       },
     ],
@@ -222,7 +227,7 @@ const TAB_SECTIONS = [
     id: "money",
     name: "Money",
     emoji: "💰",
-    description: "Handle payments, treasury, and financial actions.",
+    description: "Handle payments and financial actions.",
     tabs: [
       {
         key: "withdrawals",
@@ -230,7 +235,7 @@ const TAB_SECTIONS = [
         emoji: "💰",
         component: WithdrawalManagement,
         description: "Approve or review withdrawal requests.",
-        help: "Review pending withdrawal requests. Verify user balances and approve or reject. Use filters to see approved/rejected history.",
+        help: "Review pending withdrawal requests. Verify user balances and approve or reject.",
         actions: [
           { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/withdrawals", method: "GET" },
         ],
@@ -241,9 +246,9 @@ const TAB_SECTIONS = [
         emoji: "💸",
         component: FeeDistributor,
         description: "Manage fee flows and distributions.",
-        help: "View collected fees and distribution history. Adjust fee splits and trigger manual distributions if needed.",
+        help: "View collected fees and distribution history.",
         actions: [
-          { id: "history", label: "History", icon: "📜", endpoint: "/api/billing/fee-history", method: "GET" },
+          { id: "history", label: "Fee History", icon: "📜", endpoint: "/api/billing/fee-history", method: "GET" },
         ],
       },
       {
@@ -252,9 +257,9 @@ const TAB_SECTIONS = [
         emoji: "🏦",
         component: TreasuryManagement,
         description: "Manage platform-held funds.",
-        help: "Monitor treasury balances across chains. Initiate fund movements, view transaction history, and set reserve limits.",
+        help: "Monitor treasury balances across chains.",
         actions: [
-          { id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/treasury/stats", method: "GET" },
+          { id: "stats", label: "Treasury Stats", icon: "📊", endpoint: "/api/admin/treasury/stats", method: "GET" },
         ],
       },
     ],
@@ -271,11 +276,9 @@ const TAB_SECTIONS = [
         emoji: "🤖",
         component: MarketingAutomationTab,
         description: "Schedule automated marketing posts.",
-        help: "Create and manage automated posts to Telegram, Twitter, Discord, and Email. Use dynamic variables like {pnl} to insert live data. Test your integrations with the built-in test tool.",
+        help: "Create and manage automated posts to Telegram, Twitter, and Discord.",
         actions: [
           { id: "refresh", label: "Refresh Jobs", icon: "🔄", endpoint: "/api/admin/automation/jobs", method: "GET" },
-          { id: "process", label: "Run Scheduled", icon: "⏰", endpoint: "/api/admin/social/process-scheduled", method: "POST" },
-          { id: "test", label: "Test Telegram", icon: "📱", endpoint: "/api/admin/social/test", method: "POST" },
         ],
       },
       {
@@ -284,21 +287,9 @@ const TAB_SECTIONS = [
         emoji: "🎟️",
         component: PromoManagement,
         description: "Create and manage discount codes.",
-        help: "Generate new promo codes with custom discounts, usage limits, and expiration dates. Track redemption stats.",
+        help: "Generate new promo codes with custom discounts and expiration dates.",
         actions: [
           { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/promo/list", method: "GET" },
-          { id: "create", label: "Create New", icon: "➕", endpoint: "/api/admin/promo/create", method: "POST" },
-        ],
-      },
-      {
-        key: "announcements",
-        label: "Announcements",
-        emoji: "📣",
-        component: Announcements,
-        description: "Send updates to users.",
-        help: "Draft and publish announcements that appear in-app or via email. Schedule future announcements or send immediately.",
-        actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/announcements", method: "GET" },
         ],
       },
       {
@@ -307,10 +298,9 @@ const TAB_SECTIONS = [
         emoji: "🧲",
         component: ReferralAnalytics,
         description: "Track user invite performance.",
-        help: "View top referrers, referral conversion rates, and pending rewards. Process referral payouts manually or automatically.",
+        help: "View top referrers and referral conversion rates.",
         actions: [
-          { id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/referrals/stats", method: "GET" },
-          { id: "process", label: "Process Payouts", icon: "💰", endpoint: "/api/admin/referrals/process-payouts", method: "POST" },
+          { id: "stats", label: "Referral Stats", icon: "📊", endpoint: "/api/admin/referrals/stats", method: "GET" },
         ],
       },
       {
@@ -319,11 +309,9 @@ const TAB_SECTIONS = [
         emoji: "📱",
         component: SocialManager,
         description: "Manage social media activity.",
-        help: "Connect and manage multiple social accounts. View pending posts, engagement stats, and schedule one-off posts.",
+        help: "Connect and manage multiple social accounts.",
         actions: [
           { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/social/posts", method: "GET" },
-          { id: "status", label: "Platform Status", icon: "🔌", endpoint: "/api/admin/social/status", method: "GET" },
-          { id: "stats", label: "Analytics", icon: "📊", endpoint: "/api/admin/social/stats", method: "GET" },
         ],
       },
     ],
@@ -332,7 +320,7 @@ const TAB_SECTIONS = [
     id: "advanced",
     name: "Advanced",
     emoji: "⚙️",
-    description: "More technical platform controls.",
+    description: "Technical platform controls.",
     tabs: [
       {
         key: "token",
@@ -340,57 +328,9 @@ const TAB_SECTIONS = [
         emoji: "🪙",
         component: TokenManagement,
         description: "Mint, burn, and manage token actions.",
-        help: "Control token supply: mint new tokens, burn existing ones, or transfer tokens between treasury and other addresses. Always double-check amounts before executing.",
+        help: "Control token supply: mint new tokens or burn existing ones.",
         actions: [
-          { id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/token/stats", method: "GET" },
-          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/token/mint", method: "POST" },
-          { id: "burn", label: "Burn", icon: "🔥", endpoint: "/api/admin/token/burn", method: "POST" },
-        ],
-      },
-      {
-        key: "buyback",
-        label: "Buyback",
-        emoji: "♻️",
-        component: BuyBackDashboard,
-        description: "Manage token buybacks.",
-        help: "Configure buyback parameters (amount, frequency, exchange). Trigger manual buybacks or view historical buyback data.",
-        actions: [
-          { id: "stats", label: "Stats", icon: "📊", endpoint: "/api/admin/buyback/stats", method: "GET" },
-          { id: "trigger", label: "Trigger", icon: "⚡", endpoint: "/api/admin/buyback/trigger", method: "POST" },
-        ],
-      },
-      {
-        key: "nfts",
-        label: "NFTs",
-        emoji: "🧬",
-        component: NFTManagement,
-        description: "Manage NFT tiers and NFT items.",
-        help: "Create new NFT collections, mint NFTs for users, and manage NFT-gated access tiers. View metadata and ownership.",
-        actions: [
-          { id: "list", label: "List", icon: "📋", endpoint: "/api/admin/nfts", method: "GET" },
-          { id: "mint", label: "Mint", icon: "🪙", endpoint: "/api/admin/nfts/mint", method: "POST" },
-        ],
-      },
-      {
-        key: "cex",
-        label: "CEX",
-        emoji: "🏧",
-        component: CexManagement,
-        description: "Manage centralized exchange controls.",
-        help: "View exchange balances, transfer funds between exchanges and treasury, and manage API keys securely.",
-        actions: [
-          { id: "balances", label: "Balances", icon: "⚖️", endpoint: "/api/admin/cex/balances", method: "GET" },
-        ],
-      },
-      {
-        key: "stocks",
-        label: "Stocks",
-        emoji: "📈",
-        component: StocksManagement,
-        description: "Manage stock-related trading tools.",
-        help: "Monitor stock trading bots, view open positions, and adjust trading parameters. For advanced users only.",
-        actions: [
-          { id: "positions", label: "Positions", icon: "📊", endpoint: "/api/admin/stocks/positions", method: "GET" },
+          { id: "stats", label: "Token Stats", icon: "📊", endpoint: "/api/admin/token/stats", method: "GET" },
         ],
       },
       {
@@ -399,9 +339,9 @@ const TAB_SECTIONS = [
         emoji: "📋",
         component: AuditLogs,
         description: "Review admin actions and events.",
-        help: "See a chronological log of all admin actions (user changes, financial moves, settings updates). Useful for security reviews.",
+        help: "See a chronological log of all admin actions.",
         actions: [
-          { id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/audit-logs", method: "GET" },
+          { id: "refresh", label: "Refresh Logs", icon: "🔄", endpoint: "/api/admin/audit-logs", method: "GET" },
         ],
       },
       {
@@ -410,7 +350,7 @@ const TAB_SECTIONS = [
         emoji: "🔐",
         component: AccessControl,
         description: "Control admin access and roles.",
-        help: "Manage which wallet addresses have admin access and what permissions they hold (view only, full control, etc.).",
+        help: "Manage which users have admin access.",
         actions: [
           { id: "check", label: "Check Access", icon: "🔍", endpoint: "/api/admin/check", method: "GET" },
         ],
@@ -483,7 +423,7 @@ function ActionButton({ action, onAction, busy }) {
 
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
-  const { user, isAdmin: isAdminFromAuth } = useAuth(); // ✅ Get isAdmin from AuthContext
+  const { user, isAdmin: isAdminFromAuth } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -498,12 +438,10 @@ export default function AdminPanel({ forceOwner = false }) {
   const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [actionHistory, setActionHistory] = useState([]);
 
-  const isDevelopment =
-    process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
+  const isDevelopment = process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
   const BYPASS = isDevelopment && process.env.REACT_APP_BYPASS_OWNER === "1";
   const TEST_BYPASS = location.pathname.startsWith("/test/admin");
 
-  // ✅ Use isAdminFromAuth from context
   const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdminFromAuth;
 
   const activeTab = useMemo(() => {
@@ -512,36 +450,27 @@ export default function AdminPanel({ forceOwner = false }) {
 
   const showToast = useCallback((message, type = "success", duration = 4000) => {
     setToast({ message, type });
-
-    if (window.__imaliToastTimer) {
-      window.clearTimeout(window.__imaliToastTimer);
-    }
-
+    if (window.__imaliToastTimer) window.clearTimeout(window.__imaliToastTimer);
     window.__imaliToastTimer = window.setTimeout(() => setToast(null), duration);
   }, []);
 
   const logAction = useCallback((actionName, status, details = {}) => {
     setActionHistory((prev) => [
-      {
-        id: Date.now(),
-        action: actionName,
-        status,
-        timestamp: new Date().toISOString(),
-        details,
-      },
+      { id: Date.now(), action: actionName, status, timestamp: new Date().toISOString(), details },
       ...prev.slice(0, 49),
     ]);
   }, []);
 
-  const resetCurrentTab = useCallback(() => {
-    setTabResetKey((prev) => prev + 1);
-  }, []);
+  const resetCurrentTab = useCallback(() => setTabResetKey((prev) => prev + 1), []);
 
   const fetchStats = useCallback(async () => {
     try {
       const data = await adminFetch("/api/admin/metrics", { method: "GET" });
       setStats({
         totalUsers: data.users?.total || 0,
+        totalTrades: data.trades?.total || 0,
+        totalPnl: data.pnl?.total || 0,
+        winRate: data.trades?.win_rate || 0,
         pendingWithdrawals: data.revenue?.pending_withdrawals || 0,
         openTickets: data.tickets?.length || 0,
         activePromos: data.promos?.length || 0,
@@ -556,64 +485,51 @@ export default function AdminPanel({ forceOwner = false }) {
         showToast("Session expired. Please log in again.", "error");
         BotAPI.clearToken();
         navigate("/login");
-      } else if (!err.message?.includes('429')) {
-        showToast("Could not load metrics", "error");
       }
     }
   }, [showToast, navigate]);
 
-  const handleAction = useCallback(
-    async (action, payload = null, overrideEndpoint = null) => {
-      const endpoint = overrideEndpoint || action?.endpoint;
-      const method = action?.method || "POST";
-      const actionKey = `${activeTab.key}:${action?.id || "custom"}`;
-      const actionName = `${activeTab.label} ${action?.label || action?.id || "Action"}`;
+  const handleAction = useCallback(async (action, payload = null, overrideEndpoint = null) => {
+    const endpoint = overrideEndpoint || action?.endpoint;
+    const method = action?.method || "GET";
+    const actionKey = `${activeTab.key}:${action?.id || "custom"}`;
+    const actionName = `${activeTab.label} ${action?.label || action?.id || "Action"}`;
 
-      if (!endpoint) {
-        showToast("No endpoint defined for this action.", "error");
-        throw new Error("No endpoint defined for this action.");
+    if (!endpoint) {
+      showToast("No endpoint defined for this action.", "error");
+      throw new Error("No endpoint defined.");
+    }
+
+    try {
+      setBusyAction((prev) => ({ ...prev, [actionKey]: true }));
+      logAction(actionName, "started", { endpoint, method, payload });
+
+      const data = await adminFetch(endpoint, { method, ...(payload ? { body: JSON.stringify(payload) } : {}) });
+
+      logAction(actionName, "success", { data });
+      showToast(`${actionName} completed successfully.`, "success");
+
+      if (action?.id === "refresh" || action?.id === "stats") fetchStats();
+      return data;
+    } catch (err) {
+      const errorMessage = err?.message || `${actionName} failed.`;
+      logAction(actionName, "error", { error: errorMessage });
+      if (errorMessage.includes('401')) {
+        showToast("Session expired. Please log in again.", "error");
+        BotAPI.clearToken();
+        navigate("/login");
+      } else if (!errorMessage.includes('429')) {
+        showToast(errorMessage, "error");
       }
-
-      try {
-        setBusyAction((prev) => ({ ...prev, [actionKey]: true }));
-        logAction(actionName, "started", { endpoint, method, payload });
-
-        const data = await adminFetch(endpoint, {
-          method,
-          ...(payload ? { body: JSON.stringify(payload) } : {}),
-        });
-
-        logAction(actionName, "success", { data });
-        showToast(`${actionName} completed successfully.`, "success");
-
-        if (action?.id === "refresh" || action?.id === "stats" || action?.id === "list") {
-          fetchStats();
-        }
-
-        return data;
-      } catch (err) {
-        const errorMessage = err?.message || `${actionName} failed.`;
-        logAction(actionName, "error", { error: errorMessage });
-        
-        if (errorMessage.includes('401')) {
-          showToast("Session expired. Please log in again.", "error");
-          BotAPI.clearToken();
-          navigate("/login");
-        } else if (!errorMessage.includes('429')) {
-          showToast(errorMessage, "error");
-        }
-        
-        throw err;
-      } finally {
-        setBusyAction((prev) => {
-          const next = { ...prev };
-          delete next[actionKey];
-          return next;
-        });
-      }
-    },
-    [activeTab, fetchStats, logAction, showToast, navigate]
-  );
+      throw err;
+    } finally {
+      setBusyAction((prev) => {
+        const next = { ...prev };
+        delete next[actionKey];
+        return next;
+      });
+    }
+  }, [activeTab, fetchStats, logAction, showToast, navigate]);
 
   const navigateToTab = useCallback((tabKey) => {
     setActive(tabKey);
@@ -621,43 +537,36 @@ export default function AdminPanel({ forceOwner = false }) {
     setTabResetKey(0);
   }, []);
 
-  const renderTab = useCallback(
-    (tab) => {
-      const Component = tab.component;
+  const renderTab = useCallback((tab) => {
+    const Component = tab.component;
+    return (
+      <TabErrorBoundary tabName={tab.label} onReset={resetCurrentTab}>
+        <Suspense fallback={<TabLoader name={tab.label} />}>
+          <Component
+            key={`${tab.key}-${tabResetKey}`}
+            apiBase={API_BASE}
+            account={account}
+            busyAction={busyAction}
+            showToast={showToast}
+            handleAction={handleAction}
+            onAction={(actionConfig, payload) => handleAction(actionConfig, payload)}
+            stats={stats}
+            refreshStats={fetchStats}
+            resetTab={resetCurrentTab}
+            actionHistory={actionHistory}
+          />
+        </Suspense>
+      </TabErrorBoundary>
+    );
+  }, [account, actionHistory, busyAction, fetchStats, handleAction, resetCurrentTab, showToast, stats, tabResetKey]);
 
-      return (
-        <TabErrorBoundary tabName={tab.label} onReset={resetCurrentTab}>
-          <Suspense fallback={<TabLoader name={tab.label} />}>
-            <Component
-              key={`${tab.key}-${tabResetKey}`}
-              apiBase={API_BASE}
-              account={account}
-              busyAction={busyAction}
-              showToast={showToast}
-              handleAction={handleAction}
-              onAction={(actionConfig, payload) => handleAction(actionConfig, payload)}
-              stats={stats}
-              refreshStats={fetchStats}
-              resetTab={resetCurrentTab}
-              actionHistory={actionHistory}
-            />
-          </Suspense>
-        </TabErrorBoundary>
-      );
-    },
-    [account, actionHistory, busyAction, fetchStats, handleAction, resetCurrentTab, showToast, stats, tabResetKey]
-  );
-
-  // ✅ Simplified access check - just use isAdminFromAuth
   useEffect(() => {
-    // Short delay to allow auth context to load
     const timer = setTimeout(() => {
       setChecking(false);
       if (!isAdminFromAuth && !forceOwner && !BYPASS && !TEST_BYPASS) {
         setError("You do not have admin access.");
       }
     }, 500);
-    
     return () => clearTimeout(timer);
   }, [isAdminFromAuth, forceOwner, BYPASS, TEST_BYPASS]);
 
@@ -667,7 +576,7 @@ export default function AdminPanel({ forceOwner = false }) {
         <div className="text-center">
           <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
           <h2 className="mb-2 text-xl font-semibold">Checking access...</h2>
-          <p className="text-sm text-white/55">Making sure you are allowed into the admin panel.</p>
+          <p className="text-sm text-white/55">Verifying admin permissions...</p>
         </div>
       </div>
     );
@@ -679,13 +588,8 @@ export default function AdminPanel({ forceOwner = false }) {
         <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
           <div className="mb-4 text-7xl">🔒</div>
           <h2 className="mb-2 text-2xl font-bold">Admin Only</h2>
-          <p className="mb-6 text-white/65">
-            {error || "This area is restricted to platform administrators."}
-          </p>
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="w-full rounded-xl bg-emerald-600 px-6 py-3 font-medium transition hover:bg-emerald-500"
-          >
+          <p className="mb-6 text-white/65">{error || "This area is restricted to platform administrators."}</p>
+          <button onClick={() => navigate("/dashboard")} className="w-full rounded-xl bg-emerald-600 px-6 py-3 font-medium transition hover:bg-emerald-500">
             Back to Dashboard
           </button>
         </div>
@@ -695,96 +599,51 @@ export default function AdminPanel({ forceOwner = false }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-950 to-black text-white">
-      {toast ? (
-        <div
-          className={[
-            "fixed right-4 top-4 z-[70] max-w-[92vw] rounded-xl border px-4 py-3 shadow-lg backdrop-blur",
-            toast.type === "error"
-              ? "border-red-500/40 bg-red-600/90"
-              : "border-emerald-500/40 bg-emerald-600/90",
-          ].join(" ")}
-        >
+      {toast && (
+        <div className={`fixed right-4 top-4 z-[70] max-w-[92vw] rounded-xl border px-4 py-3 shadow-lg backdrop-blur ${
+          toast.type === "error" ? "border-red-500/40 bg-red-600/90" : "border-emerald-500/40 bg-emerald-600/90"
+        }`}>
           <div className="flex items-center gap-3">
             <span className="text-sm">{toast.message}</span>
-            <button
-              onClick={() => setToast(null)}
-              className="text-sm opacity-70 transition hover:opacity-100"
-            >
-              ✕
-            </button>
+            <button onClick={() => setToast(null)} className="text-sm opacity-70 hover:opacity-100">✕</button>
           </div>
         </div>
-      ) : null}
+      )}
 
       <header className="sticky top-0 z-50 border-b border-white/10 bg-gray-950/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3 lg:px-6">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="rounded-xl border border-white/10 bg-white/5 p-2 transition hover:bg-white/10 lg:hidden"
-              aria-label="Toggle navigation"
-            >
+            <button onClick={() => setMobileMenuOpen((prev) => !prev)} className="rounded-xl border border-white/10 bg-white/5 p-2 transition hover:bg-white/10 lg:hidden">
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-
             <div>
-              <h1 className="bg-gradient-to-r from-emerald-400 to-cyan-300 bg-clip-text text-xl font-bold text-transparent">
-                IMALI Admin Panel
-              </h1>
-              <p className="hidden text-xs text-white/45 sm:block">
-                Manage users, finances, marketing, and advanced platform tools.
-              </p>
+              <h1 className="bg-gradient-to-r from-emerald-400 to-cyan-300 bg-clip-text text-xl font-bold text-transparent">IMALI Admin Panel</h1>
+              <p className="hidden text-xs text-white/45 sm:block">Manage users, trades, finances, and platform settings.</p>
             </div>
           </div>
-
           <div className="flex items-center gap-3">
-            {stats ? (
+            {stats && (
               <div className="hidden items-center gap-2 lg:flex">
-                <span className="rounded-full bg-blue-500/15 px-2.5 py-1 text-xs text-blue-300">
-                  👥 {stats.totalUsers} users
-                </span>
-                <span className="rounded-full bg-purple-500/15 px-2.5 py-1 text-xs text-purple-300">
-                  🤖 {stats.activeJobs} jobs
-                </span>
-                {stats.openTickets > 0 ? (
-                  <span className="animate-pulse rounded-full bg-red-500/15 px-2.5 py-1 text-xs text-red-300">
-                    🎫 {stats.openTickets} tickets
-                  </span>
-                ) : null}
+                <span className="rounded-full bg-blue-500/15 px-2.5 py-1 text-xs text-blue-300">👥 {stats.totalUsers} users</span>
+                <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300">💰 ${stats.totalPnl?.toFixed(2)}</span>
               </div>
-            ) : null}
-
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
-            >
+            )}
+            <button onClick={() => navigate("/dashboard")} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white">
               Exit
             </button>
           </div>
         </div>
       </header>
 
-      {mobileMenuOpen ? (
-        <div
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        >
-          <aside
-            className="absolute left-0 top-0 h-full w-[88%] max-w-sm overflow-y-auto border-r border-white/10 bg-gray-950 px-4 pb-6 pt-20 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" onClick={() => setMobileMenuOpen(false)}>
+          <aside className="absolute left-0 top-0 h-full w-[88%] max-w-sm overflow-y-auto border-r border-white/10 bg-gray-950 px-4 pb-6 pt-20 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Navigation</h2>
-              <button
-                onClick={() => setMobileMenuOpen(false)}
-                className="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white"
-              >
-                ✕
-              </button>
+              <button onClick={() => setMobileMenuOpen(false)} className="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white">✕</button>
             </div>
-
             <div className="space-y-6">
               {TAB_SECTIONS.map((section) => (
                 <div key={section.id}>
@@ -795,17 +654,9 @@ export default function AdminPanel({ forceOwner = false }) {
                       <p className="text-xs text-white/45">{section.description}</p>
                     </div>
                   </div>
-
                   <div className="space-y-2">
                     {section.tabs.map((tab) => (
-                      <SidebarButton
-                        key={tab.key}
-                        tab={tab}
-                        isActive={active === tab.key}
-                        onClick={() => navigateToTab(tab.key)}
-                        badge={tab.key === "tickets" && stats?.openTickets > 0 ? stats.openTickets : null}
-                        busy={false}
-                      />
+                      <SidebarButton key={tab.key} tab={tab} isActive={active === tab.key} onClick={() => navigateToTab(tab.key)} busy={false} />
                     ))}
                   </div>
                 </div>
@@ -813,7 +664,7 @@ export default function AdminPanel({ forceOwner = false }) {
             </div>
           </aside>
         </div>
-      ) : null}
+      )}
 
       <div className="mx-auto flex max-w-[1600px]">
         <aside className="hidden min-h-[calc(100vh-65px)] w-[300px] shrink-0 border-r border-white/10 bg-white/[0.03] lg:block">
@@ -828,17 +679,9 @@ export default function AdminPanel({ forceOwner = false }) {
                       <p className="text-[11px] text-white/40">{section.description}</p>
                     </div>
                   </div>
-
                   <div className="space-y-2">
                     {section.tabs.map((tab) => (
-                      <SidebarButton
-                        key={tab.key}
-                        tab={tab}
-                        isActive={active === tab.key}
-                        onClick={() => navigateToTab(tab.key)}
-                        badge={tab.key === "tickets" && stats?.openTickets > 0 ? stats.openTickets : null}
-                        busy={false}
-                      />
+                      <SidebarButton key={tab.key} tab={tab} isActive={active === tab.key} onClick={() => navigateToTab(tab.key)} busy={false} />
                     ))}
                   </div>
                 </div>
@@ -848,26 +691,26 @@ export default function AdminPanel({ forceOwner = false }) {
         </aside>
 
         <main className="min-w-0 flex-1 px-4 py-4 lg:px-6 lg:py-6">
-          {stats ? (
+          {stats && (
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden">
               <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 text-center">
                 <div className="text-lg font-bold text-blue-300">{stats.totalUsers}</div>
                 <div className="text-xs text-white/50">Users</div>
               </div>
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-center">
+                <div className="text-lg font-bold text-emerald-300">${stats.totalPnl?.toFixed(2)}</div>
+                <div className="text-xs text-white/50">Total PnL</div>
+              </div>
               <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-3 text-center">
-                <div className="text-lg font-bold text-purple-300">{stats.activeJobs}</div>
-                <div className="text-xs text-white/50">Jobs</div>
+                <div className="text-lg font-bold text-purple-300">{stats.winRate || 0}%</div>
+                <div className="text-xs text-white/50">Win Rate</div>
               </div>
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-center">
-                <div className="text-lg font-bold text-amber-300">{stats.waitlistCount}</div>
-                <div className="text-xs text-white/50">Waitlist</div>
-              </div>
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-center">
-                <div className="text-lg font-bold text-emerald-300">{stats.activePromos}</div>
-                <div className="text-xs text-white/50">Promos</div>
+                <div className="text-lg font-bold text-amber-300">{stats.totalTrades || 0}</div>
+                <div className="text-xs text-white/50">Trades</div>
               </div>
             </div>
-          ) : null}
+          )}
 
           <section className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -878,19 +721,12 @@ export default function AdminPanel({ forceOwner = false }) {
                   <p className="mt-1 text-sm text-white/55">{activeTab.description}</p>
                 </div>
               </div>
-
               <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={resetCurrentTab}
-                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200 transition hover:bg-amber-500/20"
-                >
-                  Reset This Tab
+                <button onClick={resetCurrentTab} className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200 transition hover:bg-amber-500/20">
+                  Reset Tab
                 </button>
-                <button
-                  onClick={fetchStats}
-                  className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20"
-                >
-                  Refresh Panel
+                <button onClick={fetchStats} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20">
+                  Refresh All
                 </button>
               </div>
             </div>
@@ -904,12 +740,7 @@ export default function AdminPanel({ forceOwner = false }) {
               </div>
               <div className="flex flex-wrap gap-2">
                 {activeTab.actions.map((action) => (
-                  <ActionButton
-                    key={action.id}
-                    action={action}
-                    onAction={handleAction}
-                    busy={busyAction[`${activeTab.key}:${action.id}`]}
-                  />
+                  <ActionButton key={action.id} action={action} onAction={handleAction} busy={busyAction[`${activeTab.key}:${action.id}`]} />
                 ))}
               </div>
             </section>
@@ -925,30 +756,20 @@ export default function AdminPanel({ forceOwner = false }) {
                 <span className="text-2xl">❓</span>
                 <h3 className="text-lg font-semibold">How to use this page</h3>
               </div>
-              <button
-                onClick={() => setShowHelpPanel((prev) => !prev)}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs transition hover:bg-white/10"
-              >
+              <button onClick={() => setShowHelpPanel((prev) => !prev)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs transition hover:bg-white/10">
                 {showHelpPanel ? "Hide help" : "Show help"}
               </button>
             </div>
-
-            {showHelpPanel ? (
+            {showHelpPanel && (
               <div className="space-y-3">
                 <p className="text-sm leading-6 text-white/70">{activeTab.help}</p>
-
                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
                   {TAB_SECTIONS.map((section) => (
-                    <SectionBadge
-                      key={section.id}
-                      emoji={section.emoji}
-                      name={section.name}
-                      description={section.description}
-                    />
+                    <SectionBadge key={section.id} emoji={section.emoji} name={section.name} description={section.description} />
                   ))}
                 </div>
               </div>
-            ) : null}
+            )}
           </section>
 
           <div className="mt-6 text-center text-[11px] text-white/25">
