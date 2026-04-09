@@ -41,12 +41,14 @@ export default function TradesManagement({ apiBase, account, showToast, handleAc
       const data = await response.json();
       
       if (data.success) {
-        setTrades(data.data?.trades || []);
-        setTotalPages(data.data?.pagination?.totalPages || 1);
-        setTotalTrades(data.data?.pagination?.total || 0);
+        // Extract data from response.data
+        const responseData = data.data || data;
+        setTrades(responseData.trades || []);
+        setTotalPages(responseData.pagination?.totalPages || 1);
+        setTotalTrades(responseData.pagination?.total || 0);
         
         // Calculate summary
-        const tradesList = data.data?.trades || [];
+        const tradesList = responseData.trades || [];
         const totalPnl = tradesList.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
         const winning = tradesList.filter(t => t.pnl_usd > 0).length;
         const losing = tradesList.filter(t => t.pnl_usd < 0).length;
