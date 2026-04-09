@@ -6,13 +6,14 @@ import {
   FaCalendar, 
   FaChartBar, 
   FaUsers, 
-  FaTrade, 
+  FaChartLine,
   FaFileExcel,
   FaFileCsv,
   FaRobot,
   FaDollarSign,
   FaPercent,
-  FaClock
+  FaClock,
+  FaExchangeAlt
 } from "react-icons/fa";
 
 export default function ReportsTab({ apiBase, showToast }) {
@@ -134,7 +135,7 @@ export default function ReportsTab({ apiBase, showToast }) {
                     : "border border-white/10 hover:bg-white/5"
                 }`}
               >
-                <FaTrade className="inline mr-2" /> Trade Report
+                <FaExchangeAlt className="inline mr-2" /> Trade Report
               </button>
               <button
                 onClick={() => setReportType("users")}
@@ -413,7 +414,7 @@ export default function ReportsTab({ apiBase, showToast }) {
           {reportType === "trades" && reportData.trades && reportData.trades.length > 0 && (
             <div>
               <h4 className="mb-3 flex items-center gap-2 text-sm font-medium text-white/70">
-                <FaTrade /> Recent Trades
+                <FaExchangeAlt /> Recent Trades
               </h4>
               <div className="overflow-x-auto max-h-96">
                 <table className="w-full text-xs">
