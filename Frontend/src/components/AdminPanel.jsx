@@ -83,6 +83,7 @@ const CexManagement = lazy(() => import("../admin/CexManagement.jsx"));
 const StocksManagement = lazy(() => import("../admin/StocksManagement.jsx"));
 const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.jsx"));
 const ReportsTab = lazy(() => import("../admin/ReportsTab.jsx"));
+const TradesManagement = lazy(() => import("../admin/TradesManagement.jsx"));
 
 /* -------------------- Config -------------------- */
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
@@ -129,6 +130,7 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
         throw new Error(data.message || data.error || `Request failed (${response.status})`);
       }
 
+      // Return the data directly - it already contains { success: true, data: {...} }
       return data;
     } catch (error) {
       lastError = error;
@@ -202,7 +204,7 @@ const TAB_SECTIONS = [
         key: "trades",
         label: "All Trades",
         emoji: "📊",
-        component: lazy(() => import("../admin/TradesManagement.jsx")),
+        component: TradesManagement,
         description: "View all platform trades.",
         help: "See all trades across the platform. Filter by status, bot, or user. Export data for analysis.",
         actions: [
@@ -465,7 +467,9 @@ export default function AdminPanel({ forceOwner = false }) {
 
   const fetchStats = useCallback(async () => {
     try {
-      const data = await adminFetch("/api/admin/metrics", { method: "GET" });
+      const response = await adminFetch("/api/admin/metrics", { method: "GET" });
+      // Extract data from response.data (API returns { success: true, data: {...} })
+      const data = response.data || response;
       setStats({
         totalUsers: data.users?.total || 0,
         totalTrades: data.trades?.total || 0,
