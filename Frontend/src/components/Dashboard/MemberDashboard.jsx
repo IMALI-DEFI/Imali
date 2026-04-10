@@ -30,24 +30,100 @@ ChartJS.register(
 );
 
 /* ---------------------------------------------
- * UI config only
+ * UI config
  * ------------------------------------------- */
 const STRATEGIES = [
-  { value: "safe", label: "Safe & Steady", icon: "🐢", description: "Low risk, small but steady gains" },
-  { value: "balanced", label: "Balanced", icon: "⚖️", description: "Mix of safe and growth" },
-  { value: "growth", label: "Growth", icon: "📈", description: "More risk for bigger wins" },
-  { value: "aggressive", label: "Aggressive", icon: "🔥", description: "High risk, high reward" },
-  { value: "ai_weighted", label: "AI Weighted", icon: "🧠", description: "AI-guided signal weighting" },
-  { value: "mean_reversion", label: "Mean Reversion", icon: "🔁", description: "Looks for price pullbacks" },
-  { value: "momentum", label: "Momentum", icon: "🚀", description: "Follows strong moves" },
-  { value: "volume_spike", label: "Volume Spike", icon: "📊", description: "Looks for unusual activity" },
+  {
+    value: "safe",
+    label: "Safe & Steady",
+    simpleLabel: "Safer trading",
+    icon: "🐢",
+    description: "Lower risk with smaller, steadier moves",
+  },
+  {
+    value: "balanced",
+    label: "Balanced",
+    simpleLabel: "Balanced trading",
+    icon: "⚖️",
+    description: "Mix of safer picks and growth chances",
+  },
+  {
+    value: "growth",
+    label: "Growth",
+    simpleLabel: "Growth trading",
+    icon: "📈",
+    description: "More room for gains with more risk",
+  },
+  {
+    value: "aggressive",
+    label: "Aggressive",
+    simpleLabel: "Fast-moving trading",
+    icon: "🔥",
+    description: "Higher risk with higher upside",
+  },
+  {
+    value: "ai_weighted",
+    label: "AI Weighted",
+    simpleLabel: "Smart signal mode",
+    icon: "🧠",
+    description: "Uses signal scoring to weight decisions",
+  },
+  {
+    value: "mean_reversion",
+    label: "Mean Reversion",
+    simpleLabel: "Pullback mode",
+    icon: "🔁",
+    description: "Looks for prices that may bounce back",
+  },
+  {
+    value: "momentum",
+    label: "Momentum",
+    simpleLabel: "Trend-following mode",
+    icon: "🚀",
+    description: "Follows strong moves already in motion",
+  },
+  {
+    value: "volume_spike",
+    label: "Volume Spike",
+    simpleLabel: "Activity spike mode",
+    icon: "📊",
+    description: "Looks for unusual volume and activity",
+  },
 ];
 
 const PLANS = [
-  { value: "starter", label: "Starter", icon: "🎟️", priceLabel: "Free", color: "blue", features: ["Stock Trading", "Paper Trading"] },
-  { value: "pro", label: "Pro", icon: "⭐", priceLabel: "$19/month", color: "purple", features: ["Stock Trading", "Crypto Trading", "Live Trading"] },
-  { value: "elite", label: "Elite", icon: "👑", priceLabel: "$49/month", color: "amber", features: ["Everything + DEX Sniper", "Futures Trading"] },
-  { value: "bundle", label: "All Access", icon: "🎁", priceLabel: "$199/month", color: "emerald", features: ["Everything + Priority Support", "Early Access"] },
+  {
+    value: "starter",
+    label: "Starter",
+    icon: "🎟️",
+    priceLabel: "Free",
+    color: "blue",
+    features: ["Stock Trading", "Paper Trading"],
+  },
+  {
+    value: "pro",
+    label: "Pro",
+    icon: "⭐",
+    priceLabel: "$19/month",
+    color: "purple",
+    features: ["Stock Trading", "Crypto Trading", "Live Trading"],
+  },
+  {
+    value: "elite",
+    label: "Elite",
+    icon: "👑",
+    priceLabel: "$49/month",
+    color: "amber",
+    features: ["Everything + DEX Sniper", "Futures Trading"],
+  },
+  {
+    value: "bundle",
+    label: "All Access",
+    icon: "🎁",
+    priceLabel: "$199/month",
+    color: "emerald",
+    features: ["Everything + Priority Support", "Early Access"],
+  },
 ];
 
 /* ---------------------------------------------
@@ -97,6 +173,7 @@ const getStrategyMeta = (value) =>
   STRATEGIES.find((s) => s.value === value) || {
     value: value || "balanced",
     label: value || "Balanced",
+    simpleLabel: "Balanced trading",
     icon: "⚙️",
     description: "Current strategy",
   };
@@ -130,29 +207,29 @@ const defaultDashboardData = {
  * ------------------------------------------- */
 function StatCard({ title, value, color = "green", hint }) {
   const colors = {
-    green: "text-green-600",
-    red: "text-red-600",
-    purple: "text-purple-600",
-    blue: "text-blue-600",
-    orange: "text-orange-600",
+    green: "text-green-700",
+    red: "text-red-700",
+    purple: "text-purple-700",
+    blue: "text-blue-700",
+    orange: "text-orange-700",
   };
 
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-      <div className="text-xs uppercase tracking-wide text-gray-500">{title}</div>
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-700">{title}</div>
       <div className={`mt-1 text-2xl font-bold ${colors[color]}`}>{value}</div>
-      {hint ? <div className="mt-1 text-xs text-gray-400">{hint}</div> : null}
+      {hint ? <div className="mt-1 text-xs text-gray-600">{hint}</div> : null}
     </div>
   );
 }
 
 function Section({ title, icon, children, right }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
         <div className="flex items-center gap-2">
           <span className="text-xl">{icon}</span>
-          <h3 className="font-semibold text-gray-800">{title}</h3>
+          <h3 className="text-base font-bold text-gray-900">{title}</h3>
         </div>
         {right}
       </div>
@@ -170,19 +247,19 @@ function TradeRow({ trade }) {
 
   let bgColor = "bg-gray-50";
   let borderColor = "border-l-gray-400";
-  let badgeColor = "bg-gray-100 text-gray-700";
+  let badgeColor = "bg-gray-200 text-gray-800";
   let badgeText = side.toUpperCase() || "TRADE";
 
   if (isOpen) {
-    borderColor = "border-l-blue-500";
-    badgeColor = "bg-blue-100 text-blue-700";
+    borderColor = "border-l-blue-600";
+    badgeColor = "bg-blue-100 text-blue-800";
     badgeText = "OPEN";
   } else if (side === "buy") {
-    borderColor = "border-l-green-500";
-    badgeColor = "bg-green-100 text-green-700";
+    borderColor = "border-l-green-600";
+    badgeColor = "bg-green-100 text-green-800";
   } else if (side === "sell") {
-    borderColor = "border-l-red-500";
-    badgeColor = "bg-red-100 text-red-700";
+    borderColor = "border-l-red-600";
+    badgeColor = "bg-red-100 text-red-800";
   }
 
   return (
@@ -191,10 +268,10 @@ function TradeRow({ trade }) {
         <span className="text-lg">{getBotIcon(bot)}</span>
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">{symbol}</span>
-            <span className={`rounded px-2 py-0.5 text-xs ${badgeColor}`}>{badgeText}</span>
+            <span className="text-sm font-semibold text-gray-900">{symbol}</span>
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${badgeColor}`}>{badgeText}</span>
           </div>
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-gray-700">
             {bot} • {timeAgo(trade?.created_at)}
           </div>
         </div>
@@ -202,35 +279,37 @@ function TradeRow({ trade }) {
 
       <div className="text-right">
         {!isOpen ? (
-          <div className={`text-sm font-bold ${pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+          <div className={`text-sm font-bold ${pnl >= 0 ? "text-green-700" : "text-red-700"}`}>
             {formatMoney(pnl)}
           </div>
         ) : (
-          <div className="text-sm text-gray-600">{formatPlainMoney(trade?.price)}</div>
+          <div className="text-sm font-medium text-gray-800">{formatPlainMoney(trade?.price)}</div>
         )}
-        <div className="text-xs text-gray-400">{trade?.exchange || "—"}</div>
+        <div className="text-xs text-gray-700">{trade?.exchange || "—"}</div>
       </div>
     </div>
   );
 }
 
 function PositionRow({ position }) {
+  const strategyMeta = getStrategyMeta(position?.strategy);
+
   return (
-    <div className="flex items-center justify-between rounded-lg border-l-4 border-l-blue-500 bg-blue-50 p-3">
+    <div className="flex items-center justify-between rounded-lg border-l-4 border-l-blue-600 bg-blue-50 p-3">
       <div>
         <div className="flex items-center gap-2">
           <span className="text-lg">{getBotIcon(position?.bot)}</span>
-          <span className="text-sm font-medium">{position?.symbol || "Unknown"}</span>
-          <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">OPEN</span>
+          <span className="text-sm font-semibold text-gray-900">{position?.symbol || "Unknown"}</span>
+          <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">OPEN</span>
         </div>
-        <div className="text-xs text-gray-500">
-          {position?.strategy || "strategy"} • {timeAgo(position?.created_at)}
+        <div className="text-xs text-gray-800">
+          {strategyMeta.simpleLabel} • {timeAgo(position?.created_at)}
         </div>
       </div>
 
-      <div className="text-right text-sm text-gray-700">
-        <div>{formatPlainMoney(position?.entry_price)}</div>
-        <div className="text-xs text-gray-400">Qty: {safeNumber(position?.qty).toFixed(4)}</div>
+      <div className="text-right text-sm text-gray-900">
+        <div className="font-medium">{formatPlainMoney(position?.entry_price)}</div>
+        <div className="text-xs text-gray-700">Qty: {safeNumber(position?.qty).toFixed(4)}</div>
       </div>
     </div>
   );
@@ -238,27 +317,29 @@ function PositionRow({ position }) {
 
 function BotExecutionRow({ execution }) {
   const status = String(execution?.status || "").toLowerCase();
+  const strategyMeta = getStrategyMeta(execution?.strategy);
+
   const badge =
     status === "running" || status === "started"
-      ? "bg-green-100 text-green-700"
+      ? "bg-green-100 text-green-800"
       : status === "failed" || status === "error"
-      ? "bg-red-100 text-red-700"
-      : "bg-gray-100 text-gray-700";
+      ? "bg-red-100 text-red-800"
+      : "bg-gray-200 text-gray-800";
 
   return (
     <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3">
       <div>
         <div className="flex items-center gap-2">
           <span className="text-lg">{getBotIcon(execution?.bot)}</span>
-          <span className="text-sm font-medium">{execution?.bot || "Bot"}</span>
-          <span className={`rounded px-2 py-0.5 text-xs ${badge}`}>{execution?.status || "unknown"}</span>
+          <span className="text-sm font-semibold text-gray-900">{execution?.bot || "Bot"}</span>
+          <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge}`}>{execution?.status || "unknown"}</span>
         </div>
-        <div className="text-xs text-gray-500">
-          {execution?.strategy || "—"} • {timeAgo(execution?.created_at || execution?.requested_at)}
+        <div className="text-xs text-gray-800">
+          {strategyMeta.simpleLabel} • {timeAgo(execution?.created_at || execution?.requested_at)}
         </div>
       </div>
 
-      <div className="text-right text-xs text-gray-400">
+      <div className="text-right text-xs font-medium text-gray-700">
         {execution?.mode || "mode unknown"}
       </div>
     </div>
@@ -268,24 +349,50 @@ function BotExecutionRow({ execution }) {
 /* ---------------------------------------------
  * Settings popup
  * ------------------------------------------- */
-function SettingsPopup({ isOpen, onClose, currentStrategy }) {
+function SettingsPopup({ isOpen, onClose, currentStrategy, onSaved }) {
   const [selected, setSelected] = useState(currentStrategy || "balanced");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("info");
 
   useEffect(() => {
     setSelected(currentStrategy || "balanced");
     setMessage("");
+    setMessageType("info");
   }, [currentStrategy, isOpen]);
 
   const handleSave = async () => {
     setSaving(true);
     setMessage("");
+    setMessageType("info");
 
     try {
-      setMessage("Strategy display updated locally only. Backend save endpoint is not wired yet.");
-    } catch {
-      setMessage("Something went wrong.");
+      let result = null;
+
+      if (typeof BotAPI.updateStrategy === "function") {
+        result = await BotAPI.updateStrategy({ strategy: selected });
+      } else if (typeof BotAPI.updateUserSettings === "function") {
+        result = await BotAPI.updateUserSettings({ strategy: selected });
+      } else if (typeof BotAPI.updateProfile === "function") {
+        result = await BotAPI.updateProfile({ strategy: selected });
+      }
+
+      if (result && result.success === false) {
+        throw new Error(result.error || "Could not save strategy.");
+      }
+
+      if (!result) {
+        setMessage("Strategy changed in the dashboard, but no matching backend save method was found in BotAPI yet.");
+        setMessageType("warn");
+      } else {
+        setMessage("Strategy updated successfully.");
+        setMessageType("success");
+      }
+
+      await onSaved?.(selected);
+    } catch (err) {
+      setMessage(err?.message || "Something went wrong while saving your strategy.");
+      setMessageType("error");
     } finally {
       setSaving(false);
     }
@@ -293,53 +400,66 @@ function SettingsPopup({ isOpen, onClose, currentStrategy }) {
 
   if (!isOpen) return null;
 
+  const selectedMeta = getStrategyMeta(selected);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold">Settings</h2>
-          <button onClick={onClose} className="text-2xl text-gray-400 hover:text-gray-600">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between border-b border-gray-200 pb-3">
+          <h2 className="text-xl font-bold text-gray-900">Dashboard Settings</h2>
+          <button onClick={onClose} className="text-2xl font-bold text-gray-700 hover:text-gray-900">
             ×
           </button>
         </div>
 
         <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium text-gray-700">
-            Current displayed strategy
+          <label className="mb-2 block text-sm font-semibold text-gray-900">
+            Trading style
           </label>
-          <div className="space-y-2">
+
+          <select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-green-600"
+          >
             {STRATEGIES.map((s) => (
-              <button
-                key={s.value}
-                onClick={() => setSelected(s.value)}
-                className={`w-full rounded-lg border p-3 text-left transition-all ${
-                  selected === s.value
-                    ? "border-green-500 bg-green-50"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">{s.icon}</span>
-                  <div>
-                    <div className="font-medium">{s.label}</div>
-                    <div className="text-xs text-gray-500">{s.description}</div>
-                  </div>
-                </div>
-              </button>
+              <option key={s.value} value={s.value}>
+                {s.icon} {s.simpleLabel}
+              </option>
             ))}
+          </select>
+
+          <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{selectedMeta.icon}</span>
+              <div className="font-semibold text-gray-900">{selectedMeta.simpleLabel}</div>
+            </div>
+            <div className="mt-1 text-sm text-gray-700">{selectedMeta.description}</div>
           </div>
         </div>
 
         {message ? (
-          <div className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">{message}</div>
+          <div
+            className={`mb-4 rounded-lg p-3 text-sm font-medium ${
+              messageType === "success"
+                ? "bg-green-50 text-green-800"
+                : messageType === "warn"
+                ? "bg-amber-50 text-amber-800"
+                : messageType === "error"
+                ? "bg-red-50 text-red-800"
+                : "bg-gray-50 text-gray-800"
+            }`}
+          >
+            {message}
+          </div>
         ) : null}
 
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full rounded-xl bg-green-600 py-3 font-medium text-white hover:bg-green-700 disabled:opacity-50"
+          className="w-full rounded-xl bg-green-600 py-3 font-semibold text-white hover:bg-green-700 disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? "Saving..." : "Save Settings"}
         </button>
       </div>
     </div>
@@ -365,33 +485,33 @@ function ApiKeysPopup({ isOpen, onClose, apiKey }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold">API Key</h2>
-          <button onClick={onClose} className="text-2xl text-gray-400 hover:text-gray-600">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between border-b border-gray-200 pb-3">
+          <h2 className="text-xl font-bold text-gray-900">Your API Key</h2>
+          <button onClick={onClose} className="text-2xl font-bold text-gray-700 hover:text-gray-900">
             ×
           </button>
         </div>
 
         {!hasApiKey ? (
-          <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm font-medium text-gray-800">
             No API key is currently available for this account.
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-lg border bg-gray-50 p-3">
-              <div className="mb-1 text-xs uppercase tracking-wide text-gray-500">Current API Key</div>
-              <div className="break-all font-mono text-sm text-gray-800">{apiKey}</div>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-700">Current API Key</div>
+              <div className="break-all font-mono text-sm font-medium text-gray-900">{apiKey}</div>
             </div>
             <button
               onClick={copyKey}
-              className="w-full rounded-xl bg-blue-600 py-3 font-medium text-white hover:bg-blue-700"
+              className="w-full rounded-xl bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700"
             >
               Copy API Key
             </button>
-            <p className="text-xs text-gray-500">
-              This is the real API key returned for your user session. Key creation and deletion endpoints are not wired in this popup yet.
+            <p className="text-xs font-medium text-gray-700">
+              This is the API key returned for your user session. Key creation and deletion actions are not wired in this popup.
             </p>
           </div>
         )}
@@ -427,26 +547,26 @@ function PerformanceChart({ points, period, onChange }) {
         {
           label: "Daily PnL",
           data: pnlData,
-          borderColor: "#10b981",
-          backgroundColor: "rgba(16,185,129,0.12)",
+          borderColor: "#059669",
+          backgroundColor: "rgba(5,150,105,0.12)",
           fill: true,
           tension: 0.3,
           pointRadius: 3,
         },
         {
-          label: "Cumulative PnL",
+          label: "Total PnL Over Time",
           data: cumulative,
-          borderColor: "#8b5cf6",
+          borderColor: "#7c3aed",
           borderDash: [6, 4],
           borderWidth: 2,
           fill: false,
           pointRadius: 0,
         },
         {
-          label: "Trades",
+          label: "Number of Trades",
           data: tradesData,
-          borderColor: "#3b82f6",
-          backgroundColor: "rgba(59,130,246,0.12)",
+          borderColor: "#2563eb",
+          backgroundColor: "rgba(37,99,235,0.12)",
           fill: false,
           pointRadius: 0,
           hidden: true,
@@ -459,12 +579,30 @@ function PerformanceChart({ points, period, onChange }) {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: "top", labels: { font: { size: 11 } } },
+      legend: {
+        position: "top",
+        labels: {
+          font: { size: 11 },
+          color: "#111827",
+        },
+      },
     },
     scales: {
+      x: {
+        ticks: {
+          color: "#374151",
+        },
+        grid: {
+          color: "#e5e7eb",
+        },
+      },
       y: {
         ticks: {
+          color: "#374151",
           callback: (v) => `$${v}`,
+        },
+        grid: {
+          color: "#e5e7eb",
         },
       },
     },
@@ -477,8 +615,8 @@ function PerformanceChart({ points, period, onChange }) {
           <button
             key={p}
             onClick={() => onChange(p)}
-            className={`rounded-lg px-3 py-1 text-xs ${
-              period === p ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"
+            className={`rounded-lg px-3 py-1 text-xs font-semibold ${
+              period === p ? "bg-green-600 text-white" : "bg-gray-200 text-gray-900"
             }`}
           >
             {p === "7d" ? "7 Days" : p === "30d" ? "30 Days" : "90 Days"}
@@ -486,7 +624,7 @@ function PerformanceChart({ points, period, onChange }) {
         ))}
         <button
           onClick={() => setChartType(chartType === "line" ? "bar" : "line")}
-          className="rounded-lg bg-gray-100 px-3 py-1 text-xs text-gray-600"
+          className="rounded-lg bg-gray-200 px-3 py-1 text-xs font-semibold text-gray-900"
         >
           {chartType === "line" ? "📊 Bar" : "📈 Line"}
         </button>
@@ -500,7 +638,7 @@ function PerformanceChart({ points, period, onChange }) {
             <Bar data={chartData} options={options} />
           )
         ) : (
-          <div className="flex h-full items-center justify-center text-gray-400">
+          <div className="flex h-full items-center justify-center text-gray-700">
             No trading history yet
           </div>
         )}
@@ -521,7 +659,7 @@ function BillingSection({ user, activation }) {
     <Section title="Your Plan & Billing" icon="💳">
       <div className="space-y-4">
         <div
-          className={`rounded-xl border bg-gradient-to-r p-4 ${
+          className={`rounded-xl border border-gray-200 bg-gradient-to-r p-4 ${
             plan.color === "emerald"
               ? "from-emerald-50 to-green-50"
               : plan.color === "amber"
@@ -535,14 +673,14 @@ function BillingSection({ user, activation }) {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-2xl">{plan.icon}</span>
-                <span className="text-lg font-bold">{plan.label}</span>
+                <span className="text-lg font-bold text-gray-900">{plan.label}</span>
               </div>
-              <div className="mt-1 text-2xl font-bold">{plan.priceLabel}</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">{plan.priceLabel}</div>
             </div>
 
             <Link
               to="/pricing"
-              className="rounded-lg bg-white px-4 py-2 text-sm font-medium shadow-sm hover:shadow"
+              className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:shadow"
             >
               Change Plan →
             </Link>
@@ -550,7 +688,7 @@ function BillingSection({ user, activation }) {
 
           <div className="mt-3 flex flex-wrap gap-2">
             {plan.features.map((f, i) => (
-              <span key={i} className="rounded-full bg-white/70 px-2 py-1 text-xs">
+              <span key={i} className="rounded-full bg-white/80 px-2 py-1 text-xs font-medium text-gray-900">
                 ✓ {f}
               </span>
             ))}
@@ -561,13 +699,13 @@ function BillingSection({ user, activation }) {
           <div className="flex items-center gap-2">
             <span className="text-lg">💳</span>
             <div>
-              <div className="text-sm font-medium">Payment Method</div>
-              <div className="text-xs text-gray-500">
+              <div className="text-sm font-semibold text-gray-900">Payment Method</div>
+              <div className="text-xs text-gray-700">
                 {hasCard ? "Card on file ✓" : "No card added yet"}
               </div>
             </div>
           </div>
-          <Link to="/billing" className="text-sm text-blue-600 hover:text-blue-700">
+          <Link to="/billing" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
             {hasCard ? "Update Card" : "Add Card →"}
           </Link>
         </div>
@@ -575,13 +713,13 @@ function BillingSection({ user, activation }) {
         <div className="flex flex-wrap gap-2">
           <Link
             to="/billing-dashboard"
-            className="flex-1 rounded-lg bg-gray-100 px-4 py-2 text-center text-sm hover:bg-gray-200"
+            className="flex-1 rounded-lg bg-gray-200 px-4 py-2 text-center text-sm font-semibold text-gray-900 hover:bg-gray-300"
           >
             Billing History
           </Link>
           <Link
             to="/activation"
-            className="flex-1 rounded-lg bg-gray-100 px-4 py-2 text-center text-sm hover:bg-gray-200"
+            className="flex-1 rounded-lg bg-gray-200 px-4 py-2 text-center text-sm font-semibold text-gray-900 hover:bg-gray-300"
           >
             Activation Status
           </Link>
@@ -672,12 +810,12 @@ function ConnectionsSection({ activation, integrations, onRefresh }) {
   return (
     <Section title="Connected Accounts" icon="🔌">
       <div className="space-y-4">
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border border-gray-200 p-3">
           <div className="mb-2 flex items-center gap-2">
             <span className="text-lg">💰</span>
-            <span className="font-medium">Wallet</span>
+            <span className="font-semibold text-gray-900">Wallet</span>
             {(activation?.wallet_connected || integrations?.wallet_connected) && (
-              <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
+              <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
                 Connected
               </span>
             )}
@@ -690,36 +828,36 @@ function ConnectionsSection({ activation, integrations, onRefresh }) {
                 value={walletInput}
                 onChange={(e) => setWalletInput(e.target.value)}
                 placeholder="0x..."
-                className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
               />
               <button
                 onClick={handleConnectWallet}
                 disabled={connecting === "wallet"}
-                className="rounded-lg bg-purple-600 px-4 py-2 text-sm text-white hover:bg-purple-700"
+                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
               >
                 {connecting === "wallet" ? "..." : "Connect"}
               </button>
             </div>
           ) : (
-            <div className="text-sm text-gray-500">Wallet connected</div>
+            <div className="text-sm font-medium text-gray-700">Wallet connected</div>
           )}
 
           <a
             href="https://metamask.io/"
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-block text-xs text-blue-500"
+            className="mt-2 inline-block text-xs font-semibold text-blue-700"
           >
             Need a wallet? Get MetaMask →
           </a>
         </div>
 
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border border-gray-200 p-3">
           <div className="mb-2 flex items-center gap-2">
             <span className="text-lg">🔷</span>
-            <span className="font-medium">OKX Exchange</span>
+            <span className="font-semibold text-gray-900">OKX Exchange</span>
             {(activation?.okx_connected || integrations?.okx_connected) && (
-              <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
+              <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
                 Connected
               </span>
             )}
@@ -732,50 +870,50 @@ function ConnectionsSection({ activation, integrations, onRefresh }) {
                 value={okxKeys.apiKey}
                 onChange={(e) => setOkxKeys({ ...okxKeys, apiKey: e.target.value })}
                 placeholder="API Key"
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
               />
               <input
                 type="password"
                 value={okxKeys.secret}
                 onChange={(e) => setOkxKeys({ ...okxKeys, secret: e.target.value })}
                 placeholder="Secret Key"
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
               />
               <input
                 type="password"
                 value={okxKeys.passphrase}
                 onChange={(e) => setOkxKeys({ ...okxKeys, passphrase: e.target.value })}
                 placeholder="Passphrase"
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
               />
               <button
                 onClick={handleConnectOKX}
                 disabled={connecting === "okx"}
-                className="w-full rounded-lg bg-blue-600 py-2 text-sm text-white hover:bg-blue-700"
+                className="w-full rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700"
               >
                 {connecting === "okx" ? "Connecting..." : "Connect OKX"}
               </button>
             </div>
           ) : (
-            <div className="text-sm text-gray-500">Connected to OKX</div>
+            <div className="text-sm font-medium text-gray-700">Connected to OKX</div>
           )}
 
           <a
             href="https://www.okx.com/account/login?forward=%2Faccount%2Fmy-api"
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-block text-xs text-blue-500"
+            className="mt-2 inline-block text-xs font-semibold text-blue-700"
           >
             Get OKX API Keys →
           </a>
         </div>
 
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border border-gray-200 p-3">
           <div className="mb-2 flex items-center gap-2">
             <span className="text-lg">📈</span>
-            <span className="font-medium">Alpaca Stocks</span>
+            <span className="font-semibold text-gray-900">Alpaca Stocks</span>
             {(activation?.alpaca_connected || integrations?.alpaca_connected) && (
-              <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
+              <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
                 Connected
               </span>
             )}
@@ -788,32 +926,32 @@ function ConnectionsSection({ activation, integrations, onRefresh }) {
                 value={alpacaKeys.apiKey}
                 onChange={(e) => setAlpacaKeys({ ...alpacaKeys, apiKey: e.target.value })}
                 placeholder="API Key ID"
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
               />
               <input
                 type="password"
                 value={alpacaKeys.secret}
                 onChange={(e) => setAlpacaKeys({ ...alpacaKeys, secret: e.target.value })}
                 placeholder="Secret Key"
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
               />
               <button
                 onClick={handleConnectAlpaca}
                 disabled={connecting === "alpaca"}
-                className="w-full rounded-lg bg-green-600 py-2 text-sm text-white hover:bg-green-700"
+                className="w-full rounded-lg bg-green-600 py-2 text-sm font-semibold text-white hover:bg-green-700"
               >
                 {connecting === "alpaca" ? "Connecting..." : "Connect Alpaca"}
               </button>
             </div>
           ) : (
-            <div className="text-sm text-gray-500">Connected to Alpaca</div>
+            <div className="text-sm font-medium text-gray-700">Connected to Alpaca</div>
           )}
 
           <a
             href="https://app.alpaca.markets/signup"
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-block text-xs text-blue-500"
+            className="mt-2 inline-block text-xs font-semibold text-blue-700"
           >
             Get Alpaca API Keys →
           </a>
@@ -838,11 +976,16 @@ export default function MemberDashboard() {
   const [period, setPeriod] = useState("30d");
   const [showSettings, setShowSettings] = useState(false);
   const [showApiKeys, setShowApiKeys] = useState(false);
+  const [localStrategy, setLocalStrategy] = useState(user?.strategy || "balanced");
 
   const mountedRef = useRef(true);
   const isFetchingRef = useRef(false);
 
-  const strategyMeta = useMemo(() => getStrategyMeta(user?.strategy), [user?.strategy]);
+  useEffect(() => {
+    setLocalStrategy(user?.strategy || "balanced");
+  }, [user?.strategy]);
+
+  const strategyMeta = useMemo(() => getStrategyMeta(localStrategy), [localStrategy]);
 
   const loadData = useCallback(
     async (silent = false) => {
@@ -942,7 +1085,7 @@ export default function MemberDashboard() {
           integrationsRes.status === "rejected";
 
         setError(allRejected ? "Could not load your dashboard data." : "");
-      } catch (err) {
+      } catch {
         if (mountedRef.current) {
           setError("Could not load your dashboard data.");
         }
@@ -1001,10 +1144,10 @@ export default function MemberDashboard() {
 
   if (authLoading || (!initialized && loading)) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
         <div className="text-center">
           <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-green-600 border-t-transparent" />
-          <p className="text-gray-500">Loading your dashboard...</p>
+          <p className="font-medium text-gray-800">Loading your dashboard...</p>
         </div>
       </div>
     );
@@ -1012,12 +1155,12 @@ export default function MemberDashboard() {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+      <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
         <div className="text-center">
-          <p className="mb-4 text-gray-600">Please log in to see your dashboard.</p>
+          <p className="mb-4 font-medium text-gray-800">Please log in to see your dashboard.</p>
           <button
             onClick={() => navigate("/login")}
-            className="rounded-xl bg-green-600 px-6 py-2 text-white"
+            className="rounded-xl bg-green-600 px-6 py-2 font-semibold text-white"
           >
             Log In
           </button>
@@ -1027,15 +1170,15 @@ export default function MemberDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       <div className="mx-auto max-w-6xl space-y-5 px-4 py-6">
-        <div className="rounded-xl bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-xl font-bold text-gray-800">
+              <h1 className="text-xl font-bold text-gray-900">
                 👋 Hey, {user.email?.split("@")[0] || "there"}!
               </h1>
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm font-medium text-gray-700">
                 Here&apos;s how your account is doing right now.
               </p>
             </div>
@@ -1043,19 +1186,19 @@ export default function MemberDashboard() {
               <button
                 onClick={() => loadData(true)}
                 disabled={refreshing}
-                className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+                className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-900 hover:bg-gray-300 disabled:opacity-50"
               >
                 {refreshing ? "⟳" : "🔄 Refresh"}
               </button>
               <button
                 onClick={() => setShowSettings(true)}
-                className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm"
+                className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-900"
               >
                 ⚙️ Settings
               </button>
               <button
                 onClick={() => setShowApiKeys(true)}
-                className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm"
+                className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-900"
               >
                 🔑 API Key
               </button>
@@ -1064,22 +1207,22 @@ export default function MemberDashboard() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Link to="/billing" className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm">
+          <Link to="/billing" className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-900">
             💳 Add Payment
           </Link>
-          <Link to="/pricing" className="rounded-lg bg-amber-100 px-3 py-1.5 text-sm text-amber-700">
+          <Link to="/pricing" className="rounded-lg bg-amber-100 px-3 py-1.5 text-sm font-semibold text-amber-900">
             ⭐ Upgrade Plan
           </Link>
-          <Link to="/activation" className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm">
+          <Link to="/activation" className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-900">
             ⚡ Activation
           </Link>
-          <Link to="/billing-dashboard" className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm">
+          <Link to="/billing-dashboard" className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-900">
             📋 Billing History
           </Link>
         </div>
 
         {error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-800">
             {error}
           </div>
         ) : null}
@@ -1088,7 +1231,7 @@ export default function MemberDashboard() {
           <div className="space-y-5 lg:col-span-2">
             <div className="grid grid-cols-2 gap-3">
               <StatCard
-                title="Total Profit/Loss"
+                title="Total Profit / Loss"
                 value={formatMoney(totalPnL)}
                 color={totalPnL >= 0 ? "green" : "red"}
                 hint={`${totalTrades} total trades`}
@@ -1103,17 +1246,17 @@ export default function MemberDashboard() {
                 title="Open Positions"
                 value={openPositions}
                 color="blue"
-                hint="Currently active trades"
+                hint="Trades still running"
               />
               <StatCard
-                title="Strategy"
-                value={strategyMeta.label}
+                title="Trading Style"
+                value={strategyMeta.simpleLabel}
                 color="orange"
                 hint={strategyMeta.description}
               />
             </div>
 
-            <Section title="Your Performance" icon="📈">
+            <Section title="Performance" icon="📈">
               <PerformanceChart
                 points={dashboardData.dailyPerformance}
                 period={period}
@@ -1124,10 +1267,12 @@ export default function MemberDashboard() {
             <Section
               title="Bot Activity"
               icon="🤖"
-              right={<span className="text-xs text-gray-500">{activeExecutions} active</span>}
+              right={<span className="text-xs font-semibold text-gray-700">{activeExecutions} active</span>}
             >
               {dashboardData.executions.length === 0 ? (
-                <div className="py-6 text-center text-gray-400">No recent bot executions yet.</div>
+                <div className="py-6 text-center font-medium text-gray-700">
+                  No recent bot activity yet.
+                </div>
               ) : (
                 <div className="space-y-2">
                   {dashboardData.executions.slice(0, 6).map((execution, i) => (
@@ -1155,10 +1300,10 @@ export default function MemberDashboard() {
           <Section
             title="Open Positions"
             icon="📍"
-            right={<span className="text-xs text-gray-500">{dashboardData.positions.length} open</span>}
+            right={<span className="text-xs font-semibold text-gray-700">{dashboardData.positions.length} open</span>}
           >
             {dashboardData.positions.length === 0 ? (
-              <div className="py-8 text-center text-gray-400">No open positions right now.</div>
+              <div className="py-8 text-center font-medium text-gray-700">No open positions right now.</div>
             ) : (
               <div className="space-y-2">
                 {dashboardData.positions.slice(0, 10).map((position, i) => (
@@ -1170,7 +1315,7 @@ export default function MemberDashboard() {
 
           <Section title="Recent Trades" icon="📋">
             {dashboardData.trades.length === 0 ? (
-              <div className="py-8 text-center text-gray-400">No trades yet.</div>
+              <div className="py-8 text-center font-medium text-gray-700">No trades yet.</div>
             ) : (
               <div className="max-h-96 space-y-2 overflow-auto">
                 {dashboardData.trades.slice(0, 20).map((trade, i) => (
@@ -1184,39 +1329,39 @@ export default function MemberDashboard() {
         <Section title="Account Snapshot" icon="🧾">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-lg bg-gray-50 p-3">
-              <div className="text-xs uppercase tracking-wide text-gray-500">Tier</div>
-              <div className="mt-1 font-semibold text-gray-800">{user?.tier || "starter"}</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-700">Tier</div>
+              <div className="mt-1 font-bold text-gray-900">{user?.tier || "starter"}</div>
             </div>
             <div className="rounded-lg bg-gray-50 p-3">
-              <div className="text-xs uppercase tracking-wide text-gray-500">Trading Enabled</div>
-              <div className="mt-1 font-semibold text-gray-800">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-700">Trading Enabled</div>
+              <div className="mt-1 font-bold text-gray-900">
                 {activation?.trading_enabled ? "Yes" : "No"}
               </div>
             </div>
             <div className="rounded-lg bg-gray-50 p-3">
-              <div className="text-xs uppercase tracking-wide text-gray-500">Portfolio Value</div>
-              <div className="mt-1 font-semibold text-gray-800">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-700">Portfolio Value</div>
+              <div className="mt-1 font-bold text-gray-900">
                 {formatPlainMoney(user?.portfolio_value || 0)}
               </div>
             </div>
             <div className="rounded-lg bg-gray-50 p-3">
-              <div className="text-xs uppercase tracking-wide text-gray-500">Required Integrations</div>
-              <div className="mt-1 font-semibold text-gray-800">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-700">Required Integrations</div>
+              <div className="mt-1 font-bold text-gray-900">
                 {activation?.tier_required_integration || "—"}
               </div>
             </div>
           </div>
         </Section>
 
-        <div className="border-t border-gray-200 pt-4 text-center">
+        <div className="border-t border-gray-300 pt-4 text-center">
           <div className="flex justify-center gap-4 text-sm">
-            <Link to="/pricing" className="text-amber-600">
+            <Link to="/pricing" className="font-semibold text-amber-700">
               Upgrade Plan
             </Link>
-            <Link to="/live" className="text-green-600">
+            <Link to="/live" className="font-semibold text-green-700">
               Public Dashboard
             </Link>
-            <Link to="/support" className="text-gray-500">
+            <Link to="/support" className="font-semibold text-gray-800">
               Help
             </Link>
           </div>
@@ -1226,7 +1371,12 @@ export default function MemberDashboard() {
       <SettingsPopup
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
-        currentStrategy={user?.strategy || "balanced"}
+        currentStrategy={localStrategy}
+        onSaved={async (newStrategy) => {
+          setLocalStrategy(newStrategy);
+          await refreshActivation?.(true);
+          await loadData(true);
+        }}
       />
 
       <ApiKeysPopup
