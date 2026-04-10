@@ -50,6 +50,8 @@ export default function UserManagement({ apiBase, showToast }) {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
       });
       const data = await response.json();
+      const responseData = data.data || data;
+      setData(responseData.users);  // ✅
       
       if (data.success) {
         setUsers(data.data?.users || []);
