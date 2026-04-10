@@ -10,7 +10,7 @@
 # Proxy API requests to your backend
 [[redirects]]
   from = "/api/*"
-  to = "http://129.213.90.84:3002/api/:splat"
+  to = "https://api.imali-defi.com/api/:splat"
   status = 200
   force = true
 
