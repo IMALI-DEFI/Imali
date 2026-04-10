@@ -148,6 +148,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [debugInfo, setDebugInfo] = useState("");
 
   const nextFromQuery = useMemo(() => {
     try {
@@ -177,6 +178,62 @@ export default function Login() {
     }
   }, [location.search]);
 
+  // TEST FUNCTION - Direct API call to debug
+  const testDirectAPICall = async () => {
+    setDebugInfo("Testing direct API call...");
+    console.log("=== TESTING DIRECT API CALL ===");
+    
+    try {
+      const response = await fetch('https://api.imali-defi.com/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'wayne@imali-defi.com',
+          password: 'Admin123456!'
+        })
+      });
+      
+      const data = await response.json();
+      console.log("Direct API response:", data);
+      
+      if (data.data?.token) {
+        setDebugInfo("✅ SUCCESS! Token received. You can now log in.");
+        // Save the token for testing
+        localStorage.setItem('imali_token', data.data.token);
+        setTimeout(() => {
+          setDebugInfo("");
+          window.location.href = "/dashboard";
+        }, 2000);
+      } else {
+        setDebugInfo("❌ FAILED: " + JSON.stringify(data));
+      }
+    } catch (err) {
+      console.error("Direct API error:", err);
+      setDebugInfo("❌ ERROR: " + err.message);
+    }
+  };
+
+  // Debug the AuthContext login
+  const testAuthLogin = async () => {
+    setDebugInfo("Testing AuthContext login...");
+    console.log("=== TESTING AUTH LOGIN ===");
+    console.log("Email:", email);
+    console.log("Password length:", password.length);
+    
+    const result = await login(email, password);
+    console.log("Auth login result:", result);
+    
+    if (result.success) {
+      setDebugInfo("✅ Auth login SUCCESS!");
+      setTimeout(() => {
+        setDebugInfo("");
+        navigate(destination, { replace: true });
+      }, 1500);
+    } else {
+      setDebugInfo("❌ Auth login FAILED: " + (result.error || "Unknown error"));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -189,14 +246,22 @@ export default function Login() {
       return;
     }
 
+    console.log("=== FORM SUBMISSION ===");
+    console.log("Email being sent:", normalizedEmail);
+    console.log("Password length:", trimmedPassword.length);
+    console.log("First char of password:", trimmedPassword.charAt(0));
+
     setLoading(true);
     setError("");
+    setDebugInfo("Attempting login...");
 
     try {
       const result = await login(normalizedEmail, trimmedPassword);
+      console.log("Login result:", result);
 
       if (!result?.success) {
         setError(result?.error || "Login failed. Please try again.");
+        setDebugInfo("");
         return;
       }
 
@@ -206,10 +271,12 @@ export default function Login() {
         console.warn("[Login] Failed to store IMALI_EMAIL:", err);
       }
 
+      setDebugInfo("Login successful! Redirecting...");
       navigate(destination, { replace: true });
     } catch (err) {
       console.error("[Login] Login error:", err);
       setError(parseApiError(err, "Login failed. Please try again."));
+      setDebugInfo("");
     } finally {
       setLoading(false);
     }
@@ -235,6 +302,12 @@ export default function Login() {
         {location.state?.message && (
           <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm text-green-200">
             {location.state.message}
+          </div>
+        )}
+
+        {debugInfo && (
+          <div className="mb-4 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-200">
+            🔍 {debugInfo}
           </div>
         )}
 
@@ -280,6 +353,26 @@ export default function Login() {
             {loading ? "Signing in..." : "Log in"}
           </button>
         </form>
+
+        {/* TEST BUTTONS - Remove after debugging */}
+        <div className="mt-4 space-y-2">
+          <button
+            type="button"
+            onClick={testDirectAPICall}
+            className="w-full rounded-xl bg-purple-600 py-2 text-sm font-medium hover:bg-purple-700"
+          >
+            🧪 Test Direct API (wayne@imali-defi.com)
+          </button>
+          
+          <button
+            type="button"
+            onClick={testAuthLogin}
+            disabled={!email || !password}
+            className="w-full rounded-xl bg-orange-600 py-2 text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+          >
+            🧪 Test Auth Login (Current Form Values)
+          </button>
+        </div>
 
         <div className="mt-5 text-center text-sm text-white/60">
           Don&apos;t have an account?{" "}
