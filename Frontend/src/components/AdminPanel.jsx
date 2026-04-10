@@ -11,7 +11,6 @@ import React, {
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import { useAuth } from "../context/AuthContext";
-import BotAPI from "../utils/BotAPI";
 
 /* -------------------- Error Boundary -------------------- */
 class TabErrorBoundary extends React.Component {
@@ -96,10 +95,18 @@ const TradesManagement = lazy(() => import("../admin/TradesManagement.jsx"));
 
 /* -------------------- Config -------------------- */
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
-const AUTO_REFRESH_MS = 60_000;
+const AUTO_REFRESH_MS = 0; // DISABLED - prevents endless 403 loop
 
 /* -------------------- Helpers -------------------- */
-const getAuthToken = () => BotAPI.getToken();
+// FIXED: Direct localStorage access instead of BotAPI.getToken()
+const getAuthToken = () => {
+  try {
+    return localStorage.getItem("imali_token");
+  } catch (e) {
+    console.error("[AdminPanel] Failed to get token:", e);
+    return null;
+  }
+};
 
 const buildErrorMessage = (status, payload, fallbackText) => {
   const payloadMessage =
@@ -145,8 +152,11 @@ const isAdminPermissionError = (status, message = "") =>
   message.toLowerCase().includes("admin access required") ||
   message.toLowerCase().includes("permission");
 
-const adminFetch = async (endpoint, options = {}, retries = 2) => {
+const adminFetch = async (endpoint, options = {}, retries = 1) => {
   const token = getAuthToken();
+  
+  console.log("[AdminPanel] Token being used:", token ? `${token.substring(0, 20)}...` : "null");
+  
   if (!token) {
     const err = new Error("No authentication token found");
     err.status = 401;
@@ -197,6 +207,7 @@ const adminFetch = async (endpoint, options = {}, retries = 2) => {
       const status = error?.status || 0;
       const message = error?.message || "Request failed";
 
+      // Don't retry on auth or permission errors
       if (isAuthError(status, message) || isAdminPermissionError(status, message)) {
         throw error;
       }
@@ -482,6 +493,7 @@ export default function AdminPanel({ forceOwner = false }) {
   const [actionHistory, setActionHistory] = useState([]);
   const [apiError, setApiError] = useState(null);
   const refreshIntervalRef = useRef(null);
+  const [hasAuthFailed, setHasAuthFailed] = useState(false);
 
   const isDevelopment =
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
@@ -521,13 +533,30 @@ export default function AdminPanel({ forceOwner = false }) {
 
   const handleAuthFailure = useCallback(
     (message = "Session expired. Please log in again.") => {
+      if (hasAuthFailed) return; // Prevent multiple redirects
+      
+      setHasAuthFailed(true);
       setApiError(message);
       showToast(message, "error");
-      BotAPI.clearToken();
-      BotAPI.clearApiKey?.();
-      navigate("/login", { replace: true });
+      
+      // Clear token
+      try {
+        localStorage.removeItem("imali_token");
+        localStorage.removeItem("imali_user");
+      } catch (e) {}
+      
+      // Stop the refresh interval
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+      
+      // Redirect to login
+      setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 1500);
     },
-    [navigate, showToast]
+    [navigate, showToast, hasAuthFailed]
   );
 
   const handlePermissionFailure = useCallback(
@@ -535,6 +564,12 @@ export default function AdminPanel({ forceOwner = false }) {
       setApiError(message);
       setError(message);
       showToast(message, "error");
+      
+      // Stop the refresh interval on permission error
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
     },
     [showToast]
   );
@@ -558,6 +593,9 @@ export default function AdminPanel({ forceOwner = false }) {
 
   const fetchStats = useCallback(
     async (silent = false) => {
+      // Don't fetch if auth has already failed
+      if (hasAuthFailed) return null;
+      
       try {
         if (!silent) {
           setApiError(null);
@@ -592,7 +630,7 @@ export default function AdminPanel({ forceOwner = false }) {
         return null;
       }
     },
-    [mapStats, handleAuthFailure, handlePermissionFailure, showToast]
+    [mapStats, handleAuthFailure, handlePermissionFailure, showToast, hasAuthFailed]
   );
 
   const handleAction = useCallback(
@@ -715,26 +753,34 @@ export default function AdminPanel({ forceOwner = false }) {
     return () => clearTimeout(timer);
   }, [authLoading, allowAccess]);
 
+  // Only set up refresh interval if AUTO_REFRESH_MS > 0
   useEffect(() => {
-    if (!allowAccess || authLoading) return;
+    if (!allowAccess || authLoading || hasAuthFailed) return;
 
+    // Initial fetch
     fetchStats();
 
-    if (refreshIntervalRef.current) {
-      clearInterval(refreshIntervalRef.current);
-    }
-
-    refreshIntervalRef.current = setInterval(() => {
-      fetchStats(true);
-    }, AUTO_REFRESH_MS);
-
-    return () => {
+    // Only set up interval if auto-refresh is enabled
+    if (AUTO_REFRESH_MS > 0) {
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
       }
-    };
-  }, [allowAccess, authLoading, fetchStats]);
+
+      refreshIntervalRef.current = setInterval(() => {
+        // Don't refresh if auth has failed
+        if (!hasAuthFailed) {
+          fetchStats(true);
+        }
+      }, AUTO_REFRESH_MS);
+
+      return () => {
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+          refreshIntervalRef.current = null;
+        }
+      };
+    }
+  }, [allowAccess, authLoading, fetchStats, hasAuthFailed]);
 
   if ((checking || authLoading) && !allowAccess) {
     return (
@@ -790,7 +836,7 @@ export default function AdminPanel({ forceOwner = false }) {
       {apiError && (
         <div className="fixed bottom-4 right-4 z-[70] max-w-sm rounded-xl border border-red-500/40 bg-red-600/90 p-4 shadow-lg backdrop-blur">
           <div className="flex items-center gap-3">
-            <span className="text-sm">⚠️ API Error: {apiError}</span>
+            <span className="text-sm">⚠️ {apiError}</span>
             <button onClick={() => setApiError(null)} className="text-sm opacity-70 hover:opacity-100">
               ✕
             </button>
