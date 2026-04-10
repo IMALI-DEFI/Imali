@@ -198,7 +198,6 @@ export default function Login() {
       
       if (data.data?.token) {
         setDebugInfo("✅ SUCCESS! Token received. You can now log in.");
-        // Save the token for testing
         localStorage.setItem('imali_token', data.data.token);
         setTimeout(() => {
           setDebugInfo("");
@@ -239,7 +238,7 @@ export default function Login() {
     if (loading) return;
 
     const normalizedEmail = email.trim().toLowerCase();
-    const trimmedPassword = password;
+    const trimmedPassword = password; // Don't modify the password!
 
     if (!normalizedEmail || !trimmedPassword) {
       setError("Email and password are required.");
@@ -249,7 +248,7 @@ export default function Login() {
     console.log("=== FORM SUBMISSION ===");
     console.log("Email being sent:", normalizedEmail);
     console.log("Password length:", trimmedPassword.length);
-    console.log("First char of password:", trimmedPassword.charAt(0));
+    console.log("Password value:", trimmedPassword);
 
     setLoading(true);
     setError("");
@@ -333,6 +332,7 @@ export default function Login() {
             className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             autoComplete="current-password"
             disabled={loading}
+            // REMOVED: maxLength attribute - no length restriction!
           />
 
           <div className="text-right">
@@ -354,7 +354,7 @@ export default function Login() {
           </button>
         </form>
 
-        {/* TEST BUTTONS - Remove after debugging */}
+        {/* Test Buttons - Remove after debugging */}
         <div className="mt-4 space-y-2">
           <button
             type="button"
