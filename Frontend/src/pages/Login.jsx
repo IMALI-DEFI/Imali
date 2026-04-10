@@ -198,6 +198,7 @@ export default function Login() {
       
       if (data.data?.token) {
         setDebugInfo("✅ SUCCESS! Token received. You can now log in.");
+        // Save the token for testing
         localStorage.setItem('imali_token', data.data.token);
         setTimeout(() => {
           setDebugInfo("");
@@ -218,6 +219,7 @@ export default function Login() {
     console.log("=== TESTING AUTH LOGIN ===");
     console.log("Email:", email);
     console.log("Password length:", password.length);
+    console.log("Password value:", password);
     
     const result = await login(email, password);
     console.log("Auth login result:", result);
@@ -238,7 +240,8 @@ export default function Login() {
     if (loading) return;
 
     const normalizedEmail = email.trim().toLowerCase();
-    const trimmedPassword = password; // Don't modify the password!
+    // IMPORTANT: Do NOT trim or modify the password!
+    const trimmedPassword = password;
 
     if (!normalizedEmail || !trimmedPassword) {
       setError("Email and password are required.");
@@ -249,6 +252,8 @@ export default function Login() {
     console.log("Email being sent:", normalizedEmail);
     console.log("Password length:", trimmedPassword.length);
     console.log("Password value:", trimmedPassword);
+    console.log("Password first char:", trimmedPassword.charAt(0));
+    console.log("Password last char:", trimmedPassword.charAt(trimmedPassword.length - 1));
 
     setLoading(true);
     setError("");
@@ -328,11 +333,16 @@ export default function Login() {
             required
             placeholder="Password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              const newValue = e.target.value;
+              console.log("Password input changed - length:", newValue.length);
+              console.log("Password input changed - value:", newValue);
+              setPassword(newValue);
+            }}
             className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             autoComplete="current-password"
             disabled={loading}
-            // REMOVED: maxLength attribute - no length restriction!
+            // NO maxLength attribute - allow any length
           />
 
           <div className="text-right">
