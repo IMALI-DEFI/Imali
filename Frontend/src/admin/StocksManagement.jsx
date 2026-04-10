@@ -18,6 +18,8 @@ export default function StocksManagement({ apiBase, showToast, handleAction, bus
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await response.json();
+      const responseData = data.data || data;
+      setData(responseData.users);  // ✅
       if (data.success) {
         setPositions(data.positions || []);
         calculateStats(data.positions || []);
