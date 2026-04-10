@@ -39,7 +39,8 @@ export default function TradesManagement({ apiBase, account, showToast, handleAc
         headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
       });
       const data = await response.json();
-      
+      const responseData = data.data || data;
+      setData(responseData.users);  // ✅
       if (data.success) {
         // Extract data from response.data
         const responseData = data.data || data;
