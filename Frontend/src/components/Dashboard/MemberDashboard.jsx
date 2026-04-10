@@ -29,106 +29,44 @@ ChartJS.register(
   Filler
 );
 
-/* ---------------------------------------------
- * UI config
- * ------------------------------------------- */
-const STRATEGIES = [
-  {
-    value: "safe",
-    label: "Safe & Steady",
-    simpleLabel: "Safer trading",
-    icon: "🐢",
-    description: "Lower risk with smaller, steadier moves",
+const STATIC_STRATEGY_META = {
+  ai_weighted: {
+    id: "ai_weighted",
+    name: "Smart Signal Mode",
+    backend_name: "AI Weighted",
+    description: "Lets the system weigh signals and choose stronger setups for you.",
+    risk_level: "medium",
   },
-  {
-    value: "balanced",
-    label: "Balanced",
-    simpleLabel: "Balanced trading",
-    icon: "⚖️",
-    description: "Mix of safer picks and growth chances",
+  momentum: {
+    id: "momentum",
+    name: "Trend-Following Mode",
+    backend_name: "Momentum",
+    description: "Follows strong moves that are already gaining speed.",
+    risk_level: "high",
   },
-  {
-    value: "growth",
-    label: "Growth",
-    simpleLabel: "Growth trading",
-    icon: "📈",
-    description: "More room for gains with more risk",
+  mean_reversion: {
+    id: "mean_reversion",
+    name: "Pullback Mode",
+    backend_name: "Mean Reversion",
+    description: "Looks for dips and possible rebounds after price stretches too far.",
+    risk_level: "low",
   },
-  {
-    value: "aggressive",
-    label: "Aggressive",
-    simpleLabel: "Fast-moving trading",
-    icon: "🔥",
-    description: "Higher risk with higher upside",
+  arbitrage: {
+    id: "arbitrage",
+    name: "Price Gap Mode",
+    backend_name: "Arbitrage",
+    description: "Tries to benefit from price differences across markets or venues.",
+    risk_level: "low",
   },
-  {
-    value: "ai_weighted",
-    label: "AI Weighted",
-    simpleLabel: "Smart signal mode",
-    icon: "🧠",
-    description: "Uses signal scoring to weight decisions",
-  },
-  {
-    value: "mean_reversion",
-    label: "Mean Reversion",
-    simpleLabel: "Pullback mode",
-    icon: "🔁",
-    description: "Looks for prices that may bounce back",
-  },
-  {
-    value: "momentum",
-    label: "Momentum",
-    simpleLabel: "Trend-following mode",
-    icon: "🚀",
-    description: "Follows strong moves already in motion",
-  },
-  {
-    value: "volume_spike",
-    label: "Volume Spike",
-    simpleLabel: "Activity spike mode",
-    icon: "📊",
-    description: "Looks for unusual volume and activity",
-  },
-];
+};
 
 const PLANS = [
-  {
-    value: "starter",
-    label: "Starter",
-    icon: "🎟️",
-    priceLabel: "Free",
-    color: "blue",
-    features: ["Stock Trading", "Paper Trading"],
-  },
-  {
-    value: "pro",
-    label: "Pro",
-    icon: "⭐",
-    priceLabel: "$19/month",
-    color: "purple",
-    features: ["Stock Trading", "Crypto Trading", "Live Trading"],
-  },
-  {
-    value: "elite",
-    label: "Elite",
-    icon: "👑",
-    priceLabel: "$49/month",
-    color: "amber",
-    features: ["Everything + DEX Sniper", "Futures Trading"],
-  },
-  {
-    value: "bundle",
-    label: "All Access",
-    icon: "🎁",
-    priceLabel: "$199/month",
-    color: "emerald",
-    features: ["Everything + Priority Support", "Early Access"],
-  },
+  { value: "starter", label: "Starter", icon: "🎟️", priceLabel: "Free", color: "blue", features: ["Stock Trading", "Paper Trading"] },
+  { value: "pro", label: "Pro", icon: "⭐", priceLabel: "$19/month", color: "purple", features: ["Stock Trading", "Crypto Trading", "Live Trading"] },
+  { value: "elite", label: "Elite", icon: "👑", priceLabel: "$49/month", color: "amber", features: ["Everything + DEX Sniper", "Futures Trading"] },
+  { value: "bundle", label: "All Access", icon: "🎁", priceLabel: "$199/month", color: "emerald", features: ["Everything + Priority Support", "Early Access"] },
 ];
 
-/* ---------------------------------------------
- * Helpers
- * ------------------------------------------- */
 const safeNumber = (v, f = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : f;
@@ -169,14 +107,19 @@ const getBotIcon = (botName) => {
   return "🤖";
 };
 
-const getStrategyMeta = (value) =>
-  STRATEGIES.find((s) => s.value === value) || {
-    value: value || "balanced",
-    label: value || "Balanced",
-    simpleLabel: "Balanced trading",
-    icon: "⚙️",
-    description: "Current strategy",
-  };
+const getStrategyMeta = (value, backendStrategies = []) => {
+  const fromBackend = backendStrategies.find((s) => s.id === value);
+  if (fromBackend) return fromBackend;
+  return (
+    STATIC_STRATEGY_META[value] || {
+      id: value || "ai_weighted",
+      name: value || "Strategy",
+      backend_name: value || "Strategy",
+      description: "Current trading style",
+      risk_level: "medium",
+    }
+  );
+};
 
 const defaultDashboardData = {
   trades: [],
@@ -202,9 +145,6 @@ const defaultDashboardData = {
   },
 };
 
-/* ---------------------------------------------
- * Small UI blocks
- * ------------------------------------------- */
 function StatCard({ title, value, color = "green", hint }) {
   const colors = {
     green: "text-green-700",
@@ -291,8 +231,8 @@ function TradeRow({ trade }) {
   );
 }
 
-function PositionRow({ position }) {
-  const strategyMeta = getStrategyMeta(position?.strategy);
+function PositionRow({ position, strategies }) {
+  const strategyMeta = getStrategyMeta(position?.strategy, strategies);
 
   return (
     <div className="flex items-center justify-between rounded-lg border-l-4 border-l-blue-600 bg-blue-50 p-3">
@@ -303,7 +243,7 @@ function PositionRow({ position }) {
           <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">OPEN</span>
         </div>
         <div className="text-xs text-gray-800">
-          {strategyMeta.simpleLabel} • {timeAgo(position?.created_at)}
+          {strategyMeta.name} • {timeAgo(position?.created_at)}
         </div>
       </div>
 
@@ -315,9 +255,9 @@ function PositionRow({ position }) {
   );
 }
 
-function BotExecutionRow({ execution }) {
+function BotExecutionRow({ execution, strategies }) {
   const status = String(execution?.status || "").toLowerCase();
-  const strategyMeta = getStrategyMeta(execution?.strategy);
+  const strategyMeta = getStrategyMeta(execution?.strategy, strategies);
 
   const badge =
     status === "running" || status === "started"
@@ -335,7 +275,7 @@ function BotExecutionRow({ execution }) {
           <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge}`}>{execution?.status || "unknown"}</span>
         </div>
         <div className="text-xs text-gray-800">
-          {strategyMeta.simpleLabel} • {timeAgo(execution?.created_at || execution?.requested_at)}
+          {strategyMeta.name} • {timeAgo(execution?.created_at || execution?.requested_at)}
         </div>
       </div>
 
@@ -346,20 +286,19 @@ function BotExecutionRow({ execution }) {
   );
 }
 
-/* ---------------------------------------------
- * Settings popup
- * ------------------------------------------- */
-function SettingsPopup({ isOpen, onClose, currentStrategy, onSaved }) {
-  const [selected, setSelected] = useState(currentStrategy || "balanced");
+function SettingsPopup({ isOpen, onClose, currentStrategy, strategyOptions, onSaved }) {
+  const [selected, setSelected] = useState(currentStrategy || "ai_weighted");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
 
   useEffect(() => {
-    setSelected(currentStrategy || "balanced");
+    setSelected(currentStrategy || "ai_weighted");
     setMessage("");
     setMessageType("info");
   }, [currentStrategy, isOpen]);
+
+  const selectedMeta = getStrategyMeta(selected, strategyOptions);
 
   const handleSave = async () => {
     setSaving(true);
@@ -367,27 +306,14 @@ function SettingsPopup({ isOpen, onClose, currentStrategy, onSaved }) {
     setMessageType("info");
 
     try {
-      let result = null;
+      const result = await BotAPI.updateUserStrategy(selected);
 
-      if (typeof BotAPI.updateStrategy === "function") {
-        result = await BotAPI.updateStrategy({ strategy: selected });
-      } else if (typeof BotAPI.updateUserSettings === "function") {
-        result = await BotAPI.updateUserSettings({ strategy: selected });
-      } else if (typeof BotAPI.updateProfile === "function") {
-        result = await BotAPI.updateProfile({ strategy: selected });
+      if (!result?.success) {
+        throw new Error(result?.error || "Could not save strategy.");
       }
 
-      if (result && result.success === false) {
-        throw new Error(result.error || "Could not save strategy.");
-      }
-
-      if (!result) {
-        setMessage("Strategy changed in the dashboard, but no matching backend save method was found in BotAPI yet.");
-        setMessageType("warn");
-      } else {
-        setMessage("Strategy updated successfully.");
-        setMessageType("success");
-      }
+      setMessage(result?.message || "Trading style updated successfully.");
+      setMessageType("success");
 
       await onSaved?.(selected);
     } catch (err) {
@@ -399,8 +325,6 @@ function SettingsPopup({ isOpen, onClose, currentStrategy, onSaved }) {
   };
 
   if (!isOpen) return null;
-
-  const selectedMeta = getStrategyMeta(selected);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -422,19 +346,19 @@ function SettingsPopup({ isOpen, onClose, currentStrategy, onSaved }) {
             onChange={(e) => setSelected(e.target.value)}
             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-green-600"
           >
-            {STRATEGIES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.icon} {s.simpleLabel}
+            {strategyOptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
               </option>
             ))}
           </select>
 
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">{selectedMeta.icon}</span>
-              <div className="font-semibold text-gray-900">{selectedMeta.simpleLabel}</div>
-            </div>
+            <div className="font-semibold text-gray-900">{selectedMeta.name}</div>
             <div className="mt-1 text-sm text-gray-700">{selectedMeta.description}</div>
+            <div className="mt-2 text-xs font-medium text-gray-600">
+              Bot strategy ID: {selectedMeta.id}
+            </div>
           </div>
         </div>
 
@@ -443,8 +367,6 @@ function SettingsPopup({ isOpen, onClose, currentStrategy, onSaved }) {
             className={`mb-4 rounded-lg p-3 text-sm font-medium ${
               messageType === "success"
                 ? "bg-green-50 text-green-800"
-                : messageType === "warn"
-                ? "bg-amber-50 text-amber-800"
                 : messageType === "error"
                 ? "bg-red-50 text-red-800"
                 : "bg-gray-50 text-gray-800"
@@ -466,9 +388,6 @@ function SettingsPopup({ isOpen, onClose, currentStrategy, onSaved }) {
   );
 }
 
-/* ---------------------------------------------
- * API key popup
- * ------------------------------------------- */
 function ApiKeysPopup({ isOpen, onClose, apiKey }) {
   const hasApiKey = !!apiKey;
 
@@ -510,9 +429,6 @@ function ApiKeysPopup({ isOpen, onClose, apiKey }) {
             >
               Copy API Key
             </button>
-            <p className="text-xs font-medium text-gray-700">
-              This is the API key returned for your user session. Key creation and deletion actions are not wired in this popup.
-            </p>
           </div>
         )}
       </div>
@@ -520,9 +436,6 @@ function ApiKeysPopup({ isOpen, onClose, apiKey }) {
   );
 }
 
-/* ---------------------------------------------
- * Chart
- * ------------------------------------------- */
 function PerformanceChart({ points, period, onChange }) {
   const [chartType, setChartType] = useState("line");
 
@@ -581,29 +494,14 @@ function PerformanceChart({ points, period, onChange }) {
     plugins: {
       legend: {
         position: "top",
-        labels: {
-          font: { size: 11 },
-          color: "#111827",
-        },
+        labels: { font: { size: 11 }, color: "#111827" },
       },
     },
     scales: {
-      x: {
-        ticks: {
-          color: "#374151",
-        },
-        grid: {
-          color: "#e5e7eb",
-        },
-      },
+      x: { ticks: { color: "#374151" }, grid: { color: "#e5e7eb" } },
       y: {
-        ticks: {
-          color: "#374151",
-          callback: (v) => `$${v}`,
-        },
-        grid: {
-          color: "#e5e7eb",
-        },
+        ticks: { color: "#374151", callback: (v) => `$${v}` },
+        grid: { color: "#e5e7eb" },
       },
     },
   };
@@ -647,9 +545,6 @@ function PerformanceChart({ points, period, onChange }) {
   );
 }
 
-/* ---------------------------------------------
- * Billing
- * ------------------------------------------- */
 function BillingSection({ user, activation }) {
   const tier = user?.tier || "starter";
   const hasCard = activation?.has_card_on_file || activation?.billing_complete;
@@ -709,29 +604,11 @@ function BillingSection({ user, activation }) {
             {hasCard ? "Update Card" : "Add Card →"}
           </Link>
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Link
-            to="/billing-dashboard"
-            className="flex-1 rounded-lg bg-gray-200 px-4 py-2 text-center text-sm font-semibold text-gray-900 hover:bg-gray-300"
-          >
-            Billing History
-          </Link>
-          <Link
-            to="/activation"
-            className="flex-1 rounded-lg bg-gray-200 px-4 py-2 text-center text-sm font-semibold text-gray-900 hover:bg-gray-300"
-          >
-            Activation Status
-          </Link>
-        </div>
       </div>
     </Section>
   );
 }
 
-/* ---------------------------------------------
- * Connections
- * ------------------------------------------- */
 function ConnectionsSection({ activation, integrations, onRefresh }) {
   const [connecting, setConnecting] = useState(null);
   const [walletInput, setWalletInput] = useState("");
@@ -841,15 +718,6 @@ function ConnectionsSection({ activation, integrations, onRefresh }) {
           ) : (
             <div className="text-sm font-medium text-gray-700">Wallet connected</div>
           )}
-
-          <a
-            href="https://metamask.io/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-block text-xs font-semibold text-blue-700"
-          >
-            Need a wallet? Get MetaMask →
-          </a>
         </div>
 
         <div className="rounded-lg border border-gray-200 p-3">
@@ -897,15 +765,6 @@ function ConnectionsSection({ activation, integrations, onRefresh }) {
           ) : (
             <div className="text-sm font-medium text-gray-700">Connected to OKX</div>
           )}
-
-          <a
-            href="https://www.okx.com/account/login?forward=%2Faccount%2Fmy-api"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-block text-xs font-semibold text-blue-700"
-          >
-            Get OKX API Keys →
-          </a>
         </div>
 
         <div className="rounded-lg border border-gray-200 p-3">
@@ -946,24 +805,12 @@ function ConnectionsSection({ activation, integrations, onRefresh }) {
           ) : (
             <div className="text-sm font-medium text-gray-700">Connected to Alpaca</div>
           )}
-
-          <a
-            href="https://app.alpaca.markets/signup"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-block text-xs font-semibold text-blue-700"
-          >
-            Get Alpaca API Keys →
-          </a>
         </div>
       </div>
     </Section>
   );
 }
 
-/* ---------------------------------------------
- * Main
- * ------------------------------------------- */
 export default function MemberDashboard() {
   const navigate = useNavigate();
   const { user, activation, refreshActivation, loading: authLoading } = useAuth();
@@ -976,16 +823,34 @@ export default function MemberDashboard() {
   const [period, setPeriod] = useState("30d");
   const [showSettings, setShowSettings] = useState(false);
   const [showApiKeys, setShowApiKeys] = useState(false);
-  const [localStrategy, setLocalStrategy] = useState(user?.strategy || "balanced");
+  const [strategyOptions, setStrategyOptions] = useState([STATIC_STRATEGY_META.ai_weighted]);
+  const [currentStrategy, setCurrentStrategy] = useState(user?.strategy || "ai_weighted");
 
   const mountedRef = useRef(true);
   const isFetchingRef = useRef(false);
 
   useEffect(() => {
-    setLocalStrategy(user?.strategy || "balanced");
+    setCurrentStrategy(user?.strategy || "ai_weighted");
   }, [user?.strategy]);
 
-  const strategyMeta = useMemo(() => getStrategyMeta(localStrategy), [localStrategy]);
+  const strategyMeta = useMemo(
+    () => getStrategyMeta(currentStrategy, strategyOptions),
+    [currentStrategy, strategyOptions]
+  );
+
+  const loadStrategies = useCallback(async () => {
+    try {
+      const result = await BotAPI.getTradingStrategies(true);
+      if (!mountedRef.current) return;
+
+      if (result?.success && Array.isArray(result.strategies) && result.strategies.length > 0) {
+        setStrategyOptions(result.strategies);
+        setCurrentStrategy(result.current_strategy || user?.strategy || "ai_weighted");
+      }
+    } catch (err) {
+      console.error("Failed to load strategies:", err);
+    }
+  }, [user?.strategy]);
 
   const loadData = useCallback(
     async (silent = false) => {
@@ -993,23 +858,27 @@ export default function MemberDashboard() {
 
       isFetchingRef.current = true;
 
-      if (!silent) {
-        setLoading(true);
-      }
-
+      if (!silent) setLoading(true);
       setRefreshing(true);
 
       try {
         const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
 
-        const [tradesRes, statsRes, positionsRes, executionsRes, integrationsRes] =
-          await Promise.allSettled([
-            BotAPI.getUserTrades({ limit: 50, skipCache: true }),
-            BotAPI.getUserTradingStats(days, true),
-            BotAPI.getUserPositions(true),
-            BotAPI.getUserBotExecutions(20, true),
-            BotAPI.getIntegrationStatus(true),
-          ]);
+        const [
+          tradesRes,
+          statsRes,
+          positionsRes,
+          executionsRes,
+          integrationsRes,
+          strategiesRes,
+        ] = await Promise.allSettled([
+          BotAPI.getUserTrades({ limit: 50, skipCache: true }),
+          BotAPI.getUserTradingStats(days, true),
+          BotAPI.getUserPositions(true),
+          BotAPI.getUserBotExecutions(20, true),
+          BotAPI.getIntegrationStatus(true),
+          BotAPI.getTradingStrategies(true),
+        ]);
 
         if (!mountedRef.current) return;
 
@@ -1057,6 +926,16 @@ export default function MemberDashboard() {
           okx_connected: !!integrationsRaw.okx_connected,
         };
 
+        if (strategiesRes.status === "fulfilled" && strategiesRes.value?.success) {
+          const fetchedStrategies = strategiesRes.value.strategies || [];
+          if (fetchedStrategies.length > 0) {
+            setStrategyOptions(fetchedStrategies);
+          }
+          setCurrentStrategy(
+            strategiesRes.value.current_strategy || user?.strategy || "ai_weighted"
+          );
+        }
+
         setDashboardData({
           trades,
           positions,
@@ -1077,15 +956,8 @@ export default function MemberDashboard() {
           integrations,
         });
 
-        const allRejected =
-          tradesRes.status === "rejected" &&
-          statsRes.status === "rejected" &&
-          positionsRes.status === "rejected" &&
-          executionsRes.status === "rejected" &&
-          integrationsRes.status === "rejected";
-
-        setError(allRejected ? "Could not load your dashboard data." : "");
-      } catch {
+        setError("");
+      } catch (err) {
         if (mountedRef.current) {
           setError("Could not load your dashboard data.");
         }
@@ -1129,6 +1001,12 @@ export default function MemberDashboard() {
 
     return () => clearInterval(timer);
   }, [user, loadData]);
+
+  useEffect(() => {
+    if (user) {
+      loadStrategies();
+    }
+  }, [user, loadStrategies]);
 
   const totalPnL = dashboardData.stats.total_pnl;
   const totalTrades = dashboardData.stats.total_trades;
@@ -1206,21 +1084,6 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Link to="/billing" className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-900">
-            💳 Add Payment
-          </Link>
-          <Link to="/pricing" className="rounded-lg bg-amber-100 px-3 py-1.5 text-sm font-semibold text-amber-900">
-            ⭐ Upgrade Plan
-          </Link>
-          <Link to="/activation" className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-900">
-            ⚡ Activation
-          </Link>
-          <Link to="/billing-dashboard" className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-900">
-            📋 Billing History
-          </Link>
-        </div>
-
         {error ? (
           <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-800">
             {error}
@@ -1250,7 +1113,7 @@ export default function MemberDashboard() {
               />
               <StatCard
                 title="Trading Style"
-                value={strategyMeta.simpleLabel}
+                value={strategyMeta.name}
                 color="orange"
                 hint={strategyMeta.description}
               />
@@ -1276,7 +1139,11 @@ export default function MemberDashboard() {
               ) : (
                 <div className="space-y-2">
                   {dashboardData.executions.slice(0, 6).map((execution, i) => (
-                    <BotExecutionRow key={execution.id || i} execution={execution} />
+                    <BotExecutionRow
+                      key={execution.id || i}
+                      execution={execution}
+                      strategies={strategyOptions}
+                    />
                   ))}
                 </div>
               )}
@@ -1307,7 +1174,11 @@ export default function MemberDashboard() {
             ) : (
               <div className="space-y-2">
                 {dashboardData.positions.slice(0, 10).map((position, i) => (
-                  <PositionRow key={position.id || i} position={position} />
+                  <PositionRow
+                    key={position.id || i}
+                    position={position}
+                    strategies={strategyOptions}
+                  />
                 ))}
               </div>
             )}
@@ -1371,10 +1242,11 @@ export default function MemberDashboard() {
       <SettingsPopup
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
-        currentStrategy={localStrategy}
+        currentStrategy={currentStrategy}
+        strategyOptions={strategyOptions}
         onSaved={async (newStrategy) => {
-          setLocalStrategy(newStrategy);
-          await refreshActivation?.(true);
+          setCurrentStrategy(newStrategy);
+          await loadStrategies();
           await loadData(true);
         }}
       />
