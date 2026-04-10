@@ -1,5 +1,5 @@
 // src/pages/Login.jsx
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
@@ -148,7 +148,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [debugInfo, setDebugInfo] = useState("");
 
   const nextFromQuery = useMemo(() => {
     try {
@@ -178,69 +177,17 @@ export default function Login() {
     }
   }, [location.search]);
 
-  // TEST FUNCTION - Direct API call to debug
-  const testDirectAPICall = async () => {
-    setDebugInfo("Testing direct API call...");
-    console.log("=== TESTING DIRECT API CALL ===");
-    
-    try {
-      const response = await fetch('https://api.imali-defi.com/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'wayne@imali-defi.com',
-          password: 'Admin123456!'
-        })
-      });
-      
-      const data = await response.json();
-      console.log("Direct API response:", data);
-      
-      if (data.data?.token) {
-        setDebugInfo("✅ SUCCESS! Token received. You can now log in.");
-        // Save the token for testing
-        localStorage.setItem('imali_token', data.data.token);
-        setTimeout(() => {
-          setDebugInfo("");
-          window.location.href = "/dashboard";
-        }, 2000);
-      } else {
-        setDebugInfo("❌ FAILED: " + JSON.stringify(data));
-      }
-    } catch (err) {
-      console.error("Direct API error:", err);
-      setDebugInfo("❌ ERROR: " + err.message);
-    }
-  };
-
-  // Debug the AuthContext login
-  const testAuthLogin = async () => {
-    setDebugInfo("Testing AuthContext login...");
-    console.log("=== TESTING AUTH LOGIN ===");
-    console.log("Email:", email);
-    console.log("Password length:", password.length);
-    console.log("Password value:", password);
-    
-    const result = await login(email, password);
-    console.log("Auth login result:", result);
-    
-    if (result.success) {
-      setDebugInfo("✅ Auth login SUCCESS!");
-      setTimeout(() => {
-        setDebugInfo("");
-        navigate(destination, { replace: true });
-      }, 1500);
-    } else {
-      setDebugInfo("❌ Auth login FAILED: " + (result.error || "Unknown error"));
-    }
-  };
+  // Clear form on mount to prevent autofill issues
+  useEffect(() => {
+    setEmail("");
+    setPassword("");
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
 
     const normalizedEmail = email.trim().toLowerCase();
-    // IMPORTANT: Do NOT trim or modify the password!
     const trimmedPassword = password;
 
     if (!normalizedEmail || !trimmedPassword) {
@@ -248,24 +195,14 @@ export default function Login() {
       return;
     }
 
-    console.log("=== FORM SUBMISSION ===");
-    console.log("Email being sent:", normalizedEmail);
-    console.log("Password length:", trimmedPassword.length);
-    console.log("Password value:", trimmedPassword);
-    console.log("Password first char:", trimmedPassword.charAt(0));
-    console.log("Password last char:", trimmedPassword.charAt(trimmedPassword.length - 1));
-
     setLoading(true);
     setError("");
-    setDebugInfo("Attempting login...");
 
     try {
       const result = await login(normalizedEmail, trimmedPassword);
-      console.log("Login result:", result);
 
       if (!result?.success) {
         setError(result?.error || "Login failed. Please try again.");
-        setDebugInfo("");
         return;
       }
 
@@ -275,12 +212,10 @@ export default function Login() {
         console.warn("[Login] Failed to store IMALI_EMAIL:", err);
       }
 
-      setDebugInfo("Login successful! Redirecting...");
       navigate(destination, { replace: true });
     } catch (err) {
       console.error("[Login] Login error:", err);
       setError(parseApiError(err, "Login failed. Please try again."));
-      setDebugInfo("");
     } finally {
       setLoading(false);
     }
@@ -309,40 +244,30 @@ export default function Login() {
           </div>
         )}
 
-        {debugInfo && (
-          <div className="mb-4 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-200">
-            🔍 {debugInfo}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate autoComplete="off">
           <input
+            id="login-email"
             type="email"
             required
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            autoComplete="email"
+            autoComplete="off"
             disabled={loading}
             inputMode="email"
           />
 
           <input
+            id="login-password"
             type="password"
             required
             placeholder="Password"
             value={password}
-            onChange={(e) => {
-              const newValue = e.target.value;
-              console.log("Password input changed - length:", newValue.length);
-              console.log("Password input changed - value:", newValue);
-              setPassword(newValue);
-            }}
+            onChange={(e) => setPassword(e.target.value)}
             className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            autoComplete="current-password"
+            autoComplete="off"
             disabled={loading}
-            // NO maxLength attribute - allow any length
           />
 
           <div className="text-right">
@@ -363,26 +288,6 @@ export default function Login() {
             {loading ? "Signing in..." : "Log in"}
           </button>
         </form>
-
-        {/* Test Buttons - Remove after debugging */}
-        <div className="mt-4 space-y-2">
-          <button
-            type="button"
-            onClick={testDirectAPICall}
-            className="w-full rounded-xl bg-purple-600 py-2 text-sm font-medium hover:bg-purple-700"
-          >
-            🧪 Test Direct API (wayne@imali-defi.com)
-          </button>
-          
-          <button
-            type="button"
-            onClick={testAuthLogin}
-            disabled={!email || !password}
-            className="w-full rounded-xl bg-orange-600 py-2 text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
-          >
-            🧪 Test Auth Login (Current Form Values)
-          </button>
-        </div>
 
         <div className="mt-5 text-center text-sm text-white/60">
           Don&apos;t have an account?{" "}
