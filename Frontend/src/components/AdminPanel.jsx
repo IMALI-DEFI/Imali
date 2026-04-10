@@ -96,11 +96,13 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
   if (!token) throw new Error("No authentication token found");
 
   const safeEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  let lastError;
+  const url = `${API_BASE}${safeEndpoint}`;
+  
+  console.log(`[AdminFetch] Requesting: ${url}`); // Debug log
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(`${API_BASE}${safeEndpoint}`, {
+      const response = await fetch(url, {
         method: options.method || "GET",
         ...options,
         headers: {
@@ -109,6 +111,8 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
           ...(options.headers || {}),
         },
       });
+
+      console.log(`[AdminFetch] Response status: ${response.status}`); // Debug log
 
       if (response.status === 429) {
         const retryAfter = parseInt(response.headers.get('Retry-After')) || Math.pow(2, attempt) * 5;
@@ -124,16 +128,17 @@ const adminFetch = async (endpoint, options = {}, retries = 3) => {
         throw new Error("Authentication failed. Please log in again.");
       }
 
-      const data = await response.json().catch(() => ({}));
-
       if (!response.ok) {
-        throw new Error(data.message || data.error || `Request failed (${response.status})`);
+        const text = await response.text();
+        console.error(`[AdminFetch] Response not OK: ${response.status}, Body:`, text.substring(0, 200));
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // Return the data directly - it already contains { success: true, data: {...} }
+      const data = await response.json();
       return data;
     } catch (error) {
       lastError = error;
+      console.error(`[AdminFetch] Attempt ${attempt + 1} failed:`, error.message);
       if (attempt < retries && !error.message.includes('429') && !error.message.includes('401')) {
         const delay = Math.pow(2, attempt) * 1000;
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -439,6 +444,7 @@ export default function AdminPanel({ forceOwner = false }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [actionHistory, setActionHistory] = useState([]);
+  const [apiError, setApiError] = useState(null);
 
   const isDevelopment = process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
   const BYPASS = isDevelopment && process.env.REACT_APP_BYPASS_OWNER === "1";
@@ -467,8 +473,14 @@ export default function AdminPanel({ forceOwner = false }) {
 
   const fetchStats = useCallback(async () => {
     try {
+      setApiError(null);
       const response = await adminFetch("/api/admin/metrics", { method: "GET" });
-      // Extract data from response.data (API returns { success: true, data: {...} })
+      
+      // Check if response has success flag and data
+      if (!response || !response.success) {
+        throw new Error(response?.error || "Invalid response from server");
+      }
+      
       const data = response.data || response;
       setStats({
         totalUsers: data.users?.total || 0,
@@ -485,10 +497,13 @@ export default function AdminPanel({ forceOwner = false }) {
       });
     } catch (err) {
       console.error("[AdminPanel] Stats fetch error:", err);
+      setApiError(err.message);
       if (err.message?.includes('401')) {
         showToast("Session expired. Please log in again.", "error");
         BotAPI.clearToken();
         navigate("/login");
+      } else if (!err.message?.includes('429')) {
+        showToast(`Failed to load metrics: ${err.message}`, "error");
       }
     }
   }, [showToast, navigate]);
@@ -610,6 +625,15 @@ export default function AdminPanel({ forceOwner = false }) {
           <div className="flex items-center gap-3">
             <span className="text-sm">{toast.message}</span>
             <button onClick={() => setToast(null)} className="text-sm opacity-70 hover:opacity-100">✕</button>
+          </div>
+        </div>
+      )}
+
+      {apiError && (
+        <div className="fixed bottom-4 right-4 z-[70] max-w-sm rounded-xl border border-red-500/40 bg-red-600/90 p-4 shadow-lg backdrop-blur">
+          <div className="flex items-center gap-3">
+            <span className="text-sm">⚠️ API Error: {apiError}</span>
+            <button onClick={() => setApiError(null)} className="text-sm opacity-70 hover:opacity-100">✕</button>
           </div>
         </div>
       )}
