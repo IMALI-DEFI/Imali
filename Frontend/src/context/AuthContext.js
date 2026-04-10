@@ -1,545 +1,591 @@
 // src/context/AuthContext.js
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 
 const AuthContext = createContext(null);
+
 const TOKEN_KEY = "imali_token";
 const USER_KEY = "imali_user";
 const ACTIVATION_KEY = "imali_activation";
 
-// API Base URL
-const API_BASE_URL = "https://api.imali-defi.com";
+const API_BASE_URL =
+  (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
 
-// Simple token helpers
-const getToken = () => {
+const REFRESH_COOLDOWN_MS = 30_000;
+
+/* ---------------------------------------------
+ * Storage helpers
+ * ------------------------------------------- */
+
+const isBrowser = typeof window !== "undefined";
+
+const safeStorageGet = (key) => {
+  if (!isBrowser) return null;
   try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
+    return localStorage.getItem(key);
+  } catch (err) {
+    console.warn(`[Auth] Failed to read localStorage key "${key}":`, err);
     return null;
   }
 };
 
-const setToken = (token) => {
+const safeStorageSet = (key, value) => {
+  if (!isBrowser) return;
   try {
-    if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-    }
-  } catch (e) {
-    console.warn(e);
+    localStorage.setItem(key, value);
+  } catch (err) {
+    console.warn(`[Auth] Failed to write localStorage key "${key}":`, err);
   }
+};
+
+const safeStorageRemove = (key) => {
+  if (!isBrowser) return;
+  try {
+    localStorage.removeItem(key);
+  } catch (err) {
+    console.warn(`[Auth] Failed to remove localStorage key "${key}":`, err);
+  }
+};
+
+const getToken = () => safeStorageGet(TOKEN_KEY);
+
+const setToken = (token) => {
+  if (token) safeStorageSet(TOKEN_KEY, token);
+  else safeStorageRemove(TOKEN_KEY);
 };
 
 const clearToken = () => {
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch (e) {
-    console.warn(e);
-  }
+  safeStorageRemove(TOKEN_KEY);
 };
+
+/* ---------------------------------------------
+ * Normalizers
+ * ------------------------------------------- */
+
+const normalizeBoolean = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.toLowerCase() === "true";
+  if (typeof value === "number") return value === 1;
+  return !!value;
+};
+
+const normalizeUser = (userData) => {
+  if (!userData || (!userData.id && !userData.email)) return null;
+
+  return {
+    id: userData.id || null,
+    email: userData.email || null,
+    tier: userData.tier || "starter",
+    strategy: userData.strategy || "ai_weighted",
+    trading_enabled: normalizeBoolean(userData.trading_enabled),
+    is_admin: normalizeBoolean(userData.is_admin),
+    has_card_on_file: normalizeBoolean(userData.has_card_on_file),
+    billing_complete: normalizeBoolean(userData.billing_complete),
+    referral_code: userData.referral_code || null,
+    api_key: userData.api_key || null,
+    wallet_addresses: Array.isArray(userData.wallet_addresses)
+      ? userData.wallet_addresses
+      : [],
+    portfolio_value: Number(userData.portfolio_value || 1000),
+    created_at: userData.created_at || null,
+    updated_at: userData.updated_at || null,
+  };
+};
+
+const normalizeActivation = (activationData) => {
+  if (!activationData) return null;
+
+  return {
+    tier: activationData.tier || "starter",
+    has_card_on_file: normalizeBoolean(activationData.has_card_on_file),
+    billing_complete: normalizeBoolean(activationData.billing_complete),
+    trading_enabled: normalizeBoolean(activationData.trading_enabled),
+    wallet_connected: normalizeBoolean(activationData.wallet_connected),
+    okx_connected: normalizeBoolean(activationData.okx_connected),
+    alpaca_connected: normalizeBoolean(activationData.alpaca_connected),
+    activation_complete: normalizeBoolean(activationData.activation_complete),
+    tier_requirements_met: normalizeBoolean(activationData.tier_requirements_met),
+    tier_required_integration:
+      activationData.tier_required_integration || "Alpaca & OKX (both)",
+  };
+};
+
+const defaultActivation = () => ({
+  tier: "starter",
+  has_card_on_file: false,
+  billing_complete: false,
+  trading_enabled: false,
+  wallet_connected: false,
+  okx_connected: false,
+  alpaca_connected: false,
+  activation_complete: false,
+  tier_requirements_met: false,
+  tier_required_integration: "Alpaca & OKX (both)",
+});
+
+/* ---------------------------------------------
+ * HTTP helper
+ * ------------------------------------------- */
+
+const apiFetch = async (path, options = {}) => {
+  const token = getToken();
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  const contentType = response.headers.get("content-type") || "";
+  const rawText = await response.text();
+
+  let data = null;
+  if (contentType.includes("application/json") && rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch (err) {
+      throw new Error(`Invalid JSON response from ${path}`);
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      data?.error ||
+      data?.message ||
+      rawText ||
+      `HTTP ${response.status} ${response.statusText}`;
+
+    const error = new Error(message);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+};
+
+/* ---------------------------------------------
+ * Context hooks
+ * ------------------------------------------- */
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within an AuthProvider");
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
   return context;
 };
+
+/* ---------------------------------------------
+ * Provider
+ * ------------------------------------------- */
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [activation, setActivation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const loadAttempted = useRef(false);
-  const lastRefreshTime = useRef(0);
-  const REFRESH_COOLDOWN_MS = 30000;
 
-  // Helper to normalize boolean values (handles string "true"/"false")
-  const normalizeBoolean = (value) => {
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'string') return value.toLowerCase() === 'true';
-    return !!value;
-  };
+  const loadAttemptedRef = useRef(false);
+  const lastRefreshTimeRef = useRef(0);
 
-  // Save user to state and localStorage with validation
-  const saveUser = useCallback((userData) => {
-    if (!userData || (!userData.id && !userData.email)) {
-      console.warn("[Auth] Invalid user data, clearing user");
-      setUser(null);
-      try {
-        localStorage.removeItem(USER_KEY);
-      } catch (e) {
-        console.warn("[Auth] Failed to remove user from localStorage:", e);
-      }
-      return;
-    }
+  const persistUser = useCallback((userData) => {
+    const normalized = normalizeUser(userData);
+    setUser(normalized);
 
-    // Normalize boolean values including is_admin
-    const validatedUser = {
-      id: userData.id,
-      email: userData.email,
-      tier: userData.tier || "starter",
-      strategy: userData.strategy || "ai_weighted",
-      trading_enabled: normalizeBoolean(userData.trading_enabled),
-      is_admin: normalizeBoolean(userData.is_admin),  // ← FIXED: handles string "true"
-      has_card_on_file: normalizeBoolean(userData.has_card_on_file),
-      billing_complete: normalizeBoolean(userData.billing_complete),
-      referral_code: userData.referral_code || null,
-      api_key: userData.api_key || null,
-      wallet_addresses: userData.wallet_addresses || [],
-      portfolio_value: userData.portfolio_value || 1000,
-      created_at: userData.created_at,
-      updated_at: userData.updated_at
-    };
-
-    console.log("[Auth] Saved user - is_admin:", validatedUser.is_admin, "type:", typeof validatedUser.is_admin);
-    
-    setUser(validatedUser);
-    try {
-      localStorage.setItem(USER_KEY, JSON.stringify(validatedUser));
-    } catch (e) {
-      console.warn("[Auth] Failed to save user to localStorage:", e);
+    if (normalized) {
+      safeStorageSet(USER_KEY, JSON.stringify(normalized));
+    } else {
+      safeStorageRemove(USER_KEY);
     }
   }, []);
 
-  // Save activation to cache
-  const saveActivation = useCallback((activationData) => {
-    if (!activationData) return;
-    
-    const validatedActivation = {
-      tier: activationData.tier || "starter",
-      has_card_on_file: normalizeBoolean(activationData.has_card_on_file),
-      billing_complete: normalizeBoolean(activationData.billing_complete),
-      trading_enabled: normalizeBoolean(activationData.trading_enabled),
-      wallet_connected: normalizeBoolean(activationData.wallet_connected),
-      okx_connected: normalizeBoolean(activationData.okx_connected),
-      alpaca_connected: normalizeBoolean(activationData.alpaca_connected),
-      activation_complete: normalizeBoolean(activationData.activation_complete),
-      tier_requirements_met: normalizeBoolean(activationData.tier_requirements_met),
-      tier_required_integration: activationData.tier_required_integration || "Alpaca & OKX (both)"
-    };
-    
-    setActivation(validatedActivation);
-    try {
-      localStorage.setItem(ACTIVATION_KEY, JSON.stringify(validatedActivation));
-    } catch (e) {
-      console.warn("[Auth] Failed to save activation to localStorage:", e);
+  const persistActivation = useCallback((activationData) => {
+    const normalized = normalizeActivation(activationData);
+    setActivation(normalized);
+
+    if (normalized) {
+      safeStorageSet(ACTIVATION_KEY, JSON.stringify(normalized));
+    } else {
+      safeStorageRemove(ACTIVATION_KEY);
     }
   }, []);
 
-  // Load cached user data
-  const loadCachedUser = useCallback(() => {
-    try {
-      const cachedUser = localStorage.getItem(USER_KEY);
-      if (cachedUser) {
-        const parsed = JSON.parse(cachedUser);
-        if (parsed && parsed.id) {
-          // Normalize is_admin from cache as well
-          if (parsed.is_admin !== undefined) {
-            parsed.is_admin = normalizeBoolean(parsed.is_admin);
-          }
-          setUser(parsed);
-          console.log("[Auth] Loaded cached user - is_admin:", parsed.is_admin);
-        }
-      }
-      
-      const cachedActivation = localStorage.getItem(ACTIVATION_KEY);
-      if (cachedActivation) {
-        const parsed = JSON.parse(cachedActivation);
-        if (parsed) {
-          setActivation(parsed);
-        }
-      }
-    } catch (e) {
-      console.warn("[Auth] Failed to load cached data:", e);
-    }
-  }, []);
-
-  // Clear all auth data
   const clearAuth = useCallback(() => {
     setUser(null);
     setActivation(null);
     setError(null);
     setRefreshing(false);
+
     clearToken();
-    
+    safeStorageRemove(USER_KEY);
+    safeStorageRemove(ACTIVATION_KEY);
+  }, []);
+
+  const loadCachedState = useCallback(() => {
     try {
-      localStorage.removeItem(USER_KEY);
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(ACTIVATION_KEY);
-    } catch (e) {
-      console.warn("[Auth] Failed to clear localStorage:", e);
+      const cachedUserRaw = safeStorageGet(USER_KEY);
+      const cachedActivationRaw = safeStorageGet(ACTIVATION_KEY);
+
+      if (cachedUserRaw) {
+        const parsedUser = JSON.parse(cachedUserRaw);
+        const normalizedUser = normalizeUser(parsedUser);
+        if (normalizedUser) setUser(normalizedUser);
+      }
+
+      if (cachedActivationRaw) {
+        const parsedActivation = JSON.parse(cachedActivationRaw);
+        const normalizedActivation = normalizeActivation(parsedActivation);
+        if (normalizedActivation) setActivation(normalizedActivation);
+      }
+    } catch (err) {
+      console.warn("[Auth] Failed to load cached auth state:", err);
     }
   }, []);
 
-  // Refresh activation status with cooldown
-  const refreshActivation = useCallback(async (force = false) => {
-    const now = Date.now();
-    
-    if (!force && (now - lastRefreshTime.current) < REFRESH_COOLDOWN_MS) {
-      console.debug("[Auth] Refresh activation cooldown, using cached");
-      return activation;
-    }
-    
-    if (refreshing && !force) {
-      console.debug("[Auth] Already refreshing activation");
-      return activation;
-    }
-    
-    setRefreshing(true);
-    lastRefreshTime.current = now;
-    
-    try {
+  const refreshActivation = useCallback(
+    async (force = false) => {
       const token = getToken();
-      
       if (!token) {
-        setActivation(null);
+        persistActivation(null);
         return null;
       }
-      
-      const response = await fetch(`${API_BASE_URL}/api/me/activation-status`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      const data = await response.json();
-      const status = data?.data?.status || data?.status || data;
-      
-      if (status) {
-        const result = {
-          has_card_on_file: normalizeBoolean(status?.has_card_on_file),
-          billing_complete: normalizeBoolean(status?.billing_complete),
-          trading_enabled: normalizeBoolean(status?.trading_enabled),
-          okx_connected: normalizeBoolean(status?.okx_connected),
-          alpaca_connected: normalizeBoolean(status?.alpaca_connected),
-          wallet_connected: normalizeBoolean(status?.wallet_connected),
-          tier: status?.tier || "starter",
-          activation_complete: normalizeBoolean(status?.activation_complete),
-          tier_requirements_met: normalizeBoolean(status?.tier_requirements_met),
-          tier_required_integration: status?.tier_required_integration || "Alpaca & OKX (both)"
-        };
-        saveActivation(result);
-        return result;
-      }
-      
-      const defaultStatus = {
-        tier: "starter",
-        has_card_on_file: false,
-        billing_complete: false,
-        trading_enabled: false,
-        okx_connected: false,
-        alpaca_connected: false,
-        wallet_connected: false,
-        activation_complete: false,
-        tier_requirements_met: false,
-        tier_required_integration: "Alpaca & OKX (both)"
-      };
-      saveActivation(defaultStatus);
-      return defaultStatus;
-      
-    } catch (err) {
-      console.warn("[Auth] Failed to refresh activation:", err?.message || err);
-      
-      if (err?.response?.status === 401) {
-        clearAuth();
-        return null;
-      }
-      
-      if (activation) return activation;
-      
-      return {
-        tier: "starter",
-        has_card_on_file: false,
-        billing_complete: false,
-        trading_enabled: false,
-        okx_connected: false,
-        alpaca_connected: false,
-        wallet_connected: false,
-        activation_complete: false,
-        tier_requirements_met: false,
-        tier_required_integration: "Alpaca & OKX (both)"
-      };
-      
-    } finally {
-      setRefreshing(false);
-    }
-  }, [activation, clearAuth, saveActivation, refreshing]);
 
-  // Load user from API
-  const loadUser = useCallback(async (skipCache = false) => {
-    const token = getToken();
-    
-    if (!token) {
-      clearAuth();
-      setLoading(false);
-      setIsInitialized(true);
-      return null;
-    }
-
-    if (!skipCache && !user) {
-      loadCachedUser();
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/me`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      const data = await response.json();
-      const userData = data?.data?.user || data?.user || data;
-      
-      if (userData && (userData.id || userData.email)) {
-        saveUser(userData);
-        await refreshActivation(true);
-        setError(null);
-        setLoading(false);
-        setIsInitialized(true);
-        return userData;
-      } else {
-        console.warn("[Auth] Token exists but no user data returned");
-        clearAuth();
-        setLoading(false);
-        setIsInitialized(true);
-        return null;
+      const now = Date.now();
+      if (!force && now - lastRefreshTimeRef.current < REFRESH_COOLDOWN_MS) {
+        return activation;
       }
-    } catch (err) {
-      console.error("[Auth] Load user failed:", err?.message || err);
-      
-      const isAuthError = err?.response?.status === 401 || err?.response?.status === 403;
-      
-      if (isAuthError) {
-        clearAuth();
-      } else {
-        if (!user) {
+
+      if (refreshing && !force) {
+        return activation;
+      }
+
+      setRefreshing(true);
+      lastRefreshTimeRef.current = now;
+
+      try {
+        const data = await apiFetch("/api/me/activation-status", {
+          method: "GET",
+        });
+
+        const status = data?.data?.status || data?.status || data;
+        const normalized = normalizeActivation(status) || defaultActivation();
+        persistActivation(normalized);
+        return normalized;
+      } catch (err) {
+        console.warn("[Auth] refreshActivation failed:", err.message);
+
+        if (err.status === 401 || err.status === 403) {
           clearAuth();
+          return null;
         }
-        setError(err?.response?.data?.message || err?.message || "Failed to load user");
-      }
-      
-      setLoading(false);
-      setIsInitialized(true);
-      return user || null;
-    }
-  }, [clearAuth, saveUser, refreshActivation, loadCachedUser, user]);
 
-  // Initial load - only once
+        return activation || defaultActivation();
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [activation, refreshing, persistActivation, clearAuth]
+  );
+
+  const loadUser = useCallback(
+    async (skipCache = false) => {
+      const token = getToken();
+
+      if (!token) {
+        clearAuth();
+        setLoading(false);
+        setIsInitialized(true);
+        return null;
+      }
+
+      if (!skipCache && !user) {
+        loadCachedState();
+      }
+
+      try {
+        const data = await apiFetch("/api/me", { method: "GET" });
+        const userData = data?.data?.user || data?.user || data;
+        const normalizedUser = normalizeUser(userData);
+
+        if (!normalizedUser) {
+          clearAuth();
+          setLoading(false);
+          setIsInitialized(true);
+          return null;
+        }
+
+        persistUser(normalizedUser);
+        setError(null);
+
+        await refreshActivation(true);
+
+        setLoading(false);
+        setIsInitialized(true);
+        return normalizedUser;
+      } catch (err) {
+        console.error("[Auth] loadUser failed:", err.message);
+
+        if (err.status === 401 || err.status === 403) {
+          clearAuth();
+        } else {
+          setError(err.message || "Failed to load user");
+        }
+
+        setLoading(false);
+        setIsInitialized(true);
+        return null;
+      }
+    },
+    [user, loadCachedState, persistUser, refreshActivation, clearAuth]
+  );
+
+  const login = useCallback(
+    async (email, password) => {
+      setError(null);
+
+      if (!email || !password) {
+        const message = "Email and password are required";
+        setError(message);
+        return { success: false, error: message };
+      }
+
+      try {
+        const data = await apiFetch("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+
+        const token = data?.token || data?.data?.token;
+        const apiKey = data?.data?.user?.api_key || data?.api_key || null;
+
+        if (!token) {
+          const message = "Login succeeded but no token was returned";
+          setError(message);
+          return { success: false, error: message };
+        }
+
+        setToken(token);
+
+        const loadedUser = await loadUser(true);
+
+        if (!loadedUser) {
+          const message = "Login succeeded but user profile could not be loaded";
+          setError(message);
+          return { success: false, error: message };
+        }
+
+        return {
+          success: true,
+          token,
+          api_key: apiKey,
+          user: loadedUser,
+        };
+      } catch (err) {
+        const message = err.message || "Login failed";
+        setError(message);
+        return { success: false, error: message };
+      }
+    },
+    [loadUser]
+  );
+
+  const signup = useCallback(
+    async (userData) => {
+      setError(null);
+
+      if (!userData?.email || !userData?.password) {
+        const message = "Email and password are required";
+        setError(message);
+        return { success: false, error: message };
+      }
+
+      if (userData.password.length < 8) {
+        const message = "Password must be at least 8 characters";
+        setError(message);
+        return { success: false, error: message };
+      }
+
+      try {
+        const data = await apiFetch("/api/auth/register", {
+          method: "POST",
+          body: JSON.stringify(userData),
+        });
+
+        const token = data?.token || data?.data?.token;
+        const apiKey = data?.data?.user?.api_key || data?.api_key || null;
+
+        if (!token) {
+          const message = "Signup succeeded but no token was returned";
+          setError(message);
+          return { success: false, error: message };
+        }
+
+        setToken(token);
+
+        const loadedUser = await loadUser(true);
+
+        if (!loadedUser) {
+          const message = "Signup succeeded but user profile could not be loaded";
+          setError(message);
+          return { success: false, error: message };
+        }
+
+        return {
+          success: true,
+          token,
+          api_key: apiKey,
+          user: loadedUser,
+        };
+      } catch (err) {
+        const message = err.message || "Signup failed";
+        setError(message);
+        return { success: false, error: message };
+      }
+    },
+    [loadUser]
+  );
+
+  const logout = useCallback(() => {
+    clearAuth();
+    if (isBrowser) {
+      window.location.href = "/login";
+    }
+  }, [clearAuth]);
+
+  const updateActivation = useCallback(
+    async (updates) => {
+      const nextActivation = {
+        ...(activation || defaultActivation()),
+        ...(updates || {}),
+      };
+      persistActivation(nextActivation);
+      return refreshActivation(true);
+    },
+    [activation, persistActivation, refreshActivation]
+  );
+
   useEffect(() => {
-    if (!loadAttempted.current) {
-      loadAttempted.current = true;
-      loadCachedUser();
+    if (!loadAttemptedRef.current) {
+      loadAttemptedRef.current = true;
+      loadCachedState();
       loadUser();
     }
-  }, [loadUser, loadCachedUser]);
+  }, [loadCachedState, loadUser]);
 
-  // Auto-refresh activation status periodically
   useEffect(() => {
     const token = getToken();
     if (!token || !user) return;
-    
+
     const intervalId = setInterval(() => {
       refreshActivation();
     }, 5 * 60 * 1000);
-    
+
     return () => clearInterval(intervalId);
   }, [user, refreshActivation]);
 
-  // Signup with validation
-  const signup = useCallback(async (userData) => {
-    setError(null);
-    
-    if (!userData.email || !userData.password) {
-      const errorMsg = "Email and password are required";
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
-    }
-    
-    if (userData.password.length < 8) {
-      const errorMsg = "Password must be at least 8 characters";
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
-    }
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData)
-      });
-      
-      const data = await response.json();
-      const token = data?.token || data?.data?.token;
-      const apiKey = data?.data?.user?.api_key || data?.api_key;
-      
-      if (token) {
-        setToken(token);
-      }
-      
-      const loadedUser = await loadUser(true);
-      await refreshActivation(true);
-      
-      return { 
-        success: true, 
-        user: loadedUser, 
-        token,
-        api_key: apiKey
-      };
-    } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Signup failed";
-      setError(message);
-      return { success: false, error: message };
-    }
-  }, [loadUser, refreshActivation]);
-
-  // Login with validation
-  const login = useCallback(async (email, password) => {
-    setError(null);
-    
-    if (!email || !password) {
-      const errorMsg = "Email and password are required";
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
-    }
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      
-      const data = await response.json();
-      const token = data?.token || data?.data?.token;
-      
-      if (!data.success || !token) {
-        setError(data.error || "Login failed");
-        return { success: false, error: data.error || "Login failed" };
-      }
-      
-      setToken(token);
-      
-      const loadedUser = await loadUser(true);
-      await refreshActivation(true);
-      
-      return { success: true, user: loadedUser, token };
-    } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Login failed";
-      setError(message);
-      return { success: false, error: message };
-    }
-  }, [loadUser, refreshActivation]);
-
-  // Logout with cleanup
-  const logout = useCallback(() => {
-    clearAuth();
-    window.location.href = "/login";
-  }, [clearAuth]);
-
-  // Update activation status
-  const updateActivation = useCallback(async (updates) => {
-    setActivation(prev => ({ ...prev, ...updates }));
-    if (activation) {
-      const updated = { ...activation, ...updates };
-      try {
-        localStorage.setItem(ACTIVATION_KEY, JSON.stringify(updated));
-      } catch (e) {
-        console.warn("[Auth] Failed to update activation cache:", e);
-      }
-    }
-    await refreshActivation(true);
-  }, [activation, refreshActivation]);
-
-  // Computed values - FIXED: Handle both boolean and string values for is_admin
   const isAuthenticated = useMemo(() => {
-    const token = getToken();
-    return !!token && !!user;
+    return !!getToken() && !!user;
   }, [user]);
-  
+
   const activationComplete = useMemo(() => {
     return activation?.trading_enabled === true && activation?.activation_complete === true;
-  }, [activation?.trading_enabled, activation?.activation_complete]);
-  
+  }, [activation]);
+
   const hasCardOnFile = useMemo(() => {
     return activation?.has_card_on_file === true || activation?.billing_complete === true;
-  }, [activation?.has_card_on_file, activation?.billing_complete]);
-  
+  }, [activation]);
+
   const hasRequiredIntegrations = useMemo(() => {
     if (!activation) return false;
+
     const tier = activation.tier || user?.tier || "starter";
+
     if (tier === "starter") {
       return activation.alpaca_connected && activation.okx_connected;
-    } else if (tier === "elite") {
+    }
+
+    if (tier === "elite") {
       return activation.wallet_connected;
     }
-    return activation.wallet_connected || activation.alpaca_connected || activation.okx_connected;
-  }, [activation, user?.tier]);
-  
-  // FIXED: Handle both boolean and string values for is_admin
+
+    return (
+      activation.wallet_connected ||
+      activation.alpaca_connected ||
+      activation.okx_connected
+    );
+  }, [activation, user]);
+
   const isAdmin = useMemo(() => {
-    // Normalize the is_admin value (could be boolean or string "true"/"false")
-    const isAdminFlag = user?.is_admin === true || user?.is_admin === "true";
-    const isOwnerEmail = user?.email === "wayne@imali-defi.com";
-    const result = isAdminFlag || isOwnerEmail;
-    
-    // Debug logging
-    if (result) {
-      console.log("[Auth] Admin access granted - is_admin:", user?.is_admin, "email:", user?.email);
-    }
-    
-    return result;
-  }, [user?.is_admin, user?.email]);
+    const adminFlag = normalizeBoolean(user?.is_admin);
+    const ownerEmail = (user?.email || "").toLowerCase().trim() === "wayne@imali-defi.com";
+    return adminFlag || ownerEmail;
+  }, [user]);
 
   const canTrade = useMemo(() => {
     return isAuthenticated && activationComplete && hasRequiredIntegrations;
   }, [isAuthenticated, activationComplete, hasRequiredIntegrations]);
 
-  const isLoading = loading || (!isInitialized && loadAttempted.current);
+  const isLoading = loading || (!isInitialized && loadAttemptedRef.current);
 
-  const value = useMemo(() => ({
-    user,
-    activation,
-    loading: isLoading,
-    refreshing,
-    error,
-    isAuthenticated,
-    activationComplete,
-    hasCardOnFile,
-    hasRequiredIntegrations,
-    canTrade,
-    isAdmin,
-    signup,
-    login,
-    logout,
-    loadUser,
-    refreshActivation,
-    updateActivation,
-    clearAuth,
-    getApiKey: () => user?.api_key || null,
-  }), [
-    user,
-    activation,
-    isLoading,
-    refreshing,
-    error,
-    isAuthenticated,
-    activationComplete,
-    hasCardOnFile,
-    hasRequiredIntegrations,
-    canTrade,
-    isAdmin,
-    signup,
-    login,
-    logout,
-    loadUser,
-    refreshActivation,
-    updateActivation,
-    clearAuth,
-  ]);
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      user,
+      activation,
+      loading: isLoading,
+      refreshing,
+      error,
+      isAuthenticated,
+      activationComplete,
+      hasCardOnFile,
+      hasRequiredIntegrations,
+      canTrade,
+      isAdmin,
+      signup,
+      login,
+      logout,
+      loadUser,
+      refreshActivation,
+      updateActivation,
+      clearAuth,
+      getApiKey: () => user?.api_key || null,
+    }),
+    [
+      user,
+      activation,
+      isLoading,
+      refreshing,
+      error,
+      isAuthenticated,
+      activationComplete,
+      hasCardOnFile,
+      hasRequiredIntegrations,
+      canTrade,
+      isAdmin,
+      signup,
+      login,
+      logout,
+      loadUser,
+      refreshActivation,
+      updateActivation,
+      clearAuth,
+    ]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export default AuthProvider;
