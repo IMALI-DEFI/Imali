@@ -101,6 +101,30 @@ const getStrategyMeta = (value) =>
     description: "Current strategy",
   };
 
+const defaultDashboardData = {
+  trades: [],
+  positions: [],
+  executions: [],
+  stats: {
+    total_trades: 0,
+    total_pnl: 0,
+    wins: 0,
+    losses: 0,
+    win_rate: 0,
+    avg_pnl: 0,
+    best_trade: 0,
+    worst_trade: 0,
+    avg_score: 0,
+    avg_confidence: 0,
+  },
+  dailyPerformance: [],
+  integrations: {
+    wallet_connected: false,
+    alpaca_connected: false,
+    okx_connected: false,
+  },
+};
+
 /* ---------------------------------------------
  * Small UI blocks
  * ------------------------------------------- */
@@ -242,7 +266,7 @@ function BotExecutionRow({ execution }) {
 }
 
 /* ---------------------------------------------
- * Real settings panel
+ * Settings popup
  * ------------------------------------------- */
 function SettingsPopup({ isOpen, onClose, currentStrategy }) {
   const [selected, setSelected] = useState(currentStrategy || "balanced");
@@ -259,7 +283,6 @@ function SettingsPopup({ isOpen, onClose, currentStrategy }) {
     setMessage("");
 
     try {
-      // No real update endpoint in current backend, so be honest.
       setMessage("Strategy display updated locally only. Backend save endpoint is not wired yet.");
     } catch {
       setMessage("Something went wrong.");
@@ -324,7 +347,7 @@ function SettingsPopup({ isOpen, onClose, currentStrategy }) {
 }
 
 /* ---------------------------------------------
- * Real API key panel
+ * API key popup
  * ------------------------------------------- */
 function ApiKeysPopup({ isOpen, onClose, apiKey }) {
   const hasApiKey = !!apiKey;
@@ -378,7 +401,7 @@ function ApiKeysPopup({ isOpen, onClose, apiKey }) {
 }
 
 /* ---------------------------------------------
- * Chart from real user stats
+ * Chart
  * ------------------------------------------- */
 function PerformanceChart({ points, period, onChange }) {
   const [chartType, setChartType] = useState("line");
@@ -487,7 +510,7 @@ function PerformanceChart({ points, period, onChange }) {
 }
 
 /* ---------------------------------------------
- * Real billing section
+ * Billing
  * ------------------------------------------- */
 function BillingSection({ user, activation }) {
   const tier = user?.tier || "starter";
@@ -569,7 +592,7 @@ function BillingSection({ user, activation }) {
 }
 
 /* ---------------------------------------------
- * Real connections section
+ * Connections
  * ------------------------------------------- */
 function ConnectionsSection({ activation, integrations, onRefresh }) {
   const [connecting, setConnecting] = useState(null);
@@ -807,44 +830,25 @@ export default function MemberDashboard() {
   const navigate = useNavigate();
   const { user, activation, refreshActivation, loading: authLoading } = useAuth();
 
-  const [dashboardData, setDashboardData] = useState({
-    trades: [],
-    positions: [],
-    executions: [],
-    stats: {
-      total_trades: 0,
-      total_pnl: 0,
-      wins: 0,
-      losses: 0,
-      win_rate: 0,
-      avg_pnl: 0,
-      best_trade: 0,
-      worst_trade: 0,
-      avg_score: 0,
-      avg_confidence: 0,
-    },
-    dailyPerformance: [],
-    integrations: {
-      wallet_connected: false,
-      alpaca_connected: false,
-      okx_connected: false,
-    },
-  });
-
+  const [dashboardData, setDashboardData] = useState(defaultDashboardData);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState("");
   const [period, setPeriod] = useState("30d");
   const [showSettings, setShowSettings] = useState(false);
   const [showApiKeys, setShowApiKeys] = useState(false);
 
   const mountedRef = useRef(true);
+  const isFetchingRef = useRef(false);
 
   const strategyMeta = useMemo(() => getStrategyMeta(user?.strategy), [user?.strategy]);
 
   const loadData = useCallback(
     async (silent = false) => {
-      if (refreshing) return;
+      if (!user || isFetchingRef.current) return;
+
+      isFetchingRef.current = true;
 
       if (!silent) {
         setLoading(true);
@@ -868,41 +872,47 @@ export default function MemberDashboard() {
 
         const trades =
           tradesRes.status === "fulfilled" && tradesRes.value?.success
-            ? tradesRes.value.trades || []
+            ? Array.isArray(tradesRes.value.trades)
+              ? tradesRes.value.trades
+              : []
             : [];
 
         const statsData =
-          statsRes.status === "fulfilled"
-            ? statsRes.value?.summary || {}
+          statsRes.status === "fulfilled" && statsRes.value
+            ? statsRes.value.summary || {}
             : {};
 
         const dailyPerformance =
-          statsRes.status === "fulfilled"
-            ? statsRes.value?.daily_performance || []
+          statsRes.status === "fulfilled" && statsRes.value
+            ? Array.isArray(statsRes.value.daily_performance)
+              ? statsRes.value.daily_performance
+              : []
             : [];
 
         const positions =
           positionsRes.status === "fulfilled" && positionsRes.value?.success
-            ? positionsRes.value.positions || []
+            ? Array.isArray(positionsRes.value.positions)
+              ? positionsRes.value.positions
+              : []
             : [];
 
         const executions =
           executionsRes.status === "fulfilled" && executionsRes.value?.success
-            ? executionsRes.value.executions || []
+            ? Array.isArray(executionsRes.value.executions)
+              ? executionsRes.value.executions
+              : []
             : [];
 
-        const integrations =
-          integrationsRes.status === "fulfilled"
-            ? integrationsRes.value || {
-                wallet_connected: false,
-                alpaca_connected: false,
-                okx_connected: false,
-              }
-            : {
-                wallet_connected: false,
-                alpaca_connected: false,
-                okx_connected: false,
-              };
+        const integrationsRaw =
+          integrationsRes.status === "fulfilled" && integrationsRes.value
+            ? integrationsRes.value
+            : {};
+
+        const integrations = {
+          wallet_connected: !!integrationsRaw.wallet_connected,
+          alpaca_connected: !!integrationsRaw.alpaca_connected,
+          okx_connected: !!integrationsRaw.okx_connected,
+        };
 
         setDashboardData({
           trades,
@@ -924,7 +934,14 @@ export default function MemberDashboard() {
           integrations,
         });
 
-        setError("");
+        const allRejected =
+          tradesRes.status === "rejected" &&
+          statsRes.status === "rejected" &&
+          positionsRes.status === "rejected" &&
+          executionsRes.status === "rejected" &&
+          integrationsRes.status === "rejected";
+
+        setError(allRejected ? "Could not load your dashboard data." : "");
       } catch (err) {
         if (mountedRef.current) {
           setError("Could not load your dashboard data.");
@@ -933,10 +950,12 @@ export default function MemberDashboard() {
         if (mountedRef.current) {
           setRefreshing(false);
           setLoading(false);
+          setInitialized(true);
         }
+        isFetchingRef.current = false;
       }
     },
-    [period, refreshing]
+    [period, user]
   );
 
   useEffect(() => {
@@ -947,15 +966,22 @@ export default function MemberDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    loadData();
-  }, [user, loadData]);
+    if (!user) {
+      setLoading(false);
+      setInitialized(true);
+      return;
+    }
+
+    loadData(false);
+  }, [user, period, loadData]);
 
   useEffect(() => {
     if (!user) return;
 
     const timer = setInterval(() => {
-      loadData(true);
+      if (!isFetchingRef.current) {
+        loadData(true);
+      }
     }, 30000);
 
     return () => clearInterval(timer);
@@ -971,9 +997,9 @@ export default function MemberDashboard() {
     ["running", "started", "pending"].includes(String(e?.status || "").toLowerCase())
   ).length;
 
-  const apiKey = user?.api_key || BotAPI.getApiKey?.() || null;
+  const apiKey = user?.api_key || (typeof BotAPI.getApiKey === "function" ? BotAPI.getApiKey() : null);
 
-  if (authLoading || loading) {
+  if (authLoading || (!initialized && loading)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -1007,7 +1033,7 @@ export default function MemberDashboard() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-xl font-bold text-gray-800">
-                👋 Hey, {user.email?.split("@")[0]}!
+                👋 Hey, {user.email?.split("@")[0] || "there"}!
               </h1>
               <p className="mt-1 text-sm text-gray-500">
                 Here&apos;s how your account is doing right now.
@@ -1017,7 +1043,7 @@ export default function MemberDashboard() {
               <button
                 onClick={() => loadData(true)}
                 disabled={refreshing}
-                className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100"
+                className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-50"
               >
                 {refreshing ? "⟳" : "🔄 Refresh"}
               </button>
@@ -1098,16 +1124,10 @@ export default function MemberDashboard() {
             <Section
               title="Bot Activity"
               icon="🤖"
-              right={
-                <span className="text-xs text-gray-500">
-                  {activeExecutions} active
-                </span>
-              }
+              right={<span className="text-xs text-gray-500">{activeExecutions} active</span>}
             >
               {dashboardData.executions.length === 0 ? (
-                <div className="py-6 text-center text-gray-400">
-                  No recent bot executions yet.
-                </div>
+                <div className="py-6 text-center text-gray-400">No recent bot executions yet.</div>
               ) : (
                 <div className="space-y-2">
                   {dashboardData.executions.slice(0, 6).map((execution, i) => (
@@ -1135,9 +1155,7 @@ export default function MemberDashboard() {
           <Section
             title="Open Positions"
             icon="📍"
-            right={
-              <span className="text-xs text-gray-500">{dashboardData.positions.length} open</span>
-            }
+            right={<span className="text-xs text-gray-500">{dashboardData.positions.length} open</span>}
           >
             {dashboardData.positions.length === 0 ? (
               <div className="py-8 text-center text-gray-400">No open positions right now.</div>
