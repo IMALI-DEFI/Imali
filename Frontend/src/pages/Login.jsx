@@ -1,5 +1,5 @@
 // src/pages/Login.jsx
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
@@ -12,71 +12,88 @@ function safeInternalPath(path, fallback = "/activation") {
   return path;
 }
 
-// Forgot Password Modal Component
-const ForgotPasswordModal = ({ isOpen, onClose, initialEmail }) => {
-  const [email, setEmail] = useState(initialEmail || "");
-  const [status, setStatus] = useState("idle"); // idle, loading, success, error
+function parseApiError(err, fallback = "Something went wrong.") {
+  if (!err) return fallback;
+  if (typeof err === "string") return err;
+  return (
+    err?.response?.data?.error ||
+    err?.response?.data?.message ||
+    err?.data?.error ||
+    err?.data?.message ||
+    err?.message ||
+    fallback
+  );
+}
+
+const ForgotPasswordModal = ({ isOpen, onClose, initialEmail = "" }) => {
+  const [email, setEmail] = useState(initialEmail);
+  const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
+
+  const handleClose = useCallback(() => {
+    setStatus("idle");
+    setMessage("");
+    setEmail(initialEmail || "");
+    onClose();
+  }, [initialEmail, onClose]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email.trim()) return;
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return;
 
     setStatus("loading");
     setMessage("");
 
     try {
-      await BotAPI.forgotPassword(email.trim().toLowerCase());
+      const result = await BotAPI.forgotPassword(normalizedEmail);
+
+      if (!result?.success) {
+        throw new Error(result?.error || "Failed to send reset email.");
+      }
+
       setStatus("success");
-      setMessage("Password reset link sent! Check your email.");
-      
-      // Auto-close after 3 seconds on success
+      setMessage("Password reset link sent. Check your email.");
+
       setTimeout(() => {
-        onClose();
-        setStatus("idle");
-        setEmail("");
+        handleClose();
       }, 3000);
     } catch (err) {
       setStatus("error");
-      const errorMsg = err.response?.data?.message || 
-        err.message || 
-        "Failed to send reset email. Please try again.";
-      setMessage(errorMsg);
+      setMessage(parseApiError(err, "Failed to send reset email. Please try again."));
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-gray-900 rounded-2xl border border-gray-800 shadow-2xl">
-        {/* Close button */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="relative w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900 shadow-2xl">
         <button
-          onClick={() => {
-            onClose();
-            setStatus("idle");
-            setEmail("");
-            setMessage("");
-          }}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+          onClick={handleClose}
+          className="absolute right-4 top-4 text-gray-400 transition-colors hover:text-white"
+          aria-label="Close reset password modal"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
           </svg>
         </button>
 
         <div className="p-6">
-          <h2 className="text-2xl font-bold text-white mb-2">Reset Password</h2>
-          <p className="text-gray-400 text-sm mb-6">
-            Enter your email address and we'll send you a link to reset your password.
+          <h2 className="mb-2 text-2xl font-bold text-white">Reset Password</h2>
+          <p className="mb-6 text-sm text-gray-400">
+            Enter your email address and we&apos;ll send you a reset link.
           </p>
 
           {message && (
-            <div className={`mb-4 p-3 rounded-xl text-sm ${
-              status === "success" 
-                ? "bg-green-500/10 border border-green-500/30 text-green-400" 
-                : "bg-red-500/10 border border-red-500/30 text-red-400"
-            }`}>
+            <div
+              className={`mb-4 rounded-xl border p-3 text-sm ${
+                status === "success"
+                  ? "border-green-500/30 bg-green-500/10 text-green-400"
+                  : "border-red-500/30 bg-red-500/10 text-red-400"
+              }`}
+            >
               {message}
             </div>
           )}
@@ -88,7 +105,7 @@ const ForgotPasswordModal = ({ isOpen, onClose, initialEmail }) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Your email address"
-              className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={status === "loading" || status === "success"}
               autoFocus
             />
@@ -97,20 +114,15 @@ const ForgotPasswordModal = ({ isOpen, onClose, initialEmail }) => {
               <button
                 type="submit"
                 disabled={status === "loading" || status === "success"}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 py-3 font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {status === "loading" ? "Sending..." : "Send Reset Link"}
               </button>
-              
+
               <button
                 type="button"
-                onClick={() => {
-                  onClose();
-                  setStatus("idle");
-                  setEmail("");
-                  setMessage("");
-                }}
-                className="px-4 py-3 rounded-xl border border-gray-700 text-gray-300 hover:text-white hover:border-gray-600 transition-colors"
+                onClick={handleClose}
+                className="rounded-xl border border-gray-700 px-4 py-3 text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
               >
                 Cancel
               </button>
@@ -118,7 +130,7 @@ const ForgotPasswordModal = ({ isOpen, onClose, initialEmail }) => {
           </form>
 
           <div className="mt-4 text-center text-xs text-gray-500">
-            We'll send a password reset link to your email if an account exists.
+            If an account exists, a reset link will be sent.
           </div>
         </div>
       </div>
@@ -135,8 +147,6 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  
-  // Forgot password modal state
   const [showForgotModal, setShowForgotModal] = useState(false);
 
   const nextFromQuery = useMemo(() => {
@@ -158,74 +168,87 @@ export default function Login() {
     return safeInternalPath(raw, "/activation");
   }, [nextFromQuery, fromState]);
 
+  const expiredMessage = useMemo(() => {
+    try {
+      const params = new URLSearchParams(location.search || "");
+      return params.get("expired") === "true";
+    } catch {
+      return false;
+    }
+  }, [location.search]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const trimmedPassword = password;
+
+    if (!normalizedEmail || !trimmedPassword) {
+      setError("Email and password are required.");
+      return;
+    }
 
     setLoading(true);
     setError("");
 
     try {
-      const normalizedEmail = email.trim().toLowerCase();
-      const result = await login(normalizedEmail, password);
+      const result = await login(normalizedEmail, trimmedPassword);
 
-      if (!result.success) {
-        setError(result.error);
-        setLoading(false);
+      if (!result?.success) {
+        setError(result?.error || "Login failed. Please try again.");
         return;
       }
 
-      // Check if 2FA required
-      if (result.twofaRequired) {
-        navigate("/2fa", {
-          state: {
-            tempToken: result.tempToken,
-            email: normalizedEmail,
-            destination,
-          },
-        });
-        return;
+      try {
+        localStorage.setItem("IMALI_EMAIL", normalizedEmail);
+      } catch (err) {
+        console.warn("[Login] Failed to store IMALI_EMAIL:", err);
       }
 
-      localStorage.setItem("IMALI_EMAIL", normalizedEmail);
       navigate(destination, { replace: true });
     } catch (err) {
-      console.error("Login error:", err);
-      setError("Login failed. Please try again.");
+      console.error("[Login] Login error:", err);
+      setError(parseApiError(err, "Login failed. Please try again."));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white flex items-center justify-center">
-      <div className="w-full max-w-md p-6 rounded-2xl bg-white/5 border border-white/10">
-        <h1 className="text-3xl font-extrabold text-center mb-2">
-          Log in to IMALI
-        </h1>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-900 via-gray-950 to-black text-white">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-6">
+        <h1 className="mb-2 text-center text-3xl font-extrabold">Log in to IMALI</h1>
+
+        {expiredMessage && !error && (
+          <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-200">
+            Your session expired. Please log in again.
+          </div>
+        )}
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-2 text-sm">
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-200">
             {error}
           </div>
         )}
 
         {location.state?.message && (
-          <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 text-green-200 px-4 py-2 text-sm">
+          <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm text-green-200">
             {location.state.message}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <input
             type="email"
             required
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-gray-500"
+            className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             autoComplete="email"
             disabled={loading}
+            inputMode="email"
           />
 
           <input
@@ -234,17 +257,16 @@ export default function Login() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-gray-500"
+            className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             autoComplete="current-password"
             disabled={loading}
           />
 
-          {/* Forgot Password Link */}
           <div className="text-right">
             <button
               type="button"
               onClick={() => setShowForgotModal(true)}
-              className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+              className="text-sm text-indigo-400 transition-colors hover:text-indigo-300"
             >
               Forgot password?
             </button>
@@ -253,29 +275,24 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-indigo-600 font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-xl bg-indigo-600 py-3 font-bold transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Signing in…" : "Log in"}
+            {loading ? "Signing in..." : "Log in"}
           </button>
         </form>
 
         <div className="mt-5 text-center text-sm text-white/60">
-          Don't have an account?{" "}
-          <Link
-            to="/signup"
-            className="text-emerald-300 underline hover:text-emerald-200"
-          >
+          Don&apos;t have an account?{" "}
+          <Link to="/signup" className="text-emerald-300 underline hover:text-emerald-200">
             Create one
           </Link>
         </div>
 
-        {/* Demo credentials hint (optional - remove in production) */}
-        <div className="mt-6 pt-4 border-t border-white/10 text-xs text-center text-gray-500">
+        <div className="mt-6 border-t border-white/10 pt-4 text-center text-xs text-gray-500">
           Demo: demo@imali-defi.com / demo123
         </div>
       </div>
 
-      {/* Forgot Password Modal */}
       <ForgotPasswordModal
         isOpen={showForgotModal}
         onClose={() => setShowForgotModal(false)}
