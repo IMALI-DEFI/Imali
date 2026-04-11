@@ -57,8 +57,13 @@ const safeStorageRemove = (key) => {
 const getToken = () => safeStorageGet(TOKEN_KEY);
 
 const setToken = (token) => {
-  if (token) safeStorageSet(TOKEN_KEY, token);
-  else safeStorageRemove(TOKEN_KEY);
+  if (token) {
+    safeStorageSet(TOKEN_KEY, token);
+    console.log("[Auth] Token saved to localStorage");
+  } else {
+    safeStorageRemove(TOKEN_KEY);
+    console.log("[Auth] Token removed from localStorage");
+  }
 };
 
 const clearToken = () => {
@@ -369,8 +374,13 @@ export function AuthProvider({ children }) {
           body: JSON.stringify({ email, password }),
         });
 
-        const token = data?.token || data?.data?.token;
-        const apiKey = data?.data?.user?.api_key || data?.api_key || null;
+        console.log("[Auth] Login response:", data);
+
+        // FIX: Token is at data.data.token
+        const token = data?.data?.token;
+        const apiKey = data?.data?.user?.api_key || null;
+
+        console.log("[Auth] Token extracted:", token ? "Yes" : "No");
 
         if (!token) {
           const message = "Login succeeded but no token was returned";
@@ -378,6 +388,7 @@ export function AuthProvider({ children }) {
           return { success: false, error: message };
         }
 
+        // Save token directly
         setToken(token);
 
         const loadedUser = await loadUser(true);
@@ -395,6 +406,7 @@ export function AuthProvider({ children }) {
           user: loadedUser,
         };
       } catch (err) {
+        console.error("[Auth] Login error:", err);
         const message = err.message || "Login failed";
         setError(message);
         return { success: false, error: message };
@@ -425,8 +437,8 @@ export function AuthProvider({ children }) {
           body: JSON.stringify(userData),
         });
 
-        const token = data?.token || data?.data?.token;
-        const apiKey = data?.data?.user?.api_key || data?.api_key || null;
+        const token = data?.data?.token;
+        const apiKey = data?.data?.user?.api_key || null;
 
         if (!token) {
           const message = "Signup succeeded but no token was returned";
