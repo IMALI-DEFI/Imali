@@ -63,7 +63,9 @@ const sniperApi = axios.create({
 export const getToken = () => {
   if (!isBrowser) return null;
   try {
-    return localStorage.getItem(TOKEN_KEY);
+    const token = localStorage.getItem(TOKEN_KEY);
+    console.log("[BotAPI] getToken called, token exists:", !!token);
+    return token;
   } catch {
     return null;
   }
@@ -72,8 +74,13 @@ export const getToken = () => {
 export const setToken = (token) => {
   if (!isBrowser) return;
   try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      console.log("[BotAPI] Token saved to localStorage");
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      console.log("[BotAPI] Token removed from localStorage");
+    }
   } catch {}
 };
 
@@ -131,6 +138,7 @@ const handleApiError = (error, fallbackMessage) => {
 const addAuthInterceptor = (apiClient) => {
   apiClient.interceptors.request.use((config) => {
     const token = getToken();
+    console.log(`[BotAPI] Interceptor - ${config.url}, token:`, !!token);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -182,7 +190,8 @@ export const signup = async (userData) => {
   try {
     const response = await userApi.post("/api/auth/register", userData);
     const data = unwrap(response);
-    const token = data?.data?.token || data?.token;
+    // FIX: Token is at data.data.token
+    const token = data?.data?.token;
     const apiKey = data?.data?.user?.api_key || null;
 
     if (token) setToken(token);
@@ -197,17 +206,27 @@ export const signup = async (userData) => {
 
 export const login = async (email, password) => {
   try {
+    console.log("[BotAPI] login called with:", { email });
     const response = await userApi.post("/api/auth/login", { email, password });
     const data = unwrap(response);
-    const token = data?.data?.token || data?.token;
+    
+    console.log("[BotAPI] login response:", data);
+    
+    // FIX: Token is at data.data.token
+    const token = data?.data?.token;
     const apiKey = data?.data?.user?.api_key || null;
 
-    if (token) setToken(token);
-    if (apiKey) setApiKey(apiKey);
+    console.log("[BotAPI] extracted token:", token ? "Yes" : "No");
+
+    if (token) {
+      setToken(token);
+      console.log("[BotAPI] Token saved, verifying:", getToken() ? "Yes" : "No");
+    }
 
     clearCache();
     return { success: true, data, token, api_key: apiKey };
   } catch (error) {
+    console.error("[BotAPI] login error:", error);
     return handleApiError(error, "Login failed");
   }
 };
