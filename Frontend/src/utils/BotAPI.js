@@ -1,6 +1,3 @@
-// ===============================
-// FILE: src/utils/BotAPI.js
-// ===============================
 import axios from "axios";
 
 const API_BASE = "https://api.imali-defi.com";
@@ -18,13 +15,13 @@ const API_CONFIG = {
   cacheTTL: 60000,
 };
 
-const cache = new Map();
-
 const SESSION_CHECK_ENDPOINTS = [
   "/api/me",
   "/api/auth/refresh",
   "/api/auth/validate",
 ];
+
+const cache = new Map();
 
 const getCached = (key, ttl = API_CONFIG.cacheTTL) => {
   const cached = cache.get(key);
@@ -43,7 +40,6 @@ const clearCache = (pattern) => {
     cache.clear();
     return;
   }
-
   for (const key of cache.keys()) {
     if (key.includes(pattern)) {
       cache.delete(key);
@@ -200,9 +196,6 @@ const addAuthInterceptor = (apiClient) => {
 addAuthInterceptor(userApi);
 addAuthInterceptor(sniperApi);
 
-/* ---------------------------------------------
- * AUTH
- * ------------------------------------------- */
 export const signup = async (userData) => {
   try {
     const response = await userApi.post("/api/auth/register", userData);
@@ -224,7 +217,6 @@ export const login = async (email, password) => {
   try {
     const response = await userApi.post("/api/auth/login", { email, password });
     const data = unwrap(response);
-
     const token = data?.data?.token || data?.token;
     const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
 
@@ -308,9 +300,6 @@ export const getActivationStatus = async (skipCache = false) => {
 
 export const refreshActivation = () => getActivationStatus(true);
 
-/* ---------------------------------------------
- * USER DATA
- * ------------------------------------------- */
 export const getUserTrades = async (options = {}) => {
   const { limit = 100, status, bot, skipCache = false } = options;
   const cacheKey = `user_trades_${limit}_${status || "all"}_${bot || "all"}`;
@@ -403,9 +392,6 @@ export const getUserTradingStats = async (days = 30, skipCache = false) => {
   }
 };
 
-/* ---------------------------------------------
- * STRATEGIES
- * ------------------------------------------- */
 export const getTradingStrategies = async (skipCache = false) => {
   const cacheKey = "trading_strategies";
 
@@ -481,9 +467,6 @@ export const updateUserStrategy = async (strategy) => {
   }
 };
 
-/* ---------------------------------------------
- * INTEGRATIONS
- * ------------------------------------------- */
 export const connectOKX = async (payload) => {
   try {
     const response = await userApi.post("/api/integrations/okx", payload);
@@ -556,9 +539,6 @@ export const toggleTrading = async (enabled) => {
   }
 };
 
-/* ---------------------------------------------
- * BILLING
- * ------------------------------------------- */
 export const getCardStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("card_status");
@@ -609,9 +589,6 @@ export const confirmCard = async (payload = {}) => {
   }
 };
 
-/* ---------------------------------------------
- * BOTAPI CLASS
- * ------------------------------------------- */
 class BotAPIClass {
   constructor() {
     this.api = userApi;
