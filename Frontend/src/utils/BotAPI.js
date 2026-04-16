@@ -1,4 +1,6 @@
-// src/utils/BotAPI.js
+// ===============================
+// FILE: src/utils/BotAPI.js
+// ===============================
 import axios from "axios";
 
 const API_BASE = "https://api.imali-defi.com";
@@ -18,6 +20,12 @@ const API_CONFIG = {
 
 const cache = new Map();
 
+const SESSION_CHECK_ENDPOINTS = [
+  "/api/me",
+  "/api/auth/refresh",
+  "/api/auth/validate",
+];
+
 const getCached = (key, ttl = API_CONFIG.cacheTTL) => {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.timestamp < ttl) {
@@ -35,6 +43,7 @@ const clearCache = (pattern) => {
     cache.clear();
     return;
   }
+
   for (const key of cache.keys()) {
     if (key.includes(pattern)) {
       cache.delete(key);
@@ -63,9 +72,7 @@ const sniperApi = axios.create({
 export const getToken = () => {
   if (!isBrowser) return null;
   try {
-    const token = localStorage.getItem(TOKEN_KEY);
-    console.log("[BotAPI] getToken called, token exists:", !!token);
-    return token;
+    return localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
   }
@@ -74,13 +81,8 @@ export const getToken = () => {
 export const setToken = (token) => {
   if (!isBrowser) return;
   try {
-    if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
-      console.log("[BotAPI] Token saved to localStorage");
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-      console.log("[BotAPI] Token removed from localStorage");
-    }
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
   } catch {}
 };
 
@@ -119,13 +121,17 @@ export const isAuthenticated = () => !!getToken();
 
 const unwrap = (response) => response?.data ?? response;
 
-const handleApiError = (error, fallbackMessage) => {
-  const message =
+const getErrorMessage = (error, fallbackMessage) => {
+  return (
     error?.response?.data?.message ||
     error?.response?.data?.error ||
     error?.message ||
-    fallbackMessage;
+    fallbackMessage
+  );
+};
 
+const handleApiError = (error, fallbackMessage) => {
+  const message = getErrorMessage(error, fallbackMessage);
   console.error(`[BotAPI] ${fallbackMessage}:`, message);
 
   return {
@@ -135,15 +141,21 @@ const handleApiError = (error, fallbackMessage) => {
   };
 };
 
+const shouldForceLogout = (url = "") => {
+  return SESSION_CHECK_ENDPOINTS.some((endpoint) => url.includes(endpoint));
+};
+
 const addAuthInterceptor = (apiClient) => {
   apiClient.interceptors.request.use((config) => {
     const token = getToken();
-    console.log(`[BotAPI] Interceptor - ${config.url}, token:`, !!token);
+    const apiKey = getApiKey();
+
+    config.headers = config.headers || {};
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    const apiKey = getApiKey();
     if (apiKey) {
       config.headers["X-API-Key"] = apiKey;
     }
@@ -155,6 +167,8 @@ const addAuthInterceptor = (apiClient) => {
     (response) => response,
     async (error) => {
       const { config, response } = error;
+      const status = response?.status;
+      const url = config?.url || "";
 
       if (!response && config && !config.__retryCount) {
         config.__retryCount = 1;
@@ -162,16 +176,19 @@ const addAuthInterceptor = (apiClient) => {
         return apiClient(config);
       }
 
-      if (response?.status === 401) {
+      if (status === 401) {
         const isAuthPage =
           isBrowser &&
           (window.location.pathname.includes("/login") ||
             window.location.pathname.includes("/signup"));
 
-        if (!isAuthPage) {
+        if (!isAuthPage && shouldForceLogout(url)) {
           clearToken();
           clearApiKey();
+          clearCache();
           if (isBrowser) window.location.href = "/login?expired=true";
+        } else {
+          console.warn("[BotAPI] Ignoring non-session 401:", url);
         }
       }
 
@@ -190,9 +207,8 @@ export const signup = async (userData) => {
   try {
     const response = await userApi.post("/api/auth/register", userData);
     const data = unwrap(response);
-    // FIX: Token is at data.data.token
-    const token = data?.data?.token;
-    const apiKey = data?.data?.user?.api_key || null;
+    const token = data?.data?.token || data?.token;
+    const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
 
     if (token) setToken(token);
     if (apiKey) setApiKey(apiKey);
@@ -206,27 +222,18 @@ export const signup = async (userData) => {
 
 export const login = async (email, password) => {
   try {
-    console.log("[BotAPI] login called with:", { email });
     const response = await userApi.post("/api/auth/login", { email, password });
     const data = unwrap(response);
-    
-    console.log("[BotAPI] login response:", data);
-    
-    // FIX: Token is at data.data.token
-    const token = data?.data?.token;
-    const apiKey = data?.data?.user?.api_key || null;
 
-    console.log("[BotAPI] extracted token:", token ? "Yes" : "No");
+    const token = data?.data?.token || data?.token;
+    const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
 
-    if (token) {
-      setToken(token);
-      console.log("[BotAPI] Token saved, verifying:", getToken() ? "Yes" : "No");
-    }
+    if (token) setToken(token);
+    if (apiKey) setApiKey(apiKey);
 
     clearCache();
     return { success: true, data, token, api_key: apiKey };
   } catch (error) {
-    console.error("[BotAPI] login error:", error);
     return handleApiError(error, "Login failed");
   }
 };
@@ -244,21 +251,16 @@ export const getMe = async (skipCache = false) => {
     if (cached) return cached;
   }
 
-  try {
-    const response = await userApi.get("/api/me");
-    const data = unwrap(response);
-    const user = data?.data?.user || null;
+  const response = await userApi.get("/api/me");
+  const data = unwrap(response);
+  const user = data?.data?.user || data?.user || data?.data || null;
 
-    if (user) {
-      setCached("user_me", user);
-      if (user.api_key) setApiKey(user.api_key);
-    }
-
-    return user;
-  } catch (error) {
-    console.error("[BotAPI] getMe failed:", error);
-    throw error;
+  if (user) {
+    setCached("user_me", user);
+    if (user.api_key) setApiKey(user.api_key);
   }
+
+  return user;
 };
 
 export const getActivationStatus = async (skipCache = false) => {
@@ -288,7 +290,7 @@ export const getActivationStatus = async (skipCache = false) => {
     setCached("activation_status", result);
     return result;
   } catch (error) {
-    console.warn("[BotAPI] getActivationStatus failed:", error);
+    console.warn("[BotAPI] getActivationStatus failed:", getErrorMessage(error, "Activation status failed"));
     return {
       has_card_on_file: false,
       billing_complete: false,
@@ -333,8 +335,7 @@ export const getUserTrades = async (options = {}) => {
     setCached(cacheKey, result);
     return result;
   } catch (error) {
-    console.error("[BotAPI] getUserTrades failed:", error);
-    return { success: false, trades: [], summary: {}, error: error.message };
+    return { success: false, trades: [], summary: {}, error: getErrorMessage(error, "Failed to load trades") };
   }
 };
 
@@ -355,8 +356,7 @@ export const getUserPositions = async (skipCache = false) => {
     setCached("user_positions", result);
     return result;
   } catch (error) {
-    console.error("[BotAPI] getUserPositions failed:", error);
-    return { success: false, positions: [], count: 0, error: error.message };
+    return { success: false, positions: [], count: 0, error: getErrorMessage(error, "Failed to load positions") };
   }
 };
 
@@ -379,8 +379,7 @@ export const getUserBotExecutions = async (limit = 50, skipCache = false) => {
     setCached(cacheKey, result);
     return result;
   } catch (error) {
-    console.error("[BotAPI] getUserBotExecutions failed:", error);
-    return { success: false, executions: [], count: 0, error: error.message };
+    return { success: false, executions: [], count: 0, error: getErrorMessage(error, "Failed to load bot executions") };
   }
 };
 
@@ -399,7 +398,7 @@ export const getUserTradingStats = async (days = 30, skipCache = false) => {
     setCached(cacheKey, result);
     return result;
   } catch (error) {
-    console.error("[BotAPI] getUserTradingStats failed:", error);
+    console.warn("[BotAPI] getUserTradingStats failed:", getErrorMessage(error, "Failed to load trading stats"));
     return { summary: {}, daily_performance: [] };
   }
 };
@@ -431,8 +430,7 @@ export const getTradingStrategies = async (skipCache = false) => {
     setCached(cacheKey, result, 30000);
     return result;
   } catch (error) {
-    console.error("[BotAPI] getTradingStrategies failed:", error);
-    return {
+    const result = {
       success: false,
       strategies: [
         {
@@ -449,8 +447,12 @@ export const getTradingStrategies = async (skipCache = false) => {
       current_strategy: "ai_weighted",
       tier: "starter",
       count: 1,
-      error: error.message,
+      error: getErrorMessage(error, "Failed to load trading strategies"),
+      status: error?.response?.status,
     };
+
+    console.warn("[BotAPI] getTradingStrategies failed without forcing logout:", result.error);
+    return result;
   }
 };
 
@@ -532,7 +534,7 @@ export const getIntegrationStatus = async (skipCache = false) => {
     setCached("integration_status", result);
     return result;
   } catch (error) {
-    console.warn("[BotAPI] getIntegrationStatus failed:", error);
+    console.warn("[BotAPI] getIntegrationStatus failed:", getErrorMessage(error, "Failed to load integrations"));
     return {
       wallet_connected: false,
       alpaca_connected: false,
@@ -574,7 +576,7 @@ export const getCardStatus = async (skipCache = false) => {
     setCached("card_status", result);
     return result;
   } catch (error) {
-    console.warn("[BotAPI] getCardStatus failed:", error);
+    console.warn("[BotAPI] getCardStatus failed:", getErrorMessage(error, "Failed to load card status"));
     return { success: false, has_card: false, billing_complete: false };
   }
 };
@@ -614,6 +616,7 @@ class BotAPIClass {
   constructor() {
     this.api = userApi;
     this.sniperApi = sniperApi;
+    this.publicApi = publicApi;
   }
 
   setToken(token) { setToken(token); }
