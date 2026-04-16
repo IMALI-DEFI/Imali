@@ -26,7 +26,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import FundingGuide from "./pages/FundingGuide";
 import PublicDashboard from "./pages/PublicDashboard";
-import ReferralSystem from "./components/ReferralSystem";
+import ReferralSystem from "./pages/ReferralPartners";
 
 // Error Boundary
 class AppErrorBoundary extends React.Component {
