@@ -5,7 +5,6 @@ import React, {
   Suspense,
   lazy,
   useMemo,
-  useRef,
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
@@ -136,16 +135,6 @@ const isAuthError = (status, message = "") => {
   );
 };
 
-const isPermissionError = (status, message = "") => {
-  const msg = String(message || "").toLowerCase();
-  return (
-    status === 403 ||
-    msg.includes("admin access required") ||
-    msg.includes("permission denied") ||
-    msg.includes("forbidden")
-  );
-};
-
 const adminFetch = async (endpoint, options = {}, retries = 0) => {
   const token = getAuthToken();
 
@@ -186,8 +175,7 @@ const adminFetch = async (endpoint, options = {}, retries = 0) => {
       return payload;
     } catch (error) {
       lastError = error;
-
-      if (attempt < retries && !isAuthError(error?.status, error?.message) && !isPermissionError(error?.status, error?.message)) {
+      if (attempt < retries && !isAuthError(error?.status, error?.message)) {
         await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
         continue;
       }
@@ -456,13 +444,11 @@ export default function AdminPanel({ forceOwner = false }) {
   const [actionHistory, setActionHistory] = useState([]);
   const [apiError, setApiError] = useState(null);
   const [sessionExpired, setSessionExpired] = useState(false);
-  const refreshIntervalRef = useRef(null);
 
   const isDevelopment =
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
   const BYPASS = isDevelopment && process.env.REACT_APP_BYPASS_OWNER === "1";
   const TEST_BYPASS = location.pathname.startsWith("/test/admin");
-
   const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdminFromAuth;
 
   const activeTab = useMemo(() => {
@@ -539,19 +525,13 @@ export default function AdminPanel({ forceOwner = false }) {
         const message = err?.message || "Failed to load metrics.";
         const status = err?.status || 0;
 
-        console.error("[AdminPanel] Stats fetch error:", err);
-
         if (isAuthError(status, message)) {
           handleAuthFailure(message);
           return null;
         }
 
         setApiError(message);
-
-        if (!silent) {
-          showToast(`Failed to load metrics: ${message}`, "error");
-        }
-
+        if (!silent) showToast(`Failed to load metrics: ${message}`, "error");
         return null;
       }
     },
@@ -661,15 +641,6 @@ export default function AdminPanel({ forceOwner = false }) {
     fetchStats(true);
   }, [authLoading, allowAccess, fetchStats, sessionExpired]);
 
-  useEffect(() => {
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-    };
-  }, []);
-
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-4 text-white">
@@ -688,9 +659,7 @@ export default function AdminPanel({ forceOwner = false }) {
         <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
           <div className="mb-4 text-7xl">🔒</div>
           <h2 className="mb-2 text-2xl font-bold">Admin Only</h2>
-          <p className="mb-6 text-white/65">
-            You do not have admin access.
-          </p>
+          <p className="mb-6 text-white/65">You do not have admin access.</p>
           <button
             onClick={() => navigate("/dashboard")}
             className="w-full rounded-xl bg-emerald-600 px-6 py-3 font-medium transition hover:bg-emerald-500"
