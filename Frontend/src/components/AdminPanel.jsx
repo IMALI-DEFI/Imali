@@ -1,4 +1,3 @@
-// src/pages/AdminPanel.jsx
 import React, {
   useEffect,
   useState,
@@ -12,7 +11,6 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import { useAuth } from "../context/AuthContext";
 
-/* -------------------- Error Boundary -------------------- */
 class TabErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -61,7 +59,6 @@ class TabErrorBoundary extends React.Component {
   }
 }
 
-/* -------------------- Loading Fallback -------------------- */
 const TabLoader = ({ name }) => (
   <div className="flex min-h-[300px] flex-col items-center justify-center py-12">
     <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
@@ -69,36 +66,24 @@ const TabLoader = ({ name }) => (
   </div>
 );
 
-/* -------------------- Lazy-loaded admin modules -------------------- */
 const DashboardOverview = lazy(() => import("../admin/DashboardOverview.jsx"));
 const TokenManagement = lazy(() => import("../admin/TokenManagement.jsx"));
-const BuyBackDashboard = lazy(() => import("../admin/BuyBackDashboard.jsx"));
 const FeeDistributor = lazy(() => import("../admin/FeeDistributor.jsx"));
-const NFTManagement = lazy(() => import("../admin/NFTManagement.jsx"));
 const ReferralAnalytics = lazy(() => import("../admin/ReferralAnalytics.jsx"));
 const SocialManager = lazy(() => import("../admin/SocialManager.jsx"));
 const AccessControl = lazy(() => import("../admin/AccessControl.jsx"));
 const UserManagement = lazy(() => import("../admin/UserManagement.jsx"));
 const PromoManagement = lazy(() => import("../admin/PromoManagement.jsx"));
 const WithdrawalManagement = lazy(() => import("../admin/WithdrawalManagement.jsx"));
-const SupportTickets = lazy(() => import("../admin/SupportTickets.jsx"));
-const Announcements = lazy(() => import("../admin/Announcements.jsx"));
-const WaitlistManagement = lazy(() => import("../admin/WaitlistManagement.jsx"));
 const SystemHealth = lazy(() => import("../admin/SystemHealth.jsx"));
 const AuditLogs = lazy(() => import("../admin/AuditLogs.jsx"));
 const TreasuryManagement = lazy(() => import("../admin/TreasuryManagement.jsx"));
-const CexManagement = lazy(() => import("../admin/CexManagement.jsx"));
-const StocksManagement = lazy(() => import("../admin/StocksManagement.jsx"));
 const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.jsx"));
 const ReportsTab = lazy(() => import("../admin/ReportsTab.jsx"));
 const TradesManagement = lazy(() => import("../admin/TradesManagement.jsx"));
 
-/* -------------------- Config -------------------- */
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
-const AUTO_REFRESH_MS = 0; // DISABLED - prevents endless 403 loop
 
-/* -------------------- Helpers -------------------- */
-// FIXED: Direct localStorage access instead of BotAPI.getToken()
 const getAuthToken = () => {
   try {
     return localStorage.getItem("imali_token");
@@ -106,6 +91,23 @@ const getAuthToken = () => {
     console.error("[AdminPanel] Failed to get token:", e);
     return null;
   }
+};
+
+const parseJsonSafely = async (response) => {
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+
+  if (!text) return null;
+
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error("Server returned invalid JSON.");
+    }
+  }
+
+  return { raw: text };
 };
 
 const buildErrorMessage = (status, payload, fallbackText) => {
@@ -123,50 +125,40 @@ const buildErrorMessage = (status, payload, fallbackText) => {
   return `Request failed with status ${status}.`;
 };
 
-const parseJsonSafely = async (response) => {
-  const contentType = response.headers.get("content-type") || "";
-  const text = await response.text();
-
-  if (!text) return null;
-
-  if (contentType.includes("application/json")) {
-    try {
-      return JSON.parse(text);
-    } catch (err) {
-      throw new Error("Server returned invalid JSON.");
-    }
-  }
-
-  return { raw: text };
+const isAuthError = (status, message = "") => {
+  const msg = String(message || "").toLowerCase();
+  return (
+    status === 401 ||
+    msg.includes("authentication failed") ||
+    msg.includes("no authentication token") ||
+    msg.includes("no token provided") ||
+    msg.includes("invalid or expired token")
+  );
 };
 
-const isAuthError = (status, message = "") =>
-  status === 401 ||
-  message.toLowerCase().includes("authentication failed") ||
-  message.toLowerCase().includes("no authentication token") ||
-  message.toLowerCase().includes("no token provided") ||
-  message.toLowerCase().includes("invalid or expired token");
+const isPermissionError = (status, message = "") => {
+  const msg = String(message || "").toLowerCase();
+  return (
+    status === 403 ||
+    msg.includes("admin access required") ||
+    msg.includes("permission denied") ||
+    msg.includes("forbidden")
+  );
+};
 
-const isAdminPermissionError = (status, message = "") =>
-  status === 403 ||
-  message.toLowerCase().includes("admin access required") ||
-  message.toLowerCase().includes("permission");
-
-const adminFetch = async (endpoint, options = {}, retries = 1) => {
+const adminFetch = async (endpoint, options = {}, retries = 0) => {
   const token = getAuthToken();
-  
-  console.log("[AdminPanel] Token being used:", token ? `${token.substring(0, 20)}...` : "null");
-  
+
   if (!token) {
     const err = new Error("No authentication token found");
     err.status = 401;
     throw err;
   }
 
-  let lastError = null;
-
   const safeEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   const url = `${API_BASE}${safeEndpoint}`;
+
+  let lastError = null;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -183,15 +175,6 @@ const adminFetch = async (endpoint, options = {}, retries = 1) => {
 
       const payload = await parseJsonSafely(response);
 
-      if (response.status === 429) {
-        const retryAfter = parseInt(response.headers.get("Retry-After"), 10);
-        const waitSeconds = Number.isFinite(retryAfter) ? retryAfter : Math.pow(2, attempt + 1);
-        if (attempt < retries) {
-          await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
-          continue;
-        }
-      }
-
       if (!response.ok) {
         const message = buildErrorMessage(response.status, payload, response.statusText);
         const err = new Error(message);
@@ -204,17 +187,8 @@ const adminFetch = async (endpoint, options = {}, retries = 1) => {
     } catch (error) {
       lastError = error;
 
-      const status = error?.status || 0;
-      const message = error?.message || "Request failed";
-
-      // Don't retry on auth or permission errors
-      if (isAuthError(status, message) || isAdminPermissionError(status, message)) {
-        throw error;
-      }
-
-      if (attempt < retries) {
-        const delay = Math.pow(2, attempt) * 1000;
-        await new Promise((resolve) => setTimeout(resolve, delay));
+      if (attempt < retries && !isAuthError(error?.status, error?.message) && !isPermissionError(error?.status, error?.message)) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
         continue;
       }
     }
@@ -223,7 +197,6 @@ const adminFetch = async (endpoint, options = {}, retries = 1) => {
   throw lastError || new Error("Request failed");
 };
 
-/* -------------------- Tab Sections -------------------- */
 const TAB_SECTIONS = [
   {
     id: "dashboard",
@@ -237,7 +210,7 @@ const TAB_SECTIONS = [
         emoji: "✨",
         component: DashboardOverview,
         description: "Main numbers and summary cards.",
-        help: "Start here to get a quick snapshot of platform performance. Key metrics include total users, total trades, total PnL, and win rate.",
+        help: "Start here to get a quick snapshot of platform performance.",
         actions: [{ id: "refresh", label: "Refresh Metrics", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" }],
       },
       {
@@ -263,7 +236,7 @@ const TAB_SECTIONS = [
         emoji: "👥",
         component: UserManagement,
         description: "View and manage user accounts.",
-        help: "Search for users by email. View user details, edit tiers, enable or disable trading, and revoke API keys.",
+        help: "Search for users by email and manage accounts.",
         actions: [{ id: "refresh", label: "Refresh List", icon: "🔄", endpoint: "/api/admin/users?page=1&limit=50", method: "GET" }],
       },
     ],
@@ -280,7 +253,7 @@ const TAB_SECTIONS = [
         emoji: "📊",
         component: TradesManagement,
         description: "View all platform trades.",
-        help: "See all trades across the platform. Filter by status, bot, or user. Export data for analysis.",
+        help: "See all trades across the platform.",
         actions: [{ id: "refresh", label: "Refresh Trades", icon: "🔄", endpoint: "/api/admin/trades?page=1&limit=50", method: "GET" }],
       },
       {
@@ -289,7 +262,7 @@ const TAB_SECTIONS = [
         emoji: "📋",
         component: ReportsTab,
         description: "Generate trade and user reports.",
-        help: "Generate detailed reports on trading activity. Export as CSV for external analysis.",
+        help: "Generate detailed reports on trading activity.",
         actions: [
           { id: "trade-report", label: "Trade Report", icon: "📊", endpoint: "/api/admin/reports/trades", method: "GET" },
           { id: "user-report", label: "User Report", icon: "👥", endpoint: "/api/admin/reports/users", method: "GET" },
@@ -309,7 +282,7 @@ const TAB_SECTIONS = [
         emoji: "💰",
         component: WithdrawalManagement,
         description: "Approve or review withdrawal requests.",
-        help: "Review pending withdrawal requests. Verify user balances and approve or reject.",
+        help: "Review pending withdrawal requests.",
         actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/withdrawals", method: "GET" }],
       },
       {
@@ -344,7 +317,7 @@ const TAB_SECTIONS = [
         emoji: "🤖",
         component: MarketingAutomationTab,
         description: "Schedule automated marketing posts.",
-        help: "Create and manage automated posts to Telegram, Twitter, and Discord.",
+        help: "Create and manage automated posts to social channels.",
         actions: [{ id: "refresh", label: "Refresh Jobs", icon: "🔄", endpoint: "/api/admin/automation/jobs", method: "GET" }],
       },
       {
@@ -353,7 +326,7 @@ const TAB_SECTIONS = [
         emoji: "🎟️",
         component: PromoManagement,
         description: "Create and manage discount codes.",
-        help: "Generate new promo codes with custom discounts and expiration dates.",
+        help: "Generate new promo codes with custom discounts.",
         actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/promo/list", method: "GET" }],
       },
       {
@@ -388,7 +361,7 @@ const TAB_SECTIONS = [
         emoji: "🪙",
         component: TokenManagement,
         description: "Mint, burn, and manage token actions.",
-        help: "Control token supply: mint new tokens or burn existing ones.",
+        help: "Control token supply.",
         actions: [{ id: "stats", label: "Token Stats", icon: "📊", endpoint: "/api/admin/token/stats", method: "GET" }],
       },
       {
@@ -415,7 +388,6 @@ const TAB_SECTIONS = [
 
 const ALL_TABS = TAB_SECTIONS.flatMap((section) => section.tabs);
 
-/* -------------------- UI Components -------------------- */
 const SectionBadge = ({ emoji, name, description }) => (
   <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-4 transition hover:border-white/20">
     <div className="mb-2 flex items-center gap-2">
@@ -426,7 +398,7 @@ const SectionBadge = ({ emoji, name, description }) => (
   </div>
 );
 
-function SidebarButton({ tab, isActive, onClick, badge, busy }) {
+function SidebarButton({ tab, isActive, onClick, busy }) {
   return (
     <button
       onClick={onClick}
@@ -443,14 +415,7 @@ function SidebarButton({ tab, isActive, onClick, badge, busy }) {
       <div className="flex items-start gap-3">
         <span className="pt-0.5 text-xl">{tab.emoji}</span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium">{tab.label}</span>
-            {badge ? (
-              <span className="animate-pulse rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-medium text-red-300">
-                {badge}
-              </span>
-            ) : null}
-          </div>
+          <span className="truncate text-sm font-medium">{tab.label}</span>
           <p className="mt-1 line-clamp-2 text-xs text-white/45">{tab.description}</p>
         </div>
       </div>
@@ -477,12 +442,10 @@ function ActionButton({ action, onAction, busy }) {
 
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
-  const { user, isAdmin: isAdminFromAuth, loading: authLoading } = useAuth();
+  const { isAdmin: isAdminFromAuth, loading: authLoading, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [checking, setChecking] = useState(true);
-  const [error, setError] = useState("");
   const [active, setActive] = useState("overview");
   const [tabResetKey, setTabResetKey] = useState(0);
   const [busyAction, setBusyAction] = useState({});
@@ -492,8 +455,8 @@ export default function AdminPanel({ forceOwner = false }) {
   const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [actionHistory, setActionHistory] = useState([]);
   const [apiError, setApiError] = useState(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const refreshIntervalRef = useRef(null);
-  const [hasAuthFailed, setHasAuthFailed] = useState(false);
 
   const isDevelopment =
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
@@ -533,45 +496,16 @@ export default function AdminPanel({ forceOwner = false }) {
 
   const handleAuthFailure = useCallback(
     (message = "Session expired. Please log in again.") => {
-      if (hasAuthFailed) return; // Prevent multiple redirects
-      
-      setHasAuthFailed(true);
+      if (sessionExpired) return;
+      setSessionExpired(true);
       setApiError(message);
       showToast(message, "error");
-      
-      // Clear token
-      try {
-        localStorage.removeItem("imali_token");
-        localStorage.removeItem("imali_user");
-      } catch (e) {}
-      
-      // Stop the refresh interval
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-      
-      // Redirect to login
-      setTimeout(() => {
-        navigate("/login", { replace: true });
-      }, 1500);
-    },
-    [navigate, showToast, hasAuthFailed]
-  );
 
-  const handlePermissionFailure = useCallback(
-    (message = "You do not have admin access.") => {
-      setApiError(message);
-      setError(message);
-      showToast(message, "error");
-      
-      // Stop the refresh interval on permission error
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
+      window.setTimeout(() => {
+        logout();
+      }, 800);
     },
-    [showToast]
+    [logout, sessionExpired, showToast]
   );
 
   const mapStats = useCallback((response) => {
@@ -593,35 +527,26 @@ export default function AdminPanel({ forceOwner = false }) {
 
   const fetchStats = useCallback(
     async (silent = false) => {
-      // Don't fetch if auth has already failed
-      if (hasAuthFailed) return null;
-      
-      try {
-        if (!silent) {
-          setApiError(null);
-        }
+      if (sessionExpired) return null;
 
+      try {
+        if (!silent) setApiError(null);
         const response = await adminFetch("/api/admin/metrics", { method: "GET" });
         const normalizedStats = mapStats(response);
         setStats(normalizedStats);
         return normalizedStats;
       } catch (err) {
-        console.error("[AdminPanel] Stats fetch error:", err);
-
         const message = err?.message || "Failed to load metrics.";
         const status = err?.status || 0;
 
-        setApiError(message);
+        console.error("[AdminPanel] Stats fetch error:", err);
 
         if (isAuthError(status, message)) {
           handleAuthFailure(message);
           return null;
         }
 
-        if (isAdminPermissionError(status, message)) {
-          handlePermissionFailure(message);
-          return null;
-        }
+        setApiError(message);
 
         if (!silent) {
           showToast(`Failed to load metrics: ${message}`, "error");
@@ -630,7 +555,7 @@ export default function AdminPanel({ forceOwner = false }) {
         return null;
       }
     },
-    [mapStats, handleAuthFailure, handlePermissionFailure, showToast, hasAuthFailed]
+    [handleAuthFailure, mapStats, sessionExpired, showToast]
   );
 
   const handleAction = useCallback(
@@ -671,9 +596,8 @@ export default function AdminPanel({ forceOwner = false }) {
 
         if (isAuthError(status, message)) {
           handleAuthFailure(message);
-        } else if (isAdminPermissionError(status, message)) {
-          handlePermissionFailure(message);
         } else {
+          setApiError(message);
           showToast(message, "error");
         }
 
@@ -686,14 +610,7 @@ export default function AdminPanel({ forceOwner = false }) {
         });
       }
     },
-    [
-      activeTab,
-      fetchStats,
-      handleAuthFailure,
-      handlePermissionFailure,
-      logAction,
-      showToast,
-    ]
+    [activeTab, fetchStats, handleAuthFailure, logAction, showToast]
   );
 
   const navigateToTab = useCallback((tabKey) => {
@@ -740,49 +657,20 @@ export default function AdminPanel({ forceOwner = false }) {
   );
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !allowAccess || sessionExpired) return;
+    fetchStats(true);
+  }, [authLoading, allowAccess, fetchStats, sessionExpired]);
 
-    const timer = setTimeout(() => {
-      setChecking(false);
-
-      if (!allowAccess) {
-        setError("You do not have admin access.");
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [authLoading, allowAccess]);
-
-  // Only set up refresh interval if AUTO_REFRESH_MS > 0
   useEffect(() => {
-    if (!allowAccess || authLoading || hasAuthFailed) return;
-
-    // Initial fetch
-    fetchStats();
-
-    // Only set up interval if auto-refresh is enabled
-    if (AUTO_REFRESH_MS > 0) {
+    return () => {
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
       }
+    };
+  }, []);
 
-      refreshIntervalRef.current = setInterval(() => {
-        // Don't refresh if auth has failed
-        if (!hasAuthFailed) {
-          fetchStats(true);
-        }
-      }, AUTO_REFRESH_MS);
-
-      return () => {
-        if (refreshIntervalRef.current) {
-          clearInterval(refreshIntervalRef.current);
-          refreshIntervalRef.current = null;
-        }
-      };
-    }
-  }, [allowAccess, authLoading, fetchStats, hasAuthFailed]);
-
-  if ((checking || authLoading) && !allowAccess) {
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-4 text-white">
         <div className="text-center">
@@ -801,7 +689,7 @@ export default function AdminPanel({ forceOwner = false }) {
           <div className="mb-4 text-7xl">🔒</div>
           <h2 className="mb-2 text-2xl font-bold">Admin Only</h2>
           <p className="mb-6 text-white/65">
-            {error || "This area is restricted to platform administrators."}
+            You do not have admin access.
           </p>
           <button
             onClick={() => navigate("/dashboard")}
@@ -1071,11 +959,7 @@ export default function AdminPanel({ forceOwner = false }) {
           </section>
 
           <div className="mt-6 text-center text-[11px] text-white/25">
-            Admin Panel •{" "}
-            {account
-              ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}`
-              : "No wallet connected"}{" "}
-            • Last updated: {new Date().toLocaleTimeString()}
+            Admin Panel • {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : "No wallet connected"} • Last updated: {new Date().toLocaleTimeString()}
           </div>
         </main>
       </div>
