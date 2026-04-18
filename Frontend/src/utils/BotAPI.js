@@ -196,6 +196,7 @@ const addAuthInterceptor = (apiClient) => {
 addAuthInterceptor(userApi);
 addAuthInterceptor(sniperApi);
 
+// ========== AUTH ENDPOINTS ==========
 export const signup = async (userData) => {
   try {
     const response = await userApi.post("/api/auth/register", userData);
@@ -255,6 +256,7 @@ export const getMe = async (skipCache = false) => {
   return user;
 };
 
+// ========== ACTIVATION & BILLING ==========
 export const getActivationStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("activation_status");
@@ -300,6 +302,57 @@ export const getActivationStatus = async (skipCache = false) => {
 
 export const refreshActivation = () => getActivationStatus(true);
 
+export const getCardStatus = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("card_status");
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await userApi.get("/api/billing/card-status");
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      has_card: data?.data?.has_card || false,
+      billing_complete: data?.data?.billing_complete || false,
+    };
+    setCached("card_status", result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getCardStatus failed:", getErrorMessage(error, "Failed to load card status"));
+    return { success: false, has_card: false, billing_complete: false };
+  }
+};
+
+export const createSetupIntent = async (payload) => {
+  try {
+    const response = await userApi.post("/api/billing/setup-intent", payload);
+    const data = unwrap(response);
+    return {
+      success: true,
+      client_secret: data?.data?.client_secret,
+      setup_intent_id: data?.data?.setup_intent_id,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to create setup intent");
+  }
+};
+
+export const confirmCard = async (payload = {}) => {
+  try {
+    const response = await userApi.post("/api/billing/confirm-card", payload);
+    clearCache("activation_status");
+    clearCache("card_status");
+    return {
+      success: true,
+      confirmed: unwrap(response)?.data?.confirmed || true,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to confirm card");
+  }
+};
+
+// ========== TRADING ENDPOINTS ==========
 export const getUserTrades = async (options = {}) => {
   const { limit = 100, status, bot, skipCache = false } = options;
   const cacheKey = `user_trades_${limit}_${status || "all"}_${bot || "all"}`;
@@ -346,6 +399,36 @@ export const getUserPositions = async (skipCache = false) => {
     return result;
   } catch (error) {
     return { success: false, positions: [], count: 0, error: getErrorMessage(error, "Failed to load positions") };
+  }
+};
+
+export const cancelPosition = async (positionId) => {
+  try {
+    const response = await userApi.delete(`/api/user/positions/${positionId}`);
+    const data = unwrap(response);
+    clearCache("user_positions");
+    clearCache("user_trading_stats");
+    return {
+      success: true,
+      message: data?.message || "Position cancelled successfully",
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to cancel position");
+  }
+};
+
+export const cancelAllPositions = async () => {
+  try {
+    const response = await userApi.delete("/api/user/positions");
+    const data = unwrap(response);
+    clearCache("user_positions");
+    clearCache("user_trading_stats");
+    return {
+      success: true,
+      message: data?.message || "All positions cancelled successfully",
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to cancel positions");
   }
 };
 
@@ -467,6 +550,20 @@ export const updateUserStrategy = async (strategy) => {
   }
 };
 
+export const toggleTrading = async (enabled) => {
+  try {
+    const response = await userApi.post("/api/trading/enable", { enabled });
+    clearCache("activation_status");
+    return {
+      success: true,
+      enabled: unwrap(response)?.data?.enabled ?? enabled,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to toggle trading");
+  }
+};
+
+// ========== INTEGRATIONS ==========
 export const connectOKX = async (payload) => {
   try {
     const response = await userApi.post("/api/integrations/okx", payload);
@@ -526,69 +623,174 @@ export const getIntegrationStatus = async (skipCache = false) => {
   }
 };
 
-export const toggleTrading = async (enabled) => {
-  try {
-    const response = await userApi.post("/api/trading/enable", { enabled });
-    clearCache("activation_status");
-    return {
-      success: true,
-      enabled: unwrap(response)?.data?.enabled ?? enabled,
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to toggle trading");
-  }
-};
+// ========== REFERRAL ENDPOINTS ==========
+export const getReferralInfo = async (skipCache = false) => {
+  const cacheKey = "referral_info";
 
-export const getCardStatus = async (skipCache = false) => {
   if (!skipCache) {
-    const cached = getCached("card_status");
+    const cached = getCached(cacheKey);
     if (cached) return cached;
   }
 
   try {
-    const response = await userApi.get("/api/billing/card-status");
+    const response = await userApi.get("/api/referral/info");
+    const data = unwrap(response);
+    const result = data?.data || {
+      code: "",
+      total_referred: 0,
+      earned: 0,
+      paid_out: 0,
+      pending: 0,
+      reward_percentage: 20,
+      reward_currency: "USDC",
+    };
+    setCached(cacheKey, result);
+    return { success: true, data: result };
+  } catch (error) {
+    console.warn("[BotAPI] getReferralInfo failed:", getErrorMessage(error, "Failed to load referral info"));
+    return {
+      success: false,
+      data: {
+        code: "",
+        total_referred: 0,
+        earned: 0,
+        paid_out: 0,
+        pending: 0,
+        reward_percentage: 20,
+        reward_currency: "USDC",
+      },
+      error: getErrorMessage(error, "Failed to load referral info"),
+    };
+  }
+};
+
+export const getReferralStats = async (skipCache = false) => {
+  const cacheKey = "referral_stats";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await userApi.get("/api/referral/stats");
+    const data = unwrap(response);
+    const result = data?.data || {
+      total_rewards_earned: 0,
+      pending_rewards: 0,
+      qualified_referrals: 0,
+      reward_percentage: 20,
+    };
+    setCached(cacheKey, result);
+    return { success: true, data: result };
+  } catch (error) {
+    console.warn("[BotAPI] getReferralStats failed:", getErrorMessage(error, "Failed to load referral stats"));
+    return {
+      success: false,
+      data: {
+        total_rewards_earned: 0,
+        pending_rewards: 0,
+        qualified_referrals: 0,
+        reward_percentage: 20,
+      },
+      error: getErrorMessage(error, "Failed to load referral stats"),
+    };
+  }
+};
+
+export const validateReferralCode = async (code) => {
+  try {
+    const response = await userApi.get(`/api/referral/validate/${code}`);
+    const data = unwrap(response);
+    return {
+      success: true,
+      valid: data?.data?.valid || true,
+      message: data?.data?.message || "Referral code is valid",
+      referrer_name: data?.data?.referrer_name,
+    };
+  } catch (error) {
+    const message = getErrorMessage(error, "Referral code is invalid");
+    return {
+      success: false,
+      valid: false,
+      error: message,
+      message,
+    };
+  }
+};
+
+export const applyReferralCode = async (code) => {
+  try {
+    const response = await userApi.post("/api/referral/apply", { code });
+    const data = unwrap(response);
+    clearCache("referral_info");
+    clearCache("referral_stats");
+    clearCache("user_me");
+    return {
+      success: true,
+      applied: true,
+      message: data?.message || "Referral code applied successfully",
+      data: data?.data,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to apply referral code");
+  }
+};
+
+export const claimReferralRewards = async (amount, walletAddress, skipCacheClear = false) => {
+  try {
+    const response = await userApi.post("/api/referral/claim", {
+      amount,
+      wallet_address: walletAddress,
+    });
+    const data = unwrap(response);
+    
+    if (!skipCacheClear) {
+      clearCache("referral_info");
+      clearCache("referral_stats");
+      clearCache("user_me");
+    }
+    
+    return {
+      success: true,
+      id: data?.data?.id,
+      tx_hash: data?.data?.tx_hash,
+      amount: data?.data?.amount,
+      status: data?.data?.status,
+      message: data?.message || "Claim submitted successfully",
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to claim rewards");
+  }
+};
+
+// ========== GLOBAL TRADES ==========
+export const getGlobalTrades = async (options = {}) => {
+  const { limit = 20, skipCache = false } = options;
+  const cacheKey = `global_trades_${limit}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 15000); // 15 second cache for global trades
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await publicApi.get(`/api/trades/global?limit=${limit}`);
     const data = unwrap(response);
     const result = {
       success: true,
-      has_card: data?.data?.has_card || false,
-      billing_complete: data?.data?.billing_complete || false,
+      trades: data?.data?.trades || [],
+      count: data?.data?.count || 0,
     };
-    setCached("card_status", result);
+    setCached(cacheKey, result, 15000);
     return result;
   } catch (error) {
-    console.warn("[BotAPI] getCardStatus failed:", getErrorMessage(error, "Failed to load card status"));
-    return { success: false, has_card: false, billing_complete: false };
+    console.warn("[BotAPI] getGlobalTrades failed:", getErrorMessage(error, "Failed to load global trades"));
+    return { success: false, trades: [], count: 0, error: getErrorMessage(error, "Failed to load global trades") };
   }
 };
 
-export const createSetupIntent = async (payload) => {
-  try {
-    const response = await userApi.post("/api/billing/setup-intent", payload);
-    const data = unwrap(response);
-    return {
-      success: true,
-      client_secret: data?.data?.client_secret,
-      setup_intent_id: data?.data?.setup_intent_id,
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to create setup intent");
-  }
-};
-
-export const confirmCard = async (payload = {}) => {
-  try {
-    const response = await userApi.post("/api/billing/confirm-card", payload);
-    clearCache("activation_status");
-    clearCache("card_status");
-    return {
-      success: true,
-      confirmed: unwrap(response)?.data?.confirmed || true,
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to confirm card");
-  }
-};
-
+// ========== CLASS EXPORT ==========
 class BotAPIClass {
   constructor() {
     this.api = userApi;
@@ -613,21 +815,33 @@ class BotAPIClass {
 
   getUserTrades(options) { return getUserTrades(options); }
   getUserPositions(skipCache) { return getUserPositions(skipCache); }
+  cancelPosition(positionId) { return cancelPosition(positionId); }
+  cancelAllPositions() { return cancelAllPositions(); }
   getUserBotExecutions(limit, skipCache) { return getUserBotExecutions(limit, skipCache); }
   getUserTradingStats(days, skipCache) { return getUserTradingStats(days, skipCache); }
 
   getTradingStrategies(skipCache) { return getTradingStrategies(skipCache); }
   updateUserStrategy(strategy) { return updateUserStrategy(strategy); }
+  toggleTrading(enabled) { return toggleTrading(enabled); }
 
   connectOKX(payload) { return connectOKX(payload); }
   connectAlpaca(payload) { return connectAlpaca(payload); }
   connectWallet(payload) { return connectWallet(payload); }
   getIntegrationStatus(skipCache) { return getIntegrationStatus(skipCache); }
-  toggleTrading(enabled) { return toggleTrading(enabled); }
 
   getCardStatus(skipCache) { return getCardStatus(skipCache); }
   createSetupIntent(payload) { return createSetupIntent(payload); }
   confirmCard(payload) { return confirmCard(payload); }
+
+  // Referral methods
+  getReferralInfo(skipCache) { return getReferralInfo(skipCache); }
+  getReferralStats(skipCache) { return getReferralStats(skipCache); }
+  validateReferralCode(code) { return validateReferralCode(code); }
+  applyReferralCode(code) { return applyReferralCode(code); }
+  claimReferralRewards(amount, walletAddress) { return claimReferralRewards(amount, walletAddress); }
+
+  // Global trades
+  getGlobalTrades(options) { return getGlobalTrades(options); }
 
   clearCache(pattern) { clearCache(pattern); }
 }
