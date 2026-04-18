@@ -21,7 +21,9 @@ import {
   FaMedal,
   FaLink,
   FaSyncAlt,
+  FaMobile,
   FaArrowRight,
+  FaEnvelope,
 } from "react-icons/fa";
 import referralImg from "../assets/images/referral_program.png";
 import referralBot from "../assets/images/cards/referralbot.png";
@@ -52,9 +54,14 @@ const accentMap = {
 const defaultReferralData = {
   code: "",
   totalReferrals: 0,
+  level1Earnings: 0,
+  level2Earnings: 0,
+  pendingRewards: 0,
   earned: 0,
+  paid_out: 0,
   rewardPercentage: 20,
   rewardCurrency: "USDC",
+  qualifiedReferrals: 0,
   nftTier: "Starter Referral NFT",
 };
 
@@ -164,7 +171,7 @@ const WalletGuideModal = ({ onClose, onConnectMetaMask }) => (
   </div>
 );
 
-const SignupModal = ({ onClose, onSignup, loading, email, setEmail, password, setPassword, confirmPassword, setConfirmPassword, referralCode }) => (
+const SignupModal = ({ onClose, onSignup, loading, email, setEmail, password, setPassword, confirmPassword, setConfirmPassword }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
     <div className="w-full max-w-md rounded-2xl bg-white p-4 md:p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -173,12 +180,6 @@ const SignupModal = ({ onClose, onSignup, loading, email, setEmail, password, se
           ×
         </button>
       </div>
-
-      {referralCode && (
-        <div className="mb-4 rounded-lg bg-emerald-50 p-2 text-center text-xs text-emerald-700">
-          Signing up with referral: {referralCode}
-        </div>
-      )}
 
       <div className="space-y-4">
         <div>
@@ -237,7 +238,7 @@ const SignupModal = ({ onClose, onSignup, loading, email, setEmail, password, se
 export default function ReferralSystem() {
   const navigate = useNavigate();
   const { account, isConnected, connectWallet, connecting, hasWallet } = useWallet();
-  const { signup, isAuthenticated, user } = useAuth();
+  const { signup, isAuthenticated } = useAuth();
 
   const [referralData, setReferralData] = useState(defaultReferralData);
   const [referralInput, setReferralInput] = useState("");
@@ -245,6 +246,7 @@ export default function ReferralSystem() {
   const [loading, setLoading] = useState(false);
   const [claimLoading, setClaimLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
+  const [validationStatus, setValidationStatus] = useState(null);
   const [walletAddress, setWalletAddress] = useState("");
   const [showWalletInput, setShowWalletInput] = useState(false);
   const [error, setError] = useState("");
@@ -256,7 +258,6 @@ export default function ReferralSystem() {
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
-  const [pendingReferralCode, setPendingReferralCode] = useState(null);
 
   const generateReferralCode = (wallet) => {
     if (!wallet) return "";
@@ -267,12 +268,7 @@ export default function ReferralSystem() {
     return isConnected && account ? generateReferralCode(account) : "";
   }, [account, isConnected]);
 
-  // Get referral code from user data or generate from wallet
-  const effectiveReferralCode = useMemo(() => {
-    if (user?.referral_code) return user.referral_code;
-    if (guestReferralCode) return guestReferralCode;
-    return "";
-  }, [user, guestReferralCode]);
+  const effectiveReferralCode = referralData.code || guestReferralCode;
 
   const referralUrl = useMemo(() => {
     if (!effectiveReferralCode || typeof window === "undefined") return "";
@@ -289,6 +285,7 @@ export default function ReferralSystem() {
   const clearNotices = () => {
     setError("");
     setSuccess("");
+    setValidationStatus(null);
   };
 
   useEffect(() => {
@@ -307,48 +304,66 @@ export default function ReferralSystem() {
     return () => clearTimeout(timer);
   }, [autoConnectAttempted, isConnected, connecting, connectWallet]);
 
-  // Fetch referral data from user object
   const fetchReferralData = async () => {
-    if (!isAuthenticated && !isConnected) return;
+    if (!isConnected || !account) return;
 
     setLoading(true);
     clearNotices();
 
     try {
-      if (isAuthenticated && user) {
-        // User is logged in - get data from user object
-        const totalReferred = user.referral_count || user.total_referrals || 0;
-        
-        setReferralData({
-          code: user.referral_code || effectiveReferralCode,
-          totalReferrals: totalReferred,
-          earned: user.referral_earnings || 0,
-          rewardPercentage: user.reward_percentage || 20,
-          rewardCurrency: user.reward_currency || "USDC",
-          nftTier: computeNftTier(totalReferred),
-        });
-      } else if (isConnected && account) {
-        // Wallet connected but not logged in - just show wallet-based code
-        setReferralData({
+      if (!isAuthenticated) {
+        setReferralData((prev) => ({
+          ...prev,
           code: generateReferralCode(account),
-          totalReferrals: 0,
-          earned: 0,
-          rewardPercentage: 20,
-          rewardCurrency: "USDC",
-          nftTier: "Starter Referral NFT",
-        });
+          nftTier: computeNftTier(prev.totalReferrals || 0),
+        }));
+        return;
       }
+
+      const [infoRes, statsRes] = await Promise.all([
+        BotAPI.getReferralInfo(),
+        BotAPI.getReferralStats ? BotAPI.getReferralStats() : Promise.resolve(null),
+      ]);
+
+      const info = infoRes?.data || infoRes || {};
+      const stats = statsRes?.data || statsRes || {};
+      const totalReferred = info.total_referred || info.count || 0;
+
+      setReferralData({
+        code: info.code || generateReferralCode(account),
+        totalReferrals: totalReferred,
+        level1Earnings: stats.total_rewards_earned || 0,
+        level2Earnings: (stats.total_rewards_earned || 0) * 0.25,
+        pendingRewards: info.pending || stats.pending_rewards || 0,
+        earned: info.earned || 0,
+        paid_out: info.paid_out || 0,
+        rewardPercentage: info.reward_percentage || stats.reward_percentage || 20,
+        rewardCurrency: info.reward_currency || "USDC",
+        qualifiedReferrals: stats.qualified_referrals || 0,
+        nftTier: computeNftTier(totalReferred),
+      });
     } catch (err) {
       console.error("[ReferralSystem] fetchReferralData error:", err);
-      setError("Could not load referral data. Your link is still ready to share.");
+      setReferralData((prev) => ({
+        ...prev,
+        code: generateReferralCode(account),
+        nftTier: computeNftTier(prev.totalReferrals || 0),
+      }));
+      setError("Could not load full referral data. Your link is still ready to share.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchReferralData();
-  }, [isAuthenticated, isConnected, account, user]);
+    if (isConnected && account) {
+      setReferralData((prev) => ({
+        ...prev,
+        code: prev.code || generateReferralCode(account),
+      }));
+      fetchReferralData();
+    }
+  }, [isConnected, account, isAuthenticated]);
 
   const handleConnectWallet = async () => {
     clearNotices();
@@ -379,30 +394,46 @@ export default function ReferralSystem() {
     }
   };
 
-  // Apply referral code - stores it for use during signup
   const applyReferralCode = async () => {
     if (!referralInput.trim()) return;
+
+    if (!isAuthenticated) {
+      setError("Please log in before applying a referral code.");
+      return;
+    }
 
     setApplyLoading(true);
     clearNotices();
 
     try {
-      // Store the referral code to be used during signup
-      localStorage.setItem("pending_referral_code", referralInput.trim().toUpperCase());
-      setPendingReferralCode(referralInput.trim().toUpperCase());
-      setSuccess(`Referral code "${referralInput.trim().toUpperCase()}" saved! It will be applied when you sign up.`);
-      setReferralInput("");
+      await BotAPI.validateReferralCode(referralInput.trim().toUpperCase());
+      setValidationStatus({ valid: true, message: "Referral code looks good." });
+
+      if (!BotAPI.applyReferralCode) {
+        throw new Error("Apply referral endpoint is not connected in BotAPI yet.");
+      }
+
+      const applyRes = await BotAPI.applyReferralCode(referralInput.trim().toUpperCase());
+
+      if (applyRes?.success || applyRes?.applied || applyRes?.data?.applied) {
+        setSuccess("Referral code applied successfully.");
+        setReferralInput("");
+        await fetchReferralData();
+      } else {
+        setError(applyRes?.message || "Could not apply referral code.");
+      }
     } catch (err) {
       console.error("[ReferralSystem] applyReferralCode error:", err);
-      setError("Failed to save referral code.");
+      setValidationStatus({ valid: false, message: "That code could not be used." });
+      setError(err?.response?.data?.message || err?.message || "Failed to apply referral code.");
     } finally {
       setApplyLoading(false);
     }
   };
 
   const claimRewards = async () => {
-    if (referralData.earned <= 0) {
-      setError("There are no rewards to claim yet.");
+    if (referralData.pendingRewards <= 0) {
+      setError("There are no pending rewards to claim yet.");
       return;
     }
 
@@ -426,15 +457,32 @@ export default function ReferralSystem() {
       return;
     }
 
+    if (!BotAPI.claimReferralRewards) {
+      setError("Claim endpoint is not connected in BotAPI yet.");
+      return;
+    }
+
     setClaimLoading(true);
     clearNotices();
 
     try {
-      // This would need a backend endpoint - for now show message
-      setError("Claim feature coming soon. Your rewards are being tracked.");
+      const response = await BotAPI.claimReferralRewards(
+        referralData.pendingRewards,
+        walletAddress,
+        true
+      );
+
+      if (response?.success || response?.id || response?.data?.id) {
+        setSuccess("Your reward claim was submitted.");
+        setWalletAddress("");
+        setShowWalletInput(false);
+        await fetchReferralData();
+      } else {
+        setError(response?.message || "Could not submit your claim.");
+      }
     } catch (err) {
       console.error("[ReferralSystem] claimRewards error:", err);
-      setError(err?.message || "Failed to claim rewards.");
+      setError(err?.response?.data?.message || err?.message || "Failed to claim rewards.");
     } finally {
       setClaimLoading(false);
     }
@@ -464,16 +512,12 @@ export default function ReferralSystem() {
 
     setLoading(true);
     try {
-      // Get pending referral code from localStorage
-      const pendingRefCode = localStorage.getItem("pending_referral_code") || pendingReferralCode;
-      const referralCode = pendingRefCode || effectiveReferralCode || undefined;
-      
       const result = await signup({
         email: signupEmail.trim().toLowerCase(),
         password: signupPassword,
         tier: "starter",
         strategy: "ai_weighted",
-        referral_code: referralCode,
+        referral_code: effectiveReferralCode || undefined,
       });
 
       if (!result?.success) {
@@ -481,15 +525,19 @@ export default function ReferralSystem() {
         return;
       }
 
-      // Clear pending referral code after successful signup
-      localStorage.removeItem("pending_referral_code");
-      
       setShowSignupForm(false);
       setGuestMode(false);
-      setSuccess("Account created successfully!");
-      
-      // Navigate to dashboard or billing
-      navigate("/member/dashboard");
+      setSuccess("Account created successfully! You can now continue to billing.");
+      navigate("/billing", {
+        replace: true,
+        state: {
+          email: signupEmail.trim().toLowerCase(),
+          tier: "starter",
+          strategy: "ai_weighted",
+          fromSignup: true,
+          showWelcome: true,
+        },
+      });
     } catch (err) {
       setError(err?.message || "Signup failed.");
     } finally {
@@ -604,7 +652,6 @@ export default function ReferralSystem() {
             setPassword={setSignupPassword}
             confirmPassword={signupConfirmPassword}
             setConfirmPassword={setSignupConfirmPassword}
-            referralCode={pendingReferralCode || null}
           />
         )}
       </div>
@@ -721,7 +768,6 @@ export default function ReferralSystem() {
             setPassword={setSignupPassword}
             confirmPassword={signupConfirmPassword}
             setConfirmPassword={setSignupConfirmPassword}
-            referralCode={pendingReferralCode || null}
           />
         )}
       </div>
@@ -941,16 +987,17 @@ export default function ReferralSystem() {
                 suffix={` ${referralData.rewardCurrency}`}
               />
               <Tile
-                title="Reward Rate"
-                value={`${referralData.rewardPercentage}%`}
+                title="Qualified"
+                value={referralData.qualifiedReferrals}
                 icon={FaChartLine}
                 accent="amber"
               />
               <Tile
-                title="NFT Tier"
-                value={referralData.nftTier.split(" ")[0]}
-                icon={FaMedal}
+                title="Pending"
+                value={Number(referralData.pendingRewards || 0).toFixed(2)}
+                icon={FaGift}
                 accent="violet"
+                suffix={` ${referralData.rewardCurrency}`}
               />
             </div>
 
@@ -959,16 +1006,16 @@ export default function ReferralSystem() {
                 <div>
                   <h3 className="text-lg md:text-xl font-bold text-gray-900">Claim your rewards</h3>
                   <p className="text-xs md:text-sm text-gray-600">
-                    Available: {Number(referralData.earned || 0).toFixed(2)}{" "}
+                    Pending: {Number(referralData.pendingRewards || 0).toFixed(2)}{" "}
                     {referralData.rewardCurrency}
                   </p>
                 </div>
 
                 <button
                   onClick={claimRewards}
-                  disabled={referralData.earned <= 0 || claimLoading || walletOnlyMode}
+                  disabled={referralData.pendingRewards <= 0 || claimLoading || walletOnlyMode}
                   className={`flex items-center justify-center gap-2 rounded-2xl px-4 md:px-6 py-2 md:py-3 font-semibold transition ${
-                    referralData.earned > 0 && !claimLoading && !walletOnlyMode
+                    referralData.pendingRewards > 0 && !claimLoading && !walletOnlyMode
                       ? "bg-emerald-600 text-white hover:bg-emerald-700"
                       : "cursor-not-allowed bg-gray-300 text-gray-600"
                   }`}
@@ -1038,8 +1085,14 @@ export default function ReferralSystem() {
                 </button>
               </div>
 
+              {validationStatus && (
+                <p className={`mt-2 text-xs ${validationStatus.valid ? "text-green-600" : "text-red-600"}`}>
+                  {validationStatus.message}
+                </p>
+              )}
+
               <p className="mt-2 text-xs text-gray-500">
-                Enter a friend's referral code to give them credit when you sign up.
+                Use a friend's referral code when joining so they get credit.
               </p>
             </div>
 
@@ -1059,12 +1112,12 @@ export default function ReferralSystem() {
                   View Pricing
                 </Link>
                 {!isAuthenticated && (
-                  <button
-                    onClick={() => setShowSignupForm(true)}
+                  <Link
+                    to={effectiveReferralCode ? `/signup?ref=${encodeURIComponent(effectiveReferralCode)}` : "/signup"}
                     className="flex-1 sm:flex-none text-center rounded-xl bg-emerald-600 px-4 md:px-5 py-2 md:py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
                   >
-                    Sign Up
-                  </button>
+                    Finish Signup
+                  </Link>
                 )}
               </div>
             </div>
@@ -1089,7 +1142,6 @@ export default function ReferralSystem() {
           setPassword={setSignupPassword}
           confirmPassword={signupConfirmPassword}
           setConfirmPassword={setSignupConfirmPassword}
-          referralCode={pendingReferralCode || effectiveReferralCode || null}
         />
       )}
     </div>
