@@ -244,16 +244,21 @@ export const getMe = async (skipCache = false) => {
     if (cached) return cached;
   }
 
-  const response = await userApi.get("/api/me");
-  const data = unwrap(response);
-  const user = data?.data?.user || data?.user || data?.data || null;
+  try {
+    const response = await userApi.get("/api/me");
+    const data = unwrap(response);
+    const user = data?.data?.user || data?.user || data?.data || null;
 
-  if (user) {
-    setCached("user_me", user);
-    if (user.api_key) setApiKey(user.api_key);
+    if (user) {
+      setCached("user_me", user);
+      if (user.api_key) setApiKey(user.api_key);
+    }
+
+    return user;
+  } catch (error) {
+    console.error("[BotAPI] getMe failed:", getErrorMessage(error, "Failed to get user"));
+    return null;
   }
-
-  return user;
 };
 
 // ========== ACTIVATION & BILLING ==========
@@ -623,29 +628,36 @@ export const getIntegrationStatus = async (skipCache = false) => {
   }
 };
 
-// ========== REFERRAL ENDPOINTS ==========
+// ========== REFERRAL ENDPOINTS (LIVE & COMPLETE) ==========
+
+// Get user's referral information (code, earnings, stats)
 export const getReferralInfo = async (skipCache = false) => {
   const cacheKey = "referral_info";
 
   if (!skipCache) {
-    const cached = getCached(cacheKey);
+    const cached = getCached(cacheKey, 30000);
     if (cached) return cached;
   }
 
   try {
     const response = await userApi.get("/api/referral/info");
     const data = unwrap(response);
-    const result = data?.data || {
-      code: "",
-      total_referred: 0,
-      earned: 0,
-      paid_out: 0,
-      pending: 0,
-      reward_percentage: 20,
-      reward_currency: "USDC",
+    const result = {
+      success: true,
+      data: {
+        code: data?.data?.code || "",
+        total_referred: data?.data?.total_referred || 0,
+        earned: data?.data?.earned || 0,
+        paid_out: data?.data?.paid_out || 0,
+        pending: data?.data?.pending || 0,
+        reward_percentage: data?.data?.reward_percentage || 20,
+        reward_currency: data?.data?.reward_currency || "USDC",
+        qualified_referrals: data?.data?.qualified_referrals || 0,
+        nft_tier: data?.data?.nft_tier || "Starter Referral NFT",
+      },
     };
-    setCached(cacheKey, result);
-    return { success: true, data: result };
+    setCached(cacheKey, result.data, 30000);
+    return result;
   } catch (error) {
     console.warn("[BotAPI] getReferralInfo failed:", getErrorMessage(error, "Failed to load referral info"));
     return {
@@ -658,31 +670,40 @@ export const getReferralInfo = async (skipCache = false) => {
         pending: 0,
         reward_percentage: 20,
         reward_currency: "USDC",
+        qualified_referrals: 0,
+        nft_tier: "Starter Referral NFT",
       },
       error: getErrorMessage(error, "Failed to load referral info"),
     };
   }
 };
 
+// Get detailed referral statistics (level 1, level 2 earnings, etc.)
 export const getReferralStats = async (skipCache = false) => {
   const cacheKey = "referral_stats";
 
   if (!skipCache) {
-    const cached = getCached(cacheKey);
+    const cached = getCached(cacheKey, 30000);
     if (cached) return cached;
   }
 
   try {
     const response = await userApi.get("/api/referral/stats");
     const data = unwrap(response);
-    const result = data?.data || {
-      total_rewards_earned: 0,
-      pending_rewards: 0,
-      qualified_referrals: 0,
-      reward_percentage: 20,
+    const result = {
+      success: true,
+      data: {
+        total_rewards_earned: data?.data?.total_rewards_earned || 0,
+        pending_rewards: data?.data?.pending_rewards || 0,
+        qualified_referrals: data?.data?.qualified_referrals || 0,
+        reward_percentage: data?.data?.reward_percentage || 20,
+        level1_earnings: data?.data?.level1_earnings || 0,
+        level2_earnings: data?.data?.level2_earnings || 0,
+        total_referrals: data?.data?.total_referrals || 0,
+      },
     };
-    setCached(cacheKey, result);
-    return { success: true, data: result };
+    setCached(cacheKey, result.data, 30000);
+    return result;
   } catch (error) {
     console.warn("[BotAPI] getReferralStats failed:", getErrorMessage(error, "Failed to load referral stats"));
     return {
@@ -692,21 +713,26 @@ export const getReferralStats = async (skipCache = false) => {
         pending_rewards: 0,
         qualified_referrals: 0,
         reward_percentage: 20,
+        level1_earnings: 0,
+        level2_earnings: 0,
+        total_referrals: 0,
       },
       error: getErrorMessage(error, "Failed to load referral stats"),
     };
   }
 };
 
+// Validate a referral code (check if it exists and is valid)
 export const validateReferralCode = async (code) => {
   try {
-    const response = await userApi.get(`/api/referral/validate/${code}`);
+    const response = await userApi.get(`/api/referral/validate/${encodeURIComponent(code)}`);
     const data = unwrap(response);
     return {
       success: true,
-      valid: data?.data?.valid || true,
-      message: data?.data?.message || "Referral code is valid",
+      valid: true,
+      message: data?.message || "Referral code is valid",
       referrer_name: data?.data?.referrer_name,
+      referrer_code: data?.data?.referrer_code,
     };
   } catch (error) {
     const message = getErrorMessage(error, "Referral code is invalid");
@@ -719,9 +745,10 @@ export const validateReferralCode = async (code) => {
   }
 };
 
+// Apply a referral code to the current user's account
 export const applyReferralCode = async (code) => {
   try {
-    const response = await userApi.post("/api/referral/apply", { code });
+    const response = await userApi.post("/api/referral/apply", { code: code.toUpperCase() });
     const data = unwrap(response);
     clearCache("referral_info");
     clearCache("referral_stats");
@@ -729,7 +756,7 @@ export const applyReferralCode = async (code) => {
     return {
       success: true,
       applied: true,
-      message: data?.message || "Referral code applied successfully",
+      message: data?.message || "Referral code applied successfully! You'll both earn rewards.",
       data: data?.data,
     };
   } catch (error) {
@@ -737,10 +764,13 @@ export const applyReferralCode = async (code) => {
   }
 };
 
-export const claimReferralRewards = async (amount, walletAddress, skipCacheClear = false) => {
+// Claim pending referral rewards
+export const claimReferralRewards = async (amount, walletAddress, options = {}) => {
+  const { skipCacheClear = false } = options;
+  
   try {
     const response = await userApi.post("/api/referral/claim", {
-      amount,
+      amount: parseFloat(amount),
       wallet_address: walletAddress,
     });
     const data = unwrap(response);
@@ -756,11 +786,88 @@ export const claimReferralRewards = async (amount, walletAddress, skipCacheClear
       id: data?.data?.id,
       tx_hash: data?.data?.tx_hash,
       amount: data?.data?.amount,
-      status: data?.data?.status,
-      message: data?.message || "Claim submitted successfully",
+      status: data?.data?.status || "completed",
+      message: data?.message || "Rewards claimed successfully!",
     };
   } catch (error) {
     return handleApiError(error, "Failed to claim rewards");
+  }
+};
+
+// Get referral leaderboard (top referrers)
+export const getReferralLeaderboard = async (limit = 20, skipCache = false) => {
+  const cacheKey = `referral_leaderboard_${limit}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 60000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await publicApi.get(`/api/referral/leaderboard?limit=${limit}`);
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      leaderboard: data?.data?.leaderboard || [],
+      total_referrers: data?.data?.total_referrers || 0,
+    };
+    setCached(cacheKey, result, 60000);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getReferralLeaderboard failed:", getErrorMessage(error, "Failed to load leaderboard"));
+    return {
+      success: false,
+      leaderboard: [],
+      total_referrers: 0,
+      error: getErrorMessage(error, "Failed to load leaderboard"),
+    };
+  }
+};
+
+// Get referral transactions history
+export const getReferralTransactions = async (limit = 50, skipCache = false) => {
+  const cacheKey = `referral_transactions_${limit}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await userApi.get(`/api/referral/transactions?limit=${limit}`);
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      transactions: data?.data?.transactions || [],
+      total: data?.data?.total || 0,
+    };
+    setCached(cacheKey, result, 30000);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] getReferralTransactions failed:", getErrorMessage(error, "Failed to load transactions"));
+    return {
+      success: false,
+      transactions: [],
+      total: 0,
+      error: getErrorMessage(error, "Failed to load transactions"),
+    };
+  }
+};
+
+// Generate a new referral code (for wallet users)
+export const generateReferralCode = async () => {
+  try {
+    const response = await userApi.post("/api/referral/generate-code");
+    const data = unwrap(response);
+    clearCache("referral_info");
+    clearCache("user_me");
+    return {
+      success: true,
+      code: data?.data?.code,
+      message: data?.message || "Referral code generated successfully",
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to generate referral code");
   }
 };
 
@@ -770,7 +877,7 @@ export const getGlobalTrades = async (options = {}) => {
   const cacheKey = `global_trades_${limit}`;
 
   if (!skipCache) {
-    const cached = getCached(cacheKey, 15000); // 15 second cache for global trades
+    const cached = getCached(cacheKey, 15000);
     if (cached) return cached;
   }
 
@@ -798,6 +905,7 @@ class BotAPIClass {
     this.publicApi = publicApi;
   }
 
+  // Auth
   setToken(token) { setToken(token); }
   getToken() { return getToken(); }
   clearToken() { clearToken(); }
@@ -813,36 +921,42 @@ class BotAPIClass {
   getActivationStatus(skipCache) { return getActivationStatus(skipCache); }
   refreshActivation() { return refreshActivation(); }
 
+  // Trading
   getUserTrades(options) { return getUserTrades(options); }
   getUserPositions(skipCache) { return getUserPositions(skipCache); }
   cancelPosition(positionId) { return cancelPosition(positionId); }
   cancelAllPositions() { return cancelAllPositions(); }
   getUserBotExecutions(limit, skipCache) { return getUserBotExecutions(limit, skipCache); }
   getUserTradingStats(days, skipCache) { return getUserTradingStats(days, skipCache); }
-
   getTradingStrategies(skipCache) { return getTradingStrategies(skipCache); }
   updateUserStrategy(strategy) { return updateUserStrategy(strategy); }
   toggleTrading(enabled) { return toggleTrading(enabled); }
 
+  // Integrations
   connectOKX(payload) { return connectOKX(payload); }
   connectAlpaca(payload) { return connectAlpaca(payload); }
   connectWallet(payload) { return connectWallet(payload); }
   getIntegrationStatus(skipCache) { return getIntegrationStatus(skipCache); }
 
+  // Billing
   getCardStatus(skipCache) { return getCardStatus(skipCache); }
   createSetupIntent(payload) { return createSetupIntent(payload); }
   confirmCard(payload) { return confirmCard(payload); }
 
-  // Referral methods
+  // Referral (COMPLETE & LIVE)
   getReferralInfo(skipCache) { return getReferralInfo(skipCache); }
   getReferralStats(skipCache) { return getReferralStats(skipCache); }
   validateReferralCode(code) { return validateReferralCode(code); }
   applyReferralCode(code) { return applyReferralCode(code); }
-  claimReferralRewards(amount, walletAddress) { return claimReferralRewards(amount, walletAddress); }
+  claimReferralRewards(amount, walletAddress, options) { return claimReferralRewards(amount, walletAddress, options); }
+  getReferralLeaderboard(limit, skipCache) { return getReferralLeaderboard(limit, skipCache); }
+  getReferralTransactions(limit, skipCache) { return getReferralTransactions(limit, skipCache); }
+  generateReferralCode() { return generateReferralCode(); }
 
-  // Global trades
+  // Global
   getGlobalTrades(options) { return getGlobalTrades(options); }
 
+  // Cache
   clearCache(pattern) { clearCache(pattern); }
 }
 
