@@ -112,7 +112,7 @@ const WalletGuideModal = ({ onClose, onConnectMetaMask }) => (
           <WalletOption
             name="MetaMask"
             icon="🦊"
-            description="Most popular wallet for beginners"
+            description="Open this referral page in MetaMask and connect"
             onClick={onConnectMetaMask}
           />
           <WalletOption
@@ -138,7 +138,7 @@ const WalletGuideModal = ({ onClose, onConnectMetaMask }) => (
         </div>
 
         <div className="mt-6 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
-          💡 After installing MetaMask, refresh this page and try connecting again.
+          💡 On mobile, MetaMask opens this page inside the MetaMask browser first, then you can connect there.
         </div>
       </div>
     </div>
@@ -268,6 +268,21 @@ const QrInfoTooltip = () => (
   </div>
 );
 
+const isMobileDevice = () => {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+};
+
+const isInsideMetaMaskBrowser = () => {
+  if (typeof window === "undefined") return false;
+  return !!window.ethereum?.isMetaMask;
+};
+
+const buildMetaMaskDeepLink = () => {
+  const currentUrl = window.location.href.replace(/^https?:\/\//, "");
+  return `https://metamask.app.link/dapp/${currentUrl}`;
+};
+
 const ReferralSystem = () => {
   const navigate = useNavigate();
 
@@ -351,7 +366,12 @@ const ReferralSystem = () => {
     return () => clearTimeout(timer);
   }, [connectionError]);
 
-  const handleConnectClick = async () => {
+  const openMetaMaskReferralPage = () => {
+    const deepLink = buildMetaMaskDeepLink();
+    window.location.href = deepLink;
+  };
+
+  const connectOnCurrentPage = async () => {
     setConnectionError("");
 
     try {
@@ -367,6 +387,17 @@ const ReferralSystem = () => {
         setShowWalletGuide(true);
       }
     }
+  };
+
+  const handleConnectClick = async () => {
+    setConnectionError("");
+
+    if (isMobileDevice() && !isInsideMetaMaskBrowser()) {
+      openMetaMaskReferralPage();
+      return;
+    }
+
+    await connectOnCurrentPage();
   };
 
   const handleDisconnectWallet = () => {
@@ -375,21 +406,13 @@ const ReferralSystem = () => {
 
   const handleConnectMetaMask = async () => {
     setShowWalletGuide(false);
-    setConnectionError("");
 
-    try {
-      const result = await connectWallet();
-      if (result?.account) {
-        console.log("Connected successfully:", result.account);
-      }
-    } catch (err) {
-      const message = err?.message || "Failed to connect MetaMask.";
-      setConnectionError(message);
-
-      if (message.toLowerCase().includes("not detected")) {
-        setShowWalletGuide(true);
-      }
+    if (isMobileDevice() && !isInsideMetaMaskBrowser()) {
+      openMetaMaskReferralPage();
+      return;
     }
+
+    await connectOnCurrentPage();
   };
 
   const copyToClipboard = async () => {
