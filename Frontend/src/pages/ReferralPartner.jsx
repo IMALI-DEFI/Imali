@@ -1,5 +1,5 @@
 // src/components/ReferralSystem.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useWallet } from "../context/WalletContext";
 import { useAuth } from "../context/AuthContext";
 import { QRCodeCanvas } from "qrcode.react";
@@ -21,6 +21,7 @@ import {
   FaCheckCircle,
   FaTimesCircle,
   FaSignOutAlt,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import referralImg from "../assets/images/referral_program.png";
 import referralBot from "../assets/images/cards/referralbot.png";
@@ -49,7 +50,6 @@ const Tile = ({ title, value, icon: Icon, accent = "emerald" }) => {
   );
 };
 
-// Wallet option component for the modal
 const WalletOption = ({ name, icon, description, installUrl, mobile, onClick }) => {
   const handleClick = (e) => {
     if (onClick) {
@@ -81,50 +81,23 @@ const WalletOption = ({ name, icon, description, installUrl, mobile, onClick }) 
   );
 };
 
-// Wallet guide modal
 const WalletGuideModal = ({ onClose, onConnectMetaMask }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
     <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white">
       <div className="sticky top-0 flex items-center justify-between border-b bg-white p-4">
         <h2 className="text-2xl font-bold text-gray-900">Choose a Wallet</h2>
-        <button onClick={onClose} className="text-2xl text-gray-500 hover:text-gray-700">
-          ×
-        </button>
+        <button onClick={onClose} className="text-2xl text-gray-500 hover:text-gray-700">×</button>
       </div>
       <div className="p-6">
-        <p className="mb-6 text-gray-600">
-          To get your referral link and earn rewards, you'll need a Web3 wallet.
-        </p>
+        <p className="mb-6 text-gray-600">To get your referral link and earn rewards, you'll need a Web3 wallet.</p>
         <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold text-gray-900">
           <FaWallet className="text-emerald-600" /> Popular Wallets
         </h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <WalletOption
-            name="MetaMask"
-            icon="🦊"
-            description="Most popular wallet for beginners"
-            onClick={onConnectMetaMask}
-          />
-          <WalletOption
-            name="Coinbase Wallet"
-            icon="💰"
-            description="Simple and beginner-friendly"
-            installUrl="https://www.coinbase.com/wallet"
-          />
-          <WalletOption
-            name="Trust Wallet"
-            icon="🔒"
-            description="Easy mobile wallet"
-            installUrl="https://trustwallet.com/"
-            mobile
-          />
-          <WalletOption
-            name="Rainbow"
-            icon="🌈"
-            description="Popular mobile wallet"
-            installUrl="https://rainbow.me/"
-            mobile
-          />
+          <WalletOption name="MetaMask" icon="🦊" description="Most popular wallet for beginners" onClick={onConnectMetaMask} />
+          <WalletOption name="Coinbase Wallet" icon="💰" description="Simple and beginner-friendly" installUrl="https://www.coinbase.com/wallet" />
+          <WalletOption name="Trust Wallet" icon="🔒" description="Easy mobile wallet" installUrl="https://trustwallet.com/" mobile />
+          <WalletOption name="Rainbow" icon="🌈" description="Popular mobile wallet" installUrl="https://rainbow.me/" mobile />
         </div>
         <div className="mt-6 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
           💡 After installing, refresh this page and connect your new wallet.
@@ -134,7 +107,6 @@ const WalletGuideModal = ({ onClose, onConnectMetaMask }) => (
   </div>
 );
 
-// Email Signup Modal
 const EmailSignupModal = ({ onClose, onSignup, loading, error }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -166,76 +138,33 @@ const EmailSignupModal = ({ onClose, onSignup, loading, error }) => {
       <div className="w-full max-w-md rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">Sign Up with Email</h2>
-          <button onClick={onClose} className="text-2xl text-gray-500 hover:text-gray-700">
-            ×
-          </button>
+          <button onClick={onClose} className="text-2xl text-gray-500 hover:text-gray-700">×</button>
         </div>
-
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              required
-              className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-            />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" required className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500" />
           </div>
-
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Create a password"
-              required
-              className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-            />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Create a password" required className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500" />
           </div>
-
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Confirm Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm your password"
-              required
-              className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500"
-            />
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm your password" required className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500" />
           </div>
-
-          <p className="text-xs text-gray-500">
-            Use at least 8 characters with uppercase, lowercase, and a number.
-          </p>
-
-          {(localError || error) && (
-            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-              {localError || error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-emerald-600 py-3 text-white transition hover:bg-emerald-700 disabled:opacity-50"
-          >
+          <p className="text-xs text-gray-500">Use at least 8 characters with uppercase, lowercase, and a number.</p>
+          {(localError || error) && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{localError || error}</div>}
+          <button type="submit" disabled={loading} className="w-full rounded-lg bg-emerald-600 py-3 text-white transition hover:bg-emerald-700 disabled:opacity-50">
             {loading ? <FaSpinner className="mx-auto animate-spin" /> : "Create Account"}
           </button>
-
-          <p className="text-center text-xs text-gray-500">
-            You can add a wallet later to claim rewards.
-          </p>
+          <p className="text-center text-xs text-gray-500">You can add a wallet later to claim rewards.</p>
         </form>
       </div>
     </div>
   );
 };
 
-// QR Code Info Tooltip
 const QrInfoTooltip = () => (
   <div className="group relative inline-block ml-2">
     <FaInfoCircle className="text-gray-400 cursor-help hover:text-emerald-600" />
@@ -281,9 +210,8 @@ const ReferralSystem = () => {
   const [applyLoading, setApplyLoading] = useState(false);
   const [applyMessage, setApplyMessage] = useState(null);
   const [claimLoading, setClaimLoading] = useState(false);
-  const [localWalletError, setLocalWalletError] = useState("");
+  const [connectionError, setConnectionError] = useState("");
 
-  // Generate referral code from wallet address
   const generateReferralCode = (wallet) => {
     if (!wallet) return "";
     return `IMALI-${wallet.slice(2, 10).toUpperCase()}`;
@@ -292,10 +220,8 @@ const ReferralSystem = () => {
   const referralCode = referralData.code || (account ? generateReferralCode(account) : "");
   const referralUrl = referralCode ? `${window.location.origin}/signup?ref=${referralCode}` : "";
 
-  // Fetch referral data from API
-  const fetchReferralData = async () => {
+  const fetchReferralData = useCallback(async () => {
     if (!isConnected && !isAuthenticated) return;
-
     try {
       if (isAuthenticated && user) {
         setReferralData({
@@ -317,42 +243,41 @@ const ReferralSystem = () => {
     } catch (err) {
       console.error("Failed to fetch referral data:", err);
     }
-  };
+  }, [account, isConnected, isAuthenticated, user]);
 
   useEffect(() => {
     fetchReferralData();
-  }, [account, isConnected, isAuthenticated, user]);
+  }, [fetchReferralData]);
 
-  // Clear wallet error after 5 seconds
+  // Clear errors after 5 seconds
   useEffect(() => {
-    if (walletError || localWalletError) {
-      const timer = setTimeout(() => {
-        setLocalWalletError("");
-      }, 5000);
+    if (connectionError) {
+      const timer = setTimeout(() => setConnectionError(""), 5000);
       return () => clearTimeout(timer);
     }
-  }, [walletError, localWalletError]);
+  }, [connectionError]);
 
   const handleConnectClick = async () => {
-    setLocalWalletError("");
+    setConnectionError("");
+    
     if (!hasWallet) {
       setShowWalletGuide(true);
       return;
     }
     
     try {
-      await connectWallet();
+      const result = await connectWallet();
+      if (result?.account) {
+        console.log("Connected successfully:", result.account);
+      }
     } catch (err) {
-      setLocalWalletError(err?.message || "Failed to connect wallet. Please make sure MetaMask is installed and unlocked.");
+      console.error("Connection error:", err);
+      setConnectionError(err.message || "Failed to connect wallet. Please make sure MetaMask is installed and unlocked.");
     }
   };
 
-  const handleDisconnectWallet = async () => {
-    try {
-      await disconnectWallet();
-    } catch (err) {
-      console.error("Failed to disconnect:", err);
-    }
+  const handleDisconnectWallet = () => {
+    disconnectWallet();
   };
 
   const handleConnectMetaMask = async () => {
@@ -360,7 +285,7 @@ const ReferralSystem = () => {
     try {
       await connectWallet();
     } catch (err) {
-      setLocalWalletError(err?.message || "Failed to connect MetaMask.");
+      setConnectionError(err.message || "Failed to connect MetaMask.");
     }
   };
 
@@ -370,7 +295,7 @@ const ReferralSystem = () => {
       await navigator.clipboard.writeText(referralUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch (err) {
+    } catch {
       setApplyMessage({ type: "error", text: "Failed to copy link." });
     }
   };
@@ -388,10 +313,7 @@ const ReferralSystem = () => {
 
     try {
       localStorage.setItem("pending_referral_code", referralInput.trim().toUpperCase());
-      setApplyMessage({ 
-        type: "success", 
-        text: `Referral code ${referralInput.trim().toUpperCase()} saved! It will be applied to your account.` 
-      });
+      setApplyMessage({ type: "success", text: `Referral code ${referralInput.trim().toUpperCase()} saved! It will be applied to your account.` });
       setReferralInput("");
       setTimeout(() => fetchReferralData(), 1000);
     } catch (err) {
@@ -466,7 +388,7 @@ const ReferralSystem = () => {
     navigate("/");
   };
 
-  // Loading state while connecting
+  // Loading state
   if (connecting) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -509,19 +431,19 @@ const ReferralSystem = () => {
                   </span>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 {isConnected && (
                   <button
                     onClick={handleDisconnectWallet}
-                    className="text-xs text-emerald-600 hover:text-emerald-800 flex items-center gap-1"
+                    className="text-sm text-emerald-600 hover:text-emerald-800 flex items-center gap-1"
                   >
-                    <FaSignOutAlt /> Disconnect Wallet
+                    <FaSignOutAlt /> Disconnect
                   </button>
                 )}
                 {isAuthenticated && (
                   <button
                     onClick={handleLogout}
-                    className="text-xs text-emerald-600 hover:text-emerald-800 flex items-center gap-1"
+                    className="text-sm text-emerald-600 hover:text-emerald-800 flex items-center gap-1"
                   >
                     <FaSignOutAlt /> Logout
                   </button>
@@ -531,30 +453,31 @@ const ReferralSystem = () => {
           </div>
         )}
 
-        {/* Connect Wallet / Sign Up Section */}
+        {/* Connect Wallet Section */}
         {!isConnected && !isAuthenticated && (
-          <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
+          <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-5">
             <div className="text-center sm:text-left">
-              <p className="text-gray-700 font-medium">Get your referral link</p>
-              <p className="text-sm text-gray-500 mb-4">Connect a wallet or sign up with email</p>
+              <p className="text-gray-700 font-medium text-lg">Get Your Referral Link</p>
+              <p className="text-sm text-gray-500 mb-4">Connect a wallet or sign up with email to start earning</p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={handleConnectClick}
-                className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center justify-center gap-2"
+                className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center justify-center gap-2 font-medium"
               >
                 <FaWallet /> Connect Wallet
               </button>
               <button
                 onClick={() => setShowEmailSignup(true)}
-                className="px-5 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2"
+                className="px-5 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 font-medium"
               >
                 <FaEnvelope /> Sign Up with Email
               </button>
             </div>
-            {(walletError || localWalletError) && (
-              <div className="mt-3 rounded-lg bg-red-50 p-2 text-sm text-red-700">
-                {walletError || localWalletError}
+            {(walletError || connectionError) && (
+              <div className="mt-3 rounded-lg bg-red-50 p-3 flex items-center gap-2 text-sm text-red-700">
+                <FaExclamationTriangle />
+                {walletError || connectionError}
               </div>
             )}
           </div>
@@ -572,13 +495,12 @@ const ReferralSystem = () => {
           </div>
         )}
 
-        {/* Grid */}
+        {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8">
           {/* LEFT COLUMN */}
           <aside className="lg:col-span-2 space-y-6">
-            {/* Explainer card */}
             <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
-              <img src={referralImg} alt="IMALI Referral overview" className="w-full rounded-xl mb-4" />
+              <img src={referralImg} alt="IMALI Referral" className="w-full rounded-xl mb-4" />
               <h3 className="text-lg font-bold mb-2 text-gray-900">How it works</h3>
               <ol className="list-decimal list-inside text-gray-600 space-y-1 text-sm">
                 <li>Connect your wallet or sign up with email.</li>
@@ -586,30 +508,20 @@ const ReferralSystem = () => {
                 <li>Friends sign up using your link.</li>
                 <li>You earn rewards. Track and claim here.</li>
               </ol>
-              <a
-                href="https://t.me/Imalitradingbot"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center mt-4 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm"
-              >
+              <a href="https://t.me/Imalitradingbot" target="_blank" rel="noopener noreferrer" className="inline-flex items-center mt-4 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm">
                 <FaTelegram className="mr-2" /> Join Telegram
               </a>
             </div>
 
-            {/* Referral Bot card */}
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                 <h3 className="text-lg font-bold flex items-center gap-2 text-gray-900">
                   <FaRobot className="text-amber-600" /> Your Referral Bot
                 </h3>
-                <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-                  Value Accrual
-                </span>
+                <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">Value Accrual</span>
               </div>
-              <img src={referralBot} alt="IMALI Referral Bot" className="w-full rounded-xl border border-amber-200 mb-4" />
-              <p className="text-sm text-gray-700">
-                As the <b>IMALI bot</b> grows, your Referral Bot gains utility and long-term value.
-              </p>
+              <img src={referralBot} alt="Referral Bot" className="w-full rounded-xl border border-amber-200 mb-4" />
+              <p className="text-sm text-gray-700">As the <b>IMALI bot</b> grows, your Referral Bot gains utility and long-term value.</p>
               <ul className="mt-3 text-sm space-y-2 text-gray-700">
                 <li>• <b>Tier Boosts:</b> Higher tiers increase your rev-share.</li>
                 <li>• <b>Volume Rewards:</b> Trading volume unlocks bonuses.</li>
@@ -617,7 +529,6 @@ const ReferralSystem = () => {
               </ul>
             </div>
 
-            {/* QR + Link */}
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
               <h3 className="text-lg font-bold mb-3 text-gray-900 flex items-center gap-2">
                 <FaQrcode className="text-emerald-600" /> Your Referral Link
@@ -634,60 +545,30 @@ const ReferralSystem = () => {
                   )}
                 </div>
                 <div className="text-center">
-                  <code className="text-xs break-all text-emerald-700">
-                    {referralUrl || "Connect to generate link"}
-                  </code>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Scan with phone → Opens signup with your code
-                  </p>
+                  <code className="text-xs break-all text-emerald-700">{referralUrl || "Connect to generate link"}</code>
+                  <p className="text-xs text-gray-500 mt-1">Scan with phone → Opens signup with your code</p>
                 </div>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={referralUrl}
-                  className="flex-1 p-3 rounded-xl bg-white border border-gray-300 text-sm text-gray-900"
-                  placeholder="Connect to generate"
-                />
-                <button
-                  onClick={copyToClipboard}
-                  disabled={!referralUrl}
-                  className={`px-4 rounded-xl flex items-center justify-center gap-2 ${
-                    referralUrl
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                  }`}
-                >
+                <input type="text" readOnly value={referralUrl} className="flex-1 p-3 rounded-xl bg-white border border-gray-300 text-sm text-gray-900" placeholder="Connect to generate" />
+                <button onClick={copyToClipboard} disabled={!referralUrl} className={`px-4 rounded-xl flex items-center justify-center gap-2 ${referralUrl ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}>
                   <FaCopy /> {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
 
-              <button
-                onClick={() => {
-                  if (!referralUrl) return;
-                  const text = encodeURIComponent("Join me on IMALI — crypto trading made simple:");
-                  const url = encodeURIComponent(referralUrl);
-                  window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, "_blank");
-                }}
-                className="mt-3 w-full py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white inline-flex items-center justify-center gap-2 text-sm"
-                disabled={!referralUrl}
-              >
+              <button onClick={() => { if (!referralUrl) return; const text = encodeURIComponent("Join me on IMALI — crypto trading made simple:"); const url = encodeURIComponent(referralUrl); window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, "_blank"); }} className="mt-3 w-full py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white inline-flex items-center justify-center gap-2 text-sm" disabled={!referralUrl}>
                 <FaShareAlt /> Share on X/Twitter
               </button>
 
               <div className="mt-3 p-2 bg-white rounded-lg text-center">
-                <p className="text-xs text-gray-600">
-                  Your code: <span className="font-mono font-bold text-emerald-700">{referralCode || "—"}</span>
-                </p>
+                <p className="text-xs text-gray-600">Your code: <span className="font-mono font-bold text-emerald-700">{referralCode || "—"}</span></p>
               </div>
             </div>
           </aside>
 
           {/* RIGHT COLUMN */}
           <section className="lg:col-span-3 space-y-6">
-            {/* Stat tiles */}
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <Tile title="Referrals" value={referralData.totalReferrals} icon={FaUserFriends} accent="emerald" />
               <Tile title="Level 1" value={`${referralData.level1Earnings.toFixed(2)} IMALI`} icon={FaCoins} accent="yellow" />
@@ -695,22 +576,13 @@ const ReferralSystem = () => {
               <Tile title="Pending" value={`${referralData.pendingRewards.toFixed(2)} IMALI`} icon={FaChartLine} accent="violet" />
             </div>
 
-            {/* Claim rewards */}
             <div className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">Claim your rewards</h3>
                   <p className="text-sm text-gray-600">Payouts in USDC or IMALI. Requires connected wallet.</p>
                 </div>
-                <button
-                  onClick={claimRewards}
-                  disabled={referralData.pendingRewards <= 0 || claimLoading}
-                  className={`px-6 py-3 rounded-2xl font-semibold ${
-                    referralData.pendingRewards > 0 && !claimLoading
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                  }`}
-                >
+                <button onClick={claimRewards} disabled={referralData.pendingRewards <= 0 || claimLoading} className={`px-6 py-3 rounded-2xl font-semibold ${referralData.pendingRewards > 0 && !claimLoading ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}>
                   {claimLoading ? <FaSpinner className="animate-spin" /> : "Claim Rewards"}
                 </button>
               </div>
@@ -726,35 +598,17 @@ const ReferralSystem = () => {
               </div>
             </div>
 
-            {/* Apply referral code */}
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:p-6">
               <h3 className="font-semibold mb-3 text-gray-900">Have a referral code?</h3>
               <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  placeholder="Enter referral code (e.g., IMALI-XXXXXXX)"
-                  value={referralInput}
-                  onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
-                  className="flex-1 p-3 rounded-xl bg-white border border-gray-300 text-gray-900 text-sm"
-                />
-                <button
-                  onClick={applyReferralCode}
-                  disabled={!referralInput.trim() || applyLoading}
-                  className={`px-6 py-3 rounded-xl ${
-                    referralInput.trim() && !applyLoading
-                      ? "bg-amber-500 hover:bg-amber-600 text-white"
-                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                  }`}
-                >
+                <input type="text" placeholder="Enter referral code (e.g., IMALI-XXXXXXX)" value={referralInput} onChange={(e) => setReferralInput(e.target.value.toUpperCase())} className="flex-1 p-3 rounded-xl bg-white border border-gray-300 text-gray-900 text-sm" />
+                <button onClick={applyReferralCode} disabled={!referralInput.trim() || applyLoading} className={`px-6 py-3 rounded-xl ${referralInput.trim() && !applyLoading ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}>
                   {applyLoading ? <FaSpinner className="animate-spin" /> : "Apply Code"}
                 </button>
               </div>
-              <p className="mt-2 text-xs text-gray-600">
-                Enter a friend's code to give them credit when you sign up.
-              </p>
+              <p className="mt-2 text-xs text-gray-600">Enter a friend's code to give them credit when you sign up.</p>
             </div>
 
-            {/* CTA */}
             <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 sm:p-6">
               <div className="text-center sm:text-left">
                 <h3 className="text-xl font-bold text-gray-900">Ready to start earning?</h3>
@@ -762,26 +616,17 @@ const ReferralSystem = () => {
               </div>
               <div className="mt-4 flex flex-col sm:flex-row gap-3">
                 {!isConnected && (
-                  <button
-                    onClick={handleConnectClick}
-                    className="flex-1 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center justify-center gap-2"
-                  >
+                  <button onClick={handleConnectClick} className="flex-1 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center justify-center gap-2">
                     <FaWallet /> Connect Wallet
                   </button>
                 )}
                 {!isAuthenticated && (
-                  <button
-                    onClick={() => setShowEmailSignup(true)}
-                    className="flex-1 px-5 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold flex items-center justify-center gap-2"
-                  >
+                  <button onClick={() => setShowEmailSignup(true)} className="flex-1 px-5 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold flex items-center justify-center gap-2">
                     <FaEnvelope /> Sign Up with Email
                   </button>
                 )}
                 {(isConnected || isAuthenticated) && (
-                  <Link
-                    to="/pricing"
-                    className="flex-1 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-center"
-                  >
+                  <Link to="/pricing" className="flex-1 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-center">
                     View Pricing →
                   </Link>
                 )}
@@ -791,21 +636,8 @@ const ReferralSystem = () => {
         </div>
       </div>
 
-      {/* Modals */}
-      {showWalletGuide && (
-        <WalletGuideModal 
-          onClose={() => setShowWalletGuide(false)} 
-          onConnectMetaMask={handleConnectMetaMask}
-        />
-      )}
-      {showEmailSignup && (
-        <EmailSignupModal
-          onClose={() => setShowEmailSignup(false)}
-          onSignup={handleEmailSignup}
-          loading={signupLoading}
-          error={signupError}
-        />
-      )}
+      {showWalletGuide && <WalletGuideModal onClose={() => setShowWalletGuide(false)} onConnectMetaMask={handleConnectMetaMask} />}
+      {showEmailSignup && <EmailSignupModal onClose={() => setShowEmailSignup(false)} onSignup={handleEmailSignup} loading={signupLoading} error={signupError} />}
     </div>
   );
 };
