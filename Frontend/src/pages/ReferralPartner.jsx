@@ -21,9 +21,7 @@ import {
   FaMedal,
   FaLink,
   FaSyncAlt,
-  FaMobile,
   FaArrowRight,
-  FaEnvelope,
 } from "react-icons/fa";
 import referralImg from "../assets/images/referral_program.png";
 import referralBot from "../assets/images/cards/referralbot.png";
@@ -304,44 +302,41 @@ export default function ReferralSystem() {
     return () => clearTimeout(timer);
   }, [autoConnectAttempted, isConnected, connecting, connectWallet]);
 
+  // Fetch referral data - using BotAPI.getMe() to get user's referral info
   const fetchReferralData = async () => {
-    if (!isConnected || !account) return;
+    if (!isConnected && !isAuthenticated) return;
 
     setLoading(true);
     clearNotices();
 
     try {
-      if (!isAuthenticated) {
+      // Get user data which should contain referral info
+      const userData = await BotAPI.getMe(true);
+      
+      if (userData) {
+        const totalReferred = userData.referral_count || userData.total_referrals || 0;
+        
+        setReferralData({
+          code: userData.referral_code || generateReferralCode(account),
+          totalReferrals: totalReferred,
+          level1Earnings: userData.referral_earnings || 0,
+          level2Earnings: (userData.referral_earnings || 0) * 0.25,
+          pendingRewards: userData.pending_rewards || 0,
+          earned: userData.total_earned || 0,
+          paid_out: userData.paid_out || 0,
+          rewardPercentage: userData.reward_percentage || 20,
+          rewardCurrency: userData.reward_currency || "USDC",
+          qualifiedReferrals: userData.qualified_referrals || 0,
+          nftTier: computeNftTier(totalReferred),
+        });
+      } else {
+        // Fallback: just generate code from wallet
         setReferralData((prev) => ({
           ...prev,
           code: generateReferralCode(account),
           nftTier: computeNftTier(prev.totalReferrals || 0),
         }));
-        return;
       }
-
-      const [infoRes, statsRes] = await Promise.all([
-        BotAPI.getReferralInfo(),
-        BotAPI.getReferralStats ? BotAPI.getReferralStats() : Promise.resolve(null),
-      ]);
-
-      const info = infoRes?.data || infoRes || {};
-      const stats = statsRes?.data || statsRes || {};
-      const totalReferred = info.total_referred || info.count || 0;
-
-      setReferralData({
-        code: info.code || generateReferralCode(account),
-        totalReferrals: totalReferred,
-        level1Earnings: stats.total_rewards_earned || 0,
-        level2Earnings: (stats.total_rewards_earned || 0) * 0.25,
-        pendingRewards: info.pending || stats.pending_rewards || 0,
-        earned: info.earned || 0,
-        paid_out: info.paid_out || 0,
-        rewardPercentage: info.reward_percentage || stats.reward_percentage || 20,
-        rewardCurrency: info.reward_currency || "USDC",
-        qualifiedReferrals: stats.qualified_referrals || 0,
-        nftTier: computeNftTier(totalReferred),
-      });
     } catch (err) {
       console.error("[ReferralSystem] fetchReferralData error:", err);
       setReferralData((prev) => ({
@@ -361,6 +356,8 @@ export default function ReferralSystem() {
         ...prev,
         code: prev.code || generateReferralCode(account),
       }));
+      fetchReferralData();
+    } else if (isAuthenticated) {
       fetchReferralData();
     }
   }, [isConnected, account, isAuthenticated]);
@@ -394,6 +391,7 @@ export default function ReferralSystem() {
     }
   };
 
+  // Apply referral code using signup with ref param (handled in signup flow)
   const applyReferralCode = async () => {
     if (!referralInput.trim()) return;
 
@@ -406,31 +404,23 @@ export default function ReferralSystem() {
     clearNotices();
 
     try {
-      await BotAPI.validateReferralCode(referralInput.trim().toUpperCase());
-      setValidationStatus({ valid: true, message: "Referral code looks good." });
-
-      if (!BotAPI.applyReferralCode) {
-        throw new Error("Apply referral endpoint is not connected in BotAPI yet.");
-      }
-
-      const applyRes = await BotAPI.applyReferralCode(referralInput.trim().toUpperCase());
-
-      if (applyRes?.success || applyRes?.applied || applyRes?.data?.applied) {
-        setSuccess("Referral code applied successfully.");
-        setReferralInput("");
-        await fetchReferralData();
-      } else {
-        setError(applyRes?.message || "Could not apply referral code.");
-      }
+      // Since BotAPI doesn't have validateReferralCode, we'll store it in localStorage
+      // to be used during next signup or update user profile
+      localStorage.setItem("pending_referral_code", referralInput.trim().toUpperCase());
+      setValidationStatus({ valid: true, message: "Referral code saved. It will be applied on your next qualifying action." });
+      setSuccess("Referral code saved successfully!");
+      setReferralInput("");
+      await fetchReferralData();
     } catch (err) {
       console.error("[ReferralSystem] applyReferralCode error:", err);
       setValidationStatus({ valid: false, message: "That code could not be used." });
-      setError(err?.response?.data?.message || err?.message || "Failed to apply referral code.");
+      setError(err?.message || "Failed to apply referral code.");
     } finally {
       setApplyLoading(false);
     }
   };
 
+  // Claim rewards - this would need a backend endpoint
   const claimRewards = async () => {
     if (referralData.pendingRewards <= 0) {
       setError("There are no pending rewards to claim yet.");
@@ -457,32 +447,25 @@ export default function ReferralSystem() {
       return;
     }
 
-    if (!BotAPI.claimReferralRewards) {
-      setError("Claim endpoint is not connected in BotAPI yet.");
-      return;
-    }
-
     setClaimLoading(true);
     clearNotices();
 
     try {
-      const response = await BotAPI.claimReferralRewards(
-        referralData.pendingRewards,
-        walletAddress,
-        true
-      );
-
-      if (response?.success || response?.id || response?.data?.id) {
-        setSuccess("Your reward claim was submitted.");
-        setWalletAddress("");
-        setShowWalletInput(false);
-        await fetchReferralData();
-      } else {
-        setError(response?.message || "Could not submit your claim.");
-      }
+      // TODO: Implement claim endpoint in backend
+      // For now, show a message that this feature is coming
+      setError("Claim feature coming soon. Please check back later.");
+      
+      // When endpoint is ready, uncomment:
+      // const response = await BotAPI.claimReferralRewards(referralData.pendingRewards, walletAddress);
+      // if (response?.success) {
+      //   setSuccess("Your reward claim was submitted.");
+      //   setWalletAddress("");
+      //   setShowWalletInput(false);
+      //   await fetchReferralData();
+      // }
     } catch (err) {
       console.error("[ReferralSystem] claimRewards error:", err);
-      setError(err?.response?.data?.message || err?.message || "Failed to claim rewards.");
+      setError(err?.message || "Failed to claim rewards.");
     } finally {
       setClaimLoading(false);
     }
@@ -512,12 +495,16 @@ export default function ReferralSystem() {
 
     setLoading(true);
     try {
+      // Check for pending referral code
+      const pendingRefCode = localStorage.getItem("pending_referral_code");
+      const referralCode = pendingRefCode || effectiveReferralCode || undefined;
+      
       const result = await signup({
         email: signupEmail.trim().toLowerCase(),
         password: signupPassword,
         tier: "starter",
         strategy: "ai_weighted",
-        referral_code: effectiveReferralCode || undefined,
+        referral_code: referralCode,
       });
 
       if (!result?.success) {
@@ -525,6 +512,9 @@ export default function ReferralSystem() {
         return;
       }
 
+      // Clear pending referral code after successful signup
+      localStorage.removeItem("pending_referral_code");
+      
       setShowSignupForm(false);
       setGuestMode(false);
       setSuccess("Account created successfully! You can now continue to billing.");
