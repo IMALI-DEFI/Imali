@@ -1,15 +1,30 @@
-// src/context/WalletContext.jsx
 import React, {
   createContext,
   useCallback,
   useEffect,
   useMemo,
-  useState,
   useRef,
+  useState,
 } from "react";
 import { ethers } from "ethers";
 
 export const WalletContext = createContext(null);
+
+function getMetaMaskProvider() {
+  if (typeof window === "undefined") return null;
+
+  const { ethereum } = window;
+  if (!ethereum) return null;
+
+  if (Array.isArray(ethereum.providers)) {
+    const metaMask = ethereum.providers.find((provider) => provider?.isMetaMask);
+    if (metaMask) return metaMask;
+  }
+
+  if (ethereum.isMetaMask) return ethereum;
+
+  return null;
+}
 
 export function WalletProvider({ children }) {
   const [account, setAccount] = useState(null);
@@ -18,148 +33,154 @@ export function WalletProvider({ children }) {
   const [connecting, setConnecting] = useState(false);
   const [hasWallet, setHasWallet] = useState(false);
   const [error, setError] = useState(null);
+
   const initializedRef = useRef(false);
+  const ethereumRef = useRef(null);
 
-  // Check for wallet on mount and when ethereum appears
-  useEffect(() => {
-    const checkWallet = () => {
-      const hasEth = typeof window !== "undefined" && !!window.ethereum;
-      setHasWallet(hasEth);
-      
-      if (hasEth && !initializedRef.current) {
-        initializedRef.current = true;
-        
-        try {
-          const p = new ethers.providers.Web3Provider(window.ethereum, "any");
-          setProvider(p);
-          
-          // Get initial accounts without prompting
-          window.ethereum.request({ method: "eth_accounts" })
-            .then(accounts => {
-              if (accounts && accounts.length > 0) {
-                setAccount(accounts[0]);
-              }
-            })
-            .catch(err => console.error("Failed to get accounts:", err));
-            
-          window.ethereum.request({ method: "eth_chainId" })
-            .then(hexChainId => {
-              if (hexChainId) {
-                setChainId(parseInt(hexChainId, 16));
-              }
-            })
-            .catch(err => console.error("Failed to get chainId:", err));
-        } catch (err) {
-          console.error("Failed to initialize provider:", err);
-          setError(err.message);
-        }
-      }
-    };
+  const syncWalletState = useCallback(async (ethProvider) => {
+    if (!ethProvider) return;
 
-    checkWallet();
+    try {
+      const web3Provider = new ethers.providers.Web3Provider(ethProvider, "any");
+      setProvider(web3Provider);
 
-    // Listen for ethereum injection (if it loads late)
-    if (typeof window !== "undefined" && !window.ethereum) {
-      const interval = setInterval(() => {
-        if (window.ethereum) {
-          clearInterval(interval);
-          checkWallet();
-        }
-      }, 500);
-      return () => clearInterval(interval);
+      const [accounts, hexChainId] = await Promise.all([
+        ethProvider.request({ method: "eth_accounts" }),
+        ethProvider.request({ method: "eth_chainId" }),
+      ]);
+
+      setAccount(accounts?.[0] || null);
+      setChainId(hexChainId ? parseInt(hexChainId, 16) : null);
+    } catch (err) {
+      console.error("[WalletContext] Failed to sync wallet state:", err);
+      setError(err?.message || "Failed to initialize wallet.");
     }
   }, []);
 
-  // Set up event listeners after provider is ready
   useEffect(() => {
-    if (!window.ethereum?.on) return;
+    let intervalId = null;
+
+    const initialize = async () => {
+      const metaMaskProvider = getMetaMaskProvider();
+      setHasWallet(!!metaMaskProvider);
+
+      if (!metaMaskProvider) return;
+
+      ethereumRef.current = metaMaskProvider;
+
+      if (!initializedRef.current) {
+        initializedRef.current = true;
+        await syncWalletState(metaMaskProvider);
+      }
+    };
+
+    initialize();
+
+    if (!getMetaMaskProvider()) {
+      intervalId = window.setInterval(() => {
+        const metaMaskProvider = getMetaMaskProvider();
+        if (metaMaskProvider) {
+          window.clearInterval(intervalId);
+          setHasWallet(true);
+          ethereumRef.current = metaMaskProvider;
+          syncWalletState(metaMaskProvider);
+        }
+      }, 500);
+    }
+
+    return () => {
+      if (intervalId) window.clearInterval(intervalId);
+    };
+  }, [syncWalletState]);
+
+  useEffect(() => {
+    const ethProvider = ethereumRef.current || getMetaMaskProvider();
+    if (!ethProvider?.on) return;
 
     const handleAccountsChanged = (accounts) => {
-      console.log("[WalletContext] Accounts changed:", accounts);
+      console.log("[WalletContext] accountsChanged:", accounts);
       setAccount(accounts?.[0] || null);
-      if (accounts?.length === 0) {
-        // User disconnected their wallet
+
+      if (!accounts?.length) {
         setAccount(null);
       }
     };
 
     const handleChainChanged = (hexChainId) => {
-      console.log("[WalletContext] Chain changed:", hexChainId);
+      console.log("[WalletContext] chainChanged:", hexChainId);
       setChainId(hexChainId ? parseInt(hexChainId, 16) : null);
-      // Refresh provider on chain change
-      if (window.ethereum) {
-        try {
-          const p = new ethers.providers.Web3Provider(window.ethereum, "any");
-          setProvider(p);
-        } catch (err) {
-          console.error("Failed to update provider on chain change:", err);
-        }
+
+      try {
+        const web3Provider = new ethers.providers.Web3Provider(ethProvider, "any");
+        setProvider(web3Provider);
+      } catch (err) {
+        console.error("[WalletContext] Failed to refresh provider:", err);
       }
     };
 
-    const handleDisconnect = (error) => {
-      console.log("[WalletContext] Wallet disconnected:", error);
+    const handleDisconnect = (disconnectError) => {
+      console.log("[WalletContext] disconnect:", disconnectError);
       setAccount(null);
       setChainId(null);
     };
 
-    window.ethereum.on("accountsChanged", handleAccountsChanged);
-    window.ethereum.on("chainChanged", handleChainChanged);
-    window.ethereum.on("disconnect", handleDisconnect);
+    ethProvider.on("accountsChanged", handleAccountsChanged);
+    ethProvider.on("chainChanged", handleChainChanged);
+    ethProvider.on("disconnect", handleDisconnect);
 
     return () => {
-      if (window.ethereum?.removeListener) {
-        window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
-        window.ethereum.removeListener("chainChanged", handleChainChanged);
-        window.ethereum.removeListener("disconnect", handleDisconnect);
+      if (ethProvider.removeListener) {
+        ethProvider.removeListener("accountsChanged", handleAccountsChanged);
+        ethProvider.removeListener("chainChanged", handleChainChanged);
+        ethProvider.removeListener("disconnect", handleDisconnect);
       }
     };
-  }, []);
+  }, [hasWallet]);
 
   const connectWallet = useCallback(async () => {
-    // Clear previous errors
     setError(null);
 
-    // Check if wallet is available
-    if (typeof window === "undefined" || !window.ethereum) {
-      const msg = "No wallet detected. Please install MetaMask or another Web3 wallet.";
-      setError(msg);
-      throw new Error(msg);
+    const metaMaskProvider = getMetaMaskProvider();
+
+    if (!metaMaskProvider) {
+      const message = "MetaMask not detected. Please install MetaMask and refresh the page.";
+      setHasWallet(false);
+      setError(message);
+      throw new Error(message);
     }
 
-    // Check if already connecting
     if (connecting) {
-      console.log("[WalletContext] Already connecting, please wait...");
+      console.log("[WalletContext] Connection already in progress.");
       return null;
     }
 
+    setHasWallet(true);
+    ethereumRef.current = metaMaskProvider;
     setConnecting(true);
 
     try {
-      // Request account access
-      const accounts = await window.ethereum.request({
+      const accounts = await metaMaskProvider.request({
         method: "eth_requestAccounts",
       });
 
-      if (!accounts || accounts.length === 0) {
-        throw new Error("No accounts returned. Please unlock your wallet.");
+      if (!accounts?.length) {
+        throw new Error("No accounts returned. Please unlock MetaMask and try again.");
       }
 
       const connectedAccount = accounts[0];
-      
-      // Get chain ID
-      const hexChainId = await window.ethereum.request({
+
+      const hexChainId = await metaMaskProvider.request({
         method: "eth_chainId",
       });
-      const connectedChainId = hexChainId ? parseInt(hexChainId, 16) : null;
 
-      // Update provider
-      const p = new ethers.providers.Web3Provider(window.ethereum, "any");
-      setProvider(p);
+      const connectedChainId = hexChainId ? parseInt(hexChainId, 16) : null;
+      const web3Provider = new ethers.providers.Web3Provider(metaMaskProvider, "any");
+
+      setProvider(web3Provider);
       setAccount(connectedAccount);
       setChainId(connectedChainId);
-      
-      console.log("[WalletContext] Connected successfully:", {
+
+      console.log("[WalletContext] Connected:", {
         account: connectedAccount,
         chainId: connectedChainId,
       });
@@ -170,18 +191,19 @@ export function WalletProvider({ children }) {
       };
     } catch (err) {
       console.error("[WalletContext] connectWallet failed:", err);
-      
-      let errorMessage = "Failed to connect wallet.";
-      if (err.code === 4001) {
-        errorMessage = "Connection rejected. Please approve the connection in your wallet.";
-      } else if (err.code === -32002) {
-        errorMessage = "Connection request already pending. Please check your wallet.";
-      } else if (err.message) {
-        errorMessage = err.message;
+
+      let message = "Failed to connect wallet.";
+
+      if (err?.code === 4001) {
+        message = "Connection rejected. Please approve the connection in MetaMask.";
+      } else if (err?.code === -32002) {
+        message = "A connection request is already pending. Please open MetaMask and respond there.";
+      } else if (err?.message) {
+        message = err.message;
       }
-      
-      setError(errorMessage);
-      throw new Error(errorMessage);
+
+      setError(message);
+      throw new Error(message);
     } finally {
       setConnecting(false);
     }
@@ -191,7 +213,7 @@ export function WalletProvider({ children }) {
     setAccount(null);
     setChainId(null);
     setError(null);
-    console.log("[WalletContext] Disconnected wallet");
+    console.log("[WalletContext] Wallet state cleared.");
   }, []);
 
   const isConnected = !!account;
@@ -232,17 +254,16 @@ export function useWallet() {
   const ctx = React.useContext(WalletContext);
 
   if (!ctx) {
-    // Return a fallback that won't break the app
     return {
       account: null,
       chainId: null,
       provider: null,
       connecting: false,
-      hasWallet: typeof window !== "undefined" ? !!window.ethereum : false,
+      hasWallet: typeof window !== "undefined" ? !!getMetaMaskProvider() : false,
       isConnected: false,
       error: null,
       connectWallet: async () => {
-        console.warn("WalletProvider not mounted, using fallback");
+        console.warn("WalletProvider not mounted.");
         throw new Error("WalletProvider not mounted");
       },
       disconnectWallet: () => {},
