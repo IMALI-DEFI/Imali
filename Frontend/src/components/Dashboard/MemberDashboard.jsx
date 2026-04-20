@@ -1,7 +1,7 @@
 // src/pages/MemberDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import BotAPI from "../utils/BotAPI";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -30,43 +30,6 @@ ChartJS.register(
   Legend,
   Filler
 );
-
-/* ================= CONFIG ================= */
-const API = axios.create({
-  baseURL: process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com",
-  withCredentials: true,
-  headers: {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  },
-});
-
-const TOKEN_KEY = "imali_token";
-
-const getToken = () => {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
-};
-
-const clearToken = () => {
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    // ignore
-  }
-};
-
-API.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 /* ================= NFT TIERS ================= */
 const NFT_TIERS = {
@@ -135,8 +98,7 @@ const FEATURE_GATES = {
   },
 };
 
-/* ================= STRATEGIES ================= */
-const STRATEGIES = [
+const FALLBACK_STRATEGIES = [
   {
     id: "mean_reversion",
     name: "Conservative",
@@ -169,25 +131,8 @@ const STRATEGIES = [
     risk: "Low",
     description: "Profit from price differences across venues.",
   },
-  {
-    id: "futures",
-    name: "Futures Engine",
-    emoji: "📈",
-    minTier: "epic",
-    risk: "High",
-    description: "Higher-speed futures execution.",
-  },
-  {
-    id: "alpha",
-    name: "Alpha Sniper",
-    emoji: "🎯",
-    minTier: "legendary",
-    risk: "High",
-    description: "Top-tier premium entries and signals.",
-  },
 ];
 
-/* ================= ACHIEVEMENTS ================= */
 const ACHIEVEMENTS = [
   { id: "first_trade", label: "First Trade", icon: "🚀" },
   { id: "streak_7", label: "7-Day Streak", icon: "🔥" },
@@ -199,25 +144,6 @@ const ACHIEVEMENTS = [
 /* ================= HELPERS ================= */
 const usd = (n = 0) => `$${Number(n || 0).toFixed(2)}`;
 const pct = (n = 0) => `${Number(n || 0).toFixed(1)}%`;
-
-const normalizeUser = (data) => data?.data?.user || data?.user || data?.data || data || null;
-const normalizeStats = (data) => data?.summary || data?.data?.summary || {};
-const normalizeSeries = (data) => {
-  const raw =
-    data?.daily_performance ||
-    data?.series ||
-    data?.data?.daily_performance ||
-    data?.data?.series ||
-    [];
-
-  return Array.isArray(raw)
-    ? raw.map((p) => ({
-        x: p?.date || p?.x || "",
-        y: Number(p?.pnl ?? p?.y ?? 0),
-        trades: Number(p?.trades ?? 0),
-      }))
-    : [];
-};
 
 const normalizeStrategyId = (value) => {
   const v = String(value || "").trim().toLowerCase();
@@ -249,74 +175,24 @@ const riskClass = (risk) => {
   return "bg-yellow-100 text-yellow-700";
 };
 
-const isAuthError = (err) => {
-  const status = err?.response?.status;
-  return status === 401 || status === 403;
-};
+const decorateStrategies = (strategies = []) => {
+  const fallbackMap = new Map(FALLBACK_STRATEGIES.map((s) => [s.id, s]));
+  return strategies.map((strategy) => {
+    const id = normalizeStrategyId(strategy.id || strategy.name);
+    const fallback = fallbackMap.get(id);
 
-const isRetryableRouteError = (err) => {
-  const status = err?.response?.status;
-  return status === 404 || status === 405;
-};
-
-const requestCurrentStrategy = async () => {
-  const attempts = [
-    { method: "get", url: "/api/user/strategy" },
-    { method: "get", url: "/api/trading/strategy" },
-    { method: "get", url: "/api/trading/current-strategy" },
-  ];
-
-  for (const attempt of attempts) {
-    try {
-      const res = await API({ method: attempt.method, url: attempt.url });
-      const strategy =
-        res?.data?.strategy ||
-        res?.data?.current_strategy ||
-        res?.data?.data?.strategy ||
-        res?.data?.data?.current_strategy;
-
-      if (strategy) return normalizeStrategyId(strategy);
-    } catch (err) {
-      if (isAuthError(err)) throw err;
-      if (!isRetryableRouteError(err)) throw err;
-    }
-  }
-
-  return null;
-};
-
-const updateStrategyRequest = async (strategyId) => {
-  const payload = { strategy: strategyId };
-
-  const attempts = [
-    { method: "post", url: "/api/trading/strategy" },
-    { method: "post", url: "/api/trading/update-strategy" },
-    { method: "post", url: "/api/user/strategy" },
-    { method: "patch", url: "/api/trading/strategy" },
-    { method: "patch", url: "/api/user/strategy" },
-    { method: "put", url: "/api/trading/strategy" },
-    { method: "put", url: "/api/user/strategy" },
-  ];
-
-  let lastErr = null;
-
-  for (const attempt of attempts) {
-    try {
-      const res = await API({
-        method: attempt.method,
-        url: attempt.url,
-        data: payload,
-      });
-      return res?.data || { success: true, strategy: strategyId };
-    } catch (err) {
-      lastErr = err;
-      if (isAuthError(err)) throw err;
-      if (isRetryableRouteError(err)) continue;
-      throw err;
-    }
-  }
-
-  throw lastErr || new Error("No working strategy endpoint found.");
+    return {
+      id,
+      name: fallback?.name || strategy.name || id,
+      emoji: fallback?.emoji || "🎯",
+      minTier: fallback?.minTier || "none",
+      risk: fallback?.risk || strategy.risk_level || "Medium",
+      description:
+        fallback?.description ||
+        strategy.description ||
+        "Trading strategy",
+    };
+  });
 };
 
 /* ================= MODAL ================= */
@@ -338,22 +214,21 @@ function ApiKeysModal({ open, onClose }) {
 
     setSaving(`alpaca-${mode}`);
     try {
-      await API.post("/api/integrations/alpaca", {
+      const result = await BotAPI.connectAlpaca({
         api_key: payload.apiKey,
         api_secret: payload.secret,
         mode,
       });
+
+      if (!result?.success) {
+        throw new Error(result?.error || `Failed to save Alpaca ${mode} keys.`);
+      }
+
       alert(`Alpaca ${mode} keys saved.`);
       if (mode === "paper") setAlpacaPaper({ apiKey: "", secret: "" });
       if (mode === "live") setAlpacaLive({ apiKey: "", secret: "" });
     } catch (err) {
-      if (isAuthError(err)) {
-        clearToken();
-        alert("Your session expired. Please log in again.");
-        window.location.href = "/login";
-        return;
-      }
-      alert(err?.response?.data?.message || err?.message || `Failed to save Alpaca ${mode} keys.`);
+      alert(err?.message || `Failed to save Alpaca ${mode} keys.`);
     } finally {
       setSaving("");
     }
@@ -368,23 +243,22 @@ function ApiKeysModal({ open, onClose }) {
 
     setSaving(`okx-${mode}`);
     try {
-      await API.post("/api/integrations/okx", {
+      const result = await BotAPI.connectOKX({
         api_key: payload.apiKey,
         api_secret: payload.secret,
         passphrase: payload.passphrase,
         mode,
       });
+
+      if (!result?.success) {
+        throw new Error(result?.error || `Failed to save OKX ${mode} keys.`);
+      }
+
       alert(`OKX ${mode} keys saved.`);
       if (mode === "paper") setOkxPaper({ apiKey: "", secret: "", passphrase: "" });
       if (mode === "live") setOkxLive({ apiKey: "", secret: "", passphrase: "" });
     } catch (err) {
-      if (isAuthError(err)) {
-        clearToken();
-        alert("Your session expired. Please log in again.");
-        window.location.href = "/login";
-        return;
-      }
-      alert(err?.response?.data?.message || err?.message || `Failed to save OKX ${mode} keys.`);
+      alert(err?.message || `Failed to save OKX ${mode} keys.`);
     } finally {
       setSaving("");
     }
@@ -520,72 +394,118 @@ function KeyForm({ title, state, setState, onSave, saving, requiresPassphrase = 
   );
 }
 
+function CommunityTrades({ trades }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <h3 className="mb-3 font-semibold">🌍 Community Trades</h3>
+      {trades.length === 0 ? (
+        <div className="text-sm text-gray-500">No community trades yet.</div>
+      ) : (
+        <div className="max-h-80 space-y-2 overflow-auto">
+          {trades.map((trade) => {
+            const pnl = Number(trade.pnl_usd || 0);
+            const positive = pnl >= 0;
+            return (
+              <div
+                key={trade.id}
+                className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-900">{trade.symbol}</span>
+                    <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                      {trade.bot || "Bot"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {trade.user_email ? trade.user_email.split("@")[0] : "member"} • {trade.exchange || "exchange"}
+                  </div>
+                </div>
+                <div className={`text-sm font-bold ${positive ? "text-emerald-700" : "text-red-700"}`}>
+                  {usd(pnl)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ================= COMPONENT ================= */
 export default function MemberDashboard() {
   const nav = useNavigate();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState({});
   const [series, setSeries] = useState([]);
   const [streak, setStreak] = useState(0);
+  const [integrations, setIntegrations] = useState({
+    wallet_connected: false,
+    alpaca_connected: false,
+    okx_connected: false,
+  });
+  const [strategies, setStrategies] = useState(FALLBACK_STRATEGIES);
   const [currentStrategy, setCurrentStrategy] = useState("mean_reversion");
   const [showApiModal, setShowApiModal] = useState(false);
   const [savingStrategy, setSavingStrategy] = useState("");
   const [strategyMessage, setStrategyMessage] = useState("");
+  const [communityTrades, setCommunityTrades] = useState([]);
+
+  const loadDashboard = async (silent = false) => {
+    if (!silent) setLoading(true);
+    setRefreshing(true);
+
+    try {
+      const [me, statsResult, integrationsResult, strategiesResult, globalTradesResult] =
+        await Promise.all([
+          BotAPI.getMe(true),
+          BotAPI.getUserTradingStats(30, true),
+          BotAPI.getIntegrationStatus(true),
+          BotAPI.getTradingStrategies(true),
+          BotAPI.getGlobalTrades({ limit: 20, skipCache: true }),
+        ]);
+
+      if (!me?.id && !me?.email) {
+        BotAPI.clearToken();
+        BotAPI.clearApiKey();
+        nav("/login");
+        return;
+      }
+
+      setUser(me);
+      setStats(statsResult?.summary || {});
+      setSeries(statsResult?.daily_performance || []);
+      setStreak(Number(statsResult?.summary?.current_streak || 0));
+      setIntegrations(integrationsResult || {
+        wallet_connected: false,
+        alpaca_connected: false,
+        okx_connected: false,
+      });
+
+      const decorated = decorateStrategies(strategiesResult?.strategies || FALLBACK_STRATEGIES);
+      setStrategies(decorated);
+
+      const strategyFromBackend =
+        strategiesResult?.current_strategy ||
+        me?.strategy ||
+        "mean_reversion";
+
+      setCurrentStrategy(normalizeStrategyId(strategyFromBackend));
+      setCommunityTrades(globalTradesResult?.trades || []);
+    } finally {
+      setRefreshing(false);
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const meRes = await API.get("/api/me");
-        const currentUser = normalizeUser(meRes.data);
-
-        if (!currentUser?.email && !currentUser?.id) {
-          clearToken();
-          nav("/login");
-          return;
-        }
-
-        setUser(currentUser);
-        setCurrentStrategy(normalizeStrategyId(currentUser?.strategy));
-
-        const statsRes = await API.get("/api/user/trading-stats?days=30");
-        const statsData = statsRes.data || {};
-        const summary = normalizeStats(statsData);
-        const performanceSeries = normalizeSeries(statsData);
-
-        setStats(summary);
-        setSeries(performanceSeries);
-        setStreak(Number(summary?.current_streak || 0));
-
-        try {
-          const fetchedStrategy = await requestCurrentStrategy();
-          if (fetchedStrategy) setCurrentStrategy(fetchedStrategy);
-        } catch (err) {
-          if (isAuthError(err)) {
-            clearToken();
-            nav("/login");
-            return;
-          }
-        }
-      } catch (err) {
-        if (isAuthError(err)) {
-          clearToken();
-          nav("/login");
-          return;
-        }
-
-        console.error("Failed to load member dashboard:", err);
-        setStats({});
-        setSeries([]);
-        setStreak(0);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [nav]);
+    loadDashboard(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const nftKey = String(user?.nft_tier || "none").toLowerCase();
   const nft = NFT_TIERS[nftKey] || NFT_TIERS.none;
@@ -617,11 +537,11 @@ export default function MemberDashboard() {
 
   const lineData = useMemo(
     () => ({
-      labels: series.map((p) => p.x || "—"),
+      labels: series.map((p) => p.date || p.x || "—"),
       datasets: [
         {
           label: "PnL",
-          data: series.map((p) => Number(p.y || 0)),
+          data: series.map((p) => Number(p.pnl ?? p.y ?? 0)),
           borderColor: "#4f46e5",
           backgroundColor: "rgba(79, 70, 229, 0.12)",
           fill: true,
@@ -651,7 +571,7 @@ export default function MemberDashboard() {
   const barData = useMemo(() => {
     const lastSeven = series.slice(-7);
     return {
-      labels: lastSeven.map((p) => p.x || "—"),
+      labels: lastSeven.map((p) => p.date || p.x || "—"),
       datasets: [
         {
           label: "Trades",
@@ -676,36 +596,28 @@ export default function MemberDashboard() {
     setCurrentStrategy(strategy.id);
 
     try {
-      const result = await updateStrategyRequest(strategy.id);
-      const saved =
-        normalizeStrategyId(
-          result?.strategy ||
-            result?.current_strategy ||
-            result?.data?.strategy ||
-            result?.data?.current_strategy ||
-            strategy.id
-        ) || strategy.id;
+      const result = await BotAPI.updateUserStrategy(strategy.id);
 
+      if (!result?.success) {
+        throw new Error(result?.error || "Failed to update strategy.");
+      }
+
+      const saved = normalizeStrategyId(result?.strategy || strategy.id);
       setCurrentStrategy(saved);
       setUser((prev) => (prev ? { ...prev, strategy: saved } : prev));
-      setStrategyMessage(`${strategy.name} activated.`);
+      setStrategyMessage(result?.message || `${strategy.name} activated.`);
+
+      if (!result?.local_only) {
+        const refreshed = await BotAPI.getTradingStrategies(true);
+        const refreshedCurrent = normalizeStrategyId(
+          refreshed?.current_strategy || saved
+        );
+        setStrategies(decorateStrategies(refreshed?.strategies || strategies));
+        setCurrentStrategy(refreshedCurrent);
+      }
     } catch (err) {
       setCurrentStrategy(previous);
-
-      if (isAuthError(err)) {
-        clearToken();
-        setStrategyMessage("Your session expired. Please log in again.");
-        setTimeout(() => nav("/login"), 900);
-        return;
-      }
-
-      if (isRetryableRouteError(err)) {
-        setStrategyMessage("Strategy endpoint exists, but the backend method or route still does not match.");
-      } else {
-        setStrategyMessage(
-          err?.response?.data?.message || err?.message || "Failed to update strategy."
-        );
-      }
+      setStrategyMessage(err?.message || "Failed to update strategy.");
     } finally {
       setSavingStrategy("");
       setTimeout(() => setStrategyMessage(""), 3000);
@@ -732,6 +644,14 @@ export default function MemberDashboard() {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => loadDashboard(true)}
+              disabled={refreshing}
+              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </button>
+
             <button
               onClick={() => setShowApiModal(true)}
               className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
@@ -762,7 +682,7 @@ export default function MemberDashboard() {
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {STRATEGIES.map((strategy) => {
+            {strategies.map((strategy) => {
               const unlocked = hasTierAccess(nftKey, strategy.minTier);
               const active = currentStrategy === strategy.id;
               const updating = savingStrategy === strategy.id;
@@ -919,6 +839,22 @@ export default function MemberDashboard() {
           </div>
         </div>
 
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="font-semibold">🔌 Connections</h3>
+            </div>
+
+            <div className="space-y-3">
+              <ConnectionRow title="Wallet" connected={integrations.wallet_connected} />
+              <ConnectionRow title="Alpaca" connected={integrations.alpaca_connected} />
+              <ConnectionRow title="OKX" connected={integrations.okx_connected} />
+            </div>
+          </div>
+
+          <CommunityTrades trades={communityTrades} />
+        </div>
+
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3 className="font-semibold">🔒 Membership Locked Features</h3>
@@ -1058,3 +994,16 @@ const TierCTA = ({ title, unlocked, lockedText, onClick, onLockedClick }) => {
     </button>
   );
 };
+
+const ConnectionRow = ({ title, connected }) => (
+  <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3">
+    <span className="font-medium text-gray-900">{title}</span>
+    <span
+      className={`rounded-full px-2 py-1 text-xs font-semibold ${
+        connected ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"
+      }`}
+    >
+      {connected ? "Connected" : "Not connected"}
+    </span>
+  </div>
+);
