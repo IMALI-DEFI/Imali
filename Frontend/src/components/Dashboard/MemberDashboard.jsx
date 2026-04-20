@@ -1,7 +1,7 @@
-// src/pages/MemberDashboard.jsx
+// src/components/Dashboard/MemberDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import BotAPI from "../utils/BotAPI";
+import BotAPI from "../../utils/BotAPI";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -98,6 +98,7 @@ const FEATURE_GATES = {
   },
 };
 
+/* ================= STRATEGIES ================= */
 const FALLBACK_STRATEGIES = [
   {
     id: "mean_reversion",
@@ -130,6 +131,22 @@ const FALLBACK_STRATEGIES = [
     minTier: "rare",
     risk: "Low",
     description: "Profit from price differences across venues.",
+  },
+  {
+    id: "futures",
+    name: "Futures Engine",
+    emoji: "📈",
+    minTier: "epic",
+    risk: "High",
+    description: "Higher-speed futures execution.",
+  },
+  {
+    id: "alpha",
+    name: "Alpha Sniper",
+    emoji: "🎯",
+    minTier: "legendary",
+    risk: "High",
+    description: "Top-tier premium entries and signals.",
   },
 ];
 
@@ -177,6 +194,7 @@ const riskClass = (risk) => {
 
 const decorateStrategies = (strategies = []) => {
   const fallbackMap = new Map(FALLBACK_STRATEGIES.map((s) => [s.id, s]));
+
   return strategies.map((strategy) => {
     const id = normalizeStrategyId(strategy.id || strategy.name);
     const fallback = fallbackMap.get(id);
@@ -187,12 +205,31 @@ const decorateStrategies = (strategies = []) => {
       emoji: fallback?.emoji || "🎯",
       minTier: fallback?.minTier || "none",
       risk: fallback?.risk || strategy.risk_level || "Medium",
-      description:
-        fallback?.description ||
-        strategy.description ||
-        "Trading strategy",
+      description: fallback?.description || strategy.description || "Trading strategy",
     };
   });
+};
+
+const extractDailySeries = (statsResult) => {
+  if (Array.isArray(statsResult?.daily_performance)) return statsResult.daily_performance;
+  if (Array.isArray(statsResult?.data?.daily_performance)) return statsResult.data.daily_performance;
+  return [];
+};
+
+const extractSummary = (statsResult) => {
+  if (statsResult?.summary) return statsResult.summary;
+  if (statsResult?.data?.summary) return statsResult.data.summary;
+  return {};
+};
+
+const getStrategyFromResult = (result, fallbackId) => {
+  return normalizeStrategyId(
+    result?.strategy ||
+      result?.current_strategy ||
+      result?.data?.strategy ||
+      result?.data?.current_strategy ||
+      fallbackId
+  );
 };
 
 /* ================= MODAL ================= */
@@ -220,11 +257,9 @@ function ApiKeysModal({ open, onClose }) {
         mode,
       });
 
-      if (!result?.success) {
-        throw new Error(result?.error || `Failed to save Alpaca ${mode} keys.`);
-      }
-
+      if (!result?.success) throw new Error(result?.error || `Failed to save Alpaca ${mode} keys.`);
       alert(`Alpaca ${mode} keys saved.`);
+
       if (mode === "paper") setAlpacaPaper({ apiKey: "", secret: "" });
       if (mode === "live") setAlpacaLive({ apiKey: "", secret: "" });
     } catch (err) {
@@ -250,11 +285,9 @@ function ApiKeysModal({ open, onClose }) {
         mode,
       });
 
-      if (!result?.success) {
-        throw new Error(result?.error || `Failed to save OKX ${mode} keys.`);
-      }
-
+      if (!result?.success) throw new Error(result?.error || `Failed to save OKX ${mode} keys.`);
       alert(`OKX ${mode} keys saved.`);
+
       if (mode === "paper") setOkxPaper({ apiKey: "", secret: "", passphrase: "" });
       if (mode === "live") setOkxLive({ apiKey: "", secret: "", passphrase: "" });
     } catch (err) {
@@ -402,17 +435,17 @@ function CommunityTrades({ trades }) {
         <div className="text-sm text-gray-500">No community trades yet.</div>
       ) : (
         <div className="max-h-80 space-y-2 overflow-auto">
-          {trades.map((trade) => {
+          {trades.map((trade, index) => {
             const pnl = Number(trade.pnl_usd || 0);
             const positive = pnl >= 0;
             return (
               <div
-                key={trade.id}
+                key={trade.id || index}
                 className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3"
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-900">{trade.symbol}</span>
+                    <span className="font-semibold text-gray-900">{trade.symbol || "Unknown"}</span>
                     <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
                       {trade.bot || "Bot"}
                     </span>
@@ -460,15 +493,7 @@ export default function MemberDashboard() {
     setRefreshing(true);
 
     try {
-      const [me, statsResult, integrationsResult, strategiesResult, globalTradesResult] =
-        await Promise.all([
-          BotAPI.getMe(true),
-          BotAPI.getUserTradingStats(30, true),
-          BotAPI.getIntegrationStatus(true),
-          BotAPI.getTradingStrategies(true),
-          BotAPI.getGlobalTrades({ limit: 20, skipCache: true }),
-        ]);
-
+      const me = await BotAPI.getMe(true);
       if (!me?.id && !me?.email) {
         BotAPI.clearToken();
         BotAPI.clearApiKey();
@@ -477,17 +502,36 @@ export default function MemberDashboard() {
       }
 
       setUser(me);
-      setStats(statsResult?.summary || {});
-      setSeries(statsResult?.daily_performance || []);
-      setStreak(Number(statsResult?.summary?.current_streak || 0));
+
+      const [
+        statsResult,
+        integrationsResult,
+        strategiesResult,
+        globalTradesResult,
+      ] = await Promise.all([
+        BotAPI.getUserTradingStats(30, true),
+        BotAPI.getIntegrationStatus(true),
+        BotAPI.getTradingStrategies(true),
+        BotAPI.getGlobalTrades({ limit: 20, skipCache: true }),
+      ]);
+
+      const summary = extractSummary(statsResult);
+      const dailySeries = extractDailySeries(statsResult);
+
+      setStats(summary);
+      setSeries(dailySeries);
+      setStreak(Number(summary?.current_streak || 0));
       setIntegrations(integrationsResult || {
         wallet_connected: false,
         alpaca_connected: false,
         okx_connected: false,
       });
 
-      const decorated = decorateStrategies(strategiesResult?.strategies || FALLBACK_STRATEGIES);
-      setStrategies(decorated);
+      const backendStrategies = Array.isArray(strategiesResult?.strategies)
+        ? strategiesResult.strategies
+        : FALLBACK_STRATEGIES;
+
+      setStrategies(decorateStrategies(backendStrategies));
 
       const strategyFromBackend =
         strategiesResult?.current_strategy ||
@@ -495,7 +539,19 @@ export default function MemberDashboard() {
         "mean_reversion";
 
       setCurrentStrategy(normalizeStrategyId(strategyFromBackend));
-      setCommunityTrades(globalTradesResult?.trades || []);
+      setCommunityTrades(Array.isArray(globalTradesResult?.trades) ? globalTradesResult.trades : []);
+    } catch (err) {
+      console.error("Failed to load member dashboard:", err);
+      if (String(err?.message || "").toLowerCase().includes("invalid or expired token")) {
+        BotAPI.clearToken();
+        BotAPI.clearApiKey();
+        nav("/login");
+        return;
+      }
+      setStats({});
+      setSeries([]);
+      setStreak(0);
+      setCommunityTrades([]);
     } finally {
       setRefreshing(false);
       setLoading(false);
@@ -597,23 +653,19 @@ export default function MemberDashboard() {
 
     try {
       const result = await BotAPI.updateUserStrategy(strategy.id);
-
       if (!result?.success) {
         throw new Error(result?.error || "Failed to update strategy.");
       }
 
-      const saved = normalizeStrategyId(result?.strategy || strategy.id);
+      const saved = getStrategyFromResult(result, strategy.id);
       setCurrentStrategy(saved);
       setUser((prev) => (prev ? { ...prev, strategy: saved } : prev));
       setStrategyMessage(result?.message || `${strategy.name} activated.`);
 
       if (!result?.local_only) {
         const refreshed = await BotAPI.getTradingStrategies(true);
-        const refreshedCurrent = normalizeStrategyId(
-          refreshed?.current_strategy || saved
-        );
         setStrategies(decorateStrategies(refreshed?.strategies || strategies));
-        setCurrentStrategy(refreshedCurrent);
+        setCurrentStrategy(getStrategyFromResult(refreshed, saved));
       }
     } catch (err) {
       setCurrentStrategy(previous);
@@ -841,10 +893,7 @@ export default function MemberDashboard() {
 
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="font-semibold">🔌 Connections</h3>
-            </div>
-
+            <h3 className="mb-3 font-semibold">🔌 Connections</h3>
             <div className="space-y-3">
               <ConnectionRow title="Wallet" connected={integrations.wallet_connected} />
               <ConnectionRow title="Alpaca" connected={integrations.alpaca_connected} />
