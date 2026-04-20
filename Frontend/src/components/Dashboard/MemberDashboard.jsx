@@ -254,7 +254,10 @@ const isAuthError = (err) => {
   return status === 401 || status === 403;
 };
 
-const isNotFoundError = (err) => err?.response?.status === 404;
+const isRetryableRouteError = (err) => {
+  const status = err?.response?.status;
+  return status === 404 || status === 405;
+};
 
 const requestCurrentStrategy = async () => {
   const attempts = [
@@ -272,12 +275,10 @@ const requestCurrentStrategy = async () => {
         res?.data?.data?.strategy ||
         res?.data?.data?.current_strategy;
 
-      if (strategy) {
-        return normalizeStrategyId(strategy);
-      }
+      if (strategy) return normalizeStrategyId(strategy);
     } catch (err) {
       if (isAuthError(err)) throw err;
-      if (!isNotFoundError(err)) throw err;
+      if (!isRetryableRouteError(err)) throw err;
     }
   }
 
@@ -288,14 +289,13 @@ const updateStrategyRequest = async (strategyId) => {
   const payload = { strategy: strategyId };
 
   const attempts = [
-    { method: "put", url: "/api/trading/strategy" },
     { method: "post", url: "/api/trading/strategy" },
-    { method: "put", url: "/api/trading/current-strategy" },
-    { method: "post", url: "/api/trading/current-strategy" },
-    { method: "put", url: "/api/trading/update-strategy" },
     { method: "post", url: "/api/trading/update-strategy" },
-    { method: "put", url: "/api/user/strategy" },
     { method: "post", url: "/api/user/strategy" },
+    { method: "patch", url: "/api/trading/strategy" },
+    { method: "patch", url: "/api/user/strategy" },
+    { method: "put", url: "/api/trading/strategy" },
+    { method: "put", url: "/api/user/strategy" },
   ];
 
   let lastErr = null;
@@ -307,11 +307,12 @@ const updateStrategyRequest = async (strategyId) => {
         url: attempt.url,
         data: payload,
       });
-      return res?.data || { success: true };
+      return res?.data || { success: true, strategy: strategyId };
     } catch (err) {
       lastErr = err;
       if (isAuthError(err)) throw err;
-      if (!isNotFoundError(err)) throw err;
+      if (isRetryableRouteError(err)) continue;
+      throw err;
     }
   }
 
@@ -559,9 +560,7 @@ export default function MemberDashboard() {
 
         try {
           const fetchedStrategy = await requestCurrentStrategy();
-          if (fetchedStrategy) {
-            setCurrentStrategy(fetchedStrategy);
-          }
+          if (fetchedStrategy) setCurrentStrategy(fetchedStrategy);
         } catch (err) {
           if (isAuthError(err)) {
             clearToken();
@@ -678,7 +677,6 @@ export default function MemberDashboard() {
 
     try {
       const result = await updateStrategyRequest(strategy.id);
-
       const saved =
         normalizeStrategyId(
           result?.strategy ||
@@ -701,8 +699,8 @@ export default function MemberDashboard() {
         return;
       }
 
-      if (isNotFoundError(err)) {
-        setStrategyMessage("Strategy endpoint was not found on the backend.");
+      if (isRetryableRouteError(err)) {
+        setStrategyMessage("Strategy endpoint exists, but the backend method or route still does not match.");
       } else {
         setStrategyMessage(
           err?.response?.data?.message || err?.message || "Failed to update strategy."
