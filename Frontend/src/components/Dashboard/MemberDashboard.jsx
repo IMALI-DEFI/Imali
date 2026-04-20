@@ -34,7 +34,7 @@ const STRATEGY_MAP = {
     id: "mean_reversion",
     label: "Conservative",
     emoji: "🛡️",
-    description: "Looks for dips and safe rebounds.",
+    description: "Looks for dips and safer rebounds.",
     details: "Lower risk. Better for steady moves and smaller swings.",
     riskLevel: "Low",
     backendName: "Mean Reversion",
@@ -52,7 +52,7 @@ const STRATEGY_MAP = {
     id: "momentum",
     label: "Aggressive",
     emoji: "🔥",
-    description: "Follows strong market trends.",
+    description: "Follows strong trends.",
     details: "Higher risk. Designed for bigger moves.",
     riskLevel: "High",
     backendName: "Momentum",
@@ -62,7 +62,7 @@ const STRATEGY_MAP = {
     label: "Arbitrage",
     emoji: "🔄",
     description: "Uses price differences across venues.",
-    details: "Usually lower risk when supported by the exchange setup.",
+    details: "Usually lower risk when supported by exchange setup.",
     riskLevel: "Low",
     backendName: "Arbitrage",
   },
@@ -147,7 +147,6 @@ const timeAgo = (timestamp) => {
     const sec = Math.floor(diffMs / 1000);
     const min = Math.floor(sec / 60);
     const hr = Math.floor(min / 60);
-
     if (sec < 30) return "just now";
     if (sec < 60) return `${sec} seconds ago`;
     if (min < 60) return `${min} minutes ago`;
@@ -208,6 +207,13 @@ const getStrategyMeta = (value, backendStrategies = []) => {
   };
 };
 
+const riskBadgeClass = (risk) => {
+  const value = String(risk || "").toLowerCase();
+  if (value === "low") return "bg-green-100 text-green-800";
+  if (value === "high") return "bg-red-100 text-red-800";
+  return "bg-yellow-100 text-yellow-800";
+};
+
 function StatCard({ title, value, color = "green", hint }) {
   const colors = {
     green: "text-green-700",
@@ -218,7 +224,7 @@ function StatCard({ title, value, color = "green", hint }) {
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</div>
       <div className={`mt-1 text-2xl font-bold ${colors[color]}`}>{value}</div>
       {hint ? <div className="mt-1 text-xs text-gray-600">{hint}</div> : null}
@@ -273,11 +279,7 @@ function TradeRow({ trade, showUser = false }) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-gray-900">{symbol}</span>
             <span className={`rounded px-2 py-0.5 text-xs font-medium ${badgeColor}`}>{badgeText}</span>
-            <span
-              className={`rounded px-2 py-0.5 text-xs font-medium ${
-                isPaper ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"
-              }`}
-            >
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${isPaper ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"}`}>
               {isPaper ? "📄 PAPER" : "💚 LIVE"}
             </span>
             {showUser && trade?.user_email ? (
@@ -328,7 +330,7 @@ function PositionRow({ position, strategies, onCancel }) {
 
         {onCancel ? (
           <button
-            onClick={() => onCancel(position.id)}
+            onClick={onCancel}
             className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-200"
           >
             Cancel
@@ -344,7 +346,7 @@ function BotExecutionRow({ execution, strategies }) {
   const strategyMeta = getStrategyMeta(execution?.strategy, strategies);
 
   const badge =
-    status === "running" || status === "started"
+    status === "running" || status === "started" || status === "pending"
       ? "bg-green-100 text-green-800"
       : status === "failed" || status === "error"
       ? "bg-red-100 text-red-800"
@@ -356,15 +358,12 @@ function BotExecutionRow({ execution, strategies }) {
         <div className="flex items-center gap-2">
           <span className="text-lg">{getBotIcon(execution?.bot)}</span>
           <span className="text-sm font-semibold text-gray-900">{execution?.bot || "Bot"}</span>
-          <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge}`}>
-            {execution?.status || "unknown"}
-          </span>
+          <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge}`}>{execution?.status || "unknown"}</span>
         </div>
         <div className="text-xs text-gray-600">
           {strategyMeta.name} • {timeAgo(execution?.created_at || execution?.requested_at)}
         </div>
       </div>
-
       <div className="text-right text-xs font-medium text-gray-500">
         {execution?.mode || "mode unknown"}
       </div>
@@ -375,31 +374,42 @@ function BotExecutionRow({ execution, strategies }) {
 function StrategySelector({ currentStrategy, strategiesList, onStrategyChange }) {
   const [changing, setChanging] = useState(null);
   const [message, setMessage] = useState(null);
+  const [localStrategy, setLocalStrategy] = useState(currentStrategy);
+
+  useEffect(() => {
+    setLocalStrategy(currentStrategy);
+  }, [currentStrategy]);
 
   const orderedStrategies = ["mean_reversion", "ai_weighted", "momentum", "arbitrage"]
     .map((id) => STRATEGY_MAP[id])
     .filter((s) => s && strategiesList.some((backend) => backend.id === s.id));
 
-  const activeStrategy = getStrategyDisplay(currentStrategy);
+  const activeStrategy = getStrategyDisplay(localStrategy);
 
   const handleSelect = async (strategyId) => {
-    if (strategyId === currentStrategy) return;
+    if (strategyId === localStrategy) return;
 
     setChanging(strategyId);
     setMessage(null);
+    setLocalStrategy(strategyId);
 
     try {
       const result = await BotAPI.updateUserStrategy(strategyId);
-      if (!result?.success) throw new Error(result?.error || "Failed to update strategy");
+
+      if (!result?.success) {
+        throw new Error(result?.error || "Failed to update strategy");
+      }
+
+      await onStrategyChange(strategyId, result);
 
       setMessage({
         type: "success",
         text: result?.message || "Trading strategy updated.",
       });
 
-      await onStrategyChange(strategyId);
       setTimeout(() => setMessage(null), 3000);
     } catch (err) {
+      setLocalStrategy(currentStrategy);
       setMessage({
         type: "error",
         text: err?.message || "Could not update strategy.",
@@ -410,47 +420,29 @@ function StrategySelector({ currentStrategy, strategiesList, onStrategyChange })
     }
   };
 
-  const riskBadgeClass = (risk) => {
-    if (risk === "Low") return "bg-green-100 text-green-800";
-    if (risk === "High") return "bg-red-100 text-red-800";
-    return "bg-yellow-100 text-yellow-800";
-  };
-
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-green-700">
-              Current strategy
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-xl">{activeStrategy.emoji}</span>
-              <span className="text-lg font-bold text-gray-900">{activeStrategy.label}</span>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${riskBadgeClass(activeStrategy.riskLevel)}`}>
-                {activeStrategy.riskLevel} Risk
-              </span>
-            </div>
-            <div className="mt-1 text-sm text-gray-700">{activeStrategy.details}</div>
-          </div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-green-700">Current strategy</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-xl">{activeStrategy.emoji}</span>
+          <span className="text-lg font-bold text-gray-900">{activeStrategy.label}</span>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${riskBadgeClass(activeStrategy.riskLevel)}`}>
+            {activeStrategy.riskLevel} Risk
+          </span>
         </div>
+        <div className="mt-1 text-sm text-gray-700">{activeStrategy.details}</div>
       </div>
 
       {message ? (
-        <div
-          className={`rounded-xl p-3 text-sm font-medium ${
-            message.type === "success"
-              ? "bg-green-50 text-green-800"
-              : "bg-red-50 text-red-800"
-          }`}
-        >
+        <div className={`rounded-xl p-3 text-sm font-medium ${message.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
           {message.text}
         </div>
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {orderedStrategies.map((strat) => {
-          const isActive = currentStrategy === strat.id;
+          const isActive = localStrategy === strat.id;
           const isChanging = changing === strat.id;
 
           return (
@@ -458,11 +450,7 @@ function StrategySelector({ currentStrategy, strategiesList, onStrategyChange })
               key={strat.id}
               onClick={() => handleSelect(strat.id)}
               disabled={isChanging}
-              className={`rounded-2xl border p-4 text-left transition hover:shadow-md ${
-                isActive
-                  ? "border-green-500 bg-green-50 ring-2 ring-green-200"
-                  : "border-gray-200 bg-white"
-              } disabled:opacity-60`}
+              className={`rounded-2xl border p-4 text-left transition hover:shadow-md ${isActive ? "border-green-500 bg-green-50 ring-2 ring-green-200" : "border-gray-200 bg-white"} disabled:opacity-60`}
             >
               <div className="flex items-start justify-between gap-2">
                 <span className="text-2xl">{strat.emoji}</span>
@@ -516,16 +504,10 @@ function ExchangeKeyForm({
           <span className="text-xl">{icon}</span>
           <div>
             <div className="font-bold text-gray-900">{title}</div>
-            <div className="text-xs text-gray-500">
-              Save or replace your live and paper credentials.
-            </div>
+            <div className="text-xs text-gray-500">Save or replace your live and paper credentials.</div>
           </div>
         </div>
-        <span
-          className={`rounded-full px-2 py-1 text-xs font-semibold ${
-            connected ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"
-          }`}
-        >
+        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${connected ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}`}>
           {connected ? "Connected" : "Not connected"}
         </span>
       </div>
@@ -633,9 +615,7 @@ function ApiConnectionsModal({ isOpen, onClose, activation, integrations, onRefr
         mode,
       });
 
-      if (!result?.success) {
-        throw new Error(result?.error || `Failed to save ${mode} Alpaca keys`);
-      }
+      if (!result?.success) throw new Error(result?.error || `Failed to save ${mode} Alpaca keys`);
 
       alert(`Alpaca ${mode} keys saved.`);
       if (mode === "paper") setAlpacaPaper({ apiKey: "", secret: "" });
@@ -664,9 +644,7 @@ function ApiConnectionsModal({ isOpen, onClose, activation, integrations, onRefr
         mode,
       });
 
-      if (!result?.success) {
-        throw new Error(result?.error || `Failed to save ${mode} OKX keys`);
-      }
+      if (!result?.success) throw new Error(result?.error || `Failed to save ${mode} OKX keys`);
 
       alert(`OKX ${mode} keys saved.`);
       if (mode === "paper") setOkxPaper({ apiKey: "", secret: "", passphrase: "" });
@@ -685,9 +663,7 @@ function ApiConnectionsModal({ isOpen, onClose, activation, integrations, onRefr
         <div className="mb-5 flex items-center justify-between border-b border-gray-200 pb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">API & Exchange Keys</h2>
-            <p className="mt-1 text-sm text-gray-600">
-              Manage paper and live credentials for Alpaca and OKX.
-            </p>
+            <p className="mt-1 text-sm text-gray-600">Manage paper and live credentials for Alpaca and OKX.</p>
           </div>
           <button
             onClick={onClose}
@@ -814,9 +790,7 @@ function PerformanceChart({ points, period, onChange }) {
           <button
             key={p}
             onClick={() => onChange(p)}
-            className={`rounded-lg px-3 py-1 text-xs font-semibold ${
-              period === p ? "bg-green-600 text-white" : "bg-gray-200 text-gray-900"
-            }`}
+            className={`rounded-lg px-3 py-1 text-xs font-semibold ${period === p ? "bg-green-600 text-white" : "bg-gray-200 text-gray-900"}`}
           >
             {p === "7d" ? "7 Days" : p === "30d" ? "30 Days" : "90 Days"}
           </button>
@@ -832,15 +806,9 @@ function PerformanceChart({ points, period, onChange }) {
 
       <div className="h-64">
         {chartData.labels.length > 0 ? (
-          chartType === "line" ? (
-            <Line data={chartData} options={options} />
-          ) : (
-            <Bar data={chartData} options={options} />
-          )
+          chartType === "line" ? <Line data={chartData} options={options} /> : <Bar data={chartData} options={options} />
         ) : (
-          <div className="flex h-full items-center justify-center text-gray-600">
-            No trading history yet
-          </div>
+          <div className="flex h-full items-center justify-center text-gray-600">No trading history yet</div>
         )}
       </div>
     </div>
@@ -885,10 +853,7 @@ function BillingSection({ user, activation }) {
 
           <div className="mt-3 flex flex-wrap gap-2">
             {plan.features.map((feature, index) => (
-              <span
-                key={index}
-                className="rounded-full bg-white/80 px-2 py-1 text-xs font-medium text-gray-900"
-              >
+              <span key={index} className="rounded-full bg-white/80 px-2 py-1 text-xs font-medium text-gray-900">
                 ✓ {feature}
               </span>
             ))}
@@ -900,16 +865,11 @@ function BillingSection({ user, activation }) {
             <span className="text-lg">💳</span>
             <div>
               <div className="text-sm font-semibold text-gray-900">Payment Method</div>
-              <div className="text-xs text-gray-600">
-                {hasCard ? "Card on file ✓" : "No card added yet"}
-              </div>
+              <div className="text-xs text-gray-600">{hasCard ? "Card on file ✓" : "No card added yet"}</div>
             </div>
           </div>
 
-          <Link
-            to="/billingDashboard"
-            className="text-sm font-semibold text-blue-700 hover:text-blue-800"
-          >
+          <Link to="/billingDashboard" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
             {hasCard ? "Update Card" : "Add Card →"}
           </Link>
         </div>
@@ -928,16 +888,8 @@ function ConnectionsSection({ activation, integrations, onOpenApiModal }) {
               <div className="font-semibold text-gray-900">Alpaca</div>
               <div className="text-xs text-gray-500">Stocks trading connection</div>
             </div>
-            <span
-              className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                activation?.alpaca_connected || integrations?.alpaca_connected
-                  ? "bg-green-100 text-green-800"
-                  : "bg-gray-100 text-gray-700"
-              }`}
-            >
-              {activation?.alpaca_connected || integrations?.alpaca_connected
-                ? "Connected"
-                : "Not connected"}
+            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${(activation?.alpaca_connected || integrations?.alpaca_connected) ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}`}>
+              {(activation?.alpaca_connected || integrations?.alpaca_connected) ? "Connected" : "Not connected"}
             </span>
           </div>
         </div>
@@ -948,16 +900,8 @@ function ConnectionsSection({ activation, integrations, onOpenApiModal }) {
               <div className="font-semibold text-gray-900">OKX</div>
               <div className="text-xs text-gray-500">Crypto exchange connection</div>
             </div>
-            <span
-              className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                activation?.okx_connected || integrations?.okx_connected
-                  ? "bg-green-100 text-green-800"
-                  : "bg-gray-100 text-gray-700"
-              }`}
-            >
-              {activation?.okx_connected || integrations?.okx_connected
-                ? "Connected"
-                : "Not connected"}
+            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${(activation?.okx_connected || integrations?.okx_connected) ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}`}>
+              {(activation?.okx_connected || integrations?.okx_connected) ? "Connected" : "Not connected"}
             </span>
           </div>
         </div>
@@ -981,10 +925,7 @@ function GlobalTradesFeed() {
 
   const fetchGlobalTrades = useCallback(async () => {
     try {
-      const result = (await BotAPI.getGlobalTrades?.({ limit: 20 })) || {
-        success: false,
-        trades: [],
-      };
+      const result = (await BotAPI.getGlobalTrades?.({ limit: 20 })) || { success: false, trades: [] };
 
       if (mountedRef.current) {
         if (result.success && Array.isArray(result.trades)) {
@@ -1047,15 +988,11 @@ export default function MemberDashboard() {
   const [strategyOptions, setStrategyOptions] = useState(
     Object.values(STRATEGY_MAP).map((s) => ({ id: s.id, name: s.backendName }))
   );
-  const [currentStrategy, setCurrentStrategy] = useState(user?.strategy || "ai_weighted");
+  const [currentStrategy, setCurrentStrategy] = useState("ai_weighted");
   const [cancellingAll, setCancellingAll] = useState(false);
 
   const mountedRef = useRef(true);
   const isFetchingRef = useRef(false);
-
-  useEffect(() => {
-    setCurrentStrategy(user?.strategy || "ai_weighted");
-  }, [user?.strategy]);
 
   const strategyMeta = useMemo(
     () => getStrategyMeta(currentStrategy, strategyOptions),
@@ -1069,12 +1006,15 @@ export default function MemberDashboard() {
 
       if (result?.success && Array.isArray(result.strategies) && result.strategies.length > 0) {
         setStrategyOptions(result.strategies);
-        setCurrentStrategy(result.current_strategy || user?.strategy || "ai_weighted");
+      }
+
+      if (result?.success && result?.current_strategy) {
+        setCurrentStrategy(result.current_strategy);
       }
     } catch (err) {
       console.error("Failed to load strategies:", err);
     }
-  }, [user?.strategy]);
+  }, []);
 
   const loadData = useCallback(
     async (silent = false) => {
@@ -1150,7 +1090,9 @@ export default function MemberDashboard() {
         if (strategiesRes.status === "fulfilled" && strategiesRes.value?.success) {
           const fetched = strategiesRes.value.strategies || [];
           if (fetched.length > 0) setStrategyOptions(fetched);
-          setCurrentStrategy(strategiesRes.value.current_strategy || user?.strategy || "ai_weighted");
+          if (strategiesRes.value.current_strategy && !strategiesRes.value._fallback) {
+            setCurrentStrategy(strategiesRes.value.current_strategy);
+          }
         }
 
         setDashboardData({
@@ -1231,7 +1173,9 @@ export default function MemberDashboard() {
   }, [user, period, loadData]);
 
   useEffect(() => {
-    if (!user) {
+    if (user) {
+      setCurrentStrategy(user?.strategy || "ai_weighted");
+    } else {
       setLoading(false);
       setInitialized(true);
     }
@@ -1239,7 +1183,6 @@ export default function MemberDashboard() {
 
   useEffect(() => {
     if (!user) return;
-
     const timer = setInterval(() => {
       if (!isFetchingRef.current) loadData(true);
     }, 30000);
@@ -1261,9 +1204,14 @@ export default function MemberDashboard() {
     ["running", "started", "pending"].includes(String(e?.status || "").toLowerCase())
   ).length;
 
-  const handleStrategyChange = async (newStrategyId) => {
+  const handleStrategyChange = async (newStrategyId, result) => {
     setCurrentStrategy(newStrategyId);
-    await loadData(true);
+
+    if (result?.local_only) {
+      return;
+    }
+
+    await loadStrategies();
   };
 
   if (authLoading || (!initialized && loading)) {
@@ -1302,9 +1250,7 @@ export default function MemberDashboard() {
               <h1 className="text-xl font-bold text-gray-900">
                 👋 Hey, {user.email?.split("@")[0] || "there"}!
               </h1>
-              <p className="mt-1 text-sm text-gray-600">
-                Here’s a cleaner view of your trading account.
-              </p>
+              <p className="mt-1 text-sm text-gray-600">Here’s a cleaner view of your trading account.</p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -1362,12 +1308,7 @@ export default function MemberDashboard() {
                 color="purple"
                 hint={`${wins} wins / ${losses} losses`}
               />
-              <StatCard
-                title="Open Positions"
-                value={openPositions}
-                color="blue"
-                hint="Trades still running"
-              />
+              <StatCard title="Open Positions" value={openPositions} color="blue" hint="Trades still running" />
               <StatCard
                 title="Current Strategy"
                 value={`${strategyMeta.emoji || "🎯"} ${strategyMeta.name}`}
@@ -1377,11 +1318,7 @@ export default function MemberDashboard() {
             </div>
 
             <Section title="Performance" icon="📈">
-              <PerformanceChart
-                points={dashboardData.dailyPerformance}
-                period={period}
-                onChange={setPeriod}
-              />
+              <PerformanceChart points={dashboardData.dailyPerformance} period={period} onChange={setPeriod} />
             </Section>
 
             <Section
@@ -1390,17 +1327,11 @@ export default function MemberDashboard() {
               right={<span className="text-xs font-semibold text-gray-500">{activeExecutions} active</span>}
             >
               {dashboardData.executions.length === 0 ? (
-                <div className="py-6 text-center font-medium text-gray-600">
-                  No recent bot activity yet.
-                </div>
+                <div className="py-6 text-center font-medium text-gray-600">No recent bot activity yet.</div>
               ) : (
                 <div className="space-y-2">
                   {dashboardData.executions.slice(0, 6).map((execution, i) => (
-                    <BotExecutionRow
-                      key={execution.id || i}
-                      execution={execution}
-                      strategies={strategyOptions}
-                    />
+                    <BotExecutionRow key={execution.id || i} execution={execution} strategies={strategyOptions} />
                   ))}
                 </div>
               )}
@@ -1423,9 +1354,7 @@ export default function MemberDashboard() {
             icon="📍"
             right={
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-gray-500">
-                  {dashboardData.positions.length} open
-                </span>
+                <span className="text-xs font-semibold text-gray-500">{dashboardData.positions.length} open</span>
                 {dashboardData.positions.length > 0 ? (
                   <button
                     onClick={cancelAllPositions}
@@ -1439,9 +1368,7 @@ export default function MemberDashboard() {
             }
           >
             {dashboardData.positions.length === 0 ? (
-              <div className="py-8 text-center font-medium text-gray-600">
-                No open positions right now.
-              </div>
+              <div className="py-8 text-center font-medium text-gray-600">No open positions right now.</div>
             ) : (
               <div className="space-y-2">
                 {dashboardData.positions.slice(0, 10).map((position, i) => (
@@ -1479,30 +1406,18 @@ export default function MemberDashboard() {
             </div>
 
             <div className="rounded-xl bg-gray-50 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Trading Enabled
-              </div>
-              <div className="mt-1 font-bold text-gray-900">
-                {activation?.trading_enabled ? "Yes" : "No"}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Trading Enabled</div>
+              <div className="mt-1 font-bold text-gray-900">{activation?.trading_enabled ? "Yes" : "No"}</div>
             </div>
 
             <div className="rounded-xl bg-gray-50 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Portfolio Value
-              </div>
-              <div className="mt-1 font-bold text-gray-900">
-                {formatPlainMoney(user?.portfolio_value || 0)}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Portfolio Value</div>
+              <div className="mt-1 font-bold text-gray-900">{formatPlainMoney(user?.portfolio_value || 0)}</div>
             </div>
 
             <div className="rounded-xl bg-gray-50 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Required Integrations
-              </div>
-              <div className="mt-1 font-bold text-gray-900">
-                {activation?.tier_required_integration || "—"}
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Required Integrations</div>
+              <div className="mt-1 font-bold text-gray-900">{activation?.tier_required_integration || "—"}</div>
             </div>
           </div>
         </Section>
