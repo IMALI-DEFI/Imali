@@ -68,7 +68,7 @@ const NFT_TIERS = {
     name: "No Membership",
     color: "border-slate-300",
     glow: "",
-    perks: ["Standard fees", "Basic strategies"],
+    perks: ["Standard fees", "Basic features"],
   },
   common: {
     rank: 1,
@@ -84,7 +84,7 @@ const NFT_TIERS = {
     name: "Rare",
     color: "border-sky-400",
     glow: "shadow-sky-200",
-    perks: ["Even lower fees", "Advanced bots", "Strategy unlocks"],
+    perks: ["Even lower fees", "Advanced bots", "Arbitrage strategy"],
   },
   epic: {
     rank: 3,
@@ -114,11 +114,6 @@ const FEATURE_GATES = {
     title: "Advanced Bots",
     minTier: "rare",
     description: "Unlock stronger automation and premium execution logic.",
-  },
-  strategy_unlocks: {
-    title: "Pro Strategies",
-    minTier: "rare",
-    description: "Use more advanced trading styles and premium allocation logic.",
   },
   futures: {
     title: "Futures Trading",
@@ -216,8 +211,28 @@ const normalizeSeries = (data) => {
     : [];
 };
 
+const normalizeStrategyId = (value) => {
+  const v = String(value || "").trim().toLowerCase();
+  const aliases = {
+    "mean reversion": "mean_reversion",
+    "mean-reversion": "mean_reversion",
+    conservative: "mean_reversion",
+    balanced: "ai_weighted",
+    "ai weighted": "ai_weighted",
+    "ai-weighted": "ai_weighted",
+    momentum: "momentum",
+    arbitrage: "arbitrage",
+    "futures engine": "futures",
+    futures: "futures",
+    "alpha sniper": "alpha",
+    alpha: "alpha",
+  };
+  return aliases[v] || v || "mean_reversion";
+};
+
 const tierRank = (tierKey) => NFT_TIERS[tierKey]?.rank ?? 0;
-const hasTierAccess = (userTierKey, requiredTierKey) => tierRank(userTierKey) >= tierRank(requiredTierKey);
+const hasTierAccess = (userTierKey, requiredTierKey) =>
+  tierRank(userTierKey) >= tierRank(requiredTierKey);
 
 const riskClass = (risk) => {
   const r = String(risk || "").toLowerCase();
@@ -441,7 +456,7 @@ export default function MemberDashboard() {
         }
 
         setUser(currentUser);
-        setCurrentStrategy(currentUser?.strategy || "mean_reversion");
+        setCurrentStrategy(normalizeStrategyId(currentUser?.strategy));
 
         const statsRes = await API.get("/api/user/trading-stats?days=30");
         const statsData = statsRes.data || {};
@@ -452,6 +467,19 @@ export default function MemberDashboard() {
         setStats(summary);
         setSeries(performanceSeries);
         setStreak(Number(summary?.current_streak || 0));
+
+        try {
+          const strategyRes = await API.get("/api/user/strategy");
+          const fetchedStrategy =
+            strategyRes?.data?.strategy ||
+            strategyRes?.data?.current_strategy ||
+            strategyRes?.data?.data?.strategy;
+          if (fetchedStrategy) {
+            setCurrentStrategy(normalizeStrategyId(fetchedStrategy));
+          }
+        } catch {
+          // Ignore if endpoint doesn't exist and keep user.strategy value
+        }
       } catch (err) {
         if (err?.response?.status === 401) {
           nav("/login");
@@ -493,7 +521,9 @@ export default function MemberDashboard() {
   }, [stats, streak, nftKey]);
 
   const lockedCount = useMemo(() => {
-    return Object.values(FEATURE_GATES).filter((feature) => !hasTierAccess(nftKey, feature.minTier)).length;
+    return Object.values(FEATURE_GATES).filter(
+      (feature) => !hasTierAccess(nftKey, feature.minTier)
+    ).length;
   }, [nftKey]);
 
   const lineData = useMemo(() => {
@@ -556,7 +586,19 @@ export default function MemberDashboard() {
     setCurrentStrategy(strategy.id);
 
     try {
-      await API.put("/api/user/strategy", { strategy: strategy.id });
+      const payload = { strategy: strategy.id };
+      await Promise.any?.([
+        API.put("/api/user/strategy", payload),
+        API.post("/api/user/strategy", payload),
+      ]).catch(async () => {
+        try {
+          return await API.put("/api/user/strategy", payload);
+        } catch {
+          return API.post("/api/user/strategy", payload);
+        }
+      });
+
+      setUser((prev) => (prev ? { ...prev, strategy: strategy.id } : prev));
       setStrategyMessage(`${strategy.name} activated.`);
     } catch (err) {
       setCurrentStrategy(previous);
