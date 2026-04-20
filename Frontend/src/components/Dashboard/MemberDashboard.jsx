@@ -146,9 +146,17 @@ const STRATEGIES = [
     id: "ai_weighted",
     name: "Balanced",
     emoji: "⚖️",
-    minTier: "common",
+    minTier: "none",
     risk: "Medium",
     description: "Balanced AI allocation and execution.",
+  },
+  {
+    id: "momentum",
+    name: "Momentum",
+    emoji: "🔥",
+    minTier: "none",
+    risk: "High",
+    description: "Capture strength in strong market trends.",
   },
   {
     id: "arbitrage",
@@ -157,14 +165,6 @@ const STRATEGIES = [
     minTier: "rare",
     risk: "Low",
     description: "Profit from price differences across venues.",
-  },
-  {
-    id: "momentum",
-    name: "Momentum",
-    emoji: "🔥",
-    minTier: "rare",
-    risk: "High",
-    description: "Capture strength in strong market trends.",
   },
   {
     id: "futures",
