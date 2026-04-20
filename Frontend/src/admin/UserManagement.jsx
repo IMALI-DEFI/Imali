@@ -50,8 +50,6 @@ export default function UserManagement({ apiBase, showToast }) {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
       });
       const data = await response.json();
-      const responseData = data.data || data;
-      setData(responseData.users);  // ✅
       
       if (data.success) {
         setUsers(data.data?.users || []);
@@ -266,7 +264,7 @@ export default function UserManagement({ apiBase, showToast }) {
           {search && (
             <button
               type="button"
-              onClick={() => { setSearch(""); setPage(1); }}
+              onClick={() => { setSearch(""); setPage(1); fetchUsers(); }}
               className="rounded-lg border border-white/10 px-4 py-2 hover:bg-white/5"
             >
               Clear
@@ -443,7 +441,7 @@ export default function UserManagement({ apiBase, showToast }) {
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                   <div className="text-xs text-white/50">User ID</div>
-                  <div className="font-mono text-xs">{selectedUser.id}</div>
+                  <div className="font-mono text-xs break-all">{selectedUser.id}</div>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                   <div className="text-xs text-white/50">Tier</div>
@@ -494,7 +492,7 @@ export default function UserManagement({ apiBase, showToast }) {
                   <h4 className="mb-2 flex items-center gap-2 font-semibold">
                     <FaDollarSign /> Connected Wallets
                   </h4>
-                  <div className="space-y-1">
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
                     {selectedUser.wallet_addresses.map((addr, i) => (
                       <div key={i} className="font-mono text-xs break-all text-white/70">
                         {addr}
@@ -510,7 +508,7 @@ export default function UserManagement({ apiBase, showToast }) {
                   <h4 className="mb-2 flex items-center gap-2 font-semibold">
                     <FaKey /> API Keys
                   </h4>
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
                     {selectedUser.api_keys.map((key, i) => (
                       <div key={i} className="flex justify-between items-center text-sm">
                         <span className="font-mono text-xs">{key.plan} - {key.is_active ? 'Active' : 'Revoked'}</span>
