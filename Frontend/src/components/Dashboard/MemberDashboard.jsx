@@ -51,6 +51,14 @@ const getToken = () => {
   }
 };
 
+const clearToken = () => {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // ignore
+  }
+};
+
 API.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -241,6 +249,75 @@ const riskClass = (risk) => {
   return "bg-yellow-100 text-yellow-700";
 };
 
+const isAuthError = (err) => {
+  const status = err?.response?.status;
+  return status === 401 || status === 403;
+};
+
+const isNotFoundError = (err) => err?.response?.status === 404;
+
+const requestCurrentStrategy = async () => {
+  const attempts = [
+    { method: "get", url: "/api/user/strategy" },
+    { method: "get", url: "/api/trading/strategy" },
+    { method: "get", url: "/api/trading/current-strategy" },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const res = await API({ method: attempt.method, url: attempt.url });
+      const strategy =
+        res?.data?.strategy ||
+        res?.data?.current_strategy ||
+        res?.data?.data?.strategy ||
+        res?.data?.data?.current_strategy;
+
+      if (strategy) {
+        return normalizeStrategyId(strategy);
+      }
+    } catch (err) {
+      if (isAuthError(err)) throw err;
+      if (!isNotFoundError(err)) throw err;
+    }
+  }
+
+  return null;
+};
+
+const updateStrategyRequest = async (strategyId) => {
+  const payload = { strategy: strategyId };
+
+  const attempts = [
+    { method: "put", url: "/api/trading/strategy" },
+    { method: "post", url: "/api/trading/strategy" },
+    { method: "put", url: "/api/trading/current-strategy" },
+    { method: "post", url: "/api/trading/current-strategy" },
+    { method: "put", url: "/api/trading/update-strategy" },
+    { method: "post", url: "/api/trading/update-strategy" },
+    { method: "put", url: "/api/user/strategy" },
+    { method: "post", url: "/api/user/strategy" },
+  ];
+
+  let lastErr = null;
+
+  for (const attempt of attempts) {
+    try {
+      const res = await API({
+        method: attempt.method,
+        url: attempt.url,
+        data: payload,
+      });
+      return res?.data || { success: true };
+    } catch (err) {
+      lastErr = err;
+      if (isAuthError(err)) throw err;
+      if (!isNotFoundError(err)) throw err;
+    }
+  }
+
+  throw lastErr || new Error("No working strategy endpoint found.");
+};
+
 /* ================= MODAL ================= */
 function ApiKeysModal({ open, onClose }) {
   const [saving, setSaving] = useState("");
@@ -269,6 +346,12 @@ function ApiKeysModal({ open, onClose }) {
       if (mode === "paper") setAlpacaPaper({ apiKey: "", secret: "" });
       if (mode === "live") setAlpacaLive({ apiKey: "", secret: "" });
     } catch (err) {
+      if (isAuthError(err)) {
+        clearToken();
+        alert("Your session expired. Please log in again.");
+        window.location.href = "/login";
+        return;
+      }
       alert(err?.response?.data?.message || err?.message || `Failed to save Alpaca ${mode} keys.`);
     } finally {
       setSaving("");
@@ -294,6 +377,12 @@ function ApiKeysModal({ open, onClose }) {
       if (mode === "paper") setOkxPaper({ apiKey: "", secret: "", passphrase: "" });
       if (mode === "live") setOkxLive({ apiKey: "", secret: "", passphrase: "" });
     } catch (err) {
+      if (isAuthError(err)) {
+        clearToken();
+        alert("Your session expired. Please log in again.");
+        window.location.href = "/login";
+        return;
+      }
       alert(err?.response?.data?.message || err?.message || `Failed to save OKX ${mode} keys.`);
     } finally {
       setSaving("");
@@ -451,6 +540,7 @@ export default function MemberDashboard() {
         const currentUser = normalizeUser(meRes.data);
 
         if (!currentUser?.email && !currentUser?.id) {
+          clearToken();
           nav("/login");
           return;
         }
@@ -460,7 +550,6 @@ export default function MemberDashboard() {
 
         const statsRes = await API.get("/api/user/trading-stats?days=30");
         const statsData = statsRes.data || {};
-
         const summary = normalizeStats(statsData);
         const performanceSeries = normalizeSeries(statsData);
 
@@ -469,19 +558,20 @@ export default function MemberDashboard() {
         setStreak(Number(summary?.current_streak || 0));
 
         try {
-          const strategyRes = await API.get("/api/user/strategy");
-          const fetchedStrategy =
-            strategyRes?.data?.strategy ||
-            strategyRes?.data?.current_strategy ||
-            strategyRes?.data?.data?.strategy;
+          const fetchedStrategy = await requestCurrentStrategy();
           if (fetchedStrategy) {
-            setCurrentStrategy(normalizeStrategyId(fetchedStrategy));
+            setCurrentStrategy(fetchedStrategy);
           }
-        } catch {
-          // Ignore if endpoint doesn't exist and keep user.strategy value
+        } catch (err) {
+          if (isAuthError(err)) {
+            clearToken();
+            nav("/login");
+            return;
+          }
         }
       } catch (err) {
-        if (err?.response?.status === 401) {
+        if (isAuthError(err)) {
+          clearToken();
           nav("/login");
           return;
         }
@@ -526,8 +616,8 @@ export default function MemberDashboard() {
     ).length;
   }, [nftKey]);
 
-  const lineData = useMemo(() => {
-    return {
+  const lineData = useMemo(
+    () => ({
       labels: series.map((p) => p.x || "—"),
       datasets: [
         {
@@ -539,8 +629,9 @@ export default function MemberDashboard() {
           tension: 0.3,
         },
       ],
-    };
-  }, [series]);
+    }),
+    [series]
+  );
 
   const doughnutData = useMemo(() => {
     const wins = Number(stats.wins || 0);
@@ -580,34 +671,46 @@ export default function MemberDashboard() {
 
     if (strategy.id === currentStrategy) return;
 
+    const previous = currentStrategy;
     setSavingStrategy(strategy.id);
     setStrategyMessage("");
-    const previous = currentStrategy;
     setCurrentStrategy(strategy.id);
 
     try {
-      const payload = { strategy: strategy.id };
-      await Promise.any?.([
-        API.put("/api/user/strategy", payload),
-        API.post("/api/user/strategy", payload),
-      ]).catch(async () => {
-        try {
-          return await API.put("/api/user/strategy", payload);
-        } catch {
-          return API.post("/api/user/strategy", payload);
-        }
-      });
+      const result = await updateStrategyRequest(strategy.id);
 
-      setUser((prev) => (prev ? { ...prev, strategy: strategy.id } : prev));
+      const saved =
+        normalizeStrategyId(
+          result?.strategy ||
+            result?.current_strategy ||
+            result?.data?.strategy ||
+            result?.data?.current_strategy ||
+            strategy.id
+        ) || strategy.id;
+
+      setCurrentStrategy(saved);
+      setUser((prev) => (prev ? { ...prev, strategy: saved } : prev));
       setStrategyMessage(`${strategy.name} activated.`);
     } catch (err) {
       setCurrentStrategy(previous);
-      setStrategyMessage(
-        err?.response?.data?.message || err?.message || "Failed to update strategy."
-      );
+
+      if (isAuthError(err)) {
+        clearToken();
+        setStrategyMessage("Your session expired. Please log in again.");
+        setTimeout(() => nav("/login"), 900);
+        return;
+      }
+
+      if (isNotFoundError(err)) {
+        setStrategyMessage("Strategy endpoint was not found on the backend.");
+      } else {
+        setStrategyMessage(
+          err?.response?.data?.message || err?.message || "Failed to update strategy."
+        );
+      }
     } finally {
       setSavingStrategy("");
-      setTimeout(() => setStrategyMessage(""), 2500);
+      setTimeout(() => setStrategyMessage(""), 3000);
     }
   };
 
@@ -664,18 +767,20 @@ export default function MemberDashboard() {
             {STRATEGIES.map((strategy) => {
               const unlocked = hasTierAccess(nftKey, strategy.minTier);
               const active = currentStrategy === strategy.id;
+              const updating = savingStrategy === strategy.id;
 
               return (
                 <button
                   key={strategy.id}
                   onClick={() => handleStrategyChange(strategy)}
+                  disabled={!!savingStrategy}
                   className={`rounded-xl border p-4 text-left transition ${
                     active
                       ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
                       : unlocked
                       ? "border-gray-200 bg-white hover:shadow-sm"
                       : "border-gray-200 bg-white opacity-90"
-                  }`}
+                  } disabled:opacity-80`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -703,11 +808,11 @@ export default function MemberDashboard() {
                   <div className="mt-4">
                     {active ? (
                       <div className="rounded-lg bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white">
-                        {savingStrategy === strategy.id ? "Updating..." : "Active"}
+                        {updating ? "Updating..." : "Active"}
                       </div>
                     ) : unlocked ? (
                       <div className="rounded-lg bg-gray-100 px-3 py-2 text-center text-sm font-semibold text-gray-900">
-                        {savingStrategy === strategy.id ? "Updating..." : "Use this strategy"}
+                        {updating ? "Updating..." : "Use this strategy"}
                       </div>
                     ) : (
                       <div className="rounded-lg bg-amber-50 px-3 py-2 text-center text-sm font-semibold text-amber-800">
