@@ -77,16 +77,26 @@ export const getToken = () => {
 export const setToken = (token) => {
   if (!isBrowser) return;
   try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch {}
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      console.log("[BotAPI] Token saved, length:", token.length);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      console.log("[BotAPI] Token removed");
+    }
+  } catch (err) {
+    console.error("[BotAPI] Failed to save token:", err);
+  }
 };
 
 export const clearToken = () => {
   if (!isBrowser) return;
   try {
     localStorage.removeItem(TOKEN_KEY);
-  } catch {}
+    console.log("[BotAPI] Token cleared");
+  } catch (err) {
+    console.error("[BotAPI] Failed to clear token:", err);
+  }
 };
 
 export const getApiKey = () => {
@@ -113,7 +123,10 @@ export const clearApiKey = () => {
   } catch {}
 };
 
-export const isAuthenticated = () => !!getToken();
+export const isAuthenticated = () => {
+  const token = getToken();
+  return !!token;
+};
 
 const unwrap = (response) => response?.data ?? response;
 
@@ -146,6 +159,13 @@ const addAuthInterceptor = (apiClient) => {
     const token = getToken();
     const apiKey = getApiKey();
 
+    // Debug logging
+    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+    console.log(`[API Request] Token present: ${!!token}`);
+    if (token) {
+      console.log(`[API Request] Token preview: ${token.substring(0, 30)}...`);
+    }
+
     config.headers = config.headers || {};
 
     if (token) {
@@ -166,26 +186,35 @@ const addAuthInterceptor = (apiClient) => {
       const status = response?.status;
       const url = config?.url || "";
 
-      if (!response && config && !config.__retryCount) {
-        config.__retryCount = 1;
-        await new Promise((resolve) => setTimeout(resolve, API_CONFIG.retryDelay));
-        return apiClient(config);
-      }
-
-      if (status === 401) {
+      // Handle 401 and 403 both as auth errors
+      if (status === 401 || status === 403) {
         const isAuthPage =
           isBrowser &&
           (window.location.pathname.includes("/login") ||
             window.location.pathname.includes("/signup"));
 
-        if (!isAuthPage && shouldForceLogout(url)) {
+        // Force logout on auth errors for critical endpoints
+        const isCriticalEndpoint = shouldForceLogout(url) || url.includes("/admin");
+        
+        if (!isAuthPage && isCriticalEndpoint) {
+          console.warn(`[BotAPI] ${status} on ${url} - clearing session`);
           clearToken();
           clearApiKey();
           clearCache();
-          if (isBrowser) window.location.href = "/login?expired=true";
+          if (isBrowser && !window.location.pathname.includes("/login")) {
+            window.location.href = "/login?expired=true";
+          }
         } else {
-          console.warn("[BotAPI] Ignoring non-session 401:", url);
+          console.warn(`[BotAPI] Ignoring ${status} on ${url}`);
         }
+      }
+
+      // Handle network errors with retry
+      if (!response && config && !config.__retryCount && config.__retryCount < API_CONFIG.retryAttempts) {
+        config.__retryCount = (config.__retryCount || 0) + 1;
+        console.log(`[BotAPI] Retrying ${url} (attempt ${config.__retryCount})`);
+        await new Promise((resolve) => setTimeout(resolve, API_CONFIG.retryDelay * config.__retryCount));
+        return apiClient(config);
       }
 
       return Promise.reject(error);
@@ -204,7 +233,10 @@ export const signup = async (userData) => {
     const token = data?.data?.token || data?.token;
     const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
 
-    if (token) setToken(token);
+    if (token) {
+      setToken(token);
+      console.log("[BotAPI] Signup successful, token saved");
+    }
     if (apiKey) setApiKey(apiKey);
 
     clearCache();
@@ -216,17 +248,26 @@ export const signup = async (userData) => {
 
 export const login = async (email, password) => {
   try {
+    console.log("[BotAPI] Logging in...");
     const response = await userApi.post("/api/auth/login", { email, password });
     const data = unwrap(response);
     const token = data?.data?.token || data?.token;
     const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
 
-    if (token) setToken(token);
+    if (!token) {
+      console.error("[BotAPI] No token in login response:", data);
+      return { success: false, error: "No token received from server" };
+    }
+
+    setToken(token);
+    console.log("[BotAPI] Login successful, token saved");
+    
     if (apiKey) setApiKey(apiKey);
 
     clearCache();
     return { success: true, data, token, api_key: apiKey };
   } catch (error) {
+    console.error("[BotAPI] Login error:", error);
     return handleApiError(error, "Login failed");
   }
 };
@@ -244,6 +285,12 @@ export const getMe = async (skipCache = false) => {
     if (cached) return cached;
   }
 
+  const token = getToken();
+  if (!token) {
+    console.warn("[BotAPI] No token, cannot get user");
+    return null;
+  }
+
   try {
     const response = await userApi.get("/api/me");
     const data = unwrap(response);
@@ -256,7 +303,17 @@ export const getMe = async (skipCache = false) => {
 
     return user;
   } catch (error) {
+    const status = error?.response?.status;
     console.error("[BotAPI] getMe failed:", getErrorMessage(error, "Failed to get user"));
+    
+    if (status === 401 || status === 403) {
+      clearToken();
+      clearApiKey();
+      if (isBrowser && !window.location.pathname.includes("/login")) {
+        window.location.href = "/login?expired=true";
+      }
+    }
+    
     return null;
   }
 };
@@ -268,10 +325,16 @@ export const getActivationStatus = async (skipCache = false) => {
     if (cached) return cached;
   }
 
+  const token = getToken();
+  if (!token) {
+    console.warn("[BotAPI] No token, returning default activation status");
+    return getDefaultActivationStatus();
+  }
+
   try {
     const response = await userApi.get("/api/me/activation-status");
     const data = unwrap(response);
-    const status = data?.data?.status || {};
+    const status = data?.data?.status || data?.status || {};
 
     const result = {
       has_card_on_file: status?.has_card_on_file || false,
@@ -289,21 +352,33 @@ export const getActivationStatus = async (skipCache = false) => {
     setCached("activation_status", result);
     return result;
   } catch (error) {
+    const status = error?.response?.status;
     console.warn("[BotAPI] getActivationStatus failed:", getErrorMessage(error, "Activation status failed"));
-    return {
-      has_card_on_file: false,
-      billing_complete: false,
-      trading_enabled: false,
-      okx_connected: false,
-      alpaca_connected: false,
-      wallet_connected: false,
-      tier: "starter",
-      activation_complete: false,
-      tier_requirements_met: false,
-      tier_required_integration: "Alpaca & OKX (both)",
-    };
+    
+    if (status === 401 || status === 403) {
+      clearToken();
+      clearApiKey();
+      if (isBrowser && !window.location.pathname.includes("/login")) {
+        window.location.href = "/login?expired=true";
+      }
+    }
+    
+    return getDefaultActivationStatus();
   }
 };
+
+const getDefaultActivationStatus = () => ({
+  has_card_on_file: false,
+  billing_complete: false,
+  trading_enabled: false,
+  okx_connected: false,
+  alpaca_connected: false,
+  wallet_connected: false,
+  tier: "starter",
+  activation_complete: false,
+  tier_requirements_met: false,
+  tier_required_integration: "Alpaca & OKX (both)",
+});
 
 export const refreshActivation = () => getActivationStatus(true);
 
@@ -487,7 +562,8 @@ export const getUserTradingStats = async (days = 30, skipCache = false) => {
   try {
     const response = await userApi.get(`/api/user/trading-stats?days=${days}`);
     const data = unwrap(response);
-    const result = data?.data || { summary: {}, daily_performance: [] };
+    // Handle both response formats
+    const result = data?.data || data || { summary: {}, daily_performance: [] };
     setCached(cacheKey, result);
     return result;
   } catch (error) {
@@ -504,70 +580,91 @@ export const getTradingStrategies = async (skipCache = false) => {
     if (cached) return cached;
   }
 
+  const token = getToken();
+  if (!token) {
+    console.warn("[BotAPI] No token for getTradingStrategies, returning defaults");
+    return getDefaultStrategies();
+  }
+
   try {
+    console.log("[BotAPI] Fetching trading strategies...");
     const response = await userApi.get("/api/trading/strategies");
     const data = unwrap(response);
     
+    console.log("[BotAPI] Strategies response:", data);
+    
+    // Handle multiple response formats
+    const strategies = data?.strategies || data?.data?.strategies || [];
+    const currentStrategy = data?.current_strategy || data?.data?.current_strategy || "ai_weighted";
+    const tier = data?.tier || data?.data?.tier || "starter";
+    
     const result = {
       success: true,
-      strategies: data?.strategies || data?.data?.strategies || [],
-      current_strategy: data?.current_strategy || data?.data?.current_strategy || "ai_weighted",
-      tier: data?.tier || data?.data?.tier || "starter",
-      count: (data?.strategies || data?.data?.strategies || []).length,
+      strategies: strategies,
+      current_strategy: currentStrategy,
+      tier: tier,
+      count: strategies.length,
     };
 
     setCached(cacheKey, result, 30000);
     return result;
   } catch (error) {
-    // Return default strategies if endpoint fails
-    const defaultStrategies = [
-      {
-        id: "mean_reversion",
-        name: "Mean Reversion",
-        backend_name: "Mean Reversion",
-        description: "Looks for dips and safe rebounds. Lower risk, steady moves.",
-        risk_level: "low",
-        is_default: false,
-      },
-      {
-        id: "ai_weighted",
-        name: "AI Weighted",
-        backend_name: "AI Weighted",
-        description: "Smart mix of signals – good balance of risk and reward.",
-        risk_level: "medium",
-        is_default: true,
-      },
-      {
-        id: "momentum",
-        name: "Momentum",
-        backend_name: "Momentum",
-        description: "Follows strong trends for bigger moves. Higher risk.",
-        risk_level: "high",
-        is_default: false,
-      },
-      {
-        id: "arbitrage",
-        name: "Arbitrage",
-        backend_name: "Arbitrage",
-        description: "Profits from price differences across venues. Low risk.",
-        risk_level: "low",
-        is_default: false,
-      },
-    ];
-
-    const result = {
-      success: true, // Return true with defaults so UI works
-      strategies: defaultStrategies,
-      current_strategy: "ai_weighted",
-      tier: "starter",
-      count: defaultStrategies.length,
-      _fallback: true,
-    };
-
-    console.warn("[BotAPI] getTradingStrategies using fallback strategies");
-    setCached(cacheKey, result, 30000);
-    return result;
+    const status = error?.response?.status;
+    console.warn(`[BotAPI] getTradingStrategies failed with status ${status}:`, getErrorMessage(error, "Failed"));
+    
+    if (status === 401 || status === 403) {
+      console.warn("[BotAPI] Auth error in getTradingStrategies");
+      // Don't clear token here - let the main auth handle it
+    }
+    
+    return getDefaultStrategies();
   }
+};
+
+const getDefaultStrategies = () => {
+  const defaultStrategies = [
+    {
+      id: "mean_reversion",
+      name: "Mean Reversion",
+      backend_name: "Mean Reversion",
+      description: "Looks for dips and safe rebounds. Lower risk, steady moves.",
+      risk_level: "low",
+      is_default: false,
+    },
+    {
+      id: "ai_weighted",
+      name: "AI Weighted",
+      backend_name: "AI Weighted",
+      description: "Smart mix of signals – good balance of risk and reward.",
+      risk_level: "medium",
+      is_default: true,
+    },
+    {
+      id: "momentum",
+      name: "Momentum",
+      backend_name: "Momentum",
+      description: "Follows strong trends for bigger moves. Higher risk.",
+      risk_level: "high",
+      is_default: false,
+    },
+    {
+      id: "arbitrage",
+      name: "Arbitrage",
+      backend_name: "Arbitrage",
+      description: "Profits from price differences across venues. Low risk.",
+      risk_level: "low",
+      is_default: false,
+    },
+  ];
+
+  return {
+    success: true,
+    strategies: defaultStrategies,
+    current_strategy: "ai_weighted",
+    tier: "starter",
+    count: defaultStrategies.length,
+    _fallback: true,
+  };
 };
 
 export const updateUserStrategy = async (strategyId) => {
@@ -690,241 +787,6 @@ export const getIntegrationStatus = async (skipCache = false) => {
   }
 };
 
-// ========== REFERRAL ENDPOINTS (LIVE & COMPLETE) ==========
-
-export const getReferralInfo = async (skipCache = false) => {
-  const cacheKey = "referral_info";
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 30000);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await userApi.get("/api/referrals/info");
-    const data = unwrap(response);
-    const result = {
-      success: true,
-      data: {
-        code: data?.data?.code || "",
-        total_referred: data?.data?.total_referred || 0,
-        earned: data?.data?.earned || 0,
-        paid_out: data?.data?.paid_out || 0,
-        pending: data?.data?.pending || 0,
-        reward_percentage: data?.data?.reward_percentage || 20,
-        reward_currency: data?.data?.reward_currency || "USDC",
-        qualified_referrals: data?.data?.qualified_referrals || 0,
-        nft_tier: data?.data?.nft_tier || "Starter Referral NFT",
-      },
-    };
-    setCached(cacheKey, result.data, 30000);
-    return result;
-  } catch (error) {
-    console.warn("[BotAPI] getReferralInfo failed:", getErrorMessage(error, "Failed to load referral info"));
-    return {
-      success: false,
-      data: {
-        code: "",
-        total_referred: 0,
-        earned: 0,
-        paid_out: 0,
-        pending: 0,
-        reward_percentage: 20,
-        reward_currency: "USDC",
-        qualified_referrals: 0,
-        nft_tier: "Starter Referral NFT",
-      },
-      error: getErrorMessage(error, "Failed to load referral info"),
-    };
-  }
-};
-
-export const getReferralStats = async (skipCache = false) => {
-  const cacheKey = "referral_stats";
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 30000);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await userApi.get("/api/referrals/stats");
-    const data = unwrap(response);
-    const result = {
-      success: true,
-      data: {
-        total_rewards_earned: data?.data?.total_rewards_earned || 0,
-        pending_rewards: data?.data?.pending_rewards || 0,
-        qualified_referrals: data?.data?.qualified_referrals || 0,
-        reward_percentage: data?.data?.reward_percentage || 20,
-        level1_earnings: data?.data?.level1_earnings || 0,
-        level2_earnings: data?.data?.level2_earnings || 0,
-        total_referrals: data?.data?.total_referrals || 0,
-      },
-    };
-    setCached(cacheKey, result.data, 30000);
-    return result;
-  } catch (error) {
-    console.warn("[BotAPI] getReferralStats failed:", getErrorMessage(error, "Failed to load referral stats"));
-    return {
-      success: false,
-      data: {
-        total_rewards_earned: 0,
-        pending_rewards: 0,
-        qualified_referrals: 0,
-        reward_percentage: 20,
-        level1_earnings: 0,
-        level2_earnings: 0,
-        total_referrals: 0,
-      },
-      error: getErrorMessage(error, "Failed to load referral stats"),
-    };
-  }
-};
-
-export const validateReferralCode = async (code) => {
-  try {
-    const response = await userApi.post("/api/referrals/validate", { code });
-    const data = unwrap(response);
-    return {
-      success: true,
-      valid: data?.data?.valid || false,
-      message: data?.message || "Referral code is valid",
-      referrer_name: data?.data?.referrer_name,
-      referrer_code: data?.data?.referrer_code,
-    };
-  } catch (error) {
-    const message = getErrorMessage(error, "Referral code is invalid");
-    return {
-      success: false,
-      valid: false,
-      error: message,
-      message,
-    };
-  }
-};
-
-export const applyReferralCode = async (code) => {
-  try {
-    const response = await userApi.post("/api/referrals/apply", { code: code.toUpperCase() });
-    const data = unwrap(response);
-    clearCache("referral_info");
-    clearCache("referral_stats");
-    clearCache("user_me");
-    return {
-      success: true,
-      applied: true,
-      message: data?.message || "Referral code applied successfully!",
-      data: data?.data,
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to apply referral code");
-  }
-};
-
-export const claimReferralRewards = async (amount, walletAddress, options = {}) => {
-  const { skipCacheClear = false } = options;
-  
-  try {
-    const response = await userApi.post("/api/referrals/claim", {
-      amount: parseFloat(amount),
-      wallet_address: walletAddress,
-    });
-    const data = unwrap(response);
-    
-    if (!skipCacheClear) {
-      clearCache("referral_info");
-      clearCache("referral_stats");
-      clearCache("user_me");
-    }
-    
-    return {
-      success: true,
-      id: data?.data?.id,
-      tx_hash: data?.data?.tx_hash,
-      amount: data?.data?.amount,
-      status: data?.data?.status || "completed",
-      message: data?.message || "Rewards claimed successfully!",
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to claim rewards");
-  }
-};
-
-export const getReferralLeaderboard = async (limit = 20, skipCache = false) => {
-  const cacheKey = `referral_leaderboard_${limit}`;
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 60000);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await userApi.get(`/api/referrals/leaderboard?limit=${limit}`);
-    const data = unwrap(response);
-    const result = {
-      success: true,
-      leaderboard: data?.data?.leaderboard || [],
-      total_referrers: data?.data?.total_referrers || 0,
-    };
-    setCached(cacheKey, result, 60000);
-    return result;
-  } catch (error) {
-    console.warn("[BotAPI] getReferralLeaderboard failed:", getErrorMessage(error, "Failed to load leaderboard"));
-    return {
-      success: false,
-      leaderboard: [],
-      total_referrers: 0,
-      error: getErrorMessage(error, "Failed to load leaderboard"),
-    };
-  }
-};
-
-export const getReferralTransactions = async (limit = 50, skipCache = false) => {
-  const cacheKey = `referral_transactions_${limit}`;
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 30000);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await userApi.get(`/api/referrals/history?limit=${limit}`);
-    const data = unwrap(response);
-    const result = {
-      success: true,
-      transactions: data?.data?.referrals || data?.data?.transactions || [],
-      total: data?.data?.total_referred || 0,
-    };
-    setCached(cacheKey, result, 30000);
-    return result;
-  } catch (error) {
-    console.warn("[BotAPI] getReferralTransactions failed:", getErrorMessage(error, "Failed to load transactions"));
-    return {
-      success: false,
-      transactions: [],
-      total: 0,
-      error: getErrorMessage(error, "Failed to load transactions"),
-    };
-  }
-};
-
-export const generateReferralCode = async () => {
-  try {
-    const response = await userApi.post("/api/referrals/generate-code");
-    const data = unwrap(response);
-    clearCache("referral_info");
-    clearCache("user_me");
-    return {
-      success: true,
-      code: data?.data?.code,
-      message: data?.message || "Referral code generated successfully",
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to generate referral code");
-  }
-};
-
 // ========== GLOBAL TRADES ==========
 export const getGlobalTrades = async (options = {}) => {
   const { limit = 20, skipCache = false } = options;
@@ -935,20 +797,39 @@ export const getGlobalTrades = async (options = {}) => {
     if (cached) return cached;
   }
 
+  const token = getToken();
+  if (!token) {
+    console.warn("[BotAPI] No token for getGlobalTrades, returning empty");
+    return { success: false, trades: [], count: 0, error: "Not authenticated" };
+  }
+
   try {
+    console.log("[BotAPI] Fetching global trades...");
     const response = await userApi.get(`/api/trading/global-trades?limit=${limit}`);
     const data = unwrap(response);
+    
+    // Handle multiple response formats
+    const trades = data?.trades || data?.data?.trades || [];
+    
     const result = {
       success: true,
-      trades: data?.trades || data?.data?.trades || [],
-      count: (data?.trades || data?.data?.trades || []).length,
+      trades: trades,
+      count: trades.length,
     };
     setCached(cacheKey, result, 15000);
     return result;
   } catch (error) {
-    console.warn("[BotAPI] getGlobalTrades failed:", getErrorMessage(error, "Failed to load global trades"));
+    const status = error?.response?.status;
+    console.warn(`[BotAPI] getGlobalTrades failed with status ${status}:`, getErrorMessage(error, "Failed to load global trades"));
+    
     // Return empty array instead of failing
-    return { success: false, trades: [], count: 0, error: getErrorMessage(error, "Failed to load global trades") };
+    return { 
+      success: false, 
+      trades: [], 
+      count: 0, 
+      error: getErrorMessage(error, "Failed to load global trades"),
+      status: status
+    };
   }
 };
 
@@ -997,16 +878,6 @@ class BotAPIClass {
   getCardStatus(skipCache) { return getCardStatus(skipCache); }
   createSetupIntent(payload) { return createSetupIntent(payload); }
   confirmCard(payload) { return confirmCard(payload); }
-
-  // Referral
-  getReferralInfo(skipCache) { return getReferralInfo(skipCache); }
-  getReferralStats(skipCache) { return getReferralStats(skipCache); }
-  validateReferralCode(code) { return validateReferralCode(code); }
-  applyReferralCode(code) { return applyReferralCode(code); }
-  claimReferralRewards(amount, walletAddress, options) { return claimReferralRewards(amount, walletAddress, options); }
-  getReferralLeaderboard(limit, skipCache) { return getReferralLeaderboard(limit, skipCache); }
-  getReferralTransactions(limit, skipCache) { return getReferralTransactions(limit, skipCache); }
-  generateReferralCode() { return generateReferralCode(); }
 
   // Global
   getGlobalTrades(options) { return getGlobalTrades(options); }
