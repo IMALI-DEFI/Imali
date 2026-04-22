@@ -39,16 +39,13 @@ export default function TradesManagement({ apiBase, account, showToast, handleAc
         headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
       });
       const data = await response.json();
-      const responseData = data.data || data;
-      setData(responseData.users);  // ✅
+      
       if (data.success) {
-        // Extract data from response.data
         const responseData = data.data || data;
         setTrades(responseData.trades || []);
         setTotalPages(responseData.pagination?.totalPages || 1);
         setTotalTrades(responseData.pagination?.total || 0);
         
-        // Calculate summary
         const tradesList = responseData.trades || [];
         const totalPnl = tradesList.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
         const winning = tradesList.filter(t => t.pnl_usd > 0).length;
