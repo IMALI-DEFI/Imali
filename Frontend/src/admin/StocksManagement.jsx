@@ -14,30 +14,37 @@ export default function StocksManagement({ apiBase, showToast, handleAction, bus
 
   const fetchPositions = useCallback(async () => {
     try {
+      const token = localStorage.getItem('imali_token');
+      if (!token) {
+        console.error('No token found');
+        return;
+      }
+      
       const response = await fetch(`${apiBase}/api/admin/stocks/positions`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
-      const responseData = data.data || data;
-      setData(responseData.users);  // ✅
+      
       if (data.success) {
-        setPositions(data.positions || []);
-        calculateStats(data.positions || []);
+        const positionsList = data.positions || [];
+        setPositions(positionsList);
+        calculateStats(positionsList);
       }
     } catch (error) {
       console.error('Failed to fetch stock positions:', error);
+      if (showToast) showToast('Failed to load stock positions', 'error');
     } finally {
       setLoading(false);
     }
-  }, [apiBase]);
+  }, [apiBase, showToast]);
 
-  const calculateStats = (positions) => {
-    const totalValue = positions.reduce((sum, p) => sum + (p.shares * p.current_price), 0);
-    const totalCost = positions.reduce((sum, p) => sum + (p.shares * p.avg_price), 0);
+  const calculateStats = (positionsList) => {
+    const totalValue = positionsList.reduce((sum, p) => sum + (p.shares * p.current_price), 0);
+    const totalCost = positionsList.reduce((sum, p) => sum + (p.shares * p.avg_price), 0);
     const totalPnL = totalValue - totalCost;
-    const totalShares = positions.reduce((sum, p) => sum + p.shares, 0);
-    const wins = positions.filter(p => (p.current_price - p.avg_price) > 0).length;
-    const winRate = positions.length ? (wins / positions.length) * 100 : 0;
+    const totalShares = positionsList.reduce((sum, p) => sum + p.shares, 0);
+    const wins = positionsList.filter(p => (p.current_price - p.avg_price) > 0).length;
+    const winRate = positionsList.length ? (wins / positionsList.length) * 100 : 0;
 
     setStats({ totalValue, totalPnL, totalShares, winRate });
   };
@@ -147,7 +154,7 @@ export default function StocksManagement({ apiBase, showToast, handleAction, bus
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => handleAction('/api/admin/stocks/trade', 'POST', { 
+                          onClick={() => handleAction && handleAction('/api/admin/stocks/trade', 'POST', { 
                             action: 'sell', 
                             symbol: pos.symbol, 
                             shares: Math.floor(pos.shares / 2) 
