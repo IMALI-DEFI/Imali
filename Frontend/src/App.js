@@ -1,6 +1,15 @@
-// App.js (with BillingSuccess route added)
+// App.js (with Landing + Newsletter pages added)
+
 import React, { lazy, Suspense } from "react";
-import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Navigate,
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import MemberDashboard from "./components/Dashboard/MemberDashboard";
@@ -8,15 +17,15 @@ import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
-// Lazy load auth pages
+// Lazy Loaded Auth / App Pages
 const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
 const Activation = lazy(() => import("./pages/Activation"));
 const Billing = lazy(() => import("./pages/Billing"));
-const BillingSuccess = lazy(() => import("./pages/BillingSuccess")); // ✅ ADD THIS LINE
+const BillingSuccess = lazy(() => import("./pages/BillingSuccess"));
 const BillingDashboard = lazy(() => import("./pages/BillingDashboard"));
 
-// Marketing pages
+// Marketing Pages
 import Home from "./pages/Home";
 import AboutUs from "./pages/AboutUs";
 import HowItWorks from "./pages/HowItWorks";
@@ -28,157 +37,171 @@ import FundingGuide from "./pages/FundingGuide";
 import PublicDashboard from "./pages/PublicDashboard";
 import ReferralSystem from "./pages/ReferralPartner";
 
-// Error Boundary
+// NEW LANDING PAGES
+import LandingPages from "./pages/LandingPages";
+
+// NEW NEWSLETTER PAGES
+import Newsletter from "./pages/Newsletter";
+import NewsletterSuccess from "./pages/NewsletterSuccess";
+
+// ---------------- ERROR BOUNDARY ----------------
 class AppErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null };
   }
+
   static getDerivedStateFromError(error) {
     return { hasError: true, error };
   }
-  componentDidCatch(error, errorInfo) {
-    console.error("[AppErrorBoundary] App crashed:", error, errorInfo);
+
+  componentDidCatch(error, info) {
+    console.error("[AppErrorBoundary]", error, info);
   }
+
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center px-6">
-          <div className="max-w-xl w-full text-center">
+        <div className="min-h-screen flex items-center justify-center px-6 bg-white">
+          <div className="max-w-xl text-center">
             <h1 className="text-3xl font-bold mb-4">Something went wrong</h1>
-            <p className="text-gray-600 mb-6">Please refresh the page or contact support.</p>
-            <pre className="text-left text-xs bg-gray-100 border border-gray-200 rounded-lg p-4 overflow-auto">
-              {String(this.state.error)}
-            </pre>
-            <a href="/" className="inline-block mt-6 px-4 py-2 rounded bg-emerald-600 text-white">Reload Home</a>
+            <p className="text-gray-600 mb-6">
+              Please refresh the page or try again later.
+            </p>
+
+            <Link
+              to="/"
+              className="inline-block px-5 py-3 bg-emerald-600 text-white rounded-xl"
+            >
+              Go Home
+            </Link>
           </div>
         </div>
       );
     }
+
     return this.props.children;
   }
 }
 
+// ---------------- LOADERS ----------------
 function LoadingSpinner() {
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent" />
+      <div className="h-10 w-10 rounded-full border-4 border-emerald-600 border-t-transparent animate-spin" />
     </div>
   );
 }
 
-function PageLoadingFallback() {
+function PageFallback() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-4" />
-      <p className="text-gray-500">Loading...</p>
+      <div className="text-center">
+        <div className="h-8 w-8 rounded-full border-b-2 border-emerald-600 animate-spin mx-auto mb-3" />
+        <p className="text-gray-500">Loading...</p>
+      </div>
     </div>
   );
 }
 
-// Route Guards
+// ---------------- ROUTE GUARDS ----------------
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
   const location = useLocation();
+
   if (loading) return <LoadingSpinner />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user)
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+
   return children;
 }
 
 function RequireActivation({ children }) {
   const { user, activation, activationComplete, loading } = useAuth();
-  const location = useLocation();
+
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace />;
-  
+
   const isAdmin = user?.is_admin === true;
   if (isAdmin) return children;
-  
+
   if (!activationComplete) {
-    const hasCard = activation?.has_card_on_file || activation?.billing_complete;
+    const hasCard =
+      activation?.has_card_on_file || activation?.billing_complete;
+
     if (!hasCard) return <Navigate to="/billing" replace />;
     return <Navigate to="/activation" replace />;
   }
+
   return children;
 }
 
 function RedirectIfActivated({ children }) {
   const { user, activationComplete, loading } = useAuth();
+
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace />;
   if (activationComplete) return <Navigate to="/dashboard" replace />;
+
   return children;
 }
 
-// Post-Login Redirect
+// ---------------- POST LOGIN ----------------
 function PostLoginRedirect() {
-  const navigate = useNavigate();
   const { user, loading } = useAuth();
-  const [redirecting, setRedirecting] = React.useState(true);
+  const navigate = useNavigate();
 
   React.useEffect(() => {
     if (loading) return;
+
     if (!user) {
       navigate("/login", { replace: true });
       return;
     }
-    if (user?.is_admin === true) {
+
+    if (user?.is_admin) {
       navigate("/dashboard", { replace: true });
-      setRedirecting(false);
       return;
     }
-    const determineRedirect = async () => {
-      try {
-        const BotAPI = (await import("./utils/BotAPI")).default;
-        const status = await BotAPI.activationStatus();
-        if (!status?.has_card_on_file) navigate("/billing", { replace: true });
-        else if (!status?.trading_enabled) navigate("/activation", { replace: true });
-        else navigate("/dashboard", { replace: true });
-      } catch {
-        navigate("/dashboard", { replace: true });
-      } finally {
-        setRedirecting(false);
-      }
-    };
-    determineRedirect();
+
+    navigate("/dashboard", { replace: true });
   }, [user, loading, navigate]);
 
-  if (redirecting || loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-4" />
-          <p className="text-gray-500">Setting up...</p>
-        </div>
-      </div>
-    );
-  }
-  return null;
+  return <LoadingSpinner />;
 }
 
+// ---------------- 404 ----------------
 function NotFound() {
   return (
-    <div className="min-h-[60vh] flex items-center justify-center px-6 text-center">
+    <div className="min-h-[60vh] flex items-center justify-center text-center px-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Page not found</h1>
-        <p className="text-gray-600 mb-4">The page you're looking for doesn't exist.</p>
-        <Link to="/" className="text-emerald-600 underline">Go home</Link>
+        <h1 className="text-3xl font-bold mb-3">Page not found</h1>
+        <p className="text-gray-600 mb-4">
+          The page you’re looking for doesn’t exist.
+        </p>
+
+        <Link to="/" className="text-emerald-600 underline">
+          Go Home
+        </Link>
       </div>
     </div>
   );
 }
 
+// ---------------- MAIN APP ----------------
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { loading, user } = useAuth();
+
   if (loading) return <LoadingSpinner />;
-  
+
   return (
     <>
       <Header />
+
       <main className="min-h-screen pt-16 bg-white text-gray-900">
-        <Suspense fallback={<PageLoadingFallback />}>
+        <Suspense fallback={<PageFallback />}>
           <Routes>
-            {/* Marketing Routes */}
+            {/* Main Marketing */}
             <Route path="/" element={<Home />} />
             <Route path="/about-us" element={<AboutUs />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
@@ -188,41 +211,118 @@ function AppContent() {
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
-            
-            {/* Demo Routes */}
+
+            {/* Demo */}
             <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
             <Route path="/trade-demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
-            
-            {/* Auth Routes */}
+
+            {/* NEW LANDING PAGE ROUTES */}
+            <Route path="/redditA" element={<LandingPages />} />
+            <Route path="/redditB" element={<LandingPages />} />
+            <Route path="/xA" element={<LandingPages />} />
+            <Route path="/xB" element={<LandingPages />} />
+            <Route path="/liA" element={<LandingPages />} />
+            <Route path="/liB" element={<LandingPages />} />
+            <Route path="/tgA" element={<LandingPages />} />
+            <Route path="/tgB" element={<LandingPages />} />
+            <Route path="/socialA" element={<LandingPages />} />
+            <Route path="/socialB" element={<LandingPages />} />
+
+            {/* Newsletter */}
+            <Route path="/newsletter" element={<Newsletter />} />
+            <Route
+              path="/newsletter/success"
+              element={<NewsletterSuccess />}
+            />
+
+            {/* Auth */}
             <Route path="/signup" element={<Signup />} />
-            <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
-            <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
-            
-            {/* Billing Flow Routes - ORDER MATTERS! */}
-            <Route path="/billing/success" element={<BillingSuccess />} />  {/* ✅ ADD THIS ROUTE - More specific first */}
-            <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
-            <Route path="/billing-dashboard" element={<RequireAuth><BillingDashboard /></RequireAuth>} />
-            <Route path="/settings/billing" element={<Navigate to="/billing-dashboard" replace />} />
-            
-            {/* Activation & Dashboard */}
-            <Route path="/activation" element={<RedirectIfActivated><Activation /></RedirectIfActivated>} />
-            <Route path="/dashboard" element={<RequireActivation><MemberDashboard /></RequireActivation>} />
-            <Route path="/members" element={<Navigate to="/dashboard" replace />} />
-            
+            <Route
+              path="/login"
+              element={
+                user ? <Navigate to="/after-login" replace /> : <Login />
+              }
+            />
+            <Route
+              path="/after-login"
+              element={
+                <RequireAuth>
+                  <PostLoginRedirect />
+                </RequireAuth>
+              }
+            />
+
+            {/* Billing */}
+            <Route path="/billing/success" element={<BillingSuccess />} />
+            <Route
+              path="/billing"
+              element={
+                <RequireAuth>
+                  <Billing />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/billing-dashboard"
+              element={
+                <RequireAuth>
+                  <BillingDashboard />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings/billing"
+              element={<Navigate to="/billing-dashboard" replace />}
+            />
+
+            {/* Activation */}
+            <Route
+              path="/activation"
+              element={
+                <RedirectIfActivated>
+                  <Activation />
+                </RedirectIfActivated>
+              }
+            />
+
+            {/* Dashboard */}
+            <Route
+              path="/dashboard"
+              element={
+                <RequireActivation>
+                  <MemberDashboard />
+                </RequireActivation>
+              }
+            />
+
+            <Route
+              path="/members"
+              element={<Navigate to="/dashboard" replace />}
+            />
+
             {/* Admin */}
-            <Route path="/admin" element={<RequireAuth><AdminPanel /></RequireAuth>} />
-            
-            {/* 404 - Must be last */}
+            <Route
+              path="/admin"
+              element={
+                <RequireAuth>
+                  <AdminPanel />
+                </RequireAuth>
+              }
+            />
+
+            {/* 404 */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </main>
+
       <Footer />
     </>
   );
 }
 
+// ---------------- ROOT ----------------
 export default function App() {
   return (
     <AppErrorBoundary>
