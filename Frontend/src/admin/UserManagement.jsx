@@ -1,20 +1,26 @@
+// src/admin/UserManagement.jsx
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  FaSearch,
-  FaEdit,
-  FaTrash,
-  FaKey,
-  FaBan,
-  FaCheckCircle,
+import { 
+  FaSearch, 
+  FaEdit, 
+  FaTrash, 
+  FaKey, 
+  FaBan, 
+  FaCheckCircle, 
   FaSpinner,
   FaEye,
   FaTimes,
   FaSave,
+  FaUserGraduate,
   FaDollarSign,
   FaChartLine,
-  FaUsers,
+  FaEnvelope,
+  FaCalendar,
+  FaCrown,
   FaPlus,
-  FaSyncAlt
+  FaUserPlus,
+  FaLock,
+  FaEnvelopeOpen
 } from "react-icons/fa";
 
 export default function UserManagement({ apiBase, showToast }) {
@@ -24,28 +30,23 @@ export default function UserManagement({ apiBase, showToast }) {
   const [totalPages, setTotalPages] = useState(1);
   const [totalUsers, setTotalUsers] = useState(0);
   const [search, setSearch] = useState("");
-
   const [selectedUser, setSelectedUser] = useState(null);
-
-  const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-
   const [editForm, setEditForm] = useState({});
-  const [newUserForm, setNewUserForm] = useState({
+  const [addForm, setAddForm] = useState({
     email: "",
     password: "",
     tier: "starter",
     strategy: "ai_weighted",
+    portfolio_value: 1000,
     trading_enabled: true,
-    is_admin: false,
-    portfolio_value: 1000
+    is_admin: false
   });
-
   const [updating, setUpdating] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
   const [stats, setStats] = useState({
     total_pnl: 0,
     total_trades: 0,
@@ -54,32 +55,21 @@ export default function UserManagement({ apiBase, showToast }) {
 
   const limit = 20;
 
-  const authHeaders = {
-    Authorization: `Bearer ${localStorage.getItem("imali_token")}`
-  };
-
   const fetchUsers = useCallback(async () => {
     setLoading(true);
-
     try {
       let url = `/api/admin/users?page=${page}&limit=${limit}`;
-
-      if (search.trim()) {
-        url += `&search=${encodeURIComponent(search.trim())}`;
-      }
-
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      
       const response = await fetch(`${apiBase}${url}`, {
-        headers: authHeaders
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
       });
-
       const data = await response.json();
-
+      
       if (data.success) {
         setUsers(data.data?.users || []);
         setTotalPages(data.data?.pagination?.totalPages || 1);
         setTotalUsers(data.data?.pagination?.total || 0);
-      } else {
-        showToast(data.error || "Failed to load users", "error");
       }
     } catch (error) {
       console.error("Failed to fetch users:", error);
@@ -87,7 +77,7 @@ export default function UserManagement({ apiBase, showToast }) {
     } finally {
       setLoading(false);
     }
-  }, [page, search, apiBase]);
+  }, [page, search, apiBase, showToast]);
 
   useEffect(() => {
     fetchUsers();
@@ -99,129 +89,110 @@ export default function UserManagement({ apiBase, showToast }) {
     fetchUsers();
   };
 
-  const resetSearch = () => {
-    setSearch("");
-    setPage(1);
-    setTimeout(fetchUsers, 0);
-  };
-
   const viewUserDetails = async (user) => {
     setSelectedUser(user);
     setShowViewModal(true);
-
+    
+    // Fetch user's trading stats
     try {
       const response = await fetch(`${apiBase}/api/admin/users/${user.id}`, {
-        headers: authHeaders
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
       });
-
       const data = await response.json();
-
       if (data.success && data.data) {
-        const fullUser = data.data.user || user;
+        setSelectedUser(data.data.user);
         const trades = data.data.trades || [];
-
-        const totalPnl = trades.reduce((sum, trade) => {
-          return sum + Number(trade.pnl_usd || 0);
-        }, 0);
-
-        const winningTrades = trades.filter((trade) => Number(trade.pnl_usd || 0) > 0).length;
+        const totalPnl = trades.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
+        const winning = trades.filter(t => t.pnl_usd > 0).length;
         const totalTrades = trades.length;
-
-        setSelectedUser(fullUser);
         setStats({
           total_pnl: totalPnl,
           total_trades: totalTrades,
-          win_rate: totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0
+          win_rate: totalTrades > 0 ? (winning / totalTrades) * 100 : 0
         });
       }
     } catch (error) {
       console.error("Failed to fetch user details:", error);
-      showToast("Failed to load user details", "error");
     }
   };
 
   const openEditModal = (user) => {
     setSelectedUser(user);
-
     setEditForm({
-      tier: user.tier || "starter",
-      trading_enabled: Boolean(user.trading_enabled),
-      is_admin: Boolean(user.is_admin),
-      portfolio_value: Number(user.portfolio_value || 1000),
-      strategy: user.strategy || "ai_weighted"
+      tier: user.tier,
+      trading_enabled: user.trading_enabled,
+      is_admin: user.is_admin,
+      portfolio_value: user.portfolio_value,
+      strategy: user.strategy
     });
-
     setShowEditModal(true);
   };
 
-  const createUser = async () => {
-    if (!newUserForm.email.trim()) {
-      showToast("Email is required", "error");
+  const openAddModal = () => {
+    setAddForm({
+      email: "",
+      password: "",
+      tier: "starter",
+      strategy: "ai_weighted",
+      portfolio_value: 1000,
+      trading_enabled: true,
+      is_admin: false
+    });
+    setShowAddModal(true);
+  };
+
+  const addUser = async () => {
+    // Validate email
+    if (!addForm.email || !addForm.email.includes('@')) {
+      showToast("Please enter a valid email address", "error");
       return;
     }
 
-    if (!newUserForm.password.trim()) {
-      showToast("Password is required", "error");
+    // Validate password
+    if (!addForm.password || addForm.password.length < 6) {
+      showToast("Password must be at least 6 characters", "error");
       return;
     }
 
-    setCreating(true);
-
+    setAdding(true);
     try {
       const response = await fetch(`${apiBase}/api/admin/users`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          ...authHeaders
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
         },
-        body: JSON.stringify(newUserForm)
+        body: JSON.stringify(addForm)
       });
-
       const data = await response.json();
-
+      
       if (data.success) {
-        showToast("User created successfully", "success");
+        showToast(`User ${addForm.email} created successfully!`, "success");
         setShowAddModal(false);
-
-        setNewUserForm({
-          email: "",
-          password: "",
-          tier: "starter",
-          strategy: "ai_weighted",
-          trading_enabled: true,
-          is_admin: false,
-          portfolio_value: 1000
-        });
-
-        fetchUsers();
+        fetchUsers(); // Refresh user list
       } else {
         showToast(data.error || "Failed to create user", "error");
       }
     } catch (error) {
-      console.error("Failed to create user:", error);
+      console.error("Failed to add user:", error);
       showToast("Failed to create user", "error");
     } finally {
-      setCreating(false);
+      setAdding(false);
     }
   };
 
   const updateUser = async () => {
-    if (!selectedUser) return;
-
     setUpdating(true);
-
     try {
       const response = await fetch(`${apiBase}/api/admin/users/${selectedUser.id}`, {
-        method: "PUT",
+        method: 'PUT',
         headers: {
-          "Content-Type": "application/json",
-          ...authHeaders
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
         },
         body: JSON.stringify(editForm)
       });
-
       const data = await response.json();
-
       if (data.success) {
         showToast("User updated successfully", "success");
         setShowEditModal(false);
@@ -230,27 +201,45 @@ export default function UserManagement({ apiBase, showToast }) {
         showToast(data.error || "Update failed", "error");
       }
     } catch (error) {
-      console.error("Failed to update user:", error);
       showToast("Failed to update user", "error");
     } finally {
       setUpdating(false);
     }
   };
 
-  const revokeApiKey = async (userId) => {
-    if (!confirm("Revoke this user's API key?")) return;
+  const updateUserTier = async (userId, newTier) => {
+    try {
+      const response = await fetch(`${apiBase}/api/admin/users/${userId}/tier`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
+        },
+        body: JSON.stringify({ tier: newTier })
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast(`Tier updated to ${newTier}`, "success");
+        fetchUsers();
+      } else {
+        showToast(data.error || "Failed to update tier", "error");
+      }
+    } catch (error) {
+      showToast("Failed to update tier", "error");
+    }
+  };
 
+  const revokeApiKey = async (userId) => {
+    if (!confirm("Revoke this user's API key? They will need to generate a new one.")) return;
     try {
       const response = await fetch(`${apiBase}/api/admin/users/${userId}/revoke-api-key`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          ...authHeaders
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
         }
       });
-
       const data = await response.json();
-
       if (data.success) {
         showToast("API key revoked", "success");
         fetchUsers();
@@ -258,7 +247,6 @@ export default function UserManagement({ apiBase, showToast }) {
         showToast(data.error || "Failed to revoke API key", "error");
       }
     } catch (error) {
-      console.error("Failed to revoke API key:", error);
       showToast("Failed to revoke API key", "error");
     }
   };
@@ -266,51 +254,51 @@ export default function UserManagement({ apiBase, showToast }) {
   const toggleTrading = async (userId, enabled) => {
     try {
       const response = await fetch(`${apiBase}/api/admin/users/${userId}`, {
-        method: "PUT",
+        method: 'PUT',
         headers: {
-          "Content-Type": "application/json",
-          ...authHeaders
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
         },
         body: JSON.stringify({ trading_enabled: enabled })
       });
-
       const data = await response.json();
-
       if (data.success) {
-        showToast(`Trading ${enabled ? "enabled" : "disabled"}`, "success");
+        showToast(`Trading ${enabled ? 'enabled' : 'disabled'}`, "success");
         fetchUsers();
-      } else {
-        showToast(data.error || "Failed to update trading status", "error");
       }
     } catch (error) {
-      console.error("Failed to update trading status:", error);
       showToast("Failed to update trading status", "error");
     }
   };
 
   const deleteUser = async (userId, userEmail) => {
-    if (!confirm(`Delete user ${userEmail}? This cannot be undone.`)) return;
-
+    if (!confirm(`⚠️ WARNING: This action is permanent!\n\nDelete user "${userEmail}"?\n\nAll user data, trades, and settings will be permanently removed. This cannot be undone.`)) return;
+    
     setDeleting(true);
-
     try {
       const response = await fetch(`${apiBase}/api/admin/users/${userId}`, {
-        method: "DELETE",
-        headers: authHeaders
+        method: 'DELETE',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('imali_token')}`
+        }
       });
-
       const data = await response.json();
-
+      
       if (data.success) {
-        showToast("User deleted", "success");
-        setShowViewModal(false);
-        setShowEditModal(false);
-        fetchUsers();
+        showToast(`User ${userEmail} has been deleted successfully`, "success");
+        
+        // If the current page becomes empty and it's not page 1, go to previous page
+        if (users.length === 1 && page > 1) {
+          setPage(page - 1);
+        } else {
+          fetchUsers();
+        }
       } else {
         showToast(data.error || "Delete failed", "error");
       }
     } catch (error) {
-      console.error("Failed to delete user:", error);
+      console.error("Delete error:", error);
       showToast("Failed to delete user", "error");
     } finally {
       setDeleting(false);
@@ -324,7 +312,6 @@ export default function UserManagement({ apiBase, showToast }) {
       elite: "bg-amber-500/20 text-amber-300 border-amber-500/30",
       bundle: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
     };
-
     return colors[tier] || colors.starter;
   };
 
@@ -338,89 +325,65 @@ export default function UserManagement({ apiBase, showToast }) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="flex items-center gap-2 text-2xl font-bold text-white">
-              <FaUsers /> All Users
-            </h2>
-            <p className="text-sm text-white/50">View, add, edit, and delete user accounts.</p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500"
-            >
-              <FaPlus /> Add User
+      {/* Search Bar & Add User Button */}
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="flex gap-2">
+          <form onSubmit={handleSearch} className="flex flex-1 gap-2">
+            <div className="relative flex-1">
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+              <input
+                type="text"
+                placeholder="Search by email..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-10 pr-3 text-white placeholder:text-white/30"
+              />
+            </div>
+            <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 hover:bg-emerald-500">
+              Search
             </button>
-
-            <button
-              onClick={fetchUsers}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 font-medium text-white hover:bg-white/5"
-            >
-              <FaSyncAlt /> Refresh
-            </button>
-          </div>
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearch(""); setPage(1); fetchUsers(); }}
+                className="rounded-lg border border-white/10 px-4 py-2 hover:bg-white/5"
+              >
+                Clear
+              </button>
+            )}
+          </form>
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500"
+          >
+            <FaUserPlus /> Add User
+          </button>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <form onSubmit={handleSearch} className="flex flex-col gap-2 md:flex-row">
-          <div className="relative flex-1">
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-            <input
-              type="text"
-              placeholder="Search by email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-10 pr-3 text-white placeholder:text-white/30"
-            />
-          </div>
-
-          <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 hover:bg-emerald-500">
-            Search
-          </button>
-
-          {search && (
-            <button
-              type="button"
-              onClick={resetSearch}
-              className="rounded-lg border border-white/10 px-4 py-2 hover:bg-white/5"
-            >
-              Clear
-            </button>
-          )}
-        </form>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {/* Stats Summary */}
+      <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
           <div className="text-xs text-white/50">Total Users</div>
           <div className="text-xl font-bold text-white">{totalUsers}</div>
         </div>
-
         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
           <div className="text-xs text-white/50">Active Traders</div>
           <div className="text-xl font-bold text-white">
-            {users.filter((user) => user.trading_enabled).length}
+            {users.filter(u => u.trading_enabled).length}
           </div>
         </div>
-
         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
           <div className="text-xs text-white/50">Admins</div>
           <div className="text-xl font-bold text-white">
-            {users.filter((user) => user.is_admin).length}
+            {users.filter(u => u.is_admin).length}
           </div>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Users Table */}
       <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
-        <table className="min-w-[1200px] w-full text-sm">
+        <table className="w-full text-sm">
           <thead className="border-b border-white/10 bg-white/5">
             <tr>
               <th className="px-4 py-3 text-left">User</th>
@@ -433,38 +396,32 @@ export default function UserManagement({ apiBase, showToast }) {
               <th className="px-4 py-3 text-center">Actions</th>
             </tr>
           </thead>
-
           <tbody>
             {users.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-white/50">
-                  No users found
-                </td>
+                <td colSpan={8} className="py-8 text-center text-white/50">No users found</td>
               </tr>
             ) : (
               users.map((user) => (
                 <tr key={user.id} className="border-b border-white/5 hover:bg-white/5">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20">
+                      <div className="h-8 w-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
                         <span className="text-sm font-bold text-emerald-400">
                           {user.email?.charAt(0).toUpperCase()}
                         </span>
                       </div>
-
                       <div>
-                        <div className="font-medium text-white">{user.email}</div>
+                        <div className="font-medium">{user.email}</div>
                         <div className="text-xs text-white/40">{user.id?.slice(0, 8)}...</div>
                       </div>
                     </div>
                   </td>
-
                   <td className="px-4 py-3">
                     <span className={`rounded-full border px-2 py-0.5 text-xs ${getTierBadge(user.tier)}`}>
-                      {user.tier?.toUpperCase() || "STARTER"}
+                      {user.tier?.toUpperCase()}
                     </span>
                   </td>
-
                   <td className="px-4 py-3 text-center">
                     {user.trading_enabled ? (
                       <span className="inline-flex items-center gap-1 text-green-400">
@@ -474,27 +431,18 @@ export default function UserManagement({ apiBase, showToast }) {
                       <span className="text-red-400">Disabled</span>
                     )}
                   </td>
-
                   <td className="px-4 py-3 text-right">
-                    ${Number(user.portfolio_value || 0).toLocaleString()}
+                    ${(user.portfolio_value || 0).toLocaleString()}
                   </td>
-
                   <td className="px-4 py-3 text-right">{user.total_trades || 0}</td>
-
-                  <td
-                    className={`px-4 py-3 text-right font-medium ${
-                      Number(user.total_pnl || 0) >= 0 ? "text-green-400" : "text-red-400"
-                    }`}
-                  >
-                    ${Number(user.total_pnl || 0).toFixed(2)}
+                  <td className={`px-4 py-3 text-right font-medium ${(user.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ${(user.total_pnl || 0).toFixed(2)}
                   </td>
-
                   <td className="px-4 py-3 text-xs">
-                    {user.created_at ? new Date(user.created_at).toLocaleDateString() : "-"}
+                    {new Date(user.created_at).toLocaleDateString()}
                   </td>
-
-                  <td className="px-4 py-3">
-                    <div className="flex min-w-[220px] justify-center gap-3">
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex justify-center gap-2">
                       <button
                         onClick={() => viewUserDetails(user)}
                         className="text-blue-400 hover:text-blue-300"
@@ -502,7 +450,6 @@ export default function UserManagement({ apiBase, showToast }) {
                       >
                         <FaEye />
                       </button>
-
                       <button
                         onClick={() => openEditModal(user)}
                         className="text-amber-400 hover:text-amber-300"
@@ -510,7 +457,6 @@ export default function UserManagement({ apiBase, showToast }) {
                       >
                         <FaEdit />
                       </button>
-
                       <button
                         onClick={() => revokeApiKey(user.id)}
                         className="text-orange-400 hover:text-orange-300"
@@ -518,24 +464,18 @@ export default function UserManagement({ apiBase, showToast }) {
                       >
                         <FaKey />
                       </button>
-
                       <button
                         onClick={() => toggleTrading(user.id, !user.trading_enabled)}
-                        className={
-                          user.trading_enabled
-                            ? "text-red-400 hover:text-red-300"
-                            : "text-green-400 hover:text-green-300"
-                        }
+                        className={user.trading_enabled ? "text-red-400 hover:text-red-300" : "text-green-400 hover:text-green-300"}
                         title={user.trading_enabled ? "Disable Trading" : "Enable Trading"}
                       >
                         {user.trading_enabled ? <FaBan /> : <FaCheckCircle />}
                       </button>
-
                       <button
                         onClick={() => deleteUser(user.id, user.email)}
-                        disabled={deleting}
                         className="text-red-400 hover:text-red-300 disabled:opacity-50"
                         title="Delete User"
+                        disabled={deleting}
                       >
                         <FaTrash />
                       </button>
@@ -552,19 +492,15 @@ export default function UserManagement({ apiBase, showToast }) {
       {totalPages > 1 && (
         <div className="flex items-center justify-between gap-4">
           <button
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
             className="rounded-lg border border-white/10 px-4 py-2 text-sm disabled:opacity-50"
           >
             Previous
           </button>
-
-          <span className="text-sm text-white/50">
-            Page {page} of {totalPages}
-          </span>
-
+          <span className="text-sm text-white/50">Page {page} of {totalPages}</span>
           <button
-            onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
             className="rounded-lg border border-white/10 px-4 py-2 text-sm disabled:opacity-50"
           >
@@ -577,25 +513,127 @@ export default function UserManagement({ apiBase, showToast }) {
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gray-900 p-6">
-            <ModalHeader title="Add User" onClose={() => setShowAddModal(false)} />
-
-            <UserForm form={newUserForm} setForm={setNewUserForm} includePassword />
-
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={createUser}
-                disabled={creating}
-                className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
-              >
-                {creating ? "Creating..." : "Create User"}
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-xl font-bold">
+                <FaUserPlus className="text-emerald-400" /> Add New User
+              </h3>
+              <button onClick={() => setShowAddModal(false)} className="text-white/50 hover:text-white">
+                <FaTimes />
               </button>
+            </div>
 
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
-              >
-                Cancel
-              </button>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm text-white/70">
+                  <FaEnvelope className="mr-1 inline text-xs" /> Email Address *
+                </label>
+                <input
+                  type="email"
+                  value={addForm.email}
+                  onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
+                  placeholder="user@example.com"
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-emerald-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/70">
+                  <FaLock className="mr-1 inline text-xs" /> Password *
+                </label>
+                <input
+                  type="password"
+                  value={addForm.password}
+                  onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+                  placeholder="At least 6 characters"
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-emerald-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm text-white/70">Tier</label>
+                  <select
+                    value={addForm.tier}
+                    onChange={(e) => setAddForm({ ...addForm, tier: e.target.value })}
+                    className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="starter">Starter ($1,000)</option>
+                    <option value="pro">Pro ($10,000)</option>
+                    <option value="elite">Elite ($50,000)</option>
+                    <option value="bundle">Bundle ($100,000+)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm text-white/70">Strategy</label>
+                  <select
+                    value={addForm.strategy}
+                    onChange={(e) => setAddForm({ ...addForm, strategy: e.target.value })}
+                    className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="ai_weighted">AI Weighted (Balanced)</option>
+                    <option value="momentum">Momentum (Aggressive)</option>
+                    <option value="mean_reversion">Mean Reversion (Conservative)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/70">Portfolio Value (USD)</label>
+                <input
+                  type="number"
+                  value={addForm.portfolio_value}
+                  onChange={(e) => setAddForm({ ...addForm, portfolio_value: parseFloat(e.target.value) || 0 })}
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-white/70">Trading Enabled</label>
+                <button
+                  onClick={() => setAddForm({ ...addForm, trading_enabled: !addForm.trading_enabled })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                    addForm.trading_enabled ? 'bg-emerald-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
+                    addForm.trading_enabled ? 'right-1' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-white/70">Admin Access</label>
+                <button
+                  onClick={() => setAddForm({ ...addForm, is_admin: !addForm.is_admin })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                    addForm.is_admin ? 'bg-purple-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
+                    addForm.is_admin ? 'right-1' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              <div className="mt-6 flex gap-3 pt-2">
+                <button
+                  onClick={addUser}
+                  disabled={adding}
+                  className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {adding ? <FaSpinner className="mx-auto animate-spin" /> : <FaSave className="mr-2 inline" />}
+                  {adding ? "Creating..." : "Create User"}
+                </button>
+                <button
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -605,55 +643,96 @@ export default function UserManagement({ apiBase, showToast }) {
       {showViewModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6">
-            <ModalHeader title="User Details" onClose={() => setShowViewModal(false)} />
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xl font-bold">User Details</h3>
+              <button onClick={() => setShowViewModal(false)} className="text-white/50 hover:text-white">
+                <FaTimes />
+              </button>
+            </div>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <InfoBox label="Email" value={selectedUser.email} />
-                <InfoBox label="User ID" value={selectedUser.id} mono />
-                <InfoBox label="Tier" value={selectedUser.tier || "starter"} />
-                <InfoBox label="Strategy" value={selectedUser.strategy || "ai_weighted"} />
-                <InfoBox
-                  label="Portfolio Value"
-                  value={`$${Number(selectedUser.portfolio_value || 0).toLocaleString()}`}
-                  highlight
-                />
-                <InfoBox
-                  label="Member Since"
-                  value={
-                    selectedUser.created_at
-                      ? new Date(selectedUser.created_at).toLocaleDateString()
-                      : "-"
-                  }
-                />
+              {/* User Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-white/50">Email</div>
+                  <div className="font-medium">{selectedUser.email}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-white/50">User ID</div>
+                  <div className="font-mono text-xs break-all">{selectedUser.id}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-white/50">Tier</div>
+                  <div className="font-medium capitalize">{selectedUser.tier}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-white/50">Strategy</div>
+                  <div className="font-medium">{selectedUser.strategy || "AI Weighted"}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-white/50">Portfolio Value</div>
+                  <div className="text-lg font-bold text-emerald-400">
+                    ${(selectedUser.portfolio_value || 0).toLocaleString()}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs text-white/50">Member Since</div>
+                  <div>{new Date(selectedUser.created_at).toLocaleDateString()}</div>
+                </div>
               </div>
 
+              {/* Trading Stats */}
               <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                 <h4 className="mb-3 flex items-center gap-2 font-semibold">
                   <FaChartLine /> Trading Performance
                 </h4>
-
                 <div className="grid grid-cols-3 gap-3">
-                  <StatBox label="Total Trades" value={stats.total_trades} />
-                  <StatBox
-                    label="Total PnL"
-                    value={`$${stats.total_pnl.toFixed(2)}`}
-                    color={stats.total_pnl >= 0 ? "text-green-400" : "text-red-400"}
-                  />
-                  <StatBox label="Win Rate" value={`${stats.win_rate.toFixed(1)}%`} />
+                  <div className="text-center">
+                    <div className="text-xs text-white/50">Total Trades</div>
+                    <div className="text-lg font-bold">{stats.total_trades}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-white/50">Total PnL</div>
+                    <div className={`text-lg font-bold ${stats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      ${stats.total_pnl.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-white/50">Win Rate</div>
+                    <div className="text-lg font-bold">{stats.win_rate.toFixed(1)}%</div>
+                  </div>
                 </div>
               </div>
 
-              {selectedUser.wallet_addresses?.length > 0 && (
+              {/* Wallet Addresses */}
+              {selectedUser.wallet_addresses && selectedUser.wallet_addresses.length > 0 && (
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                   <h4 className="mb-2 flex items-center gap-2 font-semibold">
                     <FaDollarSign /> Connected Wallets
                   </h4>
-
-                  <div className="max-h-32 space-y-1 overflow-y-auto">
-                    {selectedUser.wallet_addresses.map((addr, index) => (
-                      <div key={index} className="break-all font-mono text-xs text-white/70">
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {selectedUser.wallet_addresses.map((addr, i) => (
+                      <div key={i} className="font-mono text-xs break-all text-white/70">
                         {addr}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* API Keys */}
+              {selectedUser.api_keys && selectedUser.api_keys.length > 0 && (
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <h4 className="mb-2 flex items-center gap-2 font-semibold">
+                    <FaKey /> API Keys
+                  </h4>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {selectedUser.api_keys.map((key, i) => (
+                      <div key={i} className="flex justify-between items-center text-sm">
+                        <span className="font-mono text-xs">{key.plan} - {key.is_active ? 'Active' : 'Revoked'}</span>
+                        <span className="text-xs text-white/40">
+                          Created: {new Date(key.created_at).toLocaleDateString()}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -661,28 +740,16 @@ export default function UserManagement({ apiBase, showToast }) {
               )}
             </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="mt-6 flex gap-3">
               <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  openEditModal(selectedUser);
-                }}
-                className="rounded-lg bg-amber-600 py-2 font-medium hover:bg-amber-500"
+                onClick={() => { setShowViewModal(false); openEditModal(selectedUser); }}
+                className="flex-1 rounded-lg bg-amber-600 py-2 font-medium hover:bg-amber-500"
               >
                 Edit User
               </button>
-
-              <button
-                onClick={() => deleteUser(selectedUser.id, selectedUser.email)}
-                disabled={deleting}
-                className="rounded-lg bg-red-600 py-2 font-medium hover:bg-red-500 disabled:opacity-50"
-              >
-                {deleting ? "Deleting..." : "Delete User"}
-              </button>
-
               <button
                 onClick={() => setShowViewModal(false)}
-                className="rounded-lg border border-white/10 py-2 hover:bg-white/5"
+                className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
               >
                 Close
               </button>
@@ -695,179 +762,99 @@ export default function UserManagement({ apiBase, showToast }) {
       {showEditModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gray-900 p-6">
-            <ModalHeader title="Edit User" onClose={() => setShowEditModal(false)} />
-
-            <UserForm form={editForm} setForm={setEditForm} />
-
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={updateUser}
-                disabled={updating}
-                className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
-              >
-                {updating ? (
-                  "Saving..."
-                ) : (
-                  <>
-                    <FaSave className="mr-2 inline" /> Save Changes
-                  </>
-                )}
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xl font-bold">Edit User</h3>
+              <button onClick={() => setShowEditModal(false)} className="text-white/50 hover:text-white">
+                <FaTimes />
               </button>
+            </div>
 
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
-              >
-                Cancel
-              </button>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm text-white/70">Tier</label>
+                <select
+                  value={editForm.tier}
+                  onChange={(e) => setEditForm({ ...editForm, tier: e.target.value })}
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+                >
+                  <option value="starter">Starter</option>
+                  <option value="pro">Pro</option>
+                  <option value="elite">Elite</option>
+                  <option value="bundle">Bundle</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/70">Strategy</label>
+                <select
+                  value={editForm.strategy}
+                  onChange={(e) => setEditForm({ ...editForm, strategy: e.target.value })}
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+                >
+                  <option value="ai_weighted">AI Weighted (Balanced)</option>
+                  <option value="momentum">Momentum (Aggressive)</option>
+                  <option value="mean_reversion">Mean Reversion (Conservative)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/70">Portfolio Value (USD)</label>
+                <input
+                  type="number"
+                  value={editForm.portfolio_value}
+                  onChange={(e) => setEditForm({ ...editForm, portfolio_value: parseFloat(e.target.value) })}
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-white/70">Trading Enabled</label>
+                <button
+                  onClick={() => setEditForm({ ...editForm, trading_enabled: !editForm.trading_enabled })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                    editForm.trading_enabled ? 'bg-emerald-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
+                    editForm.trading_enabled ? 'right-1' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-white/70">Admin Access</label>
+                <button
+                  onClick={() => setEditForm({ ...editForm, is_admin: !editForm.is_admin })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                    editForm.is_admin ? 'bg-purple-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
+                    editForm.is_admin ? 'right-1' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={updateUser}
+                  disabled={updating}
+                  className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {updating ? <FaSpinner className="mx-auto animate-spin" /> : <FaSave className="inline mr-2" />}
+                  {updating ? "Saving..." : "Save Changes"}
+                </button>
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function ModalHeader({ title, onClose }) {
-  return (
-    <div className="mb-4 flex items-center justify-between">
-      <h3 className="text-xl font-bold">{title}</h3>
-      <button onClick={onClose} className="text-white/50 hover:text-white">
-        <FaTimes />
-      </button>
-    </div>
-  );
-}
-
-function UserForm({ form, setForm, includePassword = false }) {
-  return (
-    <div className="space-y-4">
-      {includePassword && (
-        <>
-          <div>
-            <label className="mb-1 block text-sm text-white/70">Email</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-              placeholder="user@email.com"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm text-white/70">Password</label>
-            <input
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-              placeholder="Temporary password"
-            />
-          </div>
-        </>
-      )}
-
-      <div>
-        <label className="mb-1 block text-sm text-white/70">Tier</label>
-        <select
-          value={form.tier}
-          onChange={(e) => setForm({ ...form, tier: e.target.value })}
-          className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-        >
-          <option value="starter">Starter</option>
-          <option value="pro">Pro</option>
-          <option value="elite">Elite</option>
-          <option value="bundle">Bundle</option>
-        </select>
-      </div>
-
-      <div>
-        <label className="mb-1 block text-sm text-white/70">Strategy</label>
-        <select
-          value={form.strategy}
-          onChange={(e) => setForm({ ...form, strategy: e.target.value })}
-          className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-        >
-          <option value="ai_weighted">AI Weighted</option>
-          <option value="momentum">Momentum</option>
-          <option value="mean_reversion">Mean Reversion</option>
-        </select>
-      </div>
-
-      <div>
-        <label className="mb-1 block text-sm text-white/70">Portfolio Value</label>
-        <input
-          type="number"
-          value={form.portfolio_value}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              portfolio_value: Number(e.target.value)
-            })
-          }
-          className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-        />
-      </div>
-
-      <ToggleRow
-        label="Trading Enabled"
-        enabled={form.trading_enabled}
-        onClick={() => setForm({ ...form, trading_enabled: !form.trading_enabled })}
-        activeClass="bg-emerald-600"
-      />
-
-      <ToggleRow
-        label="Admin Access"
-        enabled={form.is_admin}
-        onClick={() => setForm({ ...form, is_admin: !form.is_admin })}
-        activeClass="bg-purple-600"
-      />
-    </div>
-  );
-}
-
-function ToggleRow({ label, enabled, onClick, activeClass }) {
-  return (
-    <div className="flex items-center justify-between">
-      <label className="text-sm text-white/70">{label}</label>
-      <button
-        type="button"
-        onClick={onClick}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-          enabled ? activeClass : "bg-gray-600"
-        }`}
-      >
-        <span
-          className={`absolute h-4 w-4 rounded-full bg-white transition ${
-            enabled ? "right-1" : "left-1"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
-
-function InfoBox({ label, value, mono = false, highlight = false }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-      <div className="text-xs text-white/50">{label}</div>
-      <div
-        className={`${mono ? "break-all font-mono text-xs" : "font-medium"} ${
-          highlight ? "text-lg font-bold text-emerald-400" : ""
-        }`}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function StatBox({ label, value, color = "text-white" }) {
-  return (
-    <div className="text-center">
-      <div className="text-xs text-white/50">{label}</div>
-      <div className={`text-lg font-bold ${color}`}>{value}</div>
     </div>
   );
 }
