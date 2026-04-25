@@ -20,7 +20,8 @@ import {
   FaPlus,
   FaUserPlus,
   FaLock,
-  FaEnvelopeOpen
+  FaEnvelopeOpen,
+  FaExclamationTriangle
 } from "react-icons/fa";
 
 export default function UserManagement({ apiBase, showToast }) {
@@ -34,6 +35,7 @@ export default function UserManagement({ apiBase, showToast }) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [addForm, setAddForm] = useState({
     email: "",
@@ -126,6 +128,7 @@ export default function UserManagement({ apiBase, showToast }) {
       strategy: user.strategy
     });
     setShowEditModal(true);
+    setShowDeleteConfirm(false);
   };
 
   const openAddModal = () => {
@@ -169,7 +172,7 @@ export default function UserManagement({ apiBase, showToast }) {
       if (data.success) {
         showToast(`User ${addForm.email} created successfully!`, "success");
         setShowAddModal(false);
-        fetchUsers(); // Refresh user list
+        fetchUsers();
       } else {
         showToast(data.error || "Failed to create user", "error");
       }
@@ -271,12 +274,12 @@ export default function UserManagement({ apiBase, showToast }) {
     }
   };
 
-  const deleteUser = async (userId, userEmail) => {
-    if (!confirm(`⚠️ WARNING: This action is permanent!\n\nDelete user "${userEmail}"?\n\nAll user data, trades, and settings will be permanently removed. This cannot be undone.`)) return;
+  const deleteUser = async () => {
+    if (!selectedUser) return;
     
     setDeleting(true);
     try {
-      const response = await fetch(`${apiBase}/api/admin/users/${userId}`, {
+      const response = await fetch(`${apiBase}/api/admin/users/${selectedUser.id}`, {
         method: 'DELETE',
         headers: { 
           'Content-Type': 'application/json',
@@ -286,7 +289,9 @@ export default function UserManagement({ apiBase, showToast }) {
       const data = await response.json();
       
       if (data.success) {
-        showToast(`User ${userEmail} has been deleted successfully`, "success");
+        showToast(`User ${selectedUser.email} has been deleted successfully`, "success");
+        setShowEditModal(false);
+        setShowDeleteConfirm(false);
         
         // If the current page becomes empty and it's not page 1, go to previous page
         if (users.length === 1 && page > 1) {
@@ -336,17 +341,17 @@ export default function UserManagement({ apiBase, showToast }) {
                 placeholder="Search by email..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-10 pr-3 text-white placeholder:text-white/30"
+                className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-10 pr-3 text-white placeholder:text-white/30 focus:outline-none focus:border-emerald-500"
               />
             </div>
-            <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 hover:bg-emerald-500">
+            <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 hover:bg-emerald-500 transition">
               Search
             </button>
             {search && (
               <button
                 type="button"
                 onClick={() => { setSearch(""); setPage(1); fetchUsers(); }}
-                className="rounded-lg border border-white/10 px-4 py-2 hover:bg-white/5"
+                className="rounded-lg border border-white/10 px-4 py-2 hover:bg-white/5 transition"
               >
                 Clear
               </button>
@@ -354,7 +359,7 @@ export default function UserManagement({ apiBase, showToast }) {
           </form>
           <button
             onClick={openAddModal}
-            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500"
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500 transition"
           >
             <FaUserPlus /> Add User
           </button>
@@ -403,7 +408,7 @@ export default function UserManagement({ apiBase, showToast }) {
               </tr>
             ) : (
               users.map((user) => (
-                <tr key={user.id} className="border-b border-white/5 hover:bg-white/5">
+                <tr key={user.id} className="border-b border-white/5 hover:bg-white/5 transition">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="h-8 w-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
@@ -445,21 +450,21 @@ export default function UserManagement({ apiBase, showToast }) {
                     <div className="flex justify-center gap-2">
                       <button
                         onClick={() => viewUserDetails(user)}
-                        className="text-blue-400 hover:text-blue-300"
+                        className="text-blue-400 hover:text-blue-300 transition"
                         title="View Details"
                       >
                         <FaEye />
                       </button>
                       <button
                         onClick={() => openEditModal(user)}
-                        className="text-amber-400 hover:text-amber-300"
+                        className="text-amber-400 hover:text-amber-300 transition"
                         title="Edit User"
                       >
                         <FaEdit />
                       </button>
                       <button
                         onClick={() => revokeApiKey(user.id)}
-                        className="text-orange-400 hover:text-orange-300"
+                        className="text-orange-400 hover:text-orange-300 transition"
                         title="Revoke API Key"
                       >
                         <FaKey />
@@ -470,14 +475,6 @@ export default function UserManagement({ apiBase, showToast }) {
                         title={user.trading_enabled ? "Disable Trading" : "Enable Trading"}
                       >
                         {user.trading_enabled ? <FaBan /> : <FaCheckCircle />}
-                      </button>
-                      <button
-                        onClick={() => deleteUser(user.id, user.email)}
-                        className="text-red-400 hover:text-red-300 disabled:opacity-50"
-                        title="Delete User"
-                        disabled={deleting}
-                      >
-                        <FaTrash />
                       </button>
                     </div>
                   </td>
@@ -494,7 +491,7 @@ export default function UserManagement({ apiBase, showToast }) {
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="rounded-lg border border-white/10 px-4 py-2 text-sm disabled:opacity-50"
+            className="rounded-lg border border-white/10 px-4 py-2 text-sm disabled:opacity-50 hover:bg-white/5 transition"
           >
             Previous
           </button>
@@ -502,7 +499,7 @@ export default function UserManagement({ apiBase, showToast }) {
           <button
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
-            className="rounded-lg border border-white/10 px-4 py-2 text-sm disabled:opacity-50"
+            className="rounded-lg border border-white/10 px-4 py-2 text-sm disabled:opacity-50 hover:bg-white/5 transition"
           >
             Next
           </button>
@@ -517,7 +514,7 @@ export default function UserManagement({ apiBase, showToast }) {
               <h3 className="flex items-center gap-2 text-xl font-bold">
                 <FaUserPlus className="text-emerald-400" /> Add New User
               </h3>
-              <button onClick={() => setShowAddModal(false)} className="text-white/50 hover:text-white">
+              <button onClick={() => setShowAddModal(false)} className="text-white/50 hover:text-white transition">
                 <FaTimes />
               </button>
             </div>
@@ -622,14 +619,14 @@ export default function UserManagement({ apiBase, showToast }) {
                 <button
                   onClick={addUser}
                   disabled={adding}
-                  className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
+                  className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 transition disabled:opacity-50"
                 >
                   {adding ? <FaSpinner className="mx-auto animate-spin" /> : <FaSave className="mr-2 inline" />}
                   {adding ? "Creating..." : "Create User"}
                 </button>
                 <button
                   onClick={() => setShowAddModal(false)}
-                  className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
+                  className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5 transition"
                 >
                   Cancel
                 </button>
@@ -645,7 +642,7 @@ export default function UserManagement({ apiBase, showToast }) {
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-xl font-bold">User Details</h3>
-              <button onClick={() => setShowViewModal(false)} className="text-white/50 hover:text-white">
+              <button onClick={() => setShowViewModal(false)} className="text-white/50 hover:text-white transition">
                 <FaTimes />
               </button>
             </div>
@@ -743,13 +740,13 @@ export default function UserManagement({ apiBase, showToast }) {
             <div className="mt-6 flex gap-3">
               <button
                 onClick={() => { setShowViewModal(false); openEditModal(selectedUser); }}
-                className="flex-1 rounded-lg bg-amber-600 py-2 font-medium hover:bg-amber-500"
+                className="flex-1 rounded-lg bg-amber-600 py-2 font-medium hover:bg-amber-500 transition"
               >
                 Edit User
               </button>
               <button
                 onClick={() => setShowViewModal(false)}
-                className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
+                className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5 transition"
               >
                 Close
               </button>
@@ -758,100 +755,146 @@ export default function UserManagement({ apiBase, showToast }) {
         </div>
       )}
 
-      {/* Edit User Modal */}
+      {/* Edit User Modal with Delete Option */}
       {showEditModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gray-900 p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-xl font-bold">Edit User</h3>
-              <button onClick={() => setShowEditModal(false)} className="text-white/50 hover:text-white">
+              <button onClick={() => setShowEditModal(false)} className="text-white/50 hover:text-white transition">
                 <FaTimes />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm text-white/70">Tier</label>
-                <select
-                  value={editForm.tier}
-                  onChange={(e) => setEditForm({ ...editForm, tier: e.target.value })}
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-                >
-                  <option value="starter">Starter</option>
-                  <option value="pro">Pro</option>
-                  <option value="elite">Elite</option>
-                  <option value="bundle">Bundle</option>
-                </select>
-              </div>
+            {!showDeleteConfirm ? (
+              <>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm text-white/70">Tier</label>
+                    <select
+                      value={editForm.tier}
+                      onChange={(e) => setEditForm({ ...editForm, tier: e.target.value })}
+                      className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="starter">Starter</option>
+                      <option value="pro">Pro</option>
+                      <option value="elite">Elite</option>
+                      <option value="bundle">Bundle</option>
+                    </select>
+                  </div>
 
-              <div>
-                <label className="mb-1 block text-sm text-white/70">Strategy</label>
-                <select
-                  value={editForm.strategy}
-                  onChange={(e) => setEditForm({ ...editForm, strategy: e.target.value })}
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-                >
-                  <option value="ai_weighted">AI Weighted (Balanced)</option>
-                  <option value="momentum">Momentum (Aggressive)</option>
-                  <option value="mean_reversion">Mean Reversion (Conservative)</option>
-                </select>
-              </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-white/70">Strategy</label>
+                    <select
+                      value={editForm.strategy}
+                      onChange={(e) => setEditForm({ ...editForm, strategy: e.target.value })}
+                      className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="ai_weighted">AI Weighted (Balanced)</option>
+                      <option value="momentum">Momentum (Aggressive)</option>
+                      <option value="mean_reversion">Mean Reversion (Conservative)</option>
+                    </select>
+                  </div>
 
-              <div>
-                <label className="mb-1 block text-sm text-white/70">Portfolio Value (USD)</label>
-                <input
-                  type="number"
-                  value={editForm.portfolio_value}
-                  onChange={(e) => setEditForm({ ...editForm, portfolio_value: parseFloat(e.target.value) })}
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-                />
-              </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-white/70">Portfolio Value (USD)</label>
+                    <input
+                      type="number"
+                      value={editForm.portfolio_value}
+                      onChange={(e) => setEditForm({ ...editForm, portfolio_value: parseFloat(e.target.value) })}
+                      className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
 
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-white/70">Trading Enabled</label>
-                <button
-                  onClick={() => setEditForm({ ...editForm, trading_enabled: !editForm.trading_enabled })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                    editForm.trading_enabled ? 'bg-emerald-600' : 'bg-gray-600'
-                  }`}
-                >
-                  <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
-                    editForm.trading_enabled ? 'right-1' : 'left-1'
-                  }`} />
-                </button>
-              </div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm text-white/70">Trading Enabled</label>
+                    <button
+                      onClick={() => setEditForm({ ...editForm, trading_enabled: !editForm.trading_enabled })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                        editForm.trading_enabled ? 'bg-emerald-600' : 'bg-gray-600'
+                      }`}
+                    >
+                      <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
+                        editForm.trading_enabled ? 'right-1' : 'left-1'
+                      }`} />
+                    </button>
+                  </div>
 
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-white/70">Admin Access</label>
-                <button
-                  onClick={() => setEditForm({ ...editForm, is_admin: !editForm.is_admin })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                    editForm.is_admin ? 'bg-purple-600' : 'bg-gray-600'
-                  }`}
-                >
-                  <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
-                    editForm.is_admin ? 'right-1' : 'left-1'
-                  }`} />
-                </button>
-              </div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm text-white/70">Admin Access</label>
+                    <button
+                      onClick={() => setEditForm({ ...editForm, is_admin: !editForm.is_admin })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                        editForm.is_admin ? 'bg-purple-600' : 'bg-gray-600'
+                      }`}
+                    >
+                      <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
+                        editForm.is_admin ? 'right-1' : 'left-1'
+                      }`} />
+                    </button>
+                  </div>
+                </div>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={updateUser}
-                  disabled={updating}
-                  className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
-                >
-                  {updating ? <FaSpinner className="mx-auto animate-spin" /> : <FaSave className="inline mr-2" />}
-                  {updating ? "Saving..." : "Save Changes"}
-                </button>
-                <button
-                  onClick={() => setShowEditModal(false)}
-                  className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+                <div className="mt-6 flex gap-3">
+                  <button
+                    onClick={updateUser}
+                    disabled={updating}
+                    className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 transition disabled:opacity-50"
+                  >
+                    {updating ? <FaSpinner className="mx-auto animate-spin" /> : <FaSave className="inline mr-2" />}
+                    {updating ? "Saving..." : "Save Changes"}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="rounded-lg bg-red-600/20 px-4 py-2 text-red-400 hover:bg-red-600/30 transition border border-red-500/30"
+                    title="Delete User"
+                  >
+                    <FaTrash className="inline" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Delete Confirmation */}
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <FaExclamationTriangle className="text-red-500 text-xl" />
+                      <h4 className="font-bold text-red-400">Permanent Deletion</h4>
+                    </div>
+                    <p className="text-sm text-white/80 mb-2">
+                      Are you sure you want to delete user:
+                    </p>
+                    <p className="font-mono text-sm bg-black/40 p-2 rounded break-all">
+                      {selectedUser.email}
+                    </p>
+                    <div className="mt-3 text-xs text-red-400/70 space-y-1">
+                      <p>⚠️ This action cannot be undone!</p>
+                      <p>• All user data will be permanently removed</p>
+                      <p>• Trading history and settings will be lost</p>
+                      <p>• API keys will be invalidated</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={deleteUser}
+                      disabled={deleting}
+                      className="flex-1 rounded-lg bg-red-600 py-2 font-medium hover:bg-red-500 transition disabled:opacity-50"
+                    >
+                      {deleting ? <FaSpinner className="mx-auto animate-spin" /> : <FaTrash className="inline mr-2" />}
+                      {deleting ? "Deleting..." : "Permanently Delete"}
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5 transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
