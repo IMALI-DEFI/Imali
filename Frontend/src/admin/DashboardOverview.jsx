@@ -11,46 +11,165 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
   });
   const [loading, setLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState([]);
+  const [authError, setAuthError] = useState(false);
+
+  const getAuthToken = useCallback(() => {
+    try {
+      return localStorage.getItem('imali_token');
+    } catch (e) {
+      console.error('[DashboardOverview] Failed to get token:', e);
+      return null;
+    }
+  }, []);
+
+  const isTokenValid = useCallback(() => {
+    const token = getAuthToken();
+    if (!token) return false;
+    
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return false;
+      const payload = JSON.parse(atob(parts[1]));
+      return payload.exp * 1000 > Date.now();
+    } catch {
+      return false;
+    }
+  }, [getAuthToken]);
 
   const fetchMetrics = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) {
+      setAuthError(true);
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch(`${apiBase}/api/admin/metrics`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
+      if (response.status === 401 || response.status === 403) {
+        setAuthError(true);
+        setLoading(false);
+        return;
+      }
+      
       const data = await response.json();
       if (data.success) {
-        setMetrics(data);
+        const metricsData = data.data || data;
+        setMetrics({
+          users: {
+            total: metricsData.users?.total || 0,
+            active: metricsData.users?.active || 0,
+            new: metricsData.users?.new || 0
+          },
+          trading: {
+            totalTrades: metricsData.trades?.total || 0,
+            volume24h: metricsData.trading?.volume24h || 0,
+            activeBots: metricsData.bots?.active || 0
+          },
+          revenue: {
+            total: metricsData.pnl?.total || 0,
+            fees24h: metricsData.revenue?.today || 0,
+            pending: metricsData.revenue?.pending_withdrawals || 0
+          },
+          system: {
+            uptime: metricsData.system?.uptime || '99.9%',
+            status: metricsData.system?.status || 'healthy'
+          }
+        });
+        setAuthError(false);
       }
     } catch (error) {
       console.error('Failed to fetch metrics:', error);
+      if (!authError) {
+        showToast?.('Failed to fetch metrics', 'error');
+      }
     } finally {
       setLoading(false);
     }
-  }, [apiBase]);
+  }, [apiBase, getAuthToken, showToast, authError]);
 
   const fetchRecentActivity = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) return;
+
     try {
       const response = await fetch(`${apiBase}/api/admin/audit-logs?limit=10`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
+      if (response.status === 401 || response.status === 403) {
+        setAuthError(true);
+        return;
+      }
+      
       const data = await response.json();
       if (data.success) {
-        setRecentActivity(data.logs || []);
+        const responseData = data.data || data;
+        setRecentActivity(responseData.logs || []);
       }
     } catch (error) {
       console.error('Failed to fetch activity:', error);
     }
-  }, [apiBase]);
+  }, [apiBase, getAuthToken]);
 
+  // Check token validity on mount
   useEffect(() => {
-    fetchMetrics();
-    fetchRecentActivity();
+    if (!isTokenValid()) {
+      setAuthError(true);
+      setLoading(false);
+    }
+  }, [isTokenValid]);
+
+  // Initial fetch
+  useEffect(() => {
+    if (!authError && isTokenValid()) {
+      fetchMetrics();
+      fetchRecentActivity();
+    } else {
+      setLoading(false);
+    }
+  }, [fetchMetrics, fetchRecentActivity, authError, isTokenValid]);
+
+  // Polling interval
+  useEffect(() => {
+    if (authError || !isTokenValid()) return;
+    
     const interval = setInterval(() => {
       fetchMetrics();
       fetchRecentActivity();
     }, 30000);
+    
     return () => clearInterval(interval);
-  }, [fetchMetrics, fetchRecentActivity]);
+  }, [fetchMetrics, fetchRecentActivity, authError, isTokenValid]);
+
+  // Show access denied if auth error
+  if (authError) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center">
+        <div className="mb-4 text-6xl">🔒</div>
+        <h3 className="mb-2 text-xl font-semibold text-white">Authentication Required</h3>
+        <p className="text-white/60">Please log in to view the admin dashboard.</p>
+        <button
+          onClick={() => {
+            localStorage.clear();
+            window.location.href = '/login';
+          }}
+          className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500"
+        >
+          Go to Login
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -81,9 +200,9 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold text-blue-400">{metrics.users.total}</div>
+            <div className="text-3xl font-bold text-blue-400">{metrics.users.total.toLocaleString()}</div>
             <div className="text-sm text-white/50">Total Users</div>
-            <div className="text-xs text-white/30 mt-1">{metrics.users.active} active</div>
+            <div className="text-xs text-white/30 mt-1">{metrics.users.active.toLocaleString()} active</div>
           </div>
         </div>
 
@@ -96,7 +215,7 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold text-emerald-400">{metrics.trading.totalTrades}</div>
+            <div className="text-3xl font-bold text-emerald-400">{metrics.trading.totalTrades.toLocaleString()}</div>
             <div className="text-sm text-white/50">Total Trades</div>
             <div className="text-xs text-white/30 mt-1">${metrics.trading.volume24h.toLocaleString()} 24h</div>
           </div>
@@ -174,16 +293,18 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
             {recentActivity.map((log, i) => (
               <div key={i} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
                 <span className={`text-xs px-2 py-1 rounded ${
-                  log.level === 'error' ? 'bg-red-500/20 text-red-300' :
-                  log.level === 'warning' ? 'bg-yellow-500/20 text-yellow-300' :
-                  'bg-emerald-500/20 text-emerald-300'
+                  log.action === 'error' || log.action?.toLowerCase().includes('fail') 
+                    ? 'bg-red-500/20 text-red-300'
+                    : log.action === 'warning' 
+                    ? 'bg-yellow-500/20 text-yellow-300'
+                    : 'bg-emerald-500/20 text-emerald-300'
                 }`}>
-                  {log.level || 'info'}
+                  {log.action || 'info'}
                 </span>
                 <div className="flex-1">
-                  <p className="text-sm">{log.message}</p>
+                  <p className="text-sm">{log.details || log.action || 'Activity'}</p>
                   <p className="text-xs text-white/30 mt-1">
-                    {new Date(log.timestamp).toLocaleString()} • {log.user_email || 'System'}
+                    {log.created_at ? new Date(log.created_at).toLocaleString() : new Date().toLocaleString()} • {log.user_email || log.user_id || 'System'}
                   </p>
                 </div>
               </div>
