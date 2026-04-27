@@ -128,10 +128,12 @@ const isAuthError = (status, message = "") => {
   const msg = String(message || "").toLowerCase();
   return (
     status === 401 ||
+    status === 403 ||
     msg.includes("authentication failed") ||
     msg.includes("no authentication token") ||
     msg.includes("no token provided") ||
-    msg.includes("invalid or expired token")
+    msg.includes("invalid or expired token") ||
+    msg.includes("admin access required")
   );
 };
 
@@ -430,7 +432,7 @@ function ActionButton({ action, onAction, busy }) {
 
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
-  const { isAdmin: isAdminFromAuth, loading: authLoading, logout } = useAuth();
+  const { isAdmin: isAdminFromAuth, loading: authLoading, logout, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -449,7 +451,27 @@ export default function AdminPanel({ forceOwner = false }) {
     process.env.NODE_ENV === "development" || window.location.hostname === "localhost";
   const BYPASS = isDevelopment && process.env.REACT_APP_BYPASS_OWNER === "1";
   const TEST_BYPASS = location.pathname.startsWith("/test/admin");
-  const allowAccess = forceOwner || BYPASS || TEST_BYPASS || isAdminFromAuth;
+  
+  const hasValidToken = useMemo(() => {
+    const token = getAuthToken();
+    if (!token) return false;
+    
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return false;
+      const payload = JSON.parse(atob(parts[1]));
+      const isExpired = payload.exp * 1000 < Date.now();
+      if (isExpired) {
+        console.log('[AdminPanel] Token expired:', new Date(payload.exp * 1000));
+      }
+      return !isExpired;
+    } catch (e) {
+      console.error('[AdminPanel] Token validation error:', e);
+      return false;
+    }
+  }, []);
+  
+  const allowAccess = (forceOwner || BYPASS || TEST_BYPASS || isAdminFromAuth) && hasValidToken;
 
   const activeTab = useMemo(() => {
     return ALL_TABS.find((tab) => tab.key === active) || ALL_TABS[0];
@@ -488,7 +510,10 @@ export default function AdminPanel({ forceOwner = false }) {
       showToast(message, "error");
 
       window.setTimeout(() => {
+        localStorage.clear();
+        sessionStorage.clear();
         logout();
+        window.location.href = '/login';
       }, 800);
     },
     [logout, sessionExpired, showToast]
@@ -514,6 +539,12 @@ export default function AdminPanel({ forceOwner = false }) {
   const fetchStats = useCallback(
     async (silent = false) => {
       if (sessionExpired) return null;
+      
+      const token = getAuthToken();
+      if (!token) {
+        handleAuthFailure("No authentication token found");
+        return null;
+      }
 
       try {
         if (!silent) setApiError(null);
@@ -641,6 +672,39 @@ export default function AdminPanel({ forceOwner = false }) {
     fetchStats(true);
   }, [authLoading, allowAccess, fetchStats, sessionExpired]);
 
+  useEffect(() => {
+    const checkToken = () => {
+      const token = getAuthToken();
+      if (!token) {
+        if (!sessionExpired && !authLoading) {
+          console.log('[AdminPanel] No token found, redirecting to login');
+          handleAuthFailure("No authentication token found");
+        }
+        return;
+      }
+      
+      try {
+        const parts = token.split('.');
+        if (parts.length !== 3) {
+          handleAuthFailure("Invalid token format");
+          return;
+        }
+        const payload = JSON.parse(atob(parts[1]));
+        if (payload.exp * 1000 < Date.now()) {
+          console.log('[AdminPanel] Token expired at:', new Date(payload.exp * 1000));
+          handleAuthFailure("Session expired");
+        }
+      } catch (e) {
+        console.error('[AdminPanel] Token check error:', e);
+        handleAuthFailure("Invalid session");
+      }
+    };
+    
+    checkToken();
+    const interval = setInterval(checkToken, 60000);
+    return () => clearInterval(interval);
+  }, [handleAuthFailure, sessionExpired, authLoading]);
+
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-4 text-white">
@@ -648,6 +712,28 @@ export default function AdminPanel({ forceOwner = false }) {
           <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
           <h2 className="mb-2 text-xl font-semibold">Checking access...</h2>
           <p className="text-sm text-white/55">Verifying admin permissions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!allowAccess && !hasValidToken) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-6 text-white">
+        <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
+          <div className="mb-4 text-7xl">🔑</div>
+          <h2 className="mb-2 text-2xl font-bold">Session Expired</h2>
+          <p className="mb-6 text-white/65">Please log in again to access the admin panel.</p>
+          <button
+            onClick={() => {
+              localStorage.clear();
+              sessionStorage.clear();
+              window.location.href = '/login';
+            }}
+            className="w-full rounded-xl bg-emerald-600 px-6 py-3 font-medium transition hover:bg-emerald-500"
+          >
+            Go to Login
+          </button>
         </div>
       </div>
     );
