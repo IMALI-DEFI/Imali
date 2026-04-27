@@ -138,7 +138,7 @@ export default function AuditLogs({ showToast }) {
     if (isAdmin && !adminLoading) {
       fetchLogs(1);
     }
-  }, [isAdmin, adminLoading]); // Remove filters from dependencies to prevent excessive calls
+  }, [isAdmin, adminLoading]);
 
   // Refetch when filters change (but only if admin)
   useEffect(() => {
@@ -372,7 +372,7 @@ export default function AuditLogs({ showToast }) {
                 <th className="px-4 py-3">Action</th>
                 <th className="px-4 py-3">Details</th>
                 <th className="px-4 py-3">IP Address</th>
-              <tr>
+              </tr>
             </thead>
 
             <tbody className="text-sm">
