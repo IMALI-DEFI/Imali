@@ -42,7 +42,7 @@ export default function AuditLogs({ showToast }) {
 
       return queryParams.toString();
     },
-    [filters, pagination.page, pagination.limit]
+    [filters, pagination.limit]
   );
 
   const computeStats = useCallback((logsData) => {
@@ -64,9 +64,17 @@ export default function AuditLogs({ showToast }) {
   }, []);
 
   const fetchLogs = useCallback(
-    async (pageOverride = pagination.page, isManualRefresh = false) => {
-      // Don't fetch if not admin
+    async (pageOverride = 1, isManualRefresh = false) => {
+      // Don't fetch if not admin or still loading admin status
       if (!isAdmin && !adminLoading) {
+        setAuthError(true);
+        setLoading(false);
+        return;
+      }
+
+      // Check for valid token before fetching
+      const token = localStorage.getItem('imali_token');
+      if (!token) {
         setAuthError(true);
         setLoading(false);
         return;
@@ -107,10 +115,14 @@ export default function AuditLogs({ showToast }) {
         }));
       } catch (error) {
         console.error("Failed to fetch audit logs:", error);
-        if (error?.message?.includes("403") || error?.message?.includes("Admin access required")) {
+        const errorMessage = error?.message || "";
+        
+        if (errorMessage.includes("403") || 
+            errorMessage.includes("Admin access required") ||
+            errorMessage.includes("No authentication token")) {
           setAuthError(true);
         }
-        showToast?.(error?.message || "Failed to fetch audit logs", "error");
+        showToast?.(errorMessage || "Failed to fetch audit logs", "error");
         setLogs([]);
         computeStats([]);
       } finally {
@@ -118,19 +130,27 @@ export default function AuditLogs({ showToast }) {
         setRefreshing(false);
       }
     },
-    [adminFetch, buildQueryString, computeStats, pagination.page, showToast, isAdmin, adminLoading]
+    [adminFetch, buildQueryString, computeStats, showToast, isAdmin, adminLoading]
   );
 
+  // Initial fetch only when admin is confirmed
   useEffect(() => {
     if (isAdmin && !adminLoading) {
       fetchLogs(1);
     }
-  }, [filters, fetchLogs, isAdmin, adminLoading]);
+  }, [isAdmin, adminLoading]); // Remove filters from dependencies to prevent excessive calls
 
-  // Stop polling if not admin
+  // Refetch when filters change (but only if admin)
+  useEffect(() => {
+    if (isAdmin && !adminLoading && !authError) {
+      fetchLogs(1);
+    }
+  }, [filters, isAdmin, adminLoading, authError]);
+
+  // Stop polling if not admin or auth error
   useEffect(() => {
     let interval;
-    if (isAdmin && !authError) {
+    if (isAdmin && !authError && !adminLoading) {
       interval = setInterval(() => {
         fetchLogs(pagination.page, true);
       }, 60000);
@@ -138,7 +158,7 @@ export default function AuditLogs({ showToast }) {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [fetchLogs, pagination.page, isAdmin, authError]);
+  }, [fetchLogs, pagination.page, isAdmin, authError, adminLoading]);
 
   const handleFilterChange = (key, value) => {
     setPagination((prev) => ({ ...prev, page: 1 }));
@@ -201,6 +221,15 @@ export default function AuditLogs({ showToast }) {
     return "bg-purple-500/20 text-purple-300";
   };
 
+  // Show loading while checking admin status
+  if (adminLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+      </div>
+    );
+  }
+
   // Show access denied message if not admin
   if (authError || (!isAdmin && !adminLoading)) {
     return (
@@ -209,6 +238,20 @@ export default function AuditLogs({ showToast }) {
         <h3 className="mb-2 text-xl font-semibold text-white">Admin Access Required</h3>
         <p className="text-white/60">You don't have permission to view audit logs.</p>
         <p className="mt-2 text-sm text-white/40">Please contact an administrator to request access.</p>
+        <button
+          onClick={() => {
+            const token = localStorage.getItem('imali_token');
+            if (!token) {
+              window.location.href = '/login';
+            } else {
+              setAuthError(false);
+              fetchLogs(1);
+            }
+          }}
+          className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -223,7 +266,6 @@ export default function AuditLogs({ showToast }) {
 
   return (
     <div className="space-y-6">
-      {/* Rest of your component remains the same */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="flex items-center gap-2 text-lg font-semibold">
@@ -254,8 +296,159 @@ export default function AuditLogs({ showToast }) {
         </button>
       </div>
 
-      {/* Rest of your JSX - stats cards, filters, table, pagination */}
-      {/* ... keep the existing JSX from your original component ... */}
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-500/5 p-4">
+          <div className="text-sm text-white/50">Visible Events</div>
+          <div className="mt-1 text-2xl font-bold text-blue-400">{stats.total}</div>
+        </div>
+
+        <div className="rounded-xl border border-purple-500/20 bg-gradient-to-br from-purple-500/10 to-purple-500/5 p-4">
+          <div className="text-sm text-white/50">Unique Users</div>
+          <div className="mt-1 text-2xl font-bold text-purple-400">{stats.unique_users}</div>
+        </div>
+
+        <div className="rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 p-4">
+          <div className="text-sm text-white/50">Unique Actions</div>
+          <div className="mt-1 text-2xl font-bold text-emerald-400">
+            {Object.keys(stats.actions).length}
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="mb-4 flex items-center justify-between">
+          <h4 className="font-semibold">Filters</h4>
+          <button
+            onClick={clearFilters}
+            className="text-xs text-white/40 hover:text-white/60"
+          >
+            Clear All
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <input
+            type="text"
+            placeholder="User ID"
+            value={filters.user_id}
+            onChange={(e) => handleFilterChange("user_id", e.target.value)}
+            className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm"
+          />
+
+          <input
+            type="text"
+            placeholder="Action"
+            value={filters.action}
+            onChange={(e) => handleFilterChange("action", e.target.value)}
+            className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm"
+          />
+
+          <input
+            type="date"
+            value={filters.start_date}
+            onChange={(e) => handleFilterChange("start_date", e.target.value)}
+            className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm"
+          />
+
+          <input
+            type="date"
+            value={filters.end_date}
+            onChange={(e) => handleFilterChange("end_date", e.target.value)}
+            className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+
+      {/* Audit Logs Table */}
+      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-black/30">
+              <tr className="text-left text-xs text-white/40">
+                <th className="px-4 py-3">Timestamp</th>
+                <th className="px-4 py-3">User</th>
+                <th className="px-4 py-3">Action</th>
+                <th className="px-4 py-3">Details</th>
+                <th className="px-4 py-3">IP Address</th>
+              <tr>
+            </thead>
+
+            <tbody className="text-sm">
+              {logs.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="px-4 py-8 text-center text-white/40">
+                    No audit logs found
+                  </td>
+                </tr>
+              ) : (
+                logs.map((log, i) => (
+                  <tr key={log.id || i} className="border-t border-white/5 hover:bg-white/5">
+                    <td className="px-4 py-3 text-xs text-white/40">
+                      {log.created_at ? new Date(log.created_at).toLocaleString() : "-"}
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{log.user_email || "System"}</div>
+                      <div className="text-xs text-white/40">
+                        {log.user_id ? `${String(log.user_id).slice(0, 8)}...` : "-"}
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs ${getActionStyle(log.action)}`}
+                      >
+                        {log.action || "unknown"}
+                      </span>
+                    </td>
+
+                    <td className="max-w-xs truncate px-4 py-3">
+                      {formatDetails(log.details).slice(0, 80)}
+                    </td>
+
+                    <td className="px-4 py-3 text-xs text-white/40">
+                      {log.ip_address || "-"}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-white/10 px-4 py-3 text-sm">
+            <div className="text-white/50">
+              Page {pagination.page} of {Math.max(pagination.totalPages, 1)} • Total {pagination.total}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => goToPage(pagination.page - 1)}
+                disabled={pagination.page <= 1 || refreshing}
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Prev
+              </button>
+
+              <button
+                onClick={() => goToPage(pagination.page + 1)}
+                disabled={
+                  pagination.page >= pagination.totalPages ||
+                  pagination.totalPages <= 1 ||
+                  refreshing
+                }
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
