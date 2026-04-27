@@ -1,4 +1,4 @@
-// App.js (with Landing + Newsletter pages added)
+// App.js (with Landing + Newsletter pages + Fixed Admin Protection)
 
 import React, { lazy, Suspense } from "react";
 import {
@@ -116,13 +116,29 @@ function RequireAuth({ children }) {
   return children;
 }
 
+// NEW: RequireAdmin guard - prevents admin components from loading for non-admins
+function RequireAdmin({ children }) {
+  const { user, loading, isAdmin } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  
+  // Check if user is admin
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
 function RequireActivation({ children }) {
-  const { user, activation, activationComplete, loading } = useAuth();
+  const { user, activation, activationComplete, loading, isAdmin } = useAuth();
 
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace />;
 
-  const isAdmin = user?.is_admin === true;
+  // Admins bypass activation
   if (isAdmin) return children;
 
   if (!activationComplete) {
@@ -137,10 +153,14 @@ function RequireActivation({ children }) {
 }
 
 function RedirectIfActivated({ children }) {
-  const { user, activationComplete, loading } = useAuth();
+  const { user, activationComplete, loading, isAdmin } = useAuth();
 
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace />;
+  
+  // Admins can always access activation page if needed
+  if (isAdmin) return children;
+  
   if (activationComplete) return <Navigate to="/dashboard" replace />;
 
   return children;
@@ -148,7 +168,7 @@ function RedirectIfActivated({ children }) {
 
 // ---------------- POST LOGIN ----------------
 function PostLoginRedirect() {
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -159,13 +179,14 @@ function PostLoginRedirect() {
       return;
     }
 
-    if (user?.is_admin) {
-      navigate("/dashboard", { replace: true });
+    // Redirect admins to admin panel, regular users to dashboard
+    if (isAdmin) {
+      navigate("/admin", { replace: true });
       return;
     }
 
     navigate("/dashboard", { replace: true });
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, isAdmin]);
 
   return <LoadingSpinner />;
 }
@@ -201,7 +222,7 @@ function AppContent() {
       <main className="min-h-screen pt-16 bg-white text-gray-900">
         <Suspense fallback={<PageFallback />}>
           <Routes>
-            {/* Main Marketing */}
+            {/* Main Marketing - No auth required */}
             <Route path="/" element={<Home />} />
             <Route path="/about-us" element={<AboutUs />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
@@ -212,12 +233,12 @@ function AppContent() {
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
 
-            {/* Demo */}
+            {/* Demo - No auth required */}
             <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
             <Route path="/trade-demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
 
-            {/* NEW LANDING PAGE ROUTES */}
+            {/* NEW LANDING PAGE ROUTES - No auth required */}
             <Route path="/redditA" element={<LandingPages />} />
             <Route path="/redditB" element={<LandingPages />} />
             <Route path="/xA" element={<LandingPages />} />
@@ -229,14 +250,14 @@ function AppContent() {
             <Route path="/socialA" element={<LandingPages />} />
             <Route path="/socialB" element={<LandingPages />} />
 
-            {/* Newsletter */}
+            {/* Newsletter - No auth required */}
             <Route path="/newsletter" element={<Newsletter />} />
             <Route
               path="/newsletter/success"
               element={<NewsletterSuccess />}
             />
 
-            {/* Auth */}
+            {/* Auth Routes - No auth required for login/signup */}
             <Route path="/signup" element={<Signup />} />
             <Route
               path="/login"
@@ -253,7 +274,7 @@ function AppContent() {
               }
             />
 
-            {/* Billing */}
+            {/* Billing - Requires auth */}
             <Route path="/billing/success" element={<BillingSuccess />} />
             <Route
               path="/billing"
@@ -276,7 +297,7 @@ function AppContent() {
               element={<Navigate to="/billing-dashboard" replace />}
             />
 
-            {/* Activation */}
+            {/* Activation - Requires auth */}
             <Route
               path="/activation"
               element={
@@ -286,7 +307,7 @@ function AppContent() {
               }
             />
 
-            {/* Dashboard */}
+            {/* Dashboard - Requires activation */}
             <Route
               path="/dashboard"
               element={
@@ -301,12 +322,14 @@ function AppContent() {
               element={<Navigate to="/dashboard" replace />}
             />
 
-            {/* Admin */}
+            {/* Admin - Requires BOTH auth AND admin privileges */}
             <Route
-              path="/admin"
+              path="/admin/*"
               element={
                 <RequireAuth>
-                  <AdminPanel />
+                  <RequireAdmin>
+                    <AdminPanel />
+                  </RequireAdmin>
                 </RequireAuth>
               }
             />
