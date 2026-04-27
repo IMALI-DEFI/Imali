@@ -81,6 +81,10 @@ const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.j
 const ReportsTab = lazy(() => import("../admin/ReportsTab.jsx"));
 const TradesManagement = lazy(() => import("../admin/TradesManagement.jsx"));
 
+// NEW IMPORTS
+const AutoResponder = lazy(() => import("../admin/AutoResponder.jsx"));
+const NewsletterManager = lazy(() => import("../admin/NewsletterManager.jsx"));
+
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
 
 const getAuthToken = () => {
@@ -309,6 +313,24 @@ const TAB_SECTIONS = [
         description: "Schedule automated marketing posts.",
         help: "Create and manage automated posts to social channels.",
         actions: [{ id: "refresh", label: "Refresh Jobs", icon: "🔄", endpoint: "/api/admin/automation/jobs", method: "GET" }],
+      },
+      {
+        key: "autoresponder",
+        label: "Auto-Responder",
+        emoji: "✉️",
+        component: AutoResponder,
+        description: "Automated email sequences for user events.",
+        help: "Set up automated emails for new signups, deposits, trades, and more.",
+        actions: [{ id: "refresh", label: "Refresh Rules", icon: "🔄", endpoint: "/api/admin/autoresponder/rules", method: "GET" }],
+      },
+      {
+        key: "newsletter",
+        label: "Newsletter",
+        emoji: "📧",
+        component: NewsletterManager,
+        description: "Manage subscribers and email campaigns.",
+        help: "Create and send newsletters to your subscriber list.",
+        actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/newsletter/subscribers", method: "GET" }],
       },
       {
         key: "promos",
@@ -803,7 +825,7 @@ export default function AdminPanel({ forceOwner = false }) {
                 IMALI Admin Panel
               </h1>
               <p className="hidden text-xs text-white/45 sm:block">
-                Manage users, trades, finances, and platform settings.
+                Manage users, trades, finances, marketing, and platform settings.
               </p>
             </div>
           </div>
