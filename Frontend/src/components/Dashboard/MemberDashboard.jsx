@@ -17,7 +17,6 @@ import {
 } from "chart.js";
 import { Line, Doughnut, Bar } from "react-chartjs-2";
 
-/* ================= CHART SETUP ================= */
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -31,74 +30,50 @@ ChartJS.register(
   Filler
 );
 
-/* ================= NFT TIERS ================= */
+/* ================= CONSTANTS ================= */
 const NFT_TIERS = {
   none: {
     rank: 0,
     key: "none",
-    name: "No Membership",
+    name: "Starter Access",
     color: "border-slate-300",
-    glow: "",
-    perks: ["Standard fees", "Basic features"],
+    badge: "bg-slate-100 text-slate-700",
+    perks: ["Paper trading", "Basic dashboard", "Beginner strategy access"],
   },
   common: {
     rank: 1,
     key: "common",
     name: "Common",
     color: "border-emerald-400",
-    glow: "shadow-emerald-200",
-    perks: ["Lower fees", "Priority execution", "Live trading"],
+    badge: "bg-emerald-100 text-emerald-700",
+    perks: ["Live trading access", "Lower fees", "Priority execution"],
   },
   rare: {
     rank: 2,
     key: "rare",
     name: "Rare",
     color: "border-sky-400",
-    glow: "shadow-sky-200",
-    perks: ["Even lower fees", "Advanced bots", "Arbitrage strategy"],
+    badge: "bg-sky-100 text-sky-700",
+    perks: ["Advanced bots", "Arbitrage strategy", "Deeper analytics"],
   },
   epic: {
     rank: 3,
     key: "epic",
     name: "Epic",
     color: "border-purple-400",
-    glow: "shadow-purple-200",
-    perks: ["Best fees", "All bots", "Faster routing", "Futures access"],
+    badge: "bg-purple-100 text-purple-700",
+    perks: ["Futures tools", "All bots", "Faster routing"],
   },
   legendary: {
     rank: 4,
     key: "legendary",
     name: "Legendary",
     color: "border-yellow-400",
-    glow: "shadow-yellow-200",
-    perks: ["Lowest fees", "Alpha access", "VIP support", "Premium signals"],
+    badge: "bg-yellow-100 text-yellow-700",
+    perks: ["Alpha access", "VIP support", "Premium signals"],
   },
 };
 
-const FEATURE_GATES = {
-  live_trading: {
-    title: "Go Live",
-    minTier: "common",
-    description: "Trade with real capital.",
-  },
-  advanced_bots: {
-    title: "Advanced Bots",
-    minTier: "rare",
-    description: "Unlock stronger automation and premium execution logic.",
-  },
-  futures: {
-    title: "Futures Trading",
-    minTier: "epic",
-    description: "Access leveraged futures trading tools.",
-  },
-  alpha_signals: {
-    title: "Alpha Signals",
-    minTier: "legendary",
-    description: "Premium signals, early access, and VIP-level features.",
-  },
-};
-
-/* ================= STRATEGIES ================= */
 const FALLBACK_STRATEGIES = [
   {
     id: "mean_reversion",
@@ -114,7 +89,7 @@ const FALLBACK_STRATEGIES = [
     emoji: "⚖️",
     minTier: "none",
     risk: "Medium",
-    description: "Balanced AI allocation and execution.",
+    description: "A balanced AI mix of multiple trading signals.",
   },
   {
     id: "momentum",
@@ -122,7 +97,7 @@ const FALLBACK_STRATEGIES = [
     emoji: "🔥",
     minTier: "none",
     risk: "High",
-    description: "Capture strength in strong market trends.",
+    description: "Follows strong moves when markets are trending.",
   },
   {
     id: "arbitrage",
@@ -130,7 +105,7 @@ const FALLBACK_STRATEGIES = [
     emoji: "🔄",
     minTier: "rare",
     risk: "Low",
-    description: "Profit from price differences across venues.",
+    description: "Looks for price differences across venues.",
   },
   {
     id: "futures",
@@ -138,7 +113,7 @@ const FALLBACK_STRATEGIES = [
     emoji: "📈",
     minTier: "epic",
     risk: "High",
-    description: "Higher-speed futures execution.",
+    description: "Higher-speed crypto futures execution.",
   },
   {
     id: "alpha",
@@ -146,9 +121,37 @@ const FALLBACK_STRATEGIES = [
     emoji: "🎯",
     minTier: "legendary",
     risk: "High",
-    description: "Top-tier premium entries and signals.",
+    description: "Premium entries, signals, and early-access tools.",
   },
 ];
+
+const FEATURE_GATES = {
+  paper_trading: {
+    title: "Paper Trading",
+    minTier: "none",
+    description: "Practice trading before risking real money.",
+  },
+  live_trading: {
+    title: "Live Trading",
+    minTier: "common",
+    description: "Trade with real capital after setup is complete.",
+  },
+  advanced_bots: {
+    title: "Advanced Bots",
+    minTier: "rare",
+    description: "Unlock stronger automation and premium execution logic.",
+  },
+  futures: {
+    title: "Futures Trading",
+    minTier: "epic",
+    description: "Access higher-risk futures trading tools.",
+  },
+  alpha_signals: {
+    title: "Alpha Signals",
+    minTier: "legendary",
+    description: "Premium signals, early access, and VIP-level features.",
+  },
+};
 
 const ACHIEVEMENTS = [
   { id: "first_trade", label: "First Trade", icon: "🚀" },
@@ -194,11 +197,9 @@ const riskClass = (risk) => {
 
 const decorateStrategies = (strategies = []) => {
   const fallbackMap = new Map(FALLBACK_STRATEGIES.map((s) => [s.id, s]));
-
   return strategies.map((strategy) => {
     const id = normalizeStrategyId(strategy.id || strategy.name);
     const fallback = fallbackMap.get(id);
-
     return {
       id,
       name: fallback?.name || strategy.name || id,
@@ -232,8 +233,25 @@ const getStrategyFromResult = (result, fallbackId) => {
   );
 };
 
-/* ================= MODAL ================= */
-function ApiKeysModal({ open, onClose }) {
+const formatTrialRemaining = (seconds) => {
+  const s = Number(seconds || 0);
+  if (s <= 0) return "Expired";
+  const days = Math.floor(s / 86400);
+  const hours = Math.floor((s % 86400) / 3600);
+  if (days > 0) return `${days} day${days === 1 ? "" : "s"} ${hours} hr${hours === 1 ? "" : "s"}`;
+  return `${hours} hr${hours === 1 ? "" : "s"}`;
+};
+
+const anonymizeEmail = (email, index = 0) => {
+  if (!email) return `member_${1000 + index}`;
+  const raw = String(email).toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) hash = (hash * 31 + raw.charCodeAt(i)) % 10000;
+  return `member_${String(hash).padStart(4, "0")}`;
+};
+
+/* ================= API KEYS MODAL ================= */
+function ApiKeysModal({ open, onClose, onSaved }) {
   const [saving, setSaving] = useState("");
   const [alpacaPaper, setAlpacaPaper] = useState({ apiKey: "", secret: "" });
   const [alpacaLive, setAlpacaLive] = useState({ apiKey: "", secret: "" });
@@ -252,8 +270,8 @@ function ApiKeysModal({ open, onClose }) {
     setSaving(`alpaca-${mode}`);
     try {
       const result = await BotAPI.connectAlpaca({
-        api_key: payload.apiKey,
-        api_secret: payload.secret,
+        api_key: payload.apiKey.trim(),
+        api_secret: payload.secret.trim(),
         mode,
       });
 
@@ -262,6 +280,7 @@ function ApiKeysModal({ open, onClose }) {
 
       if (mode === "paper") setAlpacaPaper({ apiKey: "", secret: "" });
       if (mode === "live") setAlpacaLive({ apiKey: "", secret: "" });
+      await onSaved?.();
     } catch (err) {
       alert(err?.message || `Failed to save Alpaca ${mode} keys.`);
     } finally {
@@ -279,9 +298,9 @@ function ApiKeysModal({ open, onClose }) {
     setSaving(`okx-${mode}`);
     try {
       const result = await BotAPI.connectOKX({
-        api_key: payload.apiKey,
-        api_secret: payload.secret,
-        passphrase: payload.passphrase,
+        api_key: payload.apiKey.trim(),
+        api_secret: payload.secret.trim(),
+        passphrase: payload.passphrase.trim(),
         mode,
       });
 
@@ -290,6 +309,7 @@ function ApiKeysModal({ open, onClose }) {
 
       if (mode === "paper") setOkxPaper({ apiKey: "", secret: "", passphrase: "" });
       if (mode === "live") setOkxLive({ apiKey: "", secret: "", passphrase: "" });
+      await onSaved?.();
     } catch (err) {
       alert(err?.message || `Failed to save OKX ${mode} keys.`);
     } finally {
@@ -298,26 +318,31 @@ function ApiKeysModal({ open, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="max-h-[92vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-6 shadow-2xl">
         <div className="mb-5 flex items-center justify-between border-b border-gray-200 pb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">API & Exchange Keys</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Manage paper and live credentials for Alpaca and OKX.
+              Alpaca is required for stock trading. OKX is required for crypto trading. Set up both for the full Imali experience.
             </p>
           </div>
           <button
             onClick={onClose}
             className="rounded-lg px-3 py-1 text-2xl font-bold text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            aria-label="Close API key modal"
           >
             ×
           </button>
         </div>
 
+        <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <strong>Security recommendation:</strong> create restricted API keys with trading-only permissions. Do not enable withdrawals. Use paper keys first, then live keys only when ready.
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-2">
           <ExchangeBlock
-            title="Alpaca"
+            title="Alpaca — Stocks & ETFs"
             icon="📈"
             paperState={alpacaPaper}
             setPaperState={setAlpacaPaper}
@@ -329,7 +354,7 @@ function ApiKeysModal({ open, onClose }) {
           />
 
           <ExchangeBlock
-            title="OKX"
+            title="OKX — Crypto Spot/Futures"
             icon="🔷"
             paperState={okxPaper}
             setPaperState={setOkxPaper}
@@ -397,6 +422,7 @@ function KeyForm({ title, state, setState, onSave, saving, requiresPassphrase = 
           value={state.apiKey}
           onChange={(e) => setState({ ...state, apiKey: e.target.value })}
           placeholder="API Key"
+          autoComplete="off"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
         />
         <input
@@ -404,6 +430,7 @@ function KeyForm({ title, state, setState, onSave, saving, requiresPassphrase = 
           value={state.secret}
           onChange={(e) => setState({ ...state, secret: e.target.value })}
           placeholder="Secret Key"
+          autoComplete="new-password"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
         />
         {requiresPassphrase ? (
@@ -412,6 +439,7 @@ function KeyForm({ title, state, setState, onSave, saving, requiresPassphrase = 
             value={state.passphrase}
             onChange={(e) => setState({ ...state, passphrase: e.target.value })}
             placeholder="Passphrase"
+            autoComplete="new-password"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
           />
         ) : null}
@@ -424,6 +452,78 @@ function KeyForm({ title, state, setState, onSave, saving, requiresPassphrase = 
         </button>
       </div>
     </div>
+  );
+}
+
+/* ================= SMALL COMPONENTS ================= */
+function Stat({ label, value, helper }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-xl font-bold text-gray-900">{value}</div>
+      {helper ? <div className="mt-1 text-xs text-gray-500">{helper}</div> : null}
+    </div>
+  );
+}
+
+function ConnectionRow({ title, connected, helper, required = true, onConnect }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-3">
+      <div>
+        <span className="font-medium text-gray-900">{title}</span>
+        {helper ? <div className="text-xs text-gray-500">{helper}</div> : null}
+      </div>
+      <div className="flex items-center gap-2">
+        <span
+          className={`rounded-full px-2 py-1 text-xs font-semibold ${
+            connected ? "bg-emerald-100 text-emerald-700" : required ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-700"
+          }`}
+        >
+          {connected ? "Connected" : required ? "Required" : "Optional"}
+        </span>
+        {!connected ? (
+          <button
+            onClick={onConnect}
+            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
+          >
+            Connect
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CTA({ title, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
+    >
+      {title}
+    </button>
+  );
+}
+
+function TierCTA({ title, unlocked, lockedText, onClick, onLockedClick }) {
+  if (unlocked) {
+    return (
+      <button
+        onClick={onClick}
+        className="rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
+      >
+        {title}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={onLockedClick}
+      className="rounded-xl border border-amber-300 bg-amber-50 py-3 font-semibold text-amber-800 hover:bg-amber-100"
+    >
+      🔒 {title} — {lockedText}
+    </button>
   );
 }
 
@@ -451,7 +551,7 @@ function CommunityTrades({ trades }) {
                     </span>
                   </div>
                   <div className="text-xs text-gray-500">
-                    {trade.user_email ? trade.user_email.split("@")[0] : "member"} • {trade.exchange || "exchange"}
+                    {anonymizeEmail(trade.user_email, index)} • {trade.exchange || "exchange"}
                   </div>
                 </div>
                 <div className={`text-sm font-bold ${positive ? "text-emerald-700" : "text-red-700"}`}>
@@ -466,7 +566,60 @@ function CommunityTrades({ trades }) {
   );
 }
 
-/* ================= COMPONENT ================= */
+function SetupRecommendation({ alpacaConnected, okxConnected, onConnect }) {
+  const bothReady = alpacaConnected && okxConnected;
+  return (
+    <div className={`rounded-2xl border p-5 ${bothReady ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className={`text-lg font-bold ${bothReady ? "text-emerald-900" : "text-amber-900"}`}>
+            {bothReady ? "✅ Full stock + crypto setup complete" : "⚠️ Recommended setup: connect both Alpaca and OKX"}
+          </h2>
+          <p className={`mt-1 text-sm ${bothReady ? "text-emerald-800" : "text-amber-900"}`}>
+            Alpaca powers stock and ETF trading. OKX powers crypto spot and futures trading. To use Imali across both stock and crypto markets, both connections should be completed.
+          </p>
+        </div>
+        {!bothReady ? (
+          <button
+            onClick={onConnect}
+            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            Connect Missing Keys
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function TrialBanner({ trial }) {
+  const status = String(trial?.trial_status || "").toLowerCase();
+  const active = status === "trial" && trial?.paper_trading_enabled !== false && Number(trial?.seconds_remaining || 0) > 0;
+
+  if (!trial) return null;
+
+  return (
+    <div className={`rounded-2xl border p-4 ${active ? "border-sky-200 bg-sky-50" : "border-rose-200 bg-rose-50"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className={`font-bold ${active ? "text-sky-900" : "text-rose-900"}`}>
+            {active ? "Paper trading trial active" : "Paper trading trial inactive"}
+          </h3>
+          <p className={`text-sm ${active ? "text-sky-800" : "text-rose-800"}`}>
+            {active
+              ? `Time remaining: ${formatTrialRemaining(trial.seconds_remaining)}. Use this time to test before going live.`
+              : "Your trial is expired or inactive. Upgrade or contact support to continue trading."}
+          </p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${active ? "bg-sky-100 text-sky-700" : "bg-rose-100 text-rose-700"}`}>
+          {active ? "Trial Active" : "Trial Inactive"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ================= MAIN COMPONENT ================= */
 export default function MemberDashboard() {
   const nav = useNavigate();
 
@@ -481,6 +634,7 @@ export default function MemberDashboard() {
     alpaca_connected: false,
     okx_connected: false,
   });
+  const [trial, setTrial] = useState(null);
   const [strategies, setStrategies] = useState(FALLBACK_STRATEGIES);
   const [currentStrategy, setCurrentStrategy] = useState("mean_reversion");
   const [showApiModal, setShowApiModal] = useState(false);
@@ -495,56 +649,62 @@ export default function MemberDashboard() {
     try {
       const me = await BotAPI.getMe(true);
       if (!me?.id && !me?.email) {
-        BotAPI.clearToken();
-        BotAPI.clearApiKey();
+        BotAPI.clearToken?.();
+        BotAPI.clearApiKey?.();
         nav("/login");
         return;
       }
 
       setUser(me);
 
-      const [
-        statsResult,
-        integrationsResult,
-        strategiesResult,
-        globalTradesResult,
-      ] = await Promise.all([
-        BotAPI.getUserTradingStats(30, true),
-        BotAPI.getIntegrationStatus(true),
-        BotAPI.getTradingStrategies(true),
-        BotAPI.getGlobalTrades({ limit: 20, skipCache: true }),
-      ]);
+      const [statsResult, integrationsResult, strategiesResult, globalTradesResult, trialResult] =
+        await Promise.allSettled([
+          BotAPI.getUserTradingStats(30, true),
+          BotAPI.getIntegrationStatus(true),
+          BotAPI.getTradingStrategies(true),
+          BotAPI.getGlobalTrades({ limit: 20, skipCache: true }),
+          BotAPI.getTrialStatus ? BotAPI.getTrialStatus(true) : Promise.resolve(null),
+        ]);
 
-      const summary = extractSummary(statsResult);
-      const dailySeries = extractDailySeries(statsResult);
+      const statsPayload = statsResult.status === "fulfilled" ? statsResult.value : null;
+      const integrationsPayload = integrationsResult.status === "fulfilled" ? integrationsResult.value : null;
+      const strategiesPayload = strategiesResult.status === "fulfilled" ? strategiesResult.value : null;
+      const tradesPayload = globalTradesResult.status === "fulfilled" ? globalTradesResult.value : null;
+      const trialPayload = trialResult.status === "fulfilled" ? trialResult.value : null;
+
+      const summary = extractSummary(statsPayload);
+      const dailySeries = extractDailySeries(statsPayload);
 
       setStats(summary);
       setSeries(dailySeries);
       setStreak(Number(summary?.current_streak || 0));
-      setIntegrations(integrationsResult || {
+      setIntegrations(integrationsPayload || {
         wallet_connected: false,
         alpaca_connected: false,
         okx_connected: false,
       });
 
-      const backendStrategies = Array.isArray(strategiesResult?.strategies)
-        ? strategiesResult.strategies
+      const backendStrategies = Array.isArray(strategiesPayload?.strategies)
+        ? strategiesPayload.strategies
+        : Array.isArray(strategiesPayload?.data?.strategies)
+        ? strategiesPayload.data.strategies
         : FALLBACK_STRATEGIES;
 
       setStrategies(decorateStrategies(backendStrategies));
-
-      const strategyFromBackend =
-        strategiesResult?.current_strategy ||
-        me?.strategy ||
-        "mean_reversion";
-
-      setCurrentStrategy(normalizeStrategyId(strategyFromBackend));
-      setCommunityTrades(Array.isArray(globalTradesResult?.trades) ? globalTradesResult.trades : []);
+      setCurrentStrategy(
+        normalizeStrategyId(strategiesPayload?.current_strategy || strategiesPayload?.data?.current_strategy || me?.strategy || "mean_reversion")
+      );
+      setCommunityTrades(Array.isArray(tradesPayload?.trades) ? tradesPayload.trades : []);
+      setTrial(trialPayload?.data || trialPayload || {
+        trial_status: me?.trial_status,
+        trial_ends_at: me?.trial_ends_at,
+        paper_trading_enabled: me?.paper_trading_enabled,
+      });
     } catch (err) {
       console.error("Failed to load member dashboard:", err);
       if (String(err?.message || "").toLowerCase().includes("invalid or expired token")) {
-        BotAPI.clearToken();
-        BotAPI.clearApiKey();
+        BotAPI.clearToken?.();
+        BotAPI.clearApiKey?.();
         nav("/login");
         return;
       }
@@ -565,15 +725,19 @@ export default function MemberDashboard() {
 
   const nftKey = String(user?.nft_tier || "none").toLowerCase();
   const nft = NFT_TIERS[nftKey] || NFT_TIERS.none;
+  const alpacaConnected = !!integrations.alpaca_connected;
+  const okxConnected = !!integrations.okx_connected;
+  const bothMarketConnectionsReady = alpacaConnected && okxConnected;
 
   const confidence = useMemo(() => {
     let score = 0;
     score += Math.min(30, Number(stats.win_rate || 0) * 0.3);
     score += Math.min(30, Number(stats.total_trades || 0) * 0.3);
     score += Math.min(20, Number(streak || 0) * 2);
-    score += nftKey !== "none" ? 20 : 0;
+    score += bothMarketConnectionsReady ? 10 : 0;
+    score += nftKey !== "none" ? 10 : 0;
     return Math.min(100, Math.round(score));
-  }, [stats, streak, nftKey]);
+  }, [stats, streak, nftKey, bothMarketConnectionsReady]);
 
   const unlockedAchievements = useMemo(() => {
     const list = [];
@@ -586,9 +750,7 @@ export default function MemberDashboard() {
   }, [stats, streak, nftKey]);
 
   const lockedCount = useMemo(() => {
-    return Object.values(FEATURE_GATES).filter(
-      (feature) => !hasTierAccess(nftKey, feature.minTier)
-    ).length;
+    return Object.values(FEATURE_GATES).filter((feature) => !hasTierAccess(nftKey, feature.minTier)).length;
   }, [nftKey]);
 
   const lineData = useMemo(
@@ -611,16 +773,9 @@ export default function MemberDashboard() {
   const doughnutData = useMemo(() => {
     const wins = Number(stats.wins || 0);
     const losses = Number(stats.losses || 0);
-
     return {
       labels: ["Wins", "Losses"],
-      datasets: [
-        {
-          data: [wins, losses],
-          backgroundColor: ["#10b981", "#ef4444"],
-          borderWidth: 0,
-        },
-      ],
+      datasets: [{ data: [wins, losses], backgroundColor: ["#10b981", "#ef4444"], borderWidth: 0 }],
     };
   }, [stats]);
 
@@ -628,13 +783,7 @@ export default function MemberDashboard() {
     const lastSeven = series.slice(-7);
     return {
       labels: lastSeven.map((p) => p.date || p.x || "—"),
-      datasets: [
-        {
-          label: "Trades",
-          data: lastSeven.map((p) => Number(p.trades || 0)),
-          backgroundColor: "#6366f1",
-        },
-      ],
+      datasets: [{ label: "Trades", data: lastSeven.map((p) => Number(p.trades || 0)), backgroundColor: "#6366f1" }],
     };
   }, [series]);
 
@@ -653,33 +802,25 @@ export default function MemberDashboard() {
 
     try {
       const result = await BotAPI.updateUserStrategy(strategy.id);
-      if (!result?.success) {
-        throw new Error(result?.error || "Failed to update strategy.");
-      }
+      if (!result?.success) throw new Error(result?.error || "Failed to update strategy.");
 
       const saved = getStrategyFromResult(result, strategy.id);
       setCurrentStrategy(saved);
       setUser((prev) => (prev ? { ...prev, strategy: saved } : prev));
       setStrategyMessage(result?.message || `${strategy.name} activated.`);
-
-      if (!result?.local_only) {
-        const refreshed = await BotAPI.getTradingStrategies(true);
-        setStrategies(decorateStrategies(refreshed?.strategies || strategies));
-        setCurrentStrategy(getStrategyFromResult(refreshed, saved));
-      }
     } catch (err) {
       setCurrentStrategy(previous);
       setStrategyMessage(err?.message || "Failed to update strategy.");
     } finally {
       setSavingStrategy("");
-      setTimeout(() => setStrategyMessage(""), 3000);
+      setTimeout(() => setStrategyMessage(""), 3500);
     }
   };
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white text-gray-900">
-        Loading…
+        Loading dashboard…
       </div>
     );
   }
@@ -691,7 +832,7 @@ export default function MemberDashboard() {
           <div>
             <h1 className="text-3xl font-bold">Welcome back 👋</h1>
             <p className="mt-1 text-sm text-gray-600">
-              Your membership controls which premium trading tools you can unlock.
+              Connect Alpaca for stocks and OKX for crypto to unlock the full Imali trading workflow.
             </p>
           </div>
 
@@ -708,123 +849,132 @@ export default function MemberDashboard() {
               onClick={() => setShowApiModal(true)}
               className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
             >
-              API & Keys
+              Connect API Keys
             </button>
 
             <button
               onClick={() => nav("/billing-dashboard")}
               className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
             >
-              Billing Dashboard
+              Billing
             </button>
 
             <button
               onClick={() => nav("/pricing")}
               className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
             >
-              Upgrade Plan
+              Upgrade
             </button>
           </div>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="font-semibold">🎯 Trading Strategy</h3>
-            {strategyMessage ? <div className="text-sm text-indigo-700">{strategyMessage}</div> : null}
-          </div>
+        <TrialBanner trial={trial} />
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {strategies.map((strategy) => {
-              const unlocked = hasTierAccess(nftKey, strategy.minTier);
-              const active = currentStrategy === strategy.id;
-              const updating = savingStrategy === strategy.id;
+        <SetupRecommendation
+          alpacaConnected={alpacaConnected}
+          okxConnected={okxConnected}
+          onConnect={() => setShowApiModal(true)}
+        />
 
-              return (
-                <button
-                  key={strategy.id}
-                  onClick={() => handleStrategyChange(strategy)}
-                  disabled={!!savingStrategy}
-                  className={`rounded-xl border p-4 text-left transition ${
-                    active
-                      ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
-                      : unlocked
-                      ? "border-gray-200 bg-white hover:shadow-sm"
-                      : "border-gray-200 bg-white opacity-90"
-                  } disabled:opacity-80`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{strategy.emoji}</span>
-                        <span className="font-semibold text-gray-900">{strategy.name}</span>
-                      </div>
-                      <div className="mt-2 text-sm text-gray-600">{strategy.description}</div>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-2">
-                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${riskClass(strategy.risk)}`}>
-                        {strategy.risk}
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                          unlocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                        }`}
-                      >
-                        {unlocked ? "Unlocked" : `${NFT_TIERS[strategy.minTier].name}+`}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    {active ? (
-                      <div className="rounded-lg bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white">
-                        {updating ? "Updating..." : "Active"}
-                      </div>
-                    ) : unlocked ? (
-                      <div className="rounded-lg bg-gray-100 px-3 py-2 text-center text-sm font-semibold text-gray-900">
-                        {updating ? "Updating..." : "Use this strategy"}
-                      </div>
-                    ) : (
-                      <div className="rounded-lg bg-amber-50 px-3 py-2 text-center text-sm font-semibold text-amber-800">
-                        Locked — Upgrade Required
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className={`rounded-2xl border ${nft.color} ${nft.glow} bg-gray-50 p-5 shadow-sm`}>
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold">🧬 Membership NFT — {nft.name}</h2>
-              <ul className="mt-2 list-disc pl-5 text-sm text-gray-600">
-                {nft.perks.map((perk) => (
-                  <li key={perk}>{perk}</li>
-                ))}
-              </ul>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 lg:col-span-2">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="font-semibold">🎯 Trading Strategy</h3>
+              {strategyMessage ? <div className="text-sm text-indigo-700">{strategyMessage}</div> : null}
             </div>
 
-            <div className="rounded-xl bg-white px-4 py-3 text-center shadow-sm">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Locked features</div>
-              <div className="mt-1 text-2xl font-bold text-gray-900">{lockedCount}</div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {strategies.map((strategy) => {
+                const unlocked = hasTierAccess(nftKey, strategy.minTier);
+                const active = currentStrategy === strategy.id;
+                const updating = savingStrategy === strategy.id;
+
+                return (
+                  <button
+                    key={strategy.id}
+                    onClick={() => handleStrategyChange(strategy)}
+                    disabled={!!savingStrategy}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      active
+                        ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
+                        : unlocked
+                        ? "border-gray-200 bg-white hover:shadow-sm"
+                        : "border-gray-200 bg-white opacity-90"
+                    } disabled:opacity-80`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">{strategy.emoji}</span>
+                          <span className="font-semibold text-gray-900">{strategy.name}</span>
+                        </div>
+                        <div className="mt-2 text-sm text-gray-600">{strategy.description}</div>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${riskClass(strategy.risk)}`}>
+                          {strategy.risk}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                            unlocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {unlocked ? "Unlocked" : `${NFT_TIERS[strategy.minTier]?.name || strategy.minTier}+`}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      {active ? (
+                        <div className="rounded-lg bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white">
+                          {updating ? "Updating..." : "Active"}
+                        </div>
+                      ) : unlocked ? (
+                        <div className="rounded-lg bg-gray-100 px-3 py-2 text-center text-sm font-semibold text-gray-900">
+                          {updating ? "Updating..." : "Use this strategy"}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg bg-amber-50 px-3 py-2 text-center text-sm font-semibold text-amber-800">
+                          Locked — Upgrade Required
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {nftKey === "none" && (
+          <div className={`rounded-2xl border ${nft.color} bg-gray-50 p-5 shadow-sm`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold">🧬 {nft.name}</h2>
+                <span className={`mt-2 inline-block rounded-full px-2 py-1 text-xs font-semibold ${nft.badge}`}>
+                  Membership Tier
+                </span>
+              </div>
+              <div className="rounded-xl bg-white px-4 py-3 text-center shadow-sm">
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Locked</div>
+                <div className="mt-1 text-2xl font-bold text-gray-900">{lockedCount}</div>
+              </div>
+            </div>
+
+            <ul className="mt-4 list-disc pl-5 text-sm text-gray-600">
+              {nft.perks.map((perk) => <li key={perk}>{perk}</li>)}
+            </ul>
+
             <button
-              onClick={() => nav("/nft")}
-              className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700"
+              onClick={() => nav("/pricing")}
+              className="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700"
             >
               Upgrade Membership
             </button>
-          )}
+          </div>
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <h3 className="mb-2 font-semibold">📊 Trading Confidence</h3>
+          <h3 className="mb-2 font-semibold">📊 Trading Readiness</h3>
           <div className="h-4 w-full overflow-hidden rounded-full bg-gray-200">
             <div
               className={`h-full ${confidence >= 70 ? "bg-emerald-500" : "bg-yellow-500"}`}
@@ -832,15 +982,15 @@ export default function MemberDashboard() {
             />
           </div>
           <p className="mt-1 text-xs text-gray-500">
-            Confidence is built from win rate, consistency, and experience.
+            Readiness increases with completed connections, trading history, consistency, and membership access.
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Stat label="Total Profit" value={usd(stats.total_pnl)} />
-          <Stat label="Win Rate" value={pct(stats.win_rate)} />
-          <Stat label="Trades" value={Number(stats.total_trades || 0)} />
-          <Stat label="Daily Streak" value={`🔥 ${streak}`} />
+          <Stat label="Total Profit" value={usd(stats.total_pnl)} helper="Closed trade PnL" />
+          <Stat label="Win Rate" value={pct(stats.win_rate)} helper="Closed trades" />
+          <Stat label="Trades" value={Number(stats.total_trades || 0)} helper="Total recorded" />
+          <Stat label="Daily Streak" value={`🔥 ${streak}`} helper="Consistency" />
         </div>
 
         <div className="grid gap-4 xl:grid-cols-3">
@@ -850,14 +1000,7 @@ export default function MemberDashboard() {
               <div className="text-sm text-gray-500">No performance data yet.</div>
             ) : (
               <div className="h-72">
-                <Line
-                  data={lineData}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: true } },
-                  }}
-                />
+                <Line data={lineData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } }} />
               </div>
             )}
           </div>
@@ -865,39 +1008,44 @@ export default function MemberDashboard() {
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <h3 className="mb-3 font-semibold">🥇 Win / Loss</h3>
             <div className="h-72">
-              <Doughnut
-                data={doughnutData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { position: "bottom" } },
-                }}
-              />
+              <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }} />
             </div>
           </div>
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <h3 className="mb-3 font-semibold">📊 Trade Count (Last 7 Points)</h3>
+          <h3 className="mb-3 font-semibold">📊 Trade Count — Last 7 Points</h3>
           <div className="h-72">
-            <Bar
-              data={barData}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: true } },
-              }}
-            />
+            <Bar data={barData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } }} />
           </div>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <h3 className="mb-3 font-semibold">🔌 Connections</h3>
+            <h3 className="mb-3 font-semibold">🔌 Required Connections</h3>
+            <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+              For full stock + crypto trading, connect both platforms: Alpaca for stocks/ETFs and OKX for crypto.
+            </div>
             <div className="space-y-3">
-              <ConnectionRow title="Wallet" connected={integrations.wallet_connected} />
-              <ConnectionRow title="Alpaca" connected={integrations.alpaca_connected} />
-              <ConnectionRow title="OKX" connected={integrations.okx_connected} />
+              <ConnectionRow
+                title="Alpaca"
+                connected={alpacaConnected}
+                helper="Required for stock and ETF trading"
+                onConnect={() => setShowApiModal(true)}
+              />
+              <ConnectionRow
+                title="OKX"
+                connected={okxConnected}
+                helper="Required for crypto spot and futures trading"
+                onConnect={() => setShowApiModal(true)}
+              />
+              <ConnectionRow
+                title="Wallet / MetaMask"
+                connected={!!integrations.wallet_connected}
+                helper="Optional for DeFi wallet activity"
+                required={false}
+                onConnect={() => nav("/activation")}
+              />
             </div>
           </div>
 
@@ -919,23 +1067,14 @@ export default function MemberDashboard() {
             {Object.entries(FEATURE_GATES).map(([key, feature]) => {
               const unlocked = hasTierAccess(nftKey, feature.minTier);
               return (
-                <div
-                  key={key}
-                  className={`rounded-xl border p-4 ${
-                    unlocked ? "border-emerald-300 bg-emerald-50" : "border-gray-200 bg-white"
-                  }`}
-                >
+                <div key={key} className={`rounded-xl border p-4 ${unlocked ? "border-emerald-300 bg-emerald-50" : "border-gray-200 bg-white"}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-semibold text-gray-900">{feature.title}</div>
                       <div className="mt-1 text-sm text-gray-600">{feature.description}</div>
                     </div>
-                    <span
-                      className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                        unlocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {unlocked ? "Unlocked" : `${NFT_TIERS[feature.minTier].name}+`}
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${unlocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {unlocked ? "Unlocked" : `${NFT_TIERS[feature.minTier]?.name || feature.minTier}+`}
                     </span>
                   </div>
                 </div>
@@ -963,96 +1102,48 @@ export default function MemberDashboard() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
-          <CTA title="Trade Demo" onClick={() => nav("/trade-demo")} />
+          <CTA title="Paper Trade Demo" onClick={() => nav("/trade-demo")} />
           <TierCTA
             title="Go Live"
-            unlocked={hasTierAccess(nftKey, "common")}
-            lockedText="Common+ required"
+            unlocked={hasTierAccess(nftKey, "common") && bothMarketConnectionsReady}
+            lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Common+ required"}
             onClick={() => nav("/trade-demo?mode=live")}
-            onLockedClick={() => nav("/pricing")}
+            onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
           />
           <TierCTA
             title="Advanced Bots"
-            unlocked={hasTierAccess(nftKey, "rare")}
-            lockedText="Rare+ required"
-            onClick={() => nav("/bots")}
-            onLockedClick={() => nav("/pricing")}
+            unlocked={hasTierAccess(nftKey, "rare") && bothMarketConnectionsReady}
+            lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Rare+ required"}
+            onClick={() => nav("/pricing")}
+            onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
           />
           <TierCTA
             title="Futures"
-            unlocked={hasTierAccess(nftKey, "epic")}
-            lockedText="Epic+ required"
-            onClick={() => nav("/futures")}
-            onLockedClick={() => nav("/pricing")}
+            unlocked={hasTierAccess(nftKey, "epic") && okxConnected}
+            lockedText={!okxConnected ? "Connect OKX" : "Epic+ required"}
+            onClick={() => nav("/pricing")}
+            onLockedClick={() => (okxConnected ? nav("/pricing") : setShowApiModal(true))}
           />
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
           <TierCTA
             title="Alpha Signals"
-            unlocked={hasTierAccess(nftKey, "legendary")}
-            lockedText="Legendary required"
-            onClick={() => nav("/signals")}
-            onLockedClick={() => nav("/pricing")}
+            unlocked={hasTierAccess(nftKey, "legendary") && bothMarketConnectionsReady}
+            lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Legendary required"}
+            onClick={() => nav("/pricing")}
+            onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
           />
           <CTA title="Billing" onClick={() => nav("/billing-dashboard")} />
-          <CTA title="Learn" onClick={() => nav("/help")} />
+          <CTA title="Complete Activation" onClick={() => nav("/activation")} />
         </div>
       </div>
 
-      <ApiKeysModal open={showApiModal} onClose={() => setShowApiModal(false)} />
+      <ApiKeysModal
+        open={showApiModal}
+        onClose={() => setShowApiModal(false)}
+        onSaved={() => loadDashboard(true)}
+      />
     </div>
   );
 }
-
-/* ================= SMALL ================= */
-const Stat = ({ label, value }) => (
-  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-    <div className="text-xs text-gray-500">{label}</div>
-    <div className="text-xl font-bold text-gray-900">{value}</div>
-  </div>
-);
-
-const CTA = ({ title, onClick }) => (
-  <button
-    onClick={onClick}
-    className="rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
-  >
-    {title}
-  </button>
-);
-
-const TierCTA = ({ title, unlocked, lockedText, onClick, onLockedClick }) => {
-  if (unlocked) {
-    return (
-      <button
-        onClick={onClick}
-        className="rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
-      >
-        {title}
-      </button>
-    );
-  }
-
-  return (
-    <button
-      onClick={onLockedClick}
-      className="rounded-xl border border-amber-300 bg-amber-50 py-3 font-semibold text-amber-800 hover:bg-amber-100"
-    >
-      🔒 {title} — {lockedText}
-    </button>
-  );
-};
-
-const ConnectionRow = ({ title, connected }) => (
-  <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3">
-    <span className="font-medium text-gray-900">{title}</span>
-    <span
-      className={`rounded-full px-2 py-1 text-xs font-semibold ${
-        connected ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"
-      }`}
-    >
-      {connected ? "Connected" : "Not connected"}
-    </span>
-  </div>
-);
