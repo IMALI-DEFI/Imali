@@ -1,6 +1,9 @@
 // src/admin/NewsletterManager.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { FaEnvelope, FaUsers, FaSend, FaPlus, FaTrash, FaEdit, FaEye, FaSpinner, FaCopy, FaChartLine, FaMailBulk, FaListOl } from 'react-icons/fa';
+import { 
+  FaEnvelope, FaUsers, FaPaperPlane, FaPlus, FaTrash, FaEdit, 
+  FaSpinner, FaCopy, FaChartLine, FaMailBulk, FaListOl, FaTimes, FaSave
+} from 'react-icons/fa';
 
 export default function NewsletterManager({ apiBase, showToast }) {
   const [subscribers, setSubscribers] = useState([]);
@@ -357,7 +360,7 @@ export default function NewsletterManager({ apiBase, showToast }) {
                         className="rounded-lg border border-white/10 p-2 text-sm hover:bg-white/5 disabled:opacity-50"
                         title={campaign.status === 'sent' ? 'Already sent' : 'Send Now'}
                       >
-                        <FaSend className="text-green-400" />
+                        <FaPaperPlane className="text-green-400" />
                       </button>
                       <button
                         onClick={() => {
@@ -476,7 +479,7 @@ export default function NewsletterManager({ apiBase, showToast }) {
                 disabled={sending}
                 className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
               >
-                {sending ? <FaSpinner className="mx-auto animate-spin" /> : <FaSend className="inline mr-2" />}
+                {sending ? <FaSpinner className="mx-auto animate-spin" /> : <FaPaperPlane className="inline mr-2" />}
                 {sending ? "Sending..." : "Send Now"}
               </button>
               <button
