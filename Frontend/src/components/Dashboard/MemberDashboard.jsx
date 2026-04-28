@@ -1,5 +1,5 @@
 // src/components/Dashboard/MemberDashboard.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
 import {
@@ -82,6 +82,7 @@ const FALLBACK_STRATEGIES = [
     minTier: "none",
     risk: "Low",
     description: "Looks for dips and safer rebounds.",
+    howToUse: "Best for beginners. Automatically buys during dips and sells during rebounds.",
   },
   {
     id: "ai_weighted",
@@ -90,6 +91,7 @@ const FALLBACK_STRATEGIES = [
     minTier: "none",
     risk: "Medium",
     description: "A balanced AI mix of multiple trading signals.",
+    howToUse: "Recommended for most users. AI analyzes market conditions and adjusts strategy automatically.",
   },
   {
     id: "momentum",
@@ -98,6 +100,7 @@ const FALLBACK_STRATEGIES = [
     minTier: "none",
     risk: "High",
     description: "Follows strong moves when markets are trending.",
+    howToUse: "Follows market trends. Best in strong bull or bear markets.",
   },
   {
     id: "arbitrage",
@@ -106,6 +109,7 @@ const FALLBACK_STRATEGIES = [
     minTier: "rare",
     risk: "Low",
     description: "Looks for price differences across venues.",
+    howToUse: "Profits from price differences between exchanges. Requires Rare tier.",
   },
   {
     id: "futures",
@@ -114,6 +118,7 @@ const FALLBACK_STRATEGIES = [
     minTier: "epic",
     risk: "High",
     description: "Higher-speed crypto futures execution.",
+    howToUse: "Trade crypto futures with leverage. Requires Epic tier and OKX connection.",
   },
   {
     id: "alpha",
@@ -122,6 +127,7 @@ const FALLBACK_STRATEGIES = [
     minTier: "legendary",
     risk: "High",
     description: "Premium entries, signals, and early-access tools.",
+    howToUse: "VIP only. Premium signals and early access to new features.",
   },
 ];
 
@@ -130,35 +136,40 @@ const FEATURE_GATES = {
     title: "Paper Trading",
     minTier: "none",
     description: "Practice trading before risking real money.",
+    helpText: "Start here to learn without risk! Paper trading uses virtual money.",
   },
   live_trading: {
     title: "Live Trading",
     minTier: "common",
     description: "Trade with real capital after setup is complete.",
+    helpText: "Trade with real money. Requires connected exchange accounts.",
   },
   advanced_bots: {
     title: "Advanced Bots",
     minTier: "rare",
     description: "Unlock stronger automation and premium execution logic.",
+    helpText: "More sophisticated trading algorithms for better results.",
   },
   futures: {
     title: "Futures Trading",
     minTier: "epic",
     description: "Access higher-risk futures trading tools.",
+    helpText: "Trade crypto futures. Higher risk, higher potential returns.",
   },
   alpha_signals: {
     title: "Alpha Signals",
     minTier: "legendary",
     description: "Premium signals, early access, and VIP-level features.",
+    helpText: "Get exclusive trading signals before the public.",
   },
 };
 
 const ACHIEVEMENTS = [
-  { id: "first_trade", label: "First Trade", icon: "🚀" },
-  { id: "streak_7", label: "7-Day Streak", icon: "🔥" },
-  { id: "trades_50", label: "50 Trades", icon: "🏆" },
-  { id: "profitable", label: "Profitable Day", icon: "💰" },
-  { id: "nft_holder", label: "NFT Holder", icon: "🎟️" },
+  { id: "first_trade", label: "First Trade", icon: "🚀", helpText: "Complete your first trade" },
+  { id: "streak_7", label: "7-Day Streak", icon: "🔥", helpText: "Trade 7 days in a row" },
+  { id: "trades_50", label: "50 Trades", icon: "🏆", helpText: "Complete 50 total trades" },
+  { id: "profitable", label: "Profitable Day", icon: "💰", helpText: "End a day with profit" },
+  { id: "nft_holder", label: "NFT Holder", icon: "🎟️", helpText: "Hold an Imali NFT" },
 ];
 
 /* ================= HELPERS ================= */
@@ -207,6 +218,7 @@ const decorateStrategies = (strategies = []) => {
       minTier: fallback?.minTier || "none",
       risk: fallback?.risk || strategy.risk_level || "Medium",
       description: fallback?.description || strategy.description || "Trading strategy",
+      howToUse: fallback?.howToUse || "Click to activate this strategy",
     };
   });
 };
@@ -249,6 +261,148 @@ const anonymizeEmail = (email, index = 0) => {
   for (let i = 0; i < raw.length; i += 1) hash = (hash * 31 + raw.charCodeAt(i)) % 10000;
   return `member_${String(hash).padStart(4, "0")}`;
 };
+
+/* ================= TOUR COMPONENT ================= */
+function GuidedTour({ onClose, onComplete, steps = [] }) {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    const target = document.querySelector(steps[currentStep]?.selector);
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      setPosition({
+        top: rect.top + window.scrollY - 10,
+        left: rect.left + window.scrollX - 10,
+      });
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [currentStep, steps]);
+
+  const handleNext = () => {
+    if (currentStep === steps.length - 1) {
+      onComplete?.();
+      onClose();
+    } else {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const handleSkip = () => {
+    onClose();
+  };
+
+  if (!steps[currentStep]) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/50" onClick={handleSkip} />
+      <div
+        className="fixed z-50 max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+        style={{
+          top: position.top - 20,
+          left: position.left,
+          transform: "translateY(-100%)",
+        }}
+      >
+        <div className="mb-3 flex items-start justify-between">
+          <div>
+            <span className="text-sm font-semibold text-indigo-600">
+              Step {currentStep + 1} of {steps.length}
+            </span>
+            <h3 className="mt-1 text-lg font-bold text-gray-900">{steps[currentStep].title}</h3>
+          </div>
+          <button onClick={handleSkip} className="text-2xl text-gray-400 hover:text-gray-600">
+            ×
+          </button>
+        </div>
+        <p className="text-sm text-gray-600">{steps[currentStep].description}</p>
+        <div className="mt-4 flex gap-3">
+          <button
+            onClick={handleNext}
+            className="flex-1 rounded-lg bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            {currentStep === steps.length - 1 ? "Finish Tour" : "Next"}
+          </button>
+          <button
+            onClick={handleSkip}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            Skip
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ================= HELP TOOLTIP ================= */
+function HelpTooltip({ text, children }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative inline-block">
+      <div
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        className="cursor-help"
+      >
+        {children}
+      </div>
+      {show && (
+        <div className="absolute bottom-full left-1/2 z-10 mb-2 w-64 -translate-x-1/2 rounded-lg bg-gray-900 p-2 text-center text-xs text-white">
+          {text}
+          <div className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================= QUICK START GUIDE ================= */
+function QuickStartGuide({ onStartTour }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const steps = [
+    { number: "1", title: "Connect API Keys", description: "Connect your exchange accounts (Alpaca for stocks, OKX for crypto) to start trading." },
+    { number: "2", title: "Choose Strategy", description: "Pick a trading strategy that matches your risk tolerance and goals." },
+    { number: "3", title: "Paper Trade First", description: "Practice with virtual money using Paper Trading before going live." },
+    { number: "4", title: "Go Live", description: "Once comfortable, activate live trading with real funds." },
+  ];
+
+  return (
+    <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+      <div className="flex cursor-pointer items-center justify-between" onClick={() => setExpanded(!expanded)}>
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🎓</span>
+          <h3 className="font-semibold text-indigo-900">Quick Start Guide for New Traders</h3>
+        </div>
+        <span className="text-indigo-600">{expanded ? "▼" : "▶"}</span>
+      </div>
+
+      {expanded && (
+        <div className="mt-3 space-y-3">
+          {steps.map((step) => (
+            <div key={step.number} className="flex items-start gap-3 rounded-lg bg-white p-3">
+              <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
+                {step.number}
+              </div>
+              <div>
+                <div className="font-medium text-gray-900">{step.title}</div>
+                <p className="text-sm text-gray-600">{step.description}</p>
+              </div>
+            </div>
+          ))}
+          <button
+            onClick={onStartTour}
+            className="mt-2 w-full rounded-lg bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            Launch Interactive Tour 🎯
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ================= API KEYS MODAL ================= */
 function ApiKeysModal({ open, onClose, onSaved }) {
@@ -337,7 +491,7 @@ function ApiKeysModal({ open, onClose, onSaved }) {
         </div>
 
         <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <strong>Security recommendation:</strong> create restricted API keys with trading-only permissions. Do not enable withdrawals. Use paper keys first, then live keys only when ready.
+          <strong>🔒 Security recommendation:</strong> create restricted API keys with trading-only permissions. Do not enable withdrawals. Use paper keys first, then live keys only when ready.
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -456,21 +610,25 @@ function KeyForm({ title, state, setState, onSave, saving, requiresPassphrase = 
 }
 
 /* ================= SMALL COMPONENTS ================= */
-function Stat({ label, value, helper }) {
+function Stat({ label, value, helper, tooltip }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-xl font-bold text-gray-900">{value}</div>
-      {helper ? <div className="mt-1 text-xs text-gray-500">{helper}</div> : null}
-    </div>
+    <HelpTooltip text={tooltip || helper || `Your ${label.toLowerCase()} performance`}>
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 transition hover:shadow-md">
+        <div className="text-xs text-gray-500">{label}</div>
+        <div className="text-xl font-bold text-gray-900">{value}</div>
+        {helper ? <div className="mt-1 text-xs text-gray-500">{helper}</div> : null}
+      </div>
+    </HelpTooltip>
   );
 }
 
-function ConnectionRow({ title, connected, helper, required = true, onConnect }) {
+function ConnectionRow({ title, connected, helper, required = true, onConnect, tooltip }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-3">
       <div>
-        <span className="font-medium text-gray-900">{title}</span>
+        <HelpTooltip text={tooltip || `${title} connection status`}>
+          <span className="font-medium text-gray-900">{title}</span>
+        </HelpTooltip>
         {helper ? <div className="text-xs text-gray-500">{helper}</div> : null}
       </div>
       <div className="flex items-center gap-2">
@@ -494,36 +652,42 @@ function ConnectionRow({ title, connected, helper, required = true, onConnect })
   );
 }
 
-function CTA({ title, onClick }) {
+function CTA({ title, onClick, tooltip }) {
   return (
-    <button
-      onClick={onClick}
-      className="rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
-    >
-      {title}
-    </button>
-  );
-}
-
-function TierCTA({ title, unlocked, lockedText, onClick, onLockedClick }) {
-  if (unlocked) {
-    return (
+    <HelpTooltip text={tooltip || `Click to ${title.toLowerCase()}`}>
       <button
         onClick={onClick}
         className="rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
       >
         {title}
       </button>
+    </HelpTooltip>
+  );
+}
+
+function TierCTA({ title, unlocked, lockedText, onClick, onLockedClick, tooltip }) {
+  if (unlocked) {
+    return (
+      <HelpTooltip text={tooltip || `Click to ${title.toLowerCase()}`}>
+        <button
+          onClick={onClick}
+          className="rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
+        >
+          {title}
+        </button>
+      </HelpTooltip>
     );
   }
 
   return (
-    <button
-      onClick={onLockedClick}
-      className="rounded-xl border border-amber-300 bg-amber-50 py-3 font-semibold text-amber-800 hover:bg-amber-100"
-    >
-      🔒 {title} — {lockedText}
-    </button>
+    <HelpTooltip text={lockedText}>
+      <button
+        onClick={onLockedClick}
+        className="rounded-xl border border-amber-300 bg-amber-50 py-3 font-semibold text-amber-800 hover:bg-amber-100"
+      >
+        🔒 {title} — {lockedText}
+      </button>
+    </HelpTooltip>
   );
 }
 
@@ -619,6 +783,36 @@ function TrialBanner({ trial }) {
   );
 }
 
+/* ================= RESOURCE LINKS ================= */
+function ResourceLinks() {
+  const resources = [
+    { name: "📚 Trading Guide", url: "/guides/trading", description: "Learn how to trade" },
+    { name: "🔧 Setup Tutorial", url: "/guides/setup", description: "Step-by-step setup" },
+    { name: "❓ FAQ", url: "/faq", description: "Common questions" },
+    { name: "💬 Support", url: "/support", description: "Get help" },
+    { name: "📊 Strategy Docs", url: "/docs/strategies", description: "Strategy details" },
+    { name: "🔐 Security Tips", url: "/docs/security", description: "Keep your account safe" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <h3 className="mb-3 font-semibold">📚 Helpful Resources</h3>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {resources.map((resource) => (
+          <a
+            key={resource.name}
+            href={resource.url}
+            className="group rounded-lg border border-gray-200 p-3 transition hover:border-indigo-200 hover:bg-indigo-50"
+          >
+            <div className="font-medium text-gray-900 group-hover:text-indigo-700">{resource.name}</div>
+            <div className="text-xs text-gray-500">{resource.description}</div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ================= MAIN COMPONENT ================= */
 export default function MemberDashboard() {
   const nav = useNavigate();
@@ -641,6 +835,17 @@ export default function MemberDashboard() {
   const [savingStrategy, setSavingStrategy] = useState("");
   const [strategyMessage, setStrategyMessage] = useState("");
   const [communityTrades, setCommunityTrades] = useState([]);
+  const [showTour, setShowTour] = useState(false);
+  const [tourCompleted, setTourCompleted] = useState(false);
+
+  const tourSteps = [
+    { selector: ".tour-connect-keys", title: "🔑 Connect Your Exchange Accounts", description: "Start here! Connect Alpaca (for stocks) and OKX (for crypto) to enable trading." },
+    { selector: ".tour-strategies", title: "🎯 Choose Your Trading Strategy", description: "Pick a strategy that matches your risk tolerance. Conservative is great for beginners!" },
+    { selector: ".tour-paper-trade", title: "📝 Practice with Paper Trading", description: "Use virtual money to learn without risk. Perfect for testing strategies!" },
+    { selector: ".tour-go-live", title: "🚀 Go Live", description: "Ready to trade with real money? Click here after connecting your accounts." },
+    { selector: ".tour-upgrade", title: "⭐ Upgrade Your Tier", description: "Unlock more features like Arbitrage, Futures, and Alpha Signals as you grow." },
+    { selector: ".tour-stats", title: "📊 Track Your Performance", description: "Monitor your profit, win rate, and trading streak here." },
+  ];
 
   const loadDashboard = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -700,6 +905,12 @@ export default function MemberDashboard() {
         trial_ends_at: me?.trial_ends_at,
         paper_trading_enabled: me?.paper_trading_enabled,
       });
+
+      // Check if tour was completed before
+      const tourCompletedFlag = localStorage.getItem("imali_tour_completed");
+      if (!tourCompletedFlag && !tourCompleted) {
+        setTimeout(() => setShowTour(true), 1000);
+      }
     } catch (err) {
       console.error("Failed to load member dashboard:", err);
       if (String(err?.message || "").toLowerCase().includes("invalid or expired token")) {
@@ -722,6 +933,11 @@ export default function MemberDashboard() {
     loadDashboard(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleTourComplete = () => {
+    setTourCompleted(true);
+    localStorage.setItem("imali_tour_completed", "true");
+  };
 
   const nftKey = String(user?.nft_tier || "none").toLowerCase();
   const nft = NFT_TIERS[nftKey] || NFT_TIERS.none;
@@ -827,7 +1043,16 @@ export default function MemberDashboard() {
 
   return (
     <div className="min-h-screen bg-white p-6 text-gray-900">
+      {showTour && (
+        <GuidedTour
+          steps={tourSteps}
+          onClose={() => setShowTour(false)}
+          onComplete={handleTourComplete}
+        />
+      )}
+
       <div className="mx-auto max-w-7xl space-y-6">
+        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold">Welcome back 👋</h1>
@@ -837,46 +1062,69 @@ export default function MemberDashboard() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => loadDashboard(true)}
-              disabled={refreshing}
-              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 disabled:opacity-50"
-            >
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </button>
+            <HelpTooltip text="Refresh your dashboard data">
+              <button
+                onClick={() => loadDashboard(true)}
+                disabled={refreshing}
+                className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {refreshing ? "Refreshing..." : "Refresh"}
+              </button>
+            </HelpTooltip>
 
-            <button
-              onClick={() => setShowApiModal(true)}
-              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
-            >
-              Connect API Keys
-            </button>
+            <HelpTooltip text="Connect your exchange accounts (Alpaca for stocks, OKX for crypto)">
+              <button
+                onClick={() => setShowApiModal(true)}
+                className="tour-connect-keys rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+              >
+                Connect API Keys
+              </button>
+            </HelpTooltip>
 
-            <button
-              onClick={() => nav("/billing-dashboard")}
-              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
-            >
-              Billing
-            </button>
+            <HelpTooltip text="View and manage your billing information">
+              <button
+                onClick={() => nav("/billing-dashboard")}
+                className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+              >
+                Billing
+              </button>
+            </HelpTooltip>
 
-            <button
-              onClick={() => nav("/pricing")}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-            >
-              Upgrade
-            </button>
+            <HelpTooltip text="Upgrade your membership to unlock more features">
+              <button
+                onClick={() => nav("/pricing")}
+                className="tour-upgrade rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              >
+                Upgrade
+              </button>
+            </HelpTooltip>
+
+            <HelpTooltip text="Take an interactive tour of the dashboard">
+              <button
+                onClick={() => setShowTour(true)}
+                className="rounded-xl border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+              >
+                🎓 Take Tour
+              </button>
+            </HelpTooltip>
           </div>
         </div>
 
+        {/* Quick Start Guide */}
+        <QuickStartGuide onStartTour={() => setShowTour(true)} />
+
+        {/* Trial Banner */}
         <TrialBanner trial={trial} />
 
+        {/* Setup Recommendation */}
         <SetupRecommendation
           alpacaConnected={alpacaConnected}
           okxConnected={okxConnected}
           onConnect={() => setShowApiModal(true)}
         />
 
-        <div className="grid gap-4 lg:grid-cols-3">
+        {/* Trading Strategy Section */}
+        <div className="tour-strategies grid gap-4 lg:grid-cols-3">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 lg:col-span-2">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h3 className="font-semibold">🎯 Trading Strategy</h3>
@@ -890,62 +1138,64 @@ export default function MemberDashboard() {
                 const updating = savingStrategy === strategy.id;
 
                 return (
-                  <button
-                    key={strategy.id}
-                    onClick={() => handleStrategyChange(strategy)}
-                    disabled={!!savingStrategy}
-                    className={`rounded-xl border p-4 text-left transition ${
-                      active
-                        ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
-                        : unlocked
-                        ? "border-gray-200 bg-white hover:shadow-sm"
-                        : "border-gray-200 bg-white opacity-90"
-                    } disabled:opacity-80`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">{strategy.emoji}</span>
-                          <span className="font-semibold text-gray-900">{strategy.name}</span>
+                  <HelpTooltip key={strategy.id} text={strategy.howToUse}>
+                    <button
+                      onClick={() => handleStrategyChange(strategy)}
+                      disabled={!!savingStrategy}
+                      className={`rounded-xl border p-4 text-left transition ${
+                        active
+                          ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
+                          : unlocked
+                          ? "border-gray-200 bg-white hover:shadow-sm"
+                          : "border-gray-200 bg-white opacity-90"
+                      } disabled:opacity-80`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">{strategy.emoji}</span>
+                            <span className="font-semibold text-gray-900">{strategy.name}</span>
+                          </div>
+                          <div className="mt-2 text-sm text-gray-600">{strategy.description}</div>
                         </div>
-                        <div className="mt-2 text-sm text-gray-600">{strategy.description}</div>
+
+                        <div className="flex flex-col items-end gap-2">
+                          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${riskClass(strategy.risk)}`}>
+                            {strategy.risk}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                              unlocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                            }`}
+                          >
+                            {unlocked ? "Unlocked" : `${NFT_TIERS[strategy.minTier]?.name || strategy.minTier}+`}
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="flex flex-col items-end gap-2">
-                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${riskClass(strategy.risk)}`}>
-                          {strategy.risk}
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                            unlocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                          }`}
-                        >
-                          {unlocked ? "Unlocked" : `${NFT_TIERS[strategy.minTier]?.name || strategy.minTier}+`}
-                        </span>
+                      <div className="mt-4">
+                        {active ? (
+                          <div className="rounded-lg bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white">
+                            {updating ? "Updating..." : "Active"}
+                          </div>
+                        ) : unlocked ? (
+                          <div className="rounded-lg bg-gray-100 px-3 py-2 text-center text-sm font-semibold text-gray-900">
+                            {updating ? "Updating..." : "Use this strategy"}
+                          </div>
+                        ) : (
+                          <div className="rounded-lg bg-amber-50 px-3 py-2 text-center text-sm font-semibold text-amber-800">
+                            Locked — Upgrade Required
+                          </div>
+                        )}
                       </div>
-                    </div>
-
-                    <div className="mt-4">
-                      {active ? (
-                        <div className="rounded-lg bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white">
-                          {updating ? "Updating..." : "Active"}
-                        </div>
-                      ) : unlocked ? (
-                        <div className="rounded-lg bg-gray-100 px-3 py-2 text-center text-sm font-semibold text-gray-900">
-                          {updating ? "Updating..." : "Use this strategy"}
-                        </div>
-                      ) : (
-                        <div className="rounded-lg bg-amber-50 px-3 py-2 text-center text-sm font-semibold text-amber-800">
-                          Locked — Upgrade Required
-                        </div>
-                      )}
-                    </div>
-                  </button>
+                    </button>
+                  </HelpTooltip>
                 );
               })}
             </div>
           </div>
 
+          {/* Membership Tier Card */}
           <div className={`rounded-2xl border ${nft.color} bg-gray-50 p-5 shadow-sm`}>
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -973,7 +1223,8 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        {/* Trading Readiness */}
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 tour-stats">
           <h3 className="mb-2 font-semibold">📊 Trading Readiness</h3>
           <div className="h-4 w-full overflow-hidden rounded-full bg-gray-200">
             <div
@@ -986,13 +1237,15 @@ export default function MemberDashboard() {
           </p>
         </div>
 
+        {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Stat label="Total Profit" value={usd(stats.total_pnl)} helper="Closed trade PnL" />
-          <Stat label="Win Rate" value={pct(stats.win_rate)} helper="Closed trades" />
-          <Stat label="Trades" value={Number(stats.total_trades || 0)} helper="Total recorded" />
-          <Stat label="Daily Streak" value={`🔥 ${streak}`} helper="Consistency" />
+          <Stat label="Total Profit" value={usd(stats.total_pnl)} helper="Closed trade PnL" tooltip="Your total profit from all closed trades" />
+          <Stat label="Win Rate" value={pct(stats.win_rate)} helper="Closed trades" tooltip="Percentage of trades that were profitable" />
+          <Stat label="Trades" value={Number(stats.total_trades || 0)} helper="Total recorded" tooltip="Total number of trades executed" />
+          <Stat label="Daily Streak" value={`🔥 ${streak}`} helper="Consistency" tooltip="Number of consecutive days with trades" />
         </div>
 
+        {/* Charts */}
         <div className="grid gap-4 xl:grid-cols-3">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 xl:col-span-2">
             <h3 className="mb-3 font-semibold">📈 PnL Performance</h3>
@@ -1013,13 +1266,15 @@ export default function MemberDashboard() {
           </div>
         </div>
 
+        {/* Bar Chart */}
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <h3 className="mb-3 font-semibold">📊 Trade Count — Last 7 Points</h3>
+          <h3 className="mb-3 font-semibold">📊 Trade Count — Last 7 Days</h3>
           <div className="h-72">
             <Bar data={barData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } }} />
           </div>
         </div>
 
+        {/* Connections and Community */}
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <h3 className="mb-3 font-semibold">🔌 Required Connections</h3>
@@ -1031,12 +1286,14 @@ export default function MemberDashboard() {
                 title="Alpaca"
                 connected={alpacaConnected}
                 helper="Required for stock and ETF trading"
+                tooltip="Connect your Alpaca account to trade stocks and ETFs"
                 onConnect={() => setShowApiModal(true)}
               />
               <ConnectionRow
                 title="OKX"
                 connected={okxConnected}
                 helper="Required for crypto spot and futures trading"
+                tooltip="Connect your OKX account to trade cryptocurrencies"
                 onConnect={() => setShowApiModal(true)}
               />
               <ConnectionRow
@@ -1044,6 +1301,7 @@ export default function MemberDashboard() {
                 connected={!!integrations.wallet_connected}
                 helper="Optional for DeFi wallet activity"
                 required={false}
+                tooltip="Connect your Web3 wallet for DeFi features"
                 onConnect={() => nav("/activation")}
               />
             </div>
@@ -1052,6 +1310,10 @@ export default function MemberDashboard() {
           <CommunityTrades trades={communityTrades} />
         </div>
 
+        {/* Resource Links */}
+        <ResourceLinks />
+
+        {/* Locked Features */}
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3 className="font-semibold">🔒 Membership Locked Features</h3>
@@ -1067,53 +1329,64 @@ export default function MemberDashboard() {
             {Object.entries(FEATURE_GATES).map(([key, feature]) => {
               const unlocked = hasTierAccess(nftKey, feature.minTier);
               return (
-                <div key={key} className={`rounded-xl border p-4 ${unlocked ? "border-emerald-300 bg-emerald-50" : "border-gray-200 bg-white"}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-gray-900">{feature.title}</div>
-                      <div className="mt-1 text-sm text-gray-600">{feature.description}</div>
+                <HelpTooltip key={key} text={feature.helpText}>
+                  <div className={`rounded-xl border p-4 ${unlocked ? "border-emerald-300 bg-emerald-50" : "border-gray-200 bg-white"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-gray-900">{feature.title}</div>
+                        <div className="mt-1 text-sm text-gray-600">{feature.description}</div>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${unlocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                        {unlocked ? "Unlocked" : `${NFT_TIERS[feature.minTier]?.name || feature.minTier}+`}
+                      </span>
                     </div>
-                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${unlocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                      {unlocked ? "Unlocked" : `${NFT_TIERS[feature.minTier]?.name || feature.minTier}+`}
-                    </span>
                   </div>
-                </div>
+                </HelpTooltip>
               );
             })}
           </div>
         </div>
 
+        {/* Achievements */}
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
           <h3 className="mb-3 font-semibold">🏆 Achievements</h3>
           <div className="flex flex-wrap gap-3">
             {ACHIEVEMENTS.map((achievement) => (
-              <div
-                key={achievement.id}
-                className={`rounded-lg border px-3 py-2 ${
-                  unlockedAchievements.includes(achievement.id)
-                    ? "border-emerald-400 bg-emerald-50 text-emerald-800"
-                    : "border-gray-200 bg-white text-gray-400"
-                }`}
-              >
-                {achievement.icon} {achievement.label}
-              </div>
+              <HelpTooltip key={achievement.id} text={achievement.helpText}>
+                <div
+                  className={`rounded-lg border px-3 py-2 ${
+                    unlockedAchievements.includes(achievement.id)
+                      ? "border-emerald-400 bg-emerald-50 text-emerald-800"
+                      : "border-gray-200 bg-white text-gray-400"
+                  }`}
+                >
+                  {achievement.icon} {achievement.label}
+                </div>
+              </HelpTooltip>
             ))}
           </div>
         </div>
 
+        {/* Action Buttons Grid */}
         <div className="grid gap-4 md:grid-cols-4">
-          <CTA title="Paper Trade Demo" onClick={() => nav("/trade-demo")} />
-          <TierCTA
-            title="Go Live"
-            unlocked={hasTierAccess(nftKey, "common") && bothMarketConnectionsReady}
-            lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Common+ required"}
-            onClick={() => nav("/trade-demo?mode=live")}
-            onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
-          />
+          <div className="tour-paper-trade">
+            <CTA title="Paper Trade Demo" onClick={() => nav("/trade-demo")} tooltip="Practice trading with virtual money. No risk!" />
+          </div>
+          <div className="tour-go-live">
+            <TierCTA
+              title="Go Live"
+              unlocked={hasTierAccess(nftKey, "common") && bothMarketConnectionsReady}
+              lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Common+ required"}
+              tooltip="Trade with real money. Requires connected exchange accounts."
+              onClick={() => nav("/trade-demo?mode=live")}
+              onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
+            />
+          </div>
           <TierCTA
             title="Advanced Bots"
             unlocked={hasTierAccess(nftKey, "rare") && bothMarketConnectionsReady}
             lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Rare+ required"}
+            tooltip="Use advanced automated trading bots"
             onClick={() => nav("/pricing")}
             onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
           />
@@ -1121,21 +1394,24 @@ export default function MemberDashboard() {
             title="Futures"
             unlocked={hasTierAccess(nftKey, "epic") && okxConnected}
             lockedText={!okxConnected ? "Connect OKX" : "Epic+ required"}
+            tooltip="Trade crypto futures with leverage"
             onClick={() => nav("/pricing")}
             onLockedClick={() => (okxConnected ? nav("/pricing") : setShowApiModal(true))}
           />
         </div>
 
+        {/* Secondary Actions */}
         <div className="grid gap-4 md:grid-cols-3">
           <TierCTA
             title="Alpha Signals"
             unlocked={hasTierAccess(nftKey, "legendary") && bothMarketConnectionsReady}
             lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Legendary required"}
+            tooltip="Get exclusive premium trading signals"
             onClick={() => nav("/pricing")}
             onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
           />
-          <CTA title="Billing" onClick={() => nav("/billing-dashboard")} />
-          <CTA title="Complete Activation" onClick={() => nav("/activation")} />
+          <CTA title="Billing" onClick={() => nav("/billing-dashboard")} tooltip="View and manage your subscription" />
+          <CTA title="Complete Activation" onClick={() => nav("/activation")} tooltip="Finish setting up your account" />
         </div>
       </div>
 
