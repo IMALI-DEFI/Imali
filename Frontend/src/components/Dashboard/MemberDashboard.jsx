@@ -16,7 +16,7 @@ import {
   Filler,
 } from "chart.js";
 import { Line, Doughnut, Bar } from "react-chartjs-2";
-import { FaSpinner, FaInfoCircle } from "react-icons/fa";
+import { FaSpinner, FaInfoCircle, FaLock, FaCheckCircle, FaExclamationTriangle, FaTimes } from "react-icons/fa";
 
 ChartJS.register(
   CategoryScale,
@@ -658,84 +658,6 @@ function ConnectionRow({ title, connected, helper, required = true, onConnect, t
   );
 }
 
-function CTA({ title, onClick, tooltip }) {
-  return (
-    <HelpTooltip text={tooltip || `Click to ${title.toLowerCase()}`}>
-      <button
-        onClick={onClick}
-        className="rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
-      >
-        {title}
-      </button>
-    </HelpTooltip>
-  );
-}
-
-function TierCTA({ title, unlocked, lockedText, onClick, onLockedClick, tooltip }) {
-  if (unlocked) {
-    return (
-      <HelpTooltip text={tooltip || `Click to ${title.toLowerCase()}`}>
-        <button
-          onClick={onClick}
-          className="rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
-        >
-          {title}
-        </button>
-      </HelpTooltip>
-    );
-  }
-
-  return (
-    <HelpTooltip text={lockedText}>
-      <button
-        onClick={onLockedClick}
-        className="rounded-xl border border-amber-300 bg-amber-50 py-3 font-semibold text-amber-800 hover:bg-amber-100"
-      >
-        🔒 {title} — {lockedText}
-      </button>
-    </HelpTooltip>
-  );
-}
-
-function CommunityTrades({ trades }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <h3 className="mb-3 font-semibold">🌍 Community Trades</h3>
-      {trades.length === 0 ? (
-        <div className="text-sm text-gray-500">No community trades yet.</div>
-      ) : (
-        <div className="max-h-80 space-y-2 overflow-auto">
-          {trades.map((trade, index) => {
-            const pnl = Number(trade.pnl_usd || 0);
-            const positive = pnl >= 0;
-            return (
-              <div
-                key={trade.id || index}
-                className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-900">{trade.symbol || "Unknown"}</span>
-                    <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
-                      {trade.bot || "Bot"}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {anonymizeEmail(trade.user_email, index)} • {trade.exchange || "exchange"}
-                  </div>
-                </div>
-                <div className={`text-sm font-bold ${positive ? "text-emerald-700" : "text-red-700"}`}>
-                  {usd(pnl)}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SetupRecommendation({ alpacaConnected, okxConnected, onConnect }) {
   const bothReady = alpacaConnected && okxConnected;
   return (
@@ -743,11 +665,10 @@ function SetupRecommendation({ alpacaConnected, okxConnected, onConnect }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className={`text-lg font-bold ${bothReady ? "text-emerald-900" : "text-amber-900"}`}>
-            {bothReady ? "✅ Full stock + crypto setup complete" : "⚠️ Required: Connect both Alpaca and OKX"}
+            {bothReady ? "✅ Ready for trading" : "⚠️ Required: Connect both Alpaca and OKX"}
           </h2>
           <p className={`mt-1 text-sm ${bothReady ? "text-emerald-800" : "text-amber-900"}`}>
-            Both OKX and Alpaca connections are required for paper trading. 
-            Alpaca powers stocks/ETFs. OKX powers crypto spot and futures trading.
+            Both OKX and Alpaca connections are required. Alpaca powers stocks/ETFs. OKX powers crypto trading.
           </p>
         </div>
         {!bothReady ? (
@@ -786,13 +707,13 @@ function TrialBanner({ trial, alpacaConnected, okxConnected }) {
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-bold text-amber-900">⚠️ API Keys Required</h3>
+            <h3 className="font-bold text-amber-900">⚠️ Connect API Keys</h3>
             <p className="text-sm text-amber-800">
-              Both OKX and Alpaca API keys must be connected to start paper trading. Click "Connect API Keys" above to get started.
+              Both OKX and Alpaca API keys must be connected to start paper trading.
             </p>
           </div>
           <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-            Setup Required
+            Keys Required
           </span>
         </div>
       </div>
@@ -804,13 +725,13 @@ function TrialBanner({ trial, alpacaConnected, okxConnected }) {
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-bold text-emerald-900">📝 Paper Trading Ready</h3>
+            <h3 className="font-bold text-emerald-900">📝 Ready to Trade</h3>
             <p className="text-sm text-emerald-800">
-              Your API keys are connected! Start trading with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual money.
+              Your API keys are connected! Start paper trading with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual money.
             </p>
           </div>
           <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-            Ready to Start
+            Ready
           </span>
         </div>
       </div>
@@ -818,20 +739,16 @@ function TrialBanner({ trial, alpacaConnected, okxConnected }) {
   }
 
   return (
-    <div className={`rounded-2xl border p-4 ${paperTradingAvailable ? "border-sky-200 bg-sky-50" : "border-emerald-200 bg-emerald-50"}`}>
+    <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className={`font-bold ${paperTradingAvailable ? "text-sky-900" : "text-emerald-900"}`}>
-            {paperTradingAvailable ? "🎯 Paper Trading Active" : "📝 Paper Trading Ready"}
-          </h3>
-          <p className={`text-sm ${paperTradingAvailable ? "text-sky-800" : "text-emerald-800"}`}>
-            {paperTradingAvailable
-              ? `You have ${getTimeDisplay()} remaining in your free trial. Trading with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`
-              : "Start paper trading with $1,000 virtual money. No real risk!"}
+          <h3 className="font-bold text-sky-900">🎯 Paper Trading Active</h3>
+          <p className="text-sm text-sky-800">
+            Trading with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. Time remaining: {getTimeDisplay()}
           </p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${paperTradingAvailable ? "bg-sky-100 text-sky-700" : "bg-emerald-100 text-emerald-700"}`}>
-          {paperTradingAvailable ? `${getTimeDisplay()} left` : "Ready"}
+        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+          Active
         </span>
       </div>
     </div>
@@ -868,6 +785,87 @@ function ResourceLinks() {
   );
 }
 
+/* ================= PRICING UPGRADE MODAL ================= */
+function PricingUpgradeModal({ open, onClose, currentTier, onUpgrade }) {
+  const [selectedTier, setSelectedTier] = useState('common');
+  
+  const upgradeOptions = [
+    { tier: 'common', name: 'Common', price: '$19/mo', features: ['Live Trading Access', 'Lower Fees', 'Priority Execution'] },
+    { tier: 'rare', name: 'Rare', price: '$49/mo', features: ['Advanced Bots', 'Arbitrage Strategy', 'Deeper Analytics'] },
+    { tier: 'epic', name: 'Epic', price: '$99/mo', features: ['Futures Tools', 'All Bots', 'Faster Routing'] },
+    { tier: 'legendary', name: 'Legendary', price: '$199/mo', features: ['Alpha Access', 'VIP Support', 'Premium Signals'] },
+  ];
+  
+  if (!open) return null;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-2xl font-bold text-gray-900">Upgrade Your Plan</h3>
+            <p className="text-gray-500 mt-1">Get access to live trading and advanced features</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <FaTimes className="text-xl" />
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          {upgradeOptions.map((option) => (
+            <div
+              key={option.tier}
+              className={`rounded-xl border p-4 cursor-pointer transition-all ${
+                selectedTier === option.tier
+                  ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200'
+                  : 'border-gray-200 hover:border-indigo-300 hover:shadow-md'
+              }`}
+              onClick={() => setSelectedTier(option.tier)}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-lg font-semibold text-gray-900">{option.name}</h4>
+                <span className="text-2xl font-bold text-indigo-600">{option.price}</span>
+              </div>
+              <ul className="space-y-2">
+                {option.features.map((feature, idx) => (
+                  <li key={idx} className="flex items-center gap-2 text-sm text-gray-600">
+                    <FaCheckCircle className="text-emerald-500 text-xs" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+              {currentTier === option.tier && (
+                <div className="mt-3 text-center">
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">Current Plan</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={() => onUpgrade?.(selectedTier)}
+            className="flex-1 bg-indigo-600 hover:bg-indigo-700 py-3 rounded-xl font-semibold text-white transition"
+          >
+            Upgrade to {upgradeOptions.find(o => o.tier === selectedTier)?.name}
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 border border-gray-300 hover:bg-gray-50 py-3 rounded-xl font-semibold text-gray-700 transition"
+          >
+            Maybe Later
+          </button>
+        </div>
+        
+        <p className="text-center text-xs text-gray-400 mt-4">
+          Your payment information is processed securely. You can cancel anytime.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /* ================= TRADING CONTROL BUTTONS ================= */
 function TradingControlButtons({ 
   tradingEnabled, 
@@ -878,6 +876,7 @@ function TradingControlButtons({
   userTier,
   onToggleTrading, 
   onTogglePaperTrading,
+  onUpgrade,
   loading 
 }) {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -886,21 +885,22 @@ function TradingControlButtons({
   const tierRanks = { starter: 0, common: 1, rare: 2, epic: 3, legendary: 4 };
   const userTierRank = tierRanks[userTier] || 0;
   const hasLiveAccess = userTierRank >= tierRanks.common;
+  const canStartPaperTrading = bothConnected && trialActive;
 
-  const handleTradingToggle = () => {
-    if (!tradingEnabled) {
-      if (!hasLiveAccess) {
-        alert("Live trading requires Common tier or higher. Please upgrade.");
-        return;
-      }
-      if (!bothConnected) {
-        alert("Please connect both OKX and Alpaca API keys first.");
-        return;
-      }
-      setShowConfirmModal(true);
-    } else {
-      onToggleTrading(false);
+  const handleStartLiveTrading = () => {
+    if (!hasLiveAccess) {
+      onUpgrade?.();
+      return;
     }
+    if (!bothConnected) {
+      alert("Please connect both OKX and Alpaca API keys first.");
+      return;
+    }
+    setShowConfirmModal(true);
+  };
+
+  const handleStopLiveTrading = () => {
+    onToggleTrading(false);
   };
 
   const handlePaperToggle = () => {
@@ -922,31 +922,41 @@ function TradingControlButtons({
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {/* Paper Trading Card */}
-        <div className={`rounded-xl border p-5 transition-all ${paperTradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-200 bg-gray-50'}`}>
+        <div className={`rounded-xl border p-6 transition-all ${paperTradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-200 bg-gray-50'}`}>
           <div className="flex items-start justify-between">
             <div>
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <span className="text-2xl">📝</span>
-                Paper Trading
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-3xl">📝</span>
+                <h3 className="text-xl font-semibold">Paper Trading</h3>
+              </div>
+              <p className="text-gray-600">
                 Practice with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual money. No real risk.
               </p>
-              {!bothConnected && (
-                <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-                  <FaInfoCircle className="text-amber-500" /> Connect both OKX & Alpaca keys to start
-                </p>
-              )}
-              {paperTradingEnabled && (
-                <p className="text-xs text-emerald-600 mt-2">✅ Active - Trading with virtual funds</p>
-              )}
+              <div className="mt-3 space-y-1">
+                {!bothConnected && (
+                  <p className="text-sm text-amber-600 flex items-center gap-1">
+                    <FaInfoCircle /> Connect both OKX & Alpaca keys
+                  </p>
+                )}
+                {paperTradingEnabled && (
+                  <p className="text-sm text-emerald-600 flex items-center gap-1">
+                    <FaCheckCircle /> Active - Trading with virtual funds
+                  </p>
+                )}
+                {!paperTradingEnabled && bothConnected && trialActive && (
+                  <p className="text-sm text-gray-500">Ready to start practicing</p>
+                )}
+                {!trialActive && bothConnected && (
+                  <p className="text-sm text-amber-600">⚠️ Trial expired. <button onClick={onUpgrade} className="underline">Upgrade</button> to continue.</p>
+                )}
+              </div>
             </div>
             <button
               onClick={handlePaperToggle}
-              disabled={loading || (!paperTradingEnabled && !bothConnected)}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              disabled={loading || (!paperTradingEnabled && (!bothConnected || !trialActive))}
+              className={`px-5 py-2 rounded-lg font-semibold transition-all ${
                 paperTradingEnabled
                   ? 'bg-red-600 hover:bg-red-700 text-white'
                   : 'bg-indigo-600 hover:bg-indigo-700 text-white'
@@ -961,63 +971,87 @@ function TradingControlButtons({
               )}
             </button>
           </div>
-          <div className="mt-3 text-xs text-gray-500">
+          <div className="mt-4 pt-3 border-t border-gray-200 text-sm text-gray-500">
             {paperTradingEnabled ? (
               <span>✓ Virtual balance: ${PAPER_TRADING_BALANCE.toLocaleString()} available</span>
-            ) : bothConnected ? (
+            ) : bothConnected && trialActive ? (
               <span>Click to start practicing with virtual money</span>
             ) : (
-              <span>⚠️ Requires OKX + Alpaca API keys</span>
+              <span>⚠️ Connect OKX + Alpaca to enable paper trading</span>
             )}
           </div>
         </div>
 
         {/* Live Trading Card */}
-        <div className={`rounded-xl border p-5 transition-all ${tradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-200 bg-gray-50'}`}>
+        <div className={`rounded-xl border p-6 transition-all ${tradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-200 bg-gray-50'}`}>
           <div className="flex items-start justify-between">
             <div>
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <span className="text-2xl">💰</span>
-                Live Trading
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-3xl">💰</span>
+                <h3 className="text-xl font-semibold">Live Trading</h3>
+              </div>
+              <p className="text-gray-600">
                 Trade with real funds through your connected exchanges.
               </p>
-              {!hasLiveAccess && (
-                <p className="text-xs text-amber-600 mt-2">⬆️ Upgrade to Common tier for live trading</p>
-              )}
-              {!bothConnected && hasLiveAccess && (
-                <p className="text-xs text-amber-600 mt-2">⚠️ Requires OKX + Alpaca API keys</p>
-              )}
-              {tradingEnabled && (
-                <p className="text-xs text-emerald-600 mt-2">✅ Active - Real funds trading enabled</p>
-              )}
+              <div className="mt-3 space-y-1">
+                {!hasLiveAccess && (
+                  <p className="text-amber-600 flex items-center gap-1">
+                    <FaLock /> <span className="text-sm">Common tier required - <button onClick={onUpgrade} className="underline font-semibold">Upgrade Now</button></span>
+                  </p>
+                )}
+                {hasLiveAccess && !bothConnected && (
+                  <p className="text-sm text-amber-600 flex items-center gap-1">
+                    <FaInfoCircle /> Connect both OKX & Alpaca keys
+                  </p>
+                )}
+                {hasLiveAccess && bothConnected && !tradingEnabled && (
+                  <p className="text-sm text-emerald-600">Click Start Live Trading when ready</p>
+                )}
+                {tradingEnabled && (
+                  <p className="text-sm text-emerald-600 flex items-center gap-1">
+                    <FaCheckCircle /> Active - Real funds trading enabled
+                  </p>
+                )}
+              </div>
             </div>
-            <button
-              onClick={handleTradingToggle}
-              disabled={loading || (!tradingEnabled && (!bothConnected || !hasLiveAccess))}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                tradingEnabled
-                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {loading ? (
-                <FaSpinner className="animate-spin inline mr-2" />
-              ) : tradingEnabled ? (
-                'Stop Live Trading'
-              ) : (
-                'Start Live Trading'
-              )}
-            </button>
-          </div>
-          <div className="mt-3 text-xs text-gray-500">
-            {tradingEnabled ? (
-              <span>✓ Connected to your exchange accounts</span>
-            ) : bothConnected && hasLiveAccess ? (
-              <span>Click to enable live trading with real funds</span>
+            {!hasLiveAccess ? (
+              <button
+                onClick={onUpgrade}
+                className="px-5 py-2 rounded-lg font-semibold bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                Upgrade to Common
+              </button>
+            ) : tradingEnabled ? (
+              <button
+                onClick={handleStopLiveTrading}
+                disabled={loading}
+                className="px-5 py-2 rounded-lg font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+              >
+                {loading ? <FaSpinner className="animate-spin inline mr-2" /> : 'Stop Live Trading'}
+              </button>
             ) : (
-              <span>Requires Common tier+ and OKX + Alpaca API keys</span>
+              <button
+                onClick={handleStartLiveTrading}
+                disabled={loading || !bothConnected}
+                className={`px-5 py-2 rounded-lg font-semibold transition-all ${
+                  bothConnected
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-gray-400 cursor-not-allowed text-white'
+                } disabled:opacity-50`}
+              >
+                {loading ? <FaSpinner className="animate-spin inline mr-2" /> : 'Start Live Trading'}
+              </button>
+            )}
+          </div>
+          <div className="mt-4 pt-3 border-t border-gray-200 text-sm text-gray-500">
+            {tradingEnabled ? (
+              <span>✓ Connected to your exchange accounts - Trading with real funds</span>
+            ) : hasLiveAccess && bothConnected ? (
+              <span>Ready to start live trading with real funds</span>
+            ) : hasLiveAccess ? (
+              <span>⚠️ Connect both OKX and Alpaca API keys first</span>
+            ) : (
+              <span>⬆️ Upgrade to Common tier to enable live trading</span>
             )}
           </div>
         </div>
@@ -1027,7 +1061,10 @@ function TradingControlButtons({
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="max-w-md w-full rounded-2xl border border-amber-500/30 bg-white p-6 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4 text-gray-900">⚠️ Confirm Live Trading</h3>
+            <div className="flex items-center gap-3 mb-4">
+              <FaExclamationTriangle className="text-amber-500 text-2xl" />
+              <h3 className="text-xl font-bold text-gray-900">Confirm Live Trading</h3>
+            </div>
             <div className="space-y-4">
               <p className="text-gray-700">
                 You are about to enable <strong className="text-emerald-600">Live Trading</strong> with real funds.
@@ -1072,6 +1109,7 @@ export default function MemberDashboard() {
   const [togglingTrading, setTogglingTrading] = useState(false);
   const [togglingPaper, setTogglingPaper] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState({});
   const [series, setSeries] = useState([]);
@@ -1097,8 +1135,8 @@ export default function MemberDashboard() {
     { selector: ".tour-connect-keys", title: "🔑 Connect Your Exchange Accounts", description: "Connect both OKX and Alpaca API keys to start trading." },
     { selector: ".tour-strategies", title: "🎯 Choose Your Trading Strategy", description: "Pick a strategy that matches your risk tolerance." },
     { selector: ".tour-paper-trade", title: "📝 Practice with Paper Trading", description: "Use $1,000 virtual money to learn without risk." },
-    { selector: ".tour-go-live", title: "🚀 Go Live", description: "Ready to trade with real money? Click here after connecting your accounts." },
-    { selector: ".tour-upgrade", title: "⭐ Upgrade Your Tier", description: "Unlock more features like Arbitrage, Futures, and Alpha Signals." },
+    { selector: ".tour-go-live", title: "🚀 Go Live", description: "Ready to trade with real money? Upgrade to Common tier first." },
+    { selector: ".tour-upgrade", title: "⭐ Upgrade Your Tier", description: "Unlock live trading and advanced features." },
     { selector: ".tour-stats", title: "📊 Track Your Performance", description: "Monitor your profit, win rate, and trading streak here." },
   ];
 
@@ -1222,13 +1260,21 @@ export default function MemberDashboard() {
     setTogglingPaper(true);
     try {
       setPaperTradingEnabled(enabled);
-      // TODO: Add API call to save paper trading preference if needed
     } catch (error) {
       console.error("Toggle paper trading error:", error);
       alert("Failed to update paper trading status");
     } finally {
       setTogglingPaper(false);
     }
+  };
+
+  const handleUpgrade = () => {
+    setShowUpgradeModal(true);
+  };
+
+  const handleUpgradeTier = (tier) => {
+    setShowUpgradeModal(false);
+    nav(`/pricing?upgrade=${tier}`);
   };
 
   useEffect(() => {
@@ -1308,7 +1354,7 @@ export default function MemberDashboard() {
 
   const handleStrategyChange = async (strategy) => {
     if (!hasTierAccess(nftKey, strategy.minTier)) {
-      nav("/pricing");
+      handleUpgrade();
       return;
     }
 
@@ -1346,6 +1392,13 @@ export default function MemberDashboard() {
 
   return (
     <div className="min-h-screen bg-white p-6 text-gray-900">
+      <PricingUpgradeModal
+        open={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        currentTier={userTier}
+        onUpgrade={handleUpgradeTier}
+      />
+      
       {showTour && (
         <GuidedTour
           steps={tourSteps}
@@ -1361,6 +1414,8 @@ export default function MemberDashboard() {
             <h1 className="text-3xl font-bold">Welcome back 👋</h1>
             <p className="mt-1 text-sm text-gray-600">
               Connect both OKX and Alpaca API keys to start paper trading with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.
+              <br />
+              <span className="text-amber-600">⬆️ Upgrade to Common tier for live trading with real funds.</span>
             </p>
           </div>
 
@@ -1393,12 +1448,12 @@ export default function MemberDashboard() {
               </button>
             </HelpTooltip>
 
-            <HelpTooltip text="Upgrade your membership to unlock more features">
+            <HelpTooltip text="Upgrade your membership to unlock live trading">
               <button
-                onClick={() => nav("/pricing")}
-                className="tour-upgrade rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+                onClick={handleUpgrade}
+                className="tour-upgrade rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-2 text-sm font-semibold text-white"
               >
-                Upgrade
+                ⭐ Upgrade to Live
               </button>
             </HelpTooltip>
 
@@ -1443,6 +1498,7 @@ export default function MemberDashboard() {
               userTier={userTier}
               onToggleTrading={handleToggleTrading}
               onTogglePaperTrading={handleTogglePaperTrading}
+              onUpgrade={handleUpgrade}
               loading={togglingTrading || togglingPaper}
             />
           </div>
@@ -1538,10 +1594,10 @@ export default function MemberDashboard() {
           </ul>
 
           <button
-            onClick={() => nav("/pricing")}
-            className="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700"
+            onClick={handleUpgrade}
+            className="mt-4 w-full rounded-lg bg-amber-500 hover:bg-amber-600 px-4 py-2 font-semibold text-white"
           >
-            Upgrade Membership
+            Upgrade to Common → 
           </button>
         </div>
 
@@ -1640,10 +1696,10 @@ export default function MemberDashboard() {
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3 className="font-semibold">🔒 Membership Locked Features</h3>
             <button
-              onClick={() => nav("/pricing")}
-              className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              onClick={handleUpgrade}
+              className="rounded-lg bg-amber-500 hover:bg-amber-600 px-3 py-2 text-sm font-semibold text-white"
             >
-              Unlock More
+              Unlock Live Trading
             </button>
           </div>
 
