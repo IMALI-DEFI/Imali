@@ -40,8 +40,10 @@ const STRATEGIES = [
     emoji: "🛡️",
     risk: "Low",
     bestFor: "Beginners",
+    short: "Safest start",
     description: "Looks for dips and safer rebounds.",
     plainEnglish: "The bot waits for a price drop, then looks for a rebound.",
+    bullets: ["Lower risk", "Beginner friendly", "Best for testing"],
   },
   {
     id: "ai_weighted",
@@ -49,8 +51,10 @@ const STRATEGIES = [
     emoji: "⚖️",
     risk: "Medium",
     bestFor: "Most users",
+    short: "Best default",
     description: "Uses a mix of multiple trading signals.",
     plainEnglish: "The bot checks several signals before making a decision.",
+    bullets: ["Balanced risk", "Good default", "Signal based"],
   },
   {
     id: "momentum",
@@ -58,8 +62,10 @@ const STRATEGIES = [
     emoji: "🔥",
     risk: "High",
     bestFor: "Trending markets",
+    short: "More aggressive",
     description: "Follows strong price moves.",
     plainEnglish: "The bot tries to ride strong moves when the market is moving fast.",
+    bullets: ["Higher risk", "Trend following", "Fast markets"],
   },
   {
     id: "arbitrage",
@@ -67,8 +73,10 @@ const STRATEGIES = [
     emoji: "🔄",
     risk: "Low",
     bestFor: "Advanced users",
+    short: "Advanced",
     description: "Looks for price differences across venues.",
     plainEnglish: "The bot looks for small price differences between markets.",
+    bullets: ["Advanced", "Price gaps", "Exchange based"],
   },
 ];
 
@@ -97,20 +105,34 @@ const normalizeStrategyId = (value) => {
   return aliases[v] || v || "mean_reversion";
 };
 
-const riskClass = (risk) => {
+const riskTone = (risk) => {
   const r = String(risk || "").toLowerCase();
-  if (r === "low") return "border-green-200 bg-green-100 text-green-800";
-  if (r === "high") return "border-red-200 bg-red-100 text-red-800";
+  if (r === "low") return "green";
+  if (r === "high") return "red";
+  return "amber";
+};
+
+const riskClass = (risk) => {
+  const tone = riskTone(risk);
+  if (tone === "green") return "border-green-200 bg-green-100 text-green-800";
+  if (tone === "red") return "border-red-200 bg-red-100 text-red-800";
   return "border-yellow-200 bg-yellow-100 text-yellow-800";
 };
 
-const extractSummary = (payload) =>
-  payload?.summary || payload?.data?.summary || {};
+const extractSummary = (payload) => payload?.summary || payload?.data?.summary || {};
 
 const extractDailySeries = (payload) => {
   if (Array.isArray(payload?.daily_performance)) return payload.daily_performance;
   if (Array.isArray(payload?.data?.daily_performance)) return payload.data.daily_performance;
   return [];
+};
+
+const getNestedBool = (result, key, fallback) => {
+  const direct = result?.[key];
+  const nested = result?.data?.[key];
+  if (direct === true || direct === false) return direct;
+  if (nested === true || nested === false) return nested;
+  return fallback;
 };
 
 const isAuthError = (err) => {
@@ -163,56 +185,43 @@ async function safeCall(fn, fallback = null) {
 }
 
 async function togglePaperTradingApi(enabled) {
-  if (typeof BotAPI.togglePaperTrading === "function") {
-    return BotAPI.togglePaperTrading(enabled);
-  }
-
-  if (typeof BotAPI.updatePaperTrading === "function") {
-    return BotAPI.updatePaperTrading(enabled);
-  }
-
+  if (typeof BotAPI.togglePaperTrading === "function") return BotAPI.togglePaperTrading(enabled);
+  if (typeof BotAPI.updatePaperTrading === "function") return BotAPI.updatePaperTrading(enabled);
   if (typeof BotAPI.request === "function") {
     return BotAPI.request("/api/user/paper-trading", {
       method: "PATCH",
       body: JSON.stringify({ enabled }),
     });
   }
-
   throw new Error("Missing BotAPI.togglePaperTrading(enabled). Add this method to BotAPI.js.");
 }
 
 async function toggleLiveTradingApi(enabled) {
-  if (typeof BotAPI.toggleTrading === "function") {
-    return BotAPI.toggleTrading(enabled);
-  }
-
-  if (typeof BotAPI.updateLiveTrading === "function") {
-    return BotAPI.updateLiveTrading(enabled);
-  }
-
+  if (typeof BotAPI.toggleTrading === "function") return BotAPI.toggleTrading(enabled);
+  if (typeof BotAPI.updateLiveTrading === "function") return BotAPI.updateLiveTrading(enabled);
   if (typeof BotAPI.request === "function") {
     return BotAPI.request("/api/user/trading", {
       method: "PATCH",
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, confirmed: enabled === true }),
     });
   }
-
   throw new Error("Missing BotAPI.toggleTrading(enabled). Add this method to BotAPI.js.");
 }
 
 function Card({ children, className = "" }) {
+  return <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${className}`}>{children}</div>;
+}
+
+function SectionTitle({ children, helper }) {
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
-      {children}
+    <div className="mb-4">
+      <h3 className="text-base font-extrabold text-slate-950 sm:text-lg">{children}</h3>
+      {helper && <p className="mt-1 text-sm font-semibold text-slate-500">{helper}</p>}
     </div>
   );
 }
 
-function SectionTitle({ children }) {
-  return <h3 className="mb-4 text-lg font-extrabold text-slate-950">{children}</h3>;
-}
-
-function StatusPill({ children, tone = "slate" }) {
+function StatusPill({ children, tone = "slate", className = "" }) {
   const classes = {
     green: "border-green-200 bg-green-100 text-green-800",
     red: "border-red-200 bg-red-100 text-red-800",
@@ -223,7 +232,7 @@ function StatusPill({ children, tone = "slate" }) {
   };
 
   return (
-    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-extrabold ${classes[tone] || classes.slate}`}>
+    <span className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-[11px] font-extrabold leading-none sm:text-xs ${classes[tone] || classes.slate} ${className}`}>
       {children}
     </span>
   );
@@ -242,7 +251,7 @@ function Button({ children, onClick, disabled, variant = "primary", className = 
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-xl px-5 py-3 text-sm font-extrabold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`min-h-[44px] rounded-xl px-4 py-3 text-sm font-extrabold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${variants[variant]} ${className}`}
     >
       {children}
     </button>
@@ -251,10 +260,10 @@ function Button({ children, onClick, disabled, variant = "primary", className = 
 
 function Stat({ label, value, helper }) {
   return (
-    <Card>
-      <div className="text-sm font-bold text-slate-600">{label}</div>
-      <div className="mt-1 text-2xl font-extrabold text-slate-950">{value}</div>
-      {helper && <div className="mt-1 text-sm font-medium text-slate-500">{helper}</div>}
+    <Card className="min-h-[110px]">
+      <div className="text-xs font-bold uppercase tracking-wide text-slate-500 sm:text-sm">{label}</div>
+      <div className="mt-2 break-words text-2xl font-extrabold text-slate-950 sm:text-3xl">{value}</div>
+      {helper && <div className="mt-1 text-xs font-semibold text-slate-500 sm:text-sm">{helper}</div>}
     </Card>
   );
 }
@@ -270,7 +279,7 @@ function Toast({ message, type = "info", onClose }) {
       : "border-blue-200 bg-blue-50 text-blue-900";
 
   return (
-    <div className={`fixed right-4 top-4 z-[60] max-w-md rounded-2xl border p-4 text-sm font-bold shadow-xl ${tone}`}>
+    <div className={`fixed left-3 right-3 top-3 z-[60] rounded-2xl border p-4 text-sm font-bold shadow-xl sm:left-auto sm:right-4 sm:max-w-md ${tone}`}>
       <div className="flex items-start justify-between gap-4">
         <span>{message}</span>
         <button type="button" onClick={onClose} className="text-lg leading-none">
@@ -294,7 +303,7 @@ function KeyBox({ title, fields, button, loading, onSave }) {
             onChange={(e) => field.onChange(e.target.value)}
             placeholder={field.placeholder}
             autoComplete="off"
-            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
           />
         ))}
 
@@ -303,6 +312,63 @@ function KeyBox({ title, fields, button, loading, onSave }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+function StrategyCard({ strategy, active, saving, disabled, onSelect }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(strategy)}
+      disabled={disabled}
+      aria-pressed={active}
+      className={`group flex h-full min-h-[230px] w-full flex-col rounded-2xl border p-4 text-left transition focus:outline-none focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:opacity-70 sm:p-5 ${
+        active
+          ? "border-indigo-500 bg-indigo-50 shadow-md ring-2 ring-indigo-200"
+          : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-slate-50 hover:shadow-md"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl ${active ? "bg-white" : "bg-slate-100"}`}>
+            {strategy.emoji}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-lg font-extrabold text-slate-950">{strategy.name}</div>
+            <div className="mt-1 text-xs font-bold text-slate-500">{strategy.short}</div>
+          </div>
+        </div>
+
+        <StatusPill tone={riskTone(strategy.risk)} className="shrink-0">
+          {strategy.risk}
+        </StatusPill>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 p-3">
+        <div className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Best for</div>
+        <div className="mt-1 text-sm font-extrabold text-slate-900">{strategy.bestFor}</div>
+      </div>
+
+      <p className="mt-4 text-sm font-semibold leading-6 text-slate-700">{strategy.description}</p>
+      <p className="mt-2 text-sm font-medium leading-6 text-slate-500">{strategy.plainEnglish}</p>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {strategy.bullets.map((bullet) => (
+          <span key={bullet} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-extrabold text-slate-700">
+            {bullet}
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-auto border-t border-slate-100 pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <StatusPill tone={active ? "purple" : "slate"}>
+            {active ? (saving ? "Updating..." : "Active") : "Tap to use"}
+          </StatusPill>
+          {active && <span className="text-lg">✅</span>}
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -381,14 +447,12 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="max-h-[92vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
+      <div className="max-h-[94vh] w-full overflow-auto rounded-t-3xl bg-white p-4 shadow-2xl sm:max-w-6xl sm:rounded-3xl sm:p-6">
         <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
           <div>
-            <h2 className="text-2xl font-extrabold text-slate-950">Connect API Keys</h2>
-            <p className="mt-1 text-sm font-medium text-slate-600">
-              Add OKX for crypto and Alpaca for stocks. Use paper keys first.
-            </p>
+            <h2 className="text-xl font-extrabold text-slate-950 sm:text-2xl">Connect API Keys</h2>
+            <p className="mt-1 text-sm font-medium text-slate-600">Add OKX for crypto and Alpaca for stocks. Use paper keys first.</p>
           </div>
 
           <button
@@ -407,22 +471,12 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
         <div className="grid gap-5 lg:grid-cols-2">
           <Card className="bg-slate-50">
             <h3 className="mb-4 text-lg font-extrabold text-slate-950">📈 Alpaca — Stocks</h3>
-
             <div className="grid gap-4 md:grid-cols-2">
               <KeyBox
                 title="Paper Keys"
                 fields={[
-                  {
-                    placeholder: "API Key",
-                    value: alpacaPaper.apiKey,
-                    onChange: (v) => setAlpacaPaper((p) => ({ ...p, apiKey: v })),
-                  },
-                  {
-                    placeholder: "Secret Key",
-                    value: alpacaPaper.secret,
-                    type: "password",
-                    onChange: (v) => setAlpacaPaper((p) => ({ ...p, secret: v })),
-                  },
+                  { placeholder: "API Key", value: alpacaPaper.apiKey, onChange: (v) => setAlpacaPaper((p) => ({ ...p, apiKey: v })) },
+                  { placeholder: "Secret Key", value: alpacaPaper.secret, type: "password", onChange: (v) => setAlpacaPaper((p) => ({ ...p, secret: v })) },
                 ]}
                 button="Save Paper Keys"
                 loading={saving === "alpaca-paper"}
@@ -432,17 +486,8 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
               <KeyBox
                 title="Live Keys"
                 fields={[
-                  {
-                    placeholder: "API Key",
-                    value: alpacaLive.apiKey,
-                    onChange: (v) => setAlpacaLive((p) => ({ ...p, apiKey: v })),
-                  },
-                  {
-                    placeholder: "Secret Key",
-                    value: alpacaLive.secret,
-                    type: "password",
-                    onChange: (v) => setAlpacaLive((p) => ({ ...p, secret: v })),
-                  },
+                  { placeholder: "API Key", value: alpacaLive.apiKey, onChange: (v) => setAlpacaLive((p) => ({ ...p, apiKey: v })) },
+                  { placeholder: "Secret Key", value: alpacaLive.secret, type: "password", onChange: (v) => setAlpacaLive((p) => ({ ...p, secret: v })) },
                 ]}
                 button="Save Live Keys"
                 loading={saving === "alpaca-live"}
@@ -453,28 +498,13 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
 
           <Card className="bg-slate-50">
             <h3 className="mb-4 text-lg font-extrabold text-slate-950">🔷 OKX — Crypto</h3>
-
             <div className="grid gap-4 md:grid-cols-2">
               <KeyBox
                 title="Paper Keys"
                 fields={[
-                  {
-                    placeholder: "API Key",
-                    value: okxPaper.apiKey,
-                    onChange: (v) => setOkxPaper((p) => ({ ...p, apiKey: v })),
-                  },
-                  {
-                    placeholder: "Secret Key",
-                    value: okxPaper.secret,
-                    type: "password",
-                    onChange: (v) => setOkxPaper((p) => ({ ...p, secret: v })),
-                  },
-                  {
-                    placeholder: "Passphrase",
-                    value: okxPaper.passphrase,
-                    type: "password",
-                    onChange: (v) => setOkxPaper((p) => ({ ...p, passphrase: v })),
-                  },
+                  { placeholder: "API Key", value: okxPaper.apiKey, onChange: (v) => setOkxPaper((p) => ({ ...p, apiKey: v })) },
+                  { placeholder: "Secret Key", value: okxPaper.secret, type: "password", onChange: (v) => setOkxPaper((p) => ({ ...p, secret: v })) },
+                  { placeholder: "Passphrase", value: okxPaper.passphrase, type: "password", onChange: (v) => setOkxPaper((p) => ({ ...p, passphrase: v })) },
                 ]}
                 button="Save Paper Keys"
                 loading={saving === "okx-paper"}
@@ -484,23 +514,9 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
               <KeyBox
                 title="Live Keys"
                 fields={[
-                  {
-                    placeholder: "API Key",
-                    value: okxLive.apiKey,
-                    onChange: (v) => setOkxLive((p) => ({ ...p, apiKey: v })),
-                  },
-                  {
-                    placeholder: "Secret Key",
-                    value: okxLive.secret,
-                    type: "password",
-                    onChange: (v) => setOkxLive((p) => ({ ...p, secret: v })),
-                  },
-                  {
-                    placeholder: "Passphrase",
-                    value: okxLive.passphrase,
-                    type: "password",
-                    onChange: (v) => setOkxLive((p) => ({ ...p, passphrase: v })),
-                  },
+                  { placeholder: "API Key", value: okxLive.apiKey, onChange: (v) => setOkxLive((p) => ({ ...p, apiKey: v })) },
+                  { placeholder: "Secret Key", value: okxLive.secret, type: "password", onChange: (v) => setOkxLive((p) => ({ ...p, secret: v })) },
+                  { placeholder: "Passphrase", value: okxLive.passphrase, type: "password", onChange: (v) => setOkxLive((p) => ({ ...p, passphrase: v })) },
                 ]}
                 button="Save Live Keys"
                 loading={saving === "okx-live"}
@@ -518,13 +534,10 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-        <h3 className="text-2xl font-extrabold text-slate-950">Confirm Live Trading</h3>
-
-        <p className="mt-3 text-sm font-semibold text-slate-600">
-          Live trading uses real money through your connected exchange accounts.
-        </p>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
+      <div className="w-full rounded-t-3xl bg-white p-5 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-6">
+        <h3 className="text-xl font-extrabold text-slate-950 sm:text-2xl">Confirm Live Trading</h3>
+        <p className="mt-3 text-sm font-semibold text-slate-600">Live trading uses real money through your connected exchange accounts.</p>
 
         <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
           <div className="font-extrabold text-amber-950">Risk reminder</div>
@@ -537,10 +550,10 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <Button variant="warning" onClick={onConfirm} disabled={busy}>
+          <Button variant="warning" onClick={onConfirm} disabled={busy} className="w-full">
             {busy ? "Starting..." : "Enable Live"}
           </Button>
-          <Button variant="secondary" onClick={onCancel} disabled={busy}>
+          <Button variant="secondary" onClick={onCancel} disabled={busy} className="w-full">
             Cancel
           </Button>
         </div>
@@ -551,7 +564,6 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
 
 export default function MemberDashboard() {
   const nav = useNavigate();
-
   const mountedRef = useRef(true);
   const loadingRef = useRef(false);
   const lastRefreshRef = useRef(0);
@@ -559,40 +571,27 @@ export default function MemberDashboard() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
   const [toast, setToast] = useState({ message: "", type: "info" });
-
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState({});
   const [series, setSeries] = useState([]);
-  const [integrations, setIntegrations] = useState({
-    wallet_connected: false,
-    alpaca_connected: false,
-    okx_connected: false,
-  });
+  const [integrations, setIntegrations] = useState({ wallet_connected: false, alpaca_connected: false, okx_connected: false });
   const [trial, setTrial] = useState(null);
-
   const [currentStrategy, setCurrentStrategy] = useState("mean_reversion");
   const [savingStrategy, setSavingStrategy] = useState("");
   const [strategyMessage, setStrategyMessage] = useState("");
-
   const [communityTrades, setCommunityTrades] = useState([]);
-
   const [tradingEnabled, setTradingEnabled] = useState(false);
   const [paperTradingEnabled, setPaperTradingEnabled] = useState(false);
-
   const [showApiModal, setShowApiModal] = useState(false);
   const [showLiveConfirm, setShowLiveConfirm] = useState(false);
-
   const [togglingTrading, setTogglingTrading] = useState(false);
   const [togglingPaper, setTogglingPaper] = useState(false);
 
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type });
     window.clearTimeout(window.__imaliToastTimer);
-    window.__imaliToastTimer = window.setTimeout(() => {
-      setToast({ message: "", type: "info" });
-    }, 4500);
+    window.__imaliToastTimer = window.setTimeout(() => setToast({ message: "", type: "info" }), 4500);
   }, []);
 
   const handleLogout = useCallback(() => {
@@ -604,30 +603,24 @@ export default function MemberDashboard() {
   const loadDashboard = useCallback(
     async ({ silent = false, force = false } = {}) => {
       if (loadingRef.current) return;
-
       const now = Date.now();
 
       if (!force && now - lastRefreshRef.current < REFRESH_COOLDOWN_MS) {
-        if (!silent) {
-          notify("Dashboard was just refreshed. Try again in a few seconds.", "info");
-        }
+        if (!silent) notify("Dashboard was just refreshed. Try again in a few seconds.", "info");
         return;
       }
 
       loadingRef.current = true;
       lastRefreshRef.current = now;
-
       if (!silent) setLoading(true);
       setRefreshing(true);
 
       try {
         const me = await BotAPI.getMe?.(true);
-
         if (!me?.id && !me?.email) {
           handleLogout();
           return;
         }
-
         if (!mountedRef.current) return;
 
         setUser(me);
@@ -644,31 +637,15 @@ export default function MemberDashboard() {
 
         if (!mountedRef.current) return;
 
-        const summary = extractSummary(statsPayload);
-        const dailySeries = extractDailySeries(statsPayload);
-
-        setStats(summary);
-        setSeries(dailySeries);
-
-        setIntegrations(
-          integrationsPayload || {
-            wallet_connected: false,
-            alpaca_connected: false,
-            okx_connected: false,
-          }
-        );
-
+        setStats(extractSummary(statsPayload));
+        setSeries(extractDailySeries(statsPayload));
+        setIntegrations(integrationsPayload || { wallet_connected: false, alpaca_connected: false, okx_connected: false });
         setCurrentStrategy(
           normalizeStrategyId(
-            strategiesPayload?.current_strategy ||
-              strategiesPayload?.data?.current_strategy ||
-              me?.strategy ||
-              "mean_reversion"
+            strategiesPayload?.current_strategy || strategiesPayload?.data?.current_strategy || me?.strategy || "mean_reversion"
           )
         );
-
         setCommunityTrades(Array.isArray(tradesPayload?.trades) ? tradesPayload.trades : []);
-
         setTrial(
           trialPayload || {
             trial_status: "trial",
@@ -678,17 +655,11 @@ export default function MemberDashboard() {
         );
       } catch (err) {
         console.error("[MemberDashboard] Failed to load dashboard:", err);
-
         if (isAuthError(err)) {
           handleLogout();
           return;
         }
-
-        if (isRateLimitError(err)) {
-          notify("Too many requests. I slowed the dashboard refresh down to protect the app.", "error");
-        } else {
-          notify("Dashboard data could not fully load, but you are still logged in.", "error");
-        }
+        notify(isRateLimitError(err) ? "Too many requests. I slowed the dashboard refresh down to protect the app." : "Dashboard data could not fully load, but you are still logged in.", "error");
       } finally {
         loadingRef.current = false;
         if (mountedRef.current) {
@@ -702,15 +673,12 @@ export default function MemberDashboard() {
 
   const scheduleSoftRefresh = useCallback(() => {
     window.clearTimeout(refreshTimerRef.current);
-    refreshTimerRef.current = window.setTimeout(() => {
-      loadDashboard({ silent: true, force: true });
-    }, 2500);
+    refreshTimerRef.current = window.setTimeout(() => loadDashboard({ silent: true, force: true }), 2500);
   }, [loadDashboard]);
 
   useEffect(() => {
     mountedRef.current = true;
     loadDashboard({ silent: false, force: true });
-
     return () => {
       mountedRef.current = false;
       window.clearTimeout(refreshTimerRef.current);
@@ -720,10 +688,11 @@ export default function MemberDashboard() {
   const alpacaConnected = !!integrations.alpaca_connected;
   const okxConnected = !!integrations.okx_connected;
   const bothConnected = alpacaConnected && okxConnected;
+  const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
+  const anyTradingActionBusy = togglingPaper || togglingTrading;
 
   const displayStats = useMemo(() => {
     const active = paperTradingEnabled || tradingEnabled;
-
     return {
       total_pnl: Number(stats.total_pnl || 0),
       win_rate: Number(stats.win_rate || 0),
@@ -774,29 +743,16 @@ export default function MemberDashboard() {
   const doughnutData = useMemo(() => {
     const wins = Number(displayStats.wins || 0);
     const losses = Number(displayStats.losses || 0);
-
     return {
       labels: ["Wins", "Losses"],
-      datasets: [
-        {
-          data: wins + losses > 0 ? [wins, losses] : [1, 0],
-          backgroundColor: ["#10b981", "#ef4444"],
-          borderWidth: 0,
-        },
-      ],
+      datasets: [{ data: wins + losses > 0 ? [wins, losses] : [1, 0], backgroundColor: ["#10b981", "#ef4444"], borderWidth: 0 }],
     };
   }, [displayStats]);
 
   const barData = useMemo(
     () => ({
       labels: series.slice(-7).map((p) => p.date || "—"),
-      datasets: [
-        {
-          label: "Trades",
-          data: series.slice(-7).map((p) => Number(p.trades || 0)),
-          backgroundColor: "#6366f1",
-        },
-      ],
+      datasets: [{ label: "Trades", data: series.slice(-7).map((p) => Number(p.trades || 0)), backgroundColor: "#6366f1" }],
     }),
     [series]
   );
@@ -805,23 +761,10 @@ export default function MemberDashboard() {
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          labels: {
-            color: "#0f172a",
-            font: { weight: "bold" },
-          },
-        },
-      },
+      plugins: { legend: { labels: { color: "#0f172a", font: { weight: "bold" } } } },
       scales: {
-        x: {
-          ticks: { color: "#334155" },
-          grid: { color: "rgba(148, 163, 184, 0.25)" },
-        },
-        y: {
-          ticks: { color: "#334155" },
-          grid: { color: "rgba(148, 163, 184, 0.25)" },
-        },
+        x: { ticks: { color: "#334155" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
+        y: { ticks: { color: "#334155" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
       },
     }),
     []
@@ -837,49 +780,27 @@ export default function MemberDashboard() {
     }
 
     setTogglingPaper(true);
-
     const previousPaper = paperTradingEnabled;
     const previousUser = user;
-
     setPaperTradingEnabled(enabled);
     setUser((prev) => (prev ? { ...prev, paper_trading_enabled: enabled } : prev));
 
     try {
       const result = await togglePaperTradingApi(enabled);
+      if (result?.success === false) throw new Error(result?.error || "Failed to update paper trading.");
 
-      if (result?.success === false) {
-        throw new Error(result?.error || "Failed to update paper trading.");
-      }
-
-      setPaperTradingEnabled(
-        result?.paper_trading_enabled !== undefined ? result.paper_trading_enabled === true : enabled
-      );
-
-      setUser((prev) =>
-        prev
-          ? {
-              ...prev,
-              paper_trading_enabled:
-                result?.paper_trading_enabled !== undefined ? result.paper_trading_enabled === true : enabled,
-            }
-          : prev
-      );
-
-      notify(enabled ? "Paper trading started." : "Paper trading stopped.", "success");
+      const nextPaper = getNestedBool(result, "paper_trading_enabled", enabled);
+      setPaperTradingEnabled(nextPaper);
+      setUser((prev) => (prev ? { ...prev, paper_trading_enabled: nextPaper } : prev));
+      notify(nextPaper ? "Paper trading started." : "Paper trading stopped.", "success");
       scheduleSoftRefresh();
     } catch (err) {
       console.error("[MemberDashboard] Paper toggle failed:", err);
-
       setPaperTradingEnabled(previousPaper);
       setUser(previousUser);
-
-      if (isRateLimitError(err)) {
-        notify("Too many button presses. Wait a few seconds and try again.", "error");
-      } else if (isAuthError(err)) {
-        handleLogout();
-      } else {
-        notify(err?.message || "Failed to update paper trading.", "error");
-      }
+      if (isRateLimitError(err)) notify("Too many button presses. Wait a few seconds and try again.", "error");
+      else if (isAuthError(err)) handleLogout();
+      else notify(err?.message || "Failed to update paper trading.", "error");
     } finally {
       setTogglingPaper(false);
     }
@@ -895,47 +816,28 @@ export default function MemberDashboard() {
     }
 
     setTogglingTrading(true);
-
     const previousLive = tradingEnabled;
     const previousUser = user;
-
     setTradingEnabled(enabled);
     setUser((prev) => (prev ? { ...prev, trading_enabled: enabled } : prev));
 
     try {
       const result = await toggleLiveTradingApi(enabled);
+      if (result?.success === false) throw new Error(result?.error || "Failed to update live trading.");
 
-      if (result?.success === false) {
-        throw new Error(result?.error || "Failed to update live trading.");
-      }
-
-      setTradingEnabled(result?.trading_enabled !== undefined ? result.trading_enabled === true : enabled);
-
-      setUser((prev) =>
-        prev
-          ? {
-              ...prev,
-              trading_enabled: result?.trading_enabled !== undefined ? result.trading_enabled === true : enabled,
-            }
-          : prev
-      );
-
-      notify(enabled ? "Live trading started." : "Live trading stopped.", "success");
+      const nextLive = getNestedBool(result, "trading_enabled", enabled);
+      setTradingEnabled(nextLive);
+      setUser((prev) => (prev ? { ...prev, trading_enabled: nextLive } : prev));
+      notify(nextLive ? "Live trading started." : "Live trading stopped.", "success");
       setShowLiveConfirm(false);
       scheduleSoftRefresh();
     } catch (err) {
       console.error("[MemberDashboard] Live toggle failed:", err);
-
       setTradingEnabled(previousLive);
       setUser(previousUser);
-
-      if (isRateLimitError(err)) {
-        notify("Too many button presses. Wait a few seconds and try again.", "error");
-      } else if (isAuthError(err)) {
-        handleLogout();
-      } else {
-        notify(err?.message || "Failed to update live trading.", "error");
-      }
+      if (isRateLimitError(err)) notify("Too many button presses. Wait a few seconds and try again.", "error");
+      else if (isAuthError(err)) handleLogout();
+      else notify(err?.message || "Failed to update live trading.", "error");
     } finally {
       setTogglingTrading(false);
     }
@@ -945,27 +847,21 @@ export default function MemberDashboard() {
     if (strategy.id === currentStrategy || savingStrategy) return;
 
     const previous = currentStrategy;
-
     setSavingStrategy(strategy.id);
     setStrategyMessage("");
     setCurrentStrategy(strategy.id);
 
     try {
       const result = await BotAPI.updateUserStrategy(strategy.id);
-
-      if (result?.success === false) {
-        throw new Error(result?.error || "Failed to update strategy.");
-      }
+      if (result?.success === false) throw new Error(result?.error || "Failed to update strategy.");
 
       const saved = getStrategyFromResult(result, strategy.id);
-
       setCurrentStrategy(saved);
       setUser((prev) => (prev ? { ...prev, strategy: saved } : prev));
       setStrategyMessage(`${strategy.name} strategy is now active.`);
       notify(`${strategy.name} strategy is now active.`, "success");
     } catch (err) {
       setCurrentStrategy(previous);
-
       if (isRateLimitError(err)) {
         setStrategyMessage("Too many requests. Please wait a few seconds.");
         notify("Too many requests. Please wait a few seconds.", "error");
@@ -985,66 +881,50 @@ export default function MemberDashboard() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-center">
         <div>
-          <div className="text-2xl font-extrabold text-slate-950">Loading your dashboard…</div>
-          <div className="mt-2 text-sm font-semibold text-slate-500">
-            Getting your trading status, stats, and connections.
-          </div>
+          <div className="text-xl font-extrabold text-slate-950 sm:text-2xl">Loading your dashboard…</div>
+          <div className="mt-2 text-sm font-semibold text-slate-500">Getting your trading status, stats, and connections.</div>
         </div>
       </div>
     );
   }
 
-  const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
-  const anyTradingActionBusy = togglingPaper || togglingTrading;
-
   return (
-    <div className="min-h-screen bg-slate-50 p-4 text-slate-950 sm:p-6">
+    <div className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
 
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-3xl font-extrabold text-slate-950">Welcome back 👋</h1>
+      <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h1 className="text-2xl font-extrabold text-slate-950 sm:text-3xl">Welcome back 👋</h1>
+              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
+                Start with paper trading, watch the charts, then turn on live trading when you are ready.
+              </p>
 
-            <p className="mt-2 max-w-3xl text-base font-semibold text-slate-600">
-              Start with paper trading, watch the charts, then turn on live trading when you are ready.
-            </p>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>
-                Paper {paperTradingEnabled ? "Active" : "Off"}
-              </StatusPill>
-              <StatusPill tone={tradingEnabled ? "purple" : "slate"}>
-                Live {tradingEnabled ? "Active" : "Off"}
-              </StatusPill>
-              <StatusPill tone={bothConnected ? "green" : "amber"}>
-                Setup {bothConnected ? "Complete" : "Needs Keys"}
-              </StatusPill>
-              <StatusPill tone="blue">Strategy: {activeStrategy.name}</StatusPill>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>Paper {paperTradingEnabled ? "Active" : "Off"}</StatusPill>
+                <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
+                <StatusPill tone={bothConnected ? "green" : "amber"}>Setup {bothConnected ? "Complete" : "Needs Keys"}</StatusPill>
+                <StatusPill tone="blue">Strategy: {activeStrategy.name}</StatusPill>
+              </div>
             </div>
-          </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => loadDashboard({ silent: false, force: false })}
-              disabled={refreshing}
-            >
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </Button>
-
-            <Button variant="secondary" onClick={() => setShowApiModal(true)}>
-              Connect API Keys
-            </Button>
-
-            <Button variant="secondary" onClick={() => nav("/billing-dashboard")}>
-              Billing
-            </Button>
+            <div className="grid gap-3 sm:grid-cols-3 lg:flex lg:flex-wrap">
+              <Button variant="secondary" onClick={() => loadDashboard({ silent: false, force: false })} disabled={refreshing} className="w-full lg:w-auto">
+                {refreshing ? "Refreshing..." : "Refresh"}
+              </Button>
+              <Button variant="secondary" onClick={() => setShowApiModal(true)} className="w-full lg:w-auto">
+                Connect Keys
+              </Button>
+              <Button variant="secondary" onClick={() => nav("/billing-dashboard")} className="w-full lg:w-auto">
+                Billing
+              </Button>
+            </div>
           </div>
         </div>
 
         <div
-          className={`rounded-3xl border p-6 shadow-sm ${
+          className={`rounded-3xl border p-4 shadow-sm sm:p-6 ${
             bothConnected && !paperTradingEnabled && !tradingEnabled
               ? "border-blue-300 bg-blue-50"
               : paperTradingEnabled && !tradingEnabled
@@ -1056,17 +936,10 @@ export default function MemberDashboard() {
         >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-2xl font-extrabold text-slate-950">
-                {!bothConnected
-                  ? "Step 1: Connect your API keys"
-                  : !paperTradingEnabled
-                  ? "Step 2: Start paper trading"
-                  : !tradingEnabled
-                  ? "Paper trading is active"
-                  : "Live trading is active"}
+              <h2 className="text-xl font-extrabold text-slate-950 sm:text-2xl">
+                {!bothConnected ? "Step 1: Connect your API keys" : !paperTradingEnabled ? "Step 2: Start paper trading" : !tradingEnabled ? "Paper trading is active" : "Live trading is active"}
               </h2>
-
-              <p className="mt-2 max-w-3xl text-base font-semibold text-slate-700">
+              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-700 sm:text-base">
                 {!bothConnected
                   ? "Connect both Alpaca and OKX so Imali can run paper trading and live trading."
                   : !paperTradingEnabled
@@ -1077,53 +950,33 @@ export default function MemberDashboard() {
               </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <StatusPill tone={alpacaConnected ? "green" : "amber"}>
-                  Alpaca {alpacaConnected ? "Connected" : "Needed"}
-                </StatusPill>
-                <StatusPill tone={okxConnected ? "green" : "amber"}>
-                  OKX {okxConnected ? "Connected" : "Needed"}
-                </StatusPill>
-                <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>
-                  Paper {paperTradingEnabled ? "Active" : "Off"}
-                </StatusPill>
-                <StatusPill tone={tradingEnabled ? "purple" : "slate"}>
-                  Live {tradingEnabled ? "Active" : "Off"}
-                </StatusPill>
+                <StatusPill tone={alpacaConnected ? "green" : "amber"}>Alpaca {alpacaConnected ? "Connected" : "Needed"}</StatusPill>
+                <StatusPill tone={okxConnected ? "green" : "amber"}>OKX {okxConnected ? "Connected" : "Needed"}</StatusPill>
+                <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>Paper {paperTradingEnabled ? "Active" : "Off"}</StatusPill>
+                <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
               </div>
             </div>
 
-            <div className="shrink-0">
+            <div className="w-full shrink-0 lg:w-auto">
               {!bothConnected ? (
-                <Button variant="warning" onClick={() => setShowApiModal(true)}>
+                <Button variant="warning" onClick={() => setShowApiModal(true)} className="w-full lg:w-auto">
                   Connect API Keys
                 </Button>
               ) : !paperTradingEnabled ? (
-                <Button onClick={() => handleTogglePaperTrading(true)} disabled={anyTradingActionBusy}>
+                <Button onClick={() => handleTogglePaperTrading(true)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
                   {togglingPaper ? "Starting..." : "Start Paper Trading"}
                 </Button>
               ) : !tradingEnabled ? (
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    variant="danger"
-                    onClick={() => handleTogglePaperTrading(false)}
-                    disabled={anyTradingActionBusy}
-                  >
+                <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+                  <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
                     {togglingPaper ? "Stopping..." : "Stop Paper"}
                   </Button>
-                  <Button
-                    variant="warning"
-                    onClick={() => setShowLiveConfirm(true)}
-                    disabled={anyTradingActionBusy}
-                  >
+                  <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
                     Start Live Trading
                   </Button>
                 </div>
               ) : (
-                <Button
-                  variant="danger"
-                  onClick={() => handleToggleTrading(false)}
-                  disabled={anyTradingActionBusy}
-                >
+                <Button variant="danger" onClick={() => handleToggleTrading(false)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
                   {togglingTrading ? "Stopping..." : "Stop Live Trading"}
                 </Button>
               )}
@@ -1135,133 +988,71 @@ export default function MemberDashboard() {
           <div className="mb-4 flex items-center gap-3">
             <span className="text-3xl">🎓</span>
             <div>
-              <h3 className="text-xl font-extrabold text-indigo-950">Quick Start Guide</h3>
+              <h3 className="text-lg font-extrabold text-indigo-950 sm:text-xl">Quick Start Guide</h3>
               <p className="text-sm font-semibold text-indigo-800">Follow these steps in order.</p>
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-indigo-100 bg-white p-4">
-              <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-extrabold text-white">
-                1
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { step: 1, title: "Connect API keys", desc: "Add Alpaca for stocks and OKX for crypto.", action: "Connect Keys", onClick: () => setShowApiModal(true), disabled: false },
+              { step: 2, title: "Start paper trading", desc: `Practice with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`, action: "Paper Trade", onClick: () => handleTogglePaperTrading(true), disabled: !bothConnected || anyTradingActionBusy || paperTradingEnabled },
+              { step: 3, title: "Choose a strategy", desc: "Pick Conservative, Balanced, Momentum, or Arbitrage.", action: null },
+              { step: 4, title: "Go live when ready", desc: "Turn on live trading after testing with paper trading.", action: "Go Live", onClick: () => setShowLiveConfirm(true), disabled: !bothConnected || anyTradingActionBusy || tradingEnabled },
+            ].map((item) => (
+              <div key={item.step} className="rounded-2xl border border-indigo-100 bg-white p-4">
+                <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-extrabold text-white">{item.step}</div>
+                <div className="text-base font-extrabold text-slate-950">{item.title}</div>
+                <p className="mt-1 text-sm font-medium leading-6 text-slate-600">{item.desc}</p>
+                {item.action && (
+                  <button
+                    type="button"
+                    onClick={item.onClick}
+                    disabled={item.disabled}
+                    className="mt-3 min-h-[40px] w-full rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-extrabold text-indigo-800 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                  >
+                    {item.action}
+                  </button>
+                )}
               </div>
-              <div className="text-base font-extrabold text-slate-950">Connect API keys</div>
-              <p className="mt-1 text-sm font-medium text-slate-600">Add Alpaca for stocks and OKX for crypto.</p>
-              <button
-                type="button"
-                onClick={() => setShowApiModal(true)}
-                className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-extrabold text-indigo-800 hover:bg-indigo-100"
-              >
-                Connect Keys
-              </button>
-            </div>
-
-            <div className="rounded-2xl border border-indigo-100 bg-white p-4">
-              <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-extrabold text-white">
-                2
-              </div>
-              <div className="text-base font-extrabold text-slate-950">Start paper trading</div>
-              <p className="mt-1 text-sm font-medium text-slate-600">
-                Practice with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.
-              </p>
-              <button
-                type="button"
-                onClick={() => handleTogglePaperTrading(true)}
-                disabled={!bothConnected || anyTradingActionBusy || paperTradingEnabled}
-                className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-extrabold text-indigo-800 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Paper Trade
-              </button>
-            </div>
-
-            <div className="rounded-2xl border border-indigo-100 bg-white p-4">
-              <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-extrabold text-white">
-                3
-              </div>
-              <div className="text-base font-extrabold text-slate-950">Choose a strategy</div>
-              <p className="mt-1 text-sm font-medium text-slate-600">
-                Pick Conservative, Balanced, Momentum, or Arbitrage.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-indigo-100 bg-white p-4">
-              <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-extrabold text-white">
-                4
-              </div>
-              <div className="text-base font-extrabold text-slate-950">Go live when ready</div>
-              <p className="mt-1 text-sm font-medium text-slate-600">
-                Turn on live trading after testing with paper trading.
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowLiveConfirm(true)}
-                disabled={!bothConnected || anyTradingActionBusy || tradingEnabled}
-                className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-extrabold text-indigo-800 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Go Live
-              </button>
-            </div>
+            ))}
           </div>
         </Card>
 
         <Card className="border-blue-200 bg-blue-50">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-extrabold text-blue-950">🎯 Paper Trading</h2>
-              <p className="mt-1 text-sm font-bold text-blue-900">
-                {paperTradingEnabled
-                  ? `Active with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`
-                  : `Available with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`}
+              <h2 className="text-lg font-extrabold text-blue-950 sm:text-xl">🎯 Paper Trading</h2>
+              <p className="mt-1 text-sm font-bold leading-6 text-blue-900">
+                {paperTradingEnabled ? `Active with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.` : `Available with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`}
                 {trial?.seconds_remaining ? ` Trial time left: ${formatTimeLeft(trial.seconds_remaining)}.` : ""}
               </p>
             </div>
-
-            <StatusPill tone={paperTradingEnabled ? "green" : "blue"}>
-              {paperTradingEnabled ? "Active" : "Ready"}
-            </StatusPill>
+            <StatusPill tone={paperTradingEnabled ? "green" : "blue"}>{paperTradingEnabled ? "Active" : "Ready"}</StatusPill>
           </div>
         </Card>
 
         <div className="grid gap-5 xl:grid-cols-2">
           <Card className={paperTradingEnabled ? "border-green-300 bg-green-50" : "bg-white"}>
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">📝</span>
-                  <h3 className="text-xl font-extrabold text-slate-950">Paper Trading</h3>
+                  <h3 className="text-lg font-extrabold text-slate-950 sm:text-xl">Paper Trading</h3>
                 </div>
-
-                <p className="mt-2 text-sm font-semibold text-slate-600">
-                  Practice with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual money. No real money is used.
-                </p>
-
-                {!bothConnected && (
-                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                    Connect both OKX and Alpaca first.
-                  </p>
-                )}
-
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Practice with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual money. No real money is used.</p>
+                {!bothConnected && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">Connect both OKX and Alpaca first.</p>}
                 <div className="mt-4">
-                  <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>
-                    {paperTradingEnabled ? "Paper Trading Active" : bothConnected ? "Ready to Start" : "Connect Keys First"}
-                  </StatusPill>
+                  <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>{paperTradingEnabled ? "Paper Trading Active" : bothConnected ? "Ready to Start" : "Connect Keys First"}</StatusPill>
                 </div>
               </div>
-
-              <div className="shrink-0">
+              <div className="w-full shrink-0 sm:w-auto">
                 {paperTradingEnabled ? (
-                  <Button
-                    variant="danger"
-                    onClick={() => handleTogglePaperTrading(false)}
-                    disabled={anyTradingActionBusy}
-                  >
+                  <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={anyTradingActionBusy} className="w-full sm:w-auto">
                     {togglingPaper ? "Stopping..." : "Stop"}
                   </Button>
                 ) : (
-                  <Button
-                    onClick={() => handleTogglePaperTrading(true)}
-                    disabled={!bothConnected || anyTradingActionBusy}
-                  >
+                  <Button onClick={() => handleTogglePaperTrading(true)} disabled={!bothConnected || anyTradingActionBusy} className="w-full sm:w-auto">
                     {togglingPaper ? "Starting..." : "Start"}
                   </Button>
                 )}
@@ -1270,45 +1061,25 @@ export default function MemberDashboard() {
           </Card>
 
           <Card className={tradingEnabled ? "border-green-300 bg-green-50" : "bg-white"}>
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">💰</span>
-                  <h3 className="text-xl font-extrabold text-slate-950">Live Trading</h3>
+                  <h3 className="text-lg font-extrabold text-slate-950 sm:text-xl">Live Trading</h3>
                 </div>
-
-                <p className="mt-2 text-sm font-semibold text-slate-600">
-                  Trade with real funds through your connected exchange accounts.
-                </p>
-
-                {!bothConnected && (
-                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                    Connect both OKX and Alpaca first.
-                  </p>
-                )}
-
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Trade with real funds through your connected exchange accounts.</p>
+                {!bothConnected && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">Connect both OKX and Alpaca first.</p>}
                 <div className="mt-4">
-                  <StatusPill tone={tradingEnabled ? "green" : "slate"}>
-                    {tradingEnabled ? "Live Trading Active" : bothConnected ? "Ready When You Are" : "Connect Keys First"}
-                  </StatusPill>
+                  <StatusPill tone={tradingEnabled ? "green" : "slate"}>{tradingEnabled ? "Live Trading Active" : bothConnected ? "Ready When You Are" : "Connect Keys First"}</StatusPill>
                 </div>
               </div>
-
-              <div className="shrink-0">
+              <div className="w-full shrink-0 sm:w-auto">
                 {tradingEnabled ? (
-                  <Button
-                    variant="danger"
-                    onClick={() => handleToggleTrading(false)}
-                    disabled={anyTradingActionBusy}
-                  >
+                  <Button variant="danger" onClick={() => handleToggleTrading(false)} disabled={anyTradingActionBusy} className="w-full sm:w-auto">
                     {togglingTrading ? "Stopping..." : "Stop"}
                   </Button>
                 ) : (
-                  <Button
-                    variant="warning"
-                    onClick={() => setShowLiveConfirm(true)}
-                    disabled={!bothConnected || anyTradingActionBusy}
-                  >
+                  <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={!bothConnected || anyTradingActionBusy} className="w-full sm:w-auto">
                     Start
                   </Button>
                 )}
@@ -1318,91 +1089,42 @@ export default function MemberDashboard() {
         </div>
 
         <Card>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <SectionTitle>📊 Trading Readiness</SectionTitle>
-              <p className="-mt-2 text-sm font-semibold text-slate-600">
-                This score helps beginners know how complete their setup is.
-              </p>
-            </div>
-
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <SectionTitle helper="This score helps beginners know how complete their setup is.">📊 Trading Readiness</SectionTitle>
             <div className="text-3xl font-extrabold text-slate-950">{readiness}%</div>
           </div>
-
-          <div className="mt-4 h-4 w-full overflow-hidden rounded-full bg-slate-200">
-            <div
-              className={`h-full ${readiness >= 80 ? "bg-green-500" : readiness >= 50 ? "bg-yellow-500" : "bg-red-500"}`}
-              style={{ width: `${readiness}%` }}
-            />
+          <div className="mt-1 h-4 w-full overflow-hidden rounded-full bg-slate-200">
+            <div className={`h-full ${readiness >= 80 ? "bg-green-500" : readiness >= 50 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${readiness}%` }} />
           </div>
         </Card>
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <Stat label="Total Profit" value={usd(displayStats.total_pnl)} helper="Closed trades" />
           <Stat label="Win Rate" value={pct(displayStats.win_rate)} helper="Closed trades" />
-          <Stat
-            label="Trades"
-            value={displayStats.total_trades}
-            helper={paperTradingEnabled || tradingEnabled ? "Trading active" : "No active trading yet"}
-          />
-          <Stat
-            label="Current Mode"
-            value={tradingEnabled ? "Live" : paperTradingEnabled ? "Paper" : "Setup"}
-            helper="Your bot status"
-          />
+          <Stat label="Trades" value={displayStats.total_trades} helper={paperTradingEnabled || tradingEnabled ? "Trading active" : "No active trading yet"} />
+          <Stat label="Current Mode" value={tradingEnabled ? "Live" : paperTradingEnabled ? "Paper" : "Setup"} helper="Your bot status" />
         </div>
 
         <Card>
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <SectionTitle>🎯 Choose Your Strategy</SectionTitle>
-
-            {strategyMessage && (
-              <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-extrabold text-indigo-800">
-                {strategyMessage}
-              </div>
-            )}
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <SectionTitle helper="Pick one strategy. You can change it later.">🎯 Choose Your Strategy</SectionTitle>
+            {strategyMessage && <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-extrabold text-indigo-800">{strategyMessage}</div>}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="md:hidden">
+            <div className="flex snap-x gap-3 overflow-x-auto pb-3 [-webkit-overflow-scrolling:touch]">
+              {STRATEGIES.map((strategy) => (
+                <div key={strategy.id} className="min-w-[82%] snap-start">
+                  <StrategyCard strategy={strategy} active={currentStrategy === strategy.id} saving={savingStrategy === strategy.id} disabled={!!savingStrategy} onSelect={handleStrategyChange} />
+                </div>
+              ))}
+            </div>
+            <p className="mt-1 text-center text-xs font-semibold text-slate-500">Swipe to see more strategies</p>
+          </div>
+
+          <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-4">
             {STRATEGIES.map((strategy) => (
-              <button
-                type="button"
-                key={strategy.id}
-                onClick={() => handleStrategyChange(strategy)}
-                disabled={!!savingStrategy}
-                className={`w-full rounded-2xl border p-5 text-left transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70 ${
-                  currentStrategy === strategy.id
-                    ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
-                    : "border-slate-200 bg-white"
-                }`}
-              >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl">{strategy.emoji}</span>
-                    <div>
-                      <div className="text-lg font-extrabold text-slate-950">{strategy.name}</div>
-                      <div className="text-xs font-bold text-slate-500">Best for: {strategy.bestFor}</div>
-                    </div>
-                  </div>
-
-                  <span className={`rounded-full border px-2 py-1 text-xs font-extrabold ${riskClass(strategy.risk)}`}>
-                    {strategy.risk}
-                  </span>
-                </div>
-
-                <p className="text-sm font-semibold text-slate-700">{strategy.description}</p>
-                <p className="mt-2 text-sm font-medium text-slate-500">{strategy.plainEnglish}</p>
-
-                <div className="mt-4 border-t border-slate-100 pt-3">
-                  <StatusPill tone={currentStrategy === strategy.id ? "purple" : "slate"}>
-                    {currentStrategy === strategy.id
-                      ? savingStrategy === strategy.id
-                        ? "Updating..."
-                        : "Active Strategy"
-                      : "Tap to use"}
-                  </StatusPill>
-                </div>
-              </button>
+              <StrategyCard key={strategy.id} strategy={strategy} active={currentStrategy === strategy.id} saving={savingStrategy === strategy.id} disabled={!!savingStrategy} onSelect={handleStrategyChange} />
             ))}
           </div>
         </Card>
@@ -1410,128 +1132,69 @@ export default function MemberDashboard() {
         <div className="grid gap-5 xl:grid-cols-3">
           <Card className="xl:col-span-2">
             <SectionTitle>📈 PnL Performance</SectionTitle>
-            <div className="h-72">
-              <Line data={lineData} options={chartOptions} />
-            </div>
+            <div className="h-64 sm:h-72"><Line data={lineData} options={chartOptions} /></div>
           </Card>
-
           <Card>
             <SectionTitle>🥇 Win / Loss</SectionTitle>
-            <div className="h-72">
-              <Doughnut
-                data={doughnutData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      labels: {
-                        color: "#0f172a",
-                        font: { weight: "bold" },
-                      },
-                    },
-                  },
-                }}
-              />
+            <div className="h-64 sm:h-72">
+              <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: "#0f172a", font: { weight: "bold" } } } } }} />
             </div>
           </Card>
         </div>
 
         <Card>
           <SectionTitle>📊 Trade Count — Last 7 Days</SectionTitle>
-          <div className="h-72">
-            <Bar data={barData} options={chartOptions} />
-          </div>
+          <div className="h-64 sm:h-72"><Bar data={barData} options={chartOptions} /></div>
         </Card>
 
         <div className="grid gap-5 xl:grid-cols-2">
           <Card>
             <SectionTitle>🔌 Required Connections</SectionTitle>
-
             <div className="space-y-3">
               {[
-                {
-                  title: "Alpaca",
-                  desc: "Needed for stock trading.",
-                  connected: alpacaConnected,
-                  needed: "Needed",
-                },
-                {
-                  title: "OKX",
-                  desc: "Needed for crypto trading.",
-                  connected: okxConnected,
-                  needed: "Needed",
-                },
+                { title: "Alpaca", desc: "Needed for stock trading.", connected: alpacaConnected, needed: "Needed" },
+                { title: "OKX", desc: "Needed for crypto trading.", connected: okxConnected, needed: "Needed" },
               ].map((item) => (
-                <div
-                  key={item.title}
-                  className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
-                >
+                <div key={item.title} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="text-base font-extrabold text-slate-950">{item.title}</div>
                     <div className="text-sm font-medium text-slate-500">{item.desc}</div>
                   </div>
-
-                  <div className="flex items-center gap-3">
-                    <StatusPill tone={item.connected ? "green" : "amber"}>
-                      {item.connected ? "Connected" : item.needed}
-                    </StatusPill>
-
-                    {!item.connected && (
-                      <Button variant="secondary" onClick={() => setShowApiModal(true)} className="px-3 py-2">
-                        Connect
-                      </Button>
-                    )}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusPill tone={item.connected ? "green" : "amber"}>{item.connected ? "Connected" : item.needed}</StatusPill>
+                    {!item.connected && <Button variant="secondary" onClick={() => setShowApiModal(true)} className="px-3 py-2">Connect</Button>}
                   </div>
                 </div>
               ))}
-
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-base font-extrabold text-slate-950">Wallet</div>
                   <div className="text-sm font-medium text-slate-500">Optional for DeFi features.</div>
                 </div>
-
-                <StatusPill tone={integrations.wallet_connected ? "green" : "slate"}>
-                  {integrations.wallet_connected ? "Connected" : "Optional"}
-                </StatusPill>
+                <StatusPill tone={integrations.wallet_connected ? "green" : "slate"}>{integrations.wallet_connected ? "Connected" : "Optional"}</StatusPill>
               </div>
             </div>
           </Card>
 
           <Card>
             <SectionTitle>🌍 Community Trades</SectionTitle>
-
             {communityTrades.length === 0 ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
-                No community trades yet.
-              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">No community trades yet.</div>
             ) : (
               <div className="max-h-80 space-y-3 overflow-auto">
                 {communityTrades.map((trade, index) => {
                   const pnl = Number(trade.pnl_usd || trade.pnl || 0);
                   const positive = pnl >= 0;
-
                   return (
-                    <div
-                      key={trade.id || `${trade.symbol}-${index}`}
-                      className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4"
-                    >
-                      <div>
+                    <div key={trade.id || `${trade.symbol}-${index}`} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-extrabold text-slate-950">{trade.symbol || "Unknown"}</span>
-                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">
-                            {trade.bot || trade.exchange || "bot"}
-                          </span>
+                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{trade.bot || trade.exchange || "bot"}</span>
                         </div>
-                        <div className="mt-1 text-xs font-semibold text-slate-500">
-                          {anonymizeEmail(trade.user_email, index)}
-                        </div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">{anonymizeEmail(trade.user_email, index)}</div>
                       </div>
-
-                      <div className={`text-sm font-extrabold ${positive ? "text-green-700" : "text-red-700"}`}>
-                        {usd(pnl)}
-                      </div>
+                      <div className={`shrink-0 text-sm font-extrabold ${positive ? "text-green-700" : "text-red-700"}`}>{usd(pnl)}</div>
                     </div>
                   );
                 })}
@@ -1542,7 +1205,6 @@ export default function MemberDashboard() {
 
         <Card>
           <SectionTitle>📚 Helpful Resources</SectionTitle>
-
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { title: "📚 Trading Guide", desc: "Learn how Imali trades", url: "/guides/trading" },
@@ -1550,11 +1212,7 @@ export default function MemberDashboard() {
               { title: "❓ FAQ", desc: "Common beginner questions", url: "/faq" },
               { title: "💬 Support", desc: "Get help", url: "/support" },
             ].map((resource) => (
-              <a
-                key={resource.title}
-                href={resource.url}
-                className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-indigo-300 hover:bg-indigo-50"
-              >
+              <a key={resource.title} href={resource.url} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-indigo-300 hover:bg-indigo-50">
                 <div className="font-extrabold text-slate-950">{resource.title}</div>
                 <div className="mt-1 text-sm font-medium text-slate-500">{resource.desc}</div>
               </a>
@@ -1564,7 +1222,6 @@ export default function MemberDashboard() {
 
         <Card>
           <SectionTitle>✅ Available Features</SectionTitle>
-
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {[
               { title: "Paper Trading", desc: "Practice before risking real money.", status: "Unlocked" },
@@ -1575,17 +1232,12 @@ export default function MemberDashboard() {
               { title: "Support", desc: "Beginner help and setup resources.", status: "Available" },
             ].map((feature) => (
               <div key={feature.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="text-base font-extrabold text-slate-950">{feature.title}</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-600">{feature.desc}</div>
+                    <div className="mt-1 text-sm font-semibold leading-6 text-slate-600">{feature.desc}</div>
                   </div>
-
-                  <StatusPill
-                    tone={feature.status.includes("Needs") ? "amber" : feature.status === "Ready" ? "green" : "blue"}
-                  >
-                    {feature.status}
-                  </StatusPill>
+                  <StatusPill tone={feature.status.includes("Needs") ? "amber" : feature.status === "Ready" ? "green" : "blue"}>{feature.status}</StatusPill>
                 </div>
               </div>
             ))}
@@ -1594,20 +1246,11 @@ export default function MemberDashboard() {
 
         <Card>
           <SectionTitle>🏆 Achievements</SectionTitle>
-
           <div className="flex flex-wrap gap-3">
             {ACHIEVEMENTS.map((achievement) => {
               const unlocked = achievements.includes(achievement.id);
-
               return (
-                <div
-                  key={achievement.id}
-                  className={`rounded-2xl border px-4 py-3 text-sm font-extrabold ${
-                    unlocked
-                      ? "border-green-300 bg-green-50 text-green-800"
-                      : "border-slate-200 bg-slate-50 text-slate-500"
-                  }`}
-                >
+                <div key={achievement.id} className={`rounded-2xl border px-4 py-3 text-sm font-extrabold ${unlocked ? "border-green-300 bg-green-50 text-green-800" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
                   {achievement.icon} {achievement.label}
                 </div>
               );
@@ -1615,36 +1258,15 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Button onClick={() => nav("/trade-demo")}>Paper Trade Demo</Button>
-
-          <Button
-            variant="warning"
-            onClick={() => (bothConnected ? setShowLiveConfirm(true) : setShowApiModal(true))}
-            disabled={anyTradingActionBusy}
-          >
-            Start Live Trading
-          </Button>
-
-          <Button variant="secondary" onClick={() => nav("/activation")}>
-            Complete Activation
-          </Button>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Button onClick={() => nav("/trade-demo")} className="w-full">Paper Trade Demo</Button>
+          <Button variant="warning" onClick={() => (bothConnected ? setShowLiveConfirm(true) : setShowApiModal(true))} disabled={anyTradingActionBusy} className="w-full">Start Live Trading</Button>
+          <Button variant="secondary" onClick={() => nav("/activation")} className="w-full">Complete Activation</Button>
         </div>
       </div>
 
-      <ApiKeysModal
-        open={showApiModal}
-        onClose={() => setShowApiModal(false)}
-        onSaved={() => loadDashboard({ silent: true, force: true })}
-        notify={notify}
-      />
-
-      <LiveConfirmModal
-        open={showLiveConfirm}
-        onCancel={() => setShowLiveConfirm(false)}
-        onConfirm={() => handleToggleTrading(true)}
-        busy={togglingTrading}
-      />
+      <ApiKeysModal open={showApiModal} onClose={() => setShowApiModal(false)} onSaved={() => loadDashboard({ silent: true, force: true })} notify={notify} />
+      <LiveConfirmModal open={showLiveConfirm} onCancel={() => setShowLiveConfirm(false)} onConfirm={() => handleToggleTrading(true)} busy={togglingTrading} />
     </div>
   );
 }
