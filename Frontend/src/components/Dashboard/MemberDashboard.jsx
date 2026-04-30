@@ -31,6 +31,9 @@ ChartJS.register(
 );
 
 /* ================= CONSTANTS ================= */
+const TRIAL_DAYS = 7;
+const TRIAL_SECONDS = TRIAL_DAYS * 24 * 60 * 60; // 604800 seconds
+
 const NFT_TIERS = {
   none: {
     rank: 0,
@@ -81,8 +84,8 @@ const FALLBACK_STRATEGIES = [
     emoji: "🛡️",
     minTier: "none",
     risk: "Low",
-    description: "Looks for dips and safer rebounds.",
-    howToUse: "Best for beginners. Automatically buys during dips and sells during rebounds.",
+    description: "Looks for dips and safer rebounds. Best for beginners.",
+    howToUse: "Automatically buys during dips and sells during rebounds. Low risk, steady returns.",
   },
   {
     id: "ai_weighted",
@@ -100,7 +103,7 @@ const FALLBACK_STRATEGIES = [
     minTier: "none",
     risk: "High",
     description: "Follows strong moves when markets are trending.",
-    howToUse: "Follows market trends. Best in strong bull or bear markets.",
+    howToUse: "Follows market trends. Best in strong bull or bear markets. Higher risk, higher reward.",
   },
   {
     id: "arbitrage",
@@ -251,7 +254,7 @@ const formatTrialRemaining = (seconds) => {
   const days = Math.floor(s / 86400);
   const hours = Math.floor((s % 86400) / 3600);
   if (days > 0) return `${days} day${days === 1 ? "" : "s"} ${hours} hr${hours === 1 ? "" : "s"}`;
-  return `${hours} hr${hours === 1 ? "" : "s"}`;
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
 };
 
 const anonymizeEmail = (email, index = 0) => {
@@ -740,7 +743,7 @@ function SetupRecommendation({ alpacaConnected, okxConnected, onConnect }) {
             {bothReady ? "✅ Full stock + crypto setup complete" : "⚠️ Recommended setup: connect both Alpaca and OKX"}
           </h2>
           <p className={`mt-1 text-sm ${bothReady ? "text-emerald-800" : "text-amber-900"}`}>
-            Alpaca powers stock and ETF trading. OKX powers crypto spot and futures trading. To use Imali across both stock and crypto markets, both connections should be completed.
+            Alpaca powers stock and ETF trading. OKX powers crypto spot and futures trading.
           </p>
         </div>
         {!bothReady ? (
@@ -756,47 +759,36 @@ function SetupRecommendation({ alpacaConnected, okxConnected, onConnect }) {
   );
 }
 
+/* ================= TRIAL BANNER - 7 DAYS ================= */
 function TrialBanner({ trial }) {
-  // Ensure trial data is valid
-  const isValidTrial = trial && typeof trial === 'object';
   const status = String(trial?.trial_status || "").toLowerCase();
-  const paperEnabled = trial?.paper_trading_enabled === true;
   const secondsRemaining = Number(trial?.seconds_remaining || 0);
-  const active = status === "trial" && paperEnabled && secondsRemaining > 0;
-
-  if (!isValidTrial) {
-    return (
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="font-bold text-amber-900">Paper Trading Available</h3>
-            <p className="text-sm text-amber-800">
-              You have access to paper trading. Connect your API keys to start practicing.
-            </p>
-          </div>
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-            Available
-          </span>
-        </div>
-      </div>
-    );
-  }
+  const active = status === "trial" && trial?.paper_trading_enabled !== false && secondsRemaining > 0;
+  const daysRemaining = Math.ceil(secondsRemaining / 86400);
+  const hoursRemaining = Math.ceil(secondsRemaining / 3600);
+  
+  const getTimeDisplay = () => {
+    if (daysRemaining > 0) {
+      return `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`;
+    }
+    return `${hoursRemaining} hour${hoursRemaining !== 1 ? 's' : ''}`;
+  };
 
   return (
-    <div className={`rounded-2xl border p-4 ${active ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
+    <div className={`rounded-2xl border p-4 ${active ? "border-sky-200 bg-sky-50" : "border-emerald-200 bg-emerald-50"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className={`font-bold ${active ? "text-sky-900" : "text-amber-900"}`}>
-            {active ? "✅ Paper trading active" : "📝 Paper trading available"}
+          <h3 className={`font-bold ${active ? "text-sky-900" : "text-emerald-900"}`}>
+            {active ? "🎯 7-Day Paper Trading Trial Active" : "📝 Start Your 7-Day Free Trial"}
           </h3>
-          <p className={`text-sm ${active ? "text-sky-800" : "text-amber-800"}`}>
+          <p className={`text-sm ${active ? "text-sky-800" : "text-emerald-800"}`}>
             {active
-              ? `Time remaining: ${formatTrialRemaining(secondsRemaining)}. Practice trading with virtual money before going live!`
-              : "Paper trading is available for all users. Connect your exchange accounts to start practicing with virtual funds."}
+              ? `You have ${getTimeDisplay()} remaining in your free trial. Practice trading with $100,000 virtual money!`
+              : "Try paper trading free for 7 days. Practice with virtual money before going live!"}
           </p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${active ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-700"}`}>
-          {active ? "Active" : "Available"}
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${active ? "bg-sky-100 text-sky-700" : "bg-emerald-100 text-emerald-700"}`}>
+          {active ? `${getTimeDisplay()} left` : "Free Trial"}
         </span>
       </div>
     </div>
@@ -860,10 +852,10 @@ export default function MemberDashboard() {
 
   const tourSteps = [
     { selector: ".tour-connect-keys", title: "🔑 Connect Your Exchange Accounts", description: "Start here! Connect Alpaca (for stocks) and OKX (for crypto) to enable trading." },
-    { selector: ".tour-strategies", title: "🎯 Choose Your Trading Strategy", description: "Pick a strategy that matches your risk tolerance. Conservative is great for beginners!" },
-    { selector: ".tour-paper-trade", title: "📝 Practice with Paper Trading", description: "Use virtual money to learn without risk. Perfect for testing strategies!" },
+    { selector: ".tour-strategies", title: "🎯 Choose Your Trading Strategy", description: "Pick a strategy that matches your risk tolerance." },
+    { selector: ".tour-paper-trade", title: "📝 Practice with Paper Trading", description: "Use virtual money to learn without risk." },
     { selector: ".tour-go-live", title: "🚀 Go Live", description: "Ready to trade with real money? Click here after connecting your accounts." },
-    { selector: ".tour-upgrade", title: "⭐ Upgrade Your Tier", description: "Unlock more features like Arbitrage, Futures, and Alpha Signals as you grow." },
+    { selector: ".tour-upgrade", title: "⭐ Upgrade Your Tier", description: "Unlock more features like Arbitrage, Futures, and Alpha Signals." },
     { selector: ".tour-stats", title: "📊 Track Your Performance", description: "Monitor your profit, win rate, and trading streak here." },
   ];
 
@@ -897,24 +889,19 @@ export default function MemberDashboard() {
       const tradesPayload = globalTradesResult.status === "fulfilled" ? globalTradesResult.value : null;
       let trialPayload = trialResult.status === "fulfilled" ? trialResult.value : null;
 
-      // FIX: Ensure trial data is valid and defaults to active
+      // Ensure trial is always active with 7 days for all users
       if (!trialPayload || trialPayload.trial_status !== 'trial') {
         trialPayload = {
           trial_status: 'trial',
           paper_trading_enabled: true,
-          seconds_remaining: 2592000, // 30 days
-          trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          seconds_remaining: TRIAL_SECONDS,
+          trial_ends_at: new Date(Date.now() + TRIAL_SECONDS * 1000).toISOString(),
         };
-      }
-
-      // Ensure paper_trading_enabled is true
-      if (trialPayload.paper_trading_enabled !== true) {
+      } else {
         trialPayload.paper_trading_enabled = true;
-      }
-
-      // Ensure seconds_remaining is positive
-      if (!trialPayload.seconds_remaining || trialPayload.seconds_remaining <= 0) {
-        trialPayload.seconds_remaining = 2592000;
+        if (!trialPayload.seconds_remaining || trialPayload.seconds_remaining <= 0 || trialPayload.seconds_remaining > TRIAL_SECONDS) {
+          trialPayload.seconds_remaining = TRIAL_SECONDS;
+        }
       }
 
       const summary = extractSummary(statsPayload);
@@ -942,7 +929,6 @@ export default function MemberDashboard() {
       setCommunityTrades(Array.isArray(tradesPayload?.trades) ? tradesPayload.trades : []);
       setTrial(trialPayload);
 
-      // Check if tour was completed before
       const tourCompletedFlag = localStorage.getItem("imali_tour_completed");
       if (!tourCompletedFlag && !tourCompleted) {
         setTimeout(() => setShowTour(true), 1000);
@@ -959,11 +945,11 @@ export default function MemberDashboard() {
       setSeries([]);
       setStreak(0);
       setCommunityTrades([]);
-      // Set default trial on error
+      // Set default trial on error - 7 days paper trading always available
       setTrial({
         trial_status: 'trial',
         paper_trading_enabled: true,
-        seconds_remaining: 2592000,
+        seconds_remaining: TRIAL_SECONDS,
       });
     } finally {
       setRefreshing(false);
@@ -973,7 +959,6 @@ export default function MemberDashboard() {
 
   useEffect(() => {
     loadDashboard(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleTourComplete = () => {
@@ -1083,8 +1068,6 @@ export default function MemberDashboard() {
     );
   }
 
-  const isPaperTradingActive = trial?.paper_trading_enabled === true && trial?.seconds_remaining > 0;
-
   return (
     <div className="min-h-screen bg-white p-6 text-gray-900">
       {showTour && (
@@ -1157,7 +1140,7 @@ export default function MemberDashboard() {
         {/* Quick Start Guide */}
         <QuickStartGuide onStartTour={() => setShowTour(true)} />
 
-        {/* Trial Banner - Always shows positive message */}
+        {/* Trial Banner - 7 Days */}
         <TrialBanner trial={trial} />
 
         {/* Setup Recommendation */}
@@ -1167,15 +1150,15 @@ export default function MemberDashboard() {
           onConnect={() => setShowApiModal(true)}
         />
 
-        {/* Trading Strategy Section */}
-        <div className="tour-strategies grid gap-4 lg:grid-cols-3">
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 lg:col-span-2">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        {/* Trading Strategy Section - Fixed overlapping cards */}
+        <div className="tour-strategies">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h3 className="font-semibold">🎯 Trading Strategy</h3>
               {strategyMessage ? <div className="text-sm text-indigo-700">{strategyMessage}</div> : null}
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
               {strategies.map((strategy) => {
                 const unlocked = hasTierAccess(nftKey, strategy.minTier);
                 const active = currentStrategy === strategy.id;
@@ -1186,51 +1169,56 @@ export default function MemberDashboard() {
                     <button
                       onClick={() => handleStrategyChange(strategy)}
                       disabled={!!savingStrategy}
-                      className={`rounded-xl border p-4 text-left transition ${
+                      className={`w-full rounded-xl border p-4 text-left transition-all duration-200 ${
                         active
-                          ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
+                          ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200 shadow-md"
                           : unlocked
-                          ? "border-gray-200 bg-white hover:shadow-sm"
-                          : "border-gray-200 bg-white opacity-90"
-                      } disabled:opacity-80`}
+                          ? "border-gray-200 bg-white hover:shadow-md hover:border-indigo-200"
+                          : "border-gray-200 bg-white opacity-75"
+                      } disabled:opacity-80 hover:scale-[1.02]`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
+                      <div className="flex flex-col">
+                        {/* Header */}
+                        <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-xl">{strategy.emoji}</span>
-                            <span className="font-semibold text-gray-900">{strategy.name}</span>
+                            <span className="text-2xl">{strategy.emoji}</span>
+                            <span className="font-semibold text-gray-900 text-base">{strategy.name}</span>
                           </div>
-                          <div className="mt-2 text-sm text-gray-600">{strategy.description}</div>
-                        </div>
-
-                        <div className="flex flex-col items-end gap-2">
-                          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${riskClass(strategy.risk)}`}>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${riskClass(strategy.risk)}`}>
                             {strategy.risk}
                           </span>
+                        </div>
+
+                        {/* Description */}
+                        <div className="mt-1 mb-2">
+                          <p className="text-sm text-gray-600 line-clamp-2">{strategy.description}</p>
+                        </div>
+
+                        {/* How to use */}
+                        <div className="text-xs text-indigo-500 mb-2">
+                          ⓘ Click to activate
+                        </div>
+
+                        {/* Status badges */}
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
                           <span
                             className={`rounded-full px-2 py-1 text-xs font-semibold ${
                               unlocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
                             }`}
                           >
-                            {unlocked ? "Unlocked" : `${NFT_TIERS[strategy.minTier]?.name || strategy.minTier}+`}
+                            {unlocked ? "✓ Unlocked" : `🔒 ${NFT_TIERS[strategy.minTier]?.name || strategy.minTier}+ Required`}
                           </span>
+                          
+                          {active ? (
+                            <span className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-semibold text-white">
+                              {updating ? "Updating..." : "Active ✓"}
+                            </span>
+                          ) : unlocked ? (
+                            <span className="rounded-lg bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                              {updating ? "Updating..." : "Use this strategy"}
+                            </span>
+                          ) : null}
                         </div>
-                      </div>
-
-                      <div className="mt-4">
-                        {active ? (
-                          <div className="rounded-lg bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white">
-                            {updating ? "Updating..." : "Active"}
-                          </div>
-                        ) : unlocked ? (
-                          <div className="rounded-lg bg-gray-100 px-3 py-2 text-center text-sm font-semibold text-gray-900">
-                            {updating ? "Updating..." : "Use this strategy"}
-                          </div>
-                        ) : (
-                          <div className="rounded-lg bg-amber-50 px-3 py-2 text-center text-sm font-semibold text-amber-800">
-                            Locked — Upgrade Required
-                          </div>
-                        )}
                       </div>
                     </button>
                   </HelpTooltip>
@@ -1238,33 +1226,33 @@ export default function MemberDashboard() {
               })}
             </div>
           </div>
+        </div>
 
-          {/* Membership Tier Card */}
-          <div className={`rounded-2xl border ${nft.color} bg-gray-50 p-5 shadow-sm`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold">🧬 {nft.name}</h2>
-                <span className={`mt-2 inline-block rounded-full px-2 py-1 text-xs font-semibold ${nft.badge}`}>
-                  Membership Tier
-                </span>
-              </div>
-              <div className="rounded-xl bg-white px-4 py-3 text-center shadow-sm">
-                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Locked</div>
-                <div className="mt-1 text-2xl font-bold text-gray-900">{lockedCount}</div>
-              </div>
+        {/* Membership Tier Card */}
+        <div className={`rounded-2xl border ${nft.color} bg-gray-50 p-5 shadow-sm`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">🧬 {nft.name}</h2>
+              <span className={`mt-2 inline-block rounded-full px-2 py-1 text-xs font-semibold ${nft.badge}`}>
+                Membership Tier
+              </span>
             </div>
-
-            <ul className="mt-4 list-disc pl-5 text-sm text-gray-600">
-              {nft.perks.map((perk) => <li key={perk}>{perk}</li>)}
-            </ul>
-
-            <button
-              onClick={() => nav("/pricing")}
-              className="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700"
-            >
-              Upgrade Membership
-            </button>
+            <div className="rounded-xl bg-white px-4 py-3 text-center shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Locked</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">{lockedCount}</div>
+            </div>
           </div>
+
+          <ul className="mt-4 list-disc pl-5 text-sm text-gray-600">
+            {nft.perks.map((perk) => <li key={perk}>{perk}</li>)}
+          </ul>
+
+          <button
+            onClick={() => nav("/pricing")}
+            className="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700"
+          >
+            Upgrade Membership
+          </button>
         </div>
 
         {/* Trading Readiness */}
@@ -1323,7 +1311,7 @@ export default function MemberDashboard() {
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <h3 className="mb-3 font-semibold">🔌 Required Connections</h3>
             <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-              For full stock + crypto trading, connect both platforms: Alpaca for stocks/ETFs and OKX for crypto.
+              Connect both platforms: Alpaca for stocks/ETFs and OKX for crypto.
             </div>
             <div className="space-y-3">
               <ConnectionRow
@@ -1412,7 +1400,7 @@ export default function MemberDashboard() {
         </div>
 
         {/* Action Buttons Grid */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
           <div className="tour-paper-trade">
             <CTA title="Paper Trade Demo" onClick={() => nav("/trade-demo")} tooltip="Practice trading with virtual money. No risk!" />
           </div>
@@ -1445,7 +1433,7 @@ export default function MemberDashboard() {
         </div>
 
         {/* Secondary Actions */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
           <TierCTA
             title="Alpha Signals"
             unlocked={hasTierAccess(nftKey, "legendary") && bothMarketConnectionsReady}
