@@ -16,6 +16,7 @@ import {
   Filler,
 } from "chart.js";
 import { Line, Doughnut, Bar } from "react-chartjs-2";
+import { FaSpinner } from "react-icons/fa";
 
 ChartJS.register(
   CategoryScale,
@@ -864,21 +865,21 @@ function TradingControlButtons({
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Paper Trading Card */}
-        <div className={`rounded-xl border p-5 transition-all ${paperTradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-700 bg-gray-800/50'}`}>
+        <div className={`rounded-xl border p-5 transition-all ${paperTradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-200 bg-gray-50'}`}>
           <div className="flex items-start justify-between">
             <div>
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <span className="text-2xl">📝</span>
                 Paper Trading
               </h3>
-              <p className="text-sm text-gray-400 mt-1">
+              <p className="text-sm text-gray-500 mt-1">
                 Practice with $100,000 virtual money. No real risk.
               </p>
               {!trialActive && !paperTradingEnabled && (
-                <p className="text-xs text-amber-400 mt-2">⚠️ Trial expired. Upgrade to continue.</p>
+                <p className="text-xs text-amber-600 mt-2">⚠️ Trial expired. Upgrade to continue.</p>
               )}
               {paperTradingEnabled && (
-                <p className="text-xs text-emerald-400 mt-2">✅ Active - Trading with virtual funds</p>
+                <p className="text-xs text-emerald-600 mt-2">✅ Active - Trading with virtual funds</p>
               )}
             </div>
             <button
@@ -887,11 +888,11 @@ function TradingControlButtons({
               className={`px-4 py-2 rounded-lg font-semibold transition-all ${
                 paperTradingEnabled
                   ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {loading ? (
-                <FaSpinner className="animate-spin inline mr-2" />
+                <span className="inline-block animate-spin mr-2">⏳</span>
               ) : paperTradingEnabled ? (
                 'Stop Paper Trading'
               ) : (
@@ -909,34 +910,34 @@ function TradingControlButtons({
         </div>
 
         {/* Live Trading Card */}
-        <div className={`rounded-xl border p-5 transition-all ${tradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-700 bg-gray-800/50'}`}>
+        <div className={`rounded-xl border p-5 transition-all ${tradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-200 bg-gray-50'}`}>
           <div className="flex items-start justify-between">
             <div>
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <span className="text-2xl">💰</span>
                 Live Trading
               </h3>
-              <p className="text-sm text-gray-400 mt-1">
+              <p className="text-sm text-gray-500 mt-1">
                 Trade with real funds through your connected exchanges.
               </p>
-              {!hasTierAccess(nftKey, "common") && (
-                <p className="text-xs text-amber-400 mt-2">⬆️ Upgrade to Common tier for live trading</p>
+              {!tradingEnabled && (
+                <p className="text-xs text-amber-600 mt-2">⚠️ Requires Common tier and connected exchanges</p>
               )}
               {tradingEnabled && (
-                <p className="text-xs text-emerald-400 mt-2">✅ Active - Real funds trading enabled</p>
+                <p className="text-xs text-emerald-600 mt-2">✅ Active - Real funds trading enabled</p>
               )}
             </div>
             <button
               onClick={handleTradingToggle}
-              disabled={loading || (!tradingEnabled && !hasTierAccess(nftKey, "common"))}
+              disabled={loading}
               className={`px-4 py-2 rounded-lg font-semibold transition-all ${
                 tradingEnabled
                   ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {loading ? (
-                <FaSpinner className="animate-spin inline mr-2" />
+                <span className="inline-block animate-spin mr-2">⏳</span>
               ) : tradingEnabled ? (
                 'Stop Live Trading'
               ) : (
@@ -957,15 +958,15 @@ function TradingControlButtons({
       {/* Confirmation Modal for Live Trading */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="max-w-md w-full rounded-2xl border border-amber-500/30 bg-gray-900 p-6 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4">⚠️ Confirm Live Trading</h3>
+          <div className="max-w-md w-full rounded-2xl border border-amber-500/30 bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-bold mb-4 text-gray-900">⚠️ Confirm Live Trading</h3>
             <div className="space-y-4">
-              <p className="text-gray-300">
-                You are about to enable <strong className="text-emerald-400">Live Trading</strong> with real funds.
+              <p className="text-gray-700">
+                You are about to enable <strong className="text-emerald-600">Live Trading</strong> with real funds.
               </p>
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
-                <p className="text-sm text-amber-300 font-semibold mb-2">⚠️ Important Risk Warning:</p>
-                <ul className="text-xs text-amber-200/80 space-y-1 list-disc pl-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p className="text-sm text-amber-800 font-semibold mb-2">⚠️ Important Risk Warning:</p>
+                <ul className="text-xs text-amber-700 space-y-1 list-disc pl-4">
                   <li>Live trading involves real financial risk</li>
                   <li>You can lose money - only trade what you can afford to lose</li>
                   <li>Make sure your exchange API keys have trading-only permissions</li>
@@ -976,13 +977,13 @@ function TradingControlButtons({
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={confirmEnableLive}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg font-semibold"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg font-semibold text-white"
                 >
                   Yes, Enable Live Trading
                 </button>
                 <button
                   onClick={() => setShowConfirmModal(false)}
-                  className="flex-1 border border-gray-600 hover:bg-gray-800 py-2 rounded-lg font-semibold"
+                  className="flex-1 border border-gray-300 hover:bg-gray-100 py-2 rounded-lg font-semibold text-gray-700"
                 >
                   Cancel
                 </button>
@@ -1065,7 +1066,6 @@ export default function MemberDashboard() {
       const tradesPayload = globalTradesResult.status === "fulfilled" ? globalTradesResult.value : null;
       let trialPayload = trialResult.status === "fulfilled" ? trialResult.value : null;
 
-      // Ensure trial is always active with 7 days for all users
       if (!trialPayload || trialPayload.trial_status !== 'trial') {
         trialPayload = {
           trial_status: 'trial',
@@ -1153,10 +1153,7 @@ export default function MemberDashboard() {
   const handleTogglePaperTrading = async (enabled) => {
     setTogglingPaper(true);
     try {
-      // Paper trading doesn't have a dedicated endpoint, but we can update via user settings
-      // For now, just update local state
       setPaperTradingEnabled(enabled);
-      // You can add an API call here if needed
     } catch (error) {
       console.error("Toggle paper trading error:", error);
       alert("Failed to update paper trading status");
@@ -1359,7 +1356,7 @@ export default function MemberDashboard() {
           onConnect={() => setShowApiModal(true)}
         />
 
-        {/* Trading Control Buttons - NEW SECTION */}
+        {/* Trading Control Buttons */}
         <div className="tour-paper-trade tour-go-live">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <h3 className="font-semibold mb-4">🎮 Trading Controls</h3>
@@ -1501,7 +1498,7 @@ export default function MemberDashboard() {
               <div className="text-sm text-gray-500">No performance data yet.</div>
             ) : (
               <div className="h-72">
-                <Line data={lineData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } }} />
+                <Line data={lineData} options={{ responsive: true, maintainAspectRatio: false }} />
               </div>
             )}
           </div>
@@ -1509,7 +1506,7 @@ export default function MemberDashboard() {
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <h3 className="mb-3 font-semibold">🥇 Win / Loss</h3>
             <div className="h-72">
-              <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }} />
+              <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false }} />
             </div>
           </div>
         </div>
@@ -1518,7 +1515,7 @@ export default function MemberDashboard() {
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
           <h3 className="mb-3 font-semibold">📊 Trade Count — Last 7 Days</h3>
           <div className="h-72">
-            <Bar data={barData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } }} />
+            <Bar data={barData} options={{ responsive: true, maintainAspectRatio: false }} />
           </div>
         </div>
 
