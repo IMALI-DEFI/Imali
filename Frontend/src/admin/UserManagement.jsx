@@ -19,6 +19,12 @@ import {
   FaEnvelopeOpenText,
   FaRobot,
   FaUserTag,
+  FaCreditCard,
+  FaPlug,
+  FaCalendarAlt,
+  FaChartLine,
+  FaWallet,
+  FaExchangeAlt,
 } from "react-icons/fa";
 
 const TOKEN_KEY = "imali_token";
@@ -72,6 +78,16 @@ function tierBadge(tier) {
   return styles[tier] || styles.starter;
 }
 
+function statusBadge(condition, trueText = "Active", falseText = "Inactive") {
+  return condition ? (
+    <span className="inline-flex items-center gap-1 text-emerald-400">
+      <FaCheckCircle className="text-xs" /> {trueText}
+    </span>
+  ) : (
+    <span className="text-red-400">{falseText}</span>
+  );
+}
+
 export default function UserManagement({ apiBase = "", showToast }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -91,12 +107,12 @@ export default function UserManagement({ apiBase = "", showToast }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showNewsletterModal, setShowNewsletterModal] = useState(false);
   const [showAutoResponderModal, setShowAutoResponderModal] = useState(false);
+  const [showConnectionsModal, setShowConnectionsModal] = useState(false);
 
   const [addForm, setAddForm] = useState(DEFAULT_ADD_FORM);
   const [editForm, setEditForm] = useState({});
   const [newsletterForm, setNewsletterForm] = useState({ subject: "", content: "" });
   const [autoResponderForm, setAutoResponderForm] = useState({ rule_id: "", event_type: "signup", delay_minutes: 0 });
-
   const [autoResponderRules, setAutoResponderRules] = useState([]);
 
   const toast = useCallback(
@@ -177,6 +193,9 @@ export default function UserManagement({ apiBase = "", showToast }) {
       active: users.filter((u) => u.trading_enabled).length,
       admins: users.filter((u) => u.is_admin).length,
       trialActive: users.filter((u) => u.trial_status === "trial" && u.paper_trading_enabled).length,
+      hasBilling: users.filter((u) => u.has_card_on_file).length,
+      hasAlpaca: users.filter((u) => u.alpaca_connected === "true" || u.alpaca_connected === true).length,
+      hasOkx: users.filter((u) => u.okx_connected === "true" || u.okx_connected === true).length,
     };
   }, [users, totalUsers]);
 
@@ -216,6 +235,11 @@ export default function UserManagement({ apiBase = "", showToast }) {
     });
     setShowDeleteConfirm(false);
     setShowEditModal(true);
+  };
+
+  const openConnectionsModal = (user) => {
+    setSelectedUser(user);
+    setShowConnectionsModal(true);
   };
 
   const openNewsletterModal = (user) => {
@@ -428,7 +452,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
         <div className="mb-3">
           <h2 className="text-xl font-bold">User Management</h2>
           <p className="text-sm text-white/60">
-            Manage user accounts, tiers, trading permissions, API keys, newsletters, and auto-responders.
+            Manage user accounts, tiers, trading permissions, API keys, and view connection status.
           </p>
         </div>
 
@@ -470,38 +494,46 @@ export default function UserManagement({ apiBase = "", showToast }) {
         </div>
       </div>
 
-      {/* Stats Summary */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <SummaryCard label="Total Users" value={summary.total} />
-        <SummaryCard label="Trading Enabled" value={summary.active} />
-        <SummaryCard label="Practice Active" value={summary.trialActive} />
-        <SummaryCard label="Admins" value={summary.admins} />
+      {/* Stats Summary - Enhanced */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
+        <SummaryCard label="Total Users" value={summary.total} icon="👥" />
+        <SummaryCard label="Trading Enabled" value={summary.active} icon="📈" />
+        <SummaryCard label="Practice Active" value={summary.trialActive} icon="📝" />
+        <SummaryCard label="Admins" value={summary.admins} icon="👑" />
+        <SummaryCard label="Billing Setup" value={summary.hasBilling} icon="💳" />
+        <SummaryCard label="Connected" value={`${summary.hasAlpaca + summary.hasOkx}`} icon="🔌" />
       </div>
 
-      {/* Users Table */}
+      {/* Users Table - Enhanced with connection indicators */}
       <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5">
-        <table className="w-full min-w-[1100px] text-sm">
+        <table className="w-full min-w-[1300px] text-sm">
           <thead className="border-b border-white/10 bg-white/5 text-white/70">
             <tr>
               <th className="px-4 py-3 text-left">User</th>
               <th className="px-4 py-3 text-left">Tier</th>
               <th className="px-4 py-3 text-center">Practice</th>
-              <th className="px-4 py-3 text-center">Live Trading</th>
+              <th className="px-4 py-3 text-center">Live</th>
+              <th className="px-4 py-3 text-center">Billing</th>
+              <th className="px-4 py-3 text-center">Alpaca</th>
+              <th className="px-4 py-3 text-center">OKX</th>
               <th className="px-4 py-3 text-left">Strategy</th>
-              <th className="px-4 py-3 text-left">Joined</th>
               <th className="px-4 py-3 text-center">Actions</th>
             </tr>
           </thead>
           <tbody>
             {users.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-white/50">
+                <td colSpan={9} className="py-10 text-center text-white/50">
                   No users found.
                 </td>
               </tr>
             ) : (
               users.map((user) => {
                 const practiceActive = user.trial_status === "trial" && user.paper_trading_enabled;
+                const billingComplete = user.has_card_on_file === true || user.billing_complete === true;
+                const alpacaConnected = user.alpaca_connected === "true" || user.alpaca_connected === true;
+                const okxConnected = user.okx_connected === "true" || user.okx_connected === true;
+
                 return (
                   <tr key={user.id} className="border-b border-white/5 hover:bg-white/5">
                     <td className="px-4 py-3">
@@ -531,32 +563,47 @@ export default function UserManagement({ apiBase = "", showToast }) {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {practiceActive ? (
-                        <span className="text-emerald-400">Active</span>
+                        <span className="text-emerald-400 text-xs">Active</span>
                       ) : (
                         <button
                           onClick={() => reactivateTrial(user)}
                           disabled={working}
-                          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs text-amber-300 hover:bg-amber-500/20"
+                          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-300 hover:bg-amber-500/20"
                         >
                           Reactivate
                         </button>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {user.trading_enabled ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-400">
-                          <FaCheckCircle /> Enabled
-                        </span>
+                      {statusBadge(user.trading_enabled, "On", "Off")}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {billingComplete ? (
+                        <span className="text-emerald-400 text-sm" title="Billing Complete">💳✓</span>
                       ) : (
-                        <span className="text-red-400">Disabled</span>
+                        <span className="text-gray-500 text-sm" title="No Card">💳✗</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-white/80">{user.strategy || "ai_weighted"}</td>
-                    <td className="px-4 py-3 text-white/60">{formatDate(user.created_at)}</td>
+                    <td className="px-4 py-3 text-center">
+                      {alpacaConnected ? (
+                        <span className="text-emerald-400 text-sm" title="Alpaca Connected">🦙✓</span>
+                      ) : (
+                        <span className="text-gray-500 text-sm" title="Alpaca Not Connected">🦙✗</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {okxConnected ? (
+                        <span className="text-emerald-400 text-sm" title="OKX Connected">🟢✓</span>
+                      ) : (
+                        <span className="text-gray-500 text-sm" title="OKX Not Connected">🔴✗</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-white/80 text-xs">{user.strategy || "ai_weighted"}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap justify-center gap-2">
                         <IconButton title="View" onClick={() => openViewUser(user)} icon={<FaEye />} color="text-blue-400" />
                         <IconButton title="Edit" onClick={() => openEditUser(user)} icon={<FaEdit />} color="text-amber-400" />
+                        <IconButton title="Connections" onClick={() => openConnectionsModal(user)} icon={<FaPlug />} color="text-cyan-400" />
                         <IconButton title="Add to Newsletter" onClick={() => openNewsletterModal(user)} icon={<FaEnvelopeOpenText />} color="text-green-400" />
                         <IconButton title="Add to Auto-Responder" onClick={() => openAutoResponderModal(user)} icon={<FaRobot />} color="text-purple-400" />
                         <IconButton title="Revoke API Key" onClick={() => revokeApiKey(user)} icon={<FaKey />} color="text-orange-400" />
@@ -620,10 +667,14 @@ export default function UserManagement({ apiBase = "", showToast }) {
             <Info label="Strategy" value={selectedUser.strategy} />
             <Info label="Portfolio" value={money(selectedUser.portfolio_value)} />
             <Info label="Joined" value={formatDate(selectedUser.created_at)} />
-            <Info label="Practice Trading" value={selectedUser.paper_trading_enabled ? "Enabled" : "Disabled"} />
-            <Info label="Trial Status" value={selectedUser.trial_status || "—"} />
+            <Info label="Practice Trading" value={selectedUser.paper_trading_enabled ? "Active" : "Inactive"} />
+            <Info label="Trial Status" value={selectedUser.trial_status || "trial"} />
             <Info label="Live Trading" value={selectedUser.trading_enabled ? "Enabled" : "Disabled"} />
             <Info label="Admin" value={selectedUser.is_admin ? "Yes" : "No"} />
+            <Info label="Billing Complete" value={selectedUser.has_card_on_file ? "Yes" : "No"} />
+            <Info label="Alpaca Connected" value={selectedUser.alpaca_connected ? "Yes" : "No"} />
+            <Info label="OKX Connected" value={selectedUser.okx_connected ? "Yes" : "No"} />
+            <Info label="Wallet Connected" value={selectedUser.wallet_connected ? "Yes" : "No"} />
           </div>
           <div className="mt-5 flex gap-3">
             <button
@@ -660,7 +711,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
                   disabled={working}
                   className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 py-2 text-emerald-300 hover:bg-emerald-500/20"
                 >
-                  Reactivate Practice
+                  Reactivate Practice (7 days)
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
@@ -684,6 +735,129 @@ export default function UserManagement({ apiBase = "", showToast }) {
               working={working}
             />
           )}
+        </UserModal>
+      )}
+
+      {/* Connections Modal - NEW */}
+      {showConnectionsModal && selectedUser && (
+        <UserModal title="User Connections & Status" onClose={() => setShowConnectionsModal(false)} wide>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Billing Status */}
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <FaCreditCard className="text-emerald-400" /> Billing Status
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Card on File:</span>
+                    <span className={selectedUser.has_card_on_file ? "text-emerald-400" : "text-red-400"}>
+                      {selectedUser.has_card_on_file ? "Yes" : "No"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Billing Complete:</span>
+                    <span className={selectedUser.billing_complete ? "text-emerald-400" : "text-yellow-400"}>
+                      {selectedUser.billing_complete ? "Yes" : "Pending"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Exchange Connections */}
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <FaExchangeAlt className="text-cyan-400" /> Exchange Connections
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Alpaca:</span>
+                    <span className={selectedUser.alpaca_connected ? "text-emerald-400" : "text-red-400"}>
+                      {selectedUser.alpaca_connected ? "Connected" : "Not Connected"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">OKX:</span>
+                    <span className={selectedUser.okx_connected ? "text-emerald-400" : "text-red-400"}>
+                      {selectedUser.okx_connected ? "Connected" : "Not Connected"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Trading Status */}
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <FaChartLine className="text-purple-400" /> Trading Status
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Live Trading:</span>
+                    <span className={selectedUser.trading_enabled ? "text-emerald-400" : "text-red-400"}>
+                      {selectedUser.trading_enabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Paper Trading:</span>
+                    <span className={selectedUser.paper_trading_enabled ? "text-emerald-400" : "text-red-400"}>
+                      {selectedUser.paper_trading_enabled ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Strategy:</span>
+                    <span className="text-white">{selectedUser.strategy || "ai_weighted"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Trial Info */}
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <FaCalendarAlt className="text-amber-400" /> Trial Information
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Status:</span>
+                    <span className={selectedUser.trial_status === "trial" ? "text-emerald-400" : "text-yellow-400"}>
+                      {selectedUser.trial_status || "trial"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Started:</span>
+                    <span className="text-white">{formatDate(selectedUser.trial_started_at)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Ends:</span>
+                    <span className="text-white">{formatDate(selectedUser.trial_ends_at)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Wallet Address if available */}
+            {selectedUser.wallet_addresses && selectedUser.wallet_addresses.length > 0 && (
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <FaWallet className="text-indigo-400" /> Wallet Addresses
+                </h4>
+                <div className="space-y-1">
+                  {selectedUser.wallet_addresses.map((addr, idx) => (
+                    <div key={idx} className="text-xs font-mono text-white/60 break-all">
+                      {addr}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="mt-5 flex gap-3">
+            <button
+              onClick={() => setShowConnectionsModal(false)}
+              className="flex-1 rounded-lg bg-emerald-600 py-2 font-semibold hover:bg-emerald-500"
+            >
+              Close
+            </button>
+          </div>
         </UserModal>
       )}
 
@@ -780,9 +954,10 @@ export default function UserManagement({ apiBase = "", showToast }) {
 }
 
 // Helper Components
-function SummaryCard({ label, value }) {
+function SummaryCard({ label, value, icon }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center">
+      <div className="text-lg mb-1">{icon}</div>
       <div className="text-xs text-white/50">{label}</div>
       <div className="mt-1 text-2xl font-bold">{value}</div>
     </div>
@@ -889,7 +1064,7 @@ function UserForm({ form, setForm, includePassword = false, includeEmail = false
 
       {"paper_trading_enabled" in form && (
         <Toggle
-          label="Enable Practice Trading"
+          label="Enable Practice Trading (7-Day Trial)"
           value={!!form.paper_trading_enabled}
           onChange={() => update("paper_trading_enabled", !form.paper_trading_enabled)}
         />
