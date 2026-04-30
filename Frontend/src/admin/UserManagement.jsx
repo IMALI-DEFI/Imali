@@ -47,27 +47,51 @@ const DEFAULT_ADD_FORM = {
   is_admin: false,
 };
 
-function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || "";
-}
+// ========== SAFE RENDER HELPER - FIXES OBJECT RENDERING ==========
+const safeRender = (value, fallback = "—") => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") {
+    if (React.isValidElement(value)) return value;
+    if (value.label) return String(value.label);
+    if (value.value) return String(value.value);
+    if (value.name) return String(value.name);
+    if (value.email) return String(value.email);
+    if (value.enabled !== undefined) return value.enabled ? "Yes" : "No";
+    if (value.status) return String(value.status);
+    if (value.strategy) return String(value.strategy);
+    return JSON.stringify(value);
+  }
+  return fallback;
+};
 
-function money(value) {
-  return `$${Number(value || 0).toLocaleString(undefined, {
+const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
+
+const money = (value) => {
+  const num = typeof value === "object" ? Number(value?.value || value?.amount || 0) : Number(value || 0);
+  return `$${num.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
-}
+};
 
-function formatDate(value) {
+const formatDate = (value) => {
   if (!value) return "—";
+  if (typeof value === "object") {
+    const dateStr = value.date || value.timestamp || value.created_at;
+    if (dateStr) return formatDate(dateStr);
+  }
   try {
     return new Date(value).toLocaleDateString();
   } catch {
     return "—";
   }
-}
+};
 
-function tierBadge(tier) {
+const tierBadge = (tier) => {
+  const tierValue = safeRender(tier, "starter").toLowerCase();
   const styles = {
     starter: "border-blue-500/30 bg-blue-500/20 text-blue-300",
     common: "border-emerald-500/30 bg-emerald-500/20 text-emerald-300",
@@ -75,32 +99,50 @@ function tierBadge(tier) {
     epic: "border-amber-500/30 bg-amber-500/20 text-amber-300",
     legendary: "border-yellow-500/30 bg-yellow-500/20 text-yellow-300",
   };
-  return styles[tier] || styles.starter;
-}
+  return styles[tierValue] || styles.starter;
+};
 
-function statusBadge(condition, trueText = "Active", falseText = "Inactive") {
-  return condition ? (
+const getBoolValue = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "object") {
+    return value.enabled === true || 
+           value.active === true || 
+           value.connected === true ||
+           value.status === "active" ||
+           value.status === "connected";
+  }
+  if (typeof value === "string") {
+    return value === "true" || value === "active" || value === "connected";
+  }
+  return !!value;
+};
+
+const statusBadge = (condition, trueText = "Active", falseText = "Inactive") => {
+  const isActive = getBoolValue(condition);
+  return isActive ? (
     <span className="inline-flex items-center gap-1 text-emerald-400">
       <FaCheckCircle className="text-xs" /> {trueText}
     </span>
   ) : (
     <span className="text-red-400">{falseText}</span>
   );
-}
+};
 
 // ========== HELPER COMPONENTS ==========
 
-function SummaryCard({ label, value, icon }) {
+const SummaryCard = ({ label, value, icon }) => {
+  const displayValue = typeof value === "object" ? safeRender(value.value || value.count || 0) : safeRender(value);
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center">
-      <div className="text-lg mb-1">{icon}</div>
+      <div className="mb-1 text-lg">{icon}</div>
       <div className="text-xs text-white/50">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
+      <div className="mt-1 text-2xl font-bold">{displayValue}</div>
     </div>
   );
-}
+};
 
-function IconButton({ title, icon, onClick, color }) {
+const IconButton = ({ title, icon, onClick, color }) => {
+  const safeIcon = typeof icon === "object" && !React.isValidElement(icon) ? null : icon;
   return (
     <button
       title={title}
@@ -108,12 +150,12 @@ function IconButton({ title, icon, onClick, color }) {
       className={`${color} transition hover:scale-110 hover:opacity-80`}
       type="button"
     >
-      {icon}
+      {safeIcon}
     </button>
   );
-}
+};
 
-function UserModal({ title, children, onClose, wide = false }) {
+const UserModal = ({ title, children, onClose, wide = false }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
       <div
@@ -131,9 +173,9 @@ function UserModal({ title, children, onClose, wide = false }) {
       </div>
     </div>
   );
-}
+};
 
-function UserForm({ form, setForm, includePassword = false, includeEmail = false }) {
+const UserForm = ({ form, setForm, includePassword = false, includeEmail = false }) => {
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   return (
@@ -194,40 +236,40 @@ function UserForm({ form, setForm, includePassword = false, includeEmail = false
 
       <Toggle
         label="Enable Live Trading"
-        value={!!form.trading_enabled}
+        value={getBoolValue(form.trading_enabled)}
         onChange={() => update("trading_enabled", !form.trading_enabled)}
       />
 
       {"paper_trading_enabled" in form && (
         <Toggle
           label="Enable Practice Trading (7-Day Trial)"
-          value={!!form.paper_trading_enabled}
+          value={getBoolValue(form.paper_trading_enabled)}
           onChange={() => update("paper_trading_enabled", !form.paper_trading_enabled)}
         />
       )}
 
       <Toggle
         label="Admin Access"
-        value={!!form.is_admin}
+        value={getBoolValue(form.is_admin)}
         onChange={() => update("is_admin", !form.is_admin)}
       />
     </div>
   );
-}
+};
 
-function Field({ label, icon, children }) {
+const Field = ({ label, icon, children }) => {
   return (
     <label className="block">
       <div className="mb-1 flex items-center gap-2 text-sm text-white/70">
-        {icon && <span className="text-xs">{icon}</span>}
+        <span className="text-xs">{icon}</span>
         {label}
       </div>
       {children}
     </label>
   );
-}
+};
 
-function Toggle({ label, value, onChange }) {
+const Toggle = ({ label, value, onChange }) => {
   return (
     <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 p-3">
       <span className="text-sm text-white/80">{label}</span>
@@ -246,9 +288,9 @@ function Toggle({ label, value, onChange }) {
       </button>
     </div>
   );
-}
+};
 
-function ModalActions({ primaryLabel, onPrimary, onCancel, working }) {
+const ModalActions = ({ primaryLabel, onPrimary, onCancel, working }) => {
   return (
     <div className="mt-6 flex gap-3">
       <button
@@ -277,9 +319,10 @@ function ModalActions({ primaryLabel, onPrimary, onCancel, working }) {
       </button>
     </div>
   );
-}
+};
 
-function DeleteConfirmModal({ user, onConfirm, onCancel, working }) {
+const DeleteConfirmModal = ({ user, onConfirm, onCancel, working }) => {
+  const userEmail = safeRender(user?.email);
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
@@ -288,7 +331,7 @@ function DeleteConfirmModal({ user, onConfirm, onCancel, working }) {
           Permanent Delete
         </div>
         <p className="text-sm text-white/80">This will permanently delete:</p>
-        <p className="mt-2 rounded bg-black/40 p-2 font-mono text-sm">{user.email}</p>
+        <p className="mt-2 rounded bg-black/40 p-2 font-mono text-sm">{userEmail}</p>
         <p className="mt-3 text-xs text-red-300/80">This action cannot be undone.</p>
       </div>
       <div className="flex gap-3">
@@ -308,18 +351,19 @@ function DeleteConfirmModal({ user, onConfirm, onCancel, working }) {
       </div>
     </div>
   );
-}
+};
 
-function Info({ label, value, mono = false }) {
+const Info = ({ label, value, mono = false }) => {
+  const displayValue = safeRender(value);
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 p-3">
       <div className="text-xs text-white/50">{label}</div>
       <div className={`mt-1 break-all font-medium ${mono ? "font-mono text-xs" : ""}`}>
-        {value || "—"}
+        {displayValue}
       </div>
     </div>
   );
-}
+};
 
 // ========== MAIN COMPONENT ==========
 export default function UserManagement({ apiBase = "", showToast }) {
@@ -397,7 +441,25 @@ export default function UserManagement({ apiBase = "", showToast }) {
       }
 
       const data = await apiRequest(`/api/admin/users?${params.toString()}`);
-      setUsers(data.data?.users || []);
+      const fetchedUsers = data.data?.users || [];
+      
+      // Normalize user data to handle objects vs primitives
+      const normalizedUsers = fetchedUsers.map(user => ({
+        ...user,
+        email: safeRender(user.email),
+        tier: safeRender(user.tier, "starter"),
+        strategy: safeRender(user.strategy, "ai_weighted"),
+        trading_enabled: getBoolValue(user.trading_enabled),
+        paper_trading_enabled: getBoolValue(user.paper_trading_enabled),
+        is_admin: getBoolValue(user.is_admin),
+        has_card_on_file: getBoolValue(user.has_card_on_file),
+        billing_complete: getBoolValue(user.billing_complete),
+        alpaca_connected: getBoolValue(user.alpaca_connected),
+        okx_connected: getBoolValue(user.okx_connected),
+        trial_status: safeRender(user.trial_status, "trial"),
+      }));
+      
+      setUsers(normalizedUsers);
       setTotalPages(data.data?.pagination?.totalPages || 1);
       setTotalUsers(data.data?.pagination?.total || 0);
     } catch (error) {
@@ -430,8 +492,8 @@ export default function UserManagement({ apiBase = "", showToast }) {
       trialActive: users.filter((u) => u.trial_status === "trial" && u.paper_trading_enabled).length,
       paperDisabled: users.filter((u) => !u.paper_trading_enabled).length,
       hasBilling: users.filter((u) => u.has_card_on_file).length,
-      hasAlpaca: users.filter((u) => u.alpaca_connected === "true" || u.alpaca_connected === true).length,
-      hasOkx: users.filter((u) => u.okx_connected === "true" || u.okx_connected === true).length,
+      hasAlpaca: users.filter((u) => u.alpaca_connected).length,
+      hasOkx: users.filter((u) => u.okx_connected).length,
     };
   }, [users, totalUsers]);
 
@@ -451,7 +513,23 @@ export default function UserManagement({ apiBase = "", showToast }) {
     setShowViewModal(true);
     try {
       const data = await apiRequest(`/api/admin/users/${user.id}`);
-      setSelectedUser(data.data?.user || user);
+      const detailedUser = data.data?.user || user;
+      // Normalize the detailed user
+      const normalizedUser = {
+        ...detailedUser,
+        email: safeRender(detailedUser.email),
+        tier: safeRender(detailedUser.tier, "starter"),
+        strategy: safeRender(detailedUser.strategy, "ai_weighted"),
+        trading_enabled: getBoolValue(detailedUser.trading_enabled),
+        paper_trading_enabled: getBoolValue(detailedUser.paper_trading_enabled),
+        is_admin: getBoolValue(detailedUser.is_admin),
+        has_card_on_file: getBoolValue(detailedUser.has_card_on_file),
+        billing_complete: getBoolValue(detailedUser.billing_complete),
+        alpaca_connected: getBoolValue(detailedUser.alpaca_connected),
+        okx_connected: getBoolValue(detailedUser.okx_connected),
+        trial_status: safeRender(detailedUser.trial_status, "trial"),
+      };
+      setSelectedUser(normalizedUser);
     } catch (error) {
       console.error("View user failed:", error);
       toast("Loaded basic user details only", "warning");
@@ -462,12 +540,12 @@ export default function UserManagement({ apiBase = "", showToast }) {
     setSelectedUser(user);
     setEditForm({
       email: user.email,
-      tier: user.tier || "starter",
-      strategy: user.strategy || "ai_weighted",
-      trading_enabled: !!user.trading_enabled,
-      paper_trading_enabled: !!user.paper_trading_enabled,
-      trial_status: user.trial_status || "trial",
-      is_admin: !!user.is_admin,
+      tier: user.tier,
+      strategy: user.strategy,
+      trading_enabled: user.trading_enabled,
+      paper_trading_enabled: user.paper_trading_enabled,
+      trial_status: user.trial_status,
+      is_admin: user.is_admin,
     });
     setShowDeleteConfirm(false);
     setShowEditModal(true);
@@ -786,7 +864,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
         <SummaryCard label="Paper Disabled" value={summary.paperDisabled} icon="⚠️" />
         <SummaryCard label="Admins" value={summary.admins} icon="👑" />
         <SummaryCard label="Billing" value={summary.hasBilling} icon="💳" />
-        <SummaryCard label="Connected" value={`${summary.hasAlpaca + summary.hasOkx}`} icon="🔌" />
+        <SummaryCard label="Connected" value={summary.hasAlpaca + summary.hasOkx} icon="🔌" />
       </div>
 
       {/* Users Table */}
@@ -816,8 +894,8 @@ export default function UserManagement({ apiBase = "", showToast }) {
               users.map((user) => {
                 const practiceActive = user.trial_status === "trial" && user.paper_trading_enabled;
                 const billingComplete = user.has_card_on_file === true || user.billing_complete === true;
-                const alpacaConnected = user.alpaca_connected === "true" || user.alpaca_connected === true;
-                const okxConnected = user.okx_connected === "true" || user.okx_connected === true;
+                const alpacaConnected = user.alpaca_connected === true;
+                const okxConnected = user.okx_connected === true;
 
                 return (
                   <tr key={user.id} className="border-b border-white/5 hover:bg-white/5">
@@ -827,7 +905,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
                           {user.email?.charAt(0)?.toUpperCase() || "U"}
                         </div>
                         <div>
-                          <div className="font-semibold">{user.email}</div>
+                          <div className="font-semibold">{safeRender(user.email)}</div>
                           <div className="text-xs text-white/40">{user.id?.slice(0, 10)}...</div>
                         </div>
                       </div>
@@ -886,7 +964,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
                         <span className="text-gray-500 text-sm" title="OKX Not Connected">🔴✗</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-white/80 text-xs">{user.strategy || "ai_weighted"}</td>
+                    <td className="px-4 py-3 text-white/80 text-xs">{safeRender(user.strategy, "ai_weighted")}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap justify-center gap-2">
                         <IconButton title="View" onClick={() => openViewUser(user)} icon={<FaEye />} color="text-blue-400" />
@@ -903,7 +981,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
                         />
                       </div>
                     </td>
-                  </tr>
+                  </table>
                 );
               })
             )}
@@ -1124,7 +1202,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-white/60">Strategy:</span>
-                    <span className="text-white">{selectedUser.strategy || "ai_weighted"}</span>
+                    <span className="text-white">{safeRender(selectedUser.strategy, "ai_weighted")}</span>
                   </div>
                 </div>
               </div>
@@ -1160,7 +1238,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
                 <div className="space-y-1">
                   {selectedUser.wallet_addresses.map((addr, idx) => (
                     <div key={idx} className="text-xs font-mono text-white/60 break-all">
-                      {addr}
+                      {safeRender(addr)}
                     </div>
                   ))}
                 </div>
@@ -1186,7 +1264,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
               <div className="flex items-center gap-3">
                 <FaEnvelopeOpenText className="text-2xl text-green-400" />
                 <div>
-                  <h3 className="font-semibold">{selectedUser.email}</h3>
+                  <h3 className="font-semibold">{safeRender(selectedUser.email)}</h3>
                   <p className="text-sm text-white/60">Will be added to newsletter subscribers</p>
                 </div>
               </div>
@@ -1211,7 +1289,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
               <div className="flex items-center gap-3">
                 <FaRobot className="text-2xl text-purple-400" />
                 <div>
-                  <h3 className="font-semibold">{selectedUser.email}</h3>
+                  <h3 className="font-semibold">{safeRender(selectedUser.email)}</h3>
                   <p className="text-sm text-white/60">Will receive automated emails based on selected rule</p>
                 </div>
               </div>
@@ -1227,7 +1305,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
                 <option value="">Select a rule...</option>
                 {autoResponderRules.map((rule) => (
                   <option key={rule.id} value={rule.id}>
-                    {rule.name} ({rule.trigger_event})
+                    {safeRender(rule.name)} ({safeRender(rule.trigger_event)})
                   </option>
                 ))}
               </select>
