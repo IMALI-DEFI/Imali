@@ -16,7 +16,7 @@ import {
   Filler,
 } from "chart.js";
 import { Line, Doughnut, Bar } from "react-chartjs-2";
-import { FaSpinner } from "react-icons/fa";
+import { FaSpinner, FaCheckCircle, FaExclamationTriangle, FaInfoCircle } from "react-icons/fa";
 
 ChartJS.register(
   CategoryScale,
@@ -33,7 +33,8 @@ ChartJS.register(
 
 /* ================= CONSTANTS ================= */
 const TRIAL_DAYS = 7;
-const TRIAL_SECONDS = TRIAL_DAYS * 24 * 60 * 60; // 604800 seconds
+const TRIAL_SECONDS = TRIAL_DAYS * 24 * 60 * 60;
+const PAPER_TRADING_BALANCE = 1000; // $1000 paper trading balance
 
 const NFT_TIERS = {
   none: {
@@ -369,7 +370,7 @@ function QuickStartGuide({ onStartTour }) {
   const steps = [
     { number: "1", title: "Connect API Keys", description: "Connect your exchange accounts (Alpaca for stocks, OKX for crypto) to start trading." },
     { number: "2", title: "Choose Strategy", description: "Pick a trading strategy that matches your risk tolerance and goals." },
-    { number: "3", title: "Paper Trade First", description: "Practice with virtual money using Paper Trading before going live." },
+    { number: "3", title: "Paper Trade First", description: "Practice with $1,000 virtual money using Paper Trading before going live." },
     { number: "4", title: "Go Live", description: "Once comfortable, activate live trading with real funds." },
   ];
 
@@ -482,7 +483,7 @@ function ApiKeysModal({ open, onClose, onSaved }) {
           <div>
             <h2 className="text-2xl font-bold text-gray-900">API & Exchange Keys</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Alpaca is required for stock trading. OKX is required for crypto trading. Set up both for the full Imali experience.
+              Connect OKX and Alpaca to enable paper and live trading. Both are required for the full experience.
             </p>
           </div>
           <button
@@ -496,6 +497,7 @@ function ApiKeysModal({ open, onClose, onSaved }) {
 
         <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <strong>🔒 Security recommendation:</strong> create restricted API keys with trading-only permissions. Do not enable withdrawals. Use paper keys first, then live keys only when ready.
+          <p className="mt-2 text-xs">⚠️ Both OKX and Alpaca connections are required for paper trading to work.</p>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -741,10 +743,11 @@ function SetupRecommendation({ alpacaConnected, okxConnected, onConnect }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className={`text-lg font-bold ${bothReady ? "text-emerald-900" : "text-amber-900"}`}>
-            {bothReady ? "✅ Full stock + crypto setup complete" : "⚠️ Recommended setup: connect both Alpaca and OKX"}
+            {bothReady ? "✅ Full stock + crypto setup complete" : "⚠️ Required: Connect both Alpaca and OKX"}
           </h2>
           <p className={`mt-1 text-sm ${bothReady ? "text-emerald-800" : "text-amber-900"}`}>
-            Alpaca powers stock and ETF trading. OKX powers crypto spot and futures trading.
+            Both OKX and Alpaca connections are required for paper trading. 
+            Alpaca powers stocks/ETFs. OKX powers crypto spot and futures trading.
           </p>
         </div>
         {!bothReady ? (
@@ -752,7 +755,7 @@ function SetupRecommendation({ alpacaConnected, okxConnected, onConnect }) {
             onClick={onConnect}
             className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
           >
-            Connect Missing Keys
+            Connect Required Keys
           </button>
         ) : null}
       </div>
@@ -761,10 +764,13 @@ function SetupRecommendation({ alpacaConnected, okxConnected, onConnect }) {
 }
 
 /* ================= TRIAL BANNER ================= */
-function TrialBanner({ trial }) {
+function TrialBanner({ trial, alpacaConnected, okxConnected }) {
   const status = String(trial?.trial_status || "").toLowerCase();
   const secondsRemaining = Number(trial?.seconds_remaining || 0);
-  const active = status === "trial" && trial?.paper_trading_enabled !== false && secondsRemaining > 0;
+  const bothConnected = alpacaConnected && okxConnected;
+  const trialActive = status === "trial" && trial?.paper_trading_enabled !== false && secondsRemaining > 0;
+  const paperTradingAvailable = trialActive && bothConnected;
+  
   const daysRemaining = Math.ceil(secondsRemaining / 86400);
   const hoursRemaining = Math.ceil(secondsRemaining / 3600);
   
@@ -775,21 +781,57 @@ function TrialBanner({ trial }) {
     return `${hoursRemaining} hour${hoursRemaining !== 1 ? 's' : ''}`;
   };
 
+  if (!bothConnected) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-amber-900">⚠️ API Keys Required</h3>
+            <p className="text-sm text-amber-800">
+              Both OKX and Alpaca API keys must be connected to start paper trading. Click "Connect API Keys" above to get started.
+            </p>
+          </div>
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+            Setup Required
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!trialActive) {
+    return (
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-emerald-900">📝 Paper Trading Ready</h3>
+            <p className="text-sm text-emerald-800">
+              Your API keys are connected! Start trading with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual money.
+            </p>
+          </div>
+          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+            Ready to Start
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`rounded-2xl border p-4 ${active ? "border-sky-200 bg-sky-50" : "border-emerald-200 bg-emerald-50"}`}>
+    <div className={`rounded-2xl border p-4 ${paperTradingAvailable ? "border-sky-200 bg-sky-50" : "border-emerald-200 bg-emerald-50"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className={`font-bold ${active ? "text-sky-900" : "text-emerald-900"}`}>
-            {active ? "🎯 7-Day Paper Trading Trial Active" : "📝 Start Your 7-Day Free Trial"}
+          <h3 className={`font-bold ${paperTradingAvailable ? "text-sky-900" : "text-emerald-900"}`}>
+            {paperTradingAvailable ? "🎯 Paper Trading Active" : "📝 Paper Trading Ready"}
           </h3>
-          <p className={`text-sm ${active ? "text-sky-800" : "text-emerald-800"}`}>
-            {active
-              ? `You have ${getTimeDisplay()} remaining in your free trial. Practice trading with $100,000 virtual money!`
-              : "Try paper trading free for 7 days. Practice with virtual money before going live!"}
+          <p className={`text-sm ${paperTradingAvailable ? "text-sky-800" : "text-emerald-800"}`}>
+            {paperTradingAvailable
+              ? `You have ${getTimeDisplay()} remaining in your free trial. Trading with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`
+              : "Start paper trading with $1,000 virtual money. No real risk!"}
           </p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${active ? "bg-sky-100 text-sky-700" : "bg-emerald-100 text-emerald-700"}`}>
-          {active ? `${getTimeDisplay()} left` : "Free Trial"}
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${paperTradingAvailable ? "bg-sky-100 text-sky-700" : "bg-emerald-100 text-emerald-700"}`}>
+          {paperTradingAvailable ? `${getTimeDisplay()} left` : "Ready"}
         </span>
       </div>
     </div>
@@ -800,11 +842,11 @@ function TrialBanner({ trial }) {
 function ResourceLinks() {
   const resources = [
     { name: "📚 Trading Guide", url: "/guides/trading", description: "Learn how to trade" },
-    { name: "🔧 Setup Tutorial", url: "/guides/setup", description: "Step-by-step setup" },
+    { name: "🔧 API Setup Tutorial", url: "/guides/api-setup", description: "How to get OKX & Alpaca keys" },
     { name: "❓ FAQ", url: "/faq", description: "Common questions" },
     { name: "💬 Support", url: "/support", description: "Get help" },
     { name: "📊 Strategy Docs", url: "/docs/strategies", description: "Strategy details" },
-    { name: "🔐 Security Tips", url: "/docs/security", description: "Keep your account safe" },
+    { name: "🔐 Security Tips", url: "/docs/security", description: "Keep your API keys safe" },
   ];
 
   return (
@@ -831,16 +873,19 @@ function TradingControlButtons({
   tradingEnabled, 
   paperTradingEnabled, 
   trialActive, 
+  alpacaConnected,
+  okxConnected,
   onToggleTrading, 
   onTogglePaperTrading,
   loading 
 }) {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [pendingAction, setPendingAction] = useState(null);
+  const bothConnected = alpacaConnected && okxConnected;
+  const canStartPaperTrading = bothConnected && (trialActive || !paperTradingEnabled);
+  const canStartLiveTrading = bothConnected && hasTierAccess(nftKey, "common");
 
   const handleTradingToggle = () => {
     if (!tradingEnabled) {
-      setPendingAction('enable_live');
       setShowConfirmModal(true);
     } else {
       onToggleTrading(false);
@@ -848,8 +893,8 @@ function TradingControlButtons({
   };
 
   const handlePaperToggle = () => {
-    if (!paperTradingEnabled && !trialActive) {
-      alert("Your trial has expired. Please upgrade to continue paper trading.");
+    if (!bothConnected) {
+      alert("Please connect both OKX and Alpaca API keys first.");
       return;
     }
     onTogglePaperTrading(!paperTradingEnabled);
@@ -858,7 +903,6 @@ function TradingControlButtons({
   const confirmEnableLive = () => {
     onToggleTrading(true);
     setShowConfirmModal(false);
-    setPendingAction(null);
   };
 
   return (
@@ -873,10 +917,12 @@ function TradingControlButtons({
                 Paper Trading
               </h3>
               <p className="text-sm text-gray-500 mt-1">
-                Practice with $100,000 virtual money. No real risk.
+                Practice with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual money. No real risk.
               </p>
-              {!trialActive && !paperTradingEnabled && (
-                <p className="text-xs text-amber-600 mt-2">⚠️ Trial expired. Upgrade to continue.</p>
+              {!bothConnected && (
+                <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                  <FaInfoCircle className="text-amber-500" /> Connect both OKX & Alpaca keys to start
+                </p>
               )}
               {paperTradingEnabled && (
                 <p className="text-xs text-emerald-600 mt-2">✅ Active - Trading with virtual funds</p>
@@ -884,7 +930,7 @@ function TradingControlButtons({
             </div>
             <button
               onClick={handlePaperToggle}
-              disabled={loading || (!paperTradingEnabled && !trialActive)}
+              disabled={loading || (!paperTradingEnabled && !bothConnected)}
               className={`px-4 py-2 rounded-lg font-semibold transition-all ${
                 paperTradingEnabled
                   ? 'bg-red-600 hover:bg-red-700 text-white'
@@ -902,9 +948,11 @@ function TradingControlButtons({
           </div>
           <div className="mt-3 text-xs text-gray-500">
             {paperTradingEnabled ? (
-              <span>✓ Virtual balance: $100,000 available</span>
-            ) : (
+              <span>✓ Virtual balance: ${PAPER_TRADING_BALANCE.toLocaleString()} available</span>
+            ) : bothConnected ? (
               <span>Click to start practicing with virtual money</span>
+            ) : (
+              <span>⚠️ Requires OKX + Alpaca API keys</span>
             )}
           </div>
         </div>
@@ -920,8 +968,8 @@ function TradingControlButtons({
               <p className="text-sm text-gray-500 mt-1">
                 Trade with real funds through your connected exchanges.
               </p>
-              {!tradingEnabled && (
-                <p className="text-xs text-amber-600 mt-2">⚠️ Requires Common tier and connected exchanges</p>
+              {!bothConnected && (
+                <p className="text-xs text-amber-600 mt-2">⚠️ Requires OKX + Alpaca API keys</p>
               )}
               {tradingEnabled && (
                 <p className="text-xs text-emerald-600 mt-2">✅ Active - Real funds trading enabled</p>
@@ -929,7 +977,7 @@ function TradingControlButtons({
             </div>
             <button
               onClick={handleTradingToggle}
-              disabled={loading}
+              disabled={loading || (!tradingEnabled && !bothConnected)}
               className={`px-4 py-2 rounded-lg font-semibold transition-all ${
                 tradingEnabled
                   ? 'bg-red-600 hover:bg-red-700 text-white'
@@ -948,8 +996,10 @@ function TradingControlButtons({
           <div className="mt-3 text-xs text-gray-500">
             {tradingEnabled ? (
               <span>✓ Connected to your exchange accounts</span>
+            ) : bothConnected ? (
+              <span>Requires Common tier+ to enable live trading</span>
             ) : (
-              <span>Requires connected Alpaca/OKX accounts and Common tier+</span>
+              <span>⚠️ Requires OKX + Alpaca API keys</span>
             )}
           </div>
         </div>
@@ -1026,9 +1076,9 @@ export default function MemberDashboard() {
   const [paperTradingEnabled, setPaperTradingEnabled] = useState(false);
 
   const tourSteps = [
-    { selector: ".tour-connect-keys", title: "🔑 Connect Your Exchange Accounts", description: "Start here! Connect Alpaca (for stocks) and OKX (for crypto) to enable trading." },
+    { selector: ".tour-connect-keys", title: "🔑 Connect Your Exchange Accounts", description: "Connect both OKX and Alpaca API keys to start trading." },
     { selector: ".tour-strategies", title: "🎯 Choose Your Trading Strategy", description: "Pick a strategy that matches your risk tolerance." },
-    { selector: ".tour-paper-trade", title: "📝 Practice with Paper Trading", description: "Use virtual money to learn without risk." },
+    { selector: ".tour-paper-trade", title: "📝 Practice with Paper Trading", description: "Use $1,000 virtual money to learn without risk." },
     { selector: ".tour-go-live", title: "🚀 Go Live", description: "Ready to trade with real money? Click here after connecting your accounts." },
     { selector: ".tour-upgrade", title: "⭐ Upgrade Your Tier", description: "Unlock more features like Arbitrage, Futures, and Alpha Signals." },
     { selector: ".tour-stats", title: "📊 Track Your Performance", description: "Monitor your profit, win rate, and trading streak here." },
@@ -1290,7 +1340,7 @@ export default function MemberDashboard() {
           <div>
             <h1 className="text-3xl font-bold">Welcome back 👋</h1>
             <p className="mt-1 text-sm text-gray-600">
-              Connect Alpaca for stocks and OKX for crypto to unlock the full Imali trading workflow.
+              Connect both OKX and Alpaca API keys to start paper trading with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.
             </p>
           </div>
 
@@ -1305,7 +1355,7 @@ export default function MemberDashboard() {
               </button>
             </HelpTooltip>
 
-            <HelpTooltip text="Connect your exchange accounts (Alpaca for stocks, OKX for crypto)">
+            <HelpTooltip text="Connect OKX and Alpaca API keys (required for paper trading)">
               <button
                 onClick={() => setShowApiModal(true)}
                 className="tour-connect-keys rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
@@ -1347,7 +1397,11 @@ export default function MemberDashboard() {
         <QuickStartGuide onStartTour={() => setShowTour(true)} />
 
         {/* Trial Banner */}
-        <TrialBanner trial={trial} />
+        <TrialBanner 
+          trial={trial} 
+          alpacaConnected={alpacaConnected}
+          okxConnected={okxConnected}
+        />
 
         {/* Setup Recommendation */}
         <SetupRecommendation
@@ -1364,6 +1418,8 @@ export default function MemberDashboard() {
               tradingEnabled={tradingEnabled}
               paperTradingEnabled={paperTradingEnabled}
               trialActive={trialActive}
+              alpacaConnected={alpacaConnected}
+              okxConnected={okxConnected}
               onToggleTrading={handleToggleTrading}
               onTogglePaperTrading={handleTogglePaperTrading}
               loading={togglingTrading || togglingPaper}
@@ -1524,20 +1580,20 @@ export default function MemberDashboard() {
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <h3 className="mb-3 font-semibold">🔌 Required Connections</h3>
             <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-              Connect both platforms: Alpaca for stocks/ETFs and OKX for crypto.
+              Both OKX and Alpaca are required for paper and live trading.
             </div>
             <div className="space-y-3">
               <ConnectionRow
-                title="Alpaca"
+                title="Alpaca (Required)"
                 connected={alpacaConnected}
-                helper="Required for stock and ETF trading"
+                helper="For stock and ETF trading"
                 tooltip="Connect your Alpaca account to trade stocks and ETFs"
                 onConnect={() => setShowApiModal(true)}
               />
               <ConnectionRow
-                title="OKX"
+                title="OKX (Required)"
                 connected={okxConnected}
-                helper="Required for crypto spot and futures trading"
+                helper="For crypto spot and futures trading"
                 tooltip="Connect your OKX account to trade cryptocurrencies"
                 onConnect={() => setShowApiModal(true)}
               />
