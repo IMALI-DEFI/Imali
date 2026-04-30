@@ -1,5 +1,5 @@
 // src/components/Dashboard/MemberDashboard.jsx
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
 import {
@@ -16,7 +16,7 @@ import {
   Filler,
 } from "chart.js";
 import { Line, Doughnut, Bar } from "react-chartjs-2";
-import { FaSpinner, FaCheckCircle, FaExclamationTriangle, FaInfoCircle } from "react-icons/fa";
+import { FaSpinner, FaInfoCircle } from "react-icons/fa";
 
 ChartJS.register(
   CategoryScale,
@@ -34,7 +34,7 @@ ChartJS.register(
 /* ================= CONSTANTS ================= */
 const TRIAL_DAYS = 7;
 const TRIAL_SECONDS = TRIAL_DAYS * 24 * 60 * 60;
-const PAPER_TRADING_BALANCE = 1000; // $1000 paper trading balance
+const PAPER_TRADING_BALANCE = 1000;
 
 const NFT_TIERS = {
   none: {
@@ -875,17 +875,28 @@ function TradingControlButtons({
   trialActive, 
   alpacaConnected,
   okxConnected,
+  userTier,
   onToggleTrading, 
   onTogglePaperTrading,
   loading 
 }) {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const bothConnected = alpacaConnected && okxConnected;
-  const canStartPaperTrading = bothConnected && (trialActive || !paperTradingEnabled);
-  const canStartLiveTrading = bothConnected && hasTierAccess(nftKey, "common");
+  
+  const tierRanks = { starter: 0, common: 1, rare: 2, epic: 3, legendary: 4 };
+  const userTierRank = tierRanks[userTier] || 0;
+  const hasLiveAccess = userTierRank >= tierRanks.common;
 
   const handleTradingToggle = () => {
     if (!tradingEnabled) {
+      if (!hasLiveAccess) {
+        alert("Live trading requires Common tier or higher. Please upgrade.");
+        return;
+      }
+      if (!bothConnected) {
+        alert("Please connect both OKX and Alpaca API keys first.");
+        return;
+      }
       setShowConfirmModal(true);
     } else {
       onToggleTrading(false);
@@ -895,6 +906,10 @@ function TradingControlButtons({
   const handlePaperToggle = () => {
     if (!bothConnected) {
       alert("Please connect both OKX and Alpaca API keys first.");
+      return;
+    }
+    if (!paperTradingEnabled && !trialActive) {
+      alert("Your trial has expired. Please upgrade to continue paper trading.");
       return;
     }
     onTogglePaperTrading(!paperTradingEnabled);
@@ -938,7 +953,7 @@ function TradingControlButtons({
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {loading ? (
-                <span className="inline-block animate-spin mr-2">⏳</span>
+                <FaSpinner className="animate-spin inline mr-2" />
               ) : paperTradingEnabled ? (
                 'Stop Paper Trading'
               ) : (
@@ -968,7 +983,10 @@ function TradingControlButtons({
               <p className="text-sm text-gray-500 mt-1">
                 Trade with real funds through your connected exchanges.
               </p>
-              {!bothConnected && (
+              {!hasLiveAccess && (
+                <p className="text-xs text-amber-600 mt-2">⬆️ Upgrade to Common tier for live trading</p>
+              )}
+              {!bothConnected && hasLiveAccess && (
                 <p className="text-xs text-amber-600 mt-2">⚠️ Requires OKX + Alpaca API keys</p>
               )}
               {tradingEnabled && (
@@ -977,7 +995,7 @@ function TradingControlButtons({
             </div>
             <button
               onClick={handleTradingToggle}
-              disabled={loading || (!tradingEnabled && !bothConnected)}
+              disabled={loading || (!tradingEnabled && (!bothConnected || !hasLiveAccess))}
               className={`px-4 py-2 rounded-lg font-semibold transition-all ${
                 tradingEnabled
                   ? 'bg-red-600 hover:bg-red-700 text-white'
@@ -985,7 +1003,7 @@ function TradingControlButtons({
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {loading ? (
-                <span className="inline-block animate-spin mr-2">⏳</span>
+                <FaSpinner className="animate-spin inline mr-2" />
               ) : tradingEnabled ? (
                 'Stop Live Trading'
               ) : (
@@ -996,10 +1014,10 @@ function TradingControlButtons({
           <div className="mt-3 text-xs text-gray-500">
             {tradingEnabled ? (
               <span>✓ Connected to your exchange accounts</span>
-            ) : bothConnected ? (
-              <span>Requires Common tier+ to enable live trading</span>
+            ) : bothConnected && hasLiveAccess ? (
+              <span>Click to enable live trading with real funds</span>
             ) : (
-              <span>⚠️ Requires OKX + Alpaca API keys</span>
+              <span>Requires Common tier+ and OKX + Alpaca API keys</span>
             )}
           </div>
         </div>
@@ -1204,6 +1222,7 @@ export default function MemberDashboard() {
     setTogglingPaper(true);
     try {
       setPaperTradingEnabled(enabled);
+      // TODO: Add API call to save paper trading preference if needed
     } catch (error) {
       console.error("Toggle paper trading error:", error);
       alert("Failed to update paper trading status");
@@ -1227,6 +1246,7 @@ export default function MemberDashboard() {
   const okxConnected = !!integrations.okx_connected;
   const bothMarketConnectionsReady = alpacaConnected && okxConnected;
   const trialActive = trial?.trial_status === "trial" && trial?.seconds_remaining > 0;
+  const userTier = user?.tier || "starter";
 
   const confidence = useMemo(() => {
     let score = 0;
@@ -1420,6 +1440,7 @@ export default function MemberDashboard() {
               trialActive={trialActive}
               alpacaConnected={alpacaConnected}
               okxConnected={okxConnected}
+              userTier={userTier}
               onToggleTrading={handleToggleTrading}
               onTogglePaperTrading={handleTogglePaperTrading}
               loading={togglingTrading || togglingPaper}
