@@ -18,13 +18,13 @@ import {
   FaUserPlus,
   FaEnvelopeOpenText,
   FaRobot,
-  FaUserTag,
   FaCreditCard,
   FaPlug,
   FaCalendarAlt,
   FaChartLine,
   FaWallet,
   FaExchangeAlt,
+  FaUsers,
 } from "react-icons/fa";
 
 const TOKEN_KEY = "imali_token";
@@ -88,6 +88,240 @@ function statusBadge(condition, trueText = "Active", falseText = "Inactive") {
   );
 }
 
+// ========== HELPER COMPONENTS ==========
+
+function SummaryCard({ label, value, icon }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center">
+      <div className="text-lg mb-1">{icon}</div>
+      <div className="text-xs text-white/50">{label}</div>
+      <div className="mt-1 text-2xl font-bold">{value}</div>
+    </div>
+  );
+}
+
+function IconButton({ title, icon, onClick, color }) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className={`${color} transition hover:scale-110 hover:opacity-80`}
+      type="button"
+    >
+      {icon}
+    </button>
+  );
+}
+
+function UserModal({ title, children, onClose, wide = false }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+      <div
+        className={`max-h-[92vh] overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6 shadow-2xl ${
+          wide ? "w-full max-w-3xl" : "w-full max-w-lg"
+        }`}
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <h3 className="text-xl font-bold">{title}</h3>
+          <button onClick={onClose} className="text-white/50 hover:text-white">
+            <FaTimes />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function UserForm({ form, setForm, includePassword = false, includeEmail = false }) {
+  const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  return (
+    <div className="space-y-4">
+      {(includeEmail || form.email !== undefined) && (
+        <Field label="Email Address" icon={<FaEnvelope />}>
+          <input
+            type="email"
+            value={form.email || ""}
+            onChange={(e) => update("email", e.target.value)}
+            placeholder="user@example.com"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+          />
+        </Field>
+      )}
+
+      {includePassword && (
+        <Field label="Password" icon={<FaLock />}>
+          <input
+            type="password"
+            value={form.password}
+            onChange={(e) => update("password", e.target.value)}
+            placeholder="At least 8 characters"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+          />
+        </Field>
+      )}
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Plan">
+          <select
+            value={form.tier}
+            onChange={(e) => update("tier", e.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+          >
+            {TIERS.map((tier) => (
+              <option key={tier} value={tier}>
+                {tier.toUpperCase()}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Strategy">
+          <select
+            value={form.strategy}
+            onChange={(e) => update("strategy", e.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+          >
+            {STRATEGIES.map((strategy) => (
+              <option key={strategy.value} value={strategy.value}>
+                {strategy.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+
+      <Toggle
+        label="Enable Live Trading"
+        value={!!form.trading_enabled}
+        onChange={() => update("trading_enabled", !form.trading_enabled)}
+      />
+
+      {"paper_trading_enabled" in form && (
+        <Toggle
+          label="Enable Practice Trading (7-Day Trial)"
+          value={!!form.paper_trading_enabled}
+          onChange={() => update("paper_trading_enabled", !form.paper_trading_enabled)}
+        />
+      )}
+
+      <Toggle
+        label="Admin Access"
+        value={!!form.is_admin}
+        onChange={() => update("is_admin", !form.is_admin)}
+      />
+    </div>
+  );
+}
+
+function Field({ label, icon, children }) {
+  return (
+    <label className="block">
+      <div className="mb-1 flex items-center gap-2 text-sm text-white/70">
+        {icon && <span className="text-xs">{icon}</span>}
+        {label}
+      </div>
+      {children}
+    </label>
+  );
+}
+
+function Toggle({ label, value, onChange }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 p-3">
+      <span className="text-sm text-white/80">{label}</span>
+      <button
+        type="button"
+        onClick={onChange}
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+          value ? "bg-emerald-600" : "bg-gray-600"
+        }`}
+      >
+        <span
+          className={`absolute h-4 w-4 rounded-full bg-white transition ${
+            value ? "right-1" : "left-1"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
+function ModalActions({ primaryLabel, onPrimary, onCancel, working }) {
+  return (
+    <div className="mt-6 flex gap-3">
+      <button
+        onClick={onPrimary}
+        disabled={working}
+        className="flex-1 rounded-lg bg-emerald-600 py-2 font-semibold hover:bg-emerald-500 disabled:opacity-50"
+      >
+        {working ? (
+          <>
+            <FaSpinner className="mr-2 inline animate-spin" />
+            Working...
+          </>
+        ) : (
+          <>
+            <FaSave className="mr-2 inline" />
+            {primaryLabel}
+          </>
+        )}
+      </button>
+      <button
+        onClick={onCancel}
+        disabled={working}
+        className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/10 disabled:opacity-50"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+function DeleteConfirmModal({ user, onConfirm, onCancel, working }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+        <div className="mb-2 flex items-center gap-2 font-bold text-red-300">
+          <FaExclamationTriangle />
+          Permanent Delete
+        </div>
+        <p className="text-sm text-white/80">This will permanently delete:</p>
+        <p className="mt-2 rounded bg-black/40 p-2 font-mono text-sm">{user.email}</p>
+        <p className="mt-3 text-xs text-red-300/80">This action cannot be undone.</p>
+      </div>
+      <div className="flex gap-3">
+        <button
+          onClick={onConfirm}
+          disabled={working}
+          className="flex-1 rounded-lg bg-red-600 py-2 font-semibold hover:bg-red-500 disabled:opacity-50"
+        >
+          {working ? "Deleting..." : "Confirm Delete"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/10"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Info({ label, value, mono = false }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+      <div className="text-xs text-white/50">{label}</div>
+      <div className={`mt-1 break-all font-medium ${mono ? "font-mono text-xs" : ""}`}>
+        {value || "—"}
+      </div>
+    </div>
+  );
+}
+
+// ========== MAIN COMPONENT ==========
 export default function UserManagement({ apiBase = "", showToast }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -108,6 +342,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
   const [showNewsletterModal, setShowNewsletterModal] = useState(false);
   const [showAutoResponderModal, setShowAutoResponderModal] = useState(false);
   const [showConnectionsModal, setShowConnectionsModal] = useState(false);
+  const [showBatchConfirm, setShowBatchConfirm] = useState(false);
 
   const [addForm, setAddForm] = useState(DEFAULT_ADD_FORM);
   const [editForm, setEditForm] = useState({});
@@ -193,6 +428,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
       active: users.filter((u) => u.trading_enabled).length,
       admins: users.filter((u) => u.is_admin).length,
       trialActive: users.filter((u) => u.trial_status === "trial" && u.paper_trading_enabled).length,
+      paperDisabled: users.filter((u) => !u.paper_trading_enabled).length,
       hasBilling: users.filter((u) => u.has_card_on_file).length,
       hasAlpaca: users.filter((u) => u.alpaca_connected === "true" || u.alpaca_connected === true).length,
       hasOkx: users.filter((u) => u.okx_connected === "true" || u.okx_connected === true).length,
@@ -339,6 +575,47 @@ export default function UserManagement({ apiBase = "", showToast }) {
       toast(error.message || "Failed to update trading", "error");
     } finally {
       setWorking(false);
+    }
+  };
+
+  const togglePaperTrading = async (user) => {
+    setWorking(true);
+    try {
+      await apiRequest(`/api/admin/users/${user.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ paper_trading_enabled: !user.paper_trading_enabled }),
+      });
+      toast(`Paper trading ${!user.paper_trading_enabled ? "enabled" : "disabled"}`, "success");
+      fetchUsers();
+    } catch (error) {
+      toast(error.message || "Failed to update paper trading", "error");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const enablePaperTradingForAll = async () => {
+    setWorking(true);
+    try {
+      const allUsersData = await apiRequest(`/api/admin/users?page=1&limit=1000`);
+      const allUsers = allUsersData.data?.users || [];
+      const userIds = allUsers.map(u => u.id);
+      
+      await apiRequest("/api/admin/users/batch", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "enable_paper_trading",
+          user_ids: userIds,
+        }),
+      });
+      
+      toast(`Paper trading enabled for ${userIds.length} users`, "success");
+      fetchUsers();
+    } catch (error) {
+      toast(error.message || "Failed to enable paper trading for all users", "error");
+    } finally {
+      setWorking(false);
+      setShowBatchConfirm(false);
     }
   };
 
@@ -491,27 +768,35 @@ export default function UserManagement({ apiBase = "", showToast }) {
           >
             <FaUserPlus /> Add User
           </button>
+
+          <button
+            onClick={() => setShowBatchConfirm(true)}
+            className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold hover:bg-blue-500"
+          >
+            <FaUsers /> Enable Paper Trading for All
+          </button>
         </div>
       </div>
 
-      {/* Stats Summary - Enhanced */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
+      {/* Stats Summary */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
         <SummaryCard label="Total Users" value={summary.total} icon="👥" />
         <SummaryCard label="Trading Enabled" value={summary.active} icon="📈" />
-        <SummaryCard label="Practice Active" value={summary.trialActive} icon="📝" />
+        <SummaryCard label="Paper Active" value={summary.trialActive} icon="📝" />
+        <SummaryCard label="Paper Disabled" value={summary.paperDisabled} icon="⚠️" />
         <SummaryCard label="Admins" value={summary.admins} icon="👑" />
-        <SummaryCard label="Billing Setup" value={summary.hasBilling} icon="💳" />
+        <SummaryCard label="Billing" value={summary.hasBilling} icon="💳" />
         <SummaryCard label="Connected" value={`${summary.hasAlpaca + summary.hasOkx}`} icon="🔌" />
       </div>
 
-      {/* Users Table - Enhanced with connection indicators */}
+      {/* Users Table */}
       <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5">
-        <table className="w-full min-w-[1300px] text-sm">
+        <table className="w-full min-w-[1400px] text-sm">
           <thead className="border-b border-white/10 bg-white/5 text-white/70">
             <tr>
               <th className="px-4 py-3 text-left">User</th>
               <th className="px-4 py-3 text-left">Tier</th>
-              <th className="px-4 py-3 text-center">Practice</th>
+              <th className="px-4 py-3 text-center">Paper</th>
               <th className="px-4 py-3 text-center">Live</th>
               <th className="px-4 py-3 text-center">Billing</th>
               <th className="px-4 py-3 text-center">Alpaca</th>
@@ -565,13 +850,16 @@ export default function UserManagement({ apiBase = "", showToast }) {
                       {practiceActive ? (
                         <span className="text-emerald-400 text-xs">Active</span>
                       ) : (
-                        <button
-                          onClick={() => reactivateTrial(user)}
-                          disabled={working}
-                          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-300 hover:bg-amber-500/20"
-                        >
-                          Reactivate
-                        </button>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-red-400 text-xs">Inactive</span>
+                          <button
+                            onClick={() => togglePaperTrading(user)}
+                            disabled={working}
+                            className="text-[10px] text-blue-400 hover:text-blue-300"
+                          >
+                            Enable
+                          </button>
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -644,6 +932,40 @@ export default function UserManagement({ apiBase = "", showToast }) {
         </div>
       )}
 
+      {/* Batch Confirm Modal */}
+      {showBatchConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div className="max-w-md w-full rounded-2xl border border-blue-500/30 bg-gray-900 p-6 shadow-2xl">
+            <h3 className="text-xl font-bold mb-4">Enable Paper Trading for All Users</h3>
+            <div className="space-y-4">
+              <p className="text-white/80">
+                This will enable paper trading for all {totalUsers} users in the system.
+              </p>
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                <p className="text-sm text-blue-300">
+                  Paper trading allows users to practice with $1000 virtual funds.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={enablePaperTradingForAll}
+                  disabled={working}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg font-semibold"
+                >
+                  {working ? "Enabling..." : "Yes, Enable for All"}
+                </button>
+                <button
+                  onClick={() => setShowBatchConfirm(false)}
+                  className="flex-1 border border-white/10 py-2 rounded-lg hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add User Modal */}
       {showAddModal && (
         <UserModal title="Add New User" onClose={() => setShowAddModal(false)}>
@@ -667,7 +989,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
             <Info label="Strategy" value={selectedUser.strategy} />
             <Info label="Portfolio" value={money(selectedUser.portfolio_value)} />
             <Info label="Joined" value={formatDate(selectedUser.created_at)} />
-            <Info label="Practice Trading" value={selectedUser.paper_trading_enabled ? "Active" : "Inactive"} />
+            <Info label="Paper Trading" value={selectedUser.paper_trading_enabled ? "Enabled" : "Disabled"} />
             <Info label="Trial Status" value={selectedUser.trial_status || "trial"} />
             <Info label="Live Trading" value={selectedUser.trading_enabled ? "Enabled" : "Disabled"} />
             <Info label="Admin" value={selectedUser.is_admin ? "Yes" : "No"} />
@@ -738,12 +1060,11 @@ export default function UserManagement({ apiBase = "", showToast }) {
         </UserModal>
       )}
 
-      {/* Connections Modal - NEW */}
+      {/* Connections Modal */}
       {showConnectionsModal && selectedUser && (
         <UserModal title="User Connections & Status" onClose={() => setShowConnectionsModal(false)} wide>
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Billing Status */}
               <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                 <h4 className="font-semibold mb-3 flex items-center gap-2">
                   <FaCreditCard className="text-emerald-400" /> Billing Status
@@ -764,7 +1085,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
                 </div>
               </div>
 
-              {/* Exchange Connections */}
               <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                 <h4 className="font-semibold mb-3 flex items-center gap-2">
                   <FaExchangeAlt className="text-cyan-400" /> Exchange Connections
@@ -785,7 +1105,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
                 </div>
               </div>
 
-              {/* Trading Status */}
               <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                 <h4 className="font-semibold mb-3 flex items-center gap-2">
                   <FaChartLine className="text-purple-400" /> Trading Status
@@ -810,7 +1129,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
                 </div>
               </div>
 
-              {/* Trial Info */}
               <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                 <h4 className="font-semibold mb-3 flex items-center gap-2">
                   <FaCalendarAlt className="text-amber-400" /> Trial Information
@@ -834,7 +1152,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
               </div>
             </div>
 
-            {/* Wallet Address if available */}
             {selectedUser.wallet_addresses && selectedUser.wallet_addresses.length > 0 && (
               <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                 <h4 className="font-semibold mb-3 flex items-center gap-2">
@@ -949,238 +1266,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
           />
         </UserModal>
       )}
-    </div>
-  );
-}
-
-// Helper Components
-function SummaryCard({ label, value, icon }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center">
-      <div className="text-lg mb-1">{icon}</div>
-      <div className="text-xs text-white/50">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
-    </div>
-  );
-}
-
-function IconButton({ title, icon, onClick, color }) {
-  return (
-    <button
-      title={title}
-      onClick={onClick}
-      className={`${color} transition hover:scale-110 hover:opacity-80`}
-      type="button"
-    >
-      {icon}
-    </button>
-  );
-}
-
-function UserModal({ title, children, onClose, wide = false }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-      <div
-        className={`max-h-[92vh] overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6 shadow-2xl ${
-          wide ? "w-full max-w-3xl" : "w-full max-w-lg"
-        }`}
-      >
-        <div className="mb-5 flex items-center justify-between">
-          <h3 className="text-xl font-bold">{title}</h3>
-          <button onClick={onClose} className="text-white/50 hover:text-white">
-            <FaTimes />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function UserForm({ form, setForm, includePassword = false, includeEmail = false }) {
-  const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
-
-  return (
-    <div className="space-y-4">
-      {(includeEmail || form.email !== undefined) && (
-        <Field label="Email Address" icon={<FaEnvelope />}>
-          <input
-            type="email"
-            value={form.email || ""}
-            onChange={(e) => update("email", e.target.value)}
-            placeholder="user@example.com"
-            className="input w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-          />
-        </Field>
-      )}
-
-      {includePassword && (
-        <Field label="Password" icon={<FaLock />}>
-          <input
-            type="password"
-            value={form.password}
-            onChange={(e) => update("password", e.target.value)}
-            placeholder="At least 8 characters"
-            className="input w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-          />
-        </Field>
-      )}
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Plan">
-          <select
-            value={form.tier}
-            onChange={(e) => update("tier", e.target.value)}
-            className="input w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-          >
-            {TIERS.map((tier) => (
-              <option key={tier} value={tier}>
-                {tier.toUpperCase()}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Strategy">
-          <select
-            value={form.strategy}
-            onChange={(e) => update("strategy", e.target.value)}
-            className="input w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
-          >
-            {STRATEGIES.map((strategy) => (
-              <option key={strategy.value} value={strategy.value}>
-                {strategy.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
-
-      <Toggle
-        label="Enable Live Trading"
-        value={!!form.trading_enabled}
-        onChange={() => update("trading_enabled", !form.trading_enabled)}
-      />
-
-      {"paper_trading_enabled" in form && (
-        <Toggle
-          label="Enable Practice Trading (7-Day Trial)"
-          value={!!form.paper_trading_enabled}
-          onChange={() => update("paper_trading_enabled", !form.paper_trading_enabled)}
-        />
-      )}
-
-      <Toggle
-        label="Admin Access"
-        value={!!form.is_admin}
-        onChange={() => update("is_admin", !form.is_admin)}
-      />
-    </div>
-  );
-}
-
-function Field({ label, icon, children }) {
-  return (
-    <label className="block">
-      <div className="mb-1 flex items-center gap-2 text-sm text-white/70">
-        {icon && <span className="text-xs">{icon}</span>}
-        {label}
-      </div>
-      {children}
-    </label>
-  );
-}
-
-function Toggle({ label, value, onChange }) {
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 p-3">
-      <span className="text-sm text-white/80">{label}</span>
-      <button
-        type="button"
-        onClick={onChange}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-          value ? "bg-emerald-600" : "bg-gray-600"
-        }`}
-      >
-        <span
-          className={`absolute h-4 w-4 rounded-full bg-white transition ${
-            value ? "right-1" : "left-1"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
-
-function ModalActions({ primaryLabel, onPrimary, onCancel, working }) {
-  return (
-    <div className="mt-6 flex gap-3">
-      <button
-        onClick={onPrimary}
-        disabled={working}
-        className="flex-1 rounded-lg bg-emerald-600 py-2 font-semibold hover:bg-emerald-500 disabled:opacity-50"
-      >
-        {working ? (
-          <>
-            <FaSpinner className="mr-2 inline animate-spin" />
-            Working...
-          </>
-        ) : (
-          <>
-            <FaSave className="mr-2 inline" />
-            {primaryLabel}
-          </>
-        )}
-      </button>
-      <button
-        onClick={onCancel}
-        disabled={working}
-        className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/10 disabled:opacity-50"
-      >
-        Cancel
-      </button>
-    </div>
-  );
-}
-
-function DeleteConfirmModal({ user, onConfirm, onCancel, working }) {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-        <div className="mb-2 flex items-center gap-2 font-bold text-red-300">
-          <FaExclamationTriangle />
-          Permanent Delete
-        </div>
-        <p className="text-sm text-white/80">This will permanently delete:</p>
-        <p className="mt-2 rounded bg-black/40 p-2 font-mono text-sm">{user.email}</p>
-        <p className="mt-3 text-xs text-red-300/80">This action cannot be undone.</p>
-      </div>
-      <div className="flex gap-3">
-        <button
-          onClick={onConfirm}
-          disabled={working}
-          className="flex-1 rounded-lg bg-red-600 py-2 font-semibold hover:bg-red-500 disabled:opacity-50"
-        >
-          {working ? "Deleting..." : "Confirm Delete"}
-        </button>
-        <button
-          onClick={onCancel}
-          className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/10"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Info({ label, value, mono = false }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-      <div className="text-xs text-white/50">{label}</div>
-      <div className={`mt-1 break-all font-medium ${mono ? "font-mono text-xs" : ""}`}>
-        {value || "—"}
-      </div>
     </div>
   );
 }
