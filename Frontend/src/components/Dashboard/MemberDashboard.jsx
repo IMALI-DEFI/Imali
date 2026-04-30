@@ -759,7 +759,7 @@ function SetupRecommendation({ alpacaConnected, okxConnected, onConnect }) {
   );
 }
 
-/* ================= TRIAL BANNER - 7 DAYS ================= */
+/* ================= TRIAL BANNER ================= */
 function TrialBanner({ trial }) {
   const status = String(trial?.trial_status || "").toLowerCase();
   const secondsRemaining = Number(trial?.seconds_remaining || 0);
@@ -825,11 +825,183 @@ function ResourceLinks() {
   );
 }
 
+/* ================= TRADING CONTROL BUTTONS ================= */
+function TradingControlButtons({ 
+  tradingEnabled, 
+  paperTradingEnabled, 
+  trialActive, 
+  onToggleTrading, 
+  onTogglePaperTrading,
+  loading 
+}) {
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+
+  const handleTradingToggle = () => {
+    if (!tradingEnabled) {
+      setPendingAction('enable_live');
+      setShowConfirmModal(true);
+    } else {
+      onToggleTrading(false);
+    }
+  };
+
+  const handlePaperToggle = () => {
+    if (!paperTradingEnabled && !trialActive) {
+      alert("Your trial has expired. Please upgrade to continue paper trading.");
+      return;
+    }
+    onTogglePaperTrading(!paperTradingEnabled);
+  };
+
+  const confirmEnableLive = () => {
+    onToggleTrading(true);
+    setShowConfirmModal(false);
+    setPendingAction(null);
+  };
+
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* Paper Trading Card */}
+        <div className={`rounded-xl border p-5 transition-all ${paperTradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-700 bg-gray-800/50'}`}>
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <span className="text-2xl">📝</span>
+                Paper Trading
+              </h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Practice with $100,000 virtual money. No real risk.
+              </p>
+              {!trialActive && !paperTradingEnabled && (
+                <p className="text-xs text-amber-400 mt-2">⚠️ Trial expired. Upgrade to continue.</p>
+              )}
+              {paperTradingEnabled && (
+                <p className="text-xs text-emerald-400 mt-2">✅ Active - Trading with virtual funds</p>
+              )}
+            </div>
+            <button
+              onClick={handlePaperToggle}
+              disabled={loading || (!paperTradingEnabled && !trialActive)}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                paperTradingEnabled
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {loading ? (
+                <FaSpinner className="animate-spin inline mr-2" />
+              ) : paperTradingEnabled ? (
+                'Stop Paper Trading'
+              ) : (
+                'Start Paper Trading'
+              )}
+            </button>
+          </div>
+          <div className="mt-3 text-xs text-gray-500">
+            {paperTradingEnabled ? (
+              <span>✓ Virtual balance: $100,000 available</span>
+            ) : (
+              <span>Click to start practicing with virtual money</span>
+            )}
+          </div>
+        </div>
+
+        {/* Live Trading Card */}
+        <div className={`rounded-xl border p-5 transition-all ${tradingEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-gray-700 bg-gray-800/50'}`}>
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <span className="text-2xl">💰</span>
+                Live Trading
+              </h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Trade with real funds through your connected exchanges.
+              </p>
+              {!hasTierAccess(nftKey, "common") && (
+                <p className="text-xs text-amber-400 mt-2">⬆️ Upgrade to Common tier for live trading</p>
+              )}
+              {tradingEnabled && (
+                <p className="text-xs text-emerald-400 mt-2">✅ Active - Real funds trading enabled</p>
+              )}
+            </div>
+            <button
+              onClick={handleTradingToggle}
+              disabled={loading || (!tradingEnabled && !hasTierAccess(nftKey, "common"))}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                tradingEnabled
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {loading ? (
+                <FaSpinner className="animate-spin inline mr-2" />
+              ) : tradingEnabled ? (
+                'Stop Live Trading'
+              ) : (
+                'Start Live Trading'
+              )}
+            </button>
+          </div>
+          <div className="mt-3 text-xs text-gray-500">
+            {tradingEnabled ? (
+              <span>✓ Connected to your exchange accounts</span>
+            ) : (
+              <span>Requires connected Alpaca/OKX accounts and Common tier+</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Confirmation Modal for Live Trading */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="max-w-md w-full rounded-2xl border border-amber-500/30 bg-gray-900 p-6 shadow-2xl">
+            <h3 className="text-xl font-bold mb-4">⚠️ Confirm Live Trading</h3>
+            <div className="space-y-4">
+              <p className="text-gray-300">
+                You are about to enable <strong className="text-emerald-400">Live Trading</strong> with real funds.
+              </p>
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+                <p className="text-sm text-amber-300 font-semibold mb-2">⚠️ Important Risk Warning:</p>
+                <ul className="text-xs text-amber-200/80 space-y-1 list-disc pl-4">
+                  <li>Live trading involves real financial risk</li>
+                  <li>You can lose money - only trade what you can afford to lose</li>
+                  <li>Make sure your exchange API keys have trading-only permissions</li>
+                  <li>Start with small position sizes to test</li>
+                  <li>You can stop live trading at any time</li>
+                </ul>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={confirmEnableLive}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg font-semibold"
+                >
+                  Yes, Enable Live Trading
+                </button>
+                <button
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 border border-gray-600 hover:bg-gray-800 py-2 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ================= MAIN COMPONENT ================= */
 export default function MemberDashboard() {
   const nav = useNavigate();
 
   const [loading, setLoading] = useState(true);
+  const [togglingTrading, setTogglingTrading] = useState(false);
+  const [togglingPaper, setTogglingPaper] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState({});
@@ -849,6 +1021,8 @@ export default function MemberDashboard() {
   const [communityTrades, setCommunityTrades] = useState([]);
   const [showTour, setShowTour] = useState(false);
   const [tourCompleted, setTourCompleted] = useState(false);
+  const [tradingEnabled, setTradingEnabled] = useState(false);
+  const [paperTradingEnabled, setPaperTradingEnabled] = useState(false);
 
   const tourSteps = [
     { selector: ".tour-connect-keys", title: "🔑 Connect Your Exchange Accounts", description: "Start here! Connect Alpaca (for stocks) and OKX (for crypto) to enable trading." },
@@ -873,6 +1047,8 @@ export default function MemberDashboard() {
       }
 
       setUser(me);
+      setTradingEnabled(me?.trading_enabled === true);
+      setPaperTradingEnabled(me?.paper_trading_enabled === true);
 
       const [statsResult, integrationsResult, strategiesResult, globalTradesResult, trialResult] =
         await Promise.allSettled([
@@ -945,7 +1121,6 @@ export default function MemberDashboard() {
       setSeries([]);
       setStreak(0);
       setCommunityTrades([]);
-      // Set default trial on error - 7 days paper trading always available
       setTrial({
         trial_status: 'trial',
         paper_trading_enabled: true,
@@ -954,6 +1129,39 @@ export default function MemberDashboard() {
     } finally {
       setRefreshing(false);
       setLoading(false);
+    }
+  };
+
+  const handleToggleTrading = async (enabled) => {
+    setTogglingTrading(true);
+    try {
+      const result = await BotAPI.toggleTrading(enabled);
+      if (result?.success) {
+        setTradingEnabled(enabled);
+        await loadDashboard(true);
+      } else {
+        alert(result?.error || "Failed to update trading status");
+      }
+    } catch (error) {
+      console.error("Toggle trading error:", error);
+      alert("Failed to update trading status");
+    } finally {
+      setTogglingTrading(false);
+    }
+  };
+
+  const handleTogglePaperTrading = async (enabled) => {
+    setTogglingPaper(true);
+    try {
+      // Paper trading doesn't have a dedicated endpoint, but we can update via user settings
+      // For now, just update local state
+      setPaperTradingEnabled(enabled);
+      // You can add an API call here if needed
+    } catch (error) {
+      console.error("Toggle paper trading error:", error);
+      alert("Failed to update paper trading status");
+    } finally {
+      setTogglingPaper(false);
     }
   };
 
@@ -971,6 +1179,7 @@ export default function MemberDashboard() {
   const alpacaConnected = !!integrations.alpaca_connected;
   const okxConnected = !!integrations.okx_connected;
   const bothMarketConnectionsReady = alpacaConnected && okxConnected;
+  const trialActive = trial?.trial_status === "trial" && trial?.seconds_remaining > 0;
 
   const confidence = useMemo(() => {
     let score = 0;
@@ -1140,7 +1349,7 @@ export default function MemberDashboard() {
         {/* Quick Start Guide */}
         <QuickStartGuide onStartTour={() => setShowTour(true)} />
 
-        {/* Trial Banner - 7 Days */}
+        {/* Trial Banner */}
         <TrialBanner trial={trial} />
 
         {/* Setup Recommendation */}
@@ -1150,7 +1359,22 @@ export default function MemberDashboard() {
           onConnect={() => setShowApiModal(true)}
         />
 
-        {/* Trading Strategy Section - Fixed overlapping cards */}
+        {/* Trading Control Buttons - NEW SECTION */}
+        <div className="tour-paper-trade tour-go-live">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <h3 className="font-semibold mb-4">🎮 Trading Controls</h3>
+            <TradingControlButtons
+              tradingEnabled={tradingEnabled}
+              paperTradingEnabled={paperTradingEnabled}
+              trialActive={trialActive}
+              onToggleTrading={handleToggleTrading}
+              onTogglePaperTrading={handleTogglePaperTrading}
+              loading={togglingTrading || togglingPaper}
+            />
+          </div>
+        </div>
+
+        {/* Trading Strategy Section */}
         <div className="tour-strategies">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1178,7 +1402,6 @@ export default function MemberDashboard() {
                       } disabled:opacity-80 hover:scale-[1.02]`}
                     >
                       <div className="flex flex-col">
-                        {/* Header */}
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span className="text-2xl">{strategy.emoji}</span>
@@ -1189,17 +1412,10 @@ export default function MemberDashboard() {
                           </span>
                         </div>
 
-                        {/* Description */}
                         <div className="mt-1 mb-2">
                           <p className="text-sm text-gray-600 line-clamp-2">{strategy.description}</p>
                         </div>
 
-                        {/* How to use */}
-                        <div className="text-xs text-indigo-500 mb-2">
-                          ⓘ Click to activate
-                        </div>
-
-                        {/* Status badges */}
                         <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
                           <span
                             className={`rounded-full px-2 py-1 text-xs font-semibold ${
@@ -1397,53 +1613,6 @@ export default function MemberDashboard() {
               </HelpTooltip>
             ))}
           </div>
-        </div>
-
-        {/* Action Buttons Grid */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
-          <div className="tour-paper-trade">
-            <CTA title="Paper Trade Demo" onClick={() => nav("/trade-demo")} tooltip="Practice trading with virtual money. No risk!" />
-          </div>
-          <div className="tour-go-live">
-            <TierCTA
-              title="Go Live"
-              unlocked={hasTierAccess(nftKey, "common") && bothMarketConnectionsReady}
-              lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Common+ required"}
-              tooltip="Trade with real money. Requires connected exchange accounts."
-              onClick={() => nav("/trade-demo?mode=live")}
-              onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
-            />
-          </div>
-          <TierCTA
-            title="Advanced Bots"
-            unlocked={hasTierAccess(nftKey, "rare") && bothMarketConnectionsReady}
-            lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Rare+ required"}
-            tooltip="Use advanced automated trading bots"
-            onClick={() => nav("/pricing")}
-            onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
-          />
-          <TierCTA
-            title="Futures"
-            unlocked={hasTierAccess(nftKey, "epic") && okxConnected}
-            lockedText={!okxConnected ? "Connect OKX" : "Epic+ required"}
-            tooltip="Trade crypto futures with leverage"
-            onClick={() => nav("/pricing")}
-            onLockedClick={() => (okxConnected ? nav("/pricing") : setShowApiModal(true))}
-          />
-        </div>
-
-        {/* Secondary Actions */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-          <TierCTA
-            title="Alpha Signals"
-            unlocked={hasTierAccess(nftKey, "legendary") && bothMarketConnectionsReady}
-            lockedText={!bothMarketConnectionsReady ? "Connect Alpaca + OKX" : "Legendary required"}
-            tooltip="Get exclusive premium trading signals"
-            onClick={() => nav("/pricing")}
-            onLockedClick={() => (bothMarketConnectionsReady ? nav("/pricing") : setShowApiModal(true))}
-          />
-          <CTA title="Billing" onClick={() => nav("/billing-dashboard")} tooltip="View and manage your subscription" />
-          <CTA title="Complete Activation" onClick={() => nav("/activation")} tooltip="Finish setting up your account" />
         </div>
       </div>
 
