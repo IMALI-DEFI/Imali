@@ -4,61 +4,94 @@ import { Link } from "react-router-dom";
 
 export default function HowItWorks() {
   const card =
-    "rounded-xl bg-gray-800/70 border border-white/10 p-6 shadow-lg";
+    "rounded-2xl border border-slate-200 bg-white p-6 shadow-sm";
 
   return (
-    <div className="bg-gradient-to-b from-gray-900 to-black text-white min-h-screen">
-      <div className="max-w-5xl mx-auto px-6 py-20">
+    <div className="bg-slate-50 min-h-screen text-slate-900">
+      <div className="max-w-6xl mx-auto px-4 py-16 sm:px-6">
 
-        <h1 className="text-4xl font-extrabold text-center">
-          How IMALI Works
-        </h1>
+        {/* Header */}
+        <div className="text-center max-w-2xl mx-auto">
+          <h1 className="text-3xl sm:text-4xl font-extrabold">
+            How IMALI Works
+          </h1>
 
-        <p className="text-center text-gray-300 mt-4">
-          We make trading simple. Just follow these 4 easy steps.
-        </p>
+          <p className="mt-4 text-slate-600 text-sm sm:text-base font-semibold">
+            Start trading in minutes. No experience needed.
+          </p>
+        </div>
 
-        <div className="grid md:grid-cols-2 gap-6 mt-12">
+        {/* Steps */}
+        <div className="grid gap-5 mt-12 md:grid-cols-2">
 
+          {/* Step 1 */}
           <div className={card}>
-            <h3 className="text-xl font-bold mb-2">1. Sign Up</h3>
-            <p className="text-gray-300">
-              Create your account and choose your plan.
+            <div className="text-indigo-600 font-extrabold text-sm mb-2">
+              STEP 1
+            </div>
+            <h3 className="text-lg font-extrabold mb-2">
+              Create Your Account
+            </h3>
+            <p className="text-slate-600 text-sm font-semibold">
+              Sign up and choose your plan. You can start with paper trading using virtual money.
             </p>
           </div>
 
+          {/* Step 2 */}
           <div className={card}>
-            <h3 className="text-xl font-bold mb-2">2. Fund Your Account</h3>
-            <p className="text-gray-300 mb-4">
-              Add money using OKX, Alpaca, or your crypto wallet.
+            <div className="text-indigo-600 font-extrabold text-sm mb-2">
+              STEP 2
+            </div>
+            <h3 className="text-lg font-extrabold mb-2">
+              Connect Your Accounts
+            </h3>
+            <p className="text-slate-600 text-sm font-semibold mb-3">
+              Link your exchange accounts so IMALI can trade for you.
             </p>
+
             <Link
               to="/funding-guide"
-              className="text-emerald-400 underline"
+              className="text-indigo-600 font-bold text-sm hover:underline"
             >
-              View Funding Guide
+              View Setup Guide →
             </Link>
           </div>
 
+          {/* Step 3 */}
           <div className={card}>
-            <h3 className="text-xl font-bold mb-2">3. Turn On Trading</h3>
-            <p className="text-gray-300">
-              Choose a strategy and enable trading.
+            <div className="text-indigo-600 font-extrabold text-sm mb-2">
+              STEP 3
+            </div>
+            <h3 className="text-lg font-extrabold mb-2">
+              Choose a Strategy
+            </h3>
+            <p className="text-slate-600 text-sm font-semibold">
+              Pick a trading style like Conservative, Balanced, or Momentum.
+              You can change it anytime.
             </p>
           </div>
 
+          {/* Step 4 */}
           <div className={card}>
-            <h3 className="text-xl font-bold mb-2">4. Watch It Work</h3>
-            <p className="text-gray-300">
-              The bot looks for opportunities and trades for you.
+            <div className="text-indigo-600 font-extrabold text-sm mb-2">
+              STEP 4
+            </div>
+            <h3 className="text-lg font-extrabold mb-2">
+              Start Trading
+            </h3>
+            <p className="text-slate-600 text-sm font-semibold">
+              Turn on paper trading first, then go live when you're ready.
+              IMALI will handle trades automatically.
             </p>
           </div>
+
         </div>
 
-        <div className="text-center mt-12">
+        {/* CTA */}
+        <div className="text-center mt-14">
           <Link
             to="/signup"
-            className="px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-semibold"
+            className="inline-block px-6 py-3 rounded-xl bg-indigo-600 text-white font-extrabold hover:bg-indigo-700 transition"
           >
             Get Started
           </Link>
