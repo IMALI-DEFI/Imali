@@ -47,7 +47,7 @@ const DEFAULT_ADD_FORM = {
   is_admin: false,
 };
 
-// ========== SAFE RENDER HELPER - FIXES OBJECT RENDERING ==========
+// ========== SAFE RENDER HELPER ==========
 const safeRender = (value, fallback = "—") => {
   if (value === null || value === undefined) return fallback;
   if (typeof value === "string") return value;
@@ -59,9 +59,6 @@ const safeRender = (value, fallback = "—") => {
     if (value.value) return String(value.value);
     if (value.name) return String(value.name);
     if (value.email) return String(value.email);
-    if (value.enabled !== undefined) return value.enabled ? "Yes" : "No";
-    if (value.status) return String(value.status);
-    if (value.strategy) return String(value.strategy);
     return JSON.stringify(value);
   }
   return fallback;
@@ -443,7 +440,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
       const data = await apiRequest(`/api/admin/users?${params.toString()}`);
       const fetchedUsers = data.data?.users || [];
       
-      // Normalize user data to handle objects vs primitives
       const normalizedUsers = fetchedUsers.map(user => ({
         ...user,
         email: safeRender(user.email),
@@ -514,7 +510,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
     try {
       const data = await apiRequest(`/api/admin/users/${user.id}`);
       const detailedUser = data.data?.user || user;
-      // Normalize the detailed user
       const normalizedUser = {
         ...detailedUser,
         email: safeRender(detailedUser.email),
@@ -981,7 +976,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
                         />
                       </div>
                     </td>
-                  </table>
+                  </tr>
                 );
               })
             )}
