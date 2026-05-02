@@ -39,22 +39,29 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
   const fetchAutoResponses = useCallback(async () => {
     try {
       const token = localStorage.getItem('imali_token');
+      if (!token) {
+        showToast('Authentication required', 'error');
+        setLoading(false);
+        return;
+      }
+      
       const response = await fetch(`${apiBase}/api/admin/autoresponder/rules`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
       if (data.success) {
-        setAutoResponses(data.data.rules || []);
+        const rules = data.data?.rules || [];
+        setAutoResponses(rules);
         setStats({
-          total_sent: data.data.stats?.total_sent || 0,
-          active_rules: (data.data.rules || []).filter(r => r.is_active).length,
-          open_rate: data.data.stats?.open_rate || 0,
-          click_rate: data.data.stats?.click_rate || 0
+          total_sent: data.data?.stats?.total_sent || 0,
+          active_rules: rules.filter(r => r.is_active).length,
+          open_rate: data.data?.stats?.open_rate || 0,
+          click_rate: data.data?.stats?.click_rate || 0
         });
       }
     } catch (error) {
       console.error('Failed to fetch auto-responders:', error);
-      showToast('Failed to load auto-responders', 'error');
+      showToast?.('Failed to load auto-responders', 'error');
     } finally {
       setLoading(false);
     }
@@ -66,12 +73,17 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
 
   const createRule = async () => {
     if (!formData.name || !formData.subject || !formData.template) {
-      showToast('Please fill in all required fields', 'error');
+      showToast?.('Please fill in all required fields', 'error');
       return;
     }
 
     try {
       const token = localStorage.getItem('imali_token');
+      if (!token) {
+        showToast?.('Authentication required', 'error');
+        return;
+      }
+      
       const response = await fetch(`${apiBase}/api/admin/autoresponder/rules`, {
         method: 'POST',
         headers: {
@@ -82,21 +94,29 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
       });
       const data = await response.json();
       if (data.success) {
-        showToast('Auto-responder rule created', 'success');
+        showToast?.('Auto-responder rule created', 'success');
         setShowCreateModal(false);
         resetForm();
         fetchAutoResponses();
       } else {
-        showToast(data.error || 'Failed to create rule', 'error');
+        showToast?.(data.error || 'Failed to create rule', 'error');
       }
     } catch (error) {
-      showToast('Failed to create auto-responder', 'error');
+      console.error('Create rule error:', error);
+      showToast?.('Failed to create auto-responder', 'error');
     }
   };
 
   const updateRule = async () => {
+    if (!editingResponse?.id) return;
+    
     try {
       const token = localStorage.getItem('imali_token');
+      if (!token) {
+        showToast?.('Authentication required', 'error');
+        return;
+      }
+      
       const response = await fetch(`${apiBase}/api/admin/autoresponder/rules/${editingResponse.id}`, {
         method: 'PUT',
         headers: {
@@ -107,40 +127,55 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
       });
       const data = await response.json();
       if (data.success) {
-        showToast('Auto-responder rule updated', 'success');
+        showToast?.('Auto-responder rule updated', 'success');
         setShowCreateModal(false);
         setEditingResponse(null);
         resetForm();
         fetchAutoResponses();
       } else {
-        showToast(data.error || 'Failed to update rule', 'error');
+        showToast?.(data.error || 'Failed to update rule', 'error');
       }
     } catch (error) {
-      showToast('Failed to update auto-responder', 'error');
+      console.error('Update rule error:', error);
+      showToast?.('Failed to update auto-responder', 'error');
     }
   };
 
   const deleteRule = async (ruleId) => {
-    if (!confirm('Delete this auto-responder rule?')) return;
+    if (!window.confirm('Delete this auto-responder rule?')) return;
+    
     try {
       const token = localStorage.getItem('imali_token');
+      if (!token) {
+        showToast?.('Authentication required', 'error');
+        return;
+      }
+      
       const response = await fetch(`${apiBase}/api/admin/autoresponder/rules/${ruleId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
       if (data.success) {
-        showToast('Rule deleted', 'success');
+        showToast?.('Rule deleted', 'success');
         fetchAutoResponses();
+      } else {
+        showToast?.(data.error || 'Failed to delete rule', 'error');
       }
     } catch (error) {
-      showToast('Failed to delete rule', 'error');
+      console.error('Delete rule error:', error);
+      showToast?.('Failed to delete rule', 'error');
     }
   };
 
   const toggleRuleStatus = async (ruleId, currentStatus) => {
     try {
       const token = localStorage.getItem('imali_token');
+      if (!token) {
+        showToast?.('Authentication required', 'error');
+        return;
+      }
+      
       const response = await fetch(`${apiBase}/api/admin/autoresponder/rules/${ruleId}/toggle`, {
         method: 'POST',
         headers: {
@@ -151,11 +186,14 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
       });
       const data = await response.json();
       if (data.success) {
-        showToast(`Rule ${!currentStatus ? 'activated' : 'paused'}`, 'success');
+        showToast?.(`Rule ${!currentStatus ? 'activated' : 'paused'}`, 'success');
         fetchAutoResponses();
+      } else {
+        showToast?.(data.error || 'Failed to toggle rule', 'error');
       }
     } catch (error) {
-      showToast('Failed to toggle rule', 'error');
+      console.error('Toggle rule error:', error);
+      showToast?.('Failed to toggle rule', 'error');
     }
   };
 
@@ -163,8 +201,18 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
     const testEmail = prompt('Enter email address to send test:');
     if (!testEmail) return;
     
+    if (!testEmail.includes('@') || !testEmail.includes('.')) {
+      showToast?.('Please enter a valid email address', 'error');
+      return;
+    }
+    
     try {
       const token = localStorage.getItem('imali_token');
+      if (!token) {
+        showToast?.('Authentication required', 'error');
+        return;
+      }
+      
       const response = await fetch(`${apiBase}/api/admin/autoresponder/rules/${ruleId}/test`, {
         method: 'POST',
         headers: {
@@ -175,12 +223,13 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
       });
       const data = await response.json();
       if (data.success) {
-        showToast(`Test email sent to ${testEmail}`, 'success');
+        showToast?.(`Test email sent to ${testEmail}`, 'success');
       } else {
-        showToast(data.error || 'Failed to send test', 'error');
+        showToast?.(data.error || 'Failed to send test', 'error');
       }
     } catch (error) {
-      showToast('Failed to send test email', 'error');
+      console.error('Test rule error:', error);
+      showToast?.('Failed to send test email', 'error');
     }
   };
 
@@ -203,12 +252,12 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
   const openEditModal = (rule) => {
     setEditingResponse(rule);
     setFormData({
-      name: rule.name,
-      trigger_event: rule.trigger_event,
-      subject: rule.subject,
-      template: rule.template,
-      delay_minutes: rule.delay_minutes,
-      is_active: rule.is_active,
+      name: rule.name || '',
+      trigger_event: rule.trigger_event || 'signup',
+      subject: rule.subject || '',
+      template: rule.template || '',
+      delay_minutes: rule.delay_minutes || 0,
+      is_active: rule.is_active !== false,
       conditions: rule.conditions || { tier: [], referral_source: null }
     });
     setShowCreateModal(true);
@@ -263,6 +312,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
             setShowCreateModal(true);
           }}
           className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500"
+          disabled={busyAction}
         >
           <FaPlus /> Create Rule
         </button>
@@ -287,18 +337,18 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
-                    <h4 className="font-semibold">{rule.name}</h4>
+                    <h4 className="font-semibold">{rule.name || 'Unnamed Rule'}</h4>
                     <span className={`rounded-full px-2 py-0.5 text-xs ${rule.is_active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-500/20 text-gray-300'}`}>
                       {rule.is_active ? 'Active' : 'Paused'}
                     </span>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-3 text-xs text-white/50">
                     <span>Trigger: {triggerEvents.find(e => e.value === rule.trigger_event)?.label || rule.trigger_event}</span>
-                    <span>• Delay: {rule.delay_minutes} minutes</span>
+                    <span>• Delay: {rule.delay_minutes || 0} minutes</span>
                     <span>• Sent: {rule.sent_count || 0} emails</span>
                   </div>
                   <div className="mt-2 text-sm text-white/70">
-                    Subject: {rule.subject}
+                    Subject: {rule.subject || 'No subject'}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -387,12 +437,14 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                 <label className="mb-1 block text-sm text-white/70">Delay (minutes)</label>
                 <input
                   type="number"
+                  min="0"
+                  max="43200"
                   value={formData.delay_minutes}
-                  onChange={(e) => setFormData({ ...formData, delay_minutes: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, delay_minutes: parseInt(e.target.value) || 0 })}
                   placeholder="0 for immediate"
                   className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
                 />
-                <p className="mt-1 text-xs text-white/40">Delay before sending after trigger event</p>
+                <p className="mt-1 text-xs text-white/40">Delay before sending after trigger event (max 30 days)</p>
               </div>
 
               <div>
@@ -430,6 +482,7 @@ Need help? Contact support@imali-defi.com`}
               <div className="flex items-center justify-between">
                 <label className="text-sm text-white/70">Active</label>
                 <button
+                  type="button"
                   onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
                     formData.is_active ? 'bg-emerald-600' : 'bg-gray-600'
@@ -444,10 +497,11 @@ Need help? Contact support@imali-defi.com`}
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={editingResponse ? updateRule : createRule}
-                  className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500"
+                  disabled={busyAction}
+                  className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
                 >
                   <FaSave className="inline mr-2" />
-                  {editingResponse ? "Update Rule" : "Create Rule"}
+                  {busyAction ? "Processing..." : (editingResponse ? "Update Rule" : "Create Rule")}
                 </button>
                 <button
                   onClick={() => {
