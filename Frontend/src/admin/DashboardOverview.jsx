@@ -2,6 +2,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 
+// Safe render helper to prevent object rendering errors
+const safeRender = (value, fallback = '—') => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (React.isValidElement(value)) return value;
+  if (typeof value === 'object') {
+    // If it's an object with email, render email
+    if (value.email) return value.email;
+    // If it's an object with name, render name
+    if (value.name) return value.name;
+    // If it's an object with message, render message
+    if (value.message) return value.message;
+    // Otherwise return fallback
+    return fallback;
+  }
+  return fallback;
+};
+
+// Safe number formatter
+const safeNumber = (value, fallback = 0) => {
+  const num = Number(value);
+  return isNaN(num) ? fallback : num;
+};
+
 export default function DashboardOverview({ apiBase, showToast, handleAction, busyAction }) {
   const [metrics, setMetrics] = useState({
     users: { total: 0, active: 0, new: 0 },
@@ -59,27 +85,42 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
       }
       
       const data = await response.json();
-      if (data.success) {
+      
+      if (data && data.success) {
         const metricsData = data.data || data;
+        
+        // Safely extract values with fallbacks
+        const totalUsers = safeNumber(metricsData.users?.total || metricsData.totalUsers || 0);
+        const activeUsers = safeNumber(metricsData.users?.active || metricsData.activeUsers || 0);
+        const newUsers = safeNumber(metricsData.users?.new || metricsData.newUsers || 0);
+        const totalTrades = safeNumber(metricsData.trades?.total || metricsData.totalTrades || 0);
+        const volume24h = safeNumber(metricsData.trading?.volume24h || metricsData.volume24h || 0);
+        const activeBots = safeNumber(metricsData.bots?.active || metricsData.activeBots || 0);
+        const totalRevenue = safeNumber(metricsData.pnl?.total || metricsData.totalRevenue || metricsData.totalPnl || 0);
+        const fees24h = safeNumber(metricsData.revenue?.today || metricsData.fees24h || metricsData.revenue?.fees24h || 0);
+        const pendingWithdrawals = safeNumber(metricsData.revenue?.pending_withdrawals || metricsData.pendingWithdrawals || 0);
+        const uptime = safeRender(metricsData.system?.uptime || metricsData.uptime || '99.9%');
+        const systemStatus = safeRender(metricsData.system?.status || metricsData.status || 'healthy');
+        
         setMetrics({
           users: {
-            total: metricsData.users?.total || 0,
-            active: metricsData.users?.active || 0,
-            new: metricsData.users?.new || 0
+            total: totalUsers,
+            active: activeUsers,
+            new: newUsers
           },
           trading: {
-            totalTrades: metricsData.trades?.total || 0,
-            volume24h: metricsData.trading?.volume24h || 0,
-            activeBots: metricsData.bots?.active || 0
+            totalTrades: totalTrades,
+            volume24h: volume24h,
+            activeBots: activeBots
           },
           revenue: {
-            total: metricsData.pnl?.total || 0,
-            fees24h: metricsData.revenue?.today || 0,
-            pending: metricsData.revenue?.pending_withdrawals || 0
+            total: totalRevenue,
+            fees24h: fees24h,
+            pending: pendingWithdrawals
           },
           system: {
-            uptime: metricsData.system?.uptime || '99.9%',
-            status: metricsData.system?.status || 'healthy'
+            uptime: uptime,
+            status: systemStatus
           }
         });
         setAuthError(false);
@@ -112,9 +153,20 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
       }
       
       const data = await response.json();
-      if (data.success) {
+      if (data && data.success) {
         const responseData = data.data || data;
-        setRecentActivity(responseData.logs || []);
+        const logs = responseData.logs || [];
+        
+        // Safely map logs with safeRender for each property
+        const safeLogs = logs.map(log => ({
+          ...log,
+          action: safeRender(log.action, 'info'),
+          details: safeRender(log.details, safeRender(log.action, 'Activity')),
+          user_email: safeRender(log.user_email, safeRender(log.user_id, 'System')),
+          created_at: log.created_at || null
+        }));
+        
+        setRecentActivity(safeLogs);
       }
     } catch (error) {
       console.error('Failed to fetch activity:', error);
@@ -196,13 +248,13 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
           <div className="flex items-center justify-between">
             <span className="text-2xl">👥</span>
             <span className="text-xs text-blue-400 bg-blue-500/20 px-2 py-1 rounded-full">
-              +{metrics.users.new} today
+              +{safeNumber(metrics.users.new)} today
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold text-blue-400">{metrics.users.total.toLocaleString()}</div>
+            <div className="text-3xl font-bold text-blue-400">{safeNumber(metrics.users.total).toLocaleString()}</div>
             <div className="text-sm text-white/50">Total Users</div>
-            <div className="text-xs text-white/30 mt-1">{metrics.users.active.toLocaleString()} active</div>
+            <div className="text-xs text-white/30 mt-1">{safeNumber(metrics.users.active).toLocaleString()} active</div>
           </div>
         </div>
 
@@ -211,13 +263,13 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
           <div className="flex items-center justify-between">
             <span className="text-2xl">📊</span>
             <span className="text-xs text-emerald-400 bg-emerald-500/20 px-2 py-1 rounded-full">
-              {metrics.trading.activeBots} bots
+              {safeNumber(metrics.trading.activeBots)} bots
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold text-emerald-400">{metrics.trading.totalTrades.toLocaleString()}</div>
+            <div className="text-3xl font-bold text-emerald-400">{safeNumber(metrics.trading.totalTrades).toLocaleString()}</div>
             <div className="text-sm text-white/50">Total Trades</div>
-            <div className="text-xs text-white/30 mt-1">${metrics.trading.volume24h.toLocaleString()} 24h</div>
+            <div className="text-xs text-white/30 mt-1">${safeNumber(metrics.trading.volume24h).toLocaleString()} 24h</div>
           </div>
         </div>
 
@@ -226,13 +278,13 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
           <div className="flex items-center justify-between">
             <span className="text-2xl">💰</span>
             <span className="text-xs text-purple-400 bg-purple-500/20 px-2 py-1 rounded-full">
-              ${metrics.revenue.fees24h.toLocaleString()} today
+              ${safeNumber(metrics.revenue.fees24h).toLocaleString()} today
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold text-purple-400">${metrics.revenue.total.toLocaleString()}</div>
+            <div className="text-3xl font-bold text-purple-400">${safeNumber(metrics.revenue.total).toLocaleString()}</div>
             <div className="text-sm text-white/50">Total Revenue</div>
-            <div className="text-xs text-white/30 mt-1">${metrics.revenue.pending.toLocaleString()} pending</div>
+            <div className="text-xs text-white/30 mt-1">${safeNumber(metrics.revenue.pending).toLocaleString()} pending</div>
           </div>
         </div>
 
@@ -241,15 +293,15 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
           <div className="flex items-center justify-between">
             <span className="text-2xl">⚙️</span>
             <span className={`text-xs px-2 py-1 rounded-full ${
-              metrics.system.status === 'healthy' 
+              safeRender(metrics.system.status) === 'healthy' 
                 ? 'bg-emerald-500/20 text-emerald-400' 
                 : 'bg-red-500/20 text-red-400'
             }`}>
-              {metrics.system.status}
+              {safeRender(metrics.system.status)}
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold text-amber-400">{metrics.system.uptime}</div>
+            <div className="text-3xl font-bold text-amber-400">{safeRender(metrics.system.uptime)}</div>
             <div className="text-sm text-white/50">System Uptime</div>
             <div className="text-xs text-white/30 mt-1">All systems operational</div>
           </div>
@@ -265,9 +317,9 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
         <Link to="/admin?tab=withdrawals" className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-3 text-center transition-all">
           <div className="text-2xl mb-1">💰</div>
           <div className="text-sm font-medium">Withdrawals</div>
-          {metrics.revenue.pending > 0 && (
+          {safeNumber(metrics.revenue.pending) > 0 && (
             <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full mt-1 inline-block">
-              {metrics.revenue.pending} pending
+              {safeNumber(metrics.revenue.pending)} pending
             </span>
           )}
         </Link>
@@ -291,20 +343,20 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
         ) : (
           <div className="space-y-3">
             {recentActivity.map((log, i) => (
-              <div key={i} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+              <div key={log.id || i} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
                 <span className={`text-xs px-2 py-1 rounded ${
-                  log.action === 'error' || log.action?.toLowerCase().includes('fail') 
+                  safeRender(log.action).toLowerCase().includes('error') || safeRender(log.action).toLowerCase().includes('fail')
                     ? 'bg-red-500/20 text-red-300'
-                    : log.action === 'warning' 
+                    : safeRender(log.action).toLowerCase() === 'warning'
                     ? 'bg-yellow-500/20 text-yellow-300'
                     : 'bg-emerald-500/20 text-emerald-300'
                 }`}>
-                  {log.action || 'info'}
+                  {safeRender(log.action, 'info')}
                 </span>
                 <div className="flex-1">
-                  <p className="text-sm">{log.details || log.action || 'Activity'}</p>
+                  <p className="text-sm">{safeRender(log.details, safeRender(log.action, 'Activity'))}</p>
                   <p className="text-xs text-white/30 mt-1">
-                    {log.created_at ? new Date(log.created_at).toLocaleString() : new Date().toLocaleString()} • {log.user_email || log.user_id || 'System'}
+                    {log.created_at ? new Date(log.created_at).toLocaleString() : new Date().toLocaleString()} • {safeRender(log.user_email, safeRender(log.user_id, 'System'))}
                   </p>
                 </div>
               </div>
