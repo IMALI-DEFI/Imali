@@ -544,8 +544,8 @@ export default function AdminPanel({ forceOwner = false }) {
   const mapStats = useCallback((response) => {
     const data = response?.data || response || {};
     return {
-      totalUsers: data.users?.total || 0,
-      totalTrades: data.trades?.total || 0,
+      totalUsers: Number(data.users?.total || 0),
+      totalTrades: Number(data.trades?.total || 0),
       totalPnl: Number(data.pnl?.total || 0),
       winRate: Number(data.trades?.win_rate || 0),
       pendingWithdrawals: Number(data.revenue?.pending_withdrawals || 0),
@@ -727,6 +727,12 @@ export default function AdminPanel({ forceOwner = false }) {
     return () => clearInterval(interval);
   }, [handleAuthFailure, sessionExpired, authLoading]);
 
+  // Safe number formatting helper for display
+  const formatNumber = (value) => {
+    const num = Number(value);
+    return isNaN(num) ? 0 : num;
+  };
+
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-950 to-black px-4 text-white">
@@ -833,10 +839,10 @@ export default function AdminPanel({ forceOwner = false }) {
             {stats && (
               <div className="hidden items-center gap-2 lg:flex">
                 <span className="rounded-full bg-blue-500/15 px-2.5 py-1 text-xs text-blue-300">
-                  👥 {stats.totalUsers} users
+                  👥 {formatNumber(stats.totalUsers)} users
                 </span>
                 <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300">
-                  💰 ${Number(stats.totalPnl || 0).toFixed(2)}
+                  💰 ${formatNumber(stats.totalPnl).toFixed(2)}
                 </span>
               </div>
             )}
@@ -933,21 +939,21 @@ export default function AdminPanel({ forceOwner = false }) {
           {stats && (
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden">
               <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 text-center">
-                <div className="text-lg font-bold text-blue-300">{stats.totalUsers}</div>
+                <div className="text-lg font-bold text-blue-300">{formatNumber(stats.totalUsers)}</div>
                 <div className="text-xs text-white/50">Users</div>
               </div>
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-center">
                 <div className="text-lg font-bold text-emerald-300">
-                  ${Number(stats.totalPnl || 0).toFixed(2)}
+                  ${formatNumber(stats.totalPnl).toFixed(2)}
                 </div>
                 <div className="text-xs text-white/50">Total PnL</div>
               </div>
               <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-3 text-center">
-                <div className="text-lg font-bold text-purple-300">{stats.winRate || 0}%</div>
+                <div className="text-lg font-bold text-purple-300">{formatNumber(stats.winRate)}%</div>
                 <div className="text-xs text-white/50">Win Rate</div>
               </div>
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-center">
-                <div className="text-lg font-bold text-amber-300">{stats.totalTrades || 0}</div>
+                <div className="text-lg font-bold text-amber-300">{formatNumber(stats.totalTrades)}</div>
                 <div className="text-xs text-white/50">Trades</div>
               </div>
             </div>
