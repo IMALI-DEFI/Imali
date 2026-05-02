@@ -92,7 +92,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
       }
     } catch (error) {
       console.error("Failed to fetch jobs:", error);
-      showToast("Failed to load automation jobs", "error");
+      showToast?.("Failed to load automation jobs", "error");
     } finally {
       setLoading(false);
     }
@@ -104,7 +104,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
 
   const createJob = async () => {
     if (!jobForm.name || !jobForm.message_template) {
-      showToast("Please fill in all required fields", "error");
+      showToast?.("Please fill in all required fields", "error");
       return;
     }
 
@@ -120,15 +120,16 @@ export default function MarketingAutomation({ apiBase, showToast }) {
       });
       const data = await response.json();
       if (data.success) {
-        showToast("Job created successfully", "success");
+        showToast?.("Job created successfully", "success");
         setShowCreateModal(false);
         resetForm();
         fetchJobs();
       } else {
-        showToast(data.error || "Failed to create job", "error");
+        showToast?.(data.error || "Failed to create job", "error");
       }
     } catch (error) {
-      showToast("Failed to create job", "error");
+      console.error("Create job error:", error);
+      showToast?.("Failed to create job", "error");
     } finally {
       setSaving(false);
     }
@@ -147,23 +148,24 @@ export default function MarketingAutomation({ apiBase, showToast }) {
       });
       const data = await response.json();
       if (data.success) {
-        showToast("Job updated successfully", "success");
+        showToast?.("Job updated successfully", "success");
         setShowCreateModal(false);
         setEditingJob(null);
         resetForm();
         fetchJobs();
       } else {
-        showToast(data.error || "Failed to update job", "error");
+        showToast?.(data.error || "Failed to update job", "error");
       }
     } catch (error) {
-      showToast("Failed to update job", "error");
+      console.error("Update job error:", error);
+      showToast?.("Failed to update job", "error");
     } finally {
       setSaving(false);
     }
   };
 
   const deleteJob = async (jobId) => {
-    if (!confirm("Delete this automation job?")) return;
+    if (!window.confirm("Delete this automation job?")) return;
     try {
       const response = await fetch(`${apiBase}/api/admin/automation/jobs/${jobId}`, {
         method: 'DELETE',
@@ -171,13 +173,14 @@ export default function MarketingAutomation({ apiBase, showToast }) {
       });
       const data = await response.json();
       if (data.success) {
-        showToast("Job deleted", "success");
+        showToast?.("Job deleted", "success");
         fetchJobs();
       } else {
-        showToast(data.error || "Failed to delete job", "error");
+        showToast?.(data.error || "Failed to delete job", "error");
       }
     } catch (error) {
-      showToast("Failed to delete job", "error");
+      console.error("Delete job error:", error);
+      showToast?.("Failed to delete job", "error");
     }
   };
 
@@ -193,11 +196,12 @@ export default function MarketingAutomation({ apiBase, showToast }) {
       });
       const data = await response.json();
       if (data.success) {
-        showToast(`Job ${!currentStatus ? 'activated' : 'paused'}`, "success");
+        showToast?.(`Job ${!currentStatus ? 'activated' : 'paused'}`, "success");
         fetchJobs();
       }
     } catch (error) {
-      showToast("Failed to toggle job status", "error");
+      console.error("Toggle job error:", error);
+      showToast?.("Failed to toggle job status", "error");
     }
   };
 
@@ -209,12 +213,13 @@ export default function MarketingAutomation({ apiBase, showToast }) {
       });
       const data = await response.json();
       if (data.success) {
-        showToast("Job executed successfully", "success");
+        showToast?.("Job executed successfully", "success");
       } else {
-        showToast(data.error || "Failed to execute job", "error");
+        showToast?.(data.error || "Failed to execute job", "error");
       }
     } catch (error) {
-      showToast("Failed to execute job", "error");
+      console.error("Run job error:", error);
+      showToast?.("Failed to execute job", "error");
     }
   };
 
@@ -232,13 +237,14 @@ export default function MarketingAutomation({ apiBase, showToast }) {
       });
       const data = await response.json();
       if (data.success) {
-        showToast("Test message sent", "success");
+        showToast?.("Test message sent", "success");
         setTestMessage("");
       } else {
-        showToast(data.error || "Failed to send test", "error");
+        showToast?.(data.error || "Failed to send test", "error");
       }
     } catch (error) {
-      showToast("Failed to send test message", "error");
+      console.error("Test message error:", error);
+      showToast?.("Failed to send test message", "error");
     } finally {
       setTestLoading(false);
     }
@@ -261,13 +267,13 @@ export default function MarketingAutomation({ apiBase, showToast }) {
   const openEditModal = (job) => {
     setEditingJob(job);
     setJobForm({
-      name: job.name,
-      platform: job.platform,
+      name: job.name || "",
+      platform: job.platform || "telegram",
       channel: job.channel || "",
-      message_template: job.message_template,
-      schedule: job.schedule,
+      message_template: job.message_template || "",
+      schedule: job.schedule || "daily",
       schedule_time: job.schedule_time || "09:00",
-      active: job.active,
+      active: job.active !== false,
       variables: job.variables || []
     });
     setShowCreateModal(true);
@@ -396,10 +402,10 @@ export default function MarketingAutomation({ apiBase, showToast }) {
                         {getPlatformIcon(job.platform)}
                       </div>
                       <div>
-                        <h4 className="font-semibold">{job.name}</h4>
+                        <h4 className="font-semibold">{job.name || 'Unnamed Job'}</h4>
                         <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/50">
                           <span className="flex items-center gap-1">
-                            <FaClock /> {job.schedule}
+                            <FaClock /> {job.schedule || 'daily'}
                           </span>
                           <span>•</span>
                           <span>Channel: {job.channel || "Default"}</span>
@@ -447,7 +453,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
                   </div>
                   <div className="mt-3 rounded-lg bg-black/30 p-3">
                     <div className="text-xs text-white/50 mb-1">Message Template:</div>
-                    <div className="text-sm break-all">{job.message_template}</div>
+                    <div className="text-sm break-all">{job.message_template || 'No template'}</div>
                   </div>
                 </div>
               ))
@@ -456,7 +462,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
         </>
       )}
 
-      {/* Templates Tab */}
+      {/* Templates Tab - FIXED: Removed the undefined pnl variable */}
       {activeTab === "templates" && (
         <div className="rounded-xl border border-white/10 bg-white/5 p-5">
           <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold">
@@ -479,16 +485,20 @@ export default function MarketingAutomation({ apiBase, showToast }) {
               <div className="text-sm text-white/80">
                 🚀 <strong>Daily Performance Update</strong>
               </div>
+              {/* ✅ FIXED: Removed the inline {pnl} that was causing the error */}
               <div className="mt-2 text-xs text-white/50 break-all">
-                Today's PnL: {pnl} | Total Trades: {total_trades} | Win Rate: {win_rate}%
+                Today's PnL: $0.00 | Total Trades: 0 | Win Rate: 0%
               </div>
+              <p className="mt-1 text-[10px] text-white/40">
+                Variables will be replaced with actual values when the job runs
+              </p>
               <button
                 onClick={() => {
                   setJobForm({
                     ...jobForm,
                     message_template: "Today's PnL: {pnl} | Total Trades: {total_trades} | Win Rate: {win_rate}%"
                   });
-                  showToast("Template copied", "success");
+                  showToast?.("Template copied", "success");
                 }}
                 className="mt-2 text-xs text-emerald-400 hover:text-emerald-300"
               >
@@ -562,6 +572,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
                   {platforms.map((platform) => (
                     <button
                       key={platform.id}
+                      type="button"
                       onClick={() => setJobForm({ ...jobForm, platform: platform.id })}
                       className={`flex-1 rounded-lg px-4 py-2 text-sm transition ${
                         jobForm.platform === platform.id
@@ -599,6 +610,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
                   {variableOptions.map((v) => (
                     <button
                       key={v.key}
+                      type="button"
                       onClick={() => insertVariable(v.key)}
                       className="rounded bg-white/10 px-2 py-0.5 text-xs hover:bg-white/20"
                     >
@@ -635,6 +647,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
               <div className="flex items-center justify-between">
                 <label className="text-sm text-white/70">Active</label>
                 <button
+                  type="button"
                   onClick={() => setJobForm({ ...jobForm, active: !jobForm.active })}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
                     jobForm.active ? 'bg-emerald-600' : 'bg-gray-600'
@@ -658,6 +671,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
                     className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white placeholder:text-white/30"
                   />
                   <button
+                    type="button"
                     onClick={sendTestMessage}
                     disabled={testLoading}
                     className="rounded-lg bg-purple-600 px-4 py-2 text-sm hover:bg-purple-500 disabled:opacity-50"
@@ -669,6 +683,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
 
               <div className="flex gap-3 pt-4">
                 <button
+                  type="button"
                   onClick={editingJob ? updateJob : createJob}
                   disabled={saving}
                   className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
@@ -677,6 +692,7 @@ export default function MarketingAutomation({ apiBase, showToast }) {
                   {saving ? "Saving..." : editingJob ? "Update Job" : "Create Job"}
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setShowCreateModal(false);
                     resetForm();
