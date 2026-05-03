@@ -7,6 +7,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingResponse, setEditingResponse] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [stats, setStats] = useState({
     total_sent: 0,
     active_rules: 0,
@@ -36,18 +37,43 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
     { value: 'tier_upgrade', label: 'Tier Upgrade', description: 'User upgrades their tier' }
   ];
 
-  const fetchAutoResponses = useCallback(async () => {
+  const getAuthToken = useCallback(() => {
     try {
-      const token = localStorage.getItem('imali_token');
-      if (!token) {
-        showToast('Authentication required', 'error');
+      return localStorage.getItem('imali_token');
+    } catch (e) {
+      console.error('Failed to get token:', e);
+      return null;
+    }
+  }, []);
+
+  const fetchAutoResponses = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) {
+      showToast?.('Authentication required', 'error');
+      setLoading(false);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const response = await fetch(`${apiBase}/api/admin/autoresponder/rules`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      // Handle 404 gracefully - endpoint not implemented yet
+      if (response.status === 404) {
+        console.warn('Auto-responder endpoint not implemented yet');
+        setAutoResponses([]);
+        setStats({
+          total_sent: 0,
+          active_rules: 0,
+          open_rate: 0,
+          click_rate: 0
+        });
         setLoading(false);
         return;
       }
       
-      const response = await fetch(`${apiBase}/api/admin/autoresponder/rules`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
       const data = await response.json();
       if (data.success) {
         const rules = data.data?.rules || [];
@@ -58,14 +84,21 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
           open_rate: data.data?.stats?.open_rate || 0,
           click_rate: data.data?.stats?.click_rate || 0
         });
+      } else if (data.error === 'Route not found') {
+        setAutoResponses([]);
+      } else {
+        console.error('Failed to fetch auto-responders:', data.error);
       }
     } catch (error) {
       console.error('Failed to fetch auto-responders:', error);
-      showToast?.('Failed to load auto-responders', 'error');
+      if (!error.message?.includes('404')) {
+        showToast?.('Failed to load auto-responders', 'error');
+      }
+      setAutoResponses([]);
     } finally {
       setLoading(false);
     }
-  }, [apiBase, showToast]);
+  }, [apiBase, getAuthToken, showToast]);
 
   useEffect(() => {
     fetchAutoResponses();
@@ -77,10 +110,12 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
       return;
     }
 
+    setSaving(true);
     try {
-      const token = localStorage.getItem('imali_token');
+      const token = getAuthToken();
       if (!token) {
         showToast?.('Authentication required', 'error');
+        setSaving(false);
         return;
       }
       
@@ -90,8 +125,16 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          name: formData.name,
+          trigger_event: formData.trigger_event,
+          subject: formData.subject,
+          template: formData.template,
+          delay_minutes: parseInt(formData.delay_minutes) || 0,
+          is_active: formData.is_active
+        })
       });
+      
       const data = await response.json();
       if (data.success) {
         showToast?.('Auto-responder rule created', 'success');
@@ -103,17 +146,26 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
       }
     } catch (error) {
       console.error('Create rule error:', error);
-      showToast?.('Failed to create auto-responder', 'error');
+      showToast?.('Failed to create auto-responder: ' + (error.message || 'Network error'), 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
   const updateRule = async () => {
     if (!editingResponse?.id) return;
     
+    if (!formData.name || !formData.subject || !formData.template) {
+      showToast?.('Please fill in all required fields', 'error');
+      return;
+    }
+    
+    setSaving(true);
     try {
-      const token = localStorage.getItem('imali_token');
+      const token = getAuthToken();
       if (!token) {
         showToast?.('Authentication required', 'error');
+        setSaving(false);
         return;
       }
       
@@ -123,8 +175,16 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          name: formData.name,
+          trigger_event: formData.trigger_event,
+          subject: formData.subject,
+          template: formData.template,
+          delay_minutes: parseInt(formData.delay_minutes) || 0,
+          is_active: formData.is_active
+        })
       });
+      
       const data = await response.json();
       if (data.success) {
         showToast?.('Auto-responder rule updated', 'success');
@@ -137,7 +197,9 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
       }
     } catch (error) {
       console.error('Update rule error:', error);
-      showToast?.('Failed to update auto-responder', 'error');
+      showToast?.('Failed to update auto-responder: ' + (error.message || 'Network error'), 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -145,7 +207,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
     if (!window.confirm('Delete this auto-responder rule?')) return;
     
     try {
-      const token = localStorage.getItem('imali_token');
+      const token = getAuthToken();
       if (!token) {
         showToast?.('Authentication required', 'error');
         return;
@@ -170,7 +232,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
 
   const toggleRuleStatus = async (ruleId, currentStatus) => {
     try {
-      const token = localStorage.getItem('imali_token');
+      const token = getAuthToken();
       if (!token) {
         showToast?.('Authentication required', 'error');
         return;
@@ -207,7 +269,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
     }
     
     try {
-      const token = localStorage.getItem('imali_token');
+      const token = getAuthToken();
       if (!token) {
         showToast?.('Authentication required', 'error');
         return;
@@ -223,7 +285,11 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
       });
       const data = await response.json();
       if (data.success) {
-        showToast?.(`Test email sent to ${testEmail}`, 'success');
+        if (data.warning) {
+          showToast?.(data.message || 'Email service not configured', 'warning');
+        } else {
+          showToast?.(`Test email sent to ${testEmail}`, 'success');
+        }
       } else {
         showToast?.(data.error || 'Failed to send test', 'error');
       }
@@ -312,7 +378,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
             setShowCreateModal(true);
           }}
           className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500"
-          disabled={busyAction}
+          disabled={saving}
         >
           <FaPlus /> Create Rule
         </button>
@@ -325,7 +391,10 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
             <FaRobot className="mx-auto mb-3 text-4xl text-white/30" />
             <p className="text-white/50">No auto-responder rules yet</p>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                resetForm();
+                setShowCreateModal(true);
+              }}
               className="mt-3 text-sm text-emerald-400 hover:text-emerald-300"
             >
               Create your first rule →
@@ -356,6 +425,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                     onClick={() => testRule(rule.id)}
                     className="rounded-lg border border-white/10 p-2 text-sm hover:bg-white/5"
                     title="Send Test"
+                    disabled={saving}
                   >
                     <FaPlay className="text-green-400" />
                   </button>
@@ -363,6 +433,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                     onClick={() => openEditModal(rule)}
                     className="rounded-lg border border-white/10 p-2 text-sm hover:bg-white/5"
                     title="Edit"
+                    disabled={saving}
                   >
                     <FaEdit className="text-amber-400" />
                   </button>
@@ -372,6 +443,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                       rule.is_active ? 'border-red-500/30 text-red-400' : 'border-green-500/30 text-green-400'
                     }`}
                     title={rule.is_active ? "Pause" : "Activate"}
+                    disabled={saving}
                   >
                     {rule.is_active ? <FaPause /> : <FaPlay />}
                   </button>
@@ -379,6 +451,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                     onClick={() => deleteRule(rule.id)}
                     className="rounded-lg border border-white/10 p-2 text-sm hover:bg-white/5"
                     title="Delete"
+                    disabled={saving}
                   >
                     <FaTrash className="text-red-400" />
                   </button>
@@ -403,6 +476,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                   resetForm();
                 }}
                 className="text-white/50 hover:text-white"
+                disabled={saving}
               >
                 <FaTimes />
               </button>
@@ -417,6 +491,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="e.g., Welcome Email for New Users"
                   className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white placeholder:text-white/30"
+                  disabled={saving}
                 />
               </div>
 
@@ -426,6 +501,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                   value={formData.trigger_event}
                   onChange={(e) => setFormData({ ...formData, trigger_event: e.target.value })}
                   className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+                  disabled={saving}
                 >
                   {triggerEvents.map(event => (
                     <option key={event.value} value={event.value}>{event.label} - {event.description}</option>
@@ -443,6 +519,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                   onChange={(e) => setFormData({ ...formData, delay_minutes: parseInt(e.target.value) || 0 })}
                   placeholder="0 for immediate"
                   className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+                  disabled={saving}
                 />
                 <p className="mt-1 text-xs text-white/40">Delay before sending after trigger event (max 30 days)</p>
               </div>
@@ -455,6 +532,7 @@ export default function AutoResponder({ apiBase, showToast, handleAction, busyAc
                   onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
                   placeholder="Welcome to IMALI!"
                   className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+                  disabled={saving}
                 />
               </div>
 
@@ -473,6 +551,7 @@ Thank you for joining IMALI. Get started with these steps:
 Need help? Contact support@imali-defi.com`}
                   rows={8}
                   className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-white placeholder:text-white/30"
+                  disabled={saving}
                 />
                 <p className="mt-1 text-xs text-white/40">
                   Available variables: {'{user_name}'}, {'{user_email}'}, {'{referral_code}'}, {'{dashboard_link}'}, {'{support_email}'}
@@ -487,6 +566,7 @@ Need help? Contact support@imali-defi.com`}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
                     formData.is_active ? 'bg-emerald-600' : 'bg-gray-600'
                   }`}
+                  disabled={saving}
                 >
                   <span className={`absolute h-4 w-4 rounded-full bg-white transition ${
                     formData.is_active ? 'right-1' : 'left-1'
@@ -497,11 +577,20 @@ Need help? Contact support@imali-defi.com`}
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={editingResponse ? updateRule : createRule}
-                  disabled={busyAction}
+                  disabled={saving}
                   className="flex-1 rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
                 >
-                  <FaSave className="inline mr-2" />
-                  {busyAction ? "Processing..." : (editingResponse ? "Update Rule" : "Create Rule")}
+                  {saving ? (
+                    <>
+                      <FaSpinner className="inline mr-2 animate-spin" />
+                      {editingResponse ? "Updating..." : "Creating..."}
+                    </>
+                  ) : (
+                    <>
+                      <FaSave className="inline mr-2" />
+                      {editingResponse ? "Update Rule" : "Create Rule"}
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={() => {
@@ -509,6 +598,7 @@ Need help? Contact support@imali-defi.com`}
                     resetForm();
                   }}
                   className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/5"
+                  disabled={saving}
                 >
                   Cancel
                 </button>
