@@ -333,6 +333,15 @@ const getDefaultActivationStatus = () => ({
   tier_required_integration: "Alpaca & OKX (both)",
 });
 
+const getDefaultTrialStatus = () => ({
+  trial_status: "inactive",
+  paper_trading_enabled: false,
+  seconds_remaining: 0,
+  active: false,
+  trial_started_at: null,
+  trial_ends_at: null,
+});
+
 const getDefaultStrategies = () => ({
   success: true,
   strategies: [
@@ -342,6 +351,7 @@ const getDefaultStrategies = () => ({
       backend_name: "Mean Reversion",
       description: "Looks for dips and safe rebounds. Lower risk, steady moves.",
       risk_level: "low",
+      min_tier: "starter",
       is_default: false,
     },
     {
@@ -350,6 +360,7 @@ const getDefaultStrategies = () => ({
       backend_name: "AI Weighted",
       description: "Smart mix of signals — balanced risk and reward.",
       risk_level: "medium",
+      min_tier: "starter",
       is_default: true,
     },
     {
@@ -358,6 +369,7 @@ const getDefaultStrategies = () => ({
       backend_name: "Momentum",
       description: "Follows strong trends for bigger moves. Higher risk.",
       risk_level: "high",
+      min_tier: "starter",
       is_default: false,
     },
     {
@@ -366,12 +378,31 @@ const getDefaultStrategies = () => ({
       backend_name: "Arbitrage",
       description: "Profits from price differences across venues. Low risk.",
       risk_level: "low",
+      min_tier: "rare",
+      is_default: false,
+    },
+    {
+      id: "futures",
+      name: "Futures Engine",
+      backend_name: "Futures",
+      description: "Higher-speed crypto futures execution.",
+      risk_level: "high",
+      min_tier: "epic",
+      is_default: false,
+    },
+    {
+      id: "alpha",
+      name: "Alpha Sniper",
+      backend_name: "Alpha",
+      description: "Premium entries and signals.",
+      risk_level: "high",
+      min_tier: "legendary",
       is_default: false,
     },
   ],
   current_strategy: "ai_weighted",
   tier: "starter",
-  count: 4,
+  count: 6,
   _fallback: true,
 });
 
@@ -497,6 +528,15 @@ export const getMe = async (skipCache = false) => {
     const user = data?.data?.user || data?.user || data?.data || null;
 
     if (user) {
+      // Calculate NFT tier based on referrals
+      const referralCount = user.total_referrals || 0;
+      let nftTier = "none";
+      if (referralCount >= 50) nftTier = "legendary";
+      else if (referralCount >= 20) nftTier = "epic";
+      else if (referralCount >= 5) nftTier = "rare";
+      else if (referralCount >= 1) nftTier = "common";
+      
+      user.nft_tier = nftTier;
       setCached("user_me", user);
       if (user.api_key) setApiKey(user.api_key);
     }
@@ -558,21 +598,14 @@ export const getActivationStatus = async (skipCache = false) => {
 
 export const refreshActivation = () => getActivationStatus(true);
 
+// ✅ NEW: Get trial status endpoint
 export const getTrialStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("trial_status", 15000);
     if (cached) return cached;
   }
 
-  if (!getToken()) {
-    return {
-      trial_status: "inactive",
-      paper_trading_enabled: false,
-      seconds_remaining: 0,
-      active: false,
-      error: "Not authenticated",
-    };
-  }
+  if (!getToken()) return getDefaultTrialStatus();
 
   try {
     const response = await requestWithDedupe(userApi, {
@@ -601,13 +634,8 @@ export const getTrialStatus = async (skipCache = false) => {
     setCached("trial_status", result);
     return result;
   } catch (error) {
-    return {
-      trial_status: "inactive",
-      paper_trading_enabled: false,
-      seconds_remaining: 0,
-      active: false,
-      error: getErrorMessage(error, "Failed to load trial status"),
-    };
+    console.warn("[BotAPI] getTrialStatus failed:", error);
+    return getDefaultTrialStatus();
   }
 };
 
@@ -935,84 +963,80 @@ export const updateUserStrategy = async (strategyId) => {
   }
 };
 
+// ✅ NEW: Toggle live trading (with confirmation)
 export const toggleTrading = async (enabled) => {
   const nextEnabled = !!enabled;
+  const confirmed = nextEnabled === true;
 
-  const endpoints = [
-    {
+  try {
+    const response = await requestWithDedupe(userApi, {
       method: "post",
       url: "/api/trading/enable",
-      data: { enabled: nextEnabled },
-    },
-    {
-      method: "patch",
-      url: "/api/user/trading",
-      data: { enabled: nextEnabled },
-    },
-    {
-      method: "post",
-      url: "/api/user/trading/toggle",
-      data: { enabled: nextEnabled },
-    },
-  ];
+      data: { enabled: nextEnabled, confirmed },
+    });
 
-  let lastError = null;
+    const data = unwrap(response);
+    const row = data?.data || data || {};
 
-  for (const endpoint of endpoints) {
-    try {
-      const response = await requestWithDedupe(userApi, endpoint);
-      const data = unwrap(response);
-      const row = data?.data || data || {};
+    clearTradingCache();
 
-      clearTradingCache();
+    const tradingEnabled = normalizeBool(
+      row?.trading_enabled ?? row?.enabled ?? row?.is_enabled,
+      nextEnabled
+    );
 
-      const tradingEnabled = normalizeBool(
-        row?.trading_enabled ?? row?.enabled ?? row?.is_enabled,
-        nextEnabled
-      );
+    return {
+      success: true,
+      enabled: tradingEnabled,
+      trading_enabled: tradingEnabled,
+      message: row?.message || (tradingEnabled ? "Live trading enabled" : "Live trading disabled"),
+      data,
+    };
+  } catch (error) {
+    // Try alternative endpoints
+    const endpoints = [
+      { method: "patch", url: "/api/user/trading", data: { enabled: nextEnabled } },
+      { method: "post", url: "/api/user/trading/toggle", data: { enabled: nextEnabled } },
+    ];
 
-      return {
-        success: true,
-        enabled: tradingEnabled,
-        trading_enabled: tradingEnabled,
-        message: row?.message || (tradingEnabled ? "Live trading enabled" : "Live trading disabled"),
-        data,
-      };
-    } catch (error) {
-      lastError = error;
+    for (const endpoint of endpoints) {
+      try {
+        const response = await requestWithDedupe(userApi, endpoint);
+        const data = unwrap(response);
+        const row = data?.data || data || {};
 
-      const status = error?.response?.status;
-      if (status !== 404 && status !== 405) break;
+        clearTradingCache();
+
+        const tradingEnabled = normalizeBool(
+          row?.trading_enabled ?? row?.enabled ?? row?.is_enabled,
+          nextEnabled
+        );
+
+        return {
+          success: true,
+          enabled: tradingEnabled,
+          trading_enabled: tradingEnabled,
+          message: row?.message || (tradingEnabled ? "Live trading enabled" : "Live trading disabled"),
+          data,
+        };
+      } catch (err) {
+        continue;
+      }
     }
-  }
 
-  return handleApiError(lastError, "Failed to toggle live trading");
+    return handleApiError(error, "Failed to toggle live trading");
+  }
 };
 
+// ✅ NEW: Toggle paper trading
 export const togglePaperTrading = async (enabled) => {
   const nextEnabled = !!enabled;
 
   const endpoints = [
-    {
-      method: "patch",
-      url: "/api/user/paper-trading",
-      data: { enabled: nextEnabled },
-    },
-    {
-      method: "post",
-      url: "/api/user/paper-trading",
-      data: { enabled: nextEnabled },
-    },
-    {
-      method: "post",
-      url: "/api/trading/paper/enable",
-      data: { enabled: nextEnabled },
-    },
-    {
-      method: "post",
-      url: "/api/me/paper-trading",
-      data: { enabled: nextEnabled },
-    },
+    { method: "patch", url: "/api/user/paper-trading", data: { enabled: nextEnabled } },
+    { method: "post", url: "/api/user/paper-trading", data: { enabled: nextEnabled } },
+    { method: "post", url: "/api/trading/paper/enable", data: { enabled: nextEnabled } },
+    { method: "post", url: "/api/me/paper-trading", data: { enabled: nextEnabled } },
   ];
 
   let lastError = null;
@@ -1039,7 +1063,6 @@ export const togglePaperTrading = async (enabled) => {
       };
     } catch (error) {
       lastError = error;
-
       const status = error?.response?.status;
       if (status !== 404 && status !== 405) break;
     }
@@ -1109,6 +1132,7 @@ export const connectWallet = async (payload) => {
   }
 };
 
+// ✅ FIXED: Enhanced integration status with more fields
 export const getIntegrationStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("integration_status", 20000);
@@ -1128,10 +1152,16 @@ export const getIntegrationStatus = async (skipCache = false) => {
       wallet_connected: !!row.wallet_connected,
       alpaca_connected: !!row.alpaca_connected,
       okx_connected: !!row.okx_connected,
+      alpaca_api_key_masked: row.alpaca_api_key_masked || null,
+      alpaca_mode: row.alpaca_mode || "paper",
+      okx_api_key_masked: row.okx_api_key_masked || null,
+      okx_mode: row.okx_mode || "paper",
       alpaca_paper_connected: !!row.alpaca_paper_connected,
       alpaca_live_connected: !!row.alpaca_live_connected,
       okx_paper_connected: !!row.okx_paper_connected,
       okx_live_connected: !!row.okx_live_connected,
+      alpaca_key_updated_at: row.alpaca_key_updated_at || null,
+      okx_key_updated_at: row.okx_key_updated_at || null,
     };
 
     setCached("integration_status", result);
@@ -1141,11 +1171,54 @@ export const getIntegrationStatus = async (skipCache = false) => {
       wallet_connected: false,
       alpaca_connected: false,
       okx_connected: false,
+      alpaca_api_key_masked: null,
+      alpaca_mode: "paper",
+      okx_api_key_masked: null,
+      okx_mode: "paper",
       alpaca_paper_connected: false,
       alpaca_live_connected: false,
       okx_paper_connected: false,
       okx_live_connected: false,
+      alpaca_key_updated_at: null,
+      okx_key_updated_at: null,
     };
+  }
+};
+
+// ✅ NEW: Disconnect integrations
+export const disconnectOKX = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "delete",
+      url: "/api/integrations/okx",
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      data: unwrap(response),
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to disconnect OKX");
+  }
+};
+
+export const disconnectAlpaca = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "delete",
+      url: "/api/integrations/alpaca",
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      data: unwrap(response),
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to disconnect Alpaca");
   }
 };
 
@@ -1214,6 +1287,103 @@ export const getPublicDashboardHistorical = async (days = 30) => {
   }
 };
 
+/* ================= REFERRALS ================= */
+
+export const getReferralInfo = async (skipCache = false) => {
+  const cacheKey = "referral_info";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/referrals/info",
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      data: data?.data || {},
+    };
+
+    setCached(cacheKey, result.data);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load referral info");
+  }
+};
+
+export const applyReferralCode = async (code) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/referrals/apply",
+      data: { code },
+    });
+
+    clearCache("referral_info");
+    clearCache("user_me");
+
+    return {
+      success: true,
+      data: unwrap(response),
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to apply referral code");
+  }
+};
+
+export const getReferralStats = async (skipCache = false) => {
+  const cacheKey = "referral_stats";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/referrals/stats",
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      data: data?.data || {},
+    };
+
+    setCached(cacheKey, result.data);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load referral stats");
+  }
+};
+
+export const claimReferralRewards = async (amount, walletAddress) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/referrals/claim",
+      data: { amount, wallet_address: walletAddress },
+    });
+
+    clearCache("referral_info");
+    clearCache("referral_stats");
+    clearCache("user_me");
+
+    return {
+      success: true,
+      data: unwrap(response),
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to claim referral rewards");
+  }
+};
+
 /* ================= NEWSLETTER ================= */
 
 export const subscribeNewsletter = async ({ email, first_name, interest }) => {
@@ -1231,6 +1401,59 @@ export const subscribeNewsletter = async ({ email, first_name, interest }) => {
     return unwrap(response);
   } catch (error) {
     return handleApiError(error, "Newsletter signup failed");
+  }
+};
+
+/* ================= PROMO ================= */
+
+export const getPromoStatus = async (skipCache = false) => {
+  const cacheKey = "promo_status";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 60000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(publicApi, {
+      method: "get",
+      url: "/api/promo/status",
+    });
+
+    const data = unwrap(response);
+    const result = data?.data || {};
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      limit: 50,
+      claimed: 0,
+      spots_left: 50,
+      active: true,
+      fee_percent: 5,
+      duration_days: 90,
+      threshold_percent: 3,
+    };
+  }
+};
+
+export const claimPromo = async (email, tier = "starter") => {
+  try {
+    const response = await requestWithDedupe(publicApi, {
+      method: "post",
+      url: "/api/promo/claim",
+      data: { email, tier },
+    });
+
+    clearCache("promo_status");
+
+    return {
+      success: true,
+      data: unwrap(response),
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to claim promo");
   }
 };
 
@@ -1411,6 +1634,14 @@ class BotAPIClass {
     return connectWallet(payload);
   }
 
+  disconnectOKX() {
+    return disconnectOKX();
+  }
+
+  disconnectAlpaca() {
+    return disconnectAlpaca();
+  }
+
   getIntegrationStatus(skipCache) {
     return getIntegrationStatus(skipCache);
   }
@@ -1424,9 +1655,35 @@ class BotAPIClass {
     return getPublicDashboardHistorical(days);
   }
 
+  // Referrals
+  getReferralInfo(skipCache) {
+    return getReferralInfo(skipCache);
+  }
+
+  applyReferralCode(code) {
+    return applyReferralCode(code);
+  }
+
+  getReferralStats(skipCache) {
+    return getReferralStats(skipCache);
+  }
+
+  claimReferralRewards(amount, walletAddress) {
+    return claimReferralRewards(amount, walletAddress);
+  }
+
   // Newsletter
   subscribeNewsletter(payload) {
     return subscribeNewsletter(payload);
+  }
+
+  // Promo
+  getPromoStatus(skipCache) {
+    return getPromoStatus(skipCache);
+  }
+
+  claimPromo(email, tier) {
+    return claimPromo(email, tier);
   }
 
   // Debug
