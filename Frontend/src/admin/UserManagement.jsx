@@ -25,6 +25,8 @@ import {
   FaWallet,
   FaExchangeAlt,
   FaUsers,
+  FaChevronLeft,
+  FaChevronRight,
 } from "react-icons/fa";
 
 const TOKEN_KEY = "imali_token";
@@ -108,24 +110,24 @@ const formatDate = (value) => {
 const getTierBadgeClass = (tier) => {
   const tierValue = safeString(tier, "starter").toLowerCase();
   const styles = {
-    starter: "border-blue-500/30 bg-blue-500/20 text-blue-300",
-    common: "border-emerald-500/30 bg-emerald-500/20 text-emerald-300",
-    rare: "border-purple-500/30 bg-purple-500/20 text-purple-300",
-    epic: "border-amber-500/30 bg-amber-500/20 text-amber-300",
-    legendary: "border-yellow-500/30 bg-yellow-500/20 text-yellow-300",
+    starter: "bg-blue-500/20 text-blue-300",
+    common: "bg-emerald-500/20 text-emerald-300",
+    rare: "bg-purple-500/20 text-purple-300",
+    epic: "bg-amber-500/20 text-amber-300",
+    legendary: "bg-yellow-500/20 text-yellow-300",
   };
   return styles[tierValue] || styles.starter;
 };
 
-// ========== HELPER COMPONENTS ==========
+// ========== MOBILE-FRIENDLY HELPER COMPONENTS ==========
 
 const SummaryCard = ({ label, value, icon }) => {
   const displayValue = safeString(value);
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center">
+    <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
       <div className="mb-1 text-lg">{icon}</div>
-      <div className="text-xs text-white/50">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{displayValue}</div>
+      <div className="text-[10px] text-white/50 uppercase tracking-wide">{label}</div>
+      <div className="mt-1 text-lg font-bold">{displayValue}</div>
     </div>
   );
 };
@@ -135,7 +137,31 @@ const IconButton = ({ title, icon, onClick, color }) => {
     <button
       title={title}
       onClick={onClick}
-      className={`${color} transition hover:scale-110 hover:opacity-80`}
+      className={`${color} p-2 rounded-lg hover:bg-white/10 transition-colors`}
+      type="button"
+    >
+      {icon}
+    </button>
+  );
+};
+
+const ActionButton = ({ title, icon, onClick, color, variant = "icon" }) => {
+  if (variant === "text") {
+    return (
+      <button
+        onClick={onClick}
+        className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${color} hover:bg-white/10 transition-colors`}
+      >
+        {icon}
+        <span className="hidden sm:inline">{title}</span>
+      </button>
+    );
+  }
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className={`${color} p-2 rounded-lg hover:bg-white/10 transition-colors`}
       type="button"
     >
       {icon}
@@ -145,15 +171,15 @@ const IconButton = ({ title, icon, onClick, color }) => {
 
 const UserModal = ({ title, children, onClose, wide = false }) => {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 sm:p-4">
       <div
-        className={`max-h-[92vh] overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6 shadow-2xl ${
+        className={`max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-4 sm:p-6 shadow-2xl ${
           wide ? "w-full max-w-3xl" : "w-full max-w-lg"
         }`}
       >
-        <div className="mb-5 flex items-center justify-between">
-          <h3 className="text-xl font-bold">{title}</h3>
-          <button onClick={onClose} className="text-white/50 hover:text-white">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg sm:text-xl font-bold">{title}</h3>
+          <button onClick={onClose} className="text-white/50 hover:text-white p-1">
             <FaTimes />
           </button>
         </div>
@@ -166,7 +192,7 @@ const UserModal = ({ title, children, onClose, wide = false }) => {
 const Field = ({ label, icon, children }) => {
   return (
     <label className="block">
-      <div className="mb-1 flex items-center gap-2 text-sm text-white/70">
+      <div className="mb-1 flex items-center gap-2 text-xs sm:text-sm text-white/70">
         <span className="text-xs">{icon}</span>
         {label}
       </div>
@@ -179,7 +205,7 @@ const Toggle = ({ label, value, onChange }) => {
   const isEnabled = safeBool(value);
   return (
     <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 p-3">
-      <span className="text-sm text-white/80">{label}</span>
+      <span className="text-xs sm:text-sm text-white/80">{label}</span>
       <button
         type="button"
         onClick={onChange}
@@ -203,7 +229,7 @@ const ModalActions = ({ primaryLabel, onPrimary, onCancel, working }) => {
       <button
         onClick={onPrimary}
         disabled={working}
-        className="flex-1 rounded-lg bg-emerald-600 py-2 font-semibold hover:bg-emerald-500 disabled:opacity-50"
+        className="flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50"
       >
         {working ? (
           <>
@@ -220,7 +246,7 @@ const ModalActions = ({ primaryLabel, onPrimary, onCancel, working }) => {
       <button
         onClick={onCancel}
         disabled={working}
-        className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/10 disabled:opacity-50"
+        className="flex-1 rounded-lg border border-white/10 py-2 text-sm hover:bg-white/10 disabled:opacity-50"
       >
         Cancel
       </button>
@@ -233,25 +259,25 @@ const DeleteConfirmModal = ({ user, onConfirm, onCancel, working }) => {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-        <div className="mb-2 flex items-center gap-2 font-bold text-red-300">
+        <div className="mb-2 flex items-center gap-2 font-bold text-red-300 text-sm">
           <FaExclamationTriangle />
           Permanent Delete
         </div>
-        <p className="text-sm text-white/80">This will permanently delete:</p>
-        <p className="mt-2 rounded bg-black/40 p-2 font-mono text-sm">{userEmail}</p>
+        <p className="text-xs sm:text-sm text-white/80">This will permanently delete:</p>
+        <p className="mt-2 rounded bg-black/40 p-2 font-mono text-xs break-all">{userEmail}</p>
         <p className="mt-3 text-xs text-red-300/80">This action cannot be undone.</p>
       </div>
       <div className="flex gap-3">
         <button
           onClick={onConfirm}
           disabled={working}
-          className="flex-1 rounded-lg bg-red-600 py-2 font-semibold hover:bg-red-500 disabled:opacity-50"
+          className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold hover:bg-red-500 disabled:opacity-50"
         >
           {working ? "Deleting..." : "Confirm Delete"}
         </button>
         <button
           onClick={onCancel}
-          className="flex-1 rounded-lg border border-white/10 py-2 hover:bg-white/10"
+          className="flex-1 rounded-lg border border-white/10 py-2 text-sm hover:bg-white/10"
         >
           Cancel
         </button>
@@ -264,8 +290,8 @@ const Info = ({ label, value, mono = false }) => {
   const displayValue = safeString(value);
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-      <div className="text-xs text-white/50">{label}</div>
-      <div className={`mt-1 break-all font-medium ${mono ? "font-mono text-xs" : ""}`}>
+      <div className="text-[10px] text-white/50 uppercase tracking-wide">{label}</div>
+      <div className={`mt-1 break-all font-medium text-sm ${mono ? "font-mono text-xs" : ""}`}>
         {displayValue}
       </div>
     </div>
@@ -284,7 +310,7 @@ const UserFormFields = ({ form, setForm, includePassword = false, includeEmail =
             value={safeString(form.email, "")}
             onChange={(e) => update("email", e.target.value)}
             placeholder="user@example.com"
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm"
           />
         </Field>
       )}
@@ -296,17 +322,17 @@ const UserFormFields = ({ form, setForm, includePassword = false, includeEmail =
             value={safeString(form.password, "")}
             onChange={(e) => update("password", e.target.value)}
             placeholder="At least 8 characters"
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm"
           />
         </Field>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Plan">
           <select
             value={safeString(form.tier, "starter")}
             onChange={(e) => update("tier", e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm"
           >
             {TIERS.map((tier) => (
               <option key={tier} value={tier}>
@@ -320,7 +346,7 @@ const UserFormFields = ({ form, setForm, includePassword = false, includeEmail =
           <select
             value={safeString(form.strategy, "ai_weighted")}
             onChange={(e) => update("strategy", e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white"
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm"
           >
             {STRATEGIES.map((strategy) => (
               <option key={strategy.value} value={strategy.value}>
@@ -354,13 +380,108 @@ const UserFormFields = ({ form, setForm, includePassword = false, includeEmail =
   );
 };
 
+// Mobile User Card Component
+const UserCard = ({ user, onView, onEdit, onConnections, onNewsletter, onAutoResponder, onRevokeApiKey, onToggleTrading, onTogglePaperTrading, working }) => {
+  const practiceActive = user.trial_status === "trial" && user.paper_trading_enabled;
+  const billingComplete = user.has_card_on_file || user.billing_complete;
+  const alpacaConnected = user.alpaca_connected;
+  const okxConnected = user.okx_connected;
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4 mb-3">
+      {/* User Header */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 font-bold text-emerald-300">
+            {user.email?.charAt(0)?.toUpperCase() || "U"}
+          </div>
+          <div>
+            <div className="font-semibold text-sm">{user.email}</div>
+            <div className="text-xs text-white/40">{user.id?.slice(0, 10)}...</div>
+          </div>
+        </div>
+        <div className="flex gap-1">
+          <ActionButton title="View" onClick={() => onView(user)} icon={<FaEye className="text-sm" />} color="text-blue-400" />
+          <ActionButton title="Edit" onClick={() => onEdit(user)} icon={<FaEdit className="text-sm" />} color="text-amber-400" />
+        </div>
+      </div>
+
+      {/* User Stats Row */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="text-center">
+          <div className="text-[10px] text-white/50">Tier</div>
+          <select
+            value={user.tier}
+            onChange={(e) => onEdit({ ...user, tier: e.target.value })}
+            className={`text-xs rounded-full px-2 py-0.5 ${getTierBadgeClass(user.tier)} bg-transparent cursor-pointer w-full text-center`}
+            disabled={working}
+          >
+            {TIERS.map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+          </select>
+        </div>
+        <div className="text-center">
+          <div className="text-[10px] text-white/50">Paper</div>
+          {practiceActive ? (
+            <span className="text-xs text-emerald-400">Active</span>
+          ) : (
+            <button onClick={() => onTogglePaperTrading(user)} disabled={working} className="text-xs text-blue-400">Enable</button>
+          )}
+        </div>
+        <div className="text-center">
+          <div className="text-[10px] text-white/50">Live</div>
+          {user.trading_enabled ? (
+            <span className="text-xs text-emerald-400">On</span>
+          ) : (
+            <span className="text-xs text-red-400">Off</span>
+          )}
+        </div>
+      </div>
+
+      {/* Status Icons Row */}
+      <div className="flex justify-around mb-3 py-2 border-y border-white/5">
+        <div className="text-center">
+          <div className="text-xs">{billingComplete ? "💳✓" : "💳✗"}</div>
+          <div className="text-[9px] text-white/40">Billing</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs">{alpacaConnected ? "🦙✓" : "🦙✗"}</div>
+          <div className="text-[9px] text-white/40">Alpaca</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs">{okxConnected ? "🟢✓" : "🔴✗"}</div>
+          <div className="text-[9px] text-white/40">OKX</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs">{user.strategy?.slice(0, 3) || "AI"}</div>
+          <div className="text-[9px] text-white/40">Strat</div>
+        </div>
+      </div>
+
+      {/* Action Buttons Row */}
+      <div className="flex flex-wrap justify-center gap-2">
+        <ActionButton title="Connections" onClick={() => onConnections(user)} icon={<FaPlug className="text-xs" />} color="text-cyan-400" variant="text" />
+        <ActionButton title="Newsletter" onClick={() => onNewsletter(user)} icon={<FaEnvelopeOpenText className="text-xs" />} color="text-green-400" variant="text" />
+        <ActionButton title="Auto-Responder" onClick={() => onAutoResponder(user)} icon={<FaRobot className="text-xs" />} color="text-purple-400" variant="text" />
+        <ActionButton title="Revoke API" onClick={() => onRevokeApiKey(user)} icon={<FaKey className="text-xs" />} color="text-orange-400" variant="text" />
+        <ActionButton
+          title={user.trading_enabled ? "Disable Trading" : "Enable Trading"}
+          onClick={() => onToggleTrading(user)}
+          icon={user.trading_enabled ? <FaBan className="text-xs" /> : <FaCheckCircle className="text-xs" />}
+          color={user.trading_enabled ? "text-red-400" : "text-emerald-400"}
+          variant="text"
+        />
+      </div>
+    </div>
+  );
+};
+
 // ========== MAIN COMPONENT ==========
 export default function UserManagement({ apiBase = "", showToast }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [page, setPage] = useState(1);
-  const [limit] = useState(20);
+  const [limit] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalUsers, setTotalUsers] = useState(0);
   const [search, setSearch] = useState("");
@@ -378,6 +499,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
   const [editForm, setEditForm] = useState({});
   const [autoResponderRules, setAutoResponderRules] = useState([]);
   const [autoResponderForm, setAutoResponderForm] = useState({ rule_id: "", event_type: "signup", delay_minutes: 0 });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const toast = useCallback((message, type = "info") => {
     if (typeof showToast === "function") showToast(message, type);
@@ -519,6 +641,21 @@ export default function UserManagement({ apiBase = "", showToast }) {
       is_admin: user.is_admin,
     });
     setShowEditModal(true);
+  };
+
+  const openConnectionsModal = (user) => {
+    setSelectedUser(user);
+    setShowConnectionsModal(true);
+  };
+
+  const openNewsletterModal = (user) => {
+    setSelectedUser(user);
+    setShowNewsletterModal(true);
+  };
+
+  const openAutoResponderModal = (user) => {
+    setSelectedUser(user);
+    setShowAutoResponderModal(true);
   };
 
   const createUser = async () => {
@@ -749,180 +886,121 @@ export default function UserManagement({ apiBase = "", showToast }) {
   }
 
   return (
-    <div className="space-y-5 text-white">
+    <div className="space-y-4">
       {/* Header Section */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="mb-3">
-          <h2 className="text-xl font-bold">User Management</h2>
-          <p className="text-sm text-white/60">Manage user accounts, tiers, and trading permissions.</p>
+          <h2 className="text-lg font-bold">User Management</h2>
+          <p className="text-xs text-white/60">Manage user accounts, tiers, and trading permissions.</p>
         </div>
 
-        <div className="flex flex-col gap-3 lg:flex-row">
-          <form onSubmit={handleSearch} className="flex flex-1 gap-2">
+        <div className="flex flex-col gap-3">
+          <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1">
-              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search users by email..."
-                className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-10 pr-3 text-white placeholder:text-white/30 focus:border-emerald-500 focus:outline-none"
+                placeholder="Search users..."
+                className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-9 pr-3 text-white text-sm placeholder:text-white/30 focus:border-emerald-500 focus:outline-none"
               />
             </div>
-            <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold hover:bg-emerald-500">
+            <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500">
               Search
             </button>
-            {search && (
-              <button
-                type="button"
-                onClick={() => { setSearch(""); setPage(1); fetchUsers(); }}
-                className="rounded-lg border border-white/10 px-4 py-2 hover:bg-white/10"
-              >
-                Clear
-              </button>
-            )}
           </form>
 
-          <button
-            onClick={openAddUser}
-            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-semibold hover:bg-emerald-500"
-          >
-            <FaUserPlus /> Add User
-          </button>
-
-          <button
-            onClick={() => setShowBatchConfirm(true)}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold hover:bg-blue-500"
-          >
-            <FaUsers /> Enable Paper Trading for All
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={openAddUser}
+              className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500"
+            >
+              <FaUserPlus className="text-sm" /> Add User
+            </button>
+            <button
+              onClick={() => setShowBatchConfirm(true)}
+              className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500"
+            >
+              <FaUsers className="text-sm" /> Bulk
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Stats Summary */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
-        <SummaryCard label="Total Users" value={summary.total} icon="👥" />
-        <SummaryCard label="Trading Enabled" value={summary.active} icon="📈" />
-        <SummaryCard label="Paper Active" value={summary.trialActive} icon="📝" />
-        <SummaryCard label="Paper Disabled" value={summary.paperDisabled} icon="⚠️" />
-        <SummaryCard label="Admins" value={summary.admins} icon="👑" />
-        <SummaryCard label="Billing" value={summary.hasBilling} icon="💳" />
-        <SummaryCard label="Connected" value={summary.hasAlpaca + summary.hasOkx} icon="🔌" />
+      {/* Stats Summary - Horizontal Scroll on Mobile */}
+      <div className="overflow-x-auto -mx-4 px-4">
+        <div className="flex gap-3 min-w-max">
+          <div className="w-24"><SummaryCard label="Total" value={summary.total} icon="👥" /></div>
+          <div className="w-24"><SummaryCard label="Trading" value={summary.active} icon="📈" /></div>
+          <div className="w-24"><SummaryCard label="Paper" value={summary.trialActive} icon="📝" /></div>
+          <div className="w-24"><SummaryCard label="Admins" value={summary.admins} icon="👑" /></div>
+          <div className="w-24"><SummaryCard label="Billing" value={summary.hasBilling} icon="💳" /></div>
+          <div className="w-24"><SummaryCard label="Connected" value={summary.hasAlpaca + summary.hasOkx} icon="🔌" /></div>
+        </div>
       </div>
 
-      {/* Users Table */}
-      <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5">
-        <table className="w-full min-w-[1400px] text-sm">
-          <thead className="border-b border-white/10 bg-white/5 text-white/70">
-            <tr>
-              <th className="px-4 py-3 text-left">User</th>
-              <th className="px-4 py-3 text-left">Tier</th>
-              <th className="px-4 py-3 text-center">Paper</th>
-              <th className="px-4 py-3 text-center">Live</th>
-              <th className="px-4 py-3 text-center">Billing</th>
-              <th className="px-4 py-3 text-center">Alpaca</th>
-              <th className="px-4 py-3 text-center">OKX</th>
-              <th className="px-4 py-3 text-left">Strategy</th>
-              <th className="px-4 py-3 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="py-10 text-center text-white/50">No users found.</td>
-              </tr>
-            ) : (
-              users.map((user) => {
-                const practiceActive = user.trial_status === "trial" && user.paper_trading_enabled;
-                const billingComplete = user.has_card_on_file || user.billing_complete;
-                const alpacaConnected = user.alpaca_connected;
-                const okxConnected = user.okx_connected;
-
-                return (
-                  <tr key={user.id} className="border-b border-white/5 hover:bg-white/5">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/20 font-bold text-emerald-300">
-                          {user.email?.charAt(0)?.toUpperCase() || "U"}
-                        </div>
-                        <div>
-                          <div className="font-semibold">{user.email}</div>
-                          <div className="text-xs text-white/40">{user.id?.slice(0, 10)}...</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <select
-                        value={user.tier}
-                        onChange={(e) => updateTier(user.id, e.target.value)}
-                        className={`rounded-full border px-2 py-1 text-xs ${getTierBadgeClass(user.tier)} bg-transparent cursor-pointer`}
-                        disabled={working}
-                      >
-                        {TIERS.map(t => <option key={t} value={t} className="bg-gray-900">{t.toUpperCase()}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {practiceActive ? (
-                        <span className="text-xs text-emerald-400">Active</span>
-                      ) : (
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="text-xs text-red-400">Inactive</span>
-                          <button onClick={() => togglePaperTrading(user)} disabled={working} className="text-[10px] text-blue-400 hover:text-blue-300">Enable</button>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {user.trading_enabled ? <span className="inline-flex items-center gap-1 text-emerald-400"><FaCheckCircle className="text-xs" /> On</span> : <span className="text-red-400">Off</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {billingComplete ? <span className="text-sm text-emerald-400" title="Billing Complete">💳✓</span> : <span className="text-sm text-gray-500" title="No Card">💳✗</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {alpacaConnected ? <span className="text-sm text-emerald-400" title="Alpaca Connected">🦙✓</span> : <span className="text-sm text-gray-500" title="Alpaca Not Connected">🦙✗</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {okxConnected ? <span className="text-sm text-emerald-400" title="OKX Connected">🟢✓</span> : <span className="text-sm text-gray-500" title="OKX Not Connected">🔴✗</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-white/80">{user.strategy}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap justify-center gap-2">
-                        <IconButton title="View" onClick={() => openViewUser(user)} icon={<FaEye />} color="text-blue-400" />
-                        <IconButton title="Edit" onClick={() => openEditUser(user)} icon={<FaEdit />} color="text-amber-400" />
-                        <IconButton title="Connections" onClick={() => openConnectionsModal(user)} icon={<FaPlug />} color="text-cyan-400" />
-                        <IconButton title="Add to Newsletter" onClick={() => openNewsletterModal(user)} icon={<FaEnvelopeOpenText />} color="text-green-400" />
-                        <IconButton title="Add to Auto-Responder" onClick={() => openAutoResponderModal(user)} icon={<FaRobot />} color="text-purple-400" />
-                        <IconButton title="Revoke API Key" onClick={() => revokeApiKey(user)} icon={<FaKey />} color="text-orange-400" />
-                        <IconButton title={user.trading_enabled ? "Disable Trading" : "Enable Trading"} onClick={() => toggleTrading(user)} icon={user.trading_enabled ? <FaBan /> : <FaCheckCircle />} color={user.trading_enabled ? "text-red-400" : "text-emerald-400"} />
-                      </div>
-                    </td>
-                  <tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+      {/* Users List - Mobile Cards */}
+      <div className="space-y-3">
+        {users.length === 0 ? (
+          <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
+            <p className="text-white/50">No users found.</p>
+          </div>
+        ) : (
+          users.map((user) => (
+            <UserCard
+              key={user.id}
+              user={user}
+              onView={openViewUser}
+              onEdit={openEditUser}
+              onConnections={openConnectionsModal}
+              onNewsletter={openNewsletterModal}
+              onAutoResponder={openAutoResponderModal}
+              onRevokeApiKey={revokeApiKey}
+              onToggleTrading={toggleTrading}
+              onTogglePaperTrading={togglePaperTrading}
+              working={working}
+            />
+          ))
+        )}
       </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="rounded-lg border border-white/10 px-4 py-2 disabled:opacity-40">Previous</button>
+        <div className="flex items-center justify-between gap-3">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-sm disabled:opacity-40"
+          >
+            <FaChevronLeft className="text-xs" /> Prev
+          </button>
           <span className="text-sm text-white/60">Page {page} of {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="rounded-lg border border-white/10 px-4 py-2 disabled:opacity-40">Next</button>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-sm disabled:opacity-40"
+          >
+            Next <FaChevronRight className="text-xs" />
+          </button>
         </div>
       )}
 
       {/* Batch Confirm Modal */}
       {showBatchConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div className="max-w-md w-full rounded-2xl border border-blue-500/30 bg-gray-900 p-6 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4">Enable Paper Trading for All Users</h3>
-            <p className="text-white/80 mb-4">This will enable paper trading for all {totalUsers} users in the system.</p>
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
-              <p className="text-sm text-blue-300">Paper trading allows users to practice with $1000 virtual funds.</p>
+          <div className="max-w-md w-full rounded-2xl border border-blue-500/30 bg-gray-900 p-5 shadow-2xl">
+            <h3 className="text-lg font-bold mb-3">Enable Paper Trading for All</h3>
+            <p className="text-sm text-white/80 mb-3">This will enable paper trading for all {totalUsers} users.</p>
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
+              <p className="text-xs text-blue-300">Paper trading allows practice with $1000 virtual funds.</p>
             </div>
             <div className="flex gap-3">
-              <button onClick={enablePaperTradingForAll} disabled={working} className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg font-semibold">{working ? "Enabling..." : "Yes, Enable for All"}</button>
-              <button onClick={() => setShowBatchConfirm(false)} className="flex-1 border border-white/10 py-2 rounded-lg hover:bg-white/10">Cancel</button>
+              <button onClick={enablePaperTradingForAll} disabled={working} className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg font-semibold text-sm">
+                {working ? "Enabling..." : "Yes, Enable All"}
+              </button>
+              <button onClick={() => setShowBatchConfirm(false)} className="flex-1 border border-white/10 py-2 rounded-lg text-sm hover:bg-white/10">
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -939,7 +1017,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
       {/* View User Modal */}
       {showViewModal && selectedUser && (
         <UserModal title="User Details" onClose={() => setShowViewModal(false)} wide>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Info label="Email" value={selectedUser.email} />
             <Info label="User ID" value={selectedUser.id} mono />
             <Info label="Plan" value={selectedUser.tier} />
@@ -947,17 +1025,15 @@ export default function UserManagement({ apiBase = "", showToast }) {
             <Info label="Portfolio" value={formatMoney(selectedUser.portfolio_value)} />
             <Info label="Joined" value={formatDate(selectedUser.created_at)} />
             <Info label="Paper Trading" value={selectedUser.paper_trading_enabled ? "Enabled" : "Disabled"} />
-            <Info label="Trial Status" value={selectedUser.trial_status || "trial"} />
             <Info label="Live Trading" value={selectedUser.trading_enabled ? "Enabled" : "Disabled"} />
             <Info label="Admin" value={selectedUser.is_admin ? "Yes" : "No"} />
-            <Info label="Billing Complete" value={selectedUser.has_card_on_file ? "Yes" : "No"} />
-            <Info label="Alpaca Connected" value={selectedUser.alpaca_connected ? "Yes" : "No"} />
-            <Info label="OKX Connected" value={selectedUser.okx_connected ? "Yes" : "No"} />
-            <Info label="Wallet Connected" value={selectedUser.wallet_connected ? "Yes" : "No"} />
+            <Info label="Billing" value={selectedUser.has_card_on_file ? "Yes" : "No"} />
+            <Info label="Alpaca" value={selectedUser.alpaca_connected ? "Yes" : "No"} />
+            <Info label="OKX" value={selectedUser.okx_connected ? "Yes" : "No"} />
           </div>
           <div className="mt-5 flex gap-3">
-            <button onClick={() => { setShowViewModal(false); openEditUser(selectedUser); }} className="flex-1 rounded-lg bg-amber-600 py-2 font-semibold hover:bg-amber-500">Edit User</button>
-            <button onClick={() => { setShowViewModal(false); reactivateTrial(selectedUser); }} className="flex-1 rounded-lg bg-emerald-600 py-2 font-semibold hover:bg-emerald-500">Reactivate Practice</button>
+            <button onClick={() => { setShowViewModal(false); openEditUser(selectedUser); }} className="flex-1 rounded-lg bg-amber-600 py-2 text-sm font-semibold hover:bg-amber-500">Edit User</button>
+            <button onClick={() => { setShowViewModal(false); reactivateTrial(selectedUser); }} className="flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-semibold hover:bg-emerald-500">Reactivate</button>
           </div>
         </UserModal>
       )}
@@ -968,9 +1044,9 @@ export default function UserManagement({ apiBase = "", showToast }) {
           {!showDeleteConfirm ? (
             <>
               <UserFormFields form={editForm} setForm={setEditForm} includeEmail />
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <button onClick={() => reactivateTrial(selectedUser)} disabled={working} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 py-2 text-emerald-300 hover:bg-emerald-500/20">Reactivate Practice (7 days)</button>
-                <button onClick={() => setShowDeleteConfirm(true)} className="rounded-lg border border-red-500/40 bg-red-500/10 py-2 text-red-300 hover:bg-red-500/20">Delete User</button>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button onClick={() => reactivateTrial(selectedUser)} disabled={working} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20">Reactivate (7 days)</button>
+                <button onClick={() => setShowDeleteConfirm(true)} className="rounded-lg border border-red-500/40 bg-red-500/10 py-2 text-sm text-red-300 hover:bg-red-500/20">Delete User</button>
               </div>
               <ModalActions primaryLabel="Save Changes" onPrimary={updateUser} onCancel={() => setShowEditModal(false)} working={working} />
             </>
@@ -982,47 +1058,25 @@ export default function UserManagement({ apiBase = "", showToast }) {
 
       {/* Connections Modal */}
       {showConnectionsModal && selectedUser && (
-        <UserModal title="User Connections & Status" onClose={() => setShowConnectionsModal(false)} wide>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                <h4 className="font-semibold mb-3 flex items-center gap-2"><FaCreditCard className="text-emerald-400" /> Billing Status</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-white/60">Card on File:</span><span className={selectedUser.has_card_on_file ? "text-emerald-400" : "text-red-400"}>{selectedUser.has_card_on_file ? "Yes" : "No"}</span></div>
-                  <div className="flex justify-between"><span className="text-white/60">Billing Complete:</span><span className={selectedUser.billing_complete ? "text-emerald-400" : "text-yellow-400"}>{selectedUser.billing_complete ? "Yes" : "Pending"}</span></div>
-                </div>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                <h4 className="font-semibold mb-3 flex items-center gap-2"><FaExchangeAlt className="text-cyan-400" /> Exchange Connections</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-white/60">Alpaca:</span><span className={selectedUser.alpaca_connected ? "text-emerald-400" : "text-red-400"}>{selectedUser.alpaca_connected ? "Connected" : "Not Connected"}</span></div>
-                  <div className="flex justify-between"><span className="text-white/60">OKX:</span><span className={selectedUser.okx_connected ? "text-emerald-400" : "text-red-400"}>{selectedUser.okx_connected ? "Connected" : "Not Connected"}</span></div>
-                </div>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                <h4 className="font-semibold mb-3 flex items-center gap-2"><FaChartLine className="text-purple-400" /> Trading Status</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-white/60">Live Trading:</span><span className={selectedUser.trading_enabled ? "text-emerald-400" : "text-red-400"}>{selectedUser.trading_enabled ? "Enabled" : "Disabled"}</span></div>
-                  <div className="flex justify-between"><span className="text-white/60">Paper Trading:</span><span className={selectedUser.paper_trading_enabled ? "text-emerald-400" : "text-red-400"}>{selectedUser.paper_trading_enabled ? "Active" : "Inactive"}</span></div>
-                  <div className="flex justify-between"><span className="text-white/60">Strategy:</span><span className="text-white">{selectedUser.strategy}</span></div>
-                </div>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                <h4 className="font-semibold mb-3 flex items-center gap-2"><FaCalendarAlt className="text-amber-400" /> Trial Information</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-white/60">Status:</span><span className={selectedUser.trial_status === "trial" ? "text-emerald-400" : "text-yellow-400"}>{selectedUser.trial_status || "trial"}</span></div>
-                </div>
-              </div>
-            </div>
-            {selectedUser.wallet_addresses?.length > 0 && (
-              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                <h4 className="font-semibold mb-3 flex items-center gap-2"><FaWallet className="text-indigo-400" /> Wallet Addresses</h4>
-                {selectedUser.wallet_addresses.map((addr, idx) => <div key={idx} className="text-xs font-mono text-white/60 break-all">{addr}</div>)}
-              </div>
-            )}
+        <UserModal title="User Connections" onClose={() => setShowConnectionsModal(false)} wide>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Info label="Card on File" value={selectedUser.has_card_on_file ? "Yes" : "No"} />
+            <Info label="Billing Complete" value={selectedUser.billing_complete ? "Yes" : "Pending"} />
+            <Info label="Alpaca" value={selectedUser.alpaca_connected ? "Connected" : "Not Connected"} />
+            <Info label="OKX" value={selectedUser.okx_connected ? "Connected" : "Not Connected"} />
+            <Info label="Live Trading" value={selectedUser.trading_enabled ? "Enabled" : "Disabled"} />
+            <Info label="Paper Trading" value={selectedUser.paper_trading_enabled ? "Active" : "Inactive"} />
+            <Info label="Strategy" value={selectedUser.strategy} />
+            <Info label="Trial Status" value={selectedUser.trial_status || "trial"} />
           </div>
+          {selectedUser.wallet_addresses?.length > 0 && (
+            <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-3">
+              <h4 className="text-sm font-semibold mb-2">Wallets</h4>
+              {selectedUser.wallet_addresses.map((addr, idx) => <div key={idx} className="text-xs font-mono text-white/60 break-all">{addr}</div>)}
+            </div>
+          )}
           <div className="mt-5 flex gap-3">
-            <button onClick={() => setShowConnectionsModal(false)} className="flex-1 rounded-lg bg-emerald-600 py-2 font-semibold hover:bg-emerald-500">Close</button>
+            <button onClick={() => setShowConnectionsModal(false)} className="flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-semibold hover:bg-emerald-500">Close</button>
           </div>
         </UserModal>
       )}
@@ -1030,10 +1084,10 @@ export default function UserManagement({ apiBase = "", showToast }) {
       {/* Newsletter Modal */}
       {showNewsletterModal && selectedUser && (
         <UserModal title="Add to Newsletter" onClose={() => setShowNewsletterModal(false)}>
-          <div className="space-y-4">
-            <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
-              <div className="flex items-center gap-3"><FaEnvelopeOpenText className="text-2xl text-green-400" /><div><h3 className="font-semibold">{selectedUser.email}</h3><p className="text-sm text-white/60">Will be added to newsletter subscribers</p></div></div>
-            </div>
+          <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-center">
+            <FaEnvelopeOpenText className="mx-auto text-3xl text-green-400 mb-2" />
+            <h3 className="font-semibold">{selectedUser.email}</h3>
+            <p className="text-xs text-white/60 mt-1">Will be added to newsletter subscribers</p>
           </div>
           <ModalActions primaryLabel="Add to Newsletter" onPrimary={addToNewsletter} onCancel={() => setShowNewsletterModal(false)} working={working} />
         </UserModal>
@@ -1042,19 +1096,19 @@ export default function UserManagement({ apiBase = "", showToast }) {
       {/* Auto-Responder Modal */}
       {showAutoResponderModal && selectedUser && (
         <UserModal title="Add to Auto-Responder" onClose={() => setShowAutoResponderModal(false)}>
-          <div className="space-y-4">
-            <div className="rounded-lg border border-purple-500/20 bg-purple-500/10 p-4">
-              <div className="flex items-center gap-3"><FaRobot className="text-2xl text-purple-400" /><div><h3 className="font-semibold">{selectedUser.email}</h3><p className="text-sm text-white/60">Will receive automated emails</p></div></div>
-            </div>
-            <select value={autoResponderForm.rule_id} onChange={(e) => setAutoResponderForm({ ...autoResponderForm, rule_id: e.target.value })} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white">
-              <option value="">Select a rule...</option>
-              {autoResponderRules.map(rule => <option key={rule.id} value={rule.id}>{rule.name} ({rule.trigger_event})</option>)}
-            </select>
-            <select value={autoResponderForm.event_type} onChange={(e) => setAutoResponderForm({ ...autoResponderForm, event_type: e.target.value })} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white">
-              <option value="signup">User Signup</option><option value="first_trade">First Trade</option><option value="deposit">Deposit</option><option value="withdrawal">Withdrawal</option>
-            </select>
-            <input type="number" value={autoResponderForm.delay_minutes} onChange={(e) => setAutoResponderForm({ ...autoResponderForm, delay_minutes: parseInt(e.target.value) || 0 })} placeholder="Delay (minutes)" className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white" />
+          <div className="rounded-lg border border-purple-500/20 bg-purple-500/10 p-4 text-center mb-4">
+            <FaRobot className="mx-auto text-3xl text-purple-400 mb-2" />
+            <h3 className="font-semibold">{selectedUser.email}</h3>
+            <p className="text-xs text-white/60">Will receive automated emails</p>
           </div>
+          <select value={autoResponderForm.rule_id} onChange={(e) => setAutoResponderForm({ ...autoResponderForm, rule_id: e.target.value })} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm mb-3">
+            <option value="">Select a rule...</option>
+            {autoResponderRules.map(rule => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
+          </select>
+          <select value={autoResponderForm.event_type} onChange={(e) => setAutoResponderForm({ ...autoResponderForm, event_type: e.target.value })} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm mb-3">
+            <option value="signup">Signup</option><option value="first_trade">First Trade</option><option value="deposit">Deposit</option>
+          </select>
+          <input type="number" value={autoResponderForm.delay_minutes} onChange={(e) => setAutoResponderForm({ ...autoResponderForm, delay_minutes: parseInt(e.target.value) || 0 })} placeholder="Delay (minutes)" className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm mb-4" />
           <ModalActions primaryLabel="Add to Auto-Responder" onPrimary={addToAutoResponder} onCancel={() => setShowAutoResponderModal(false)} working={working} />
         </UserModal>
       )}
