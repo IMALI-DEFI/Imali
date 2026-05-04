@@ -27,9 +27,6 @@ import {
   FaUsers,
   FaChevronLeft,
   FaChevronRight,
-  FaArrowUp,
-  FaArrowDown,
-  FaCheck,
   FaSquare,
   FaCheckSquare,
 } from "react-icons/fa";
@@ -66,6 +63,7 @@ const safeString = (value, fallback = "—") => {
     if (value.value) return String(value.value);
     if (value.name) return String(value.name);
     if (value.email) return String(value.email);
+    console.warn("Rendering object as string:", value);
     return fallback;
   }
   return fallback;
@@ -87,8 +85,17 @@ const safeBool = (value, fallback = false) => {
 };
 
 const safeNumber = (value, fallback = 0) => {
-  const num = Number(value);
-  return isNaN(num) ? fallback : num;
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const num = Number(value);
+    return isNaN(num) ? fallback : num;
+  }
+  if (typeof value === "object") {
+    const num = Number(value.value || value.amount || 0);
+    return isNaN(num) ? fallback : num;
+  }
+  return fallback;
 };
 
 const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
@@ -376,10 +383,21 @@ const UserFormFields = ({ form, setForm, includePassword = false, includeEmail =
 
 // Mobile User Card Component
 const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onNewsletter, onAutoResponder, onRevokeApiKey, onToggleTrading, onTogglePaperTrading, working }) => {
-  const practiceActive = user.trial_status === "trial" && user.paper_trading_enabled;
-  const billingComplete = user.has_card_on_file || user.billing_complete;
-  const alpacaConnected = user.alpaca_connected;
-  const okxConnected = user.okx_connected;
+  // Safe value extraction - ensure we're not rendering objects
+  const userEmail = safeString(user?.email);
+  const userId = safeString(user?.id);
+  const userTier = safeString(user?.tier, "starter");
+  const userStrategy = safeString(user?.strategy, "ai_weighted");
+  const userTrialStatus = safeString(user?.trial_status, "trial");
+  const isPaperTradingEnabled = safeBool(user?.paper_trading_enabled, false);
+  const isTradingEnabled = safeBool(user?.trading_enabled, false);
+  const hasCardOnFile = safeBool(user?.has_card_on_file, false);
+  const billingComplete = safeBool(user?.billing_complete, false);
+  const alpacaConnected = safeBool(user?.alpaca_connected, false);
+  const okxConnected = safeBool(user?.okx_connected, false);
+  
+  const practiceActive = userTrialStatus === "trial" && isPaperTradingEnabled;
+  const userHasBilling = hasCardOnFile || billingComplete;
 
   return (
     <div className={`rounded-xl border p-4 mb-3 transition-colors ${selected ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
@@ -401,11 +419,11 @@ const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onN
       {/* User Header */}
       <div className="flex items-start gap-3 mb-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 font-bold text-emerald-300">
-          {user.email?.charAt(0)?.toUpperCase() || "U"}
+          {userEmail.charAt(0)?.toUpperCase() || "U"}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-sm break-all">{user.email}</div>
-          <div className="text-xs text-white/40">{user.id?.slice(0, 10)}...</div>
+          <div className="font-semibold text-sm break-all">{userEmail}</div>
+          <div className="text-xs text-white/40">{userId.slice(0, 10)}...</div>
         </div>
       </div>
 
@@ -414,9 +432,9 @@ const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onN
         <div className="text-center">
           <div className="text-[10px] text-white/50">Tier</div>
           <select
-            value={user.tier}
+            value={userTier}
             onChange={(e) => onEdit({ ...user, tier: e.target.value })}
-            className={`text-xs rounded-full px-1 py-0.5 ${getTierBadgeClass(user.tier)} bg-transparent cursor-pointer w-full text-center`}
+            className={`text-xs rounded-full px-1 py-0.5 ${getTierBadgeClass(userTier)} bg-transparent cursor-pointer w-full text-center`}
             disabled={working}
           >
             {TIERS.map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
@@ -432,7 +450,7 @@ const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onN
         </div>
         <div className="text-center">
           <div className="text-[10px] text-white/50">Live</div>
-          {user.trading_enabled ? (
+          {isTradingEnabled ? (
             <span className="text-xs text-emerald-400">On</span>
           ) : (
             <span className="text-xs text-red-400">Off</span>
@@ -443,7 +461,7 @@ const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onN
       {/* Status Icons Row */}
       <div className="flex justify-around mb-3 py-2 border-y border-white/5">
         <div className="text-center">
-          <div className="text-sm">{billingComplete ? "💳✓" : "💳✗"}</div>
+          <div className="text-sm">{userHasBilling ? "💳✓" : "💳✗"}</div>
           <div className="text-[9px] text-white/40">Billing</div>
         </div>
         <div className="text-center">
@@ -455,7 +473,7 @@ const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onN
           <div className="text-[9px] text-white/40">OKX</div>
         </div>
         <div className="text-center">
-          <div className="text-sm">{user.strategy?.slice(0, 3) || "AI"}</div>
+          <div className="text-sm">{userStrategy.slice(0, 3) || "AI"}</div>
           <div className="text-[9px] text-white/40">Strat</div>
         </div>
       </div>
@@ -467,10 +485,10 @@ const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onN
         <ActionButton title="Auto-Responder" onClick={() => onAutoResponder(user)} icon={<FaRobot className="text-xs" />} color="text-purple-400" variant="text" />
         <ActionButton title="Revoke API" onClick={() => onRevokeApiKey(user)} icon={<FaKey className="text-xs" />} color="text-orange-400" variant="text" />
         <ActionButton
-          title={user.trading_enabled ? "Disable Trading" : "Enable Trading"}
+          title={isTradingEnabled ? "Disable Trading" : "Enable Trading"}
           onClick={() => onToggleTrading(user)}
-          icon={user.trading_enabled ? <FaBan className="text-xs" /> : <FaCheckCircle className="text-xs" />}
-          color={user.trading_enabled ? "text-red-400" : "text-emerald-400"}
+          icon={isTradingEnabled ? <FaBan className="text-xs" /> : <FaCheckCircle className="text-xs" />}
+          color={isTradingEnabled ? "text-red-400" : "text-emerald-400"}
           variant="text"
         />
       </div>
@@ -651,10 +669,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
     }
   };
 
-  const clearSelections = () => {
-    setSelectedUserIds(new Set());
-  };
-
   // Bulk delete users
   const bulkDeleteUsers = async () => {
     const userIds = Array.from(selectedUserIds);
@@ -719,14 +733,15 @@ export default function UserManagement({ apiBase = "", showToast }) {
 
   const openEditUser = (user) => {
     setSelectedUser(user);
+    const userObj = user;
     setEditForm({
-      email: user.email,
-      tier: user.tier,
-      strategy: user.strategy,
-      trading_enabled: user.trading_enabled,
-      paper_trading_enabled: user.paper_trading_enabled,
-      trial_status: user.trial_status,
-      is_admin: user.is_admin,
+      email: safeString(userObj.email, ""),
+      tier: safeString(userObj.tier, "starter"),
+      strategy: safeString(userObj.strategy, "ai_weighted"),
+      trading_enabled: safeBool(userObj.trading_enabled, false),
+      paper_trading_enabled: safeBool(userObj.paper_trading_enabled, false),
+      trial_status: safeString(userObj.trial_status, "trial"),
+      is_admin: safeBool(userObj.is_admin, false),
     });
     setShowEditModal(true);
   };
@@ -1116,7 +1131,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
         )}
       </div>
 
-      {/* Pagination with Load More / Infinite Scroll style */}
+      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between gap-3 pt-2">
           <button
@@ -1165,23 +1180,12 @@ export default function UserManagement({ apiBase = "", showToast }) {
 
       {/* Batch Confirm Modal */}
       {showBatchConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div className="max-w-md w-full rounded-2xl border border-blue-500/30 bg-gray-900 p-5 shadow-2xl">
-            <h3 className="text-lg font-bold mb-3">Enable Paper Trading for All</h3>
-            <p className="text-sm text-white/80 mb-3">This will enable paper trading for all {totalUsers} users in the system.</p>
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
-              <p className="text-xs text-blue-300">Paper trading allows users to practice with $1000 virtual funds.</p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={enablePaperTradingForAll} disabled={working} className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg font-semibold text-sm">
-                {working ? "Enabling..." : "Yes, Enable All"}
-              </button>
-              <button onClick={() => setShowBatchConfirm(false)} className="flex-1 border border-white/10 py-2 rounded-lg text-sm hover:bg-white/10">
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <BulkDeleteModal
+          count={totalUsers}
+          onConfirm={enablePaperTradingForAll}
+          onCancel={() => setShowBatchConfirm(false)}
+          working={working}
+        />
       )}
 
       {/* Add User Modal */}
@@ -1196,18 +1200,18 @@ export default function UserManagement({ apiBase = "", showToast }) {
       {showViewModal && selectedUser && (
         <UserModal title="User Details" onClose={() => setShowViewModal(false)} wide>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Info label="Email" value={selectedUser.email} />
-            <Info label="User ID" value={selectedUser.id} mono />
-            <Info label="Plan" value={selectedUser.tier} />
-            <Info label="Strategy" value={selectedUser.strategy} />
+            <Info label="Email" value={safeString(selectedUser.email)} />
+            <Info label="User ID" value={safeString(selectedUser.id)} mono />
+            <Info label="Plan" value={safeString(selectedUser.tier)} />
+            <Info label="Strategy" value={safeString(selectedUser.strategy)} />
             <Info label="Portfolio" value={formatMoney(selectedUser.portfolio_value)} />
             <Info label="Joined" value={formatDate(selectedUser.created_at)} />
-            <Info label="Paper Trading" value={selectedUser.paper_trading_enabled ? "Enabled" : "Disabled"} />
-            <Info label="Live Trading" value={selectedUser.trading_enabled ? "Enabled" : "Disabled"} />
-            <Info label="Admin" value={selectedUser.is_admin ? "Yes" : "No"} />
-            <Info label="Billing" value={selectedUser.has_card_on_file ? "Yes" : "No"} />
-            <Info label="Alpaca" value={selectedUser.alpaca_connected ? "Yes" : "No"} />
-            <Info label="OKX" value={selectedUser.okx_connected ? "Yes" : "No"} />
+            <Info label="Paper Trading" value={safeBool(selectedUser.paper_trading_enabled) ? "Enabled" : "Disabled"} />
+            <Info label="Live Trading" value={safeBool(selectedUser.trading_enabled) ? "Enabled" : "Disabled"} />
+            <Info label="Admin" value={safeBool(selectedUser.is_admin) ? "Yes" : "No"} />
+            <Info label="Billing" value={safeBool(selectedUser.has_card_on_file) ? "Yes" : "No"} />
+            <Info label="Alpaca" value={safeBool(selectedUser.alpaca_connected) ? "Yes" : "No"} />
+            <Info label="OKX" value={safeBool(selectedUser.okx_connected) ? "Yes" : "No"} />
           </div>
           <div className="mt-5 flex gap-3">
             <button onClick={() => { setShowViewModal(false); openEditUser(selectedUser); }} className="flex-1 rounded-lg bg-amber-600 py-2 text-sm font-semibold hover:bg-amber-500">Edit User</button>
@@ -1238,19 +1242,19 @@ export default function UserManagement({ apiBase = "", showToast }) {
       {showConnectionsModal && selectedUser && (
         <UserModal title="User Connections" onClose={() => setShowConnectionsModal(false)} wide>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Info label="Card on File" value={selectedUser.has_card_on_file ? "Yes" : "No"} />
-            <Info label="Billing Complete" value={selectedUser.billing_complete ? "Yes" : "Pending"} />
-            <Info label="Alpaca" value={selectedUser.alpaca_connected ? "Connected" : "Not Connected"} />
-            <Info label="OKX" value={selectedUser.okx_connected ? "Connected" : "Not Connected"} />
-            <Info label="Live Trading" value={selectedUser.trading_enabled ? "Enabled" : "Disabled"} />
-            <Info label="Paper Trading" value={selectedUser.paper_trading_enabled ? "Active" : "Inactive"} />
-            <Info label="Strategy" value={selectedUser.strategy} />
-            <Info label="Trial Status" value={selectedUser.trial_status || "trial"} />
+            <Info label="Card on File" value={safeBool(selectedUser.has_card_on_file) ? "Yes" : "No"} />
+            <Info label="Billing Complete" value={safeBool(selectedUser.billing_complete) ? "Yes" : "Pending"} />
+            <Info label="Alpaca" value={safeBool(selectedUser.alpaca_connected) ? "Connected" : "Not Connected"} />
+            <Info label="OKX" value={safeBool(selectedUser.okx_connected) ? "Connected" : "Not Connected"} />
+            <Info label="Live Trading" value={safeBool(selectedUser.trading_enabled) ? "Enabled" : "Disabled"} />
+            <Info label="Paper Trading" value={safeBool(selectedUser.paper_trading_enabled) ? "Active" : "Inactive"} />
+            <Info label="Strategy" value={safeString(selectedUser.strategy)} />
+            <Info label="Trial Status" value={safeString(selectedUser.trial_status, "trial")} />
           </div>
           {selectedUser.wallet_addresses?.length > 0 && (
             <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-3 max-h-32 overflow-y-auto">
               <h4 className="text-sm font-semibold mb-2">Wallets</h4>
-              {selectedUser.wallet_addresses.map((addr, idx) => <div key={idx} className="text-xs font-mono text-white/60 break-all">{addr}</div>)}
+              {selectedUser.wallet_addresses.map((addr, idx) => <div key={idx} className="text-xs font-mono text-white/60 break-all">{safeString(addr)}</div>)}
             </div>
           )}
           <div className="mt-5 flex gap-3">
@@ -1264,7 +1268,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
         <UserModal title="Add to Newsletter" onClose={() => setShowNewsletterModal(false)}>
           <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-center">
             <FaEnvelopeOpenText className="mx-auto text-3xl text-green-400 mb-2" />
-            <h3 className="font-semibold break-all">{selectedUser.email}</h3>
+            <h3 className="font-semibold break-all">{safeString(selectedUser.email)}</h3>
             <p className="text-xs text-white/60 mt-1">Will be added to newsletter subscribers</p>
           </div>
           <ModalActions primaryLabel="Add to Newsletter" onPrimary={addToNewsletter} onCancel={() => setShowNewsletterModal(false)} working={working} />
@@ -1276,12 +1280,12 @@ export default function UserManagement({ apiBase = "", showToast }) {
         <UserModal title="Add to Auto-Responder" onClose={() => setShowAutoResponderModal(false)}>
           <div className="rounded-lg border border-purple-500/20 bg-purple-500/10 p-4 text-center mb-4">
             <FaRobot className="mx-auto text-3xl text-purple-400 mb-2" />
-            <h3 className="font-semibold break-all">{selectedUser.email}</h3>
+            <h3 className="font-semibold break-all">{safeString(selectedUser.email)}</h3>
             <p className="text-xs text-white/60">Will receive automated emails</p>
           </div>
           <select value={autoResponderForm.rule_id} onChange={(e) => setAutoResponderForm({ ...autoResponderForm, rule_id: e.target.value })} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm mb-3">
             <option value="">Select a rule...</option>
-            {autoResponderRules.map(rule => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
+            {autoResponderRules.map(rule => <option key={rule.id} value={rule.id}>{safeString(rule.name)}</option>)}
           </select>
           <select value={autoResponderForm.event_type} onChange={(e) => setAutoResponderForm({ ...autoResponderForm, event_type: e.target.value })} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm mb-3">
             <option value="signup">Signup</option><option value="first_trade">First Trade</option><option value="deposit">Deposit</option>
