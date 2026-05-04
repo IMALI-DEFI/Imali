@@ -1,5 +1,5 @@
 // src/admin/UserManagement.jsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   FaBan,
   FaCheckCircle,
@@ -27,6 +27,11 @@ import {
   FaUsers,
   FaChevronLeft,
   FaChevronRight,
+  FaArrowUp,
+  FaArrowDown,
+  FaCheck,
+  FaSquare,
+  FaCheckSquare,
 } from "react-icons/fa";
 
 const TOKEN_KEY = "imali_token";
@@ -119,7 +124,7 @@ const getTierBadgeClass = (tier) => {
   return styles[tierValue] || styles.starter;
 };
 
-// ========== MOBILE-FRIENDLY HELPER COMPONENTS ==========
+// ========== HELPER COMPONENTS ==========
 
 const SummaryCard = ({ label, value, icon }) => {
   const displayValue = safeString(value);
@@ -132,25 +137,13 @@ const SummaryCard = ({ label, value, icon }) => {
   );
 };
 
-const IconButton = ({ title, icon, onClick, color }) => {
-  return (
-    <button
-      title={title}
-      onClick={onClick}
-      className={`${color} p-2 rounded-lg hover:bg-white/10 transition-colors`}
-      type="button"
-    >
-      {icon}
-    </button>
-  );
-};
-
-const ActionButton = ({ title, icon, onClick, color, variant = "icon" }) => {
+const ActionButton = ({ title, icon, onClick, color, variant = "icon", disabled = false }) => {
   if (variant === "text") {
     return (
       <button
         onClick={onClick}
-        className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${color} hover:bg-white/10 transition-colors`}
+        disabled={disabled}
+        className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${color} hover:bg-white/10 transition-colors disabled:opacity-50`}
       >
         {icon}
         <span className="hidden sm:inline">{title}</span>
@@ -161,7 +154,8 @@ const ActionButton = ({ title, icon, onClick, color, variant = "icon" }) => {
     <button
       title={title}
       onClick={onClick}
-      className={`${color} p-2 rounded-lg hover:bg-white/10 transition-colors`}
+      disabled={disabled}
+      className={`${color} p-2 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50`}
       type="button"
     >
       {icon}
@@ -381,28 +375,37 @@ const UserFormFields = ({ form, setForm, includePassword = false, includeEmail =
 };
 
 // Mobile User Card Component
-const UserCard = ({ user, onView, onEdit, onConnections, onNewsletter, onAutoResponder, onRevokeApiKey, onToggleTrading, onTogglePaperTrading, working }) => {
+const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onNewsletter, onAutoResponder, onRevokeApiKey, onToggleTrading, onTogglePaperTrading, working }) => {
   const practiceActive = user.trial_status === "trial" && user.paper_trading_enabled;
   const billingComplete = user.has_card_on_file || user.billing_complete;
   const alpacaConnected = user.alpaca_connected;
   const okxConnected = user.okx_connected;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4 mb-3">
-      {/* User Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 font-bold text-emerald-300">
-            {user.email?.charAt(0)?.toUpperCase() || "U"}
-          </div>
-          <div>
-            <div className="font-semibold text-sm">{user.email}</div>
-            <div className="text-xs text-white/40">{user.id?.slice(0, 10)}...</div>
-          </div>
-        </div>
+    <div className={`rounded-xl border p-4 mb-3 transition-colors ${selected ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
+      {/* Selection Checkbox */}
+      <div className="flex items-center justify-between mb-2">
+        <button
+          onClick={() => onSelect(user.id)}
+          className="flex items-center gap-2 text-sm text-white/70"
+        >
+          {selected ? <FaCheckSquare className="text-emerald-400" /> : <FaSquare className="text-white/40" />}
+          <span className="text-xs">Select</span>
+        </button>
         <div className="flex gap-1">
           <ActionButton title="View" onClick={() => onView(user)} icon={<FaEye className="text-sm" />} color="text-blue-400" />
           <ActionButton title="Edit" onClick={() => onEdit(user)} icon={<FaEdit className="text-sm" />} color="text-amber-400" />
+        </div>
+      </div>
+
+      {/* User Header */}
+      <div className="flex items-start gap-3 mb-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 font-bold text-emerald-300">
+          {user.email?.charAt(0)?.toUpperCase() || "U"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-sm break-all">{user.email}</div>
+          <div className="text-xs text-white/40">{user.id?.slice(0, 10)}...</div>
         </div>
       </div>
 
@@ -413,7 +416,7 @@ const UserCard = ({ user, onView, onEdit, onConnections, onNewsletter, onAutoRes
           <select
             value={user.tier}
             onChange={(e) => onEdit({ ...user, tier: e.target.value })}
-            className={`text-xs rounded-full px-2 py-0.5 ${getTierBadgeClass(user.tier)} bg-transparent cursor-pointer w-full text-center`}
+            className={`text-xs rounded-full px-1 py-0.5 ${getTierBadgeClass(user.tier)} bg-transparent cursor-pointer w-full text-center`}
             disabled={working}
           >
             {TIERS.map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
@@ -440,25 +443,25 @@ const UserCard = ({ user, onView, onEdit, onConnections, onNewsletter, onAutoRes
       {/* Status Icons Row */}
       <div className="flex justify-around mb-3 py-2 border-y border-white/5">
         <div className="text-center">
-          <div className="text-xs">{billingComplete ? "💳✓" : "💳✗"}</div>
+          <div className="text-sm">{billingComplete ? "💳✓" : "💳✗"}</div>
           <div className="text-[9px] text-white/40">Billing</div>
         </div>
         <div className="text-center">
-          <div className="text-xs">{alpacaConnected ? "🦙✓" : "🦙✗"}</div>
+          <div className="text-sm">{alpacaConnected ? "🦙✓" : "🦙✗"}</div>
           <div className="text-[9px] text-white/40">Alpaca</div>
         </div>
         <div className="text-center">
-          <div className="text-xs">{okxConnected ? "🟢✓" : "🔴✗"}</div>
+          <div className="text-sm">{okxConnected ? "🟢✓" : "🔴✗"}</div>
           <div className="text-[9px] text-white/40">OKX</div>
         </div>
         <div className="text-center">
-          <div className="text-xs">{user.strategy?.slice(0, 3) || "AI"}</div>
+          <div className="text-sm">{user.strategy?.slice(0, 3) || "AI"}</div>
           <div className="text-[9px] text-white/40">Strat</div>
         </div>
       </div>
 
       {/* Action Buttons Row */}
-      <div className="flex flex-wrap justify-center gap-2">
+      <div className="flex flex-wrap justify-center gap-1">
         <ActionButton title="Connections" onClick={() => onConnections(user)} icon={<FaPlug className="text-xs" />} color="text-cyan-400" variant="text" />
         <ActionButton title="Newsletter" onClick={() => onNewsletter(user)} icon={<FaEnvelopeOpenText className="text-xs" />} color="text-green-400" variant="text" />
         <ActionButton title="Auto-Responder" onClick={() => onAutoResponder(user)} icon={<FaRobot className="text-xs" />} color="text-purple-400" variant="text" />
@@ -475,17 +478,44 @@ const UserCard = ({ user, onView, onEdit, onConnections, onNewsletter, onAutoRes
   );
 };
 
+// Bulk Delete Modal
+const BulkDeleteModal = ({ count, onConfirm, onCancel, working }) => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+      <div className="max-w-md w-full rounded-2xl border border-red-500/30 bg-gray-900 p-5 shadow-2xl">
+        <h3 className="text-lg font-bold mb-3 text-red-400">Bulk Delete Users</h3>
+        <p className="text-sm text-white/80 mb-3">
+          Are you sure you want to delete <span className="font-bold text-red-400">{count}</span> selected user(s)?
+        </p>
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">
+          <p className="text-xs text-red-300">⚠️ This action cannot be undone. All user data will be permanently deleted.</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onConfirm} disabled={working} className="flex-1 bg-red-600 hover:bg-red-700 py-2 rounded-lg font-semibold text-sm">
+            {working ? "Deleting..." : `Delete ${count} User${count !== 1 ? 's' : ''}`}
+          </button>
+          <button onClick={onCancel} className="flex-1 border border-white/10 py-2 rounded-lg text-sm hover:bg-white/10">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ========== MAIN COMPONENT ==========
 export default function UserManagement({ apiBase = "", showToast }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const [limit] = useState(15);
   const [totalPages, setTotalPages] = useState(1);
   const [totalUsers, setTotalUsers] = useState(0);
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUserIds, setSelectedUserIds] = useState(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -499,7 +529,9 @@ export default function UserManagement({ apiBase = "", showToast }) {
   const [editForm, setEditForm] = useState({});
   const [autoResponderRules, setAutoResponderRules] = useState([]);
   const [autoResponderForm, setAutoResponderForm] = useState({ rule_id: "", event_type: "signup", delay_minutes: 0 });
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Scroll container ref for smooth scrolling
+  const usersContainerRef = useRef(null);
 
   const toast = useCallback((message, type = "info") => {
     if (typeof showToast === "function") showToast(message, type);
@@ -557,6 +589,8 @@ export default function UserManagement({ apiBase = "", showToast }) {
       setUsers(normalizedUsers);
       setTotalPages(data.data?.pagination?.totalPages || 1);
       setTotalUsers(data.data?.pagination?.total || 0);
+      // Clear selections when page changes
+      setSelectedUserIds(new Set());
     } catch (error) {
       console.error("Fetch users failed:", error);
       toast(error.message || "Failed to load users", "error");
@@ -594,6 +628,60 @@ export default function UserManagement({ apiBase = "", showToast }) {
     e.preventDefault();
     setPage(1);
     fetchUsers();
+  };
+
+  // Selection handlers
+  const toggleSelectUser = (userId) => {
+    setSelectedUserIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(userId)) {
+        newSet.delete(userId);
+      } else {
+        newSet.add(userId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedUserIds.size === users.length) {
+      setSelectedUserIds(new Set());
+    } else {
+      setSelectedUserIds(new Set(users.map(u => u.id)));
+    }
+  };
+
+  const clearSelections = () => {
+    setSelectedUserIds(new Set());
+  };
+
+  // Bulk delete users
+  const bulkDeleteUsers = async () => {
+    const userIds = Array.from(selectedUserIds);
+    if (userIds.length === 0) return;
+
+    setWorking(true);
+    try {
+      // Delete each user
+      for (const userId of userIds) {
+        await apiRequest(`/api/admin/users/${userId}`, { method: "DELETE" });
+      }
+      
+      toast(`Deleted ${userIds.length} user(s) successfully`, "success");
+      setSelectedUserIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      
+      // Refresh current page or go to previous page if needed
+      if (users.length === userIds.length && page > 1) {
+        setPage(p => p - 1);
+      } else {
+        fetchUsers();
+      }
+    } catch (error) {
+      toast(error.message || "Failed to delete users", "error");
+    } finally {
+      setWorking(false);
+    }
   };
 
   const openAddUser = () => {
@@ -866,15 +954,28 @@ export default function UserManagement({ apiBase = "", showToast }) {
       await apiRequest(`/api/admin/users/${selectedUser.id}`, { method: "DELETE" });
       toast("User deleted successfully", "success");
       setShowEditModal(false);
+      setShowDeleteConfirm(false);
       setSelectedUser(null);
-      if (users.length === 1 && page > 1) setPage(p => p - 1);
-      else fetchUsers();
+      
+      // Refresh current page or go to previous page if needed
+      if (users.length === 1 && page > 1) {
+        setPage(p => p - 1);
+      } else {
+        fetchUsers();
+      }
     } catch (error) {
       toast(error.message || "Failed to delete user", "error");
     } finally {
       setWorking(false);
     }
   };
+
+  // Scroll to top of users list when page changes
+  useEffect(() => {
+    if (usersContainerRef.current) {
+      usersContainerRef.current.scrollTop = 0;
+    }
+  }, [page]);
 
   if (loading && users.length === 0) {
     return (
@@ -884,6 +985,8 @@ export default function UserManagement({ apiBase = "", showToast }) {
       </div>
     );
   }
+
+  const selectedCount = selectedUserIds.size;
 
   return (
     <div className="space-y-4">
@@ -901,13 +1004,22 @@ export default function UserManagement({ apiBase = "", showToast }) {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search users..."
+                placeholder="Search users by email..."
                 className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-9 pr-3 text-white text-sm placeholder:text-white/30 focus:border-emerald-500 focus:outline-none"
               />
             </div>
             <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500">
               Search
             </button>
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearch(""); setPage(1); fetchUsers(); }}
+                className="rounded-lg border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
+              >
+                Clear
+              </button>
+            )}
           </form>
 
           <div className="flex gap-2">
@@ -921,15 +1033,41 @@ export default function UserManagement({ apiBase = "", showToast }) {
               onClick={() => setShowBatchConfirm(true)}
               className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500"
             >
-              <FaUsers className="text-sm" /> Bulk
+              <FaUsers className="text-sm" /> Bulk Paper
             </button>
+            {selectedCount > 0 && (
+              <button
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold hover:bg-red-500"
+              >
+                <FaTrash className="text-sm" />
+                <span className="hidden sm:inline">Delete ({selectedCount})</span>
+                <span className="sm:hidden">{selectedCount}</span>
+              </button>
+            )}
           </div>
+
+          {/* Selection Controls */}
+          {users.length > 0 && (
+            <div className="flex items-center justify-between pt-2 border-t border-white/10">
+              <button
+                onClick={toggleSelectAll}
+                className="flex items-center gap-2 text-xs text-white/60 hover:text-white"
+              >
+                {selectedUserIds.size === users.length ? <FaCheckSquare className="text-emerald-400" /> : <FaSquare />}
+                {selectedUserIds.size === users.length ? "Deselect All" : "Select All"}
+              </button>
+              {selectedCount > 0 && (
+                <span className="text-xs text-emerald-400">{selectedCount} selected</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Stats Summary - Horizontal Scroll on Mobile */}
       <div className="overflow-x-auto -mx-4 px-4">
-        <div className="flex gap-3 min-w-max">
+        <div className="flex gap-3 min-w-max pb-1">
           <div className="w-24"><SummaryCard label="Total" value={summary.total} icon="👥" /></div>
           <div className="w-24"><SummaryCard label="Trading" value={summary.active} icon="📈" /></div>
           <div className="w-24"><SummaryCard label="Paper" value={summary.trialActive} icon="📝" /></div>
@@ -939,17 +1077,31 @@ export default function UserManagement({ apiBase = "", showToast }) {
         </div>
       </div>
 
-      {/* Users List - Mobile Cards */}
-      <div className="space-y-3">
+      {/* Users List - Mobile Cards with Scrolling */}
+      <div 
+        ref={usersContainerRef}
+        className="space-y-3 max-h-[calc(100vh-400px)] overflow-y-auto pr-1"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
         {users.length === 0 ? (
           <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
             <p className="text-white/50">No users found.</p>
+            {search && (
+              <button
+                onClick={() => { setSearch(""); setPage(1); fetchUsers(); }}
+                className="mt-3 text-sm text-emerald-400 hover:text-emerald-300"
+              >
+                Clear search and show all users
+              </button>
+            )}
           </div>
         ) : (
           users.map((user) => (
             <UserCard
               key={user.id}
               user={user}
+              selected={selectedUserIds.has(user.id)}
+              onSelect={toggleSelectUser}
               onView={openViewUser}
               onEdit={openEditUser}
               onConnections={openConnectionsModal}
@@ -964,9 +1116,9 @@ export default function UserManagement({ apiBase = "", showToast }) {
         )}
       </div>
 
-      {/* Pagination */}
+      {/* Pagination with Load More / Infinite Scroll style */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 pt-2">
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
@@ -974,7 +1126,23 @@ export default function UserManagement({ apiBase = "", showToast }) {
           >
             <FaChevronLeft className="text-xs" /> Prev
           </button>
-          <span className="text-sm text-white/60">Page {page} of {totalPages}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-white/60">
+              Page {page} of {totalPages}
+            </span>
+            <select
+              value={page}
+              onChange={(e) => setPage(parseInt(e.target.value))}
+              className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white"
+            >
+              {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map(p => (
+                <option key={p} value={p}>Go to {p}</option>
+              ))}
+              {totalPages > 10 && page > 10 && (
+                <option value={page}>Current {page}</option>
+              )}
+            </select>
+          </div>
           <button
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
@@ -985,14 +1153,24 @@ export default function UserManagement({ apiBase = "", showToast }) {
         </div>
       )}
 
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && (
+        <BulkDeleteModal
+          count={selectedCount}
+          onConfirm={bulkDeleteUsers}
+          onCancel={() => setShowBulkDeleteConfirm(false)}
+          working={working}
+        />
+      )}
+
       {/* Batch Confirm Modal */}
       {showBatchConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
           <div className="max-w-md w-full rounded-2xl border border-blue-500/30 bg-gray-900 p-5 shadow-2xl">
             <h3 className="text-lg font-bold mb-3">Enable Paper Trading for All</h3>
-            <p className="text-sm text-white/80 mb-3">This will enable paper trading for all {totalUsers} users.</p>
+            <p className="text-sm text-white/80 mb-3">This will enable paper trading for all {totalUsers} users in the system.</p>
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
-              <p className="text-xs text-blue-300">Paper trading allows practice with $1000 virtual funds.</p>
+              <p className="text-xs text-blue-300">Paper trading allows users to practice with $1000 virtual funds.</p>
             </div>
             <div className="flex gap-3">
               <button onClick={enablePaperTradingForAll} disabled={working} className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg font-semibold text-sm">
@@ -1070,7 +1248,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
             <Info label="Trial Status" value={selectedUser.trial_status || "trial"} />
           </div>
           {selectedUser.wallet_addresses?.length > 0 && (
-            <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-3">
+            <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-3 max-h-32 overflow-y-auto">
               <h4 className="text-sm font-semibold mb-2">Wallets</h4>
               {selectedUser.wallet_addresses.map((addr, idx) => <div key={idx} className="text-xs font-mono text-white/60 break-all">{addr}</div>)}
             </div>
@@ -1086,7 +1264,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
         <UserModal title="Add to Newsletter" onClose={() => setShowNewsletterModal(false)}>
           <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-center">
             <FaEnvelopeOpenText className="mx-auto text-3xl text-green-400 mb-2" />
-            <h3 className="font-semibold">{selectedUser.email}</h3>
+            <h3 className="font-semibold break-all">{selectedUser.email}</h3>
             <p className="text-xs text-white/60 mt-1">Will be added to newsletter subscribers</p>
           </div>
           <ModalActions primaryLabel="Add to Newsletter" onPrimary={addToNewsletter} onCancel={() => setShowNewsletterModal(false)} working={working} />
@@ -1098,7 +1276,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
         <UserModal title="Add to Auto-Responder" onClose={() => setShowAutoResponderModal(false)}>
           <div className="rounded-lg border border-purple-500/20 bg-purple-500/10 p-4 text-center mb-4">
             <FaRobot className="mx-auto text-3xl text-purple-400 mb-2" />
-            <h3 className="font-semibold">{selectedUser.email}</h3>
+            <h3 className="font-semibold break-all">{selectedUser.email}</h3>
             <p className="text-xs text-white/60">Will receive automated emails</p>
           </div>
           <select value={autoResponderForm.rule_id} onChange={(e) => setAutoResponderForm({ ...autoResponderForm, rule_id: e.target.value })} className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm mb-3">
