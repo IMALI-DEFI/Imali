@@ -63,7 +63,6 @@ const safeString = (value, fallback = "—") => {
     if (value.value) return String(value.value);
     if (value.name) return String(value.name);
     if (value.email) return String(value.email);
-    console.warn("Rendering object as string:", value);
     return fallback;
   }
   return fallback;
@@ -262,11 +261,17 @@ const DeleteConfirmModal = ({ user, onConfirm, onCancel, working }) => {
       <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
         <div className="mb-2 flex items-center gap-2 font-bold text-red-300 text-sm">
           <FaExclamationTriangle />
-          Permanent Delete
+          ⚠️ PERMANENT DELETE ⚠️
         </div>
         <p className="text-xs sm:text-sm text-white/80">This will permanently delete:</p>
-        <p className="mt-2 rounded bg-black/40 p-2 font-mono text-xs break-all">{userEmail}</p>
-        <p className="mt-3 text-xs text-red-300/80">This action cannot be undone.</p>
+        <p className="mt-2 rounded bg-black/40 p-2 font-mono text-xs break-all text-red-300">{userEmail}</p>
+        <div className="mt-3 space-y-1 text-xs text-red-300/80">
+          <p>• All account information</p>
+          <p>• Trading history and positions</p>
+          <p>• API keys and integrations</p>
+          <p>• Referral data</p>
+          <p className="font-bold mt-2">This action CANNOT be undone!</p>
+        </div>
       </div>
       <div className="flex gap-3">
         <button
@@ -274,7 +279,7 @@ const DeleteConfirmModal = ({ user, onConfirm, onCancel, working }) => {
           disabled={working}
           className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold hover:bg-red-500 disabled:opacity-50"
         >
-          {working ? "Deleting..." : "Confirm Delete"}
+          {working ? "Deleting..." : "Permanently Delete"}
         </button>
         <button
           onClick={onCancel}
@@ -501,16 +506,16 @@ const BulkDeleteModal = ({ count, onConfirm, onCancel, working }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
       <div className="max-w-md w-full rounded-2xl border border-red-500/30 bg-gray-900 p-5 shadow-2xl">
-        <h3 className="text-lg font-bold mb-3 text-red-400">Bulk Delete Users</h3>
+        <h3 className="text-lg font-bold mb-3 text-red-400">⚠️ PERMANENT BULK DELETE ⚠️</h3>
         <p className="text-sm text-white/80 mb-3">
-          Are you sure you want to delete <span className="font-bold text-red-400">{count}</span> selected user(s)?
+          Are you sure you want to permanently delete <span className="font-bold text-red-400">{count}</span> selected user(s)?
         </p>
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">
-          <p className="text-xs text-red-300">⚠️ This action cannot be undone. All user data will be permanently deleted.</p>
+          <p className="text-xs text-red-300">⚠️ This action CANNOT be undone. All user data will be permanently deleted.</p>
         </div>
         <div className="flex gap-3">
           <button onClick={onConfirm} disabled={working} className="flex-1 bg-red-600 hover:bg-red-700 py-2 rounded-lg font-semibold text-sm">
-            {working ? "Deleting..." : `Delete ${count} User${count !== 1 ? 's' : ''}`}
+            {working ? "Deleting..." : `Permanently Delete ${count} User${count !== 1 ? 's' : ''}`}
           </button>
           <button onClick={onCancel} className="flex-1 border border-white/10 py-2 rounded-lg text-sm hover:bg-white/10">
             Cancel
@@ -586,7 +591,13 @@ export default function UserManagement({ apiBase = "", showToast }) {
       const data = await apiRequest(`/api/admin/users?${params.toString()}`);
       const fetchedUsers = data.data?.users || [];
       
-      const normalizedUsers = fetchedUsers.map(user => ({
+      // Filter out soft-deleted users (emails starting with "deleted_")
+      const activeUsers = fetchedUsers.filter(user => 
+        !user.email?.startsWith('deleted_') && 
+        !user.email?.includes('@deleted.com')
+      );
+      
+      const normalizedUsers = activeUsers.map(user => ({
         id: user.id,
         email: safeString(user.email),
         tier: safeString(user.tier, "starter"),
@@ -606,7 +617,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
       
       setUsers(normalizedUsers);
       setTotalPages(data.data?.pagination?.totalPages || 1);
-      setTotalUsers(data.data?.pagination?.total || 0);
+      setTotalUsers(activeUsers.length);
       // Clear selections when page changes
       setSelectedUserIds(new Set());
     } catch (error) {
@@ -632,7 +643,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
   }, [fetchUsers, fetchAutoResponderRules]);
 
   const summary = useMemo(() => ({
-    total: totalUsers,
+    total: users.length,
     active: users.filter(u => u.trading_enabled).length,
     admins: users.filter(u => u.is_admin).length,
     trialActive: users.filter(u => u.trial_status === "trial" && u.paper_trading_enabled).length,
@@ -640,7 +651,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
     hasBilling: users.filter(u => u.has_card_on_file).length,
     hasAlpaca: users.filter(u => u.alpaca_connected).length,
     hasOkx: users.filter(u => u.okx_connected).length,
-  }), [users, totalUsers]);
+  }), [users]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -669,19 +680,69 @@ export default function UserManagement({ apiBase = "", showToast }) {
     }
   };
 
-  // Bulk delete users
+  // Permanent delete single user
+  const deleteUser = async () => {
+    if (!selectedUser?.id) return;
+    
+    // Strong confirmation for permanent deletion
+    const confirmMessage = `⚠️ PERMANENT DELETE ⚠️\n\nAre you sure you want to permanently delete ${selectedUser.email}?\n\nThis will permanently remove ALL user data including:\n- Account information\n- Trading history\n- API keys\n- Referrals\n- Settings\n\nThis action CANNOT be undone!`;
+    
+    if (!window.confirm(confirmMessage)) return;
+    
+    setWorking(true);
+    try {
+      // Add ?permanent=true for hard delete
+      await apiRequest(`/api/admin/users/${selectedUser.id}?permanent=true`, { method: "DELETE" });
+      toast("User permanently deleted", "success");
+      setShowEditModal(false);
+      setShowDeleteConfirm(false);
+      setSelectedUser(null);
+      
+      // Refresh current page or go to previous page if needed
+      if (users.length === 1 && page > 1) {
+        setPage(p => p - 1);
+      } else {
+        fetchUsers();
+      }
+    } catch (error) {
+      toast(error.message || "Failed to delete user", "error");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  // Bulk permanent delete users
   const bulkDeleteUsers = async () => {
     const userIds = Array.from(selectedUserIds);
     if (userIds.length === 0) return;
+    
+    const confirmMessage = `⚠️ PERMANENT BULK DELETE ⚠️\n\nAre you sure you want to permanently delete ${userIds.length} selected user(s)?\n\nThis action CANNOT be undone!`;
+    
+    if (!window.confirm(confirmMessage)) return;
 
     setWorking(true);
+    let successCount = 0;
+    let failCount = 0;
+    
     try {
-      // Delete each user
+      // Delete each user with permanent=true
       for (const userId of userIds) {
-        await apiRequest(`/api/admin/users/${userId}`, { method: "DELETE" });
+        try {
+          await apiRequest(`/api/admin/users/${userId}?permanent=true`, { method: "DELETE" });
+          successCount++;
+        } catch (err) {
+          console.error(`Failed to delete user ${userId}:`, err);
+          failCount++;
+        }
       }
       
-      toast(`Deleted ${userIds.length} user(s) successfully`, "success");
+      if (successCount > 0) {
+        toast(`Deleted ${successCount} user(s) successfully${failCount > 0 ? ` (${failCount} failed)` : ''}`, "success");
+      }
+      if (failCount > 0) {
+        toast(`Failed to delete ${failCount} user(s)`, "error");
+      }
+      
       setSelectedUserIds(new Set());
       setShowBulkDeleteConfirm(false);
       
@@ -962,29 +1023,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
     }
   };
 
-  const deleteUser = async () => {
-    if (!selectedUser?.id) return;
-    setWorking(true);
-    try {
-      await apiRequest(`/api/admin/users/${selectedUser.id}`, { method: "DELETE" });
-      toast("User deleted successfully", "success");
-      setShowEditModal(false);
-      setShowDeleteConfirm(false);
-      setSelectedUser(null);
-      
-      // Refresh current page or go to previous page if needed
-      if (users.length === 1 && page > 1) {
-        setPage(p => p - 1);
-      } else {
-        fetchUsers();
-      }
-    } catch (error) {
-      toast(error.message || "Failed to delete user", "error");
-    } finally {
-      setWorking(false);
-    }
-  };
-
   // Scroll to top of users list when page changes
   useEffect(() => {
     if (usersContainerRef.current) {
@@ -1178,14 +1216,25 @@ export default function UserManagement({ apiBase = "", showToast }) {
         />
       )}
 
-      {/* Batch Confirm Modal */}
+      {/* Batch Confirm Modal (Enable Paper Trading for All) */}
       {showBatchConfirm && (
-        <BulkDeleteModal
-          count={totalUsers}
-          onConfirm={enablePaperTradingForAll}
-          onCancel={() => setShowBatchConfirm(false)}
-          working={working}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div className="max-w-md w-full rounded-2xl border border-blue-500/30 bg-gray-900 p-5 shadow-2xl">
+            <h3 className="text-lg font-bold mb-3">Enable Paper Trading for All</h3>
+            <p className="text-sm text-white/80 mb-3">This will enable paper trading for all {users.length} active users in the system.</p>
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
+              <p className="text-xs text-blue-300">Paper trading allows users to practice with $1000 virtual funds.</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={enablePaperTradingForAll} disabled={working} className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg font-semibold text-sm">
+                {working ? "Enabling..." : "Yes, Enable All"}
+              </button>
+              <button onClick={() => setShowBatchConfirm(false)} className="flex-1 border border-white/10 py-2 rounded-lg text-sm hover:bg-white/10">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Add User Modal */}
