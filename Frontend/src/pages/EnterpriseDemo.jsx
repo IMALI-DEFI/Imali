@@ -1,346 +1,319 @@
 // src/pages/Enterprise.jsx
+
 import React from "react";
 import { Link } from "react-router-dom";
 import {
   FaRobot,
   FaChartLine,
   FaShieldAlt,
-  FaDatabase,
+  FaBuilding,
+  FaBrain,
   FaUsers,
-  FaCogs,
+  FaCheckCircle,
   FaArrowRight,
-  FaCity,
-  FaHospital,
-  FaNetworkWired,
 } from "react-icons/fa";
 
 export default function Enterprise() {
-  const capabilities = [
-    {
-      icon: <FaRobot />,
-      title: "AI-Driven Automation",
-      text: "Automation systems designed to reduce manual workflows and improve operational efficiency.",
-    },
-    {
-      icon: <FaChartLine />,
-      title: "Predictive Analytics",
-      text: "Real-time analytics and forecasting tools for monitoring trends and operational performance.",
-    },
-    {
-      icon: <FaDatabase />,
-      title: "Centralized Dashboards",
-      text: "Unified dashboards that improve visibility across systems, departments, and operations.",
-    },
-    {
-      icon: <FaShieldAlt />,
-      title: "Risk Monitoring",
-      text: "Monitoring systems that support oversight, alerting, and operational awareness.",
-    },
-    {
-      icon: <FaUsers />,
-      title: "User & Access Management",
-      text: "Role-based systems for permissions, reporting, administration, and oversight.",
-    },
-    {
-      icon: <FaNetworkWired />,
-      title: "System Integrations",
-      text: "API-driven infrastructure capable of connecting multiple platforms and data sources.",
-    },
-  ];
-
-  const adaptations = [
-    {
-      icon: <FaHospital />,
-      title: "Health & Human Services",
-      text: "Predictive analytics, workflow automation, and centralized dashboards can help improve operational coordination and visibility across services.",
-    },
-    {
-      icon: <FaCity />,
-      title: "Redevelopment & Planning",
-      text: "Real-time dashboards and analytics systems can support redevelopment tracking, reporting, and data-driven prioritization.",
-    },
-    {
-      icon: <FaCogs />,
-      title: "Operational Modernization",
-      text: "Automation infrastructure can streamline repetitive processes, improve reporting, and reduce operational fragmentation.",
-    },
-  ];
+  const card =
+    "rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6";
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
-      {/* ================= HERO ================= */}
-      <section className="relative border-b border-white/10">
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent"></div>
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
 
-        <div className="relative max-w-7xl mx-auto px-6 py-24">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
+      {/* HERO */}
+      <section className="max-w-7xl mx-auto px-4 pt-20 pb-14">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
 
-            {/* LEFT */}
-            <div>
-              <div className="inline-flex items-center px-4 py-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 text-cyan-300 text-sm mb-6">
-                Enterprise Infrastructure & AI Solutions
-              </div>
-
-              <h1 className="text-5xl md:text-6xl font-extrabold leading-tight">
-                AI Infrastructure
-                <span className="block text-cyan-400">
-                  Built For Operational Intelligence
-                </span>
-              </h1>
-
-              <p className="mt-6 text-lg text-gray-300 leading-relaxed">
-                IMALI began as an AI-driven financial automation platform,
-                but the underlying infrastructure and analytics systems can
-                also be adapted for enterprise and public-sector operational
-                modernization.
-              </p>
-
-              <p className="mt-6 text-gray-400 leading-relaxed">
-                The infrastructure behind IMALI demonstrates how AI-driven
-                automation, analytics, and operational dashboards can be
-                adapted to solve broader organizational challenges involving
-                monitoring, workflow coordination, predictive analytics,
-                reporting, and real-time operational visibility.
-              </p>
-
-              <div className="mt-10 flex flex-wrap gap-4">
-                <Link
-                  to="/signup"
-                  className="group inline-flex items-center gap-3 px-8 py-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold transition"
-                >
-                  Request Demo
-                  <FaArrowRight className="group-hover:translate-x-1 transition" />
-                </Link>
-
-                <Link
-                  to="/contact"
-                  className="px-8 py-4 rounded-xl border border-white/20 hover:border-cyan-400 hover:text-cyan-300 transition"
-                >
-                  Contact Team
-                </Link>
-              </div>
-
-              {/* STATS */}
-              <div className="grid grid-cols-3 gap-4 mt-14">
-                <div className="bg-gray-900/70 border border-white/10 rounded-2xl p-5 text-center">
-                  <h3 className="text-2xl font-bold text-cyan-400">
-                    AI
-                  </h3>
-                  <p className="text-sm text-gray-400 mt-2">
-                    Automation
-                  </p>
-                </div>
-
-                <div className="bg-gray-900/70 border border-white/10 rounded-2xl p-5 text-center">
-                  <h3 className="text-2xl font-bold text-cyan-400">
-                    Real-Time
-                  </h3>
-                  <p className="text-sm text-gray-400 mt-2">
-                    Monitoring
-                  </p>
-                </div>
-
-                <div className="bg-gray-900/70 border border-white/10 rounded-2xl p-5 text-center">
-                  <h3 className="text-2xl font-bold text-cyan-400">
-                    API
-                  </h3>
-                  <p className="text-sm text-gray-400 mt-2">
-                    Infrastructure
-                  </p>
-                </div>
-              </div>
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+              <FaBuilding />
+              Enterprise & Government Innovation
             </div>
 
-            {/* RIGHT IMAGE */}
-            <div className="relative">
-              <div className="absolute inset-0 bg-cyan-500/20 blur-3xl rounded-full"></div>
+            <h1 className="text-5xl md:text-6xl font-extrabold leading-tight mt-6">
+              AI Automation & Analytics Platform
+            </h1>
 
-              <div className="relative border border-white/10 rounded-3xl overflow-hidden bg-gray-900/70 shadow-2xl">
-                <img
-                  src="/enterprise.PNG"
-                  alt="IMALI Enterprise"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ================= WHY TRADING ================= */}
-      <section className="max-w-7xl mx-auto px-6 py-24">
-        <div className="text-center mb-16">
-          <div className="inline-flex px-4 py-2 rounded-full bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 text-sm mb-6">
-            Infrastructure & Adaptability
-          </div>
-
-          <h2 className="text-4xl md:text-5xl font-bold leading-tight">
-            Why Trading Is
-            <span className="block text-cyan-400">
-              A Strong Technology Case Study
-            </span>
-          </h2>
-
-          <p className="mt-6 text-lg text-gray-400 max-w-5xl mx-auto leading-relaxed">
-            Trading systems require real-time monitoring, analytics,
-            automation, predictive decision support, workflow coordination,
-            reporting, and risk management. These are many of the same
-            technical capabilities required in modern enterprise and
-            public-sector environments.
-          </p>
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-10">
-
-          <div className="bg-gray-900/60 border border-white/10 rounded-3xl p-10">
-            <h3 className="text-3xl font-bold text-cyan-400">
-              Core Infrastructure Built Through IMALI
-            </h3>
-
-            <ul className="mt-8 space-y-5 text-gray-300">
-              <li>• Real-time monitoring and alert systems</li>
-              <li>• Predictive analytics and AI-assisted decision support</li>
-              <li>• Workflow automation and event processing</li>
-              <li>• Centralized dashboards and analytics reporting</li>
-              <li>• User permissions and administration systems</li>
-              <li>• API integrations across multiple services</li>
-              <li>• Operational oversight and monitoring infrastructure</li>
-              <li>• Scalable cloud-based architecture</li>
-            </ul>
-          </div>
-
-          <div className="bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-400/20 rounded-3xl p-10">
-            <h3 className="text-3xl font-bold text-cyan-400">
-              Why This Matters Beyond Finance
-            </h3>
-
-            <p className="text-gray-300 mt-6 leading-relaxed">
-              The same infrastructure principles used to process financial
-              data, monitor activity, automate workflows, and generate
-              analytics can also be adapted for operational intelligence,
-              modernization initiatives, and organizational reporting systems.
+            <p className="mt-6 text-lg text-slate-300 leading-8">
+              IMALI Enterprise transforms complex workflows into intelligent,
+              automated systems with dashboards, predictive analytics,
+              simulation tools, and real-time operational visibility.
             </p>
 
-            <p className="text-gray-400 mt-6 leading-relaxed">
-              IMALI demonstrates the ability to build scalable systems capable
-              of handling live data, automation workflows, centralized
-              dashboards, reporting infrastructure, and AI-assisted monitoring
-              across complex environments.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ================= ADAPTATIONS ================= */}
-      <section className="bg-gray-950/50 border-y border-white/5">
-        <div className="max-w-7xl mx-auto px-6 py-24">
-
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold">
-              Potential Enterprise & Public-Sector Adaptations
-            </h2>
-
-            <p className="mt-5 text-gray-400 max-w-4xl mx-auto">
-              The underlying architecture and infrastructure concepts behind
-              IMALI can be adapted to support broader organizational and
-              operational modernization initiatives.
-            </p>
-          </div>
-
-          <div className="grid lg:grid-cols-3 gap-8">
-            {adaptations.map((item, index) => (
-              <div
-                key={index}
-                className="bg-gray-900/60 border border-white/10 rounded-3xl p-8 hover:border-cyan-400/30 transition"
-              >
-                <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400 text-3xl">
-                  {item.icon}
-                </div>
-
-                <h3 className="text-2xl font-bold mt-6">
-                  {item.title}
-                </h3>
-
-                <p className="text-gray-400 mt-5 leading-relaxed">
-                  {item.text}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ================= CAPABILITIES ================= */}
-      <section className="max-w-7xl mx-auto px-6 py-24">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold">
-            Enterprise Technology Capabilities
-          </h2>
-
-          <p className="mt-5 text-gray-400 max-w-3xl mx-auto">
-            Scalable infrastructure designed around automation, analytics,
-            operational visibility, and AI-assisted monitoring.
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {capabilities.map((feature, index) => (
-            <div
-              key={index}
-              className="group bg-gray-900/60 border border-white/10 hover:border-cyan-400/40 rounded-3xl p-8 transition duration-300"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400 text-2xl">
-                {feature.icon}
-              </div>
-
-              <h3 className="text-2xl font-bold mt-6">
-                {feature.title}
-              </h3>
-
-              <p className="text-gray-400 mt-4 leading-relaxed">
-                {feature.text}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ================= IMPLEMENTATION ================= */}
-      <section className="max-w-7xl mx-auto px-6 pb-24">
-        <div className="rounded-3xl border border-cyan-400/20 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 p-14">
-
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-5xl font-extrabold">
-              Modern Infrastructure
-              <span className="block text-cyan-400">
-                Designed For Adaptability
-              </span>
-            </h2>
-
-            <p className="mt-6 text-lg text-gray-300 leading-relaxed">
-              IMALI demonstrates how modern AI-driven infrastructure can support
-              automation, analytics, operational monitoring, and centralized
-              reporting across complex systems and environments.
+            <p className="mt-4 text-slate-400 leading-7">
+              The same automation framework used for intelligent decision support
+              can be adapted for workforce analytics, operational planning,
+              training simulations, digital engagement, and performance monitoring.
             </p>
 
-            <p className="mt-6 text-gray-400 leading-relaxed">
-              Our long-term vision is to continue building scalable,
-              data-driven infrastructure capable of supporting broader
-              enterprise and operational modernization initiatives.
-            </p>
+            <div className="flex flex-wrap gap-4 mt-10">
 
-            <div className="mt-10">
               <Link
-                to="/signup"
-                className="inline-flex items-center gap-3 px-10 py-5 rounded-2xl bg-cyan-500 hover:bg-cyan-400 transition text-black font-bold text-lg"
+                to="/trade-demo"
+                className="px-7 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold transition shadow-lg shadow-emerald-500/20 flex items-center gap-2"
               >
-                Schedule A Demo
+                Launch Interactive Demo
                 <FaArrowRight />
               </Link>
+
+              <Link
+                to="/signup"
+                className="px-7 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition"
+              >
+                Request Enterprise Access
+              </Link>
+
             </div>
           </div>
+
+          {/* RIGHT SIDE */}
+          <div className="relative">
+
+            <div className="rounded-[32px] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 p-8 backdrop-blur">
+
+              <div className="grid grid-cols-2 gap-4">
+
+                <div className={card}>
+                  <FaRobot className="text-3xl text-emerald-300" />
+                  <div className="mt-4 text-xl font-bold">
+                    AI Automation
+                  </div>
+                  <div className="text-sm text-slate-400 mt-2">
+                    Reduce repetitive manual processes.
+                  </div>
+                </div>
+
+                <div className={card}>
+                  <FaChartLine className="text-3xl text-cyan-300" />
+                  <div className="mt-4 text-xl font-bold">
+                    Analytics
+                  </div>
+                  <div className="text-sm text-slate-400 mt-2">
+                    Real-time dashboards and reporting.
+                  </div>
+                </div>
+
+                <div className={card}>
+                  <FaBrain className="text-3xl text-purple-300" />
+                  <div className="mt-4 text-xl font-bold">
+                    Predictive Insights
+                  </div>
+                  <div className="text-sm text-slate-400 mt-2">
+                    Forecast trends and identify risks early.
+                  </div>
+                </div>
+
+                <div className={card}>
+                  <FaShieldAlt className="text-3xl text-yellow-300" />
+                  <div className="mt-4 text-xl font-bold">
+                    Monitoring
+                  </div>
+                  <div className="text-sm text-slate-400 mt-2">
+                    Centralized operational visibility.
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
         </div>
       </section>
+
+      {/* FEATURES */}
+      <section className="max-w-7xl mx-auto px-4 py-10">
+
+        <div className="text-center max-w-3xl mx-auto">
+          <h2 className="text-4xl font-extrabold">
+            Designed For Modern Operations
+          </h2>
+
+          <p className="mt-5 text-slate-400 leading-8">
+            IMALI Enterprise provides a flexible AI-powered framework that can
+            support operational planning, digital engagement, analytics,
+            simulation, and intelligent automation.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6 mt-14">
+
+          <div className={card}>
+            <div className="text-4xl">📊</div>
+
+            <h3 className="text-2xl font-bold mt-5">
+              Operational Dashboards
+            </h3>
+
+            <p className="text-slate-400 mt-4 leading-7">
+              Visualize performance metrics, trends, alerts, and activity
+              across departments and systems.
+            </p>
+          </div>
+
+          <div className={card}>
+            <div className="text-4xl">🤖</div>
+
+            <h3 className="text-2xl font-bold mt-5">
+              AI Workflow Automation
+            </h3>
+
+            <p className="text-slate-400 mt-4 leading-7">
+              Streamline repetitive workflows using intelligent automation and
+              AI-assisted processes.
+            </p>
+          </div>
+
+          <div className={card}>
+            <div className="text-4xl">📈</div>
+
+            <h3 className="text-2xl font-bold mt-5">
+              Predictive Analytics
+            </h3>
+
+            <p className="text-slate-400 mt-4 leading-7">
+              Identify operational risks, performance trends, and planning
+              opportunities before issues escalate.
+            </p>
+          </div>
+
+          <div className={card}>
+            <div className="text-4xl">🎓</div>
+
+            <h3 className="text-2xl font-bold mt-5">
+              Simulation & Training
+            </h3>
+
+            <p className="text-slate-400 mt-4 leading-7">
+              Practice operational scenarios safely using AI-powered simulation
+              environments and training tools.
+            </p>
+          </div>
+
+          <div className={card}>
+            <div className="text-4xl">👥</div>
+
+            <h3 className="text-2xl font-bold mt-5">
+              Digital Engagement
+            </h3>
+
+            <p className="text-slate-400 mt-4 leading-7">
+              Improve communication, visibility, and responsiveness with
+              modern digital interaction systems.
+            </p>
+          </div>
+
+          <div className={card}>
+            <div className="text-4xl">🔒</div>
+
+            <h3 className="text-2xl font-bold mt-5">
+              Enterprise Ready
+            </h3>
+
+            <p className="text-slate-400 mt-4 leading-7">
+              Scalable architecture designed for operational oversight,
+              security, analytics, and future expansion.
+            </p>
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* USE CASES */}
+      <section className="max-w-7xl mx-auto px-4 py-10">
+
+        <div className="rounded-[32px] border border-white/10 bg-white/5 p-8 md:p-12">
+
+          <div className="text-center max-w-3xl mx-auto">
+            <h2 className="text-4xl font-extrabold">
+              Potential Use Cases
+            </h2>
+
+            <p className="mt-5 text-slate-400 leading-8">
+              The IMALI Enterprise framework can be adapted to support
+              operational intelligence across multiple sectors.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5 mt-14">
+
+            {[
+              "Predictive maintenance systems",
+              "Workforce analytics dashboards",
+              "AI-assisted scheduling systems",
+              "Simulation and training environments",
+              "Digital operations monitoring",
+              "Automated reporting workflows",
+              "Community engagement analytics",
+              "Operational performance tracking",
+              "Real-time visibility dashboards",
+            ].map((item) => (
+              <div
+                key={item}
+                className="rounded-2xl border border-white/10 bg-black/20 p-5 flex items-start gap-3"
+              >
+                <FaCheckCircle className="text-emerald-400 mt-1 flex-shrink-0" />
+
+                <span className="text-slate-300">
+                  {item}
+                </span>
+              </div>
+            ))}
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* CTA */}
+      <section className="max-w-5xl mx-auto px-4 py-16">
+
+        <div className="rounded-[36px] border border-indigo-500/20 bg-gradient-to-r from-indigo-600/10 to-purple-600/10 p-10 text-center">
+
+          <div className="text-6xl mb-5">
+            🚀
+          </div>
+
+          <h2 className="text-4xl font-extrabold">
+            Explore The Interactive Demo
+          </h2>
+
+          <p className="mt-5 text-slate-300 leading-8 max-w-3xl mx-auto">
+            Experience a live AI-powered simulation environment that demonstrates
+            analytics, automation, confidence scoring, operational visibility,
+            and intelligent decision support in real time.
+          </p>
+
+          <div className="flex flex-wrap justify-center gap-4 mt-10">
+
+            <Link
+              to="/trade-demo"
+              className="px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold transition shadow-lg shadow-emerald-500/20"
+            >
+              Launch Demo
+            </Link>
+
+            <Link
+              to="/signup"
+              className="px-8 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition"
+            >
+              Contact Enterprise Team
+            </Link>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* FOOTER */}
+      <div className="text-center text-xs text-white/30 pb-10 px-4">
+        IMALI Enterprise • AI Automation • Analytics • Operational Intelligence
+      </div>
+
     </div>
   );
 }
