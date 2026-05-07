@@ -10,25 +10,25 @@ import {
   FaShieldAlt,
   FaBuilding,
   FaBrain,
+  FaUsers,
   FaCheckCircle,
   FaArrowRight,
 } from "react-icons/fa";
 
 export default function Enterprise() {
   const card =
-    "rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-lg transition";
+    "rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6";
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
 
       {/* HERO */}
-      <section className="max-w-7xl mx-auto px-4 pt-20 pb-16">
+      <section className="max-w-7xl mx-auto px-4 pt-20 pb-14">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
 
-        <div className="grid lg:grid-cols-2 gap-14 items-center">
-
-          {/* LEFT */}
           <div>
 
+            {/* LOGO */}
             <div className="flex items-center gap-4 mb-6">
               <img
                 src={logo}
@@ -37,42 +37,42 @@ export default function Enterprise() {
               />
 
               <div>
-                <h2 className="text-2xl font-extrabold tracking-wide">
+                <div className="text-2xl font-extrabold tracking-wide">
                   IMALI ENTERPRISE
-                </h2>
+                </div>
 
-                <p className="text-slate-500 text-sm">
+                <div className="text-slate-400 text-sm">
                   AI Automation & Operational Intelligence
-                </p>
+                </div>
               </div>
             </div>
 
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 font-semibold">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
               <FaBuilding />
               Enterprise & Government Innovation
             </div>
 
-            <h1 className="text-5xl md:text-6xl font-extrabold leading-tight mt-7">
-              Intelligent Automation For Modern Operations
+            <h1 className="text-5xl md:text-6xl font-extrabold leading-tight mt-6">
+              AI Automation & Analytics Platform
             </h1>
 
-            <p className="mt-7 text-lg text-slate-600 leading-8">
-              IMALI Enterprise helps organizations modernize operations using
-              AI-assisted automation, predictive analytics, intelligent dashboards,
-              and simulation-driven decision support systems.
+            <p className="mt-6 text-lg text-slate-300 leading-8">
+              IMALI Enterprise transforms complex workflows into intelligent,
+              automated systems with dashboards, predictive analytics,
+              simulation tools, and real-time operational visibility.
             </p>
 
-            <p className="mt-5 text-slate-500 leading-8">
-              The platform framework can support workforce analytics,
-              operational visibility, training simulations, digital engagement,
-              predictive maintenance, and real-time monitoring workflows.
+            <p className="mt-4 text-slate-400 leading-7">
+              The same automation framework used for intelligent decision support
+              can be adapted for workforce analytics, operational planning,
+              training simulations, digital engagement, and performance monitoring.
             </p>
 
             <div className="flex flex-wrap gap-4 mt-10">
 
               <Link
                 to="/trade-demo"
-                className="px-7 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                className="px-7 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold transition shadow-lg shadow-emerald-500/20 flex items-center gap-2"
               >
                 Launch Interactive Demo
                 <FaArrowRight />
@@ -80,67 +80,58 @@ export default function Enterprise() {
 
               <Link
                 to="/signup"
-                className="px-7 py-4 rounded-2xl border border-slate-300 bg-white hover:bg-slate-100 font-bold transition"
+                className="px-7 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition"
               >
                 Request Enterprise Access
               </Link>
 
             </div>
-
           </div>
 
-          {/* RIGHT */}
-          <div>
+          {/* RIGHT SIDE */}
+          <div className="relative">
 
-            <div className="rounded-[32px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-cyan-50 p-8">
+            <div className="rounded-[32px] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 p-8 backdrop-blur">
 
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-2 gap-4">
 
                 <div className={card}>
-                  <FaRobot className="text-3xl text-emerald-600" />
-
+                  <FaRobot className="text-3xl text-emerald-300" />
                   <div className="mt-4 text-xl font-bold">
                     AI Automation
                   </div>
-
-                  <div className="text-sm text-slate-500 mt-2 leading-6">
-                    Reduce repetitive operational tasks with intelligent automation.
+                  <div className="text-sm text-slate-400 mt-2">
+                    Reduce repetitive manual processes.
                   </div>
                 </div>
 
                 <div className={card}>
-                  <FaChartLine className="text-3xl text-cyan-600" />
-
+                  <FaChartLine className="text-3xl text-cyan-300" />
                   <div className="mt-4 text-xl font-bold">
                     Analytics
                   </div>
-
-                  <div className="text-sm text-slate-500 mt-2 leading-6">
-                    Real-time dashboards, metrics, and operational reporting.
+                  <div className="text-sm text-slate-400 mt-2">
+                    Real-time dashboards and reporting.
                   </div>
                 </div>
 
                 <div className={card}>
-                  <FaBrain className="text-3xl text-purple-600" />
-
+                  <FaBrain className="text-3xl text-purple-300" />
                   <div className="mt-4 text-xl font-bold">
                     Predictive Insights
                   </div>
-
-                  <div className="text-sm text-slate-500 mt-2 leading-6">
-                    Forecast operational risks and identify trends earlier.
+                  <div className="text-sm text-slate-400 mt-2">
+                    Forecast trends and identify risks early.
                   </div>
                 </div>
 
                 <div className={card}>
-                  <FaShieldAlt className="text-3xl text-yellow-500" />
-
+                  <FaShieldAlt className="text-3xl text-yellow-300" />
                   <div className="mt-4 text-xl font-bold">
                     Monitoring
                   </div>
-
-                  <div className="text-sm text-slate-500 mt-2 leading-6">
-                    Centralized visibility across systems and workflows.
+                  <div className="text-sm text-slate-400 mt-2">
+                    Centralized operational visibility.
                   </div>
                 </div>
 
@@ -151,27 +142,24 @@ export default function Enterprise() {
           </div>
 
         </div>
-
       </section>
 
       {/* FEATURES */}
-      <section className="max-w-7xl mx-auto px-4 py-16">
+      <section className="max-w-7xl mx-auto px-4 py-10">
 
         <div className="text-center max-w-3xl mx-auto">
-
           <h2 className="text-4xl font-extrabold">
-            Designed For Enterprise Operations
+            Designed For Modern Operations
           </h2>
 
-          <p className="mt-6 text-slate-600 leading-8">
-            IMALI Enterprise provides flexible AI-powered infrastructure
-            designed to support operational intelligence, workflow automation,
-            simulation environments, and advanced analytics.
+          <p className="mt-5 text-slate-400 leading-8">
+            IMALI Enterprise provides a flexible AI-powered framework that can
+            support operational planning, digital engagement, analytics,
+            simulation, and intelligent automation.
           </p>
-
         </div>
 
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6 mt-16">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6 mt-14">
 
           <div className={card}>
             <div className="text-4xl">📊</div>
@@ -180,8 +168,8 @@ export default function Enterprise() {
               Operational Dashboards
             </h3>
 
-            <p className="text-slate-500 mt-4 leading-7">
-              Visualize trends, metrics, alerts, and performance data
+            <p className="text-slate-400 mt-4 leading-7">
+              Visualize performance metrics, trends, alerts, and activity
               across departments and systems.
             </p>
           </div>
@@ -190,11 +178,12 @@ export default function Enterprise() {
             <div className="text-4xl">🤖</div>
 
             <h3 className="text-2xl font-bold mt-5">
-              Workflow Automation
+              AI Workflow Automation
             </h3>
 
-            <p className="text-slate-500 mt-4 leading-7">
-              Streamline repetitive operational workflows using AI-assisted automation.
+            <p className="text-slate-400 mt-4 leading-7">
+              Streamline repetitive workflows using intelligent automation and
+              AI-assisted processes.
             </p>
           </div>
 
@@ -205,8 +194,9 @@ export default function Enterprise() {
               Predictive Analytics
             </h3>
 
-            <p className="text-slate-500 mt-4 leading-7">
-              Identify operational patterns and future risks before escalation.
+            <p className="text-slate-400 mt-4 leading-7">
+              Identify operational risks, performance trends, and planning
+              opportunities before issues escalate.
             </p>
           </div>
 
@@ -217,20 +207,22 @@ export default function Enterprise() {
               Simulation & Training
             </h3>
 
-            <p className="text-slate-500 mt-4 leading-7">
-              Practice operational scenarios safely through simulation environments.
+            <p className="text-slate-400 mt-4 leading-7">
+              Practice operational scenarios safely using AI-powered simulation
+              environments and training tools.
             </p>
           </div>
 
           <div className={card}>
-            <div className="text-4xl">🌐</div>
+            <div className="text-4xl">👥</div>
 
             <h3 className="text-2xl font-bold mt-5">
               Digital Engagement
             </h3>
 
-            <p className="text-slate-500 mt-4 leading-7">
-              Improve communication and transparency through intelligent digital systems.
+            <p className="text-slate-400 mt-4 leading-7">
+              Improve communication, visibility, and responsiveness with
+              modern digital interaction systems.
             </p>
           </div>
 
@@ -241,8 +233,9 @@ export default function Enterprise() {
               Enterprise Ready
             </h3>
 
-            <p className="text-slate-500 mt-4 leading-7">
-              Built for scalability, operational oversight, analytics, and future growth.
+            <p className="text-slate-400 mt-4 leading-7">
+              Scalable architecture designed for operational oversight,
+              security, analytics, and future expansion.
             </p>
           </div>
 
@@ -251,43 +244,41 @@ export default function Enterprise() {
       </section>
 
       {/* USE CASES */}
-      <section className="max-w-7xl mx-auto px-4 py-16">
+      <section className="max-w-7xl mx-auto px-4 py-10">
 
-        <div className="rounded-[36px] border border-slate-200 bg-slate-50 p-8 md:p-12">
+        <div className="rounded-[32px] border border-white/10 bg-white/5 p-8 md:p-12">
 
           <div className="text-center max-w-3xl mx-auto">
-
             <h2 className="text-4xl font-extrabold">
-              Potential Operational Use Cases
+              Potential Use Cases
             </h2>
 
-            <p className="mt-6 text-slate-600 leading-8">
-              The IMALI Enterprise framework can support multiple enterprise
-              and operational intelligence initiatives.
+            <p className="mt-5 text-slate-400 leading-8">
+              The IMALI Enterprise framework can be adapted to support
+              operational intelligence across multiple sectors.
             </p>
-
           </div>
 
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5 mt-14">
 
             {[
               "Predictive maintenance systems",
-              "Operational analytics dashboards",
-              "AI-assisted scheduling",
-              "Simulation environments",
+              "Workforce analytics dashboards",
+              "AI-assisted scheduling systems",
+              "Simulation and training environments",
               "Digital operations monitoring",
               "Automated reporting workflows",
               "Community engagement analytics",
-              "Workforce performance tracking",
-              "Real-time operational visibility",
+              "Operational performance tracking",
+              "Real-time visibility dashboards",
             ].map((item) => (
               <div
                 key={item}
-                className="rounded-2xl border border-slate-200 bg-white p-5 flex items-start gap-3 shadow-sm"
+                className="rounded-2xl border border-white/10 bg-black/20 p-5 flex items-start gap-3"
               >
-                <FaCheckCircle className="text-emerald-500 mt-1 flex-shrink-0" />
+                <FaCheckCircle className="text-emerald-400 mt-1 flex-shrink-0" />
 
-                <span className="text-slate-700">
+                <span className="text-slate-300">
                   {item}
                 </span>
               </div>
@@ -300,9 +291,9 @@ export default function Enterprise() {
       </section>
 
       {/* CTA */}
-      <section className="max-w-5xl mx-auto px-4 py-20">
+      <section className="max-w-5xl mx-auto px-4 py-16">
 
-        <div className="rounded-[40px] border border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50 p-10 text-center shadow-sm">
+        <div className="rounded-[36px] border border-indigo-500/20 bg-gradient-to-r from-indigo-600/10 to-purple-600/10 p-10 text-center">
 
           <div className="text-6xl mb-5">
             🚀
@@ -312,24 +303,24 @@ export default function Enterprise() {
             Explore The Interactive Demo
           </h2>
 
-          <p className="mt-6 text-slate-600 leading-8 max-w-3xl mx-auto">
-            Experience a live AI-powered simulation environment demonstrating
-            automation, analytics, confidence scoring, operational visibility,
-            and intelligent decision-support systems in real time.
+          <p className="mt-5 text-slate-300 leading-8 max-w-3xl mx-auto">
+            Experience a live AI-powered simulation environment that demonstrates
+            analytics, automation, confidence scoring, operational visibility,
+            and intelligent decision support in real time.
           </p>
 
           <div className="flex flex-wrap justify-center gap-4 mt-10">
 
             <Link
               to="/trade-demo"
-              className="px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-lg shadow-emerald-500/20"
+              className="px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold transition shadow-lg shadow-emerald-500/20"
             >
               Launch Demo
             </Link>
 
             <Link
               to="/signup"
-              className="px-8 py-4 rounded-2xl border border-slate-300 bg-white hover:bg-slate-100 font-bold transition"
+              className="px-8 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition"
             >
               Contact Enterprise Team
             </Link>
@@ -341,7 +332,7 @@ export default function Enterprise() {
       </section>
 
       {/* FOOTER */}
-      <div className="text-center text-sm text-slate-500 pb-12 px-4">
+      <div className="text-center text-xs text-white/30 pb-10 px-4">
         IMALI Enterprise • AI Automation • Analytics • Operational Intelligence
       </div>
 
