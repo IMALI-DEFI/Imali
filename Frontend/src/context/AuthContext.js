@@ -64,13 +64,11 @@ const normalizeBoolean = (value) => {
   return !!value;
 };
 
-// VALID TIERS - Added enterprise
 const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle", "enterprise"];
 
 const normalizeUser = (userData) => {
   if (!userData || (!userData.id && !userData.email)) return null;
 
-  // Validate tier is valid, default to starter if not
   const tier = userData.tier && VALID_TIERS.includes(userData.tier.toLowerCase()) 
     ? userData.tier.toLowerCase() 
     : "starter";
@@ -94,7 +92,6 @@ const normalizeUser = (userData) => {
     portfolio_value: Number(userData.portfolio_value || 1000),
     created_at: userData.created_at || null,
     updated_at: userData.updated_at || null,
-    // Enterprise-specific fields
     organization_id: userData.organization_id || null,
     organization_role: userData.organization_role || null,
     custom_branding: userData.custom_branding || null,
@@ -120,7 +117,6 @@ const normalizeActivation = (activationData) => {
     tier_requirements_met: normalizeBoolean(activationData.tier_requirements_met),
     tier_required_integration:
       activationData.tier_required_integration || "Alpaca & OKX (both)",
-    // Enterprise activation fields
     enterprise_approved: normalizeBoolean(activationData.enterprise_approved),
     custom_strategy_access: normalizeBoolean(activationData.custom_strategy_access),
     admin_panel_enabled: normalizeBoolean(activationData.admin_panel_enabled),
@@ -385,6 +381,7 @@ export function AuthProvider({ children }) {
     [loadUser]
   );
 
+  // FIXED: Changed from /api/auth/register to /api/auth/signup
   const signup = useCallback(
     async (userData) => {
       setError(null);
@@ -395,7 +392,6 @@ export function AuthProvider({ children }) {
         return { success: false, error: message };
       }
 
-      // For enterprise tier, password is optional (they'll go through sales)
       const isEnterprise = userData.tier === "enterprise" || userData.mode === "enterprise";
       
       if (!isEnterprise) {
@@ -419,7 +415,6 @@ export function AuthProvider({ children }) {
       }
 
       try {
-        // Prepare request payload
         const payload = {
           email: userData.email,
           tier: userData.tier || "starter",
@@ -427,12 +422,10 @@ export function AuthProvider({ children }) {
           mode: userData.mode || "consumer",
         };
 
-        // Add password only for non-enterprise signups
         if (!isEnterprise && userData.password) {
           payload.password = userData.password;
         }
 
-        // Add organization fields if present
         if (userData.organizationName) {
           payload.organization_name = userData.organizationName;
         }
@@ -443,7 +436,8 @@ export function AuthProvider({ children }) {
           payload.use_case = userData.useCase;
         }
 
-        const data = await apiFetch("/api/auth/register", {
+        // ✅ FIXED: Use /api/auth/signup instead of /api/auth/register
+        const data = await apiFetch("/api/auth/signup", {
           method: "POST",
           body: JSON.stringify(payload),
         });
@@ -451,7 +445,6 @@ export function AuthProvider({ children }) {
         const token = data?.data?.token || data?.token;
         const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
 
-        // For enterprise, we might not get a token immediately (sales flow)
         if (!token && !isEnterprise) {
           const message = "Signup succeeded but no token was returned";
           setError(message);
@@ -471,7 +464,6 @@ export function AuthProvider({ children }) {
           return { success: true, token, api_key: apiKey, user: loadedUser };
         }
 
-        // Enterprise signup without immediate token (awaiting approval)
         return { 
           success: true, 
           requiresApproval: true,
@@ -503,7 +495,6 @@ export function AuthProvider({ children }) {
     [activation, persistActivation, refreshActivation]
   );
 
-  // Enterprise-specific methods
   const getOrganizationUsers = useCallback(async () => {
     if (!user?.organization_id || user?.tier !== "enterprise") {
       return { success: false, error: "Not an enterprise user" };
@@ -599,7 +590,6 @@ export function AuthProvider({ children }) {
   }, [isEnterpriseAdmin, user]);
 
   const activationComplete = useMemo(() => {
-    // For enterprise, activation requires admin approval
     if (isEnterpriseUser) {
       return activation?.enterprise_approved === true && 
              activation?.trading_enabled === true;
@@ -608,7 +598,6 @@ export function AuthProvider({ children }) {
   }, [activation, isEnterpriseUser]);
 
   const hasCardOnFile = useMemo(() => {
-    // Enterprise doesn't require card on file
     if (isEnterpriseUser) return true;
     return activation?.has_card_on_file === true || activation?.billing_complete === true;
   }, [activation, isEnterpriseUser]);
@@ -616,9 +605,8 @@ export function AuthProvider({ children }) {
   const hasRequiredIntegrations = useMemo(() => {
     if (!activation) return false;
     
-    // Enterprise has more flexible requirements
     if (isEnterpriseUser) {
-      return true; // Enterprise can use custom integrations
+      return true;
     }
 
     const tier = activation.tier || user?.tier || "starter";
@@ -677,7 +665,6 @@ export function AuthProvider({ children }) {
       updateActivation,
       clearAuth,
       getApiKey: () => user?.api_key || null,
-      // Enterprise methods
       getOrganizationUsers,
       inviteTeamMember,
       updateCustomStrategy,
