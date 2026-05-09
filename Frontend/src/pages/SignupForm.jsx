@@ -7,7 +7,7 @@ import {
 } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle"];
+const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle", "enterprise"]; // Added enterprise
 
 const TIER_LABELS = {
   starter: {
@@ -34,6 +34,11 @@ const TIER_LABELS = {
     name: "Bundle",
     price: "$199/mo",
     summary: "Full platform access across trading, automation, and analytics.",
+  },
+  enterprise: {
+    name: "Enterprise",
+    price: "Custom",
+    summary: "Custom branded solution with admin panel and enhanced bot controls.",
   },
 };
 
@@ -67,6 +72,12 @@ const ENTERPRISE_TIERS = {
     price: "Custom",
     summary:
       "Complete organization package with simulation, analytics, and admin visibility.",
+  },
+  enterprise: {
+    name: "Enterprise Custom",
+    price: "Contact Sales",
+    summary:
+      "Fully branded solution with dedicated admin panel and enhanced bot strategy controls.",
   },
 };
 
@@ -150,6 +161,7 @@ export default function Signup() {
 
   const mode = String(searchParams.get("mode") || "").toLowerCase();
   const isEnterprise = mode === "enterprise" || mode === "organization";
+  const isDirectEnterprise = searchParams.get("tier") === "enterprise"; // Handle direct enterprise link
 
   const labels = isEnterprise ? ENTERPRISE_TIERS : TIER_LABELS;
 
@@ -158,6 +170,9 @@ export default function Signup() {
     const stateTier = location.state?.selectedTier;
     const savedTier = safeGetLocalStorage("imali_selected_tier", "starter");
 
+    // If direct enterprise link, force enterprise tier
+    if (queryTier === "enterprise") return "enterprise";
+    
     return normalizeTier(queryTier || stateTier || savedTier || "starter");
   }, [searchParams, location.state]);
 
@@ -171,6 +186,9 @@ export default function Signup() {
     organizationName: "",
     contactName: "",
     useCase: "financial_literacy",
+    // Enterprise-specific fields
+    companySize: "",
+    desiredFeatures: [],
   });
 
   const [loading, setLoading] = useState(false);
@@ -189,11 +207,22 @@ export default function Signup() {
   const currentTier = labels[form.tier] || labels.starter;
 
   const validate = () => {
-    if (isEnterprise && !form.organizationName.trim()) {
+    // Enterprise validation
+    if (form.tier === "enterprise") {
+      if (!form.organizationName.trim()) {
+        return "Organization name is required for Enterprise.";
+      }
+      if (!form.contactName.trim()) {
+        return "Contact name is required.";
+      }
+    }
+
+    // Organization mode validation (non-enterprise tier but enterprise mode)
+    if (isEnterprise && !isDirectEnterprise && !form.organizationName.trim()) {
       return "Organization name is required.";
     }
 
-    if (isEnterprise && !form.contactName.trim()) {
+    if (isEnterprise && !isDirectEnterprise && !form.contactName.trim()) {
       return "Contact name is required.";
     }
 
@@ -205,16 +234,19 @@ export default function Signup() {
       return "Enter a valid email address.";
     }
 
-    if (form.password.length < 8) {
-      return "Password must be at least 8 characters.";
-    }
+    // Skip password validation for enterprise (contact sales flow)
+    if (form.tier !== "enterprise") {
+      if (form.password.length < 8) {
+        return "Password must be at least 8 characters.";
+      }
 
-    if (form.password.length > 72) {
-      return "Password must be 72 characters or less.";
-    }
+      if (form.password.length > 72) {
+        return "Password must be 72 characters or less.";
+      }
 
-    if (form.password !== form.confirmPassword) {
-      return "Passwords do not match.";
+      if (form.password !== form.confirmPassword) {
+        return "Passwords do not match.";
+      }
     }
 
     if (!form.acceptTerms) {
@@ -243,6 +275,29 @@ export default function Signup() {
     const email = form.email.trim().toLowerCase();
 
     try {
+      // For Enterprise tier, redirect to contact form instead of creating account
+      if (form.tier === "enterprise") {
+        setStep("redirecting");
+        // Store enterprise inquiry data
+        const inquiryData = {
+          email,
+          organizationName: form.organizationName.trim(),
+          contactName: form.contactName.trim(),
+          companySize: form.companySize,
+          desiredFeatures: form.desiredFeatures,
+          useCase: form.useCase,
+          timestamp: new Date().toISOString(),
+        };
+        
+        safeSetLocalStorage("imali_enterprise_inquiry", JSON.stringify(inquiryData));
+        
+        // Redirect to contact/sales page or show modal
+        navigate("/contact-sales", {
+          state: { inquiryData, fromEnterpriseSignup: true }
+        });
+        return;
+      }
+
       const signupResult = await signup({
         email,
         password: form.password,
@@ -297,6 +352,10 @@ export default function Signup() {
   };
 
   const getButtonText = () => {
+    if (form.tier === "enterprise") {
+      return step === "redirecting" ? "Redirecting to sales..." : "Contact Sales →";
+    }
+    
     switch (step) {
       case "creating":
         return isEnterprise ? "Creating pilot account…" : "Creating account…";
@@ -311,20 +370,32 @@ export default function Signup() {
     }
   };
 
+  const showPasswordFields = form.tier !== "enterprise";
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950 px-4 py-28">
       <div className="w-full max-w-4xl bg-gray-900 border border-gray-800 rounded-2xl p-6 md:p-8 shadow-xl">
         <div className="mb-7">
           <div className="inline-flex mb-4 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-200">
-            {isEnterprise ? "IMALI Enterprise / Community Lab" : "IMALI Trading Platform"}
+            {form.tier === "enterprise" 
+              ? "IMALI Enterprise" 
+              : isEnterprise 
+              ? "IMALI Enterprise / Community Lab" 
+              : "IMALI Trading Platform"}
           </div>
 
           <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-            {isEnterprise ? "Create your organization demo account" : "Create your account"}
+            {form.tier === "enterprise"
+              ? "Request Enterprise Access"
+              : isEnterprise 
+              ? "Create your organization demo account" 
+              : "Create your account"}
           </h1>
 
           <p className="text-gray-400">
-            {isEnterprise
+            {form.tier === "enterprise"
+              ? "Get a custom-branded solution with admin panel and enhanced bot strategy controls."
+              : isEnterprise
               ? "Set up a safe simulation account for financial education, workforce training, and program demos."
               : "Start with AI-powered trading tools, strategy selection, and paper-friendly onboarding."}
           </p>
@@ -338,7 +409,7 @@ export default function Signup() {
 
         <div className="mb-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
           <div className="text-sm text-gray-300">
-            {isEnterprise ? "Selected pilot option" : "Selected plan"}
+            {form.tier === "enterprise" ? "Selected solution" : isEnterprise ? "Selected pilot option" : "Selected plan"}
           </div>
 
           <div className="mt-1 text-xl font-bold text-white">
@@ -350,13 +421,13 @@ export default function Signup() {
 
           <div className="mt-3 flex flex-wrap gap-3">
             <Link
-              to={isEnterprise ? "/enterprise" : "/pricing"}
+              to={form.tier === "enterprise" ? "/pricing" : isEnterprise ? "/enterprise" : "/pricing"}
               className="text-sm text-emerald-300 underline"
             >
-              {isEnterprise ? "Back to enterprise overview" : "Change plan"}
+              {form.tier === "enterprise" ? "Back to pricing" : isEnterprise ? "Back to enterprise overview" : "Change plan"}
             </Link>
 
-            {!isEnterprise && (
+            {!isEnterprise && form.tier !== "enterprise" && (
               <Link
                 to="/signup?mode=enterprise"
                 className="text-sm text-blue-300 underline"
@@ -365,20 +436,29 @@ export default function Signup() {
               </Link>
             )}
 
-            {isEnterprise && (
+            {isEnterprise && form.tier !== "enterprise" && (
               <Link to="/signup" className="text-sm text-blue-300 underline">
                 Signing up as an individual?
+              </Link>
+            )}
+            
+            {form.tier !== "enterprise" && !isEnterprise && (
+              <Link
+                to="/signup?tier=enterprise"
+                className="text-sm text-purple-300 underline"
+              >
+                Need a custom enterprise solution?
               </Link>
             )}
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {isEnterprise && (
+          {(isEnterprise || form.tier === "enterprise") && (
             <div className="grid md:grid-cols-2 gap-4">
               <input
                 type="text"
-                required
+                required={form.tier === "enterprise"}
                 placeholder="Organization / program name"
                 value={form.organizationName}
                 onChange={(e) =>
@@ -390,7 +470,7 @@ export default function Signup() {
 
               <input
                 type="text"
-                required
+                required={form.tier === "enterprise"}
                 placeholder="Your name"
                 value={form.contactName}
                 onChange={(e) =>
@@ -407,7 +487,7 @@ export default function Signup() {
               type="email"
               required
               autoComplete="email"
-              placeholder={isEnterprise ? "Work email" : "Email"}
+              placeholder={form.tier === "enterprise" ? "Work email" : "Email"}
               value={form.email}
               onChange={(e) =>
                 setForm((f) => ({ ...f, email: e.target.value }))
@@ -431,6 +511,7 @@ export default function Signup() {
                   <option value="elite">Enterprise Lab</option>
                   <option value="stock">Innovation Lab</option>
                   <option value="bundle">Full Organization Suite</option>
+                  <option value="enterprise">Enterprise Custom →</option>
                 </>
               ) : (
                 <>
@@ -439,12 +520,80 @@ export default function Signup() {
                   <option value="elite">Elite</option>
                   <option value="stock">DeFi</option>
                   <option value="bundle">Bundle</option>
+                  <option value="enterprise">Enterprise (Contact Sales)</option>
                 </>
               )}
             </select>
           </div>
 
-          {isEnterprise && (
+          {form.tier === "enterprise" && (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-white mb-2">
+                  Company size
+                </label>
+                <select
+                  value={form.companySize}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, companySize: e.target.value }))
+                  }
+                  className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select size...</option>
+                  <option value="1-10">1-10 employees</option>
+                  <option value="11-50">11-50 employees</option>
+                  <option value="51-200">51-200 employees</option>
+                  <option value="201-500">201-500 employees</option>
+                  <option value="500+">500+ employees</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-white mb-2">
+                  Desired features (select all that apply)
+                </label>
+                <div className="space-y-2">
+                  {[
+                    "Custom branding",
+                    "Admin panel with user management",
+                    "Enhanced bot strategy controls",
+                    "White-label solution",
+                    "Team permissions & approval workflows",
+                    "Priority support & SLA",
+                    "Custom strategy development",
+                    "API access for custom integrations",
+                  ].map((feature) => (
+                    <label key={feature} className="flex items-center gap-2 text-gray-300">
+                      <input
+                        type="checkbox"
+                        value={feature}
+                        checked={form.desiredFeatures.includes(feature)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setForm((f) => ({
+                              ...f,
+                              desiredFeatures: [...f.desiredFeatures, feature],
+                            }));
+                          } else {
+                            setForm((f) => ({
+                              ...f,
+                              desiredFeatures: f.desiredFeatures.filter(
+                                (f) => f !== feature
+                              ),
+                            }));
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-sm">{feature}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {isEnterprise && form.tier !== "enterprise" && (
             <div>
               <label className="block text-sm font-semibold text-white mb-2">
                 Main use case
@@ -468,98 +617,103 @@ export default function Signup() {
             </div>
           )}
 
-          <div className="grid md:grid-cols-2 gap-4">
-            <input
-              type="password"
-              required
-              autoComplete="new-password"
-              placeholder="Password"
-              value={form.password}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, password: e.target.value }))
-              }
-              className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={loading}
-            />
+          {showPasswordFields && (
+            <div className="grid md:grid-cols-2 gap-4">
+              <input
+                type="password"
+                required
+                autoComplete="new-password"
+                placeholder="Password"
+                value={form.password}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, password: e.target.value }))
+                }
+                className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={loading}
+              />
 
-            <input
-              type="password"
-              required
-              autoComplete="new-password"
-              placeholder="Confirm password"
-              value={form.confirmPassword}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, confirmPassword: e.target.value }))
-              }
-              className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={loading}
-            />
-          </div>
-
-          <div className="space-y-3">
-            <div className="text-sm font-semibold text-white">
-              {isEnterprise
-                ? "Choose a learning strategy model"
-                : "Choose your strategy"}
+              <input
+                type="password"
+                required
+                autoComplete="new-password"
+                placeholder="Confirm password"
+                value={form.confirmPassword}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, confirmPassword: e.target.value }))
+                }
+                className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={loading}
+              />
             </div>
+          )}
 
-            <div className="grid md:grid-cols-2 gap-3">
-              {Object.entries(STRATEGIES).map(([value, strategy]) => {
-                const selected = form.strategy === value;
+          {/* Strategy selection - simplified for enterprise */}
+          {form.tier !== "enterprise" && (
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-white">
+                {isEnterprise
+                  ? "Choose a learning strategy model"
+                  : "Choose your strategy"}
+              </div>
 
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, strategy: value }))}
-                    className={`text-left rounded-xl border p-4 transition ${
-                      selected
-                        ? "border-emerald-400 bg-emerald-500/10"
-                        : "border-gray-700 bg-gray-800 hover:border-gray-500"
-                    }`}
-                    disabled={loading}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-semibold text-white">
-                        {strategy.title}
+              <div className="grid md:grid-cols-2 gap-3">
+                {Object.entries(STRATEGIES).map(([value, strategy]) => {
+                  const selected = form.strategy === value;
+
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, strategy: value }))}
+                      className={`text-left rounded-xl border p-4 transition ${
+                        selected
+                          ? "border-emerald-400 bg-emerald-500/10"
+                          : "border-gray-700 bg-gray-800 hover:border-gray-500"
+                      }`}
+                      disabled={loading}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-semibold text-white">
+                          {strategy.title}
+                        </div>
+
+                        <span className="text-[11px] px-2 py-1 rounded-full bg-gray-700 text-gray-200">
+                          {strategy.badge}
+                        </span>
                       </div>
 
-                      <span className="text-[11px] px-2 py-1 rounded-full bg-gray-700 text-gray-200">
-                        {strategy.badge}
-                      </span>
-                    </div>
-
-                    <div className="mt-2 text-sm text-gray-300">
-                      {isEnterprise
-                        ? strategy.enterpriseExplanation
-                        : strategy.explanation}
-                    </div>
-
-                    <div className="mt-3 text-xs text-gray-400">
-                      <div>
-                        <span className="font-semibold text-gray-300">
-                          Risk:
-                        </span>{" "}
-                        {strategy.risk}
+                      <div className="mt-2 text-sm text-gray-300">
+                        {isEnterprise
+                          ? strategy.enterpriseExplanation
+                          : strategy.explanation}
                       </div>
 
-                      <div>
-                        <span className="font-semibold text-gray-300">
-                          Best for:
-                        </span>{" "}
-                        {strategy.bestFor}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                      <div className="mt-3 text-xs text-gray-400">
+                        <div>
+                          <span className="font-semibold text-gray-300">
+                            Risk:
+                          </span>{" "}
+                          {strategy.risk}
+                        </div>
 
-            <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-100">
-              <div className="font-semibold">{currentStrategy.title}</div>
-              <div className="mt-1">{currentStrategy.example}</div>
+                        <div>
+                          <span className="font-semibold text-gray-300">
+                            Best for:
+                          </span>{" "}
+                          {strategy.bestFor}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-100">
+                <div className="font-semibold">{currentStrategy.title}</div>
+                <div className="mt-1">{currentStrategy.example}</div>
+              </div>
             </div>
-          </div>
+          )}
 
           <label className="flex items-start gap-3 text-sm text-gray-400">
             <input
@@ -584,7 +738,7 @@ export default function Signup() {
               <Link to="/privacy" className="text-blue-400 underline">
                 Privacy Policy
               </Link>
-              {isEnterprise && (
+              {(isEnterprise || form.tier === "enterprise") && (
                 <>
                   {" "}
                   and understand this pilot/demo uses simulation-first tools unless
@@ -597,7 +751,11 @@ export default function Signup() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold disabled:opacity-50 hover:from-blue-500 hover:to-purple-500 transition"
+            className={`w-full py-3 rounded-xl text-white font-semibold disabled:opacity-50 transition ${
+              form.tier === "enterprise"
+                ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500"
+                : "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500"
+            }`}
           >
             {getButtonText()}
           </button>
