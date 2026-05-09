@@ -26,6 +26,7 @@ const PRICE = {
   elite: envNum("REACT_APP_PRICE_ELITE", 49),
   stock: envNum("REACT_APP_PRICE_STOCK", 99),
   bundle: envNum("REACT_APP_PRICE_BUNDLE", 199),
+  enterprise: "Custom",
 };
 
 const fmt = (n) => (n === 0 ? "Free" : `$${n}/mo`);
@@ -40,6 +41,8 @@ const Pill = ({ children, tone = "gray" }) => {
       ? "bg-amber-100 text-amber-700 border-amber-200"
       : tone === "purple"
       ? "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200"
+      : tone === "indigo"
+      ? "bg-indigo-100 text-indigo-700 border-indigo-200"
       : "bg-gray-100 text-gray-700 border-gray-200";
 
   return (
@@ -53,14 +56,28 @@ const SectionTitle = ({ children }) => (
   <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">{children}</div>
 );
 
-const CTA = ({ to, children }) => (
-  <Link
-    to={to}
-    className="mt-5 w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition font-semibold text-center text-white block"
-  >
-    {children}
-  </Link>
-);
+const CTA = ({ to, children, external = false }) => {
+  if (external) {
+    return (
+      <a
+        href={to}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-5 w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition font-semibold text-center text-white block"
+      >
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link
+      to={to}
+      className="mt-5 w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition font-semibold text-center text-white block"
+    >
+      {children}
+    </Link>
+  );
+};
 
 /* ===================== PAGE ===================== */
 
@@ -113,7 +130,7 @@ export default function Pricing() {
   const totalClaimed = claimed;
   const spotsLeftNum = spotsLeft;
 
-  // Plans (keep slugs aligned with backend: starter/pro/elite/stock/bundle)
+  // Plans (keep slugs aligned with backend: starter/pro/elite/stock/bundle/enterprise)
   const plans = [
     {
       name: "Starter",
@@ -195,6 +212,23 @@ export default function Pricing() {
       frame: "from-gray-400 to-slate-500",
       popular: false,
     },
+    {
+      name: "Enterprise",
+      slug: "enterprise",
+      price: "Custom",
+      badge: <Pill tone="indigo">Custom solution</Pill>,
+      nft: "/enterprise.PNG",
+      bots: {
+        "All Assets": ["Full access to all bots"],
+        "Custom Strategies": ["Build & deploy proprietary logic"],
+        "Admin Controls": ["Role-based access & approval flows"],
+      },
+      fees: ["Tailored pricing based on volume & requirements"],
+      cta: "Contact Sales",
+      frame: "from-indigo-400 to-purple-600",
+      popular: false,
+      enterprise: true,
+    },
   ];
 
   return (
@@ -261,13 +295,20 @@ export default function Pricing() {
           </div>
         )}
 
-        {/* Plans */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Plans - Grid adjusts for enterprise */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {plans.map((p) => (
             <div
               key={p.slug}
-              className={`relative rounded-2xl border border-gray-200 bg-white shadow-lg hover:shadow-xl transition-shadow overflow-hidden`}
+              className={`relative rounded-2xl border border-gray-200 bg-white shadow-lg hover:shadow-xl transition-shadow overflow-hidden ${p.enterprise ? 'md:col-span-2 lg:col-span-1' : ''}`}
             >
+              {p.enterprise && (
+                <div className="absolute top-4 right-4">
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                    TEAMS & ORGS
+                  </span>
+                </div>
+              )}
               <div className="h-full rounded-2xl p-6 flex flex-col">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -284,18 +325,27 @@ export default function Pricing() {
 
                   <div className="text-right">
                     <div className="text-2xl font-extrabold text-gray-900">{p.price}</div>
-                    <div className="text-xs text-gray-500">cancel anytime</div>
+                    {!p.enterprise && <div className="text-xs text-gray-500">cancel anytime</div>}
                   </div>
                 </div>
 
-                {/* NFT image */}
+                {/* NFT / Enterprise image */}
                 <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
-                  <img
-                    src={p.nft}
-                    alt={`${p.name} Pass`}
-                    loading="lazy"
-                    className="w-full h-40 object-contain"
-                  />
+                  {typeof p.nft === 'string' && p.nft.startsWith('/') ? (
+                    <img
+                      src={p.nft}
+                      alt={`${p.name} Solution`}
+                      loading="lazy"
+                      className="w-full h-40 object-contain"
+                    />
+                  ) : (
+                    <img
+                      src={p.nft}
+                      alt={`${p.name} Pass`}
+                      loading="lazy"
+                      className="w-full h-40 object-contain"
+                    />
+                  )}
                 </div>
 
                 {/* What you get */}
@@ -317,9 +367,24 @@ export default function Pricing() {
                   </div>
                 </div>
 
+                {/* Enterprise-specific features */}
+                {p.enterprise && (
+                  <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+                    <SectionTitle>Enterprise features</SectionTitle>
+                    <ul className="text-sm text-gray-700 space-y-2">
+                      <li>✓ Custom branded trading dashboard</li>
+                      <li>✓ Dedicated admin panel with user management</li>
+                      <li>✓ Enhanced bot strategy controls & parameters</li>
+                      <li>✓ Priority support & SLA guarantees</li>
+                      <li>✓ White-label options available</li>
+                      <li>✓ Team permissions & approval workflows</li>
+                    </ul>
+                  </div>
+                )}
+
                 {/* Fees */}
                 <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50 p-4">
-                  <SectionTitle>Fees</SectionTitle>
+                  <SectionTitle>{p.enterprise ? "Pricing model" : "Fees"}</SectionTitle>
                   <ul className="text-sm text-gray-700 space-y-1">
                     {p.fees.map((f, i) => (
                       <li key={i}>• {f}</li>
@@ -327,15 +392,39 @@ export default function Pricing() {
                   </ul>
                 </div>
 
-                {/* CTA */}
-                <CTA to={`/signup?tier=${p.slug}`}>{p.cta}</CTA>
+                {/* CTA - Enterprise links to signup with enterprise param */}
+                {p.enterprise ? (
+                  <CTA to="https://imali-defi.com/signup?tier=enterprise" external>
+                    {p.cta}
+                  </CTA>
+                ) : (
+                  <CTA to={`/signup?tier=${p.slug}`}>{p.cta}</CTA>
+                )}
               </div>
             </div>
           ))}
         </div>
 
+        {/* Signup link section */}
+        <div className="mt-12 text-center">
+          <Link 
+            to="https://imali-defi.com/signup"
+            className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-semibold transition"
+          >
+            Already have an account? Sign in →
+          </Link>
+          <div className="mt-4">
+            <Link 
+              to="https://imali-defi.com/signup"
+              className="inline-block px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold hover:from-indigo-700 hover:to-purple-700 transition shadow-md"
+            >
+              Create your free account
+            </Link>
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="mt-10 text-sm text-gray-500 space-y-2 text-center">
+        <div className="mt-16 text-sm text-gray-500 space-y-2 text-center">
           <div>
             Trading is risky. Not financial advice.
           </div>
@@ -345,7 +434,7 @@ export default function Pricing() {
           <div className="flex flex-wrap justify-center gap-4">
             <Link to="/terms" className="underline hover:text-gray-800">Terms</Link>
             <Link to="/privacy" className="underline hover:text-gray-800">Privacy</Link>
-            <Link to="/signup" className="underline hover:text-gray-800">Get started</Link>
+            <Link to="https://imali-defi.com/signup" className="underline hover:text-gray-800">Get started</Link>
           </div>
         </div>
       </div>
