@@ -29,11 +29,14 @@ import {
   FaChevronRight,
   FaSquare,
   FaCheckSquare,
+  FaBuilding,
+  FaUserTag,
+  FaShieldAlt,
 } from "react-icons/fa";
 
 const TOKEN_KEY = "imali_token";
 
-const TIERS = ["starter", "common", "rare", "epic", "legendary"];
+const TIERS = ["starter", "common", "rare", "epic", "legendary", "enterprise"];
 const STRATEGIES = [
   { value: "mean_reversion", label: "Conservative / Mean Reversion" },
   { value: "ai_weighted", label: "Balanced / AI Weighted" },
@@ -42,6 +45,8 @@ const STRATEGIES = [
   { value: "futures", label: "Futures Engine" },
   { value: "alpha", label: "Alpha Sniper" },
 ];
+
+const ENTERPRISE_ROLES = ["admin", "member", "viewer"];
 
 const DEFAULT_ADD_FORM = {
   email: "",
@@ -126,16 +131,26 @@ const getTierBadgeClass = (tier) => {
     rare: "bg-purple-500/20 text-purple-300",
     epic: "bg-amber-500/20 text-amber-300",
     legendary: "bg-yellow-500/20 text-yellow-300",
+    enterprise: "bg-gradient-to-r from-purple-600/30 to-indigo-600/30 text-purple-300 border border-purple-500/30",
   };
   return styles[tierValue] || styles.starter;
 };
 
+const getEnterpriseRoleBadge = (role) => {
+  const styles = {
+    admin: "bg-red-500/20 text-red-300",
+    member: "bg-blue-500/20 text-blue-300",
+    viewer: "bg-gray-500/20 text-gray-300",
+  };
+  return styles[role] || styles.member;
+};
+
 // ========== HELPER COMPONENTS ==========
 
-const SummaryCard = ({ label, value, icon }) => {
+const SummaryCard = ({ label, value, icon, color = "white" }) => {
   const displayValue = safeString(value);
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
+    <div className={`rounded-xl border border-white/10 bg-gradient-to-br ${color} p-3 text-center`}>
       <div className="mb-1 text-lg">{icon}</div>
       <div className="text-[10px] text-white/50 uppercase tracking-wide">{label}</div>
       <div className="mt-1 text-lg font-bold">{displayValue}</div>
@@ -201,7 +216,7 @@ const Field = ({ label, icon, children }) => {
   );
 };
 
-const Toggle = ({ label, value, onChange }) => {
+const Toggle = ({ label, value, onChange, disabled = false }) => {
   const isEnabled = safeBool(value);
   return (
     <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 p-3">
@@ -209,9 +224,10 @@ const Toggle = ({ label, value, onChange }) => {
       <button
         type="button"
         onClick={onChange}
+        disabled={disabled}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
           isEnabled ? "bg-emerald-600" : "bg-gray-600"
-        }`}
+        } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
       >
         <span
           className={`absolute h-4 w-4 rounded-full bg-white transition ${
@@ -270,6 +286,7 @@ const DeleteConfirmModal = ({ user, onConfirm, onCancel, working }) => {
           <p>• Trading history and positions</p>
           <p>• API keys and integrations</p>
           <p>• Referral data</p>
+          <p>• Organization membership (if any)</p>
           <p className="font-bold mt-2">This action CANNOT be undone!</p>
         </div>
       </div>
@@ -304,7 +321,7 @@ const Info = ({ label, value, mono = false }) => {
   );
 };
 
-const UserFormFields = ({ form, setForm, includePassword = false, includeEmail = false }) => {
+const UserFormFields = ({ form, setForm, includePassword = false, includeEmail = false, isEnterprise = false }) => {
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   return (
@@ -363,6 +380,22 @@ const UserFormFields = ({ form, setForm, includePassword = false, includeEmail =
         </Field>
       </div>
 
+      {isEnterprise && form.organization_role !== undefined && (
+        <Field label="Organization Role" icon={<FaUserTag />}>
+          <select
+            value={safeString(form.organization_role, "member")}
+            onChange={(e) => update("organization_role", e.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-white text-sm"
+          >
+            {ENTERPRISE_ROLES.map((role) => (
+              <option key={role} value={role}>
+                {role.toUpperCase()}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
       <Toggle
         label="Enable Live Trading"
         value={safeBool(form.trading_enabled)}
@@ -386,9 +419,8 @@ const UserFormFields = ({ form, setForm, includePassword = false, includeEmail =
   );
 };
 
-// Mobile User Card Component
+// Mobile User Card Component with Enterprise Support
 const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onNewsletter, onAutoResponder, onRevokeApiKey, onToggleTrading, onTogglePaperTrading, working }) => {
-  // Safe value extraction - ensure we're not rendering objects
   const userEmail = safeString(user?.email);
   const userId = safeString(user?.id);
   const userTier = safeString(user?.tier, "starter");
@@ -400,6 +432,8 @@ const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onN
   const billingComplete = safeBool(user?.billing_complete, false);
   const alpacaConnected = safeBool(user?.alpaca_connected, false);
   const okxConnected = safeBool(user?.okx_connected, false);
+  const isEnterprise = userTier === "enterprise";
+  const orgRole = safeString(user?.organization_role, "");
   
   const practiceActive = userTrialStatus === "trial" && isPaperTradingEnabled;
   const userHasBilling = hasCardOnFile || billingComplete;
@@ -427,8 +461,20 @@ const UserCard = ({ user, selected, onSelect, onView, onEdit, onConnections, onN
           {userEmail.charAt(0)?.toUpperCase() || "U"}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-sm break-all">{userEmail}</div>
+          <div className="font-semibold text-sm break-all flex items-center gap-2 flex-wrap">
+            {userEmail}
+            {isEnterprise && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-gradient-to-r from-purple-600/30 to-indigo-600/30 text-purple-300 border border-purple-500/30">
+                <FaBuilding className="text-xs" /> Enterprise
+              </span>
+            )}
+          </div>
           <div className="text-xs text-white/40">{userId.slice(0, 10)}...</div>
+          {orgRole && (
+            <div className={`inline-flex items-center gap-1 text-[10px] mt-1 px-2 py-0.5 rounded-full ${getEnterpriseRoleBadge(orgRole)}`}>
+              <FaUserTag /> {orgRole}
+            </div>
+          )}
         </div>
       </div>
 
@@ -553,7 +599,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
   const [autoResponderRules, setAutoResponderRules] = useState([]);
   const [autoResponderForm, setAutoResponderForm] = useState({ rule_id: "", event_type: "signup", delay_minutes: 0 });
 
-  // Scroll container ref for smooth scrolling
   const usersContainerRef = useRef(null);
 
   const toast = useCallback((message, type = "info") => {
@@ -591,7 +636,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
       const data = await apiRequest(`/api/admin/users?${params.toString()}`);
       const fetchedUsers = data.data?.users || [];
       
-      // Filter out soft-deleted users (emails starting with "deleted_")
       const activeUsers = fetchedUsers.filter(user => 
         !user.email?.startsWith('deleted_') && 
         !user.email?.includes('@deleted.com')
@@ -613,12 +657,15 @@ export default function UserManagement({ apiBase = "", showToast }) {
         portfolio_value: safeNumber(user.portfolio_value),
         wallet_addresses: user.wallet_addresses || [],
         created_at: user.created_at,
+        organization_id: user.organization_id || null,
+        organization_role: user.organization_role || null,
+        enhanced_bot_controls: safeBool(user.enhanced_bot_controls),
+        admin_panel_access: safeBool(user.admin_panel_access),
       }));
       
       setUsers(normalizedUsers);
       setTotalPages(data.data?.pagination?.totalPages || 1);
       setTotalUsers(activeUsers.length);
-      // Clear selections when page changes
       setSelectedUserIds(new Set());
     } catch (error) {
       console.error("Fetch users failed:", error);
@@ -651,6 +698,8 @@ export default function UserManagement({ apiBase = "", showToast }) {
     hasBilling: users.filter(u => u.has_card_on_file).length,
     hasAlpaca: users.filter(u => u.alpaca_connected).length,
     hasOkx: users.filter(u => u.okx_connected).length,
+    enterprise: users.filter(u => u.tier === "enterprise").length,
+    enterpriseAdmins: users.filter(u => u.tier === "enterprise" && u.organization_role === "admin").length,
   }), [users]);
 
   const handleSearch = (e) => {
@@ -659,7 +708,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
     fetchUsers();
   };
 
-  // Selection handlers
   const toggleSelectUser = (userId) => {
     setSelectedUserIds(prev => {
       const newSet = new Set(prev);
@@ -680,25 +728,21 @@ export default function UserManagement({ apiBase = "", showToast }) {
     }
   };
 
-  // Permanent delete single user
   const deleteUser = async () => {
     if (!selectedUser?.id) return;
     
-    // Strong confirmation for permanent deletion
-    const confirmMessage = `⚠️ PERMANENT DELETE ⚠️\n\nAre you sure you want to permanently delete ${selectedUser.email}?\n\nThis will permanently remove ALL user data including:\n- Account information\n- Trading history\n- API keys\n- Referrals\n- Settings\n\nThis action CANNOT be undone!`;
+    const confirmMessage = `⚠️ PERMANENT DELETE ⚠️\n\nAre you sure you want to permanently delete ${selectedUser.email}?\n\nThis will permanently remove ALL user data including:\n- Account information\n- Trading history\n- API keys\n- Referrals\n- Organization membership\n- Settings\n\nThis action CANNOT be undone!`;
     
     if (!window.confirm(confirmMessage)) return;
     
     setWorking(true);
     try {
-      // Add ?permanent=true for hard delete
       await apiRequest(`/api/admin/users/${selectedUser.id}?permanent=true`, { method: "DELETE" });
       toast("User permanently deleted", "success");
       setShowEditModal(false);
       setShowDeleteConfirm(false);
       setSelectedUser(null);
       
-      // Refresh current page or go to previous page if needed
       if (users.length === 1 && page > 1) {
         setPage(p => p - 1);
       } else {
@@ -711,7 +755,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
     }
   };
 
-  // Bulk permanent delete users
   const bulkDeleteUsers = async () => {
     const userIds = Array.from(selectedUserIds);
     if (userIds.length === 0) return;
@@ -725,7 +768,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
     let failCount = 0;
     
     try {
-      // Delete each user with permanent=true
       for (const userId of userIds) {
         try {
           await apiRequest(`/api/admin/users/${userId}?permanent=true`, { method: "DELETE" });
@@ -746,7 +788,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
       setSelectedUserIds(new Set());
       setShowBulkDeleteConfirm(false);
       
-      // Refresh current page or go to previous page if needed
       if (users.length === userIds.length && page > 1) {
         setPage(p => p - 1);
       } else {
@@ -785,6 +826,8 @@ export default function UserManagement({ apiBase = "", showToast }) {
         trial_status: safeString(detailedUser.trial_status, "trial"),
         portfolio_value: safeNumber(detailedUser.portfolio_value),
         created_at: detailedUser.created_at,
+        organization_id: detailedUser.organization_id || null,
+        organization_role: detailedUser.organization_role || null,
       });
     } catch (error) {
       console.error("View user failed:", error);
@@ -794,15 +837,15 @@ export default function UserManagement({ apiBase = "", showToast }) {
 
   const openEditUser = (user) => {
     setSelectedUser(user);
-    const userObj = user;
     setEditForm({
-      email: safeString(userObj.email, ""),
-      tier: safeString(userObj.tier, "starter"),
-      strategy: safeString(userObj.strategy, "ai_weighted"),
-      trading_enabled: safeBool(userObj.trading_enabled, false),
-      paper_trading_enabled: safeBool(userObj.paper_trading_enabled, false),
-      trial_status: safeString(userObj.trial_status, "trial"),
-      is_admin: safeBool(userObj.is_admin, false),
+      email: safeString(user.email, ""),
+      tier: safeString(user.tier, "starter"),
+      strategy: safeString(user.strategy, "ai_weighted"),
+      trading_enabled: safeBool(user.trading_enabled, false),
+      paper_trading_enabled: safeBool(user.paper_trading_enabled, false),
+      trial_status: safeString(user.trial_status, "trial"),
+      is_admin: safeBool(user.is_admin, false),
+      organization_role: safeString(user.organization_role, ""),
     });
     setShowEditModal(true);
   };
@@ -1023,7 +1066,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
     }
   };
 
-  // Scroll to top of users list when page changes
   useEffect(() => {
     if (usersContainerRef.current) {
       usersContainerRef.current.scrollTop = 0;
@@ -1047,7 +1089,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="mb-3">
           <h2 className="text-lg font-bold">User Management</h2>
-          <p className="text-xs text-white/60">Manage user accounts, tiers, and trading permissions.</p>
+          <p className="text-xs text-white/60">Manage user accounts, tiers, enterprise access, and trading permissions.</p>
         </div>
 
         <div className="flex flex-col gap-3">
@@ -1075,7 +1117,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
             )}
           </form>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={openAddUser}
               className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500"
@@ -1118,19 +1160,20 @@ export default function UserManagement({ apiBase = "", showToast }) {
         </div>
       </div>
 
-      {/* Stats Summary - Horizontal Scroll on Mobile */}
+      {/* Stats Summary */}
       <div className="overflow-x-auto -mx-4 px-4">
         <div className="flex gap-3 min-w-max pb-1">
           <div className="w-24"><SummaryCard label="Total" value={summary.total} icon="👥" /></div>
           <div className="w-24"><SummaryCard label="Trading" value={summary.active} icon="📈" /></div>
           <div className="w-24"><SummaryCard label="Paper" value={summary.trialActive} icon="📝" /></div>
           <div className="w-24"><SummaryCard label="Admins" value={summary.admins} icon="👑" /></div>
+          <div className="w-24"><SummaryCard label="Enterprise" value={summary.enterprise} icon="🏢" color="bg-purple-500/10" /></div>
           <div className="w-24"><SummaryCard label="Billing" value={summary.hasBilling} icon="💳" /></div>
           <div className="w-24"><SummaryCard label="Connected" value={summary.hasAlpaca + summary.hasOkx} icon="🔌" /></div>
         </div>
       </div>
 
-      {/* Users List - Mobile Cards with Scrolling */}
+      {/* Users List */}
       <div 
         ref={usersContainerRef}
         className="space-y-3 max-h-[calc(100vh-400px)] overflow-y-auto pr-1"
@@ -1206,7 +1249,7 @@ export default function UserManagement({ apiBase = "", showToast }) {
         </div>
       )}
 
-      {/* Bulk Delete Confirmation Modal */}
+      {/* Modals */}
       {showBulkDeleteConfirm && (
         <BulkDeleteModal
           count={selectedCount}
@@ -1216,7 +1259,6 @@ export default function UserManagement({ apiBase = "", showToast }) {
         />
       )}
 
-      {/* Batch Confirm Modal (Enable Paper Trading for All) */}
       {showBatchConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
           <div className="max-w-md w-full rounded-2xl border border-blue-500/30 bg-gray-900 p-5 shadow-2xl">
@@ -1253,6 +1295,9 @@ export default function UserManagement({ apiBase = "", showToast }) {
             <Info label="User ID" value={safeString(selectedUser.id)} mono />
             <Info label="Plan" value={safeString(selectedUser.tier)} />
             <Info label="Strategy" value={safeString(selectedUser.strategy)} />
+            {selectedUser.organization_role && (
+              <Info label="Org Role" value={safeString(selectedUser.organization_role)} />
+            )}
             <Info label="Portfolio" value={formatMoney(selectedUser.portfolio_value)} />
             <Info label="Joined" value={formatDate(selectedUser.created_at)} />
             <Info label="Paper Trading" value={safeBool(selectedUser.paper_trading_enabled) ? "Enabled" : "Disabled"} />
@@ -1274,7 +1319,12 @@ export default function UserManagement({ apiBase = "", showToast }) {
         <UserModal title="Edit User" onClose={() => setShowEditModal(false)}>
           {!showDeleteConfirm ? (
             <>
-              <UserFormFields form={editForm} setForm={setEditForm} includeEmail />
+              <UserFormFields 
+                form={editForm} 
+                setForm={setEditForm} 
+                includeEmail 
+                isEnterprise={selectedUser.tier === "enterprise"} 
+              />
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <button onClick={() => reactivateTrial(selectedUser)} disabled={working} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20">Reactivate (7 days)</button>
                 <button onClick={() => setShowDeleteConfirm(true)} className="rounded-lg border border-red-500/40 bg-red-500/10 py-2 text-sm text-red-300 hover:bg-red-500/20">Delete User</button>
@@ -1299,6 +1349,9 @@ export default function UserManagement({ apiBase = "", showToast }) {
             <Info label="Paper Trading" value={safeBool(selectedUser.paper_trading_enabled) ? "Active" : "Inactive"} />
             <Info label="Strategy" value={safeString(selectedUser.strategy)} />
             <Info label="Trial Status" value={safeString(selectedUser.trial_status, "trial")} />
+            {selectedUser.organization_role && (
+              <Info label="Org Role" value={safeString(selectedUser.organization_role)} />
+            )}
           </div>
           {selectedUser.wallet_addresses?.length > 0 && (
             <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-3 max-h-32 overflow-y-auto">
