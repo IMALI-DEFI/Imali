@@ -28,6 +28,9 @@ const cache = new Map();
 const inflight = new Map();
 const lastRequestAt = new Map();
 
+// VALID TIERS including enterprise
+const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle", "enterprise"];
+
 /* ================= CACHE HELPERS ================= */
 
 const getCached = (key, ttl = API_CONFIG.cacheTTL) => {
@@ -72,6 +75,8 @@ const clearTradingCache = () => {
   clearCache("user_trades");
   clearCache("user_bot_executions");
   clearCache("trading_strategies");
+  clearCache("enterprise_org_users");
+  clearCache("enterprise_strategies");
 };
 
 /* ================= STORAGE HELPERS ================= */
@@ -331,6 +336,9 @@ const getDefaultActivationStatus = () => ({
   activation_complete: false,
   tier_requirements_met: false,
   tier_required_integration: "Alpaca & OKX (both)",
+  enterprise_approved: false,
+  custom_strategy_access: false,
+  admin_panel_enabled: false,
 });
 
 const getDefaultTrialStatus = () => ({
@@ -409,6 +417,8 @@ const getDefaultStrategies = () => ({
 /* ================= AUTH ENDPOINTS ================= */
 
 export const signup = async (userData) => {
+  const isEnterprise = userData?.tier === "enterprise" || userData?.mode === "enterprise";
+  
   try {
     const response = await requestWithDedupe(
       userApi,
@@ -423,6 +433,7 @@ export const signup = async (userData) => {
     const data = unwrap(response);
     const token = data?.data?.token || data?.token;
     const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
+    const requiresApproval = data?.requires_approval || data?.data?.requires_approval || false;
 
     if (token) setToken(token);
     if (apiKey) setApiKey(apiKey);
@@ -434,8 +445,17 @@ export const signup = async (userData) => {
       data,
       token,
       api_key: apiKey,
+      requiresApproval,
     };
   } catch (error) {
+    // For enterprise, 202 means accepted but pending approval
+    if (isEnterprise && error?.response?.status === 202) {
+      return {
+        success: true,
+        requiresApproval: true,
+        message: "Enterprise signup request received. Our sales team will contact you shortly.",
+      };
+    }
     return handleApiError(error, "Signup failed");
   }
 };
@@ -537,6 +557,12 @@ export const getMe = async (skipCache = false) => {
       else if (referralCount >= 1) nftTier = "common";
       
       user.nft_tier = nftTier;
+      
+      // Add enterprise flags
+      user.is_enterprise = user.tier === "enterprise";
+      user.has_enhanced_bot_controls = user.is_enterprise && user.enhanced_bot_controls === true;
+      user.has_admin_panel_access = user.is_enterprise && user.admin_panel_access === true;
+      
       setCached("user_me", user);
       if (user.api_key) setApiKey(user.api_key);
     }
@@ -583,10 +609,14 @@ export const getActivationStatus = async (skipCache = false) => {
       okx_connected: !!status?.okx_connected,
       alpaca_connected: !!status?.alpaca_connected,
       wallet_connected: !!status?.wallet_connected,
-      tier: status?.tier || "starter",
+      tier: status?.tier && VALID_TIERS.includes(status.tier) ? status.tier : "starter",
       activation_complete: !!status?.activation_complete,
       tier_requirements_met: !!status?.tier_requirements_met,
       tier_required_integration: status?.tier_required_integration || "Alpaca & OKX (both)",
+      // Enterprise fields
+      enterprise_approved: !!status?.enterprise_approved,
+      custom_strategy_access: !!status?.custom_strategy_access,
+      admin_panel_enabled: !!status?.admin_panel_enabled,
     };
 
     setCached("activation_status", result);
@@ -598,7 +628,6 @@ export const getActivationStatus = async (skipCache = false) => {
 
 export const refreshActivation = () => getActivationStatus(true);
 
-// ✅ NEW: Get trial status endpoint
 export const getTrialStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("trial_status", 15000);
@@ -707,6 +736,278 @@ export const confirmCard = async (payload = {}) => {
     };
   } catch (error) {
     return handleApiError(error, "Failed to confirm card");
+  }
+};
+
+/* ================= ENTERPRISE ENDPOINTS ================= */
+
+// Get organization details (for enterprise users)
+export const getOrganizationDetails = async (skipCache = false) => {
+  const cacheKey = "enterprise_org_details";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/enterprise/organization",
+    });
+
+    const data = unwrap(response);
+    const result = data?.data || data || {};
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to load organization details"),
+    };
+  }
+};
+
+// Get all users in organization (admin only)
+export const getOrganizationUsers = async (skipCache = false) => {
+  const cacheKey = "enterprise_org_users";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/enterprise/organization/users",
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      users: data?.data?.users || data?.users || [],
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load organization users");
+  }
+};
+
+// Invite a new team member (admin only)
+export const inviteTeamMember = async (email, role) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/enterprise/organization/invite",
+      data: { email, role },
+    });
+
+    clearCache("enterprise_org_users");
+
+    const data = unwrap(response);
+    return {
+      success: true,
+      invitation: data?.data || data,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to invite team member");
+  }
+};
+
+// Remove a team member (admin only)
+export const removeTeamMember = async (userId) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "delete",
+      url: `/api/enterprise/organization/users/${userId}`,
+    });
+
+    clearCache("enterprise_org_users");
+
+    return {
+      success: true,
+      message: "Team member removed successfully",
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to remove team member");
+  }
+};
+
+// Update team member role (admin only)
+export const updateTeamMemberRole = async (userId, role) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "put",
+      url: `/api/enterprise/organization/users/${userId}/role`,
+      data: { role },
+    });
+
+    clearCache("enterprise_org_users");
+
+    return {
+      success: true,
+      data: unwrap(response),
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to update team member role");
+  }
+};
+
+// Get custom strategies (enterprise only)
+export const getEnterpriseStrategies = async (skipCache = false) => {
+  const cacheKey = "enterprise_strategies";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/enterprise/strategies",
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      strategies: data?.data?.strategies || data?.strategies || [],
+      custom_config: data?.data?.custom_config || data?.custom_config || null,
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load enterprise strategies");
+  }
+};
+
+// Update custom strategy configuration (enterprise admin only)
+export const updateCustomStrategy = async (strategyConfig) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/enterprise/strategies/customize",
+      data: { strategy_config: strategyConfig },
+    });
+
+    clearCache("enterprise_strategies");
+    clearTradingCache();
+
+    const data = unwrap(response);
+    return {
+      success: true,
+      config: data?.data || data,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to update custom strategy");
+  }
+};
+
+// Get enterprise analytics (admin only)
+export const getEnterpriseAnalytics = async (options = {}) => {
+  const { days = 30, skipCache = false } = options;
+  const cacheKey = `enterprise_analytics_${days}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: `/api/enterprise/analytics?days=${days}`,
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      analytics: data?.data || data || {},
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load enterprise analytics");
+  }
+};
+
+// Update custom branding (enterprise admin only)
+export const updateCustomBranding = async (brandingConfig) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "put",
+      url: "/api/enterprise/branding",
+      data: { branding: brandingConfig },
+    });
+
+    clearCache("enterprise_org_details");
+
+    return {
+      success: true,
+      branding: unwrap(response)?.data,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to update custom branding");
+  }
+};
+
+// Get audit logs (enterprise admin only)
+export const getAuditLogs = async (options = {}) => {
+  const { limit = 50, offset = 0, skipCache = false } = options;
+  const cacheKey = `enterprise_audit_logs_${limit}_${offset}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 15000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: `/api/enterprise/audit-logs?limit=${limit}&offset=${offset}`,
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      logs: data?.data?.logs || data?.logs || [],
+      total: data?.data?.total || data?.total || 0,
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load audit logs");
+  }
+};
+
+// Request enterprise approval (for signup)
+export const requestEnterpriseApproval = async (payload) => {
+  try {
+    const response = await requestWithDedupe(
+      publicApi,
+      {
+        method: "post",
+        url: "/api/enterprise/request",
+        data: payload,
+      },
+      { throttle: false }
+    );
+
+    const data = unwrap(response);
+    return {
+      success: true,
+      request_id: data?.data?.request_id || data?.request_id,
+      message: data?.message || "Enterprise access request submitted",
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to submit enterprise request");
   }
 };
 
@@ -963,7 +1264,6 @@ export const updateUserStrategy = async (strategyId) => {
   }
 };
 
-// ✅ NEW: Toggle live trading (with confirmation)
 export const toggleTrading = async (enabled) => {
   const nextEnabled = !!enabled;
   const confirmed = nextEnabled === true;
@@ -993,7 +1293,6 @@ export const toggleTrading = async (enabled) => {
       data,
     };
   } catch (error) {
-    // Try alternative endpoints
     const endpoints = [
       { method: "patch", url: "/api/user/trading", data: { enabled: nextEnabled } },
       { method: "post", url: "/api/user/trading/toggle", data: { enabled: nextEnabled } },
@@ -1028,7 +1327,6 @@ export const toggleTrading = async (enabled) => {
   }
 };
 
-// ✅ NEW: Toggle paper trading
 export const togglePaperTrading = async (enabled) => {
   const nextEnabled = !!enabled;
 
@@ -1132,7 +1430,6 @@ export const connectWallet = async (payload) => {
   }
 };
 
-// ✅ FIXED: Enhanced integration status with more fields
 export const getIntegrationStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("integration_status", 20000);
@@ -1185,7 +1482,6 @@ export const getIntegrationStatus = async (skipCache = false) => {
   }
 };
 
-// ✅ NEW: Disconnect integrations
 export const disconnectOKX = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -1490,206 +1786,85 @@ class BotAPIClass {
   }
 
   // Storage/session
-  setToken(token) {
-    return setToken(token);
-  }
-
-  getToken() {
-    return getToken();
-  }
-
-  clearToken() {
-    return clearToken();
-  }
-
-  setApiKey(apiKey) {
-    return setApiKey(apiKey);
-  }
-
-  getApiKey() {
-    return getApiKey();
-  }
-
-  clearApiKey() {
-    return clearApiKey();
-  }
-
-  isAuthenticated() {
-    return isAuthenticated();
-  }
-
-  clearCache(pattern) {
-    return clearCache(pattern);
-  }
+  setToken(token) { return setToken(token); }
+  getToken() { return getToken(); }
+  clearToken() { return clearToken(); }
+  setApiKey(apiKey) { return setApiKey(apiKey); }
+  getApiKey() { return getApiKey(); }
+  clearApiKey() { return clearApiKey(); }
+  isAuthenticated() { return isAuthenticated(); }
+  clearCache(pattern) { return clearCache(pattern); }
 
   // Auth
-  signup(userData) {
-    return signup(userData);
-  }
-
-  register(userData) {
-    return register(userData);
-  }
-
-  login(email, password) {
-    return login(email, password);
-  }
-
-  logout() {
-    return logout();
-  }
-
-  verifyAuth() {
-    return verifyAuth();
-  }
-
-  getMe(skipCache) {
-    return getMe(skipCache);
-  }
+  signup(userData) { return signup(userData); }
+  register(userData) { return register(userData); }
+  login(email, password) { return login(email, password); }
+  logout() { return logout(); }
+  verifyAuth() { return verifyAuth(); }
+  getMe(skipCache) { return getMe(skipCache); }
 
   // Activation/billing/trial
-  getActivationStatus(skipCache) {
-    return getActivationStatus(skipCache);
-  }
+  getActivationStatus(skipCache) { return getActivationStatus(skipCache); }
+  activationStatus(skipCache) { return getActivationStatus(skipCache); }
+  refreshActivation() { return refreshActivation(); }
+  getTrialStatus(skipCache) { return getTrialStatus(skipCache); }
+  getCardStatus(skipCache) { return getCardStatus(skipCache); }
+  createSetupIntent(payload) { return createSetupIntent(payload); }
+  confirmCard(payload) { return confirmCard(payload); }
 
-  activationStatus(skipCache) {
-    return getActivationStatus(skipCache);
-  }
-
-  refreshActivation() {
-    return refreshActivation();
-  }
-
-  getTrialStatus(skipCache) {
-    return getTrialStatus(skipCache);
-  }
-
-  getCardStatus(skipCache) {
-    return getCardStatus(skipCache);
-  }
-
-  createSetupIntent(payload) {
-    return createSetupIntent(payload);
-  }
-
-  confirmCard(payload) {
-    return confirmCard(payload);
-  }
+  // Enterprise endpoints
+  getOrganizationDetails(skipCache) { return getOrganizationDetails(skipCache); }
+  getOrganizationUsers(skipCache) { return getOrganizationUsers(skipCache); }
+  inviteTeamMember(email, role) { return inviteTeamMember(email, role); }
+  removeTeamMember(userId) { return removeTeamMember(userId); }
+  updateTeamMemberRole(userId, role) { return updateTeamMemberRole(userId, role); }
+  getEnterpriseStrategies(skipCache) { return getEnterpriseStrategies(skipCache); }
+  updateCustomStrategy(strategyConfig) { return updateCustomStrategy(strategyConfig); }
+  getEnterpriseAnalytics(options) { return getEnterpriseAnalytics(options); }
+  updateCustomBranding(brandingConfig) { return updateCustomBranding(brandingConfig); }
+  getAuditLogs(options) { return getAuditLogs(options); }
+  requestEnterpriseApproval(payload) { return requestEnterpriseApproval(payload); }
 
   // Trading
-  getUserTrades(options) {
-    return getUserTrades(options);
-  }
-
-  getUserPositions(skipCache) {
-    return getUserPositions(skipCache);
-  }
-
-  cancelPosition(positionId) {
-    return cancelPosition(positionId);
-  }
-
-  cancelAllPositions() {
-    return cancelAllPositions();
-  }
-
-  getUserBotExecutions(limit, skipCache) {
-    return getUserBotExecutions(limit, skipCache);
-  }
-
-  getUserTradingStats(days, skipCache) {
-    return getUserTradingStats(days, skipCache);
-  }
-
-  getTradingStrategies(skipCache) {
-    return getTradingStrategies(skipCache);
-  }
-
-  updateUserStrategy(strategy) {
-    return updateUserStrategy(strategy);
-  }
-
-  toggleTrading(enabled) {
-    return toggleTrading(enabled);
-  }
-
-  togglePaperTrading(enabled) {
-    return togglePaperTrading(enabled);
-  }
-
-  updatePaperTrading(enabled) {
-    return updatePaperTrading(enabled);
-  }
+  getUserTrades(options) { return getUserTrades(options); }
+  getUserPositions(skipCache) { return getUserPositions(skipCache); }
+  cancelPosition(positionId) { return cancelPosition(positionId); }
+  cancelAllPositions() { return cancelAllPositions(); }
+  getUserBotExecutions(limit, skipCache) { return getUserBotExecutions(limit, skipCache); }
+  getUserTradingStats(days, skipCache) { return getUserTradingStats(days, skipCache); }
+  getTradingStrategies(skipCache) { return getTradingStrategies(skipCache); }
+  updateUserStrategy(strategy) { return updateUserStrategy(strategy); }
+  toggleTrading(enabled) { return toggleTrading(enabled); }
+  togglePaperTrading(enabled) { return togglePaperTrading(enabled); }
+  updatePaperTrading(enabled) { return updatePaperTrading(enabled); }
 
   // Integrations
-  connectOKX(payload) {
-    return connectOKX(payload);
-  }
-
-  connectAlpaca(payload) {
-    return connectAlpaca(payload);
-  }
-
-  connectWallet(payload) {
-    return connectWallet(payload);
-  }
-
-  disconnectOKX() {
-    return disconnectOKX();
-  }
-
-  disconnectAlpaca() {
-    return disconnectAlpaca();
-  }
-
-  getIntegrationStatus(skipCache) {
-    return getIntegrationStatus(skipCache);
-  }
+  connectOKX(payload) { return connectOKX(payload); }
+  connectAlpaca(payload) { return connectAlpaca(payload); }
+  connectWallet(payload) { return connectWallet(payload); }
+  disconnectOKX() { return disconnectOKX(); }
+  disconnectAlpaca() { return disconnectAlpaca(); }
+  getIntegrationStatus(skipCache) { return getIntegrationStatus(skipCache); }
 
   // Public/global
-  getGlobalTrades(options) {
-    return getGlobalTrades(options);
-  }
-
-  getPublicDashboardHistorical(days) {
-    return getPublicDashboardHistorical(days);
-  }
+  getGlobalTrades(options) { return getGlobalTrades(options); }
+  getPublicDashboardHistorical(days) { return getPublicDashboardHistorical(days); }
 
   // Referrals
-  getReferralInfo(skipCache) {
-    return getReferralInfo(skipCache);
-  }
-
-  applyReferralCode(code) {
-    return applyReferralCode(code);
-  }
-
-  getReferralStats(skipCache) {
-    return getReferralStats(skipCache);
-  }
-
-  claimReferralRewards(amount, walletAddress) {
-    return claimReferralRewards(amount, walletAddress);
-  }
+  getReferralInfo(skipCache) { return getReferralInfo(skipCache); }
+  applyReferralCode(code) { return applyReferralCode(code); }
+  getReferralStats(skipCache) { return getReferralStats(skipCache); }
+  claimReferralRewards(amount, walletAddress) { return claimReferralRewards(amount, walletAddress); }
 
   // Newsletter
-  subscribeNewsletter(payload) {
-    return subscribeNewsletter(payload);
-  }
+  subscribeNewsletter(payload) { return subscribeNewsletter(payload); }
 
   // Promo
-  getPromoStatus(skipCache) {
-    return getPromoStatus(skipCache);
-  }
-
-  claimPromo(email, tier) {
-    return claimPromo(email, tier);
-  }
+  getPromoStatus(skipCache) { return getPromoStatus(skipCache); }
+  claimPromo(email, tier) { return claimPromo(email, tier); }
 
   // Debug
-  healthCheck() {
-    return healthCheck();
-  }
+  healthCheck() { return healthCheck(); }
 }
 
 const BotAPI = new BotAPIClass();
