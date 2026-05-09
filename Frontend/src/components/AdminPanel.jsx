@@ -65,6 +65,7 @@ const TabLoader = ({ name }) => (
   </div>
 );
 
+// Existing Admin Components
 const DashboardOverview = lazy(() => import("../admin/DashboardOverview.jsx"));
 const TokenManagement = lazy(() => import("../admin/TokenManagement.jsx"));
 const FeeDistributor = lazy(() => import("../admin/FeeDistributor.jsx"));
@@ -80,10 +81,13 @@ const TreasuryManagement = lazy(() => import("../admin/TreasuryManagement.jsx"))
 const MarketingAutomationTab = lazy(() => import("../admin/MarketingAutomation.jsx"));
 const ReportsTab = lazy(() => import("../admin/ReportsTab.jsx"));
 const TradesManagement = lazy(() => import("../admin/TradesManagement.jsx"));
-
-// NEW IMPORTS
 const AutoResponder = lazy(() => import("../admin/AutoResponder.jsx"));
 const NewsletterManager = lazy(() => import("../admin/NewsletterManager.jsx"));
+
+// Enterprise Admin Components
+const EnterpriseRequestsManager = lazy(() => import("../admin/EnterpriseRequestsManager.jsx"));
+const OrganizationManager = lazy(() => import("../admin/OrganizationManager.jsx"));
+const EnterpriseAnalytics = lazy(() => import("../admin/EnterpriseAnalytics.jsx"));
 
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
 
@@ -204,8 +208,11 @@ const TAB_SECTIONS = [
         emoji: "✨",
         component: DashboardOverview,
         description: "Main numbers and summary cards.",
-        help: "Start here to get a quick snapshot of platform performance.",
-        actions: [{ id: "refresh", label: "Refresh Metrics", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" }],
+        help: "Start here to get a quick snapshot of platform performance including enterprise metrics.",
+        actions: [
+          { id: "refresh", label: "Refresh Metrics", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" },
+          { id: "pnl", label: "PNL Details", icon: "📈", endpoint: "/api/admin/pnl-details?days=30", method: "GET" },
+        ],
       },
       {
         key: "health",
@@ -215,6 +222,41 @@ const TAB_SECTIONS = [
         description: "Check if services are running correctly.",
         help: "Monitor backend services, database connectivity, and API health.",
         actions: [{ id: "refresh", label: "Check Health", icon: "🔄", endpoint: "/api/health/detailed", method: "GET" }],
+      },
+    ],
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    emoji: "🏢",
+    description: "Manage organizations and enterprise features.",
+    tabs: [
+      {
+        key: "enterprise-requests",
+        label: "Pending Requests",
+        emoji: "📋",
+        component: EnterpriseRequestsManager,
+        description: "Review and approve enterprise signup requests.",
+        help: "Manage incoming enterprise requests, approve or reject applications.",
+        actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/enterprise-requests?status=pending", method: "GET" }],
+      },
+      {
+        key: "organizations",
+        label: "Organizations",
+        emoji: "🏢",
+        component: OrganizationManager,
+        description: "View and manage all organizations.",
+        help: "Browse all organizations, view members, and manage organization settings.",
+        actions: [{ id: "refresh", label: "Refresh List", icon: "🔄", endpoint: "/api/admin/organizations", method: "GET" }],
+      },
+      {
+        key: "enterprise-analytics",
+        label: "Enterprise Analytics",
+        emoji: "📊",
+        component: EnterpriseAnalytics,
+        description: "Track enterprise performance metrics.",
+        help: "View organization-wide trading metrics and performance.",
+        actions: [{ id: "refresh", label: "Refresh Stats", icon: "🔄", endpoint: "/api/admin/enterprise/analytics", method: "GET" }],
       },
     ],
   },
@@ -230,7 +272,7 @@ const TAB_SECTIONS = [
         emoji: "👥",
         component: UserManagement,
         description: "View and manage user accounts.",
-        help: "Search for users by email and manage accounts.",
+        help: "Search for users by email and manage accounts including enterprise users.",
         actions: [{ id: "refresh", label: "Refresh List", icon: "🔄", endpoint: "/api/admin/users?page=1&limit=50", method: "GET" }],
       },
     ],
@@ -247,7 +289,7 @@ const TAB_SECTIONS = [
         emoji: "📊",
         component: TradesManagement,
         description: "View all platform trades.",
-        help: "See all trades across the platform.",
+        help: "See all trades across the platform including enterprise organization trades.",
         actions: [{ id: "refresh", label: "Refresh Trades", icon: "🔄", endpoint: "/api/admin/trades?page=1&limit=50", method: "GET" }],
       },
       {
@@ -256,10 +298,11 @@ const TAB_SECTIONS = [
         emoji: "📋",
         component: ReportsTab,
         description: "Generate trade and user reports.",
-        help: "Generate detailed reports on trading activity.",
+        help: "Generate detailed reports on trading activity including enterprise breakdowns.",
         actions: [
           { id: "trade-report", label: "Trade Report", icon: "📊", endpoint: "/api/admin/reports/trades", method: "GET" },
           { id: "user-report", label: "User Report", icon: "👥", endpoint: "/api/admin/reports/users", method: "GET" },
+          { id: "enterprise-report", label: "Enterprise Report", icon: "🏢", endpoint: "/api/admin/reports/enterprise", method: "GET" },
         ],
       },
     ],
@@ -276,7 +319,7 @@ const TAB_SECTIONS = [
         emoji: "💰",
         component: WithdrawalManagement,
         description: "Approve or review withdrawal requests.",
-        help: "Review pending withdrawal requests.",
+        help: "Review pending withdrawal requests from all users.",
         actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/withdrawals", method: "GET" }],
       },
       {
@@ -382,7 +425,7 @@ const TAB_SECTIONS = [
         emoji: "📋",
         component: AuditLogs,
         description: "Review admin actions and events.",
-        help: "See a chronological log of all admin actions.",
+        help: "See a chronological log of all admin actions including enterprise changes.",
         actions: [{ id: "refresh", label: "Refresh Logs", icon: "🔄", endpoint: "/api/admin/audit-logs?limit=10", method: "GET" }],
       },
       {
@@ -454,7 +497,7 @@ function ActionButton({ action, onAction, busy }) {
 
 export default function AdminPanel({ forceOwner = false }) {
   const { account } = useWallet();
-  const { isAdmin: isAdminFromAuth, loading: authLoading, logout, user } = useAuth();
+  const { isAdmin: isAdminFromAuth, loading: authLoading, logout, user, isEnterpriseAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -555,6 +598,9 @@ export default function AdminPanel({ forceOwner = false }) {
       activeJobs: Number(data.automation?.active_jobs || 0),
       totalRevenue: Number(data.revenue?.total_fees || 0),
       activeBots: Number(data.bots?.active || 0),
+      enterpriseOrgs: Number(data.enterprise?.totalOrganizations || 0),
+      enterpriseMembers: Number(data.enterprise?.totalMembers || 0),
+      pendingEnterpriseRequests: Number(data.enterprise?.pendingRequests || 0),
     };
   }, []);
 
@@ -727,7 +773,6 @@ export default function AdminPanel({ forceOwner = false }) {
     return () => clearInterval(interval);
   }, [handleAuthFailure, sessionExpired, authLoading]);
 
-  // Safe number formatting helper for display
   const formatNumber = (value) => {
     const num = Number(value);
     return isNaN(num) ? 0 : num;
@@ -831,7 +876,7 @@ export default function AdminPanel({ forceOwner = false }) {
                 IMALI Admin Panel
               </h1>
               <p className="hidden text-xs text-white/45 sm:block">
-                Manage users, trades, finances, marketing, and platform settings.
+                Manage users, trades, finances, marketing, enterprise, and platform settings.
               </p>
             </div>
           </div>
@@ -841,6 +886,11 @@ export default function AdminPanel({ forceOwner = false }) {
                 <span className="rounded-full bg-blue-500/15 px-2.5 py-1 text-xs text-blue-300">
                   👥 {formatNumber(stats.totalUsers)} users
                 </span>
+                {stats.enterpriseOrgs > 0 && (
+                  <span className="rounded-full bg-purple-500/15 px-2.5 py-1 text-xs text-purple-300">
+                    🏢 {formatNumber(stats.enterpriseOrgs)} orgs
+                  </span>
+                )}
                 <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300">
                   💰 ${formatNumber(stats.totalPnl).toFixed(2)}
                 </span>
@@ -942,19 +992,19 @@ export default function AdminPanel({ forceOwner = false }) {
                 <div className="text-lg font-bold text-blue-300">{formatNumber(stats.totalUsers)}</div>
                 <div className="text-xs text-white/50">Users</div>
               </div>
+              <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-3 text-center">
+                <div className="text-lg font-bold text-purple-300">{formatNumber(stats.enterpriseOrgs)}</div>
+                <div className="text-xs text-white/50">Orgs</div>
+              </div>
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-center">
                 <div className="text-lg font-bold text-emerald-300">
                   ${formatNumber(stats.totalPnl).toFixed(2)}
                 </div>
                 <div className="text-xs text-white/50">Total PnL</div>
               </div>
-              <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-3 text-center">
-                <div className="text-lg font-bold text-purple-300">{formatNumber(stats.winRate)}%</div>
-                <div className="text-xs text-white/50">Win Rate</div>
-              </div>
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-center">
-                <div className="text-lg font-bold text-amber-300">{formatNumber(stats.totalTrades)}</div>
-                <div className="text-xs text-white/50">Trades</div>
+                <div className="text-lg font-bold text-amber-300">{formatNumber(stats.winRate)}%</div>
+                <div className="text-xs text-white/50">Win Rate</div>
               </div>
             </div>
           )}
