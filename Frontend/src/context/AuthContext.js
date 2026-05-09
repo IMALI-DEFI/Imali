@@ -64,14 +64,22 @@ const normalizeBoolean = (value) => {
   return !!value;
 };
 
+// VALID TIERS - Added enterprise
+const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle", "enterprise"];
+
 const normalizeUser = (userData) => {
   if (!userData || (!userData.id && !userData.email)) return null;
+
+  // Validate tier is valid, default to starter if not
+  const tier = userData.tier && VALID_TIERS.includes(userData.tier.toLowerCase()) 
+    ? userData.tier.toLowerCase() 
+    : "starter";
 
   return {
     id: userData.id || null,
     email: userData.email || null,
     role: userData.role || null,
-    tier: userData.tier || "starter",
+    tier: tier,
     strategy: userData.strategy || "ai_weighted",
     trading_enabled: normalizeBoolean(userData.trading_enabled),
     is_admin: normalizeBoolean(userData.is_admin),
@@ -86,6 +94,12 @@ const normalizeUser = (userData) => {
     portfolio_value: Number(userData.portfolio_value || 1000),
     created_at: userData.created_at || null,
     updated_at: userData.updated_at || null,
+    // Enterprise-specific fields
+    organization_id: userData.organization_id || null,
+    organization_role: userData.organization_role || null,
+    custom_branding: userData.custom_branding || null,
+    enhanced_bot_controls: normalizeBoolean(userData.enhanced_bot_controls),
+    admin_panel_access: normalizeBoolean(userData.admin_panel_access),
   };
 };
 
@@ -93,7 +107,9 @@ const normalizeActivation = (activationData) => {
   if (!activationData) return null;
 
   return {
-    tier: activationData.tier || "starter",
+    tier: activationData.tier && VALID_TIERS.includes(activationData.tier.toLowerCase()) 
+      ? activationData.tier.toLowerCase() 
+      : "starter",
     has_card_on_file: normalizeBoolean(activationData.has_card_on_file),
     billing_complete: normalizeBoolean(activationData.billing_complete),
     trading_enabled: normalizeBoolean(activationData.trading_enabled),
@@ -104,6 +120,10 @@ const normalizeActivation = (activationData) => {
     tier_requirements_met: normalizeBoolean(activationData.tier_requirements_met),
     tier_required_integration:
       activationData.tier_required_integration || "Alpaca & OKX (both)",
+    // Enterprise activation fields
+    enterprise_approved: normalizeBoolean(activationData.enterprise_approved),
+    custom_strategy_access: normalizeBoolean(activationData.custom_strategy_access),
+    admin_panel_enabled: normalizeBoolean(activationData.admin_panel_enabled),
   };
 };
 
@@ -118,6 +138,9 @@ const defaultActivation = () => ({
   activation_complete: false,
   tier_requirements_met: false,
   tier_required_integration: "Alpaca & OKX (both)",
+  enterprise_approved: false,
+  custom_strategy_access: false,
+  admin_panel_enabled: false,
 });
 
 const apiFetch = async (path, options = {}) => {
@@ -366,43 +389,94 @@ export function AuthProvider({ children }) {
     async (userData) => {
       setError(null);
 
-      if (!userData?.email || !userData?.password) {
-        const message = "Email and password are required";
+      if (!userData?.email) {
+        const message = "Email is required";
         setError(message);
         return { success: false, error: message };
       }
 
-      if (userData.password.length < 8) {
-        const message = "Password must be at least 8 characters";
-        setError(message);
-        return { success: false, error: message };
+      // For enterprise tier, password is optional (they'll go through sales)
+      const isEnterprise = userData.tier === "enterprise" || userData.mode === "enterprise";
+      
+      if (!isEnterprise) {
+        if (!userData?.password) {
+          const message = "Password is required";
+          setError(message);
+          return { success: false, error: message };
+        }
+
+        if (userData.password.length < 8) {
+          const message = "Password must be at least 8 characters";
+          setError(message);
+          return { success: false, error: message };
+        }
+
+        if (userData.password.length > 72) {
+          const message = "Password must be 72 characters or less";
+          setError(message);
+          return { success: false, error: message };
+        }
       }
 
       try {
+        // Prepare request payload
+        const payload = {
+          email: userData.email,
+          tier: userData.tier || "starter",
+          strategy: userData.strategy || "ai_weighted",
+          mode: userData.mode || "consumer",
+        };
+
+        // Add password only for non-enterprise signups
+        if (!isEnterprise && userData.password) {
+          payload.password = userData.password;
+        }
+
+        // Add organization fields if present
+        if (userData.organizationName) {
+          payload.organization_name = userData.organizationName;
+        }
+        if (userData.contactName) {
+          payload.contact_name = userData.contactName;
+        }
+        if (userData.useCase) {
+          payload.use_case = userData.useCase;
+        }
+
         const data = await apiFetch("/api/auth/register", {
           method: "POST",
-          body: JSON.stringify(userData),
+          body: JSON.stringify(payload),
         });
 
         const token = data?.data?.token || data?.token;
         const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
 
-        if (!token) {
+        // For enterprise, we might not get a token immediately (sales flow)
+        if (!token && !isEnterprise) {
           const message = "Signup succeeded but no token was returned";
           setError(message);
           return { success: false, error: message };
         }
 
-        setToken(token);
-        const loadedUser = await loadUser(true);
+        if (token) {
+          setToken(token);
+          const loadedUser = await loadUser(true);
 
-        if (!loadedUser) {
-          const message = "Signup succeeded but user profile could not be loaded";
-          setError(message);
-          return { success: false, error: message };
+          if (!loadedUser && !isEnterprise) {
+            const message = "Signup succeeded but user profile could not be loaded";
+            setError(message);
+            return { success: false, error: message };
+          }
+
+          return { success: true, token, api_key: apiKey, user: loadedUser };
         }
 
-        return { success: true, token, api_key: apiKey, user: loadedUser };
+        // Enterprise signup without immediate token (awaiting approval)
+        return { 
+          success: true, 
+          requiresApproval: true,
+          message: "Enterprise signup request received. Our sales team will contact you shortly."
+        };
       } catch (err) {
         const message = err.message || "Signup failed";
         setError(message);
@@ -429,6 +503,60 @@ export function AuthProvider({ children }) {
     [activation, persistActivation, refreshActivation]
   );
 
+  // Enterprise-specific methods
+  const getOrganizationUsers = useCallback(async () => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/organizations/${user.organization_id}/users`, {
+        method: "GET",
+      });
+      return { success: true, users: data?.data?.users || [] };
+    } catch (err) {
+      console.error("[Auth] Failed to get organization users:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
+  const inviteTeamMember = useCallback(async (email, role) => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/organizations/${user.organization_id}/invite`, {
+        method: "POST",
+        body: JSON.stringify({ email, role }),
+      });
+      return { success: true, invitation: data?.data };
+    } catch (err) {
+      console.error("[Auth] Failed to invite team member:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
+  const updateCustomStrategy = useCallback(async (strategyConfig) => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/strategies/customize`, {
+        method: "POST",
+        body: JSON.stringify({
+          organization_id: user.organization_id,
+          strategy_config: strategyConfig,
+        }),
+      });
+      return { success: true, config: data?.data };
+    } catch (err) {
+      console.error("[Auth] Failed to update custom strategy:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!loadAttemptedRef.current) {
       loadAttemptedRef.current = true;
@@ -449,17 +577,49 @@ export function AuthProvider({ children }) {
   }, [user, refreshActivation]);
 
   const isAuthenticated = useMemo(() => !!getToken() && !!user, [user]);
+  
+  const isEnterpriseUser = useMemo(() => {
+    return user?.tier === "enterprise";
+  }, [user]);
+
+  const isEnterpriseAdmin = useMemo(() => {
+    return isEnterpriseUser && (
+      user?.organization_role === "admin" ||
+      user?.organization_role === "owner" ||
+      user?.is_admin === true
+    );
+  }, [isEnterpriseUser, user]);
+
+  const hasEnhancedBotControls = useMemo(() => {
+    return isEnterpriseUser && user?.enhanced_bot_controls === true;
+  }, [isEnterpriseUser, user]);
+
+  const hasAdminPanelAccess = useMemo(() => {
+    return isEnterpriseAdmin && user?.admin_panel_access === true;
+  }, [isEnterpriseAdmin, user]);
 
   const activationComplete = useMemo(() => {
+    // For enterprise, activation requires admin approval
+    if (isEnterpriseUser) {
+      return activation?.enterprise_approved === true && 
+             activation?.trading_enabled === true;
+    }
     return activation?.trading_enabled === true && activation?.activation_complete === true;
-  }, [activation]);
+  }, [activation, isEnterpriseUser]);
 
   const hasCardOnFile = useMemo(() => {
+    // Enterprise doesn't require card on file
+    if (isEnterpriseUser) return true;
     return activation?.has_card_on_file === true || activation?.billing_complete === true;
-  }, [activation]);
+  }, [activation, isEnterpriseUser]);
 
   const hasRequiredIntegrations = useMemo(() => {
     if (!activation) return false;
+    
+    // Enterprise has more flexible requirements
+    if (isEnterpriseUser) {
+      return true; // Enterprise can use custom integrations
+    }
 
     const tier = activation.tier || user?.tier || "starter";
 
@@ -467,7 +627,7 @@ export function AuthProvider({ children }) {
     if (tier === "elite") return activation.wallet_connected;
 
     return activation.wallet_connected || activation.alpaca_connected || activation.okx_connected;
-  }, [activation, user]);
+  }, [activation, user, isEnterpriseUser]);
 
   const isAdmin = useMemo(() => {
     const email = (user?.email || "").toLowerCase().trim();
@@ -505,6 +665,10 @@ export function AuthProvider({ children }) {
       hasRequiredIntegrations,
       canTrade,
       isAdmin,
+      isEnterpriseUser,
+      isEnterpriseAdmin,
+      hasEnhancedBotControls,
+      hasAdminPanelAccess,
       signup,
       login,
       logout,
@@ -513,6 +677,10 @@ export function AuthProvider({ children }) {
       updateActivation,
       clearAuth,
       getApiKey: () => user?.api_key || null,
+      // Enterprise methods
+      getOrganizationUsers,
+      inviteTeamMember,
+      updateCustomStrategy,
     }),
     [
       user,
@@ -526,6 +694,10 @@ export function AuthProvider({ children }) {
       hasRequiredIntegrations,
       canTrade,
       isAdmin,
+      isEnterpriseUser,
+      isEnterpriseAdmin,
+      hasEnhancedBotControls,
+      hasAdminPanelAccess,
       signup,
       login,
       logout,
@@ -533,6 +705,9 @@ export function AuthProvider({ children }) {
       refreshActivation,
       updateActivation,
       clearAuth,
+      getOrganizationUsers,
+      inviteTeamMember,
+      updateCustomStrategy,
     ]
   );
 
