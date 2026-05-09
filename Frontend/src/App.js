@@ -1,4 +1,4 @@
-// App.js (with Landing + Newsletter pages + Fixed Admin Protection)
+// App.js (with Landing + Newsletter pages + Enterprise Support)
 
 import React, { lazy, Suspense } from "react";
 import {
@@ -17,6 +17,7 @@ import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import EnterpriseDemo from "./pages/EnterpriseDemo";
+
 // Lazy Loaded Auth / App Pages
 const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
@@ -24,6 +25,15 @@ const Activation = lazy(() => import("./pages/Activation"));
 const Billing = lazy(() => import("./pages/Billing"));
 const BillingSuccess = lazy(() => import("./pages/BillingSuccess"));
 const BillingDashboard = lazy(() => import("./pages/BillingDashboard"));
+
+// Enterprise Pages
+const EnterpriseDashboard = lazy(() => import("./pages/EnterpriseDashboard"));
+const TeamPage = lazy(() => import("./pages/TeamPage"));
+const StrategiesPage = lazy(() => import("./pages/StrategiesPage"));
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
+const AuditPage = lazy(() => import("./pages/AuditPage"));
+const BrandingPage = lazy(() => import("./pages/BrandingPage"));
+const BotControlsPage = lazy(() => import("./pages/BotControlsPage"));
 
 // Marketing Pages
 import Home from "./pages/Home";
@@ -37,12 +47,15 @@ import FundingGuide from "./pages/FundingGuide";
 import PublicDashboard from "./pages/PublicDashboard";
 import ReferralSystem from "./pages/ReferralPartner";
 
-// NEW LANDING PAGES
+// Landing Pages
 import LandingPages from "./pages/LandingPages";
 
-// NEW NEWSLETTER PAGES
+// Newsletter Pages
 import Newsletter from "./pages/Newsletter";
 import NewsletterSuccess from "./pages/NewsletterSuccess";
+
+// Admin Enterprise Pages
+const EnterpriseRequestsPage = lazy(() => import("./pages/admin/EnterpriseRequestsPage"));
 
 // ---------------- ERROR BOUNDARY ----------------
 class AppErrorBoundary extends React.Component {
@@ -68,7 +81,6 @@ class AppErrorBoundary extends React.Component {
             <p className="text-gray-600 mb-6">
               Please refresh the page or try again later.
             </p>
-
             <Link
               to="/"
               className="inline-block px-5 py-3 bg-emerald-600 text-white rounded-xl"
@@ -79,7 +91,6 @@ class AppErrorBoundary extends React.Component {
         </div>
       );
     }
-
     return this.props.children;
   }
 }
@@ -116,7 +127,6 @@ function RequireAuth({ children }) {
   return children;
 }
 
-// NEW: RequireAdmin guard - prevents admin components from loading for non-admins
 function RequireAdmin({ children }) {
   const { user, loading, isAdmin } = useAuth();
   const location = useLocation();
@@ -124,9 +134,38 @@ function RequireAdmin({ children }) {
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   
-  // Check if user is admin
   if (!isAdmin) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+// Enterprise route guard - requires enterprise tier
+function RequireEnterprise({ children }) {
+  const { user, loading, isEnterpriseUser } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  
+  if (!isEnterpriseUser) {
+    return <Navigate to="/pricing" replace />;
+  }
+
+  return children;
+}
+
+// Enterprise admin route guard
+function RequireEnterpriseAdmin({ children }) {
+  const { user, loading, isEnterpriseAdmin } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  
+  if (!isEnterpriseAdmin) {
+    return <Navigate to="/enterprise/dashboard" replace />;
   }
 
   return children;
@@ -142,9 +181,7 @@ function RequireActivation({ children }) {
   if (isAdmin) return children;
 
   if (!activationComplete) {
-    const hasCard =
-      activation?.has_card_on_file || activation?.billing_complete;
-
+    const hasCard = activation?.has_card_on_file || activation?.billing_complete;
     if (!hasCard) return <Navigate to="/billing" replace />;
     return <Navigate to="/activation" replace />;
   }
@@ -158,7 +195,6 @@ function RedirectIfActivated({ children }) {
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace />;
   
-  // Admins can always access activation page if needed
   if (isAdmin) return children;
   
   if (activationComplete) return <Navigate to="/dashboard" replace />;
@@ -168,7 +204,7 @@ function RedirectIfActivated({ children }) {
 
 // ---------------- POST LOGIN ----------------
 function PostLoginRedirect() {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, isEnterpriseUser } = useAuth();
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -179,14 +215,21 @@ function PostLoginRedirect() {
       return;
     }
 
-    // Redirect admins to admin panel, regular users to dashboard
+    // Enterprise users go to enterprise dashboard
+    if (isEnterpriseUser) {
+      navigate("/enterprise/dashboard", { replace: true });
+      return;
+    }
+
+    // Admins go to admin panel
     if (isAdmin) {
       navigate("/admin", { replace: true });
       return;
     }
 
+    // Regular users go to dashboard
     navigate("/dashboard", { replace: true });
-  }, [user, loading, navigate, isAdmin]);
+  }, [user, loading, navigate, isAdmin, isEnterpriseUser]);
 
   return <LoadingSpinner />;
 }
@@ -198,9 +241,8 @@ function NotFound() {
       <div>
         <h1 className="text-3xl font-bold mb-3">Page not found</h1>
         <p className="text-gray-600 mb-4">
-          The page you’re looking for doesn’t exist.
+          The page you're looking for doesn't exist.
         </p>
-
         <Link to="/" className="text-emerald-600 underline">
           Go Home
         </Link>
@@ -233,12 +275,13 @@ function AppContent() {
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
             <Route path="/enterprise" element={<EnterpriseDemo />} />
+            
             {/* Demo - No auth required */}
             <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
             <Route path="/trade-demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
 
-            {/* NEW LANDING PAGE ROUTES - No auth required */}
+            {/* Landing Page Routes - No auth required */}
             <Route path="/redditA" element={<LandingPages />} />
             <Route path="/redditB" element={<LandingPages />} />
             <Route path="/xA" element={<LandingPages />} />
@@ -252,10 +295,7 @@ function AppContent() {
 
             {/* Newsletter - No auth required */}
             <Route path="/newsletter" element={<Newsletter />} />
-            <Route
-              path="/newsletter/success"
-              element={<NewsletterSuccess />}
-            />
+            <Route path="/newsletter/success" element={<NewsletterSuccess />} />
 
             {/* Auth Routes - No auth required for login/signup */}
             <Route path="/signup" element={<Signup />} />
@@ -307,7 +347,7 @@ function AppContent() {
               }
             />
 
-            {/* Dashboard - Requires activation */}
+            {/* Regular Dashboard - Requires activation */}
             <Route
               path="/dashboard"
               element={
@@ -317,18 +357,100 @@ function AppContent() {
               }
             />
 
+            <Route path="/members" element={<Navigate to="/dashboard" replace />} />
+
+            {/* ==================== ENTERPRISE ROUTES ==================== */}
+            {/* Enterprise Dashboard - Requires enterprise tier */}
             <Route
-              path="/members"
-              element={<Navigate to="/dashboard" replace />}
+              path="/enterprise/dashboard"
+              element={
+                <RequireEnterprise>
+                  <EnterpriseDashboard />
+                </RequireEnterprise>
+              }
+            />
+            
+            {/* Enterprise Team Management */}
+            <Route
+              path="/enterprise/team"
+              element={
+                <RequireEnterpriseAdmin>
+                  <TeamPage />
+                </RequireEnterpriseAdmin>
+              }
+            />
+            
+            {/* Enterprise Custom Strategies */}
+            <Route
+              path="/enterprise/strategies"
+              element={
+                <RequireEnterpriseAdmin>
+                  <StrategiesPage />
+                </RequireEnterpriseAdmin>
+              }
+            />
+            
+            {/* Enterprise Analytics */}
+            <Route
+              path="/enterprise/analytics"
+              element={
+                <RequireEnterprise>
+                  <AnalyticsPage />
+                </RequireEnterprise>
+              }
+            />
+            
+            {/* Enterprise Audit Logs */}
+            <Route
+              path="/enterprise/audit"
+              element={
+                <RequireEnterpriseAdmin>
+                  <AuditPage />
+                </RequireEnterpriseAdmin>
+              }
+            />
+            
+            {/* Enterprise Branding */}
+            <Route
+              path="/enterprise/branding"
+              element={
+                <RequireEnterpriseAdmin>
+                  <BrandingPage />
+                </RequireEnterpriseAdmin>
+              }
+            />
+            
+            {/* Enterprise Bot Controls */}
+            <Route
+              path="/enterprise/bot-controls"
+              element={
+                <RequireEnterpriseAdmin>
+                  <BotControlsPage />
+                </RequireEnterpriseAdmin>
+              }
             />
 
-            {/* Admin - Requires BOTH auth AND admin privileges */}
+            {/* Admin Routes */}
             <Route
               path="/admin/*"
               element={
                 <RequireAuth>
                   <RequireAdmin>
                     <AdminPanel />
+                  </RequireAdmin>
+                </RequireAuth>
+              }
+            />
+
+            {/* Admin Enterprise Requests - Admin only */}
+            <Route
+              path="/admin/enterprise-requests"
+              element={
+                <RequireAuth>
+                  <RequireAdmin>
+                    <Suspense fallback={<PageFallback />}>
+                      <EnterpriseRequestsPage />
+                    </Suspense>
                   </RequireAdmin>
                 </RequireAuth>
               }
