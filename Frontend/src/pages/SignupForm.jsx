@@ -7,7 +7,7 @@ import {
 } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle", "enterprise"]; // Added enterprise
+const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle", "enterprise"];
 
 const TIER_LABELS = {
   starter: {
@@ -161,7 +161,7 @@ export default function Signup() {
 
   const mode = String(searchParams.get("mode") || "").toLowerCase();
   const isEnterprise = mode === "enterprise" || mode === "organization";
-  const isDirectEnterprise = searchParams.get("tier") === "enterprise"; // Handle direct enterprise link
+  const isDirectEnterprise = searchParams.get("tier") === "enterprise";
 
   const labels = isEnterprise ? ENTERPRISE_TIERS : TIER_LABELS;
 
@@ -170,7 +170,6 @@ export default function Signup() {
     const stateTier = location.state?.selectedTier;
     const savedTier = safeGetLocalStorage("imali_selected_tier", "starter");
 
-    // If direct enterprise link, force enterprise tier
     if (queryTier === "enterprise") return "enterprise";
     
     return normalizeTier(queryTier || stateTier || savedTier || "starter");
@@ -186,7 +185,6 @@ export default function Signup() {
     organizationName: "",
     contactName: "",
     useCase: "financial_literacy",
-    // Enterprise-specific fields
     companySize: "",
     desiredFeatures: [],
   });
@@ -207,7 +205,6 @@ export default function Signup() {
   const currentTier = labels[form.tier] || labels.starter;
 
   const validate = () => {
-    // Enterprise validation
     if (form.tier === "enterprise") {
       if (!form.organizationName.trim()) {
         return "Organization name is required for Enterprise.";
@@ -217,7 +214,6 @@ export default function Signup() {
       }
     }
 
-    // Organization mode validation (non-enterprise tier but enterprise mode)
     if (isEnterprise && !isDirectEnterprise && !form.organizationName.trim()) {
       return "Organization name is required.";
     }
@@ -234,7 +230,6 @@ export default function Signup() {
       return "Enter a valid email address.";
     }
 
-    // Skip password validation for enterprise (contact sales flow)
     if (form.tier !== "enterprise") {
       if (form.password.length < 8) {
         return "Password must be at least 8 characters.";
@@ -275,10 +270,8 @@ export default function Signup() {
     const email = form.email.trim().toLowerCase();
 
     try {
-      // For Enterprise tier, redirect to contact form instead of creating account
       if (form.tier === "enterprise") {
         setStep("redirecting");
-        // Store enterprise inquiry data
         const inquiryData = {
           email,
           organizationName: form.organizationName.trim(),
@@ -287,11 +280,11 @@ export default function Signup() {
           desiredFeatures: form.desiredFeatures,
           useCase: form.useCase,
           timestamp: new Date().toISOString(),
+          accepted_terms: form.acceptTerms,
         };
         
         safeSetLocalStorage("imali_enterprise_inquiry", JSON.stringify(inquiryData));
         
-        // Redirect to contact/sales page or show modal
         navigate("/contact-sales", {
           state: { inquiryData, fromEnterpriseSignup: true }
         });
@@ -307,6 +300,7 @@ export default function Signup() {
         organizationName: form.organizationName.trim(),
         contactName: form.contactName.trim(),
         useCase: form.useCase,
+        accepted_terms: form.acceptTerms,  // ✅ FIX: Added accepted_terms
       });
 
       if (!signupResult?.success) {
@@ -340,6 +334,7 @@ export default function Signup() {
           organizationName: form.organizationName.trim(),
           contactName: form.contactName.trim(),
           useCase: form.useCase,
+          accepted_terms: form.acceptTerms,
         },
       });
     } catch (err) {
@@ -647,7 +642,6 @@ export default function Signup() {
             </div>
           )}
 
-          {/* Strategy selection - simplified for enterprise */}
           {form.tier !== "enterprise" && (
             <div className="space-y-3">
               <div className="text-sm font-semibold text-white">
