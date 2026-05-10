@@ -33,7 +33,7 @@ const StrategiesPage = lazy(() => import("./pages/StrategiesPage"));
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
 const AuditPage = lazy(() => import("./pages/AuditPage"));
 const BrandingPage = lazy(() => import("./pages/BrandingPage"));
-const BotControlsPage = lazy(() => import("./pages/BotControlsPage"));
+const BotControlsPage = lazy(() => import("./pages/BotsControlsPage"));
 
 // Marketing Pages
 import Home from "./pages/Home";
