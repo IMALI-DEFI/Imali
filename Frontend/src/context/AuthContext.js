@@ -381,7 +381,7 @@ export function AuthProvider({ children }) {
     [loadUser]
   );
 
-  // FIXED: Changed from /api/auth/register to /api/auth/signup
+  // FIXED: Added accepted_terms to the signup payload
   const signup = useCallback(
     async (userData) => {
       setError(null);
@@ -414,12 +414,20 @@ export function AuthProvider({ children }) {
         }
       }
 
+      // Check if terms were accepted
+      if (!userData.accepted_terms && !userData.acceptTerms) {
+        const message = "You must accept the Terms of Service";
+        setError(message);
+        return { success: false, error: message };
+      }
+
       try {
         const payload = {
           email: userData.email,
           tier: userData.tier || "starter",
           strategy: userData.strategy || "ai_weighted",
           mode: userData.mode || "consumer",
+          accepted_terms: true,  // ✅ FIXED: Always send accepted_terms: true
         };
 
         if (!isEnterprise && userData.password) {
@@ -436,7 +444,8 @@ export function AuthProvider({ children }) {
           payload.use_case = userData.useCase;
         }
 
-        // ✅ FIXED: Use /api/auth/signup instead of /api/auth/register
+        console.log("Signup payload:", payload); // Debug log
+
         const data = await apiFetch("/api/auth/signup", {
           method: "POST",
           body: JSON.stringify(payload),
