@@ -17,7 +17,11 @@ import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import EnterpriseDemo from "./pages/EnterpriseDemo";
+// In App.js, add a simple test route
+import EnterpriseOnboardingWizard from './components/enterprise/EnterpriseOnboardingWizard';
 
+// Add this route (temporarily, no auth required for testing)
+<Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
 // Lazy Loaded Auth / App Pages
 const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
@@ -292,6 +296,7 @@ function AppContent() {
             <Route path="/tgB" element={<LandingPages />} />
             <Route path="/socialA" element={<LandingPages />} />
             <Route path="/socialB" element={<LandingPages />} />
+            <Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
 
             {/* Newsletter - No auth required */}
             <Route path="/newsletter" element={<Newsletter />} />
