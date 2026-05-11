@@ -48,7 +48,7 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
     trading: { totalTrades: 0, volume24h: 0, activeBots: 0, winRate: 0 },
     revenue: { total: 0, fees24h: 0, pending: 0 },
     system: { uptime: '99.9%', status: 'healthy' },
-    pnl: { last30Days: 0, today: 0, weekly: 0, monthly: 0 },
+    pnl: { last30Days: 0 },
     enterprise: {
       totalOrganizations: 0,
       totalMembers: 0,
@@ -61,7 +61,6 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
   const [authError, setAuthError] = useState(false);
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [activityLimit, setActivityLimit] = useState(10);
-  const [pnlPeriod, setPnlPeriod] = useState('30days'); // 'today', '7days', '30days', '90days', 'all'
   const [pnlDetails, setPnlDetails] = useState(null);
   const [showPnlDetails, setShowPnlDetails] = useState(false);
   const [enterpriseDetails, setEnterpriseDetails] = useState(null);
@@ -90,22 +89,13 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
     }
   }, [getAuthToken]);
 
-  // Fetch PNL details for selected period
-  const fetchPnlDetails = useCallback(async (period) => {
+  // Fetch PNL details for last 30 days
+  const fetchPnlDetails = useCallback(async () => {
     const token = getAuthToken();
     if (!token) return;
 
     try {
-      let days = 30;
-      switch (period) {
-        case 'today': days = 1; break;
-        case '7days': days = 7; break;
-        case '30days': days = 30; break;
-        case '90days': days = 90; break;
-        default: days = 30;
-      }
-
-      const response = await fetch(`${apiBase}/api/admin/pnl-details?days=${days}`, {
+      const response = await fetch(`${apiBase}/api/admin/pnl-details?days=30`, {
         headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -205,9 +195,6 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
           },
           pnl: {
             last30Days: safeNumber(metricsData.pnl?.last30Days || 0),
-            today: safeNumber(metricsData.pnl?.today || 0),
-            weekly: safeNumber(metricsData.pnl?.weekly || 0),
-            monthly: safeNumber(metricsData.pnl?.monthly || 0),
           },
           enterprise: {
             totalOrganizations: safeNumber(metricsData.enterprise?.totalOrganizations || 0),
@@ -277,12 +264,12 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
     if (!authError && isTokenValid()) {
       fetchMetrics();
       fetchRecentActivity();
-      fetchPnlDetails(pnlPeriod);
+      fetchPnlDetails();
       fetchEnterpriseDetails();
     } else {
       setLoading(false);
     }
-  }, [fetchMetrics, fetchRecentActivity, fetchPnlDetails, fetchEnterpriseDetails, authError, isTokenValid, pnlPeriod]);
+  }, [fetchMetrics, fetchRecentActivity, fetchPnlDetails, fetchEnterpriseDetails, authError, isTokenValid]);
 
   useEffect(() => {
     if (authError || !isTokenValid()) return;
@@ -294,11 +281,6 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
     
     return () => clearInterval(interval);
   }, [fetchMetrics, fetchRecentActivity, authError, isTokenValid]);
-
-  const handlePeriodChange = (period) => {
-    setPnlPeriod(period);
-    fetchPnlDetails(period);
-  };
 
   if (authError) {
     return (
@@ -422,7 +404,7 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
         </div>
       </div>
 
-      {/* PNL Section - Last 30 Days Focus */}
+      {/* PNL Section - Last 30 Days Only */}
       <div className="bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 border border-cyan-500/20 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -431,21 +413,13 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
             </h4>
             <p className="text-xs text-white/40">Last 30 days overview</p>
           </div>
-          <div className="flex gap-2">
-            {['today', '7days', '30days', '90days'].map((period) => (
-              <button
-                key={period}
-                onClick={() => handlePeriodChange(period)}
-                className={`px-3 py-1 text-xs rounded-lg transition-all ${
-                  pnlPeriod === period
-                    ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
-                    : 'bg-white/5 text-white/40 hover:bg-white/10'
-                }`}
-              >
-                {period === 'today' ? 'Today' : period === '7days' ? '7 Days' : period === '30days' ? '30 Days' : '90 Days'}
-              </button>
-            ))}
-          </div>
+          <button
+            onClick={() => setShowPnlDetails(!showPnlDetails)}
+            className="text-cyan-400 hover:text-cyan-300 text-sm flex items-center gap-1"
+          >
+            {showPnlDetails ? 'Hide Details' : 'View Details'}
+            <span>{showPnlDetails ? '▲' : '▼'}</span>
+          </button>
         </div>
 
         {/* Main PNL Display */}
@@ -459,33 +433,6 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
             </div>
             <div className="text-sm text-white/40 mt-2">Total PNL (Last 30 Days)</div>
           </div>
-          <div className="flex gap-4">
-            <div className="text-center">
-              <div className="text-sm text-white/40">Today</div>
-              <div className={`text-lg font-semibold ${getPnlColor(metrics.pnl.today)}`}>
-                {formatCurrency(metrics.pnl.today)}
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-sm text-white/40">This Week</div>
-              <div className={`text-lg font-semibold ${getPnlColor(metrics.pnl.weekly)}`}>
-                {formatCurrency(metrics.pnl.weekly)}
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-sm text-white/40">This Month</div>
-              <div className={`text-lg font-semibold ${getPnlColor(metrics.pnl.monthly)}`}>
-                {formatCurrency(metrics.pnl.monthly)}
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowPnlDetails(!showPnlDetails)}
-            className="text-cyan-400 hover:text-cyan-300 text-sm flex items-center gap-1"
-          >
-            {showPnlDetails ? 'Hide Details' : 'View Details'}
-            <span>{showPnlDetails ? '▲' : '▼'}</span>
-          </button>
         </div>
 
         {/* PNL Details Expandable Section */}
@@ -518,7 +465,7 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
               </div>
             </div>
             <div className="text-xs text-white/30 italic">
-              * Based on all closed trades in the selected period
+              * Based on all closed trades in the last 30 days
             </div>
           </div>
         )}
