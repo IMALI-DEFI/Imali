@@ -25,7 +25,7 @@ const EnterpriseOnboardingWizard = () => {
     job_title: '',
     
     // Step 3: Requirements
-    use_case: 'financial_literacy',
+    use_case: 'community_financial_literacy',
     desired_features: [],
     estimated_users: '1-10',
     budget_range: '500-1000',
@@ -48,6 +48,7 @@ const EnterpriseOnboardingWizard = () => {
   const [submitted, setSubmitted] = useState(false);
   const [requestId, setRequestId] = useState(null);
 
+  // UPDATED: Added government & community options
   const industries = [
     { value: 'financial_services', label: 'Financial Services', icon: '🏦' },
     { value: 'crypto_exchange', label: 'Crypto Exchange', icon: '🪙' },
@@ -55,10 +56,17 @@ const EnterpriseOnboardingWizard = () => {
     { value: 'fintech', label: 'Fintech Platform', icon: '📱' },
     { value: 'educational', label: 'Educational Platform', icon: '📚' },
     { value: 'investment_club', label: 'Investment Club', icon: '🤝' },
+    { value: 'government', label: 'Government / Public Sector', icon: '🏛️' },
+    { value: 'nonprofit', label: 'Nonprofit Organization', icon: '🤝' },
+    { value: 'workforce_development', label: 'Workforce Development', icon: '💼' },
     { value: 'other', label: 'Other', icon: '💼' },
   ];
 
+  // UPDATED: Added new use cases for community, youth, economic development
   const useCases = [
+    { value: 'community_financial_literacy', label: 'Community Financial Literacy', description: 'Teach residents financial automation safely' },
+    { value: 'youth_technology_program', label: 'Youth Technology Program', description: 'Introduce students to AI and analytics' },
+    { value: 'economic_development', label: 'Economic Development Initiative', description: 'Support local businesses and entrepreneurs' },
     { value: 'financial_literacy', label: 'Financial Literacy Program', description: 'Teach users about trading in a safe environment' },
     { value: 'workforce_training', label: 'Workforce Training', description: 'Train employees on trading strategies' },
     { value: 'small_business', label: 'Small Business Support', description: 'Offer trading tools to business clients' },
@@ -67,21 +75,22 @@ const EnterpriseOnboardingWizard = () => {
     { value: 'white_label', label: 'White Label Platform', description: 'Launch your own branded trading platform' },
   ];
 
+  // UPDATED: More education-focused feature descriptions
   const features = [
-    { id: 'custom_branding', label: 'Custom Branding', icon: '🎨', description: 'Your logo, colors, and domain' },
-    { id: 'admin_panel', label: 'Admin Panel', icon: '⚙️', description: 'Full user management and controls' },
-    { id: 'enhanced_bot_controls', label: 'Enhanced Bot Controls', icon: '🤖', description: 'Customize strategy parameters' },
-    { id: 'team_permissions', label: 'Team Permissions', icon: '👥', description: 'Admin/member/viewer roles' },
-    { id: 'audit_logs', label: 'Audit Logs', icon: '📋', description: 'Track all organization activity' },
-    { id: 'analytics', label: 'Advanced Analytics', icon: '📊', description: 'Organization-wide performance metrics' },
-    { id: 'priority_support', label: 'Priority Support', icon: '⭐', description: '24/7 dedicated support' },
-    { id: 'custom_strategies', label: 'Custom Strategies', icon: '📈', description: 'Build proprietary strategies' },
+    { id: 'custom_branding', label: 'Custom Branding', icon: '🎨', description: 'Your organization logo, colors, and domain' },
+    { id: 'admin_panel', label: 'Admin Panel', icon: '⚙️', description: 'Full user management and program controls' },
+    { id: 'enhanced_bot_controls', label: 'Enhanced Strategy Controls', icon: '🤖', description: 'Customize analytics and simulation parameters' },
+    { id: 'team_permissions', label: 'Team Permissions', icon: '👥', description: 'Admin/member/viewer roles for program staff' },
+    { id: 'audit_logs', label: 'Audit Logs', icon: '📋', description: 'Track all organization activity for compliance' },
+    { id: 'analytics', label: 'Learning Analytics', icon: '📊', description: 'Organization-wide performance and engagement metrics' },
+    { id: 'priority_support', label: 'Priority Support', icon: '⭐', description: '24/7 dedicated support for your team' },
+    { id: 'custom_strategies', label: 'Custom Analytics', icon: '📈', description: 'Build proprietary analysis models' },
   ];
 
   const exchanges = [
-    { id: 'alpaca', name: 'Alpaca', icon: '🦙', description: 'Stocks & ETFs', enabled: true },
-    { id: 'okx', name: 'OKX', icon: '🟢', description: 'Crypto (CEX)', enabled: true },
-    { id: 'binance', name: 'Binance', icon: '🟡', description: 'Crypto (CEX) - Coming Soon', enabled: false },
+    { id: 'alpaca', name: 'Alpaca', icon: '🦙', description: 'Stocks & ETFs (Simulation Ready)', enabled: true },
+    { id: 'okx', name: 'OKX', icon: '🟢', description: 'Crypto (Paper Trading)', enabled: true },
+    { id: 'binance', name: 'Binance', icon: '🟡', description: 'Crypto - Coming Soon', enabled: false },
     { id: 'coinbase', name: 'Coinbase', icon: '🔵', description: 'Crypto - Coming Soon', enabled: false },
   ];
 
@@ -179,8 +188,8 @@ const EnterpriseOnboardingWizard = () => {
     const titles = {
       1: 'Organization Details',
       2: 'Contact Information',
-      3: 'Requirements',
-      4: 'Integrations',
+      3: 'Program Requirements',
+      4: 'Platform Integrations',
       5: 'Branding & Domain',
       6: 'Review & Submit',
     };
@@ -189,11 +198,11 @@ const EnterpriseOnboardingWizard = () => {
 
   const getStepDescription = () => {
     const descriptions = {
-      1: 'Tell us about your organization',
-      2: 'How can we reach you?',
-      3: 'What features do you need?',
-      4: 'Which exchanges do you want to connect?',
-      5: 'Customize your branded experience',
+      1: 'Tell us about your organization or initiative',
+      2: 'How can we reach your program team?',
+      3: 'What features and analytics do you need?',
+      4: 'Which markets and data sources do you want to access?',
+      5: 'Customize your branded learning environment',
       6: 'Review your request before submitting',
     };
     return descriptions[currentStep];
@@ -206,7 +215,7 @@ const EnterpriseOnboardingWizard = () => {
           <div className="text-6xl mb-4">🎉</div>
           <h2 className="text-2xl font-bold text-white mb-2">Request Received!</h2>
           <p className="text-gray-300 mb-4">
-            Thank you for your interest in IMALI Enterprise. Our team will review your request and contact you shortly.
+            Thank you for your interest in IMALI's educational and workforce platform. Our team will review your request and contact you shortly.
           </p>
           {requestId && (
             <p className="text-xs text-gray-500 mb-6">Request ID: {requestId}</p>
@@ -215,9 +224,9 @@ const EnterpriseOnboardingWizard = () => {
             <p className="text-sm text-gray-300 mb-2">📧 What happens next?</p>
             <ul className="text-xs text-gray-400 space-y-1">
               <li>✅ Our team reviews your request (within 24 hours)</li>
-              <li>✅ We'll schedule a demo call</li>
-              <li>✅ We'll prepare a custom proposal</li>
-              <li>✅ You'll get access to a test environment</li>
+              <li>✅ We'll schedule a demo of the platform</li>
+              <li>✅ We'll prepare a pilot program proposal</li>
+              <li>✅ You'll get access to a sandbox environment</li>
             </ul>
           </div>
           <button
@@ -234,17 +243,27 @@ const EnterpriseOnboardingWizard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 to-gray-900 py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
+        {/* Header - UPDATED with pilot and softer language */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 rounded-full px-4 py-1 mb-4">
             <span className="text-indigo-400 text-sm">🏢</span>
-            <span className="text-indigo-300 text-sm font-medium">Enterprise Onboarding</span>
+            <span className="text-indigo-300 text-sm font-medium">Education & Enterprise Onboarding</span>
           </div>
+          
+          {/* Pilot Program Badge - NEW */}
+          <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-4 py-1 mb-4 ml-2">
+            <span className="text-emerald-400 text-sm">✈️</span>
+            <span className="text-emerald-300 text-sm font-medium">Pilot-Ready Program</span>
+          </div>
+          
           <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-            Launch Your Branded Trading Platform
+            Launch Your Organization's Financial Automation & Learning Platform
           </h1>
-          <p className="text-gray-400">
-            Get a custom white-label solution in minutes
+          <p className="text-gray-400 max-w-2xl mx-auto">
+            Deploy a modern AI-powered learning and analytics platform for your organization
+          </p>
+          <p className="text-emerald-400 text-sm mt-3 font-medium">
+            Pilot-ready onboarding for educational, workforce, and innovation initiatives.
           </p>
         </div>
 
@@ -281,13 +300,13 @@ const EnterpriseOnboardingWizard = () => {
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Organization Name *
+                  Organization / Initiative Name *
                 </label>
                 <input
                   type="text"
                   value={formData.organization_name}
                   onChange={(e) => updateForm('organization_name', e.target.value)}
-                  placeholder="e.g., Acme Trading Inc."
+                  placeholder="e.g., City of Springfield Workforce Development"
                   className={`w-full px-4 py-3 bg-gray-900 border ${errors.organization_name ? 'border-red-500' : 'border-gray-700'} rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                 />
                 {errors.organization_name && (
@@ -297,7 +316,7 @@ const EnterpriseOnboardingWizard = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Industry *
+                  Sector / Industry *
                 </label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {industries.map(industry => (
@@ -327,24 +346,24 @@ const EnterpriseOnboardingWizard = () => {
                     type="url"
                     value={formData.website}
                     onChange={(e) => updateForm('website', e.target.value)}
-                    placeholder="https://yourcompany.com"
+                    placeholder="https://yourorganization.gov"
                     className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Team Size
+                    Program Scale
                   </label>
                   <select
                     value={formData.team_size}
                     onChange={(e) => updateForm('team_size', e.target.value)}
                     className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="1-10">Just me (1-10)</option>
-                    <option value="11-50">Small team (11-50)</option>
-                    <option value="51-200">Medium team (51-200)</option>
-                    <option value="201-500">Large team (201-500)</option>
-                    <option value="500+">Enterprise (500+)</option>
+                    <option value="1-10">Pilot program (1-10 staff)</option>
+                    <option value="11-50">Department (11-50 staff)</option>
+                    <option value="51-200">Agency (51-200 staff)</option>
+                    <option value="201-500">Multi-department (201-500 staff)</option>
+                    <option value="500+">Enterprise / Government-wide (500+)</option>
                   </select>
                 </div>
               </div>
@@ -357,7 +376,7 @@ const EnterpriseOnboardingWizard = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Contact Name *
+                    Program Contact Name *
                   </label>
                   <input
                     type="text"
@@ -370,13 +389,13 @@ const EnterpriseOnboardingWizard = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Job Title *
+                    Title / Role *
                   </label>
                   <input
                     type="text"
                     value={formData.job_title}
                     onChange={(e) => updateForm('job_title', e.target.value)}
-                    placeholder="CEO / Founder / Product Manager"
+                    placeholder="Program Director / Workforce Coordinator"
                     className={`w-full px-4 py-3 bg-gray-900 border ${errors.job_title ? 'border-red-500' : 'border-gray-700'} rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   />
                   {errors.job_title && <p className="text-red-400 text-sm mt-1">{errors.job_title}</p>}
@@ -386,13 +405,13 @@ const EnterpriseOnboardingWizard = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Email Address *
+                    Work Email *
                   </label>
                   <input
                     type="email"
                     value={formData.contact_email}
                     onChange={(e) => updateForm('contact_email', e.target.value)}
-                    placeholder="john@acme.com"
+                    placeholder="john@city.gov"
                     className={`w-full px-4 py-3 bg-gray-900 border ${errors.contact_email ? 'border-red-500' : 'border-gray-700'} rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   />
                   {errors.contact_email && <p className="text-red-400 text-sm mt-1">{errors.contact_email}</p>}
@@ -413,7 +432,7 @@ const EnterpriseOnboardingWizard = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  How did you hear about us?
+                  How did you hear about our platform?
                 </label>
                 <select
                   value={formData.referral_source}
@@ -421,23 +440,25 @@ const EnterpriseOnboardingWizard = () => {
                   className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">Select an option</option>
-                  <option value="google">Google Search</option>
-                  <option value="reddit">Reddit</option>
+                  <option value="google">Search Engine</option>
                   <option value="linkedin">LinkedIn</option>
                   <option value="twitter">Twitter/X</option>
-                  <option value="friend">Friend/Colleague</option>
+                  <option value="conference">Conference / Event</option>
+                  <option value="government_network">Government Network</option>
+                  <option value="workforce_partner">Workforce Partner</option>
+                  <option value="friend">Colleague Recommendation</option>
                   <option value="other">Other</option>
                 </select>
               </div>
             </div>
           )}
 
-          {/* Step 3: Requirements */}
+          {/* Step 3: Requirements - UPDATED with softer language */}
           {currentStep === 3 && (
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Primary Use Case *
+                  Primary Program Focus *
                 </label>
                 <select
                   value={formData.use_case}
@@ -455,7 +476,7 @@ const EnterpriseOnboardingWizard = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-3">
-                  Desired Features *
+                  Platform Capabilities Needed *
                 </label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {features.map(feature => (
@@ -482,45 +503,45 @@ const EnterpriseOnboardingWizard = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Estimated Users
+                    Expected Participant Count
                   </label>
                   <select
                     value={formData.estimated_users}
                     onChange={(e) => updateForm('estimated_users', e.target.value)}
                     className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="1-10">1-10 users</option>
-                    <option value="11-50">11-50 users</option>
-                    <option value="51-200">51-200 users</option>
-                    <option value="201-1000">201-1,000 users</option>
-                    <option value="1000+">1,000+ users</option>
+                    <option value="1-10">Pilot cohort (1-10)</option>
+                    <option value="11-50">Small program (11-50)</option>
+                    <option value="51-200">Community program (51-200)</option>
+                    <option value="201-1000">City-wide initiative (201-1,000)</option>
+                    <option value="1000+">Regional / State-wide (1,000+)</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Monthly Budget Range
+                    Program Timeline
                   </label>
                   <select
                     value={formData.budget_range}
                     onChange={(e) => updateForm('budget_range', e.target.value)}
                     className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="500-1000">$500 - $1,000</option>
-                    <option value="1000-2500">$1,000 - $2,500</option>
-                    <option value="2500-5000">$2,500 - $5,000</option>
-                    <option value="5000+">$5,000+</option>
+                    <option value="500-1000">Immediate (0-30 days)</option>
+                    <option value="1000-2500">Short-term (1-3 months)</option>
+                    <option value="2500-5000">Medium-term (3-6 months)</option>
+                    <option value="5000+">Long-term (6+ months)</option>
                   </select>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Step 4: Integrations */}
+          {/* Step 4: Integrations - Updated with simulation language */}
           {currentStep === 4 && (
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-3">
-                  Which exchanges do you want to support?
+                  Learning Environments & Data Sources
                 </label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {exchanges.map(exchange => (
@@ -551,12 +572,12 @@ const EnterpriseOnboardingWizard = () => {
               </div>
 
               <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-                <h4 className="text-white font-medium mb-3">Additional Integrations</h4>
+                <h4 className="text-white font-medium mb-3">Additional Learning Environments</h4>
                 <div className="space-y-3">
                   <label className="flex items-center justify-between cursor-pointer">
                     <div>
-                      <span className="text-white">DEX Support (Uniswap-style)</span>
-                      <p className="text-xs text-gray-400">Decentralized exchange trading</p>
+                      <span className="text-white">Simulation Sandbox</span>
+                      <p className="text-xs text-gray-400">Paper trading environment for education</p>
                     </div>
                     <input
                       type="checkbox"
@@ -567,8 +588,8 @@ const EnterpriseOnboardingWizard = () => {
                   </label>
                   <label className="flex items-center justify-between cursor-pointer">
                     <div>
-                      <span className="text-white">Stock Trading (Alpaca)</span>
-                      <p className="text-xs text-gray-400">US equities and ETFs</p>
+                      <span className="text-white">Market Data & Analytics</span>
+                      <p className="text-xs text-gray-400">Real-time and historical market data</p>
                     </div>
                     <input
                       type="checkbox"
@@ -582,16 +603,16 @@ const EnterpriseOnboardingWizard = () => {
             </div>
           )}
 
-          {/* Step 5: Branding & Domain */}
+          {/* Step 5: Branding & Domain - REMOVED Reddit offer */}
           {currentStep === 5 && (
             <div className="space-y-6">
               <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-                <h4 className="text-white font-medium mb-3">Custom Branding</h4>
+                <h4 className="text-white font-medium mb-3">Custom Platform Branding</h4>
                 <div className="space-y-3">
                   <label className="flex items-center justify-between cursor-pointer">
                     <div>
                       <span className="text-white">Custom Domain</span>
-                      <p className="text-xs text-gray-400">Use your own domain (e.g., trade.yourcompany.com)</p>
+                      <p className="text-xs text-gray-400">Use your organization's domain (e.g., learn.yourorganization.gov)</p>
                     </div>
                     <input
                       type="checkbox"
@@ -605,7 +626,7 @@ const EnterpriseOnboardingWizard = () => {
                       type="text"
                       value={formData.custom_domain}
                       onChange={(e) => updateForm('custom_domain', e.target.value)}
-                      placeholder="trade.yourcompany.com"
+                      placeholder="learn.yourorganization.gov"
                       className="w-full mt-2 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   )}
@@ -616,28 +637,17 @@ const EnterpriseOnboardingWizard = () => {
                 <div className="flex items-start gap-3">
                   <span className="text-2xl">🎨</span>
                   <div>
-                    <h5 className="text-blue-300 font-medium mb-1">White-Label Preview</h5>
+                    <h5 className="text-blue-300 font-medium mb-1">White-Label Environment Preview</h5>
                     <p className="text-sm text-gray-300 mb-3">
-                      Your organization will get:
+                      Your organization's learning platform will include:
                     </p>
                     <ul className="text-xs text-gray-400 space-y-1">
-                      <li>✓ Custom logo on dashboard</li>
-                      <li>✓ Your brand colors throughout</li>
-                      <li>✓ Custom favicon</li>
-                      <li>✓ "Powered by IMALI" can be removed</li>
+                      <li>✓ Custom logo and branding on the dashboard</li>
+                      <li>✓ Your organization's colors throughout</li>
+                      <li>✓ Custom favicon for browser tabs</li>
+                      <li>✓ Option to remove platform attribution</li>
+                      <li>✓ Custom subdomain or your own domain</li>
                     </ul>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl">💰</span>
-                  <div>
-                    <h5 className="text-yellow-300 font-medium mb-1">Reddit Special Offer</h5>
-                    <p className="text-sm text-gray-300">
-                      Mention you found us on Reddit and we'll waive the $2,500 setup fee!
-                    </p>
                   </div>
                 </div>
               </div>
@@ -665,30 +675,30 @@ const EnterpriseOnboardingWizard = () => {
           {currentStep === 6 && (
             <div className="space-y-6">
               <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-                <h4 className="text-white font-medium mb-3">Organization Summary</h4>
+                <h4 className="text-white font-medium mb-3">Program Summary</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between py-2 border-b border-gray-700">
                     <span className="text-gray-400">Organization:</span>
                     <span className="text-white font-medium">{formData.organization_name}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-gray-700">
-                    <span className="text-gray-400">Industry:</span>
+                    <span className="text-gray-400">Sector:</span>
                     <span className="text-white">{industries.find(i => i.value === formData.industry)?.label}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-gray-700">
-                    <span className="text-gray-400">Contact:</span>
+                    <span className="text-gray-400">Program Contact:</span>
                     <span className="text-white">{formData.contact_name} ({formData.contact_email})</span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-gray-700">
-                    <span className="text-gray-400">Use Case:</span>
+                    <span className="text-gray-400">Program Focus:</span>
                     <span className="text-white">{useCases.find(uc => uc.value === formData.use_case)?.label}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-gray-700">
-                    <span className="text-gray-400">Team Size:</span>
+                    <span className="text-gray-400">Program Scale:</span>
                     <span className="text-white">{formData.team_size}</span>
                   </div>
                   <div className="flex justify-between py-2">
-                    <span className="text-gray-400">Features:</span>
+                    <span className="text-gray-400">Capabilities Selected:</span>
                     <span className="text-white text-right">
                       {formData.desired_features.length} selected
                     </span>
@@ -698,7 +708,7 @@ const EnterpriseOnboardingWizard = () => {
 
               <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-4 text-center">
                 <p className="text-indigo-300 text-sm">
-                  Our team will review your request and contact you within 24 hours to schedule a demo.
+                  Our team will review your request and contact you within 24 hours to discuss pilot program options.
                 </p>
               </div>
             </div>
@@ -727,18 +737,19 @@ const EnterpriseOnboardingWizard = () => {
                 disabled={loading}
                 className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition ml-auto disabled:opacity-50"
               >
-                {loading ? 'Submitting...' : 'Submit Request →'}
+                {loading ? 'Submitting...' : 'Submit Program Request →'}
               </button>
             )}
           </div>
         </div>
 
-        {/* Trust Indicators */}
+        {/* Trust Indicators - Updated with education language */}
         <div className="mt-8 text-center">
-          <div className="flex justify-center gap-8 text-sm text-gray-500">
-            <span>🔒 256-bit Encryption</span>
-            <span>⚡ 24h Response Time</span>
-            <span>🏢 Enterprise SLA Available</span>
+          <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-500">
+            <span>🔒 SOC2 Ready</span>
+            <span>⚡ Pilot-Ready in Days</span>
+            <span>🏢 Government & Education Ready</span>
+            <span>📊 Analytics-First Platform</span>
           </div>
         </div>
       </div>
