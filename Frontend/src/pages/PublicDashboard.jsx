@@ -28,7 +28,7 @@ ChartJS.register(
 // ============================================================================
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
-const NOTABLE_TRADES_URL = `${API_BASE}/api/notable-trades`;
+const NOTABLE_TRADES_URL = `${API_BASE}/api/public/notable-trades`; // FIXED URL
 
 const REFRESH_INTERVAL = 30000;
 
@@ -503,7 +503,7 @@ export default function PublicDashboard() {
 
       const [statsResponse, notableResponse] = await Promise.all([
         axios.get(PUBLIC_STATS_URL, { timeout: 15000 }),
-        axios.get(NOTABLE_TRADES_URL, { timeout: 15000, params: { limit: 20 } }),
+        axios.get(NOTABLE_TRADES_URL, { timeout: 15000, params: { limit: 30 } }),
       ]);
 
       if (statsResponse.data?.success) {
@@ -511,26 +511,19 @@ export default function PublicDashboard() {
         const trades = (apiData.recent_trades || []).map(normalizeTrade);
         const summary = apiData.summary || {};
 
-        // Build bot stats - DIRECTLY from API response
+        // Build bot stats
         const botStats = {};
         const mainBots = ["okx", "futures", "stocks", "sniper"];
 
-        // Iterate through the bots from API
         (apiData.bots || []).forEach((bot) => {
-          const botName = bot.name;
-          
-          // Only process our 4 main bots
+          const botName = normalizeBotName(bot.name);
           if (!mainBots.includes(botName)) return;
 
-          // Skip if this is a duplicate with fewer trades (handles the test bot issue)
           if (botStats[botName] && botStats[botName].total_trades > (bot.total_trades || 0)) {
-            console.log(`⏭️ Skipping duplicate ${botName} with fewer trades`);
             return;
           }
 
           const totalTrades = Number(bot.total_trades) || 0;
-          
-          // Skip if no trades
           if (totalTrades === 0) return;
 
           botStats[botName] = {
@@ -542,11 +535,8 @@ export default function PublicDashboard() {
             open_positions: Number(bot.open_positions) || 0,
             last_activity: bot.last_activity
           };
-          
-          console.log(`✅ ${botName} stats:`, botStats[botName]);
         });
 
-        // Ensure all main bots are present (even with zero trades)
         mainBots.forEach(botName => {
           if (!botStats[botName]) {
             botStats[botName] = {
@@ -561,19 +551,29 @@ export default function PublicDashboard() {
           }
         });
 
-        // Process notable trades
-        const nextNotableTrades = {};
+        // Process notable trades - DIRECT from API response
+        let nextNotableTrades = {};
         if (notableResponse.data?.success) {
           const notableData = notableResponse.data.data || {};
-          Object.entries(notableData).forEach(([bot, tradesList]) => {
-            if (Array.isArray(tradesList)) {
-              nextNotableTrades[normalizeBotName(bot)] = tradesList.map(trade => normalizeTrade(trade));
+          const allTrades = notableData.trades || [];
+          
+          // Group trades by bot
+          const groupedByBot = {};
+          allTrades.forEach(trade => {
+            const botName = normalizeBotName(trade.bot || trade.bot_name);
+            if (!groupedByBot[botName]) {
+              groupedByBot[botName] = [];
             }
+            groupedByBot[botName].push(normalizeTrade(trade));
           });
+          
+          // Sort each bot's trades by percentage return (highest first)
+          Object.keys(groupedByBot).forEach(bot => {
+            groupedByBot[bot].sort((a, b) => safeNumber(b.pnl_percent) - safeNumber(a.pnl_percent));
+          });
+          
+          nextNotableTrades = groupedByBot;
         }
-
-        console.log("📊 Final Bot Stats:", botStats);
-        console.log("🔍 Futures Bot:", botStats.futures);
 
         setData({
           trades: trades.length > 0 ? trades : [],
@@ -640,8 +640,6 @@ export default function PublicDashboard() {
   ];
 
   const bots = ["okx", "futures", "stocks", "sniper"].filter((bot) => botStats[bot]?.total_trades > 0);
-
-  console.log("🎯 Rendering with botStats:", botStats);
 
   if (data.loading && !data.lastUpdate && allTrades.length === 0) {
     return (
