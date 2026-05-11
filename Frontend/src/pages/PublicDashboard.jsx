@@ -639,7 +639,9 @@ export default function PublicDashboard() {
     { id: "closed", label: "Closed", count: allTrades.filter((t) => t.status === "closed").length },
   ];
 
-  const bots = ["okx", "futures", "stocks", "sniper"].filter((bot) => botStats[bot]?.total_trades > 0);
+  const bots = Object.keys(notableTrades).length > 0 
+  ? Object.keys(notableTrades).filter(bot => notableTrades[bot]?.length > 0)
+  : ["okx", "futures", "stocks", "sniper"].filter((bot) => botStats[bot]?.total_trades > 0);
 
   if (data.loading && !data.lastUpdate && allTrades.length === 0) {
     return (
