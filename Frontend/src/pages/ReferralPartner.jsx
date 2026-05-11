@@ -149,6 +149,7 @@ const EmailSignupModal = ({ onClose, onSignup, loading, error }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [localError, setLocalError] = useState("");
 
   const validatePassword = () => {
@@ -166,6 +167,11 @@ const EmailSignupModal = ({ onClose, onSignup, loading, error }) => {
     const validationError = validatePassword();
     if (validationError) {
       setLocalError(validationError);
+      return;
+    }
+
+    if (!acceptedTerms) {
+      setLocalError("You must accept the Terms of Service and Privacy Policy.");
       return;
     }
 
@@ -228,6 +234,27 @@ const EmailSignupModal = ({ onClose, onSignup, loading, error }) => {
           <p className="text-xs text-gray-500">
             Use at least 8 characters with uppercase, lowercase, and a number.
           </p>
+
+          {/* Terms of Service Checkbox */}
+          <div className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              id="terms"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+            />
+            <label htmlFor="terms" className="text-xs text-gray-600">
+              I agree to the{" "}
+              <a href="/terms" target="_blank" className="text-emerald-600 hover:underline">
+                Terms of Service
+              </a>{" "}
+              and{" "}
+              <a href="/privacy" target="_blank" className="text-emerald-600 hover:underline">
+                Privacy Policy
+              </a>
+            </label>
+          </div>
 
           {(localError || error) && (
             <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
@@ -499,6 +526,7 @@ const ReferralSystem = () => {
         tier: "starter",
         strategy: "ai_weighted",
         referral_code: pendingRefCode || referralCode || undefined,
+        accepted_terms: true,
       });
 
       if (!result?.success) {
