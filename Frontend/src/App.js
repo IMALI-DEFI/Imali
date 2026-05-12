@@ -1,4 +1,4 @@
-// App.js (with Landing + Newsletter pages + Enterprise Support)
+// App.js (with Landing + Newsletter pages + Enterprise Support - SEPARATED)
 
 import React, { lazy, Suspense } from "react";
 import {
@@ -16,12 +16,17 @@ import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import EnterpriseDemo from "./pages/EnterpriseDemo";
-// In App.js, add a simple test route
+
+// ==================== ENTERPRISE PAGES - SEPARATED ====================
+// Main Marketing / Credibility Page (for imali-defi.com/enterprise)
+import EnterprisePage from "./pages/EnterprisePage";
+
+// Live Interactive Demo Environment (for imali-demo.com/enterprise-demo)
+import EnterpriseDemoEnvironment from "./pages/EnterpriseDemoEnvironment";
+
+// Onboarding Wizard Component
 import EnterpriseOnboardingWizard from './components/enterprise/EnterpriseOnboardingWizard';
 
-// Add this route (temporarily, no auth required for testing)
-<Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
 // Lazy Loaded Auth / App Pages
 const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
@@ -30,7 +35,7 @@ const Billing = lazy(() => import("./pages/Billing"));
 const BillingSuccess = lazy(() => import("./pages/BillingSuccess"));
 const BillingDashboard = lazy(() => import("./pages/BillingDashboard"));
 
-// Enterprise Pages
+// Enterprise Dashboard Pages (authenticated)
 const EnterpriseDashboard = lazy(() => import("./pages/EnterpriseDashboard"));
 const TeamPage = lazy(() => import("./pages/TeamPage"));
 const StrategiesPage = lazy(() => import("./pages/StrategiesPage"));
@@ -268,7 +273,7 @@ function AppContent() {
       <main className="min-h-screen pt-16 bg-white text-gray-900">
         <Suspense fallback={<PageFallback />}>
           <Routes>
-            {/* Main Marketing - No auth required */}
+            {/* ==================== MAIN MARKETING PAGES ==================== */}
             <Route path="/" element={<Home />} />
             <Route path="/about-us" element={<AboutUs />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
@@ -278,14 +283,22 @@ function AppContent() {
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
-            <Route path="/enterprise" element={<EnterpriseDemo />} />
             
-            {/* Demo - No auth required */}
+            {/* ==================== ENTERPRISE PAGES - SEPARATED ==================== */}
+            {/* MAIN MARKETING / CREDIBILITY PAGE - for imali-defi.com/enterprise */}
+            {/* This page explains the platform, features, infrastructure, and includes a "Schedule Demo" CTA */}
+            <Route path="/enterprise" element={<EnterprisePage />} />
+            
+            {/* LIVE INTERACTIVE DEMO ENVIRONMENT - for imali-demo.com/enterprise-demo */}
+            {/* This is the "Controlled Realism" demo with live market data, paper trading, etc. */}
+            <Route path="/enterprise-demo" element={<EnterpriseDemoEnvironment />} />
+            
+            {/* Demo redirect - keep for compatibility */}
             <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
             <Route path="/trade-demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
 
-            {/* Landing Page Routes - No auth required */}
+            {/* ==================== LANDING PAGE ROUTES ==================== */}
             <Route path="/redditA" element={<LandingPages />} />
             <Route path="/redditB" element={<LandingPages />} />
             <Route path="/xA" element={<LandingPages />} />
@@ -296,13 +309,15 @@ function AppContent() {
             <Route path="/tgB" element={<LandingPages />} />
             <Route path="/socialA" element={<LandingPages />} />
             <Route path="/socialB" element={<LandingPages />} />
+            
+            {/* Test / Wizard Route */}
             <Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
 
-            {/* Newsletter - No auth required */}
+            {/* ==================== NEWSLETTER ==================== */}
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/newsletter/success" element={<NewsletterSuccess />} />
 
-            {/* Auth Routes - No auth required for login/signup */}
+            {/* ==================== AUTH ROUTES ==================== */}
             <Route path="/signup" element={<Signup />} />
             <Route
               path="/login"
@@ -319,7 +334,7 @@ function AppContent() {
               }
             />
 
-            {/* Billing - Requires auth */}
+            {/* ==================== BILLING ==================== */}
             <Route path="/billing/success" element={<BillingSuccess />} />
             <Route
               path="/billing"
@@ -342,7 +357,7 @@ function AppContent() {
               element={<Navigate to="/billing-dashboard" replace />}
             />
 
-            {/* Activation - Requires auth */}
+            {/* ==================== ACTIVATION ==================== */}
             <Route
               path="/activation"
               element={
@@ -352,7 +367,7 @@ function AppContent() {
               }
             />
 
-            {/* Regular Dashboard - Requires activation */}
+            {/* ==================== REGULAR DASHBOARD ==================== */}
             <Route
               path="/dashboard"
               element={
@@ -364,8 +379,7 @@ function AppContent() {
 
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
-            {/* ==================== ENTERPRISE ROUTES ==================== */}
-            {/* Enterprise Dashboard - Requires enterprise tier */}
+            {/* ==================== AUTHENTICATED ENTERPRISE DASHBOARD ROUTES ==================== */}
             <Route
               path="/enterprise/dashboard"
               element={
@@ -375,7 +389,6 @@ function AppContent() {
               }
             />
             
-            {/* Enterprise Team Management */}
             <Route
               path="/enterprise/team"
               element={
@@ -385,7 +398,6 @@ function AppContent() {
               }
             />
             
-            {/* Enterprise Custom Strategies */}
             <Route
               path="/enterprise/strategies"
               element={
@@ -395,7 +407,6 @@ function AppContent() {
               }
             />
             
-            {/* Enterprise Analytics */}
             <Route
               path="/enterprise/analytics"
               element={
@@ -405,7 +416,6 @@ function AppContent() {
               }
             />
             
-            {/* Enterprise Audit Logs */}
             <Route
               path="/enterprise/audit"
               element={
@@ -415,7 +425,6 @@ function AppContent() {
               }
             />
             
-            {/* Enterprise Branding */}
             <Route
               path="/enterprise/branding"
               element={
@@ -425,7 +434,6 @@ function AppContent() {
               }
             />
             
-            {/* Enterprise Bot Controls */}
             <Route
               path="/enterprise/bot-controls"
               element={
@@ -435,7 +443,7 @@ function AppContent() {
               }
             />
 
-            {/* Admin Routes */}
+            {/* ==================== ADMIN ROUTES ==================== */}
             <Route
               path="/admin/*"
               element={
@@ -447,7 +455,6 @@ function AppContent() {
               }
             />
 
-            {/* Admin Enterprise Requests - Admin only */}
             <Route
               path="/admin/enterprise-requests"
               element={
@@ -461,7 +468,7 @@ function AppContent() {
               }
             />
 
-            {/* 404 */}
+            {/* ==================== 404 ==================== */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
