@@ -2,25 +2,11 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from "chart.js";
-import { Line, Bar } from "react-chartjs-2";
 import logo from "../assets/imali-logo.png";
 
 import {
   FaRobot,
   FaChartLine,
-  FaShieldAlt,
   FaUsers,
   FaCheckCircle,
   FaArrowRight,
@@ -39,1144 +25,899 @@ import {
   FaKey,
   FaInfoCircle,
   FaSpinner,
-  FaPlug,
-  FaUnlink,
-  FaCheck,
-  FaExclamationTriangle,
-  FaToggleOn,
-  FaToggleOff,
-  FaCloudDownloadAlt,
+  FaSignal,
 } from "react-icons/fa";
 
-// Register ChartJS components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
-
-// API base URL
-const API_BASE = process.env.REACT_APP_API_BASE || "https://api.imali-defi.com";
-
-// Safe number formatting helper
-const formatPrice = (price) => {
-  const num = Number(price || 0);
-  return isNaN(num) ? "0" : num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-
-const formatPercent = (percent) => {
-  const num = Number(percent || 0);
-  return isNaN(num) ? "0" : num.toFixed(1);
-};
+const API_BASE =
+  process.env.REACT_APP_API_BASE || "https://api.imali-defi.com";
 
 export default function Enterprise() {
   const [activeDemoTab, setActiveDemoTab] = useState("simulator");
-  const [activeChartTab, setActiveChartTab] = useState("performance");
-  const [pageLoading, setPageLoading] = useState(true);
-  const [tradeLoading, setTradeLoading] = useState(false);
-  
-  // LIVE vs SIMULATED TOGGLE
-  const [isLiveMode, setIsLiveMode] = useState(false);
-  const [isToggling, setIsToggling] = useState(false);
-  
-  // Market Data State
-  const [marketData, setMarketData] = useState({
-    btc: { price: 71234, change: 2.4, momentum: "high", confidence: 87, loading: false },
-    eth: { price: 3821, change: 1.8, momentum: "medium", confidence: 72, loading: false },
-    sol: { price: 168, change: 5.2, momentum: "very_high", confidence: 91, loading: false },
-  });
-  
-  const [recentTrades, setRecentTrades] = useState([]);
-  const [scannerAssets, setScannerAssets] = useState([]);
-  const [paperTradeResult, setPaperTradeResult] = useState(null);
-  
-  // Chart Data State
-  const [performanceData, setPerformanceData] = useState({
-    labels: [],
-    pnl: [],
-    trades: [],
-    winRate: [],
-  });
-  const [distributionData] = useState({
-    labels: ["BTC", "ETH", "SOL", "AVAX", "ARB", "Other"],
-    values: [42, 23, 18, 9, 5, 3],
-  });
-  const [chartPeriod, setChartPeriod] = useState("30");
-  
-  // API Connection States (only relevant in live mode)
-  const [alpacaConnected, setAlpacaConnected] = useState(false);
-  const [okxConnected, setOkxConnected] = useState(false);
-  const [connectingAlpaca, setConnectingAlpaca] = useState(false);
-  const [connectingOkx, setConnectingOkx] = useState(false);
-  const [alpacaMode] = useState("paper");
-  const [okxMode] = useState("paper");
-  const [showAlpacaModal, setShowAlpacaModal] = useState(false);
-  const [showOkxModal, setShowOkxModal] = useState(false);
-  const [connectionError, setConnectionError] = useState(null);
-  const [alpacaApiKey, setAlpacaApiKey] = useState("");
-  const [alpacaSecretKey, setAlpacaSecretKey] = useState("");
-  const [okxApiKey, setOkxApiKey] = useState("");
-  const [okxSecretKey, setOkxSecretKey] = useState("");
-  const [okxPassphrase, setOkxPassphrase] = useState("");
-  
-  const [paperTradeConfig, setPaperTradeConfig] = useState({
-    asset_universe: "btc_eth",
-    strategy_type: "momentum",
-    max_positions: 5,
-    selected_exchange: "alpaca",
+  const [liveMode, setLiveMode] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  const [marketData, setMarketData] = useState(fallbackMarketData);
+  const [scannerAssets, setScannerAssets] = useState(fallbackScannerAssets);
+
+  const [paperResult, setPaperResult] = useState(null);
+
+  const [strategyConfig, setStrategyConfig] = useState({
+    strategy: "momentum",
+    maxPositions: 5,
+    risk: 2,
   });
 
-  const card = "rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6";
+  const card =
+    "rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6";
 
-  // Generate simulated historical performance data for charts
-  const generateSimulatedHistoricalData = useCallback((days = 30) => {
-    const labels = [];
-    const pnlData = [];
-    const tradesData = [];
-    const winRateData = [];
-    
-    let cumulativePnl = 0;
-    const daysInt = parseInt(days, 10);
-    
-    for (let i = daysInt; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-      
-      const dailyPnl = (Math.random() * 200 - 50) + (i < 15 ? 20 : 0);
-      cumulativePnl += dailyPnl;
-      pnlData.push(Math.round(cumulativePnl * 100) / 100);
-      tradesData.push(Math.floor(Math.random() * 15) + 3);
-      winRateData.push(Math.floor(Math.random() * 30) + 45);
-    }
-    
-    return { labels, pnl: pnlData, trades: tradesData, winRate: winRateData };
-  }, []);
+  /* =========================================
+     FETCH MARKET DATA
+  ========================================= */
 
-  // Generate realistic historical data from API (would come from backend)
-  const generateLiveHistoricalData = useCallback((days = 30) => {
-    // This would normally come from your API
-    // For now, return slightly more "realistic" simulated data
-    const labels = [];
-    const pnlData = [];
-    const tradesData = [];
-    const winRateData = [];
-    
-    let cumulativePnl = 0;
-    const daysInt = parseInt(days, 10);
-    
-    for (let i = daysInt; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-      
-      // More realistic PnL with less randomness
-      const dailyPnl = (Math.random() * 150 - 30) + (i < 10 ? 10 : 0);
-      cumulativePnl += dailyPnl;
-      pnlData.push(Math.round(cumulativePnl * 100) / 100);
-      tradesData.push(Math.floor(Math.random() * 12) + 2);
-      winRateData.push(Math.floor(Math.random() * 25) + 50);
-    }
-    
-    return { labels, pnl: pnlData, trades: tradesData, winRate: winRateData };
-  }, []);
-
-  // Fetch market data based on mode
   const fetchMarketData = useCallback(async () => {
-    if (!isLiveMode) {
-      // Keep using simulated data
-      return;
-    }
-    
     try {
-      const response = await fetch(`${API_BASE}/api/public/market/prices`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data) {
-          setMarketData({
-            btc: {
-              price: data.data.btc?.price || 71234,
-              change: data.data.btc?.change_24h || 2.4,
-              momentum: data.data.btc?.momentum || "high",
-              confidence: data.data.btc?.confidence || 87,
-              loading: false,
-            },
-            eth: {
-              price: data.data.eth?.price || 3821,
-              change: data.data.eth?.change_24h || 1.8,
-              momentum: data.data.eth?.momentum || "medium",
-              confidence: data.data.eth?.confidence || 72,
-              loading: false,
-            },
-            sol: {
-              price: data.data.sol?.price || 168,
-              change: data.data.sol?.change_24h || 5.2,
-              momentum: data.data.sol?.momentum || "very_high",
-              confidence: data.data.sol?.confidence || 91,
-              loading: false,
-            },
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Failed to fetch live market data:", error);
-    }
-  }, [isLiveMode]);
+      const response = await fetch(
+        `${API_BASE}/api/public/market/prices`
+      );
 
-  // Fetch recent trades based on mode
-  const fetchRecentTrades = useCallback(async () => {
-    if (!isLiveMode) {
-      // Simulated trades
-      setRecentTrades([
-        { asset: "BTC", type: "BUY", returnPercent: 8.2, entryPrice: 65800, exitPrice: 71234, confidence: 78, exchange: "Alpaca" },
-        { asset: "ETH", type: "BUY", returnPercent: 6.4, entryPrice: 3590, exitPrice: 3821, confidence: 71, exchange: "OKX" },
-        { asset: "SOL", type: "SELL", returnPercent: 3.8, entryPrice: 162, exitPrice: 168, confidence: 65, exchange: "Alpaca" },
-        { asset: "AVAX", type: "BUY", returnPercent: 11.5, entryPrice: 28.70, exitPrice: 32.00, confidence: 73, exchange: "OKX" },
-        { asset: "ARB", type: "BUY", returnPercent: 5.2, entryPrice: 1.036, exitPrice: 1.090, confidence: 68, exchange: "Alpaca" },
-      ]);
-      return;
-    }
-    
-    try {
-      const response = await fetch(`${API_BASE}/api/trading/global-trades?limit=10`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.trades) {
-          setRecentTrades(data.trades.slice(0, 5).map(trade => ({
-            asset: trade.symbol?.split('/')[0] || "BTC",
-            type: trade.side?.toUpperCase() || "BUY",
-            returnPercent: Math.min(Math.abs(trade.pnl_percent || 0), 25),
-            entryPrice: trade.price || 0,
-            exitPrice: trade.exit_price || trade.price || 0,
-            confidence: 55 + Math.floor(Math.random() * 35),
-            exchange: trade.exchange || "unknown",
-          })));
-        }
-      }
-    } catch (error) {
-      console.error("Failed to fetch live trades:", error);
-    }
-  }, [isLiveMode]);
+      if (!response.ok) throw new Error("Failed");
 
-  // Fetch scanner assets based on mode
-  const fetchScannerAssets = useCallback(async () => {
-    if (!isLiveMode) {
-      // Simulated scanner data
-      setScannerAssets([
-        { symbol: "BTC", active: true, momentum: "high", confidence: 84, exchange: "Both" },
-        { symbol: "ETH", active: true, momentum: "medium", confidence: 71, exchange: "Both" },
-        { symbol: "SOL", active: true, momentum: "high", confidence: 88, exchange: "OKX" },
-        { symbol: "AAPL", active: true, momentum: "medium", confidence: 65, exchange: "Alpaca" },
-        { symbol: "TSLA", active: true, momentum: "high", confidence: 72, exchange: "Alpaca" },
-        { symbol: "NVDA", active: true, momentum: "high", confidence: 81, exchange: "Alpaca" },
-        { symbol: "AVAX", active: true, momentum: "high", confidence: 79, exchange: "OKX" },
-        { symbol: "BNB", active: true, momentum: "low", confidence: 48, exchange: "OKX" },
-        { symbol: "ARB", active: true, momentum: "medium", confidence: 63, exchange: "Both" },
-        { symbol: "OP", active: true, momentum: "medium", confidence: 58, exchange: "OKX" },
-      ]);
-      return;
-    }
-    
-    try {
-      const response = await fetch(`${API_BASE}/api/public/market/scanner`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data) {
-          setScannerAssets(data.data.assets);
-        }
-      }
-    } catch (error) {
-      console.error("Failed to fetch live scanner:", error);
-    }
-  }, [isLiveMode]);
+      const data = await response.json();
 
-  // Check connection status (live mode only)
-  const checkConnections = useCallback(async () => {
-    if (!isLiveMode) return;
-    
-    const token = localStorage.getItem("imali_token");
-    if (token) {
-      try {
-        const response = await fetch(`${API_BASE}/api/integrations/status`, {
-          headers: { Authorization: `Bearer ${token}` },
+      if (data?.data) {
+        setMarketData({
+          btc: {
+            price: data.data.btc?.price || 71234,
+            change: data.data.btc?.change_24h || 2.4,
+            confidence: 87,
+          },
+          eth: {
+            price: data.data.eth?.price || 3821,
+            change: data.data.eth?.change_24h || 1.8,
+            confidence: 72,
+          },
+          sol: {
+            price: data.data.sol?.price || 168,
+            change: data.data.sol?.change_24h || 5.2,
+            confidence: 91,
+          },
         });
-        const data = await response.json();
-        if (data.success) {
-          setAlpacaConnected(data.data.alpaca_connected);
-          setOkxConnected(data.data.okx_connected);
-        }
-      } catch (error) {
-        console.error("Failed to check connections:", error);
       }
+    } catch (err) {
+      console.error(err);
     }
-  }, [isLiveMode]);
+  }, []);
 
-  // Update chart data when period changes or mode toggles
+  /* =========================================
+     AUTO REFRESH
+  ========================================= */
+
   useEffect(() => {
-    const historical = isLiveMode 
-      ? generateLiveHistoricalData(parseInt(chartPeriod, 10))
-      : generateSimulatedHistoricalData(parseInt(chartPeriod, 10));
-    setPerformanceData({
-      labels: historical.labels,
-      pnl: historical.pnl,
-      trades: historical.trades,
-      winRate: historical.winRate,
-    });
-  }, [chartPeriod, isLiveMode, generateSimulatedHistoricalData, generateLiveHistoricalData]);
+    fetchMarketData();
 
-  // Toggle between Live and Simulated mode
-  const toggleLiveMode = async () => {
-    setIsToggling(true);
-    setPageLoading(true);
-    
-    // Toggle the mode
-    setIsLiveMode(!isLiveMode);
-    
-    // Reset connection states when switching to simulated
-    if (isLiveMode) {
-      // Switching FROM live TO simulated
-      setAlpacaConnected(false);
-      setOkxConnected(false);
-    }
-    
-    // Refresh all data with new mode
-    await Promise.all([
-      fetchMarketData(),
-      fetchRecentTrades(),
-      fetchScannerAssets(),
-    ]);
-    
-    // Re-check connections if switching to live
-    if (!isLiveMode) {
-      await checkConnections();
-    }
-    
+    if (!liveMode) return;
+
+    const interval = setInterval(() => {
+      fetchMarketData();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [fetchMarketData, liveMode]);
+
+  /* =========================================
+     PAPER TRADE
+  ========================================= */
+
+  const runPaperTrade = () => {
+    setLoading(true);
+    setPaperResult(null);
+
     setTimeout(() => {
-      setPageLoading(false);
-      setIsToggling(false);
-      setPaperTradeResult({
-        success: true,
-        message: isLiveMode ? "Switched to Simulated Mode" : "Switched to Live Mode",
-        isSuccess: true,
-      });
-      setTimeout(() => setPaperTradeResult(null), 3000);
-    }, 500);
-  };
+      const pnl = (Math.random() * 10 - 2).toFixed(1);
 
-  // Demo connection handlers (simulated mode only)
-  const connectAlpacaDemo = () => {
-    setConnectingAlpaca(true);
-    setTimeout(() => {
-      setAlpacaConnected(true);
-      setConnectingAlpaca(false);
-      setShowAlpacaModal(false);
-      setPaperTradeResult({
-        success: true,
-        message: "Alpaca connected in demo mode! Paper trading ready.",
-        isSuccess: true,
+      setPaperResult({
+        success: Number(pnl) >= 0,
+        pnl,
       });
-      setTimeout(() => setPaperTradeResult(null), 3000);
-    }, 1000);
-  };
 
-  const connectOkxDemo = () => {
-    setConnectingOkx(true);
-    setTimeout(() => {
-      setOkxConnected(true);
-      setConnectingOkx(false);
-      setShowOkxModal(false);
-      setPaperTradeResult({
-        success: true,
-        message: "OKX connected in demo mode! Paper trading ready.",
-        isSuccess: true,
-      });
-      setTimeout(() => setPaperTradeResult(null), 3000);
-    }, 1000);
-  };
-
-  // Real connection handlers (live mode only)
-  const connectAlpacaReal = async () => {
-    if (!alpacaApiKey || !alpacaSecretKey) {
-      setConnectionError("Please enter both API Key and Secret Key");
-      return;
-    }
-    
-    setConnectingAlpaca(true);
-    setConnectionError(null);
-    
-    try {
-      const token = localStorage.getItem("imali_token");
-      const response = await fetch(`${API_BASE}/api/integrations/alpaca`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify({
-          api_key: alpacaApiKey,
-          secret_key: alpacaSecretKey,
-          mode: "paper",
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setAlpacaConnected(true);
-        setShowAlpacaModal(false);
-        setAlpacaApiKey("");
-        setAlpacaSecretKey("");
-      } else {
-        setConnectionError(data.error || "Failed to connect to Alpaca");
-      }
-    } catch (error) {
-      console.error("Alpaca connection error:", error);
-      setConnectionError("Network error. Please try again.");
-    } finally {
-      setConnectingAlpaca(false);
-    }
-  };
-
-  const connectOkxReal = async () => {
-    if (!okxApiKey || !okxSecretKey || !okxPassphrase) {
-      setConnectionError("Please enter API Key, Secret Key, and Passphrase");
-      return;
-    }
-    
-    setConnectingOkx(true);
-    setConnectionError(null);
-    
-    try {
-      const token = localStorage.getItem("imali_token");
-      const response = await fetch(`${API_BASE}/api/integrations/okx`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify({
-          api_key: okxApiKey,
-          secret_key: okxSecretKey,
-          passphrase: okxPassphrase,
-          mode: "paper",
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setOkxConnected(true);
-        setShowOkxModal(false);
-        setOkxApiKey("");
-        setOkxSecretKey("");
-        setOkxPassphrase("");
-      } else {
-        setConnectionError(data.error || "Failed to connect to OKX");
-      }
-    } catch (error) {
-      console.error("OKX connection error:", error);
-      setConnectionError("Network error. Please try again.");
-    } finally {
-      setConnectingOkx(false);
-    }
-  };
-
-  const disconnectAlpaca = async () => {
-    if (!isLiveMode) {
-      setAlpacaConnected(false);
-      return;
-    }
-    
-    try {
-      const token = localStorage.getItem("imali_token");
-      await fetch(`${API_BASE}/api/integrations/alpaca`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      setAlpacaConnected(false);
-    } catch (error) {
-      console.error("Alpaca disconnect error:", error);
-    }
-  };
-
-  const disconnectOkx = async () => {
-    if (!isLiveMode) {
-      setOkxConnected(false);
-      return;
-    }
-    
-    try {
-      const token = localStorage.getItem("imali_token");
-      await fetch(`${API_BASE}/api/integrations/okx`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      setOkxConnected(false);
-    } catch (error) {
-      console.error("OKX disconnect error:", error);
-    }
-  };
-
-  // Execute paper trade
-  const executePaperTrade = () => {
-    setTradeLoading(true);
-    setPaperTradeResult(null);
-    
-    setTimeout(() => {
-      const randomReturn = (Math.random() * 12 - 3).toFixed(1);
-      const isWin = parseFloat(randomReturn) > 0;
-      const exchange = paperTradeConfig.selected_exchange === "alpaca" ? "Alpaca" : "OKX";
-      
-      setPaperTradeResult({
-        success: true,
-        returnPercent: randomReturn,
-        isWin: isWin,
-        message: `Paper trade executed on ${exchange} with ${isWin ? 'gain' : 'loss'} of ${Math.abs(randomReturn)}%`,
-        exchange: exchange,
-      });
-      setTradeLoading(false);
-      
-      // Refresh trades list with new demo trade
-      const newTrade = {
-        asset: paperTradeConfig.asset_universe === "btc_eth" ? "BTC" : "SOL",
-        type: Math.random() > 0.5 ? "BUY" : "SELL",
-        returnPercent: parseFloat(randomReturn),
-        entryPrice: marketData.btc?.price || 65000,
-        exitPrice: (marketData.btc?.price || 65000) * (1 + parseFloat(randomReturn) / 100),
-        confidence: Math.floor(Math.random() * 30) + 60,
-        exchange: exchange,
-      };
-      setRecentTrades(prev => [newTrade, ...prev.slice(0, 4)]);
+      setLoading(false);
     }, 1500);
   };
 
-  // Chart Configurations
-  const pnlChartData = {
-    labels: performanceData.labels,
-    datasets: [{
-      label: "Cumulative P&L ($)",
-      data: performanceData.pnl,
-      borderColor: "rgb(16, 185, 129)",
-      backgroundColor: "rgba(16, 185, 129, 0.1)",
-      fill: true,
-      tension: 0.4,
-      pointRadius: 2,
-      pointBackgroundColor: "rgb(16, 185, 129)",
-    }],
-  };
-
-  const tradesChartData = {
-    labels: performanceData.labels,
-    datasets: [{
-      label: "Daily Trades",
-      data: performanceData.trades,
-      borderColor: "rgb(59, 130, 246)",
-      backgroundColor: "rgba(59, 130, 246, 0.5)",
-      fill: true,
-      tension: 0.4,
-      pointRadius: 2,
-    }],
-  };
-
-  const winRateChartData = {
-    labels: performanceData.labels,
-    datasets: [{
-      label: "Win Rate (%)",
-      data: performanceData.winRate,
-      borderColor: "rgb(139, 92, 246)",
-      backgroundColor: "rgba(139, 92, 246, 0.1)",
-      fill: true,
-      tension: 0.4,
-      pointRadius: 2,
-      pointBackgroundColor: "rgb(139, 92, 246)",
-    }],
-  };
-
-  const distributionChartData = {
-    labels: distributionData.labels,
-    datasets: [{
-      label: "Trading Distribution",
-      data: distributionData.values,
-      backgroundColor: [
-        "rgba(16, 185, 129, 0.8)",
-        "rgba(59, 130, 246, 0.8)",
-        "rgba(139, 92, 246, 0.8)",
-        "rgba(245, 158, 11, 0.8)",
-        "rgba(239, 68, 68, 0.8)",
-        "rgba(107, 114, 128, 0.8)",
-      ],
-      borderRadius: 8,
-    }],
-  };
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { position: "top", labels: { color: "rgba(255,255,255,0.7)", font: { size: 11 } } },
-      tooltip: { mode: "index", intersect: false },
-    },
-    scales: {
-      x: { ticks: { color: "rgba(255,255,255,0.5)", maxRotation: 45 }, grid: { color: "rgba(255,255,255,0.05)" } },
-      y: { ticks: { color: "rgba(255,255,255,0.5)" }, grid: { color: "rgba(255,255,255,0.05)" } },
-    },
-  };
-
-  const barChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { position: "top", labels: { color: "rgba(255,255,255,0.7)" } } },
-    scales: {
-      x: { ticks: { color: "rgba(255,255,255,0.5)" }, grid: { color: "rgba(255,255,255,0.05)" } },
-      y: { ticks: { color: "rgba(255,255,255,0.5)" }, grid: { color: "rgba(255,255,255,0.05)" } },
-    },
-  };
-
-  // Initial data load
-  useEffect(() => {
-    const loadData = async () => {
-      setPageLoading(true);
-      await Promise.all([
-        fetchMarketData(),
-        fetchRecentTrades(),
-        fetchScannerAssets(),
-      ]);
-      await checkConnections();
-      setPageLoading(false);
-    };
-    loadData();
-  }, [fetchMarketData, fetchRecentTrades, fetchScannerAssets, checkConnections]);
-
-  if (pageLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black flex items-center justify-center">
-        <FaSpinner className="animate-spin text-4xl text-emerald-500" />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
-      {/* HERO SECTION */}
-      <section className="max-w-7xl mx-auto px-4 pt-20 pb-14">
+
+      {/* HERO */}
+      <section className="max-w-7xl mx-auto px-4 pt-20 pb-16">
+
         <div className="grid lg:grid-cols-2 gap-12 items-center">
+
           <div>
+
             <div className="flex items-center gap-4 mb-6">
-              <img src={logo} alt="IMALI Enterprise" className="h-20 w-auto object-contain" />
+              <img
+                src={logo}
+                alt="IMALI Enterprise"
+                className="h-20 w-auto object-contain"
+              />
+
               <div>
                 <div className="text-2xl font-extrabold tracking-wide">
-                  IMALI <span className="text-emerald-400">ENTERPRISE</span>
+                  IMALI ENTERPRISE
                 </div>
-                <div className="text-slate-400 text-sm">Enterprise Demo Environment</div>
+
+                <div className="text-slate-400 text-sm">
+                  White-Label Trading Infrastructure
+                </div>
               </div>
             </div>
+
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-              <FaBuilding /> Prepared for Institutional Partners
+              <FaBuilding />
+              Enterprise Trading Automation Platform
             </div>
+
             <h1 className="text-5xl md:text-6xl font-extrabold leading-tight mt-6">
-              White-Label Trading <span className="text-emerald-400">Infrastructure</span>
+              White-Label Trading
+              <span className="text-emerald-400">
+                {" "}Infrastructure
+              </span>
             </h1>
+
             <p className="mt-6 text-lg text-slate-300 leading-8">
-              Deploy fully branded trading platforms with multi-bot automation, 
-              subscriber management, exchange integrations, and enterprise-grade 
-              analytics — all under your own brand.
+              Deploy branded trading platforms with multi-bot automation,
+              subscriber management, exchange integrations,
+              and enterprise-grade analytics.
             </p>
+
+            <p className="mt-4 text-slate-400 leading-7">
+              Connected to OKX for crypto markets and Alpaca for
+              stock and ETF trading infrastructure.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 mt-8">
+
+              {[
+                "White-label deployment",
+                "Multi-bot infrastructure",
+                "Subscriber management",
+                "Exchange integrations",
+              ].map((item) => (
+                <div
+                  key={item}
+                  className="flex items-center gap-2 text-sm text-slate-300"
+                >
+                  <FaCheckCircle className="text-emerald-400 text-xs" />
+                  {item}
+                </div>
+              ))}
+
+            </div>
+
             <div className="flex flex-wrap gap-4 mt-10">
-              <Link to="/signup" className="px-7 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold transition shadow-lg shadow-emerald-500/20 flex items-center gap-2">
-                Schedule Partner Demo <FaArrowRight />
+
+              <Link
+                to="/signup"
+                className="px-7 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold transition flex items-center gap-2"
+              >
+                Request Enterprise Access
+                <FaArrowRight />
               </Link>
-              <button onClick={() => document.getElementById("demo-section")?.scrollIntoView({ behavior: "smooth" })}
-                className="px-7 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition">
-                Explore Demo Environment
+
+              <button
+                onClick={() =>
+                  document
+                    .getElementById("demo-section")
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
+                className="px-7 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition"
+              >
+                Explore Demo
               </button>
+
             </div>
+
           </div>
+
+          {/* RIGHT SIDE */}
+
           <div className="relative">
+
             <div className="rounded-[32px] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 p-8 backdrop-blur">
+
               <div className="grid grid-cols-2 gap-4">
-                <div className={card}><FaRobot className="text-3xl text-emerald-300" /><div className="mt-4 text-xl font-bold">Multi-Bot Trading</div><div className="text-sm text-slate-400 mt-2">Deploy multiple automated strategies.</div></div>
-                <div className={card}><FaPalette className="text-3xl text-cyan-300" /><div className="mt-4 text-xl font-bold">White-Label</div><div className="text-sm text-slate-400 mt-2">Fully branded for your business.</div></div>
-                <div className={card}><FaUsers className="text-3xl text-purple-300" /><div className="mt-4 text-xl font-bold">Subscriber Management</div><div className="text-sm text-slate-400 mt-2">Onboard users and manage tiers.</div></div>
-                <div className={card}><FaExchangeAlt className="text-3xl text-yellow-300" /><div className="mt-4 text-xl font-bold">Exchange Ready</div><div className="text-sm text-slate-400 mt-2">OKX, Binance, Alpaca, and more.</div></div>
+
+                <div className={card}>
+                  <FaRobot className="text-3xl text-emerald-300" />
+                  <div className="mt-4 text-xl font-bold">
+                    Multi-Bot Trading
+                  </div>
+                  <div className="text-sm text-slate-400 mt-2">
+                    Deploy multiple automated strategies.
+                  </div>
+                </div>
+
+                <div className={card}>
+                  <FaPalette className="text-3xl text-cyan-300" />
+                  <div className="mt-4 text-xl font-bold">
+                    White-Label
+                  </div>
+                  <div className="text-sm text-slate-400 mt-2">
+                    Fully branded for your business.
+                  </div>
+                </div>
+
+                <div className={card}>
+                  <FaUsers className="text-3xl text-purple-300" />
+                  <div className="mt-4 text-xl font-bold">
+                    User Management
+                  </div>
+                  <div className="text-sm text-slate-400 mt-2">
+                    Tiered access and onboarding.
+                  </div>
+                </div>
+
+                <div className={card}>
+                  <FaExchangeAlt className="text-3xl text-yellow-300" />
+                  <div className="mt-4 text-xl font-bold">
+                    Exchange Ready
+                  </div>
+                  <div className="text-sm text-slate-400 mt-2">
+                    OKX • Alpaca • Binance
+                  </div>
+                </div>
+
               </div>
+
             </div>
+
           </div>
+
         </div>
+
       </section>
 
-      {/* LIVE/SIMULATED TOGGLE SWITCH */}
-      <section className="max-w-7xl mx-auto px-4">
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-emerald-500/10 to-blue-500/10 p-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-full ${isLiveMode ? 'bg-emerald-500/20' : 'bg-blue-500/20'}`}>
-                {isLiveMode ? (
-                  <FaCloudDownloadAlt className="text-emerald-400 text-xl" />
-                ) : (
-                  <FaRobot className="text-blue-400 text-xl" />
-                )}
-              </div>
-              <div>
-                <div className="font-bold text-white">
-                  {isLiveMode ? "Live Mode" : "Simulated Mode"}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {isLiveMode 
-                    ? "Using real API data • Live market prices • Real exchange connections" 
-                    : "Using simulated data • Demo prices • UI-only connections"}
-                </div>
-              </div>
-            </div>
-            
-            <button
-              onClick={toggleLiveMode}
-              disabled={isToggling}
-              className={`flex items-center gap-3 px-5 py-2.5 rounded-xl font-medium transition-all ${
-                isLiveMode 
-                  ? "bg-emerald-600 hover:bg-emerald-500 text-white" 
-                  : "bg-blue-600 hover:bg-blue-500 text-white"
-              } disabled:opacity-50`}
-            >
-              {isToggling ? (
-                <FaSpinner className="animate-spin" />
-              ) : isLiveMode ? (
-                <>
-                  <FaToggleOff /> Switch to Simulated
-                </>
-              ) : (
-                <>
-                  <FaToggleOn /> Switch to Live
-                </>
-              )}
-            </button>
-          </div>
-          
-          {/* Live mode warning */}
-          {isLiveMode && (
-            <div className="mt-3 text-xs text-amber-400 flex items-center gap-2 border-t border-white/10 pt-3">
-              <FaExclamationTriangle />
-              Live mode requires backend API connection. Ensure your server is running on port 3000.
-            </div>
-          )}
-        </div>
-      </section>
+      {/* INFRASTRUCTURE */}
 
-      {/* API CONNECTION SECTION - Only show in Live mode */}
-      {isLiveMode && (
-        <section className="max-w-7xl mx-auto px-4 py-10">
-          <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-blue-500/5 to-purple-500/5 p-6">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-extrabold flex items-center justify-center gap-2"><FaPlug /> Connect Your Exchange</h2>
-              <p className="text-slate-400 text-sm mt-1">Connect to Alpaca or OKX for live paper trading</p>
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className={`rounded-xl border p-5 ${alpacaConnected ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center"><span className="text-blue-400 font-bold">A</span></div>
-                    <div><h3 className="font-bold">Alpaca</h3><p className="text-xs text-slate-400">US Stocks & Crypto</p></div>
-                  </div>
-                  {alpacaConnected ? (
-                    <button onClick={disconnectAlpaca} className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full hover:bg-red-500/30"><FaUnlink className="text-xs" /> Disconnect</button>
-                  ) : (
-                    <button onClick={() => setShowAlpacaModal(true)} className="flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full hover:bg-emerald-500/30"><FaPlug className="text-xs" /> Connect</button>
-                  )}
-                </div>
-                {alpacaConnected && <div className="flex items-center gap-2 text-xs text-emerald-400 mt-2"><FaCheck /> Connected ({alpacaMode === "paper" ? "Paper Trading" : "Live"})</div>}
-              </div>
-              <div className={`rounded-xl border p-5 ${okxConnected ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center"><span className="text-purple-400 font-bold">O</span></div>
-                    <div><h3 className="font-bold">OKX</h3><p className="text-xs text-slate-400">Crypto Futures & Spot</p></div>
-                  </div>
-                  {okxConnected ? (
-                    <button onClick={disconnectOkx} className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full hover:bg-red-500/30"><FaUnlink className="text-xs" /> Disconnect</button>
-                  ) : (
-                    <button onClick={() => setShowOkxModal(true)} className="flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full hover:bg-emerald-500/30"><FaPlug className="text-xs" /> Connect</button>
-                  )}
-                </div>
-                {okxConnected && <div className="flex items-center gap-2 text-xs text-emerald-400 mt-2"><FaCheck /> Connected ({okxMode === "paper" ? "Paper Trading" : "Live"})</div>}
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Simulated Connection Section - Only show in Simulated mode */}
-      {!isLiveMode && (
-        <section className="max-w-7xl mx-auto px-4 py-10">
-          <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-blue-500/5 to-purple-500/5 p-6">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-extrabold flex items-center justify-center gap-2"><FaPlug /> Simulated Exchange Connection</h2>
-              <p className="text-slate-400 text-sm mt-1">Demo mode - UI only, no real API calls</p>
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className={`rounded-xl border p-5 ${alpacaConnected ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center"><span className="text-blue-400 font-bold">A</span></div>
-                    <div><h3 className="font-bold">Alpaca (Demo)</h3><p className="text-xs text-slate-400">US Stocks & Crypto</p></div>
-                  </div>
-                  {alpacaConnected ? (
-                    <button onClick={disconnectAlpaca} className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full hover:bg-red-500/30"><FaUnlink className="text-xs" /> Disconnect</button>
-                  ) : (
-                    <button onClick={() => setShowAlpacaModal(true)} className="flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full hover:bg-emerald-500/30"><FaPlug className="text-xs" /> Connect</button>
-                  )}
-                </div>
-                {alpacaConnected && <div className="flex items-center gap-2 text-xs text-emerald-400 mt-2"><FaCheck /> Connected (Demo Mode)</div>}
-              </div>
-              <div className={`rounded-xl border p-5 ${okxConnected ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center"><span className="text-purple-400 font-bold">O</span></div>
-                    <div><h3 className="font-bold">OKX (Demo)</h3><p className="text-xs text-slate-400">Crypto Futures & Spot</p></div>
-                  </div>
-                  {okxConnected ? (
-                    <button onClick={disconnectOkx} className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full hover:bg-red-500/30"><FaUnlink className="text-xs" /> Disconnect</button>
-                  ) : (
-                    <button onClick={() => setShowOkxModal(true)} className="flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full hover:bg-emerald-500/30"><FaPlug className="text-xs" /> Connect</button>
-                  )}
-                </div>
-                {okxConnected && <div className="flex items-center gap-2 text-xs text-emerald-400 mt-2"><FaCheck /> Connected (Demo Mode)</div>}
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ENTERPRISE FEATURES */}
       <section className="max-w-7xl mx-auto px-4 py-10">
-        <div className="text-center mb-10">
-          <h2 className="text-4xl font-extrabold">Built For Trading Firms & Fintech Operators</h2>
-          <p className="mt-4 text-slate-400">Everything you need to launch a branded trading automation platform.</p>
-        </div>
-        <div className="grid md:grid-cols-3 gap-6">
-          {[
-            { icon: <FaPalette />, title: "White-Label Deployment", desc: "Fully customizable branding, domain, and UI." },
-            { icon: <FaRobot />, title: "Multi-Bot Infrastructure", desc: "Deploy unlimited bots with configurable strategies." },
-            { icon: <FaUsers />, title: "Subscriber Management", desc: "Tiered access, user onboarding, and analytics." },
-            { icon: <FaExchangeAlt />, title: "Exchange Integrations", desc: "OKX, Binance, Alpaca, and more." },
-            { icon: <FaSlidersH />, title: "Strategy Configuration", desc: "Asset filters, position limits, and risk controls." },
-            { icon: <FaChartLine />, title: "Analytics Dashboards", desc: "Real-time performance tracking and reporting." },
-            { icon: <FaLock />, title: "Risk Management", desc: "Exposure limits, drawdown protection." },
-            { icon: <FaDatabase />, title: "Paper & Live Environments", desc: "Test strategies risk-free." },
-            { icon: <FaCog />, title: "Multi-User Admin", desc: "Team accounts and role-based access." },
-          ].map((feature) => (
-            <div key={feature.title} className={card}>
-              <div className="text-3xl text-emerald-400">{feature.icon}</div>
-              <h3 className="text-xl font-bold mt-4">{feature.title}</h3>
-              <p className="text-slate-400 mt-2 text-sm">{feature.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
 
-      {/* LIVE DEMO SECTION */}
-      <section id="demo-section" className="max-w-7xl mx-auto px-4 py-10">
-        <div className="rounded-[32px] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-cyan-500/5 p-8">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300 mb-4">
-              <FaBolt /> {isLiveMode ? "Live Mode" : "Simulated Mode"} Demo Environment
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-8">
+
+          <div className="text-center max-w-3xl mx-auto mb-10">
+
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-4 py-1 text-sm text-blue-300 mb-3">
+              <FaServer />
+              Enterprise Infrastructure
             </div>
-            <h2 className="text-4xl font-extrabold">Experience The Infrastructure</h2>
+
+            <h2 className="text-3xl font-extrabold">
+              Production-Ready Stack
+            </h2>
+
             <p className="mt-3 text-slate-400">
-              {isLiveMode 
-                ? "Live API data • Real market feeds • Actual exchange connections"
-                : "Simulated market data • Demo execution • UI-only connections"}
+              Built for scale, security, and real-time automation
             </p>
+
           </div>
 
-          {/* Demo Tabs */}
-          <div className="flex flex-wrap justify-center gap-2 mt-4 border-b border-white/10 pb-3">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+            <div className="text-center">
+              <FaServer className="mx-auto text-3xl text-emerald-400" />
+              <h3 className="mt-3 font-semibold">Backend</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Node.js • Python • PostgreSQL
+              </p>
+            </div>
+
+            <div className="text-center">
+              <FaCloud className="mx-auto text-3xl text-blue-400" />
+              <h3 className="mt-3 font-semibold">Infrastructure</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Cloud deployment ready
+              </p>
+            </div>
+
+            <div className="text-center">
+              <FaKey className="mx-auto text-3xl text-purple-400" />
+              <h3 className="mt-3 font-semibold">Security</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Encryption • RBAC • Audit Logs
+              </p>
+            </div>
+
+            <div className="text-center">
+              <FaExchangeAlt className="mx-auto text-3xl text-yellow-400" />
+              <h3 className="mt-3 font-semibold">Integrations</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                REST APIs • Exchange connectors
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* DEMO */}
+
+      <section
+        id="demo-section"
+        className="max-w-7xl mx-auto px-4 py-10"
+      >
+
+        <div className="rounded-[32px] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-cyan-500/5 p-8">
+
+          <div className="flex flex-wrap justify-between gap-4 items-center">
+
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-4 py-1 text-sm text-emerald-300 mb-3">
+                <FaBolt />
+                Interactive Demo Environment
+              </div>
+
+              <h2 className="text-4xl font-extrabold">
+                Experience The Platform
+              </h2>
+
+              <p className="mt-3 text-slate-400">
+                Real market data • Simulated execution • Controlled demo environment
+              </p>
+            </div>
+
+            {/* LIVE TOGGLE */}
+
+            <div className="flex flex-col items-end">
+
+              <div className="flex items-center gap-3">
+
+                <FaSignal className="text-emerald-400" />
+
+                <span className="text-sm text-slate-300">
+                  Live Data
+                </span>
+
+                <button
+                  onClick={() => setLiveMode(!liveMode)}
+                  className={`w-14 h-7 rounded-full transition ${
+                    liveMode ? "bg-emerald-500" : "bg-slate-700"
+                  }`}
+                >
+                  <div
+                    className={`h-5 w-5 bg-white rounded-full transition transform ${
+                      liveMode
+                        ? "translate-x-7"
+                        : "translate-x-1"
+                    }`}
+                  />
+                </button>
+
+              </div>
+
+              <p className="text-xs text-slate-500 mt-2">
+                Refreshes every 15 seconds
+              </p>
+
+            </div>
+
+          </div>
+
+          {/* TABS */}
+
+          <div className="flex flex-wrap justify-center gap-2 mt-10 border-b border-white/10 pb-3">
+
             {[
-              { id: "simulator", label: "💰 Paper Trading", icon: "🎮" },
-              { id: "scanner", label: "📡 Market Scanner", icon: "📡" },
-              { id: "analytics", label: "📊 Analytics & Charts", icon: "📊" },
-              { id: "trades", label: "📋 Trade Examples", icon: "📋" },
+              {
+                id: "simulator",
+                label: "Paper Trading",
+              },
+              {
+                id: "scanner",
+                label: "Market Scanner",
+              },
+              {
+                id: "analytics",
+                label: "Trade Examples",
+              },
             ].map((tab) => (
-              <button key={tab.id} onClick={() => setActiveDemoTab(tab.id)}
+              <button
+                key={tab.id}
+                onClick={() => setActiveDemoTab(tab.id)}
                 className={`px-5 py-2 rounded-xl text-sm font-medium transition ${
-                  activeDemoTab === tab.id ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white hover:bg-white/5"
-                }`}>
-                {tab.icon} {tab.label}
+                  activeDemoTab === tab.id
+                    ? "bg-emerald-600 text-white"
+                    : "text-slate-400 hover:bg-white/5"
+                }`}
+              >
+                {tab.label}
               </button>
             ))}
+
           </div>
 
-          <div className="mt-6 min-h-[500px]">
-            
-            {/* Paper Trading Simulator */}
+          {/* TAB CONTENT */}
+
+          <div className="mt-8 min-h-[420px]">
+
+            {/* PAPER TRADING */}
+
             {activeDemoTab === "simulator" && (
               <div className="grid lg:grid-cols-2 gap-6">
+
                 <div className="rounded-xl bg-black/40 border border-white/10 p-5">
-                  <h3 className="text-lg font-bold flex items-center gap-2"><FaRobot /> Strategy Configurator</h3>
-                  <div className="space-y-4 mt-4">
+
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <FaRobot />
+                    Strategy Configurator
+                  </h3>
+
+                  <div className="space-y-4 mt-5">
+
                     <div>
-                      <label className="text-sm text-slate-300 block mb-1">Exchange</label>
-                      <select className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm"
-                        value={paperTradeConfig.selected_exchange}
-                        onChange={(e) => setPaperTradeConfig({ ...paperTradeConfig, selected_exchange: e.target.value })}>
-                        <option value="alpaca">Alpaca (US Stocks & Crypto)</option>
-                        <option value="okx">OKX (Crypto Futures)</option>
+                      <label className="text-sm text-slate-300 block mb-1">
+                        Strategy
+                      </label>
+
+                      <select
+                        className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm"
+                        value={strategyConfig.strategy}
+                        onChange={(e) =>
+                          setStrategyConfig({
+                            ...strategyConfig,
+                            strategy: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="momentum">
+                          Momentum
+                        </option>
+
+                        <option value="mean_reversion">
+                          Mean Reversion
+                        </option>
+
+                        <option value="volatility">
+                          Volatility Breakout
+                        </option>
                       </select>
                     </div>
+
                     <div>
-                      <label className="text-sm text-slate-300 block mb-1">Asset Universe</label>
-                      <select className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm"
-                        value={paperTradeConfig.asset_universe}
-                        onChange={(e) => setPaperTradeConfig({ ...paperTradeConfig, asset_universe: e.target.value })}>
-                        <option value="btc_eth">BTC + ETH only</option>
-                        <option value="top10">Top 10 market cap</option>
-                        <option value="stocks">US Stocks (Alpaca)</option>
-                      </select>
+                      <label className="text-sm text-slate-300 block mb-1">
+                        Max Positions
+                      </label>
+
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={strategyConfig.maxPositions}
+                        onChange={(e) =>
+                          setStrategyConfig({
+                            ...strategyConfig,
+                            maxPositions: Number(e.target.value),
+                          })
+                        }
+                        className="w-full"
+                      />
                     </div>
+
                     <div>
-                      <label className="text-sm text-slate-300 block mb-1">Strategy Type</label>
-                      <select className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm"
-                        value={paperTradeConfig.strategy_type}
-                        onChange={(e) => setPaperTradeConfig({ ...paperTradeConfig, strategy_type: e.target.value })}>
-                        <option value="momentum">Momentum Scanner</option>
-                        <option value="mean_reversion">Mean Reversion</option>
-                        <option value="trend">Trend Following</option>
-                      </select>
+                      <label className="text-sm text-slate-300 block mb-1">
+                        Risk Per Trade ({strategyConfig.risk}%)
+                      </label>
+
+                      <input
+                        type="range"
+                        min="1"
+                        max="5"
+                        value={strategyConfig.risk}
+                        onChange={(e) =>
+                          setStrategyConfig({
+                            ...strategyConfig,
+                            risk: Number(e.target.value),
+                          })
+                        }
+                        className="w-full"
+                      />
                     </div>
-                    <button onClick={executePaperTrade} disabled={tradeLoading}
-                      className="w-full rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 transition disabled:opacity-50">
-                      {tradeLoading ? <FaSpinner className="inline animate-spin mr-2" /> : null}
-                      Execute Paper Trade →
+
+                    <button
+                      onClick={runPaperTrade}
+                      disabled={loading}
+                      className="w-full rounded-lg bg-emerald-600 py-3 font-medium hover:bg-emerald-500 transition disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <FaSpinner className="animate-spin inline mr-2" />
+                      ) : null}
+
+                      {loading
+                        ? "Executing..."
+                        : "Run Paper Trade"}
                     </button>
-                    {paperTradeResult && (
-                      <div className={`mt-3 p-3 rounded-lg text-center text-sm ${paperTradeResult.isWin ? 'bg-green-500/20 text-green-300' : paperTradeResult.isError ? 'bg-red-500/20 text-red-300' : 'bg-blue-500/20 text-blue-300'}`}>
-                        {paperTradeResult.message}
+
+                    {paperResult && (
+                      <div
+                        className={`rounded-lg p-3 text-sm ${
+                          paperResult.success
+                            ? "bg-green-500/20 text-green-300"
+                            : "bg-red-500/20 text-red-300"
+                        }`}
+                      >
+                        Simulated trade completed with{" "}
+                        {paperResult.success ? "gain" : "loss"} of{" "}
+                        {Math.abs(paperResult.pnl)}%
                       </div>
                     )}
+
                   </div>
+
                 </div>
+
+                {/* LIVE MARKET */}
+
                 <div className="rounded-xl bg-black/40 border border-white/10 p-5">
-                  <h3 className="text-lg font-bold flex items-center gap-2"><FaChartLine /> Market Data Feed</h3>
-                  {isLiveMode && <p className="text-xs text-emerald-400 mb-2">● LIVE DATA</p>}
-                  <div className="space-y-3 mt-2">
-                    {Object.entries(marketData).map(([symbol, data]) => (
-                      <div key={symbol} className="flex justify-between items-center p-3 rounded-lg bg-white/5">
-                        <div><span className="font-bold uppercase">{symbol}</span></div>
-                        <div className="text-right">
-                          <div className="font-mono font-bold">${formatPrice(data.price)}</div>
-                          <div className={`text-xs ${data.change >= 0 ? "text-green-400" : "text-red-400"}`}>
-                            {data.change >= 0 ? "+" : ""}{formatPercent(data.change)}%
+
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <FaChartLine />
+                    Market Feed
+                  </h3>
+
+                  <p className="text-sm text-slate-400 mt-1">
+                    Real-time market pricing
+                  </p>
+
+                  <div className="space-y-3 mt-5">
+
+                    {Object.entries(marketData).map(
+                      ([symbol, data]) => (
+                        <div
+                          key={symbol}
+                          className="flex justify-between items-center p-3 rounded-lg bg-white/5"
+                        >
+
+                          <div>
+                            <span className="font-bold uppercase">
+                              {symbol}
+                            </span>
                           </div>
+
+                          <div className="text-right">
+                            <div className="font-mono font-bold">
+                              ${data.price.toLocaleString()}
+                            </div>
+
+                            <div
+                              className={`text-xs ${
+                                data.change > 0
+                                  ? "text-green-400"
+                                  : "text-red-400"
+                              }`}
+                            >
+                              {data.change > 0 ? "+" : ""}
+                              {data.change}%
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <div className="text-xs text-slate-400">
+                              AI Score
+                            </div>
+
+                            <div className="font-mono text-sm">
+                              {data.confidence}%
+                            </div>
+                          </div>
+
                         </div>
-                        <div><div className="text-xs text-slate-400">AI Score</div><div className="font-mono text-sm">{data.confidence}%</div></div>
-                      </div>
-                    ))}
+                      )
+                    )}
+
                   </div>
+
                 </div>
+
               </div>
             )}
 
-            {/* Market Scanner */}
+            {/* SCANNER */}
+
             {activeDemoTab === "scanner" && (
-              <div className="rounded-xl bg-black/40 border border-white/10 p-5">
-                <h3 className="font-bold flex items-center gap-2 mb-4">
-                  <FaEye /> Asset Monitor
-                  {isLiveMode && <span className="text-xs text-emerald-400 ml-2">● LIVE SCANNER</span>}
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {scannerAssets.slice(0, 16).map((asset) => (
-                    <div key={asset.symbol} className="flex justify-between items-center p-2 rounded bg-white/5">
-                      <span className="font-medium">{asset.symbol}</span>
-                      <div className="flex items-center gap-1">
-                        {asset.momentum === "high" && <span className="text-emerald-400 text-xs">🔥</span>}
-                        <span className={`text-xs ${asset.active ? 'text-emerald-400' : 'text-slate-500'}`}>{asset.active ? 'Active' : 'Watch'}</span>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+                {scannerAssets.map((asset) => (
+                  <div
+                    key={asset.symbol}
+                    className="rounded-xl border border-white/10 bg-white/5 p-5"
+                  >
+
+                    <div className="flex justify-between items-center">
+
+                      <div className="font-bold">
+                        {asset.symbol}
                       </div>
+
+                      <div
+                        className={`text-sm ${
+                          asset.change > 0
+                            ? "text-green-400"
+                            : "text-red-400"
+                        }`}
+                      >
+                        {asset.change > 0 ? "+" : ""}
+                        {asset.change}%
+                      </div>
+
                     </div>
-                  ))}
-                </div>
-                <div className="mt-4 grid md:grid-cols-3 gap-3">
-                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 text-center">
-                    <div className="text-2xl">🔥</div><div className="font-bold text-emerald-300">High Momentum</div>
-                    <div className="text-xs">{scannerAssets.filter(a => a.momentum === "high").slice(0, 3).map(a => a.symbol).join(", ")}</div>
+
+                    <div className="mt-3 text-2xl font-bold">
+                      ${asset.price.toLocaleString()}
+                    </div>
+
+                    <div className="mt-3 flex justify-between text-xs text-slate-400">
+
+                      <span>
+                        Momentum: {asset.momentum}
+                      </span>
+
+                      <span>
+                        AI: {asset.confidence}%
+                      </span>
+
+                    </div>
+
                   </div>
-                  <div className="rounded-lg bg-purple-500/10 border border-purple-500/20 p-3 text-center">
-                    <div className="text-2xl">🤖</div><div className="font-bold text-purple-300">AI Opportunity Score</div>
-                    <div className="text-xs">Ranked by confidence</div>
-                  </div>
-                  <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-3 text-center">
-                    <div className="text-2xl">📊</div><div className="font-bold text-blue-300">Exchange Coverage</div>
-                    <div className="text-xs">Alpaca: Stocks • OKX: Crypto</div>
-                  </div>
-                </div>
+                ))}
+
               </div>
             )}
 
-            {/* Analytics & Charts */}
+            {/* ANALYTICS */}
+
             {activeDemoTab === "analytics" && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center flex-wrap gap-2">
-                  <div className="flex gap-2">
-                    {[
-                      { value: "7", label: "7D" },
-                      { value: "30", label: "30D" },
-                      { value: "90", label: "90D" },
-                    ].map((period) => (
-                      <button key={period.value} onClick={() => setChartPeriod(period.value)}
-                        className={`px-3 py-1 rounded-lg text-sm transition ${
-                          chartPeriod === period.value ? "bg-emerald-600 text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"
-                        }`}>
-                        {period.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    {[
-                      { id: "performance", label: "Performance" },
-                      { id: "trades", label: "Trades" },
-                      { id: "winrate", label: "Win Rate" },
-                      { id: "distribution", label: "Distribution" },
-                    ].map((tab) => (
-                      <button key={tab.id} onClick={() => setActiveChartTab(tab.id)}
-                        className={`px-3 py-1 rounded-lg text-xs transition ${
-                          activeChartTab === tab.id ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300"
-                        }`}>
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              <div className="space-y-3">
 
-                <div className="rounded-xl bg-black/40 border border-white/10 p-5">
-                  <div className="h-80">
-                    {activeChartTab === "performance" && <Line data={pnlChartData} options={chartOptions} />}
-                    {activeChartTab === "trades" && <Bar data={tradesChartData} options={barChartOptions} />}
-                    {activeChartTab === "winrate" && <Line data={winRateChartData} options={chartOptions} />}
-                    {activeChartTab === "distribution" && <Bar data={distributionChartData} options={barChartOptions} />}
-                  </div>
-                </div>
+                {fallbackTrades.map((trade, index) => (
+                  <div
+                    key={index}
+                    className="flex flex-wrap justify-between gap-4 items-center rounded-xl bg-white/5 border border-white/10 p-4"
+                  >
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="rounded-lg bg-white/5 p-3 text-center">
-                    <div className="text-2xl font-bold text-emerald-400">+{formatPrice(performanceData.pnl[performanceData.pnl.length - 1])}</div>
-                    <div className="text-xs text-slate-400">Total P&L (USD)</div>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-3 text-center">
-                    <div className="text-2xl font-bold text-blue-400">{performanceData.trades.reduce((a, b) => a + b, 0) || 0}</div>
-                    <div className="text-xs text-slate-400">Total Trades</div>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-3 text-center">
-                    <div className="text-2xl font-bold text-purple-400">{performanceData.winRate[performanceData.winRate.length - 1] || 0}%</div>
-                    <div className="text-xs text-slate-400">Win Rate</div>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-3 text-center">
-                    <div className="text-2xl font-bold text-yellow-400">2.3</div>
-                    <div className="text-xs text-slate-400">Sharpe Ratio</div>
-                  </div>
-                </div>
-              </div>
-            )}
+                    <div>
+                      <div className="font-bold">
+                        {trade.asset}/USD
+                      </div>
 
-            {/* Trade Examples */}
-            {activeDemoTab === "trades" && (
-              <div className="rounded-xl bg-black/40 border border-white/10 p-5">
-                <h3 className="font-bold flex items-center gap-2 mb-4">
-                  <FaFileAlt /> Recent Strategy Performance
-                  {isLiveMode && <span className="text-xs text-emerald-400 ml-2">● ANONYMIZED REAL TRADES</span>}
-                </h3>
-                <div className="space-y-2">
-                  {recentTrades.map((trade, i) => (
-                    <div key={i} className="flex justify-between items-center p-3 rounded-lg bg-white/5 flex-wrap gap-2">
-                      <div>
-                        <span className="font-bold">{trade.asset}/USD</span>
-                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${trade.type === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{trade.type}</span>
-                        <span className="ml-2 text-xs text-slate-500">{trade.exchange}</span>
+                      <div className="text-xs text-slate-400">
+                        {trade.type}
                       </div>
-                      <div className={`font-bold ${trade.returnPercent > 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {trade.returnPercent > 0 ? "+" : ""}{formatPercent(trade.returnPercent)}%
-                      </div>
-                      <div className="text-xs text-slate-400 hidden md:block">
-                        Entry: ${formatPrice(trade.entryPrice)} → Exit: ${formatPrice(trade.exitPrice)}
-                      </div>
-                      <div className="text-xs text-slate-500">Score: {trade.confidence}%</div>
                     </div>
-                  ))}
-                </div>
-                <p className="text-xs text-slate-500 mt-4 text-center">Example trades for demonstration. Past results do not guarantee future returns.</p>
+
+                    <div className="text-emerald-400 font-bold">
+                      +{trade.return}%
+                    </div>
+
+                    <div className="text-sm text-slate-400">
+                      Entry: ${trade.entry}
+                    </div>
+
+                    <div className="text-sm text-slate-400">
+                      Exit: ${trade.exit}
+                    </div>
+
+                  </div>
+                ))}
+
               </div>
             )}
+
           </div>
 
-          <div className="text-center mt-6">
-            <Link to="/signup" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-medium transition">
-              Schedule Technical Walkthrough <FaArrowRight />
+        </div>
+
+      </section>
+
+      {/* FAQ */}
+
+      <section className="max-w-5xl mx-auto px-4 py-10">
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-8">
+
+          <h3 className="text-2xl font-bold text-center mb-6">
+            Common Enterprise Questions
+          </h3>
+
+          <div className="grid md:grid-cols-2 gap-4">
+
+            {[
+              "Can I onboard users?",
+              "Can I fully brand the platform?",
+              "Can I manage subscriptions?",
+              "Can I configure risk controls?",
+              "Can I limit traded assets?",
+              "Can this scale to large user bases?",
+              "Can I deploy quickly?",
+              "Can I monitor analytics?",
+            ].map((q) => (
+              <div
+                key={q}
+                className="flex items-center gap-2 text-slate-300"
+              >
+                <FaCheckCircle className="text-emerald-400 text-sm" />
+                {q}
+              </div>
+            ))}
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* CTA */}
+
+      <section className="max-w-5xl mx-auto px-4 py-16">
+
+        <div className="rounded-[36px] border border-indigo-500/20 bg-gradient-to-r from-indigo-600/10 to-purple-600/10 p-10 text-center">
+
+          <div className="text-6xl mb-5">
+            🚀
+          </div>
+
+          <h2 className="text-4xl font-extrabold">
+            Ready To Launch Your Platform?
+          </h2>
+
+          <p className="mt-5 text-slate-300 leading-8 max-w-3xl mx-auto">
+            Multi-bot automation, enterprise analytics,
+            subscriber management, and exchange integrations —
+            deployed under your brand.
+          </p>
+
+          <div className="flex flex-wrap justify-center gap-4 mt-10">
+
+            <Link
+              to="/signup"
+              className="px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold transition"
+            >
+              Request Enterprise Access
             </Link>
+
+            <Link
+              to="/trade-demo"
+              className="px-8 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition"
+            >
+              Launch Interactive Demo
+            </Link>
+
           </div>
+
         </div>
+
       </section>
 
-      {/* COMPLIANCE DISCLAIMER */}
-      <section className="max-w-4xl mx-auto px-4 pb-8">
+      {/* DISCLAIMER */}
+
+      <section className="max-w-4xl mx-auto px-4 pb-10">
+
         <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4 text-center">
-          <div className="flex items-center justify-center gap-2 text-yellow-400 text-sm mb-2"><FaInfoCircle /><span className="font-semibold">Important Information</span></div>
-          <p className="text-xs text-slate-400 leading-relaxed">IMALI provides automation infrastructure and analytics tools. Nothing on this platform constitutes financial advice or guaranteed returns. Trading involves substantial risk of loss. Past performance does not guarantee future results.</p>
+
+          <div className="flex items-center justify-center gap-2 text-yellow-400 text-sm mb-2">
+            <FaInfoCircle />
+            <span className="font-semibold">
+              Important Information
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-400 leading-relaxed">
+            IMALI provides automation infrastructure and analytics tools.
+            Nothing on this platform constitutes financial advice or
+            guaranteed returns. Trading involves risk.
+          </p>
+
         </div>
+
       </section>
 
-      <div className="text-center text-xs text-white/30 pb-10 px-4">IMALI Enterprise • White-Label Trading Infrastructure • AI Automation • Multi-Bot Deployment</div>
+      {/* FOOTER */}
 
-      {/* Alpaca Modal */}
-      {showAlpacaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="max-w-md w-full rounded-2xl border border-white/10 bg-gray-900 p-6">
-            <h3 className="text-xl font-bold mb-4">Connect to Alpaca {!isLiveMode && "(Demo Mode)"}</h3>
-            {connectionError && <div className="mb-4 p-3 rounded-lg bg-red-500/20 text-red-400 text-sm">{connectionError}</div>}
-            <div className="space-y-4">
-              <input type="text" placeholder="API Key" value={alpacaApiKey} onChange={(e) => setAlpacaApiKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <input type="password" placeholder="Secret Key" value={alpacaSecretKey} onChange={(e) => setAlpacaSecretKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <button 
-                onClick={!isLiveMode ? connectAlpacaDemo : connectAlpacaReal} 
-                disabled={connectingAlpaca} 
-                className="w-full rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
-              >
-                {connectingAlpaca ? <FaSpinner className="inline animate-spin mr-2" /> : null} Connect
-              </button>
-              <button onClick={() => { setShowAlpacaModal(false); setConnectionError(null); }} className="w-full rounded-lg border border-white/10 py-2">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="text-center text-xs text-white/30 pb-10 px-4">
+        IMALI Enterprise • White-Label Trading Infrastructure •
+        Multi-Bot Deployment • OKX • Alpaca
+      </div>
 
-      {/* OKX Modal */}
-      {showOkxModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="max-w-md w-full rounded-2xl border border-white/10 bg-gray-900 p-6">
-            <h3 className="text-xl font-bold mb-4">Connect to OKX {!isLiveMode && "(Demo Mode)"}</h3>
-            {connectionError && <div className="mb-4 p-3 rounded-lg bg-red-500/20 text-red-400 text-sm">{connectionError}</div>}
-            <div className="space-y-4">
-              <input type="text" placeholder="API Key" value={okxApiKey} onChange={(e) => setOkxApiKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <input type="password" placeholder="Secret Key" value={okxSecretKey} onChange={(e) => setOkxSecretKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <input type="password" placeholder="Passphrase" value={okxPassphrase} onChange={(e) => setOkxPassphrase(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <button 
-                onClick={!isLiveMode ? connectOkxDemo : connectOkxReal} 
-                disabled={connectingOkx} 
-                className="w-full rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
-              >
-                {connectingOkx ? <FaSpinner className="inline animate-spin mr-2" /> : null} Connect
-              </button>
-              <button onClick={() => { setShowOkxModal(false); setConnectionError(null); }} className="w-full rounded-lg border border-white/10 py-2">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .animate-spin { animation: spin 1s linear infinite; }
-      `}</style>
     </div>
   );
 }
+
+/* =========================================
+   FALLBACK DATA
+========================================= */
+
+const fallbackMarketData = {
+  btc: {
+    price: 71234,
+    change: 2.4,
+    confidence: 87,
+  },
+  eth: {
+    price: 3821,
+    change: 1.8,
+    confidence: 72,
+  },
+  sol: {
+    price: 168,
+    change: 5.2,
+    confidence: 91,
+  },
+};
+
+const fallbackScannerAssets = [
+  {
+    symbol: "BTC",
+    price: 71234,
+    change: 2.4,
+    momentum: "High",
+    confidence: 87,
+  },
+  {
+    symbol: "ETH",
+    price: 3821,
+    change: 1.8,
+    momentum: "Medium",
+    confidence: 72,
+  },
+  {
+    symbol: "SOL",
+    price: 168,
+    change: 5.2,
+    momentum: "High",
+    confidence: 91,
+  },
+  {
+    symbol: "AVAX",
+    price: 38,
+    change: 3.2,
+    momentum: "Medium",
+    confidence: 68,
+  },
+  {
+    symbol: "ARB",
+    price: 1.12,
+    change: -0.8,
+    momentum: "Low",
+    confidence: 55,
+  },
+  {
+    symbol: "TSLA",
+    price: 214,
+    change: 1.4,
+    momentum: "Medium",
+    confidence: 63,
+  },
+];
+
+const fallbackTrades = [
+  {
+    asset: "BTC",
+    type: "BUY",
+    return: 8.2,
+    entry: "65,800",
+    exit: "71,234",
+  },
+  {
+    asset: "ETH",
+    type: "BUY",
+    return: 6.4,
+    entry: "3,590",
+    exit: "3,821",
+  },
+  {
+    asset: "SOL",
+    type: "SELL",
+    return: 3.8,
+    entry: "162",
+    exit: "168",
+  },
+];
