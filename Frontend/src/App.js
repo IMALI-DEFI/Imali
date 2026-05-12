@@ -1,4 +1,4 @@
-// App.js (with Landing + Newsletter pages + Enterprise Support - SEPARATED)
+// App.js (with Landing + Newsletter pages + Enterprise Support - BOTH VERSIONS)
 
 import React, { lazy, Suspense } from "react";
 import {
@@ -17,12 +17,12 @@ import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
-// ==================== ENTERPRISE PAGES - SEPARATED ====================
-// Main Marketing / Credibility Page (for imali-defi.com/enterprise)
-import EnterprisePage from "./pages/EnterprisePage";
+// ==================== ENTERPRISE PAGES - BOTH VERSIONS ====================
+// Government / Educational Version (for counties, schools, workforce programs)
+import Enterprise from "./pages/Enterprise";
 
-// Live Interactive Demo Environment (for imali-demo.com/enterprise-demo)
-import EnterpriseDemoEnvironment from "./pages/EnterpriseDemoEnvironment";
+// Aldo / Trading Infrastructure Version (for brokers, trading firms, fintech operators)
+import EnterpriseDemo from "./pages/EnterpriseDemo";
 
 // Onboarding Wizard Component
 import EnterpriseOnboardingWizard from './components/enterprise/EnterpriseOnboardingWizard';
@@ -284,14 +284,14 @@ function AppContent() {
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
             
-            {/* ==================== ENTERPRISE PAGES - SEPARATED ==================== */}
-            {/* MAIN MARKETING / CREDIBILITY PAGE - for imali-defi.com/enterprise */}
-            {/* This page explains the platform, features, infrastructure, and includes a "Schedule Demo" CTA */}
-            <Route path="/enterprise" element={<EnterprisePage />} />
+            {/* ==================== ENTERPRISE PAGES - BOTH VERSIONS ==================== */}
+            {/* GOVERNMENT / EDUCATIONAL VERSION - for counties, schools, workforce programs */}
+            {/* URL: imali-defi.com/Enterprise */}
+            <Route path="/Enterprise" element={<Enterprise />} />
             
-            {/* LIVE INTERACTIVE DEMO ENVIRONMENT - for imali-demo.com/enterprise-demo */}
-            {/* This is the "Controlled Realism" demo with live market data, paper trading, etc. */}
-            <Route path="/enterprise-demo" element={<EnterpriseDemoEnvironment />} />
+            {/* ALDO / TRADING INFRASTRUCTURE VERSION - for brokers, trading firms, fintech operators */}
+            {/* URL: imali-defi.com/EnterpriseDemo */}
+            <Route path="/EnterpriseDemo" element={<EnterpriseDemo />} />
             
             {/* Demo redirect - keep for compatibility */}
             <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
