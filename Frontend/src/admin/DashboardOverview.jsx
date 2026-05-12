@@ -46,7 +46,7 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
   const [metrics, setMetrics] = useState({
     users: { total: 0, active: 0, new: 0, enterprise: 0, pendingEnterprise: 0 },
     trading: { totalTrades: 0, volume24h: 0, activeBots: 0, winRate: 0 },
-    revenue: { total: 0, fees24h: 0, pending: 0 },
+    revenue: { last30Days: 0, today: 0, pending: 0 },
     system: { uptime: '99.9%', status: 'healthy' },
     pnl: { last30Days: 0, today: 0, weekly: 0, monthly: 0 },
     enterprise: {
@@ -61,11 +61,12 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
   const [authError, setAuthError] = useState(false);
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [activityLimit, setActivityLimit] = useState(10);
-  const [pnlPeriod, setPnlPeriod] = useState('30days'); // 'today', '7days', '30days', '90days', 'all'
+  const [pnlPeriod, setPnlPeriod] = useState('30days');
   const [pnlDetails, setPnlDetails] = useState(null);
   const [showPnlDetails, setShowPnlDetails] = useState(false);
   const [enterpriseDetails, setEnterpriseDetails] = useState(null);
   const [showEnterpriseDetails, setShowEnterpriseDetails] = useState(false);
+  const [last30DaysPnL, setLast30DaysPnL] = useState(0);
 
   const getAuthToken = useCallback(() => {
     try {
@@ -119,7 +120,13 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
       
       const data = await response.json();
       if (data && data.success) {
-        setPnlDetails(data.data || data);
+        const pnlData = data.data || data;
+        setPnlDetails(pnlData);
+        
+        // Update last30DaysPnL if period is 30days
+        if (period === '30days' && pnlData.total_pnl !== undefined) {
+          setLast30DaysPnL(pnlData.total_pnl);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch PNL details:', error);
@@ -180,6 +187,17 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
       if (data && data.success) {
         const metricsData = data.data || data;
         
+        // Calculate last 30 days revenue from PNL data
+        let last30DaysRevenue = 0;
+        if (metricsData.pnl?.last30Days) {
+          last30DaysRevenue = safeNumber(metricsData.pnl.last30Days);
+        } else if (metricsData.revenue?.last30Days) {
+          last30DaysRevenue = safeNumber(metricsData.revenue.last30Days);
+        }
+        
+        // Get last 30 days PNL
+        const last30DaysPnLValue = metricsData.pnl?.last30Days || last30DaysPnL || 0;
+        
         setMetrics({
           users: {
             total: safeNumber(metricsData.users?.total || 0),
@@ -195,8 +213,8 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
             winRate: safeNumber(metricsData.trading?.winRate || 0),
           },
           revenue: {
-            total: safeNumber(metricsData.pnl?.total || 0),
-            fees24h: safeNumber(metricsData.revenue?.today || 0),
+            last30Days: last30DaysRevenue,
+            today: safeNumber(metricsData.revenue?.today || metricsData.revenue?.fees24h || 0),
             pending: safeNumber(metricsData.revenue?.pending_withdrawals || 0),
           },
           system: {
@@ -204,7 +222,7 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
             status: safeRender(metricsData.system?.status || 'healthy'),
           },
           pnl: {
-            last30Days: safeNumber(metricsData.pnl?.last30Days || 0),
+            last30Days: last30DaysPnLValue,
             today: safeNumber(metricsData.pnl?.today || 0),
             weekly: safeNumber(metricsData.pnl?.weekly || 0),
             monthly: safeNumber(metricsData.pnl?.monthly || 0),
@@ -226,7 +244,7 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
     } finally {
       setLoading(false);
     }
-  }, [apiBase, getAuthToken, showToast, authError]);
+  }, [apiBase, getAuthToken, showToast, authError, last30DaysPnL]);
 
   const fetchRecentActivity = useCallback(async () => {
     const token = getAuthToken();
@@ -390,18 +408,19 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
           </div>
         </div>
 
-        {/* Revenue Card */}
+        {/* Revenue Card - Now shows Last 30 Days */}
         <div className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border border-purple-500/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <span className="text-2xl">💰</span>
             <span className="text-xs text-purple-400 bg-purple-500/20 px-2 py-1 rounded-full">
-              +{formatCurrency(metrics.revenue.fees24h)} today
+              Last 30 Days
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold text-purple-400">{formatCurrency(metrics.revenue.total)}</div>
-            <div className="text-sm text-white/50">Total Revenue</div>
-            <div className="text-xs text-white/30 mt-1">{formatCurrency(metrics.revenue.pending)} pending</div>
+            <div className="text-3xl font-bold text-purple-400">{formatCurrency(metrics.revenue.last30Days)}</div>
+            <div className="text-sm text-white/50">Total Revenue (30d)</div>
+            <div className="text-xs text-white/30 mt-1">${formatNumber(metrics.revenue.today)} today</div>
+            <div className="text-xs text-amber-400 mt-1">⏳ {formatCurrency(metrics.revenue.pending)} pending</div>
           </div>
         </div>
 
