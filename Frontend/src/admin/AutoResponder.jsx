@@ -16,7 +16,7 @@ import {
   FaUpload,
   FaMailBulk,
   FaUsers,
-  FaSend,
+  FaPaperPlane,
   FaCheckCircle,
   FaExclamationTriangle,
 } from "react-icons/fa";
@@ -1110,7 +1110,7 @@ Need help? Contact support@imali-defi.com`}
                     </>
                   ) : (
                     <>
-                      <FaSend className="mr-2 inline" />
+                      <FaPaperPlane className="mr-2 inline" />
                       {bulkEmailData.test_mode ? "Send Test Email" : "Send to All Users"}
                     </>
                   )}
