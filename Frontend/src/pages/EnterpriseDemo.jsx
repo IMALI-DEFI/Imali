@@ -13,6 +13,7 @@ import {
   FaArrowRight,
   FaExchangeAlt,
   FaPalette,
+  FaCreditCard,
   FaSlidersH,
   FaFileAlt,
   FaTachometerAlt,
