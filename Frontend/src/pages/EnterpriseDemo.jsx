@@ -43,7 +43,6 @@ import {
   FaUnlink,
   FaCheck,
   FaExclamationTriangle,
-  FaHistory,
 } from "react-icons/fa";
 
 // Register ChartJS components
@@ -61,22 +60,36 @@ ChartJS.register(
 
 // API base URL
 const API_BASE = process.env.REACT_APP_API_BASE || "https://api.imali-defi.com";
-const DEMO_MODE = process.env.REACT_APP_DEMO_MODE === "true";
+
+// FORCE DEMO MODE for now (set to false when backend is ready)
+const DEMO_MODE = true;
+
+// Safe number formatting helper
+const formatPrice = (price) => {
+  const num = Number(price || 0);
+  return isNaN(num) ? "0" : num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const formatPercent = (percent) => {
+  const num = Number(percent || 0);
+  return isNaN(num) ? "0" : num.toFixed(1);
+};
 
 export default function Enterprise() {
   const [activeDemoTab, setActiveDemoTab] = useState("simulator");
   const [activeChartTab, setActiveChartTab] = useState("performance");
+  const [pageLoading, setPageLoading] = useState(true);
+  const [tradeLoading, setTradeLoading] = useState(false);
   
   // Market Data State
   const [marketData, setMarketData] = useState({
-    btc: { price: 0, change: 0, momentum: "medium", confidence: 0, loading: true },
-    eth: { price: 0, change: 0, momentum: "medium", confidence: 0, loading: true },
-    sol: { price: 0, change: 0, momentum: "medium", confidence: 0, loading: true },
+    btc: { price: 71234, change: 2.4, momentum: "high", confidence: 87, loading: false },
+    eth: { price: 3821, change: 1.8, momentum: "medium", confidence: 72, loading: false },
+    sol: { price: 168, change: 5.2, momentum: "very_high", confidence: 91, loading: false },
   });
   
   const [recentTrades, setRecentTrades] = useState([]);
   const [scannerAssets, setScannerAssets] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [paperTradeResult, setPaperTradeResult] = useState(null);
   
   // Chart Data State
@@ -86,24 +99,19 @@ export default function Enterprise() {
     trades: [],
     winRate: [],
   });
-  const [distributionData, setDistributionData] = useState({
+  const [distributionData] = useState({
     labels: ["BTC", "ETH", "SOL", "AVAX", "ARB", "Other"],
     values: [42, 23, 18, 9, 5, 3],
   });
   const [chartPeriod, setChartPeriod] = useState("30");
   
-  // API Connection States
+  // API Connection States (Demo mode only - UI only)
   const [alpacaConnected, setAlpacaConnected] = useState(false);
   const [okxConnected, setOkxConnected] = useState(false);
   const [connectingAlpaca, setConnectingAlpaca] = useState(false);
   const [connectingOkx, setConnectingOkx] = useState(false);
-  const [alpacaMode, setAlpacaMode] = useState("paper");
-  const [okxMode, setOkxMode] = useState("paper");
-  const [alpacaApiKey, setAlpacaApiKey] = useState("");
-  const [alpacaSecretKey, setAlpacaSecretKey] = useState("");
-  const [okxApiKey, setOkxApiKey] = useState("");
-  const [okxSecretKey, setOkxSecretKey] = useState("");
-  const [okxPassphrase, setOkxPassphrase] = useState("");
+  const [alpacaMode] = useState("paper");
+  const [okxMode] = useState("paper");
   const [showAlpacaModal, setShowAlpacaModal] = useState(false);
   const [showOkxModal, setShowOkxModal] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
@@ -125,29 +133,30 @@ export default function Enterprise() {
     const winRateData = [];
     
     let cumulativePnl = 0;
+    const daysInt = parseInt(days, 10);
     
-    for (let i = days; i >= 0; i--) {
+    for (let i = daysInt; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
       
-      // Generate realistic PnL data with some trending
       const dailyPnl = (Math.random() * 200 - 50) + (i < 15 ? 20 : 0);
       cumulativePnl += dailyPnl;
       pnlData.push(Math.round(cumulativePnl * 100) / 100);
-      
-      // Trade count
       tradesData.push(Math.floor(Math.random() * 15) + 3);
-      
-      // Win rate (between 45% and 75%)
       winRateData.push(Math.floor(Math.random() * 30) + 45);
     }
     
     return { labels, pnl: pnlData, trades: tradesData, winRate: winRateData };
   }, []);
 
-  // Fetch real market data from API
+  // Fetch market data (Demo or Real)
   const fetchMarketData = useCallback(async () => {
+    if (DEMO_MODE) {
+      // Demo data - already set in initialState
+      return;
+    }
+    
     try {
       const response = await fetch(`${API_BASE}/api/public/market/prices`);
       if (response.ok) {
@@ -155,24 +164,24 @@ export default function Enterprise() {
         if (data.success && data.data) {
           setMarketData({
             btc: {
-              price: data.data.btc?.price || 68000,
-              change: data.data.btc?.change_24h || 1.2,
-              momentum: data.data.btc?.momentum || "medium",
-              confidence: data.data.btc?.confidence || 75,
+              price: data.data.btc?.price || 71234,
+              change: data.data.btc?.change_24h || 2.4,
+              momentum: data.data.btc?.momentum || "high",
+              confidence: data.data.btc?.confidence || 87,
               loading: false,
             },
             eth: {
-              price: data.data.eth?.price || 3600,
-              change: data.data.eth?.change_24h || 0.8,
+              price: data.data.eth?.price || 3821,
+              change: data.data.eth?.change_24h || 1.8,
               momentum: data.data.eth?.momentum || "medium",
-              confidence: data.data.eth?.confidence || 68,
+              confidence: data.data.eth?.confidence || 72,
               loading: false,
             },
             sol: {
-              price: data.data.sol?.price || 165,
-              change: data.data.sol?.change_24h || 3.5,
-              momentum: data.data.sol?.momentum || "high",
-              confidence: data.data.sol?.confidence || 82,
+              price: data.data.sol?.price || 168,
+              change: data.data.sol?.change_24h || 5.2,
+              momentum: data.data.sol?.momentum || "very_high",
+              confidence: data.data.sol?.confidence || 91,
               loading: false,
             },
           });
@@ -180,16 +189,23 @@ export default function Enterprise() {
       }
     } catch (error) {
       console.error("Failed to fetch market data:", error);
-      setMarketData({
-        btc: { price: 71234, change: 2.4, momentum: "high", confidence: 87, loading: false, demo: true },
-        eth: { price: 3821, change: 1.8, momentum: "medium", confidence: 72, loading: false, demo: true },
-        sol: { price: 168, change: 5.2, momentum: "very_high", confidence: 91, loading: false, demo: true },
-      });
+      // Keep demo data
     }
   }, []);
 
-  // Fetch recent trades (anonymized)
+  // Fetch recent trades
   const fetchRecentTrades = useCallback(async () => {
+    if (DEMO_MODE) {
+      setRecentTrades([
+        { asset: "BTC", type: "BUY", returnPercent: 8.2, entryPrice: 65800, exitPrice: 71234, confidence: 78, exchange: "Alpaca" },
+        { asset: "ETH", type: "BUY", returnPercent: 6.4, entryPrice: 3590, exitPrice: 3821, confidence: 71, exchange: "OKX" },
+        { asset: "SOL", type: "SELL", returnPercent: 3.8, entryPrice: 162, exitPrice: 168, confidence: 65, exchange: "Alpaca" },
+        { asset: "AVAX", type: "BUY", returnPercent: 11.5, entryPrice: 28.70, exitPrice: 32.00, confidence: 73, exchange: "OKX" },
+        { asset: "ARB", type: "BUY", returnPercent: 5.2, entryPrice: 1.036, exitPrice: 1.090, confidence: 68, exchange: "Alpaca" },
+      ]);
+      return;
+    }
+    
     try {
       const response = await fetch(`${API_BASE}/api/trading/global-trades?limit=10`);
       if (response.ok) {
@@ -200,7 +216,7 @@ export default function Enterprise() {
             type: trade.side?.toUpperCase() || "BUY",
             returnPercent: Math.min(Math.abs(trade.pnl_percent || 0), 25),
             entryPrice: trade.price || 0,
-            exitPrice: trade.exit_price || trade.price * (1 + (trade.pnl_percent || 0) / 100),
+            exitPrice: trade.exit_price || trade.price || 0,
             confidence: 55 + Math.floor(Math.random() * 35),
             exchange: trade.exchange || "unknown",
           })));
@@ -208,28 +224,12 @@ export default function Enterprise() {
       }
     } catch (error) {
       console.error("Failed to fetch trades:", error);
-      setRecentTrades([
-        { asset: "BTC", type: "BUY", returnPercent: 8.2, entryPrice: 65800, exitPrice: 71234, confidence: 78, exchange: "Alpaca" },
-        { asset: "ETH", type: "BUY", returnPercent: 6.4, entryPrice: 3590, exitPrice: 3821, confidence: 71, exchange: "OKX" },
-        { asset: "SOL", type: "SELL", returnPercent: 3.8, entryPrice: 162, exitPrice: 168, confidence: 65, exchange: "Alpaca" },
-        { asset: "AVAX", type: "BUY", returnPercent: 11.5, entryPrice: 28.70, exitPrice: 32.00, confidence: 73, exchange: "OKX" },
-        { asset: "ARB", type: "BUY", returnPercent: 5.2, entryPrice: 1.036, exitPrice: 1.090, confidence: 68, exchange: "Alpaca" },
-      ]);
     }
   }, []);
 
   // Fetch scanner assets
   const fetchScannerAssets = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/public/market/scanner`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data) {
-          setScannerAssets(data.data.assets);
-        }
-      }
-    } catch (error) {
-      console.error("Failed to fetch scanner:", error);
+    if (DEMO_MODE) {
       setScannerAssets([
         { symbol: "BTC", active: true, momentum: "high", confidence: 84, exchange: "Both" },
         { symbol: "ETH", active: true, momentum: "medium", confidence: 71, exchange: "Both" },
@@ -242,12 +242,25 @@ export default function Enterprise() {
         { symbol: "ARB", active: true, momentum: "medium", confidence: 63, exchange: "Both" },
         { symbol: "OP", active: true, momentum: "medium", confidence: 58, exchange: "OKX" },
       ]);
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE}/api/public/market/scanner`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          setScannerAssets(data.data.assets);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch scanner:", error);
     }
   }, []);
 
   // Update chart data when period changes
   useEffect(() => {
-    const historical = generateHistoricalData(parseInt(chartPeriod));
+    const historical = generateHistoricalData(parseInt(chartPeriod, 10));
     setPerformanceData({
       labels: historical.labels,
       pnl: historical.pnl,
@@ -256,237 +269,154 @@ export default function Enterprise() {
     });
   }, [chartPeriod, generateHistoricalData]);
 
-  // Get auth token
-  const getAuthToken = useCallback(() => {
-    try {
-      return localStorage.getItem("imali_token");
-    } catch (error) {
-      console.error("Failed to get token:", error);
-      return null;
-    }
-  }, []);
-
-  // Connect to Alpaca API
-  const connectAlpaca = async () => {
-    if (!alpacaApiKey || !alpacaSecretKey) {
-      setConnectionError("Please enter both API Key and Secret Key");
-      return;
-    }
-    
+  // Demo connection handlers (UI only)
+  const connectAlpacaDemo = () => {
     setConnectingAlpaca(true);
-    setConnectionError(null);
-    
-    try {
-      const token = getAuthToken();
-      const response = await fetch(`${API_BASE}/api/integrations/alpaca`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify({
-          api_key: alpacaApiKey,
-          secret_key: alpacaSecretKey,
-          mode: alpacaMode,
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setAlpacaConnected(true);
-        setShowAlpacaModal(false);
-        setAlpacaApiKey("");
-        setAlpacaSecretKey("");
-      } else {
-        setConnectionError(data.error || "Failed to connect to Alpaca");
-      }
-    } catch (error) {
-      console.error("Alpaca connection error:", error);
-      setConnectionError("Network error. Please try again.");
-    } finally {
+    setTimeout(() => {
+      setAlpacaConnected(true);
       setConnectingAlpaca(false);
-    }
+      setShowAlpacaModal(false);
+      setPaperTradeResult({
+        success: true,
+        message: "Alpaca connected in demo mode! Paper trading ready.",
+        isSuccess: true,
+      });
+      setTimeout(() => setPaperTradeResult(null), 3000);
+    }, 1000);
   };
 
-  // Connect to OKX API
-  const connectOkx = async () => {
-    if (!okxApiKey || !okxSecretKey || !okxPassphrase) {
-      setConnectionError("Please enter API Key, Secret Key, and Passphrase");
-      return;
-    }
-    
+  const connectOkxDemo = () => {
     setConnectingOkx(true);
-    setConnectionError(null);
-    
-    try {
-      const token = getAuthToken();
-      const response = await fetch(`${API_BASE}/api/integrations/okx`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify({
-          api_key: okxApiKey,
-          secret_key: okxSecretKey,
-          passphrase: okxPassphrase,
-          mode: okxMode,
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setOkxConnected(true);
-        setShowOkxModal(false);
-        setOkxApiKey("");
-        setOkxSecretKey("");
-        setOkxPassphrase("");
-      } else {
-        setConnectionError(data.error || "Failed to connect to OKX");
-      }
-    } catch (error) {
-      console.error("OKX connection error:", error);
-      setConnectionError("Network error. Please try again.");
-    } finally {
+    setTimeout(() => {
+      setOkxConnected(true);
       setConnectingOkx(false);
-    }
+      setShowOkxModal(false);
+      setPaperTradeResult({
+        success: true,
+        message: "OKX connected in demo mode! Paper trading ready.",
+        isSuccess: true,
+      });
+      setTimeout(() => setPaperTradeResult(null), 3000);
+    }, 1000);
   };
 
-  // Disconnect functions
-  const disconnectAlpaca = async () => {
-    try {
-      const token = getAuthToken();
-      await fetch(`${API_BASE}/api/integrations/alpaca`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      setAlpacaConnected(false);
-    } catch (error) {
-      console.error("Alpaca disconnect error:", error);
-    }
+  const disconnectAlpacaDemo = () => {
+    setAlpacaConnected(false);
+    setPaperTradeResult({
+      success: true,
+      message: "Alpaca disconnected.",
+      isSuccess: true,
+    });
+    setTimeout(() => setPaperTradeResult(null), 2000);
   };
 
-  const disconnectOkx = async () => {
-    try {
-      const token = getAuthToken();
-      await fetch(`${API_BASE}/api/integrations/okx`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      setOkxConnected(false);
-    } catch (error) {
-      console.error("OKX disconnect error:", error);
-    }
+  const disconnectOkxDemo = () => {
+    setOkxConnected(false);
+    setPaperTradeResult({
+      success: true,
+      message: "OKX disconnected.",
+      isSuccess: true,
+    });
+    setTimeout(() => setPaperTradeResult(null), 2000);
   };
 
   // Execute paper trade
-  const executePaperTrade = async () => {
-    setLoading(true);
+  const executePaperTrade = () => {
+    setTradeLoading(true);
     setPaperTradeResult(null);
-    
-    const exchange = paperTradeConfig.selected_exchange;
-    const isConnected = exchange === "alpaca" ? alpacaConnected : okxConnected;
-    
-    if (!isConnected && !DEMO_MODE) {
-      setPaperTradeResult({
-        success: false,
-        message: `Please connect to ${exchange === "alpaca" ? "Alpaca" : "OKX"} first`,
-        isError: true,
-      });
-      setLoading(false);
-      return;
-    }
     
     setTimeout(() => {
       const randomReturn = (Math.random() * 12 - 3).toFixed(1);
+      const isWin = parseFloat(randomReturn) > 0;
+      const exchange = paperTradeConfig.selected_exchange === "alpaca" ? "Alpaca" : "OKX";
+      
       setPaperTradeResult({
         success: true,
         returnPercent: randomReturn,
-        isWin: parseFloat(randomReturn) > 0,
-        message: `Paper trade executed on ${exchange.toUpperCase()} with ${parseFloat(randomReturn) > 0 ? 'gain' : 'loss'} of ${Math.abs(randomReturn)}%`,
+        isWin: isWin,
+        message: `Paper trade executed on ${exchange} with ${isWin ? 'gain' : 'loss'} of ${Math.abs(randomReturn)}%`,
         exchange: exchange,
       });
-      setLoading(false);
+      setTradeLoading(false);
+      
+      // Refresh trades list with new demo trade
+      const newTrade = {
+        asset: paperTradeConfig.asset_universe === "btc_eth" ? "BTC" : "SOL",
+        type: Math.random() > 0.5 ? "BUY" : "SELL",
+        returnPercent: parseFloat(randomReturn),
+        entryPrice: marketData.btc?.price || 65000,
+        exitPrice: (marketData.btc?.price || 65000) * (1 + parseFloat(randomReturn) / 100),
+        confidence: Math.floor(Math.random() * 30) + 60,
+        exchange: exchange,
+      };
+      setRecentTrades(prev => [newTrade, ...prev.slice(0, 4)]);
     }, 1500);
   };
 
   // Chart Configurations
   const pnlChartData = {
     labels: performanceData.labels,
-    datasets: [
-      {
-        label: "Cumulative P&L ($)",
-        data: performanceData.pnl,
-        borderColor: "rgb(16, 185, 129)",
-        backgroundColor: "rgba(16, 185, 129, 0.1)",
-        fill: true,
-        tension: 0.4,
-        pointRadius: 2,
-        pointBackgroundColor: "rgb(16, 185, 129)",
-      },
-    ],
+    datasets: [{
+      label: "Cumulative P&L ($)",
+      data: performanceData.pnl,
+      borderColor: "rgb(16, 185, 129)",
+      backgroundColor: "rgba(16, 185, 129, 0.1)",
+      fill: true,
+      tension: 0.4,
+      pointRadius: 2,
+      pointBackgroundColor: "rgb(16, 185, 129)",
+    }],
   };
 
   const tradesChartData = {
     labels: performanceData.labels,
-    datasets: [
-      {
-        label: "Daily Trades",
-        data: performanceData.trades,
-        borderColor: "rgb(59, 130, 246)",
-        backgroundColor: "rgba(59, 130, 246, 0.5)",
-        fill: true,
-        tension: 0.4,
-        pointRadius: 2,
-      },
-    ],
+    datasets: [{
+      label: "Daily Trades",
+      data: performanceData.trades,
+      borderColor: "rgb(59, 130, 246)",
+      backgroundColor: "rgba(59, 130, 246, 0.5)",
+      fill: true,
+      tension: 0.4,
+      pointRadius: 2,
+    }],
   };
 
   const winRateChartData = {
     labels: performanceData.labels,
-    datasets: [
-      {
-        label: "Win Rate (%)",
-        data: performanceData.winRate,
-        borderColor: "rgb(139, 92, 246)",
-        backgroundColor: "rgba(139, 92, 246, 0.1)",
-        fill: true,
-        tension: 0.4,
-        pointRadius: 2,
-        pointBackgroundColor: "rgb(139, 92, 246)",
-      },
-    ],
+    datasets: [{
+      label: "Win Rate (%)",
+      data: performanceData.winRate,
+      borderColor: "rgb(139, 92, 246)",
+      backgroundColor: "rgba(139, 92, 246, 0.1)",
+      fill: true,
+      tension: 0.4,
+      pointRadius: 2,
+      pointBackgroundColor: "rgb(139, 92, 246)",
+    }],
   };
 
   const distributionChartData = {
     labels: distributionData.labels,
-    datasets: [
-      {
-        label: "Trading Distribution",
-        data: distributionData.values,
-        backgroundColor: [
-          "rgba(16, 185, 129, 0.8)",
-          "rgba(59, 130, 246, 0.8)",
-          "rgba(139, 92, 246, 0.8)",
-          "rgba(245, 158, 11, 0.8)",
-          "rgba(239, 68, 68, 0.8)",
-          "rgba(107, 114, 128, 0.8)",
-        ],
-        borderRadius: 8,
-      },
-    ],
+    datasets: [{
+      label: "Trading Distribution",
+      data: distributionData.values,
+      backgroundColor: [
+        "rgba(16, 185, 129, 0.8)",
+        "rgba(59, 130, 246, 0.8)",
+        "rgba(139, 92, 246, 0.8)",
+        "rgba(245, 158, 11, 0.8)",
+        "rgba(239, 68, 68, 0.8)",
+        "rgba(107, 114, 128, 0.8)",
+      ],
+      borderRadius: 8,
+    }],
   };
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: {
-        position: "top",
-        labels: { color: "rgba(255,255,255,0.7)", font: { size: 11 } },
-      },
+      legend: { position: "top", labels: { color: "rgba(255,255,255,0.7)", font: { size: 11 } } },
       tooltip: { mode: "index", intersect: false },
     },
     scales: {
@@ -498,9 +428,7 @@ export default function Enterprise() {
   const barChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: {
-      legend: { position: "top", labels: { color: "rgba(255,255,255,0.7)" } },
-    },
+    plugins: { legend: { position: "top", labels: { color: "rgba(255,255,255,0.7)" } } },
     scales: {
       x: { ticks: { color: "rgba(255,255,255,0.5)" }, grid: { color: "rgba(255,255,255,0.05)" } },
       y: { ticks: { color: "rgba(255,255,255,0.5)" }, grid: { color: "rgba(255,255,255,0.05)" } },
@@ -511,41 +439,20 @@ export default function Enterprise() {
     fetchMarketData();
     fetchRecentTrades();
     fetchScannerAssets();
-    
-    const checkConnections = async () => {
-      const token = getAuthToken();
-      if (token) {
-        try {
-          const response = await fetch(`${API_BASE}/api/integrations/status`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await response.json();
-          if (data.success) {
-            setAlpacaConnected(data.data.alpaca_connected);
-            setOkxConnected(data.data.okx_connected);
-          }
-        } catch (error) {
-          console.error("Failed to check connections:", error);
-        }
-      }
-    };
-    checkConnections();
-  }, [fetchMarketData, fetchRecentTrades, fetchScannerAssets, getAuthToken]);
+    setPageLoading(false);
+  }, [fetchMarketData, fetchRecentTrades, fetchScannerAssets]);
 
-  useEffect(() => {
-    if (!DEMO_MODE) {
-      const interval = setInterval(() => {
-        fetchMarketData();
-        fetchScannerAssets();
-      }, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [fetchMarketData, fetchScannerAssets]);
+  if (pageLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black flex items-center justify-center">
+        <FaSpinner className="animate-spin text-4xl text-emerald-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
-
-      {/* HERO */}
+      {/* HERO SECTION - Same as before, keeping it concise */}
       <section className="max-w-7xl mx-auto px-4 pt-20 pb-14">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div>
@@ -597,7 +504,7 @@ export default function Enterprise() {
         <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-blue-500/5 to-purple-500/5 p-6">
           <div className="text-center mb-6">
             <h2 className="text-2xl font-extrabold flex items-center justify-center gap-2"><FaPlug /> Connect Your Exchange</h2>
-            <p className="text-slate-400 text-sm mt-1">Connect to Alpaca or OKX for live paper trading</p>
+            <p className="text-slate-400 text-sm mt-1">Connect to Alpaca or OKX for live paper trading {DEMO_MODE && "(Demo Mode - UI Only)"}</p>
           </div>
           <div className="grid md:grid-cols-2 gap-6">
             <div className={`rounded-xl border p-5 ${alpacaConnected ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
@@ -607,7 +514,7 @@ export default function Enterprise() {
                   <div><h3 className="font-bold">Alpaca</h3><p className="text-xs text-slate-400">US Stocks & Crypto</p></div>
                 </div>
                 {alpacaConnected ? (
-                  <button onClick={disconnectAlpaca} className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full hover:bg-red-500/30"><FaUnlink className="text-xs" /> Disconnect</button>
+                  <button onClick={disconnectAlpacaDemo} className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full hover:bg-red-500/30"><FaUnlink className="text-xs" /> Disconnect</button>
                 ) : (
                   <button onClick={() => setShowAlpacaModal(true)} className="flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full hover:bg-emerald-500/30"><FaPlug className="text-xs" /> Connect</button>
                 )}
@@ -621,7 +528,7 @@ export default function Enterprise() {
                   <div><h3 className="font-bold">OKX</h3><p className="text-xs text-slate-400">Crypto Futures & Spot</p></div>
                 </div>
                 {okxConnected ? (
-                  <button onClick={disconnectOkx} className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full hover:bg-red-500/30"><FaUnlink className="text-xs" /> Disconnect</button>
+                  <button onClick={disconnectOkxDemo} className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full hover:bg-red-500/30"><FaUnlink className="text-xs" /> Disconnect</button>
                 ) : (
                   <button onClick={() => setShowOkxModal(true)} className="flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full hover:bg-emerald-500/30"><FaPlug className="text-xs" /> Connect</button>
                 )}
@@ -640,15 +547,15 @@ export default function Enterprise() {
         </div>
         <div className="grid md:grid-cols-3 gap-6">
           {[
-            { icon: <FaPalette />, title: "White-Label Deployment", desc: "Fully customizable branding, domain, and UI. Launch under your own name." },
-            { icon: <FaRobot />, title: "Multi-Bot Infrastructure", desc: "Deploy unlimited bots with configurable strategies and risk parameters." },
-            { icon: <FaUsers />, title: "Subscriber Management", desc: "Tiered access, user onboarding, analytics, and retention tools." },
-            { icon: <FaExchangeAlt />, title: "Exchange Integrations", desc: "OKX, Binance, Alpaca, and more. Paper + live execution ready." },
-            { icon: <FaSlidersH />, title: "Strategy Configuration", desc: "Asset filters, position limits, exposure caps, and risk weighting." },
-            { icon: <FaChartLine />, title: "Partner Analytics Dashboards", desc: "Real-time performance tracking and portfolio analytics." },
-            { icon: <FaLock />, title: "Risk Management Controls", desc: "Per-asset exposure limits, drawdown protection, and excluded assets." },
-            { icon: <FaDatabase />, title: "Paper & Live Environments", desc: "Test strategies risk-free before deploying real capital." },
-            { icon: <FaCog />, title: "Multi-User Admin System", desc: "Team accounts, role-based access, and partner management." },
+            { icon: <FaPalette />, title: "White-Label Deployment", desc: "Fully customizable branding, domain, and UI." },
+            { icon: <FaRobot />, title: "Multi-Bot Infrastructure", desc: "Deploy unlimited bots with configurable strategies." },
+            { icon: <FaUsers />, title: "Subscriber Management", desc: "Tiered access, user onboarding, and analytics." },
+            { icon: <FaExchangeAlt />, title: "Exchange Integrations", desc: "OKX, Binance, Alpaca, and more." },
+            { icon: <FaSlidersH />, title: "Strategy Configuration", desc: "Asset filters, position limits, and risk controls." },
+            { icon: <FaChartLine />, title: "Analytics Dashboards", desc: "Real-time performance tracking and reporting." },
+            { icon: <FaLock />, title: "Risk Management", desc: "Exposure limits, drawdown protection." },
+            { icon: <FaDatabase />, title: "Paper & Live Environments", desc: "Test strategies risk-free." },
+            { icon: <FaCog />, title: "Multi-User Admin", desc: "Team accounts and role-based access." },
           ].map((feature) => (
             <div key={feature.title} className={card}>
               <div className="text-3xl text-emerald-400">{feature.icon}</div>
@@ -659,7 +566,7 @@ export default function Enterprise() {
         </div>
       </section>
 
-      {/* LIVE DEMO SECTION WITH CHARTS */}
+      {/* LIVE DEMO SECTION */}
       <section id="demo-section" className="max-w-7xl mx-auto px-4 py-10">
         <div className="rounded-[32px] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-cyan-500/5 p-8">
           <div className="text-center mb-8">
@@ -722,13 +629,13 @@ export default function Enterprise() {
                         <option value="trend">Trend Following</option>
                       </select>
                     </div>
-                    <button onClick={executePaperTrade} disabled={loading}
+                    <button onClick={executePaperTrade} disabled={tradeLoading}
                       className="w-full rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500 transition disabled:opacity-50">
-                      {loading ? <FaSpinner className="inline animate-spin mr-2" /> : null}
+                      {tradeLoading ? <FaSpinner className="inline animate-spin mr-2" /> : null}
                       Execute Paper Trade →
                     </button>
                     {paperTradeResult && (
-                      <div className={`mt-3 p-3 rounded-lg text-center text-sm ${paperTradeResult.isWin ? 'bg-green-500/20 text-green-300' : paperTradeResult.isError ? 'bg-red-500/20 text-red-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
+                      <div className={`mt-3 p-3 rounded-lg text-center text-sm ${paperTradeResult.isWin ? 'bg-green-500/20 text-green-300' : paperTradeResult.isError ? 'bg-red-500/20 text-red-300' : 'bg-blue-500/20 text-blue-300'}`}>
                         {paperTradeResult.message}
                       </div>
                     )}
@@ -740,8 +647,12 @@ export default function Enterprise() {
                     {Object.entries(marketData).map(([symbol, data]) => (
                       <div key={symbol} className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                         <div><span className="font-bold uppercase">{symbol}</span></div>
-                        <div className="text-right"><div className="font-mono font-bold">${data.price.toLocaleString()}</div>
-                        <div className={`text-xs ${data.change >= 0 ? "text-green-400" : "text-red-400"}`}>{data.change >= 0 ? "+" : ""}{data.change}%</div></div>
+                        <div className="text-right">
+                          <div className="font-mono font-bold">${formatPrice(data.price)}</div>
+                          <div className={`text-xs ${data.change >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {data.change >= 0 ? "+" : ""}{formatPercent(data.change)}%
+                          </div>
+                        </div>
                         <div><div className="text-xs text-slate-400">AI Score</div><div className="font-mono text-sm">{data.confidence}%</div></div>
                       </div>
                     ))}
@@ -782,11 +693,10 @@ export default function Enterprise() {
               </div>
             )}
 
-            {/* Analytics & Charts - NEW with functional charts */}
+            {/* Analytics & Charts */}
             {activeDemoTab === "analytics" && (
               <div className="space-y-6">
-                {/* Chart Period Selector */}
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center flex-wrap gap-2">
                   <div className="flex gap-2">
                     {[
                       { value: "7", label: "7D" },
@@ -818,28 +728,18 @@ export default function Enterprise() {
                   </div>
                 </div>
 
-                {/* Chart Display */}
                 <div className="rounded-xl bg-black/40 border border-white/10 p-5">
                   <div className="h-80">
-                    {activeChartTab === "performance" && (
-                      <Line data={pnlChartData} options={chartOptions} />
-                    )}
-                    {activeChartTab === "trades" && (
-                      <Bar data={tradesChartData} options={barChartOptions} />
-                    )}
-                    {activeChartTab === "winrate" && (
-                      <Line data={winRateChartData} options={chartOptions} />
-                    )}
-                    {activeChartTab === "distribution" && (
-                      <Bar data={distributionChartData} options={barChartOptions} />
-                    )}
+                    {activeChartTab === "performance" && <Line data={pnlChartData} options={chartOptions} />}
+                    {activeChartTab === "trades" && <Bar data={tradesChartData} options={barChartOptions} />}
+                    {activeChartTab === "winrate" && <Line data={winRateChartData} options={chartOptions} />}
+                    {activeChartTab === "distribution" && <Bar data={distributionChartData} options={barChartOptions} />}
                   </div>
                 </div>
 
-                {/* Summary Stats */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="rounded-lg bg-white/5 p-3 text-center">
-                    <div className="text-2xl font-bold text-emerald-400">+{performanceData.pnl[performanceData.pnl.length - 1] || 0}</div>
+                    <div className="text-2xl font-bold text-emerald-400">+{formatPrice(performanceData.pnl[performanceData.pnl.length - 1])}</div>
                     <div className="text-xs text-slate-400">Total P&L (USD)</div>
                   </div>
                   <div className="rounded-lg bg-white/5 p-3 text-center">
@@ -864,12 +764,18 @@ export default function Enterprise() {
                 <h3 className="font-bold flex items-center gap-2 mb-4"><FaFileAlt /> Recent Strategy Performance</h3>
                 <div className="space-y-2">
                   {recentTrades.map((trade, i) => (
-                    <div key={i} className="flex justify-between items-center p-3 rounded-lg bg-white/5">
-                      <div><span className="font-bold">{trade.asset}/USD</span>
-                      <span className={`ml-2 text-xs px-2 py-0.5 rounded ${trade.type === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{trade.type}</span>
-                      <span className="ml-2 text-xs text-slate-500">{trade.exchange}</span></div>
-                      <div className={`font-bold ${trade.returnPercent > 0 ? "text-emerald-400" : "text-red-400"}`}>{trade.returnPercent > 0 ? "+" : ""}{trade.returnPercent}%</div>
-                      <div className="text-xs text-slate-400 hidden md:block">Entry: ${trade.entryPrice.toLocaleString()} → Exit: ${trade.exitPrice.toLocaleString()}</div>
+                    <div key={i} className="flex justify-between items-center p-3 rounded-lg bg-white/5 flex-wrap gap-2">
+                      <div>
+                        <span className="font-bold">{trade.asset}/USD</span>
+                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${trade.type === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{trade.type}</span>
+                        <span className="ml-2 text-xs text-slate-500">{trade.exchange}</span>
+                      </div>
+                      <div className={`font-bold ${trade.returnPercent > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {trade.returnPercent > 0 ? "+" : ""}{formatPercent(trade.returnPercent)}%
+                      </div>
+                      <div className="text-xs text-slate-400 hidden md:block">
+                        Entry: ${formatPrice(trade.entryPrice)} → Exit: ${formatPrice(trade.exitPrice)}
+                      </div>
                       <div className="text-xs text-slate-500">Score: {trade.confidence}%</div>
                     </div>
                   ))}
@@ -901,17 +807,13 @@ export default function Enterprise() {
       {showAlpacaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
           <div className="max-w-md w-full rounded-2xl border border-white/10 bg-gray-900 p-6">
-            <h3 className="text-xl font-bold mb-4">Connect to Alpaca</h3>
+            <h3 className="text-xl font-bold mb-4">Connect to Alpaca {DEMO_MODE && "(Demo Mode)"}</h3>
             {connectionError && <div className="mb-4 p-3 rounded-lg bg-red-500/20 text-red-400 text-sm">{connectionError}</div>}
             <div className="space-y-4">
-              <input type="text" placeholder="API Key" value={alpacaApiKey} onChange={(e) => setAlpacaApiKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <input type="password" placeholder="Secret Key" value={alpacaSecretKey} onChange={(e) => setAlpacaSecretKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <select value={alpacaMode} onChange={(e) => setAlpacaMode(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white">
-                <option value="paper">Paper Trading (Demo)</option>
-                <option value="live">Live Trading</option>
-              </select>
-              <button onClick={connectAlpaca} disabled={connectingAlpaca} className="w-full rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500">
-                {connectingAlpaca ? <FaSpinner className="inline animate-spin mr-2" /> : null} Connect
+              <input type="text" placeholder="API Key (any value in demo)" value={alpacaApiKey} onChange={(e) => setAlpacaApiKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
+              <input type="password" placeholder="Secret Key (any value in demo)" value={alpacaSecretKey} onChange={(e) => setAlpacaSecretKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
+              <button onClick={connectAlpacaDemo} disabled={connectingAlpaca} className="w-full rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500">
+                {connectingAlpaca ? <FaSpinner className="inline animate-spin mr-2" /> : null} Connect (Demo)
               </button>
               <button onClick={() => { setShowAlpacaModal(false); setConnectionError(null); }} className="w-full rounded-lg border border-white/10 py-2">Cancel</button>
             </div>
@@ -922,18 +824,14 @@ export default function Enterprise() {
       {showOkxModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
           <div className="max-w-md w-full rounded-2xl border border-white/10 bg-gray-900 p-6">
-            <h3 className="text-xl font-bold mb-4">Connect to OKX</h3>
+            <h3 className="text-xl font-bold mb-4">Connect to OKX {DEMO_MODE && "(Demo Mode)"}</h3>
             {connectionError && <div className="mb-4 p-3 rounded-lg bg-red-500/20 text-red-400 text-sm">{connectionError}</div>}
             <div className="space-y-4">
-              <input type="text" placeholder="API Key" value={okxApiKey} onChange={(e) => setOkxApiKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <input type="password" placeholder="Secret Key" value={okxSecretKey} onChange={(e) => setOkxSecretKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <input type="password" placeholder="Passphrase" value={okxPassphrase} onChange={(e) => setOkxPassphrase(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
-              <select value={okxMode} onChange={(e) => setOkxMode(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white">
-                <option value="paper">Paper Trading (Demo)</option>
-                <option value="live">Live Trading</option>
-              </select>
-              <button onClick={connectOkx} disabled={connectingOkx} className="w-full rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500">
-                {connectingOkx ? <FaSpinner className="inline animate-spin mr-2" /> : null} Connect
+              <input type="text" placeholder="API Key (any value in demo)" value={okxApiKey} onChange={(e) => setOkxApiKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
+              <input type="password" placeholder="Secret Key (any value in demo)" value={okxSecretKey} onChange={(e) => setOkxSecretKey(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
+              <input type="password" placeholder="Passphrase (any value in demo)" value={okxPassphrase} onChange={(e) => setOkxPassphrase(e.target.value)} className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-white" />
+              <button onClick={connectOkxDemo} disabled={connectingOkx} className="w-full rounded-lg bg-emerald-600 py-2 font-medium hover:bg-emerald-500">
+                {connectingOkx ? <FaSpinner className="inline animate-spin mr-2" /> : null} Connect (Demo)
               </button>
               <button onClick={() => { setShowOkxModal(false); setConnectionError(null); }} className="w-full rounded-lg border border-white/10 py-2">Cancel</button>
             </div>
