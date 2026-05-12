@@ -1,341 +1,484 @@
-// src/pages/Enterprise.jsx
+// App.js (with Landing + Newsletter pages + Enterprise Support)
 
-import React from "react";
-import { Link } from "react-router-dom";
-import logo from "../assets/imali-logo.png";
-
+import React, { lazy, Suspense } from "react";
 import {
-  FaRobot,
-  FaChartLine,
-  FaShieldAlt,
-  FaBuilding,
-  FaBrain,
-  FaUsers,
-  FaCheckCircle,
-  FaArrowRight,
-} from "react-icons/fa";
+  Routes,
+  Route,
+  Navigate,
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
-export default function Enterprise() {
-  const card =
-    "rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6";
+import Header from "./components/Header";
+import Footer from "./components/Footer";
+import MemberDashboard from "./components/Dashboard/MemberDashboard";
+import AdminPanel from "./components/AdminPanel";
+import TradeDemo from "./pages/TradeDemo";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import EnterpriseDemo from "./pages/EnterpriseDemo";
+// In App.js, add a simple test route
+import EnterpriseOnboardingWizard from './components/enterprise/EnterpriseOnboardingWizard';
+
+// Add this route (temporarily, no auth required for testing)
+<Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
+// Lazy Loaded Auth / App Pages
+const Signup = lazy(() => import("./pages/SignupForm"));
+const Login = lazy(() => import("./pages/Login"));
+const Activation = lazy(() => import("./pages/Activation"));
+const Billing = lazy(() => import("./pages/Billing"));
+const BillingSuccess = lazy(() => import("./pages/BillingSuccess"));
+const BillingDashboard = lazy(() => import("./pages/BillingDashboard"));
+
+// Enterprise Pages
+const EnterpriseDashboard = lazy(() => import("./pages/EnterpriseDashboard"));
+const TeamPage = lazy(() => import("./pages/TeamPage"));
+const StrategiesPage = lazy(() => import("./pages/StrategiesPage"));
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
+const AuditPage = lazy(() => import("./pages/AuditPage"));
+const BrandingPage = lazy(() => import("./pages/BrandingPage"));
+const BotControlsPage = lazy(() => import("./pages/BotsControlsPage"));
+
+// Marketing Pages
+import Home from "./pages/Home";
+import AboutUs from "./pages/AboutUs";
+import HowItWorks from "./pages/HowItWorks";
+import Pricing from "./pages/Pricing";
+import Support from "./pages/Support";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
+import FundingGuide from "./pages/FundingGuide";
+import PublicDashboard from "./pages/PublicDashboard";
+import ReferralSystem from "./pages/ReferralPartner";
+
+// Landing Pages
+import LandingPages from "./pages/LandingPages";
+
+// Newsletter Pages
+import Newsletter from "./pages/Newsletter";
+import NewsletterSuccess from "./pages/NewsletterSuccess";
+
+// Admin Enterprise Pages
+const EnterpriseRequestsPage = lazy(() => import("./pages/admin/EnterpriseRequestsPage"));
+
+// ---------------- ERROR BOUNDARY ----------------
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("[AppErrorBoundary]", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center px-6 bg-white">
+          <div className="max-w-xl text-center">
+            <h1 className="text-3xl font-bold mb-4">Something went wrong</h1>
+            <p className="text-gray-600 mb-6">
+              Please refresh the page or try again later.
+            </p>
+            <Link
+              to="/"
+              className="inline-block px-5 py-3 bg-emerald-600 text-white rounded-xl"
+            >
+              Go Home
+            </Link>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ---------------- LOADERS ----------------
+function LoadingSpinner() {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
+      <div className="h-10 w-10 rounded-full border-4 border-emerald-600 border-t-transparent animate-spin" />
+    </div>
+  );
+}
+
+function PageFallback() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="text-center">
+        <div className="h-8 w-8 rounded-full border-b-2 border-emerald-600 animate-spin mx-auto mb-3" />
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- ROUTE GUARDS ----------------
+function RequireAuth({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <LoadingSpinner />;
+  if (!user)
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+
+  return children;
+}
+
+function RequireAdmin({ children }) {
+  const { user, loading, isAdmin } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+// Enterprise route guard - requires enterprise tier
+function RequireEnterprise({ children }) {
+  const { user, loading, isEnterpriseUser } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  
+  if (!isEnterpriseUser) {
+    return <Navigate to="/pricing" replace />;
+  }
+
+  return children;
+}
+
+// Enterprise admin route guard
+function RequireEnterpriseAdmin({ children }) {
+  const { user, loading, isEnterpriseAdmin } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  
+  if (!isEnterpriseAdmin) {
+    return <Navigate to="/enterprise/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function RequireActivation({ children }) {
+  const { user, activation, activationComplete, loading, isAdmin } = useAuth();
+
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  // Admins bypass activation
+  if (isAdmin) return children;
+
+  if (!activationComplete) {
+    const hasCard = activation?.has_card_on_file || activation?.billing_complete;
+    if (!hasCard) return <Navigate to="/billing" replace />;
+    return <Navigate to="/activation" replace />;
+  }
+
+  return children;
+}
+
+function RedirectIfActivated({ children }) {
+  const { user, activationComplete, loading, isAdmin } = useAuth();
+
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <Navigate to="/login" replace />;
+  
+  if (isAdmin) return children;
+  
+  if (activationComplete) return <Navigate to="/dashboard" replace />;
+
+  return children;
+}
+
+// ---------------- POST LOGIN ----------------
+function PostLoginRedirect() {
+  const { user, loading, isAdmin, isEnterpriseUser } = useAuth();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (loading) return;
+
+    if (!user) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    // Enterprise users go to enterprise dashboard
+    if (isEnterpriseUser) {
+      navigate("/enterprise/dashboard", { replace: true });
+      return;
+    }
+
+    // Admins go to admin panel
+    if (isAdmin) {
+      navigate("/admin", { replace: true });
+      return;
+    }
+
+    // Regular users go to dashboard
+    navigate("/dashboard", { replace: true });
+  }, [user, loading, navigate, isAdmin, isEnterpriseUser]);
+
+  return <LoadingSpinner />;
+}
+
+// ---------------- 404 ----------------
+function NotFound() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center text-center px-6">
+      <div>
+        <h1 className="text-3xl font-bold mb-3">Page not found</h1>
+        <p className="text-gray-600 mb-4">
+          The page you're looking for doesn't exist.
+        </p>
+        <Link to="/" className="text-emerald-600 underline">
+          Go Home
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- MAIN APP ----------------
+function AppContent() {
+  const { loading, user } = useAuth();
+
+  if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
-
-      {/* HERO */}
-      <section className="max-w-7xl mx-auto px-4 pt-20 pb-14">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-
-          <div>
-
-            {/* LOGO */}
-            <div className="flex items-center gap-4 mb-6">
-              <img
-                src={logo}
-                alt="IMALI Enterprise"
-                className="h-20 w-auto object-contain"
-              />
-
-              <div>
-                <div className="text-2xl font-extrabold tracking-wide">
-                  IMALI ENTERPRISE
-                </div>
-
-                <div className="text-slate-400 text-sm">
-                  AI Automation & Operational Intelligence
-                </div>
-              </div>
-            </div>
-
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-              <FaBuilding />
-              Enterprise & Government Innovation
-            </div>
-
-            <h1 className="text-5xl md:text-6xl font-extrabold leading-tight mt-6">
-              AI Automation & Analytics Platform
-            </h1>
-
-            <p className="mt-6 text-lg text-slate-300 leading-8">
-              IMALI Enterprise transforms complex workflows into intelligent,
-              automated systems with dashboards, predictive analytics,
-              simulation tools, and real-time operational visibility.
-            </p>
-
-            <p className="mt-4 text-slate-400 leading-7">
-              The same automation framework used for intelligent decision support
-              can be adapted for workforce analytics, operational planning,
-              training simulations, digital engagement, and performance monitoring.
-            </p>
-
-            <div className="flex flex-wrap gap-4 mt-10">
-
-              <Link
-                to="/trade-demo"
-                className="px-7 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold transition shadow-lg shadow-emerald-500/20 flex items-center gap-2"
-              >
-                Launch Interactive Demo
-                <FaArrowRight />
-              </Link>
-
-              <Link
-                to="/signup"
-                className="px-7 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition"
-              >
-                Request Enterprise Access
-              </Link>
-
-            </div>
-          </div>
-
-          {/* RIGHT SIDE */}
-          <div className="relative">
-
-            <div className="rounded-[32px] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 p-8 backdrop-blur">
-
-              <div className="grid grid-cols-2 gap-4">
-
-                <div className={card}>
-                  <FaRobot className="text-3xl text-emerald-300" />
-                  <div className="mt-4 text-xl font-bold">
-                    AI Automation
-                  </div>
-                  <div className="text-sm text-slate-400 mt-2">
-                    Reduce repetitive manual processes.
-                  </div>
-                </div>
-
-                <div className={card}>
-                  <FaChartLine className="text-3xl text-cyan-300" />
-                  <div className="mt-4 text-xl font-bold">
-                    Analytics
-                  </div>
-                  <div className="text-sm text-slate-400 mt-2">
-                    Real-time dashboards and reporting.
-                  </div>
-                </div>
-
-                <div className={card}>
-                  <FaBrain className="text-3xl text-purple-300" />
-                  <div className="mt-4 text-xl font-bold">
-                    Predictive Insights
-                  </div>
-                  <div className="text-sm text-slate-400 mt-2">
-                    Forecast trends and identify risks early.
-                  </div>
-                </div>
-
-                <div className={card}>
-                  <FaShieldAlt className="text-3xl text-yellow-300" />
-                  <div className="mt-4 text-xl font-bold">
-                    Monitoring
-                  </div>
-                  <div className="text-sm text-slate-400 mt-2">
-                    Centralized operational visibility.
-                  </div>
-                </div>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-      </section>
-
-      {/* FEATURES */}
-      <section className="max-w-7xl mx-auto px-4 py-10">
-
-        <div className="text-center max-w-3xl mx-auto">
-          <h2 className="text-4xl font-extrabold">
-            Designed For Modern Operations
-          </h2>
-
-          <p className="mt-5 text-slate-400 leading-8">
-            IMALI Enterprise provides a flexible AI-powered framework that can
-            support operational planning, digital engagement, analytics,
-            simulation, and intelligent automation.
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6 mt-14">
-
-          <div className={card}>
-            <div className="text-4xl">📊</div>
-
-            <h3 className="text-2xl font-bold mt-5">
-              Operational Dashboards
-            </h3>
-
-            <p className="text-slate-400 mt-4 leading-7">
-              Visualize performance metrics, trends, alerts, and activity
-              across departments and systems.
-            </p>
-          </div>
-
-          <div className={card}>
-            <div className="text-4xl">🤖</div>
-
-            <h3 className="text-2xl font-bold mt-5">
-              AI Workflow Automation
-            </h3>
-
-            <p className="text-slate-400 mt-4 leading-7">
-              Streamline repetitive workflows using intelligent automation and
-              AI-assisted processes.
-            </p>
-          </div>
-
-          <div className={card}>
-            <div className="text-4xl">📈</div>
-
-            <h3 className="text-2xl font-bold mt-5">
-              Predictive Analytics
-            </h3>
-
-            <p className="text-slate-400 mt-4 leading-7">
-              Identify operational risks, performance trends, and planning
-              opportunities before issues escalate.
-            </p>
-          </div>
-
-          <div className={card}>
-            <div className="text-4xl">🎓</div>
-
-            <h3 className="text-2xl font-bold mt-5">
-              Simulation & Training
-            </h3>
-
-            <p className="text-slate-400 mt-4 leading-7">
-              Practice operational scenarios safely using AI-powered simulation
-              environments and training tools.
-            </p>
-          </div>
-
-          <div className={card}>
-            <div className="text-4xl">👥</div>
-
-            <h3 className="text-2xl font-bold mt-5">
-              Digital Engagement
-            </h3>
-
-            <p className="text-slate-400 mt-4 leading-7">
-              Improve communication, visibility, and responsiveness with
-              modern digital interaction systems.
-            </p>
-          </div>
-
-          <div className={card}>
-            <div className="text-4xl">🔒</div>
-
-            <h3 className="text-2xl font-bold mt-5">
-              Enterprise Ready
-            </h3>
-
-            <p className="text-slate-400 mt-4 leading-7">
-              Scalable architecture designed for operational oversight,
-              security, analytics, and future expansion.
-            </p>
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* USE CASES */}
-      <section className="max-w-7xl mx-auto px-4 py-10">
-
-        <div className="rounded-[32px] border border-white/10 bg-white/5 p-8 md:p-12">
-
-          <div className="text-center max-w-3xl mx-auto">
-            <h2 className="text-4xl font-extrabold">
-              Potential Use Cases
-            </h2>
-
-            <p className="mt-5 text-slate-400 leading-8">
-              The IMALI Enterprise framework can be adapted to support
-              operational intelligence across multiple sectors.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5 mt-14">
-
-            {[
-              "Predictive maintenance systems",
-              "Workforce analytics dashboards",
-              "AI-assisted scheduling systems",
-              "Simulation and training environments",
-              "Digital operations monitoring",
-              "Automated reporting workflows",
-              "Community engagement analytics",
-              "Operational performance tracking",
-              "Real-time visibility dashboards",
-            ].map((item) => (
-              <div
-                key={item}
-                className="rounded-2xl border border-white/10 bg-black/20 p-5 flex items-start gap-3"
-              >
-                <FaCheckCircle className="text-emerald-400 mt-1 flex-shrink-0" />
-
-                <span className="text-slate-300">
-                  {item}
-                </span>
-              </div>
-            ))}
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* CTA */}
-      <section className="max-w-5xl mx-auto px-4 py-16">
-
-        <div className="rounded-[36px] border border-indigo-500/20 bg-gradient-to-r from-indigo-600/10 to-purple-600/10 p-10 text-center">
-
-          <div className="text-6xl mb-5">
-            🚀
-          </div>
-
-          <h2 className="text-4xl font-extrabold">
-            Explore The Interactive Demo
-          </h2>
-
-          <p className="mt-5 text-slate-300 leading-8 max-w-3xl mx-auto">
-            Experience a live AI-powered simulation environment that demonstrates
-            analytics, automation, confidence scoring, operational visibility,
-            and intelligent decision support in real time.
-          </p>
-
-          <div className="flex flex-wrap justify-center gap-4 mt-10">
-
-            <Link
-              to="/trade-demo"
-              className="px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-bold transition shadow-lg shadow-emerald-500/20"
-            >
-              Launch Demo
-            </Link>
-
-            <Link
-              to="/signup"
-              className="px-8 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition"
-            >
-              Contact Enterprise Team
-            </Link>
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* FOOTER */}
-      <div className="text-center text-xs text-white/30 pb-10 px-4">
-        IMALI Enterprise • AI Automation • Analytics • Operational Intelligence
-      </div>
-
-    </div>
+    <>
+      <Header />
+
+      <main className="min-h-screen pt-16 bg-white text-gray-900">
+        <Suspense fallback={<PageFallback />}>
+          <Routes>
+            {/* Main Marketing - No auth required */}
+            <Route path="/" element={<Home />} />
+            <Route path="/about-us" element={<AboutUs />} />
+            <Route path="/how-it-works" element={<HowItWorks />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/support" element={<Support />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/funding-guide" element={<FundingGuide />} />
+            <Route path="/referrals" element={<ReferralSystem />} />
+            <Route path="/enterprise" element={<EnterpriseDemo />} />
+            
+            {/* Demo - No auth required */}
+            <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
+            <Route path="/trade-demo" element={<TradeDemo />} />
+            <Route path="/live" element={<PublicDashboard />} />
+
+            {/* Landing Page Routes - No auth required */}
+            <Route path="/redditA" element={<LandingPages />} />
+            <Route path="/redditB" element={<LandingPages />} />
+            <Route path="/xA" element={<LandingPages />} />
+            <Route path="/xB" element={<LandingPages />} />
+            <Route path="/liA" element={<LandingPages />} />
+            <Route path="/liB" element={<LandingPages />} />
+            <Route path="/tgA" element={<LandingPages />} />
+            <Route path="/tgB" element={<LandingPages />} />
+            <Route path="/socialA" element={<LandingPages />} />
+            <Route path="/socialB" element={<LandingPages />} />
+            <Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
+
+            {/* Newsletter - No auth required */}
+            <Route path="/newsletter" element={<Newsletter />} />
+            <Route path="/newsletter/success" element={<NewsletterSuccess />} />
+
+            {/* Auth Routes - No auth required for login/signup */}
+            <Route path="/signup" element={<Signup />} />
+            <Route
+              path="/login"
+              element={
+                user ? <Navigate to="/after-login" replace /> : <Login />
+              }
+            />
+            <Route
+              path="/after-login"
+              element={
+                <RequireAuth>
+                  <PostLoginRedirect />
+                </RequireAuth>
+              }
+            />
+
+            {/* Billing - Requires auth */}
+            <Route path="/billing/success" element={<BillingSuccess />} />
+            <Route
+              path="/billing"
+              element={
+                <RequireAuth>
+                  <Billing />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/billing-dashboard"
+              element={
+                <RequireAuth>
+                  <BillingDashboard />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings/billing"
+              element={<Navigate to="/billing-dashboard" replace />}
+            />
+
+            {/* Activation - Requires auth */}
+            <Route
+              path="/activation"
+              element={
+                <RedirectIfActivated>
+                  <Activation />
+                </RedirectIfActivated>
+              }
+            />
+
+            {/* Regular Dashboard - Requires activation */}
+            <Route
+              path="/dashboard"
+              element={
+                <RequireActivation>
+                  <MemberDashboard />
+                </RequireActivation>
+              }
+            />
+
+            <Route path="/members" element={<Navigate to="/dashboard" replace />} />
+
+            {/* ==================== ENTERPRISE ROUTES ==================== */}
+            {/* Enterprise Dashboard - Requires enterprise tier */}
+            <Route
+              path="/enterprise/dashboard"
+              element={
+                <RequireEnterprise>
+                  <EnterpriseDashboard />
+                </RequireEnterprise>
+              }
+            />
+            
+            {/* Enterprise Team Management */}
+            <Route
+              path="/enterprise/team"
+              element={
+                <RequireEnterpriseAdmin>
+                  <TeamPage />
+                </RequireEnterpriseAdmin>
+              }
+            />
+            
+            {/* Enterprise Custom Strategies */}
+            <Route
+              path="/enterprise/strategies"
+              element={
+                <RequireEnterpriseAdmin>
+                  <StrategiesPage />
+                </RequireEnterpriseAdmin>
+              }
+            />
+            
+            {/* Enterprise Analytics */}
+            <Route
+              path="/enterprise/analytics"
+              element={
+                <RequireEnterprise>
+                  <AnalyticsPage />
+                </RequireEnterprise>
+              }
+            />
+            
+            {/* Enterprise Audit Logs */}
+            <Route
+              path="/enterprise/audit"
+              element={
+                <RequireEnterpriseAdmin>
+                  <AuditPage />
+                </RequireEnterpriseAdmin>
+              }
+            />
+            
+            {/* Enterprise Branding */}
+            <Route
+              path="/enterprise/branding"
+              element={
+                <RequireEnterpriseAdmin>
+                  <BrandingPage />
+                </RequireEnterpriseAdmin>
+              }
+            />
+            
+            {/* Enterprise Bot Controls */}
+            <Route
+              path="/enterprise/bot-controls"
+              element={
+                <RequireEnterpriseAdmin>
+                  <BotControlsPage />
+                </RequireEnterpriseAdmin>
+              }
+            />
+
+            {/* Admin Routes */}
+            <Route
+              path="/admin/*"
+              element={
+                <RequireAuth>
+                  <RequireAdmin>
+                    <AdminPanel />
+                  </RequireAdmin>
+                </RequireAuth>
+              }
+            />
+
+            {/* Admin Enterprise Requests - Admin only */}
+            <Route
+              path="/admin/enterprise-requests"
+              element={
+                <RequireAuth>
+                  <RequireAdmin>
+                    <Suspense fallback={<PageFallback />}>
+                      <EnterpriseRequestsPage />
+                    </Suspense>
+                  </RequireAdmin>
+                </RequireAuth>
+              }
+            />
+
+            {/* 404 */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </main>
+
+      <Footer />
+    </>
+  );
+}
+
+// ---------------- ROOT ----------------
+export default function App() {
+  return (
+    <AppErrorBoundary>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }
