@@ -14,6 +14,11 @@ import {
   FaChartLine,
   FaImage,
   FaUpload,
+  FaMailBulk,
+  FaUsers,
+  FaSend,
+  FaCheckCircle,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 
 const MAX_IMAGE_SIZE_MB = 5;
@@ -34,12 +39,22 @@ const emptyForm = {
   remove_image_ids: [],
 };
 
+const emptyBulkEmail = {
+  subject: "",
+  html_content: "",
+  test_mode: false,
+  test_email: "",
+};
+
 export default function AutoResponder({ apiBase, showToast }) {
   const [autoResponses, setAutoResponses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showBulkEmailModal, setShowBulkEmailModal] = useState(false);
   const [editingResponse, setEditingResponse] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [sendingBulk, setSendingBulk] = useState(false);
+  const [bulkEmailResult, setBulkEmailResult] = useState(null);
 
   const [imageFiles, setImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
@@ -52,6 +67,7 @@ export default function AutoResponder({ apiBase, showToast }) {
   });
 
   const [formData, setFormData] = useState(emptyForm);
+  const [bulkEmailData, setBulkEmailData] = useState(emptyBulkEmail);
 
   const triggerEvents = useMemo(
     () => [
@@ -113,6 +129,11 @@ export default function AutoResponder({ apiBase, showToast }) {
     setImageFiles([]);
     setImagePreviews([]);
   }, [imagePreviews]);
+
+  const resetBulkEmail = useCallback(() => {
+    setBulkEmailData(emptyBulkEmail);
+    setBulkEmailResult(null);
+  }, []);
 
   const fetchAutoResponses = useCallback(async () => {
     const token = getAuthToken();
@@ -197,6 +218,30 @@ export default function AutoResponder({ apiBase, showToast }) {
     return true;
   };
 
+  const validateBulkEmail = () => {
+    if (!bulkEmailData.subject.trim()) {
+      showToast?.("Email subject is required", "error");
+      return false;
+    }
+
+    if (!bulkEmailData.html_content.trim()) {
+      showToast?.("Email content is required", "error");
+      return false;
+    }
+
+    if (bulkEmailData.test_mode && !bulkEmailData.test_email) {
+      showToast?.("Test email address is required in test mode", "error");
+      return false;
+    }
+
+    if (bulkEmailData.test_mode && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bulkEmailData.test_email)) {
+      showToast?.("Please enter a valid test email address", "error");
+      return false;
+    }
+
+    return true;
+  };
+
   const buildMultipartPayload = () => {
     const payload = new FormData();
 
@@ -264,6 +309,72 @@ export default function AutoResponder({ apiBase, showToast }) {
       showToast?.("Failed to save auto-responder rule", "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sendBulkEmail = async () => {
+    if (!validateBulkEmail()) return;
+
+    const token = getAuthToken();
+
+    if (!token) {
+      showToast?.("Authentication required", "error");
+      return;
+    }
+
+    setSendingBulk(true);
+    setBulkEmailResult(null);
+
+    try {
+      const response = await fetch(`${apiBase}/api/admin/bulk-email`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subject: bulkEmailData.subject,
+          html_content: bulkEmailData.html_content,
+          test_mode: bulkEmailData.test_mode,
+          test_email: bulkEmailData.test_email,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setBulkEmailResult({
+          success: true,
+          sent: data.data?.sent || 0,
+          failed: data.data?.failed || 0,
+          total: data.data?.total || 0,
+          failed_emails: data.data?.failed_emails || [],
+          message: data.message,
+        });
+
+        showToast?.(data.message, "success");
+        
+        if (!bulkEmailData.test_mode) {
+          // Refresh stats after bulk email
+          fetchAutoResponses();
+        }
+      } else {
+        setBulkEmailResult({
+          success: false,
+          error: data.error,
+          message: data.message,
+        });
+        showToast?.(data.error || "Failed to send bulk email", "error");
+      }
+    } catch (error) {
+      console.error("Bulk email error:", error);
+      setBulkEmailResult({
+        success: false,
+        error: error.message,
+      });
+      showToast?.("Failed to send bulk email", "error");
+    } finally {
+      setSendingBulk(false);
     }
   };
 
@@ -436,6 +547,11 @@ export default function AutoResponder({ apiBase, showToast }) {
     setShowCreateModal(true);
   };
 
+  const openBulkEmailModal = () => {
+    resetBulkEmail();
+    setShowBulkEmailModal(true);
+  };
+
   const openEditModal = (rule) => {
     resetForm();
 
@@ -460,6 +576,11 @@ export default function AutoResponder({ apiBase, showToast }) {
     resetForm();
   };
 
+  const closeBulkEmailModal = () => {
+    setShowBulkEmailModal(false);
+    resetBulkEmail();
+  };
+
   const getTriggerLabel = (value) => {
     return triggerEvents.find((event) => event.value === value)?.label || value;
   };
@@ -474,6 +595,7 @@ export default function AutoResponder({ apiBase, showToast }) {
 
   return (
     <div className="space-y-6">
+      {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard icon={<FaEnvelope />} color="text-blue-400" value={stats.total_sent} label="Emails Sent" />
         <StatCard icon={<FaRobot />} color="text-emerald-400" value={stats.active_rules} label="Active Rules" />
@@ -481,6 +603,7 @@ export default function AutoResponder({ apiBase, showToast }) {
         <StatCard icon={<FaChartLine />} color="text-amber-400" value={`${stats.click_rate}%`} label="Click Rate" />
       </div>
 
+      {/* Header with Buttons */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 text-lg font-semibold text-white">
@@ -492,15 +615,25 @@ export default function AutoResponder({ apiBase, showToast }) {
           </p>
         </div>
 
-        <button
-          onClick={openCreateModal}
-          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-          disabled={saving}
-        >
-          <FaPlus /> Create Rule
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={openBulkEmailModal}
+            className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500"
+          >
+            <FaMailBulk /> Bulk Email
+          </button>
+
+          <button
+            onClick={openCreateModal}
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            disabled={saving}
+          >
+            <FaPlus /> Create Rule
+          </button>
+        </div>
       </div>
 
+      {/* Auto-Responder Rules List */}
       <div className="space-y-3">
         {autoResponses.length === 0 ? (
           <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
@@ -583,6 +716,7 @@ export default function AutoResponder({ apiBase, showToast }) {
         )}
       </div>
 
+      {/* Create/Edit Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6">
@@ -796,29 +930,230 @@ Need help? Contact support@imali-defi.com`}
               </div>
             </div>
           </div>
-
-          <style>{`
-            .input {
-              width: 100%;
-              border-radius: 0.5rem;
-              border: 1px solid rgba(255,255,255,0.1);
-              background: rgba(0,0,0,0.4);
-              padding: 0.5rem 0.75rem;
-              color: white;
-              outline: none;
-            }
-
-            .input::placeholder {
-              color: rgba(255,255,255,0.3);
-            }
-
-            .input:focus {
-              border-color: rgba(16,185,129,0.65);
-              box-shadow: 0 0 0 2px rgba(16,185,129,0.15);
-            }
-          `}</style>
         </div>
       )}
+
+      {/* Bulk Email Modal */}
+      {showBulkEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-white">
+                <FaMailBulk className="mr-2 inline text-purple-400" />
+                Bulk Email to All Users
+              </h3>
+
+              <button
+                onClick={closeBulkEmailModal}
+                className="text-white/50 hover:text-white"
+                disabled={sendingBulk}
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Test Mode Toggle */}
+              <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 p-3">
+                <div>
+                  <div className="text-sm font-medium text-white">Test Mode</div>
+                  <div className="text-xs text-white/40">
+                    Send to a single email address first to preview
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setBulkEmailData({ 
+                      ...bulkEmailData, 
+                      test_mode: !bulkEmailData.test_mode,
+                      test_email: bulkEmailData.test_mode ? "" : bulkEmailData.test_email
+                    })
+                  }
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                    bulkEmailData.test_mode ? "bg-purple-600" : "bg-gray-600"
+                  }`}
+                  disabled={sendingBulk}
+                >
+                  <span
+                    className={`absolute h-4 w-4 rounded-full bg-white transition ${
+                      bulkEmailData.test_mode ? "right-1" : "left-1"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Test Email Input */}
+              {bulkEmailData.test_mode && (
+                <Field label="Test Email Address *">
+                  <input
+                    type="email"
+                    value={bulkEmailData.test_email}
+                    onChange={(event) =>
+                      setBulkEmailData({ ...bulkEmailData, test_email: event.target.value })
+                    }
+                    placeholder="test@example.com"
+                    className="input"
+                    disabled={sendingBulk}
+                  />
+                  <p className="mt-1 text-xs text-purple-400">
+                    In test mode, email will only be sent to this address
+                  </p>
+                </Field>
+              )}
+
+              {/* Email Subject */}
+              <Field label="Email Subject *">
+                <input
+                  type="text"
+                  value={bulkEmailData.subject}
+                  onChange={(event) =>
+                    setBulkEmailData({ ...bulkEmailData, subject: event.target.value })
+                  }
+                  placeholder="Important Update from IMALI"
+                  className="input"
+                  disabled={sendingBulk}
+                />
+              </Field>
+
+              {/* Email Content */}
+              <Field label="Email Content (HTML) *">
+                <textarea
+                  value={bulkEmailData.html_content}
+                  onChange={(event) =>
+                    setBulkEmailData({ ...bulkEmailData, html_content: event.target.value })
+                  }
+                  placeholder={`<h1>Hello {user_name}!</h1>
+<p>We have important news to share...</p>
+<p>Visit your dashboard: https://imali-defi.com/dashboard</p>
+<br/>
+<p>Best regards,<br/>IMALI Team</p>`}
+                  rows={12}
+                  className="input font-mono text-sm"
+                  disabled={sendingBulk}
+                />
+
+                <p className="mt-1 text-xs text-white/40">
+                  Available variables: {"{user_name}"}, {"{user_email}"}, {"{user_id}"}
+                </p>
+              </Field>
+
+              {/* Results Display */}
+              {bulkEmailResult && (
+                <div className={`rounded-lg border p-4 ${
+                  bulkEmailResult.success 
+                    ? "border-emerald-500/30 bg-emerald-500/10" 
+                    : "border-red-500/30 bg-red-500/10"
+                }`}>
+                  {bulkEmailResult.success ? (
+                    <>
+                      <div className="flex items-center gap-2 text-emerald-400">
+                        <FaCheckCircle />
+                        <span className="font-semibold">Bulk Email Complete</span>
+                      </div>
+                      <div className="mt-2 space-y-1 text-sm">
+                        <p>✅ Sent: {bulkEmailResult.sent}</p>
+                        <p>❌ Failed: {bulkEmailResult.failed}</p>
+                        <p>📊 Total: {bulkEmailResult.total}</p>
+                        {bulkEmailResult.failed_emails?.length > 0 && (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-xs text-red-400">
+                              View failed emails ({bulkEmailResult.failed_emails.length})
+                            </summary>
+                            <div className="mt-2 max-h-32 overflow-y-auto text-xs">
+                              {bulkEmailResult.failed_emails.map((email, i) => (
+                                <div key={i} className="text-red-300">{email}</div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 text-red-400">
+                        <FaExclamationTriangle />
+                        <span className="font-semibold">Error</span>
+                      </div>
+                      <p className="mt-2 text-sm">{bulkEmailResult.error || bulkEmailResult.message}</p>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Warning for real bulk email */}
+              {!bulkEmailData.test_mode && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                  <div className="flex items-center gap-2 text-amber-400">
+                    <FaExclamationTriangle />
+                    <span className="text-sm font-semibold">Warning</span>
+                  </div>
+                  <p className="mt-1 text-xs text-amber-300">
+                    This will send an email to ALL users in your database. 
+                    Make sure you've tested the email content first using Test Mode.
+                  </p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={sendBulkEmail}
+                  disabled={sendingBulk}
+                  className="flex-1 rounded-lg bg-purple-600 py-2 font-medium text-white hover:bg-purple-500 disabled:opacity-50"
+                >
+                  {sendingBulk ? (
+                    <>
+                      <FaSpinner className="mr-2 inline animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <FaSend className="mr-2 inline" />
+                      {bulkEmailData.test_mode ? "Send Test Email" : "Send to All Users"}
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={closeBulkEmailModal}
+                  className="flex-1 rounded-lg border border-white/10 py-2 text-white hover:bg-white/5 disabled:opacity-50"
+                  disabled={sendingBulk}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Styles */}
+      <style>{`
+        .input {
+          width: 100%;
+          border-radius: 0.5rem;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(0,0,0,0.4);
+          padding: 0.5rem 0.75rem;
+          color: white;
+          outline: none;
+        }
+
+        .input::placeholder {
+          color: rgba(255,255,255,0.3);
+        }
+
+        .input:focus {
+          border-color: rgba(16,185,129,0.65);
+          box-shadow: 0 0 0 2px rgba(16,185,129,0.15);
+        }
+
+        textarea.input {
+          font-family: monospace;
+        }
+      `}</style>
     </div>
   );
 }
