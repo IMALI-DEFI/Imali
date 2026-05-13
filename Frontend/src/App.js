@@ -430,7 +430,7 @@ function AppContent() {
               element={
                 <RequireEnterpriseAdmin>
                   <AuditPage />
-                </RequireEnterpriseAdmin}
+                </RequireEnterpriseAdmin>
               }
             />
             
