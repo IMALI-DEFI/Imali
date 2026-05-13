@@ -345,7 +345,6 @@ function MainAppRoutes() {
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
             {/* AUTHENTICATED ENTERPRISE DASHBOARD ROUTES */}
-            <Route path="/enterprise/dashboard" element={<RequireEnterprise><EnterpriseDashboard /></RequireEnterprise>} />
             <Route path="/enterprise/team" element={<RequireEnterpriseAdmin><TeamPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/strategies" element={<RequireEnterpriseAdmin><StrategiesPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/analytics" element={<RequireEnterprise><AnalyticsPage /></RequireEnterprise>} />
