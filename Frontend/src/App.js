@@ -380,64 +380,75 @@ function AppContent() {
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
             {/* ==================== AUTHENTICATED ENTERPRISE DASHBOARD ROUTES ==================== */}
+            
+            {/* DEMO MODE: Enterprise Dashboard - NO AUTH REQUIRED for demo viewing */}
+            {/* You can access this at: http://localhost:3000/enterprise/dashboard */}
             <Route
               path="/enterprise/dashboard"
               element={
+                <Suspense fallback={<PageFallback />}>
                   <EnterpriseDashboard />
+                </Suspense>
               }
             />
             
+            {/* DEMO MODE: Team Page - NO AUTH REQUIRED for demo viewing */}
             <Route
               path="/enterprise/team"
               element={
-                <RequireEnterpriseAdmin>
+                <Suspense fallback={<PageFallback />}>
                   <TeamPage />
-                </RequireEnterpriseAdmin>
+                </Suspense>
               }
             />
             
+            {/* DEMO MODE: Strategies Page - NO AUTH REQUIRED for demo viewing */}
             <Route
               path="/enterprise/strategies"
               element={
-                <RequireEnterpriseAdmin>
+                <Suspense fallback={<PageFallback />}>
                   <StrategiesPage />
-                </RequireEnterpriseAdmin>
+                </Suspense>
               }
             />
             
+            {/* DEMO MODE: Analytics Page - NO AUTH REQUIRED for demo viewing */}
             <Route
               path="/enterprise/analytics"
               element={
-                <RequireEnterprise>
+                <Suspense fallback={<PageFallback />}>
                   <AnalyticsPage />
-                </RequireEnterprise>
+                </Suspense>
               }
             />
             
+            {/* DEMO MODE: Audit Page - NO AUTH REQUIRED for demo viewing */}
             <Route
               path="/enterprise/audit"
               element={
-                <RequireEnterpriseAdmin>
+                <Suspense fallback={<PageFallback />}>
                   <AuditPage />
-                </RequireEnterpriseAdmin>
+                </Suspense>
               }
             />
             
+            {/* DEMO MODE: Branding Page - NO AUTH REQUIRED for demo viewing */}
             <Route
               path="/enterprise/branding"
               element={
-                <RequireEnterpriseAdmin>
+                <Suspense fallback={<PageFallback />}>
                   <BrandingPage />
-                </RequireEnterpriseAdmin>
+                </Suspense>
               }
             />
             
+            {/* DEMO MODE: Bot Controls Page - NO AUTH REQUIRED for demo viewing */}
             <Route
               path="/enterprise/bot-controls"
               element={
-                <RequireEnterpriseAdmin>
+                <Suspense fallback={<PageFallback />}>
                   <BotControlsPage />
-                </RequireEnterpriseAdmin>
+                </Suspense>
               }
             />
 
