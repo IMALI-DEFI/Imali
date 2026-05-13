@@ -273,6 +273,17 @@ function AppContent() {
       <main className="min-h-screen pt-16 bg-white text-gray-900">
         <Suspense fallback={<PageFallback />}>
           <Routes>
+            {/* ==================== TEST ROUTES - NO AUTH, FULL PAGE (Like /test/wizard) ==================== */}
+            {/* These routes render the component directly WITHOUT the main layout */}
+            <Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
+            <Route path="/test/enterprise-dashboard" element={<EnterpriseDashboard />} />
+            <Route path="/test/enterprise-team" element={<TeamPage />} />
+            <Route path="/test/enterprise-strategies" element={<StrategiesPage />} />
+            <Route path="/test/enterprise-analytics" element={<AnalyticsPage />} />
+            <Route path="/test/enterprise-audit" element={<AuditPage />} />
+            <Route path="/test/enterprise-branding" element={<BrandingPage />} />
+            <Route path="/test/enterprise-bot-controls" element={<BotControlsPage />} />
+
             {/* ==================== MAIN MARKETING PAGES ==================== */}
             <Route path="/" element={<Home />} />
             <Route path="/about-us" element={<AboutUs />} />
@@ -309,9 +320,6 @@ function AppContent() {
             <Route path="/tgB" element={<LandingPages />} />
             <Route path="/socialA" element={<LandingPages />} />
             <Route path="/socialB" element={<LandingPages />} />
-            
-            {/* Test / Wizard Route */}
-            <Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
 
             {/* ==================== NEWSLETTER ==================== */}
             <Route path="/newsletter" element={<Newsletter />} />
@@ -422,7 +430,7 @@ function AppContent() {
               element={
                 <RequireEnterpriseAdmin>
                   <AuditPage />
-                </RequireEnterpriseAdmin>
+                </RequireEnterpriseAdmin}
               }
             />
             
@@ -441,71 +449,6 @@ function AppContent() {
                 <RequireEnterpriseAdmin>
                   <BotControlsPage />
                 </RequireEnterpriseAdmin>
-              }
-            />
-
-            {/* ==================== TEST ROUTES - NO AUTH REQUIRED ==================== */}
-            {/* Use these for demo/testing - they bypass all authentication */}
-            <Route
-              path="/test/enterprise-dashboard"
-              element={
-                <Suspense fallback={<PageFallback />}>
-                  <EnterpriseDashboard />
-                </Suspense>
-              }
-            />
-            
-            <Route
-              path="/test/enterprise-team"
-              element={
-                <Suspense fallback={<PageFallback />}>
-                  <TeamPage />
-                </Suspense>
-              }
-            />
-            
-            <Route
-              path="/test/enterprise-strategies"
-              element={
-                <Suspense fallback={<PageFallback />}>
-                  <StrategiesPage />
-                </Suspense>
-              }
-            />
-            
-            <Route
-              path="/test/enterprise-analytics"
-              element={
-                <Suspense fallback={<PageFallback />}>
-                  <AnalyticsPage />
-                </Suspense>
-              }
-            />
-            
-            <Route
-              path="/test/enterprise-audit"
-              element={
-                <Suspense fallback={<PageFallback />}>
-                  <AuditPage />
-                </Suspense>
-              }
-            />
-            
-            <Route
-              path="/test/enterprise-branding"
-              element={
-                <Suspense fallback={<PageFallback />}>
-                  <BrandingPage />
-                </Suspense>
-              }
-            />
-            
-            <Route
-              path="/test/enterprise-bot-controls"
-              element={
-                <Suspense fallback={<PageFallback />}>
-                  <BotControlsPage />
-                </Suspense>
               }
             />
 
