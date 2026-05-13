@@ -383,9 +383,7 @@ function AppContent() {
             <Route
               path="/enterprise/dashboard"
               element={
-                <RequireEnterprise>
                   <EnterpriseDashboard />
-                </RequireEnterprise>
               }
             />
             
