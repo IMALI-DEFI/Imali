@@ -260,31 +260,37 @@ function NotFound() {
   );
 }
 
-// ---------------- MAIN APP ----------------
-function AppContent() {
-  const { loading, user } = useAuth();
+// ---------------- TEST ROUTES COMPONENT (NO HEADER/FOOTER) ----------------
+function TestRoutes() {
+  return (
+    <Suspense fallback={<PageFallback />}>
+      <Routes>
+        <Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
+        <Route path="/test/enterprise-dashboard" element={<EnterpriseDashboard />} />
+        <Route path="/test/enterprise-team" element={<TeamPage />} />
+        <Route path="/test/enterprise-strategies" element={<StrategiesPage />} />
+        <Route path="/test/enterprise-analytics" element={<AnalyticsPage />} />
+        <Route path="/test/enterprise-audit" element={<AuditPage />} />
+        <Route path="/test/enterprise-branding" element={<BrandingPage />} />
+        <Route path="/test/enterprise-bot-controls" element={<BotControlsPage />} />
+        <Route path="/test/*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
+  );
+}
 
+// ---------------- MAIN APP ROUTES (WITH HEADER/FOOTER) ----------------
+function MainAppRoutes() {
+  const { loading, user } = useAuth();
   if (loading) return <LoadingSpinner />;
 
   return (
     <>
       <Header />
-
       <main className="min-h-screen pt-16 bg-white text-gray-900">
         <Suspense fallback={<PageFallback />}>
           <Routes>
-            {/* ==================== TEST ROUTES - NO AUTH, FULL PAGE (Like /test/wizard) ==================== */}
-            {/* These routes render the component directly WITHOUT the main layout */}
-            <Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
-            <Route path="/test/enterprise-dashboard" element={<EnterpriseDashboard />} />
-            <Route path="/test/enterprise-team" element={<TeamPage />} />
-            <Route path="/test/enterprise-strategies" element={<StrategiesPage />} />
-            <Route path="/test/enterprise-analytics" element={<AnalyticsPage />} />
-            <Route path="/test/enterprise-audit" element={<AuditPage />} />
-            <Route path="/test/enterprise-branding" element={<BrandingPage />} />
-            <Route path="/test/enterprise-bot-controls" element={<BotControlsPage />} />
-
-            {/* ==================== MAIN MARKETING PAGES ==================== */}
+            {/* MAIN MARKETING PAGES */}
             <Route path="/" element={<Home />} />
             <Route path="/about-us" element={<AboutUs />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
@@ -295,21 +301,16 @@ function AppContent() {
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
             
-            {/* ==================== ENTERPRISE PAGES - BOTH VERSIONS ==================== */}
-            {/* GOVERNMENT / EDUCATIONAL VERSION - for counties, schools, workforce programs */}
-            {/* URL: imali-defi.com/Enterprise */}
+            {/* ENTERPRISE PAGES - BOTH VERSIONS */}
             <Route path="/Enterprise" element={<Enterprise />} />
-            
-            {/* ALDO / TRADING INFRASTRUCTURE VERSION - for brokers, trading firms, fintech operators */}
-            {/* URL: imali-defi.com/EnterpriseDemo */}
             <Route path="/EnterpriseDemo" element={<EnterpriseDemo />} />
             
-            {/* Demo redirect - keep for compatibility */}
+            {/* Demo redirect */}
             <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
             <Route path="/trade-demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
 
-            {/* ==================== LANDING PAGE ROUTES ==================== */}
+            {/* LANDING PAGE ROUTES */}
             <Route path="/redditA" element={<LandingPages />} />
             <Route path="/redditB" element={<LandingPages />} />
             <Route path="/xA" element={<LandingPages />} />
@@ -321,171 +322,65 @@ function AppContent() {
             <Route path="/socialA" element={<LandingPages />} />
             <Route path="/socialB" element={<LandingPages />} />
 
-            {/* ==================== NEWSLETTER ==================== */}
+            {/* NEWSLETTER */}
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/newsletter/success" element={<NewsletterSuccess />} />
 
-            {/* ==================== AUTH ROUTES ==================== */}
+            {/* AUTH ROUTES */}
             <Route path="/signup" element={<Signup />} />
-            <Route
-              path="/login"
-              element={
-                user ? <Navigate to="/after-login" replace /> : <Login />
-              }
-            />
-            <Route
-              path="/after-login"
-              element={
-                <RequireAuth>
-                  <PostLoginRedirect />
-                </RequireAuth>
-              }
-            />
+            <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
+            <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
 
-            {/* ==================== BILLING ==================== */}
+            {/* BILLING */}
             <Route path="/billing/success" element={<BillingSuccess />} />
-            <Route
-              path="/billing"
-              element={
-                <RequireAuth>
-                  <Billing />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/billing-dashboard"
-              element={
-                <RequireAuth>
-                  <BillingDashboard />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/settings/billing"
-              element={<Navigate to="/billing-dashboard" replace />}
-            />
+            <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
+            <Route path="/billing-dashboard" element={<RequireAuth><BillingDashboard /></RequireAuth>} />
+            <Route path="/settings/billing" element={<Navigate to="/billing-dashboard" replace />} />
 
-            {/* ==================== ACTIVATION ==================== */}
-            <Route
-              path="/activation"
-              element={
-                <RedirectIfActivated>
-                  <Activation />
-                </RedirectIfActivated>
-              }
-            />
+            {/* ACTIVATION */}
+            <Route path="/activation" element={<RedirectIfActivated><Activation /></RedirectIfActivated>} />
 
-            {/* ==================== REGULAR DASHBOARD ==================== */}
-            <Route
-              path="/dashboard"
-              element={
-                <RequireActivation>
-                  <MemberDashboard />
-                </RequireActivation>
-              }
-            />
-
+            {/* REGULAR DASHBOARD */}
+            <Route path="/dashboard" element={<RequireActivation><MemberDashboard /></RequireActivation>} />
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
-            {/* ==================== AUTHENTICATED ENTERPRISE DASHBOARD ROUTES ==================== */}
-            {/* These require enterprise tier - will redirect to pricing if not enterprise */}
-            <Route
-              path="/enterprise/dashboard"
-              element={
-                <RequireEnterprise>
-                  <EnterpriseDashboard />
-                </RequireEnterprise>
-              }
-            />
-            
-            <Route
-              path="/enterprise/team"
-              element={
-                <RequireEnterpriseAdmin>
-                  <TeamPage />
-                </RequireEnterpriseAdmin>
-              }
-            />
-            
-            <Route
-              path="/enterprise/strategies"
-              element={
-                <RequireEnterpriseAdmin>
-                  <StrategiesPage />
-                </RequireEnterpriseAdmin>
-              }
-            />
-            
-            <Route
-              path="/enterprise/analytics"
-              element={
-                <RequireEnterprise>
-                  <AnalyticsPage />
-                </RequireEnterprise>
-              }
-            />
-            
-            <Route
-              path="/enterprise/audit"
-              element={
-                <RequireEnterpriseAdmin>
-                  <AuditPage />
-                </RequireEnterpriseAdmin>
-              }
-            />
-            
-            <Route
-              path="/enterprise/branding"
-              element={
-                <RequireEnterpriseAdmin>
-                  <BrandingPage />
-                </RequireEnterpriseAdmin>
-              }
-            />
-            
-            <Route
-              path="/enterprise/bot-controls"
-              element={
-                <RequireEnterpriseAdmin>
-                  <BotControlsPage />
-                </RequireEnterpriseAdmin>
-              }
-            />
+            {/* AUTHENTICATED ENTERPRISE DASHBOARD ROUTES */}
+            <Route path="/enterprise/dashboard" element={<RequireEnterprise><EnterpriseDashboard /></RequireEnterprise>} />
+            <Route path="/enterprise/team" element={<RequireEnterpriseAdmin><TeamPage /></RequireEnterpriseAdmin>} />
+            <Route path="/enterprise/strategies" element={<RequireEnterpriseAdmin><StrategiesPage /></RequireEnterpriseAdmin>} />
+            <Route path="/enterprise/analytics" element={<RequireEnterprise><AnalyticsPage /></RequireEnterprise>} />
+            <Route path="/enterprise/audit" element={<RequireEnterpriseAdmin><AuditPage /></RequireEnterpriseAdmin>} />
+            <Route path="/enterprise/branding" element={<RequireEnterpriseAdmin><BrandingPage /></RequireEnterpriseAdmin>} />
+            <Route path="/enterprise/bot-controls" element={<RequireEnterpriseAdmin><BotControlsPage /></RequireEnterpriseAdmin>} />
 
-            {/* ==================== ADMIN ROUTES ==================== */}
-            <Route
-              path="/admin/*"
-              element={
-                <RequireAuth>
-                  <RequireAdmin>
-                    <AdminPanel />
-                  </RequireAdmin>
-                </RequireAuth>
-              }
-            />
+            {/* ADMIN ROUTES */}
+            <Route path="/admin/*" element={<RequireAuth><RequireAdmin><AdminPanel /></RequireAdmin></RequireAuth>} />
+            <Route path="/admin/enterprise-requests" element={<RequireAuth><RequireAdmin><Suspense fallback={<PageFallback />}><EnterpriseRequestsPage /></Suspense></RequireAdmin></RequireAuth>} />
 
-            <Route
-              path="/admin/enterprise-requests"
-              element={
-                <RequireAuth>
-                  <RequireAdmin>
-                    <Suspense fallback={<PageFallback />}>
-                      <EnterpriseRequestsPage />
-                    </Suspense>
-                  </RequireAdmin>
-                </RequireAuth>
-              }
-            />
-
-            {/* ==================== 404 ==================== */}
+            {/* 404 */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </main>
-
       <Footer />
     </>
   );
+}
+
+// ---------------- ROOT APP ----------------
+function AppContent() {
+  const location = useLocation();
+  
+  // Check if we're on a test route
+  const isTestRoute = location.pathname.startsWith('/test');
+  
+  if (isTestRoute) {
+    // Render test routes WITHOUT Header/Footer
+    return <TestRoutes />;
+  }
+  
+  // Render main app WITH Header/Footer
+  return <MainAppRoutes />;
 }
 
 // ---------------- ROOT ----------------
