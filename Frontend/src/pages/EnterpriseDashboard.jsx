@@ -118,6 +118,45 @@ const SETUP_CARD_STYLES = {
   default: "border-blue-300 bg-blue-50",
 };
 
+// Mock data for demo mode
+const MOCK_ORGANIZATION = {
+  id: "demo-org",
+  name: "Demo Enterprise",
+  members: [
+    { user_id: "1", email: "admin@demo.com", role: "admin", joined_at: "2024-01-15" },
+    { user_id: "2", email: "trader1@demo.com", role: "member", joined_at: "2024-02-01" },
+    { user_id: "3", email: "trader2@demo.com", role: "member", joined_at: "2024-03-10" },
+    { user_id: "4", email: "analyst@demo.com", role: "viewer", joined_at: "2024-04-01" },
+  ],
+  custom_branding: { logo: null, primaryColor: "#4f46e5" },
+};
+
+const MOCK_ANALYTICS = {
+  summary: {
+    total_pnl: 12450,
+    win_rate: 68.5,
+    total_trades: 156,
+    winning_trades: 107,
+    losing_trades: 49,
+    current_streak: 3,
+  },
+  members: [
+    { email: "admin@demo.com", tier: "enterprise", total_trades: 45, total_pnl: 5230, winning_trades: 32, losing_trades: 13 },
+    { email: "trader1@demo.com", tier: "enterprise", total_trades: 67, total_pnl: 4120, winning_trades: 45, losing_trades: 22 },
+    { email: "trader2@demo.com", tier: "enterprise", total_trades: 44, total_pnl: 3100, winning_trades: 30, losing_trades: 14 },
+  ],
+};
+
+const MOCK_SERIES = [
+  { date: "2024-05-07", pnl: 1200, trades: 12 },
+  { date: "2024-05-08", pnl: 800, trades: 8 },
+  { date: "2024-05-09", pnl: -200, trades: 5 },
+  { date: "2024-05-10", pnl: 1500, trades: 15 },
+  { date: "2024-05-11", pnl: 900, trades: 10 },
+  { date: "2024-05-12", pnl: 600, trades: 7 },
+  { date: "2024-05-13", pnl: 1100, trades: 11 },
+];
+
 const usd = (n = 0) => `$${Number(n || 0).toFixed(2)}`;
 const pct = (n = 0) => `${Number(n || 0).toFixed(1)}%`;
 
@@ -219,7 +258,7 @@ function Toast({ message, type = "info", onClose }) {
 }
 
 // Simple API Key Modal Component
-function ApiKeyModal({ open, onClose, onConnect }) {
+function ApiKeyModal({ open, onClose, onConnect, demoMode }) {
   const [mode, setMode] = useState("paper");
   
   if (!open) return null;
@@ -245,7 +284,19 @@ function ApiKeyModal({ open, onClose, onConnect }) {
                 <option value="paper">Paper Trading (Recommended)</option>
                 <option value="live">Live Trading</option>
               </select>
-              <p className="text-xs text-slate-600 text-center">Contact support for API key setup assistance.</p>
+              {demoMode ? (
+                <button 
+                  onClick={() => {
+                    onConnect();
+                    onClose();
+                  }} 
+                  className="w-full rounded-lg bg-indigo-600 py-2 text-white font-semibold hover:bg-indigo-700"
+                >
+                  Connect (Demo)
+                </button>
+              ) : (
+                <p className="text-xs text-slate-600 text-center">Contact support for API key setup assistance.</p>
+              )}
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -255,14 +306,28 @@ function ApiKeyModal({ open, onClose, onConnect }) {
                 <option value="paper">Paper Trading (Recommended)</option>
                 <option value="live">Live Trading</option>
               </select>
-              <p className="text-xs text-slate-600 text-center">Contact support for API key setup assistance.</p>
+              {demoMode ? (
+                <button 
+                  onClick={() => {
+                    onConnect();
+                    onClose();
+                  }} 
+                  className="w-full rounded-lg bg-indigo-600 py-2 text-white font-semibold hover:bg-indigo-700"
+                >
+                  Connect (Demo)
+                </button>
+              ) : (
+                <p className="text-xs text-slate-600 text-center">Contact support for API key setup assistance.</p>
+              )}
             </div>
           </div>
         </div>
-        <div className="mt-5 flex gap-3">
-          <Button onClick={onConnect} className="flex-1">Save Keys</Button>
-          <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-        </div>
+        {!demoMode && (
+          <div className="mt-5 flex gap-3">
+            <Button onClick={onConnect} className="flex-1">Save Keys</Button>
+            <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -299,7 +364,7 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   );
 }
 
-export default function EnterpriseDashboard() {
+export default function EnterpriseDashboard({ demoMode = false }) {
   const nav = useNavigate();
   const { user } = useAuth();
   const { getOrganization, getAnalytics, loading: enterpriseLoading } = useEnterprise();
@@ -311,16 +376,16 @@ export default function EnterpriseDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "info" });
-  const [organization, setOrganization] = useState(null);
-  const [analytics, setAnalytics] = useState(null);
-  const [members, setMembers] = useState([]);
-  const [stats, setStats] = useState({});
-  const [series, setSeries] = useState([]);
-  const [integrations, setIntegrations] = useState({ alpaca_connected: false, okx_connected: false });
+  const [organization, setOrganization] = useState(demoMode ? MOCK_ORGANIZATION : null);
+  const [analytics, setAnalytics] = useState(demoMode ? MOCK_ANALYTICS : null);
+  const [members, setMembers] = useState(demoMode ? MOCK_ORGANIZATION.members : []);
+  const [stats, setStats] = useState(demoMode ? MOCK_ANALYTICS.summary : {});
+  const [series, setSeries] = useState(demoMode ? MOCK_SERIES : []);
+  const [integrations, setIntegrations] = useState({ alpaca_connected: demoMode, okx_connected: demoMode });
   const [currentStrategy, setCurrentStrategy] = useState("mean_reversion");
   const [savingStrategy, setSavingStrategy] = useState("");
-  const [tradingEnabled, setTradingEnabled] = useState(false);
-  const [paperTradingEnabled, setPaperTradingEnabled] = useState(false);
+  const [tradingEnabled, setTradingEnabled] = useState(demoMode ? false : false);
+  const [paperTradingEnabled, setPaperTradingEnabled] = useState(demoMode ? true : false);
   const [togglingTrading, setTogglingTrading] = useState(false);
   const [togglingPaper, setTogglingPaper] = useState(false);
   const [showApiModal, setShowApiModal] = useState(false);
@@ -333,6 +398,19 @@ export default function EnterpriseDashboard() {
   }, []);
 
   const loadDashboardData = useCallback(async ({ silent = false, force = false } = {}) => {
+    // DEMO MODE: Skip API calls, use mock data
+    if (demoMode) {
+      setOrganization(MOCK_ORGANIZATION);
+      setMembers(MOCK_ORGANIZATION.members);
+      setAnalytics(MOCK_ANALYTICS);
+      setStats(MOCK_ANALYTICS.summary);
+      setSeries(MOCK_SERIES);
+      setIntegrations({ alpaca_connected: true, okx_connected: true });
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     if (loadingRef.current) return;
     const now = Date.now();
 
@@ -408,7 +486,7 @@ export default function EnterpriseDashboard() {
         setLoading(false);
       }
     }
-  }, [getOrganization, getAnalytics, nav, notify, members]);
+  }, [getOrganization, getAnalytics, nav, notify, members, demoMode]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -498,8 +576,13 @@ export default function EnterpriseDashboard() {
   }), []);
 
   const handleConnectKeys = () => {
-    setShowApiModal(false);
-    notify("API key setup guide sent. Contact support@imali-defi.com for assistance.", "info");
+    if (demoMode) {
+      setIntegrations({ alpaca_connected: true, okx_connected: true });
+      notify("API keys connected in demo mode! Trading ready.", "success");
+    } else {
+      setShowApiModal(false);
+      notify("API key setup guide sent. Contact support@imali-defi.com for assistance.", "info");
+    }
   };
 
   const handleTogglePaperTrading = async (enabled) => {
@@ -514,6 +597,16 @@ export default function EnterpriseDashboard() {
     const previousPaper = paperTradingEnabled;
 
     try {
+      if (demoMode) {
+        // Demo mode: just simulate the toggle
+        setTimeout(() => {
+          setPaperTradingEnabled(enabled);
+          notify(enabled ? "Paper trading started (Demo Mode)." : "Paper trading stopped (Demo Mode).", "success");
+          setTogglingPaper(false);
+        }, 500);
+        return;
+      }
+
       if (BotAPI.togglePaperTrading) {
         const result = await BotAPI.togglePaperTrading(enabled);
         if (result?.success === false) throw new Error(result?.error);
@@ -527,7 +620,7 @@ export default function EnterpriseDashboard() {
       setPaperTradingEnabled(previousPaper);
       notify(err?.message || "Failed to update paper trading.", "error");
     } finally {
-      setTogglingPaper(false);
+      if (!demoMode) setTogglingPaper(false);
     }
   };
 
@@ -543,6 +636,17 @@ export default function EnterpriseDashboard() {
     const previousLive = tradingEnabled;
 
     try {
+      if (demoMode) {
+        // Demo mode: just simulate the toggle
+        setTimeout(() => {
+          setTradingEnabled(enabled);
+          setShowLiveConfirm(false);
+          notify(enabled ? "Live trading started (Demo Mode)." : "Live trading stopped (Demo Mode).", "success");
+          setTogglingTrading(false);
+        }, 500);
+        return;
+      }
+
       if (BotAPI.toggleTrading) {
         const result = await BotAPI.toggleTrading(enabled);
         if (result?.success === false) throw new Error(result?.error);
@@ -557,11 +661,11 @@ export default function EnterpriseDashboard() {
       setTradingEnabled(previousLive);
       notify(err?.message || "Failed to update live trading.", "error");
     } finally {
-      setTogglingTrading(false);
+      if (!demoMode) setTogglingTrading(false);
     }
   };
 
-  if (loading || enterpriseLoading) {
+  if (loading || (!demoMode && enterpriseLoading)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-center">
         <div>
@@ -577,12 +681,22 @@ export default function EnterpriseDashboard() {
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
 
       <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
+        {/* Demo Mode Banner */}
+        {demoMode && (
+          <div className="rounded-2xl border border-blue-300 bg-blue-50 p-3 text-center">
+            <p className="text-sm font-semibold text-blue-800">
+              🧪 Demo Mode — Using mock data. No real API calls or trading.
+            </p>
+          </div>
+        )}
+
         {/* Welcome Header */}
         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">
                 {organization?.name || "Enterprise"} Dashboard
+                {demoMode && <span className="ml-2 text-sm font-normal text-blue-600">(Demo)</span>}
               </h1>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
                 Manage your organization's trading infrastructure, team, and strategies.
@@ -671,7 +785,7 @@ export default function EnterpriseDashboard() {
           ].map((action) => (
             <Link 
               key={action.path} 
-              to={action.path} 
+              to={demoMode ? `/test${action.path}` : action.path} 
               className={`rounded-xl p-3 text-center transition-all shadow-sm ${ACTION_STYLES[action.color]} hover:shadow-md`}
             >
               <div className="text-2xl">{action.icon}</div>
@@ -727,7 +841,7 @@ export default function EnterpriseDashboard() {
         <Card>
           <div className="flex items-center justify-between mb-4">
             <SectionTitle>Team Members ({members.length})</SectionTitle>
-            <Link to="/enterprise/team" className="text-sm text-indigo-600 font-bold hover:text-indigo-800">Manage →</Link>
+            <Link to={demoMode ? "/test/enterprise-team" : "/enterprise/team"} className="text-sm text-indigo-600 font-bold hover:text-indigo-800">Manage →</Link>
           </div>
           <div className="space-y-2">
             {members.slice(0, 5).map((member, idx) => (
@@ -764,15 +878,15 @@ export default function EnterpriseDashboard() {
 
         {/* Actions */}
         <div className="grid gap-3 sm:grid-cols-4">
-          <Button onClick={() => nav("/enterprise/team")} className="w-full">Manage Team</Button>
-          <Button onClick={() => nav("/enterprise/strategies")} className="w-full">Strategies</Button>
+          <Button onClick={() => nav(demoMode ? "/test/enterprise-team" : "/enterprise/team")} className="w-full">Manage Team</Button>
+          <Button onClick={() => nav(demoMode ? "/test/enterprise-strategies" : "/enterprise/strategies")} className="w-full">Strategies</Button>
           <Button variant="warning" onClick={() => bothConnected ? setShowLiveConfirm(true) : setShowApiModal(true)} className="w-full">Start Live</Button>
-          <Button variant="secondary" onClick={() => nav("/enterprise/audit")} className="w-full">Audit Logs</Button>
+          <Button variant="secondary" onClick={() => nav(demoMode ? "/test/enterprise-audit" : "/enterprise/audit")} className="w-full">Audit Logs</Button>
         </div>
       </div>
 
       {/* Modals */}
-      <ApiKeyModal open={showApiModal} onClose={() => setShowApiModal(false)} onConnect={handleConnectKeys} />
+      <ApiKeyModal open={showApiModal} onClose={() => setShowApiModal(false)} onConnect={handleConnectKeys} demoMode={demoMode} />
       <LiveConfirmModal open={showLiveConfirm} onCancel={() => setShowLiveConfirm(false)} onConfirm={() => handleToggleTrading(true)} busy={togglingTrading} />
     </div>
   );
