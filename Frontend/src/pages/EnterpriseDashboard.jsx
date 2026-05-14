@@ -1,893 +1,808 @@
 // src/pages/EnterpriseDashboard.jsx
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { useEnterprise } from "../hooks/useEnterprise";
-import BotAPI from "../utils/BotAPI";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { Link } from "react-router-dom";
+import axios from "axios";
 import {
   Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
   LineElement,
-  ArcElement,
-  BarElement,
-  Title,
+  PointElement,
+  LinearScale,
+  CategoryScale,
   Tooltip,
   Legend,
   Filler,
 } from "chart.js";
-import { Line, Doughnut, Bar } from "react-chartjs-2";
+import { Line } from "react-chartjs-2";
 
 ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
   LineElement,
-  ArcElement,
-  BarElement,
-  Title,
+  PointElement,
+  LinearScale,
+  CategoryScale,
   Tooltip,
   Legend,
   Filler
 );
 
-const PAPER_TRADING_BALANCE = 10000;
-const REFRESH_COOLDOWN_MS = 12000;
+// ============================================================================
+// API ENDPOINTS - Updated for Enterprise
+// ============================================================================
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const ENTERPRISE_STATS_URL = `${API_BASE}/api/enterprise/public-stats`;
+const ENTERPRISE_TRADES_URL = `${API_BASE}/api/enterprise/notable-trades`;
+const ENTERPRISE_ANALYTICS_URL = `${API_BASE}/api/enterprise/analytics`;
 
-const STRATEGIES = [
-  {
-    id: "mean_reversion",
-    name: "Conservative",
-    emoji: "🛡️",
-    risk: "Low",
-    bestFor: "Institutional",
-    short: "Safest",
-    description: "Looks for dips and safer rebounds.",
-    plainEnglish: "The bot waits for price drops, then looks for rebounds.",
-    bullets: ["Lower risk", "Steady returns", "Best for testing"],
-  },
-  {
-    id: "ai_weighted",
-    name: "Balanced",
-    emoji: "⚖️",
-    risk: "Medium",
-    bestFor: "Most firms",
-    short: "Default",
-    description: "Uses a mix of multiple trading signals.",
-    plainEnglish: "The bot analyzes several signals before deciding.",
-    bullets: ["Balanced risk", "Signal based", "Consistent"],
-  },
-  {
-    id: "momentum",
-    name: "Momentum",
-    emoji: "🔥",
-    risk: "High",
-    bestFor: "Trending markets",
-    short: "Aggressive",
-    description: "Follows strong price moves.",
-    plainEnglish: "The bot rides strong moves in fast markets.",
-    bullets: ["Higher risk", "Trend following", "Fast execution"],
-  },
-  {
-    id: "arbitrage",
-    name: "Arbitrage",
-    emoji: "🔄",
-    risk: "Low",
-    bestFor: "Advanced firms",
-    short: "Advanced",
-    description: "Looks for price differences across venues.",
-    plainEnglish: "The bot captures small price gaps between exchanges.",
-    bullets: ["Advanced", "Price gaps", "Multi-exchange"],
-  },
-];
+const REFRESH_INTERVAL = 30000;
 
-const ACHIEVEMENTS = [
-  { id: "first_trade", label: "First Team Trade", icon: "🚀" },
-  { id: "streak_7", label: "7-Day Streak", icon: "🔥" },
-  { id: "trades_100", label: "100 Team Trades", icon: "🏆" },
-  { id: "profitable", label: "Profitable Month", icon: "💰" },
-  { id: "team_full", label: "Full Team", icon: "👥" },
-  { id: "api_ready", label: "API Ready", icon: "🔌" },
-];
-
-// Static color mappings for Tailwind (Fixes dynamic class issue)
-const ACTION_STYLES = {
-  indigo: "border-indigo-200 bg-indigo-50 hover:bg-indigo-100",
-  purple: "border-purple-200 bg-purple-50 hover:bg-purple-100",
-  green: "border-green-200 bg-green-50 hover:bg-green-100",
-  amber: "border-amber-200 bg-amber-50 hover:bg-amber-100",
-  pink: "border-pink-200 bg-pink-50 hover:bg-pink-100",
-  blue: "border-blue-200 bg-blue-50 hover:bg-blue-100",
-};
-
-const STATUS_PILL_STYLES = {
-  green: "border-green-300 bg-green-100 text-green-900",
-  red: "border-red-300 bg-red-100 text-red-900",
-  amber: "border-amber-300 bg-amber-100 text-amber-950",
-  blue: "border-blue-300 bg-blue-100 text-blue-900",
-  purple: "border-purple-300 bg-purple-100 text-purple-900",
-  slate: "border-slate-300 bg-slate-100 text-slate-900",
-};
-
-const SETUP_CARD_STYLES = {
-  setup: "border-amber-300 bg-amber-50",
-  paper: "border-green-300 bg-green-50",
-  live: "border-purple-300 bg-purple-50",
-  default: "border-blue-300 bg-blue-50",
-};
-
-// Mock data for demo mode
-const MOCK_ORGANIZATION = {
-  id: "demo-org",
-  name: "Demo Enterprise",
-  members: [
-    { user_id: "1", email: "admin@demo.com", role: "admin", joined_at: "2024-01-15" },
-    { user_id: "2", email: "trader1@demo.com", role: "member", joined_at: "2024-02-01" },
-    { user_id: "3", email: "trader2@demo.com", role: "member", joined_at: "2024-03-10" },
-    { user_id: "4", email: "analyst@demo.com", role: "viewer", joined_at: "2024-04-01" },
-  ],
-  custom_branding: { logo: null, primaryColor: "#4f46e5" },
-};
-
-const MOCK_ANALYTICS = {
-  summary: {
-    total_pnl: 12450,
-    win_rate: 68.5,
-    total_trades: 156,
-    winning_trades: 107,
-    losing_trades: 49,
-    current_streak: 3,
-  },
-  members: [
-    { email: "admin@demo.com", tier: "enterprise", total_trades: 45, total_pnl: 5230, winning_trades: 32, losing_trades: 13 },
-    { email: "trader1@demo.com", tier: "enterprise", total_trades: 67, total_pnl: 4120, winning_trades: 45, losing_trades: 22 },
-    { email: "trader2@demo.com", tier: "enterprise", total_trades: 44, total_pnl: 3100, winning_trades: 30, losing_trades: 14 },
-  ],
-};
-
-const MOCK_SERIES = [
-  { date: "2024-05-07", pnl: 1200, trades: 12 },
-  { date: "2024-05-08", pnl: 800, trades: 8 },
-  { date: "2024-05-09", pnl: -200, trades: 5 },
-  { date: "2024-05-10", pnl: 1500, trades: 15 },
-  { date: "2024-05-11", pnl: 900, trades: 10 },
-  { date: "2024-05-12", pnl: 600, trades: 7 },
-  { date: "2024-05-13", pnl: 1100, trades: 11 },
-];
-
-const usd = (n = 0) => `$${Number(n || 0).toFixed(2)}`;
-const pct = (n = 0) => `${Number(n || 0).toFixed(1)}%`;
-
-const getNestedBool = (result, key, fallback) => {
-  const direct = result?.[key];
-  const nested = result?.data?.[key];
-  if (direct === true || direct === false) return direct;
-  if (nested === true || nested === false) return nested;
-  return fallback;
-};
-
-const isAuthError = (err) => {
-  const msg = String(err?.message || err?.error || "").toLowerCase();
-  const status = Number(err?.status || err?.response?.status || 0);
-  return status === 401 || status === 403 || msg.includes("invalid token") || msg.includes("expired token");
-};
-
-const isRateLimitError = (err) => {
-  const msg = String(err?.message || err?.error || "").toLowerCase();
-  const status = Number(err?.status || err?.response?.status || 0);
-  return status === 429 || msg.includes("rate limit");
-};
-
-const formatTimeLeft = (seconds) => {
-  const s = Number(seconds || 0);
-  if (s <= 0) return "expired";
-  const days = Math.floor(s / 86400);
-  const hours = Math.floor((s % 86400) / 3600);
-  if (days > 0) return `${days}d ${hours}h`;
-  return `${hours}h`;
-};
-
-function Card({ children, className = "" }) {
-  return <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${className}`}>{children}</div>;
+// Helper functions
+function safeNumber(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
 }
 
-function SectionTitle({ children, helper }) {
-  return (
-    <div className="mb-4">
-      <h3 className="text-base font-extrabold text-slate-900 sm:text-lg">{children}</h3>
-      {helper && <p className="mt-1 text-sm font-semibold text-slate-600">{helper}</p>}
-    </div>
-  );
+function formatCurrency(value) {
+  const n = safeNumber(value);
+  return `$${n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
-function StatusPill({ children, tone = "slate", className = "" }) {
-  const style = STATUS_PILL_STYLES[tone] || STATUS_PILL_STYLES.slate;
-  return (
-    <span className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-[11px] font-extrabold leading-none sm:text-xs ${style} ${className}`}>
-      {children}
-    </span>
-  );
+function formatCurrencySigned(value) {
+  const n = safeNumber(value);
+  const absValue = Math.abs(n).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${n >= 0 ? "+" : "-"}$${absValue}`;
 }
 
-function Button({ children, onClick, disabled, variant = "primary", className = "" }) {
-  const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm",
-    secondary: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm",
-    warning: "bg-amber-500 text-white hover:bg-amber-600 shadow-sm",
-    danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
+function formatPercent(value) {
+  const n = safeNumber(value);
+  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+}
+
+function formatNumber(value) {
+  return safeNumber(value).toLocaleString();
+}
+
+function timeAgo(timestamp) {
+  if (!timestamp) return "—";
+  try {
+    const date = new Date(timestamp);
+    const diffMs = Date.now() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return `${Math.floor(diffMins / 1440)}d ago`;
+  } catch {
+    return "—";
+  }
+}
+
+function getRiskColor(risk) {
+  const riskLower = (risk || "").toLowerCase();
+  if (riskLower.includes("low")) return "text-emerald-600 bg-emerald-50";
+  if (riskLower.includes("medium-high")) return "text-orange-600 bg-orange-50";
+  if (riskLower.includes("medium")) return "text-amber-600 bg-amber-50";
+  if (riskLower.includes("high")) return "text-red-600 bg-red-50";
+  return "text-gray-600 bg-gray-50";
+}
+
+function normalizeBotName(botName) {
+  const name = String(botName || "").toLowerCase();
+  if (name.includes("okx")) return "okx";
+  if (name.includes("future")) return "futures";
+  if (name.includes("stock") || name.includes("alpaca")) return "stocks";
+  if (name.includes("sniper") || name.includes("dex")) return "sniper";
+  return name || "unknown";
+}
+
+function getBotIcon(botName) {
+  const name = normalizeBotName(botName);
+  if (name === "stocks") return "📈";
+  if (name === "futures") return "📊";
+  if (name === "sniper") return "🎯";
+  if (name === "okx") return "🔷";
+  return "🤖";
+}
+
+function getBotDisplayName(botName) {
+  const name = normalizeBotName(botName);
+  if (name === "okx") return "OKX Enterprise";
+  if (name === "futures") return "Futures Enterprise";
+  if (name === "stocks") return "Stock Enterprise";
+  if (name === "sniper") return "Sniper Enterprise";
+  return botName || "Enterprise Bot";
+}
+
+function normalizeTrade(trade) {
+  return {
+    ...trade,
+    id: trade?.id || `${trade?.symbol || "unknown"}-${trade?.created_at || trade?.timestamp || Date.now()}`,
+    bot: normalizeBotName(trade?.bot || trade?.bot_name || trade?.source),
+    qty: trade?.qty !== undefined ? safeNumber(trade.qty) : 0,
+    exit_price: trade?.exit_price !== undefined ? trade.exit_price : null,
+    price: safeNumber(trade?.price || trade?.entry_price || 0, 0),
+    pnl_usd: safeNumber(trade?.pnl_usd ?? trade?.pnl, 0),
+    pnl_percent: safeNumber(trade?.pnl_percent, 0),
+    status: trade?.status || (trade?.exit_price ? "closed" : "open"),
+    symbol: trade?.symbol || "Unknown",
+    side: trade?.side || trade?.position_side || "buy",
+    created_at: trade?.created_at || trade?.timestamp,
   };
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`min-h-[44px] rounded-xl px-4 py-3 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${variants[variant]} ${className}`}
-    >
-      {children}
-    </button>
-  );
 }
 
-function Stat({ label, value, helper }) {
-  return (
-    <Card className="min-h-[110px]">
-      <div className="text-xs font-bold uppercase tracking-wide text-slate-600 sm:text-sm">{label}</div>
-      <div className="mt-2 break-words text-2xl font-extrabold text-slate-900 sm:text-3xl">{value}</div>
-      {helper && <div className="mt-1 text-xs font-semibold text-slate-600 sm:text-sm">{helper}</div>}
-    </Card>
-  );
+function buildActivitySeries(trades = []) {
+  if (!trades.length) return [4, 6, 5, 8, 6, 9, 7];
+  
+  const dayMap = {
+    Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
+  };
+  const dayOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  
+  trades.slice(0, 100).forEach((trade) => {
+    if (trade.created_at) {
+      const date = new Date(trade.created_at);
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+      if (dayMap[dayName]) {
+        const pnl = Math.abs(trade.pnl_usd || 0);
+        dayMap[dayName].push(pnl);
+      }
+    }
+  });
+  
+  return dayOrder.map(day => {
+    const pnls = dayMap[day];
+    if (pnls.length === 0) return 5;
+    const avg = pnls.reduce((a, b) => a + b, 0) / pnls.length;
+    return Math.max(3, Math.min(15, avg / 50 + 3));
+  });
 }
 
-function Toast({ message, type = "info", onClose }) {
-  if (!message) return null;
-  const tone = type === "error" 
-    ? "border-red-300 bg-red-50 text-red-900" 
-    : type === "success" 
-      ? "border-green-300 bg-green-50 text-green-900" 
-      : "border-blue-300 bg-blue-50 text-blue-900";
+function BotActivityChart({ trades = [] }) {
+  const series = buildActivitySeries(trades);
+  
+  const chartData = useMemo(() => ({
+    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    datasets: [{
+      label: 'Enterprise Trading Activity',
+      data: series,
+      borderColor: "#10b981",
+      backgroundColor: "rgba(16,185,129,0.1)",
+      fill: true,
+      tension: 0.3,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      pointBackgroundColor: "#10b981",
+      pointBorderColor: "#ffffff",
+      pointBorderWidth: 2,
+      borderWidth: 2,
+    }],
+  }), [series]);
+
+  const chartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (context) => `Activity: ${context.raw.toFixed(1)}`,
+        },
+        backgroundColor: "#1f2937",
+        titleColor: "#ffffff",
+        bodyColor: "#d1fae5",
+        padding: 8,
+      },
+    },
+    scales: {
+      x: { 
+        grid: { display: false },
+        ticks: { color: "#6b7280", font: { size: 11, weight: '500' } },
+      },
+      y: { 
+        display: false,
+        min: 0,
+        max: 16,
+      },
+    },
+  }), []);
+
+  return <Line data={chartData} options={chartOptions} />;
+}
+
+// Performance Chart Component
+function PerformanceChart({ data }) {
+  const chartData = useMemo(() => ({
+    labels: data?.labels || ["Week 1", "Week 2", "Week 3", "Week 4"],
+    datasets: [
+      {
+        label: 'Team P&L',
+        data: data?.pnl || [1200, 3400, 5200, 7800],
+        borderColor: "#4f46e5",
+        backgroundColor: "rgba(79, 70, 229, 0.1)",
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: "#4f46e5",
+        pointBorderColor: "#ffffff",
+        pointBorderWidth: 2,
+        borderWidth: 2,
+      },
+      {
+        label: 'Trade Count',
+        data: data?.trades || [15, 28, 42, 56],
+        borderColor: "#10b981",
+        backgroundColor: "rgba(16, 185, 129, 0.05)",
+        fill: false,
+        tension: 0.4,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointBackgroundColor: "#10b981",
+        borderWidth: 2,
+        yAxisID: 'y1',
+      }
+    ],
+  }), [data]);
+
+  const chartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: "top", labels: { color: "#374151", font: { size: 11, weight: 'bold' } } },
+      tooltip: { mode: "index", intersect: false, backgroundColor: "#1f2937", titleColor: "#ffffff", bodyColor: "#e5e7eb" },
+    },
+    scales: {
+      x: { ticks: { color: "#6b7280", font: { size: 11 } }, grid: { color: "rgba(107, 114, 128, 0.1)" } },
+      y: { title: { display: true, text: 'P&L ($)', color: "#4f46e5", font: { size: 10 } }, ticks: { color: "#6b7280" }, grid: { color: "rgba(107, 114, 128, 0.1)" } },
+      y1: { position: 'right', title: { display: true, text: 'Trade Count', color: "#10b981", font: { size: 10 } }, ticks: { color: "#6b7280" }, grid: { display: false } },
+    },
+  }), []);
+
+  return <Line data={chartData} options={chartOptions} />;
+}
+
+// Win Rate Chart Component
+function WinRateChart({ data }) {
+  const chartData = useMemo(() => ({
+    labels: data?.labels || ["Week 1", "Week 2", "Week 3", "Week 4"],
+    datasets: [{
+      label: 'Win Rate %',
+      data: data?.winRate || [65, 68, 72, 71],
+      borderColor: "#8b5cf6",
+      backgroundColor: "rgba(139, 92, 246, 0.1)",
+      fill: true,
+      tension: 0.4,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      pointBackgroundColor: "#8b5cf6",
+      pointBorderColor: "#ffffff",
+      pointBorderWidth: 2,
+      borderWidth: 2,
+    }],
+  }), [data]);
+
+  const chartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: "top", labels: { color: "#374151", font: { size: 11, weight: 'bold' } } },
+      tooltip: { callbacks: { label: (context) => `${context.raw.toFixed(1)}% win rate` }, backgroundColor: "#1f2937" },
+    },
+    scales: {
+      x: { ticks: { color: "#6b7280" }, grid: { color: "rgba(107, 114, 128, 0.1)" } },
+      y: { min: 0, max: 100, ticks: { color: "#6b7280", callback: (value) => `${value}%` }, grid: { color: "rgba(107, 114, 128, 0.1)" } },
+    },
+  }), []);
+
+  return <Line data={chartData} options={chartOptions} />;
+}
+
+function StatMiniCard({ title, value, valueClassName = "text-gray-900", subtext }) {
   return (
-    <div className={`fixed left-3 right-3 top-3 z-[60] rounded-2xl border p-4 text-sm font-bold shadow-xl sm:left-auto sm:right-4 sm:max-w-md ${tone}`}>
-      <div className="flex items-start justify-between gap-4">
-        <span>{message}</span>
-        <button type="button" onClick={onClose} className="text-lg leading-none text-slate-700 hover:text-slate-900">×</button>
-      </div>
+    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-center">
+      <div className={`text-lg font-bold ${valueClassName}`}>{value}</div>
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-gray-500">{title}</div>
+      {subtext && <div className="mt-0.5 text-[9px] text-gray-400">{subtext}</div>}
     </div>
   );
 }
 
-// Simple API Key Modal Component
-function ApiKeyModal({ open, onClose, onConnect, demoMode }) {
-  const [mode, setMode] = useState("paper");
-  
-  if (!open) return null;
-  
+function TradeRow({ trade, onClick }) {
+  const pnl = safeNumber(trade.pnl_usd);
+  const pnlPercent = safeNumber(trade.pnl_percent);
+  const side = trade.side || "buy";
+  const bot = getBotDisplayName(trade.bot);
+  const isOpen = trade.status === "open";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
-      <div className="max-h-[94vh] w-full overflow-auto rounded-t-3xl bg-white p-4 shadow-2xl sm:max-w-2xl sm:rounded-3xl sm:p-6">
-        <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
-          <div>
-            <h2 className="text-xl font-extrabold text-slate-900 sm:text-2xl">Connect API Keys</h2>
-            <p className="mt-1 text-sm font-medium text-slate-600">Add OKX for crypto and Alpaca for stocks.</p>
-          </div>
-          <button onClick={onClose} className="rounded-xl px-3 py-1 text-3xl font-extrabold text-slate-500 hover:bg-slate-100">×</button>
+    <div 
+      className={`flex cursor-pointer items-center justify-between rounded-lg p-3 transition-all hover:shadow-md ${
+        !isOpen && pnl > 0 ? "bg-emerald-50 hover:bg-emerald-100" : 
+        !isOpen && pnl < 0 ? "bg-red-50 hover:bg-red-100" : 
+        isOpen ? "bg-blue-50 hover:bg-blue-100" : "bg-gray-50 hover:bg-gray-100"
+      }`} 
+      onClick={() => onClick(trade)}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-sm font-semibold text-gray-900">{trade.symbol || "Unknown"}</span>
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${side === "buy" || side === "long" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+            {side.toUpperCase()}
+          </span>
+          <span className="text-[9px] text-gray-400">{getBotIcon(bot)} {bot}</span>
+          {isOpen && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] text-blue-700">OPEN</span>}
         </div>
-        <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-          🔒 Security tip: Create restricted API keys. Trading permission is okay. Withdrawals should stay disabled.
+        <div className="mt-0.5 text-[10px] text-gray-400">{timeAgo(trade.created_at)}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500">
+          <span>Entry: {formatCurrency(trade.price || 0)}</span>
+          {!isOpen && trade.exit_price && <span>Exit: {formatCurrency(trade.exit_price)}</span>}
+          {trade.qty > 0 && <span>Qty: {safeNumber(trade.qty).toFixed(6)}</span>}
         </div>
-        <div className="grid gap-5 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="mb-4 text-lg font-extrabold text-slate-900">📈 Alpaca — Stocks</h3>
-            <div className="space-y-3">
-              <select className="w-full rounded-lg border border-slate-300 p-2 text-sm" value={mode} onChange={(e) => setMode(e.target.value)}>
-                <option value="paper">Paper Trading (Recommended)</option>
-                <option value="live">Live Trading</option>
-              </select>
-              {demoMode ? (
-                <button 
-                  onClick={() => {
-                    onConnect();
-                    onClose();
-                  }} 
-                  className="w-full rounded-lg bg-indigo-600 py-2 text-white font-semibold hover:bg-indigo-700"
-                >
-                  Connect (Demo)
-                </button>
-              ) : (
-                <p className="text-xs text-slate-600 text-center">Contact support for API key setup assistance.</p>
-              )}
+      </div>
+      <div className="ml-2 shrink-0 text-right">
+        {!isOpen ? (
+          <>
+            <div className={`text-sm font-semibold ${pnl > 0 ? "text-emerald-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
+              {pnl !== 0 ? formatCurrencySigned(pnl) : formatCurrency(trade.price || 0)}
             </div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="mb-4 text-lg font-extrabold text-slate-900">🔷 OKX — Crypto</h3>
-            <div className="space-y-3">
-              <select className="w-full rounded-lg border border-slate-300 p-2 text-sm" value={mode} onChange={(e) => setMode(e.target.value)}>
-                <option value="paper">Paper Trading (Recommended)</option>
-                <option value="live">Live Trading</option>
-              </select>
-              {demoMode ? (
-                <button 
-                  onClick={() => {
-                    onConnect();
-                    onClose();
-                  }} 
-                  className="w-full rounded-lg bg-indigo-600 py-2 text-white font-semibold hover:bg-indigo-700"
-                >
-                  Connect (Demo)
-                </button>
-              ) : (
-                <p className="text-xs text-slate-600 text-center">Contact support for API key setup assistance.</p>
-              )}
-            </div>
-          </div>
-        </div>
-        {!demoMode && (
-          <div className="mt-5 flex gap-3">
-            <Button onClick={onConnect} className="flex-1">Save Keys</Button>
-            <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-          </div>
+            {pnlPercent !== 0 && (
+              <div className={`text-[11px] font-medium ${pnlPercent > 0 ? "text-emerald-500" : "text-red-500"}`}>
+                {formatPercent(pnlPercent)}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-sm font-semibold text-blue-600">Open Position</div>
         )}
       </div>
     </div>
   );
 }
 
-// Live Trading Confirmation Modal
-function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
-  if (!open) return null;
+function TradeDetailModal({ trade, isOpen, onClose }) {
+  if (!isOpen || !trade) return null;
   
+  const pnl = safeNumber(trade.pnl_usd);
+  const pnlPercent = safeNumber(trade.pnl_percent);
+  const status = trade.status === "open" ? "Open" : "Closed";
+  const exitPrice = trade.exit_price ? safeNumber(trade.exit_price) : null;
+  const entryPrice = safeNumber(trade.price);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
-      <div className="w-full rounded-t-3xl bg-white p-5 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-6">
-        <h3 className="text-xl font-extrabold text-slate-900 sm:text-2xl">Confirm Live Trading</h3>
-        <p className="mt-3 text-sm font-semibold text-slate-700">Live trading uses real money through your organization's connected exchange accounts.</p>
-        <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
-          <div className="font-extrabold text-amber-900">Risk reminder</div>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold text-amber-800">
-            <li>Your organization can lose money.</li>
-            <li>Start with small position sizes.</li>
-            <li>Live trading can be stopped anytime.</li>
-            <li>Paper trading is safer for testing strategies.</li>
-          </ul>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm" onClick={onClose}>
+      <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white p-3">
+          <h3 className="text-base font-bold text-gray-900">Enterprise Trade Details</h3>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <Button variant="warning" onClick={onConfirm} disabled={busy} className="w-full">
-            {busy ? "Starting..." : "Enable Live Trading"}
-          </Button>
-          <Button variant="secondary" onClick={onCancel} disabled={busy} className="w-full">
-            Cancel
-          </Button>
+        <div className="space-y-4 p-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-xl font-bold text-gray-900">{trade.symbol}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${trade.side === "buy" || trade.side === "long" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                  {trade.side?.toUpperCase()}
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${status === "Closed" ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600"}`}>
+                  {status}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-gray-500">{timeAgo(trade.created_at)} • {getBotDisplayName(trade.bot)}</div>
+            </div>
+            {pnl !== 0 && (
+              <div className="text-right">
+                <div className={`text-xl font-bold ${pnl > 0 ? "text-green-600" : pnl < 0 ? "text-red-600" : "text-gray-600"}`}>
+                  {formatCurrencySigned(pnl)}
+                </div>
+                {pnlPercent !== 0 && (
+                  <div className={`text-xs font-semibold ${pnlPercent > 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatPercent(pnlPercent)} return
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 text-xs">
+            <div>
+              <div className="text-gray-500">Quantity</div>
+              <div className="font-semibold">{trade.qty > 0 ? safeNumber(trade.qty).toFixed(6) : "—"}</div>
+            </div>
+            <div>
+              <div className="text-gray-500">Entry Price</div>
+              <div className="font-semibold">{formatCurrency(entryPrice)}</div>
+            </div>
+            {status === "Closed" && exitPrice && (
+              <>
+                <div>
+                  <div className="text-gray-500">Exit Price</div>
+                  <div className="font-semibold">{formatCurrency(exitPrice)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Price Change</div>
+                  <div className={`font-semibold ${trade.pnl_percent > 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatPercent(trade.pnl_percent)}
+                  </div>
+                </div>
+              </>
+            )}
+            {status === "Open" && (
+              <div className="col-span-2">
+                <div className="text-gray-500">Current Status</div>
+                <div className="font-semibold text-blue-600">Active Position</div>
+              </div>
+            )}
+            <div>
+              <div className="text-gray-500">Risk Level</div>
+              <div className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${getRiskColor(trade.risk_level || "medium")}`}>
+                {(trade.risk_level || "MEDIUM").toUpperCase()}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-export default function EnterpriseDashboard({ demoMode = false }) {
-  const nav = useNavigate();
-  const { user } = useAuth();
-  const { getOrganization, getAnalytics, loading: enterpriseLoading } = useEnterprise();
-  const mountedRef = useRef(true);
-  const loadingRef = useRef(false);
-  const lastRefreshRef = useRef(0);
-  const refreshTimerRef = useRef(null);
+// Mock data for demo mode
+const DEMO_MODE = true; // Set to false to use real API
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [toast, setToast] = useState({ message: "", type: "info" });
-  const [organization, setOrganization] = useState(demoMode ? MOCK_ORGANIZATION : null);
-  const [analytics, setAnalytics] = useState(demoMode ? MOCK_ANALYTICS : null);
-  const [members, setMembers] = useState(demoMode ? MOCK_ORGANIZATION.members : []);
-  const [stats, setStats] = useState(demoMode ? MOCK_ANALYTICS.summary : {});
-  const [series, setSeries] = useState(demoMode ? MOCK_SERIES : []);
-  const [integrations, setIntegrations] = useState({ alpaca_connected: demoMode, okx_connected: demoMode });
-  const [currentStrategy, setCurrentStrategy] = useState("mean_reversion");
-  const [savingStrategy, setSavingStrategy] = useState("");
-  const [tradingEnabled, setTradingEnabled] = useState(demoMode ? false : false);
-  const [paperTradingEnabled, setPaperTradingEnabled] = useState(demoMode ? true : false);
-  const [togglingTrading, setTogglingTrading] = useState(false);
-  const [togglingPaper, setTogglingPaper] = useState(false);
-  const [showApiModal, setShowApiModal] = useState(false);
-  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
+const MOCK_TRADES = [
+  { id: 1, symbol: "BTC/USD", side: "buy", price: 65800, exit_price: 71234, pnl_usd: 271.70, pnl_percent: 8.2, status: "closed", bot: "okx", strategy: "momentum", exchange: "OKX", created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() },
+  { id: 2, symbol: "ETH/USD", side: "buy", price: 3590, exit_price: 3821, pnl_usd: 115.50, pnl_percent: 6.4, status: "closed", bot: "futures", strategy: "momentum", exchange: "OKX", created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
+  { id: 3, symbol: "SOL/USD", side: "sell", price: 162, exit_price: 168, pnl_usd: 60.00, pnl_percent: 3.7, status: "closed", bot: "stocks", strategy: "trend", exchange: "Alpaca", created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+  { id: 4, symbol: "AAPL", side: "buy", price: 175.50, exit_price: 189.30, pnl_usd: 13.80, pnl_percent: 7.9, status: "closed", bot: "stocks", strategy: "momentum", exchange: "Alpaca", created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() },
+  { id: 5, symbol: "TSLA", side: "buy", price: 248.30, exit_price: 267.50, pnl_usd: 19.20, pnl_percent: 7.7, status: "open", bot: "stocks", strategy: "trend", exchange: "Alpaca", created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString() },
+];
 
-  const notify = useCallback((message, type = "info") => {
-    setToast({ message, type });
-    window.clearTimeout(window.__imaliToastTimer);
-    window.__imaliToastTimer = window.setTimeout(() => setToast({ message: "", type: "info" }), 4500);
-  }, []);
+const MOCK_BOT_STATS = {
+  okx: { total_trades: 45, wins: 32, losses: 13, total_pnl: 8450, win_rate: 71.1, open_positions: 2 },
+  futures: { total_trades: 38, wins: 26, losses: 12, total_pnl: 6240, win_rate: 68.4, open_positions: 1 },
+  stocks: { total_trades: 52, wins: 38, losses: 14, total_pnl: 11200, win_rate: 73.1, open_positions: 3 },
+  sniper: { total_trades: 28, wins: 19, losses: 9, total_pnl: 4210, win_rate: 67.9, open_positions: 0 },
+};
 
-  const loadDashboardData = useCallback(async ({ silent = false, force = false } = {}) => {
-    // DEMO MODE: Skip API calls, use mock data
-    if (demoMode) {
-      setOrganization(MOCK_ORGANIZATION);
-      setMembers(MOCK_ORGANIZATION.members);
-      setAnalytics(MOCK_ANALYTICS);
-      setStats(MOCK_ANALYTICS.summary);
-      setSeries(MOCK_SERIES);
-      setIntegrations({ alpaca_connected: true, okx_connected: true });
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
+const MOCK_CHART_DATA = {
+  labels: ["Week 1", "Week 2", "Week 3", "Week 4"],
+  pnl: [12500, 15800, 18200, 22450],
+  trades: [45, 52, 48, 56],
+  winRate: [65, 68, 72, 71],
+};
 
-    if (loadingRef.current) return;
+export default function EnterpriseDashboard({ demoMode = DEMO_MODE }) {
+  const [data, setData] = useState({
+    trades: [],
+    summary: {},
+    botStats: {},
+    notableTrades: {},
+    chartData: MOCK_CHART_DATA,
+    loading: true,
+    error: null,
+    lastUpdate: null,
+  });
+  const [selectedTrade, setSelectedTrade] = useState(null);
+  const [activeTab, setActiveTab] = useState("all");
+  const [sortRecentTrades, setSortRecentTrades] = useState("recent");
+
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
+
+  const fetchData = useCallback(async (force = false) => {
+    if (isFetchingRef.current) return;
+
     const now = Date.now();
-
-    if (!force && now - lastRefreshRef.current < REFRESH_COOLDOWN_MS) {
-      if (!silent) notify("Dashboard was just refreshed. Try again in a few seconds.", "info");
+    if (!force && now - lastFetchTimeRef.current < 15000 && lastFetchTimeRef.current) {
       return;
     }
 
-    loadingRef.current = true;
-    lastRefreshRef.current = now;
-    if (!silent) setLoading(true);
-    setRefreshing(true);
+    isFetchingRef.current = true;
 
     try {
-      const orgResult = await getOrganization();
-      if (orgResult.success && mountedRef.current) {
-        setOrganization(orgResult.data);
-        setMembers(orgResult.data?.members || []);
-      }
+      lastFetchTimeRef.current = now;
 
-      const analyticsResult = await getAnalytics(30);
-      if (analyticsResult.success && mountedRef.current) {
-        setAnalytics(analyticsResult.data);
-        setStats(analyticsResult.data?.summary || {});
-        setMembers(analyticsResult.data?.members || members);
-      }
-
-      const me = await BotAPI.getMe?.(true);
-      if (me && mountedRef.current) {
-        setTradingEnabled(me?.trading_enabled === true);
-        setPaperTradingEnabled(me?.paper_trading_enabled === true);
-        setCurrentStrategy(me?.strategy || "mean_reversion");
-      }
-
-      const integrationsPayload = await BotAPI.getIntegrationStatus?.(true);
-      if (integrationsPayload && mountedRef.current) {
-        setIntegrations({
-          alpaca_connected: integrationsPayload.alpaca_connected || false,
-          okx_connected: integrationsPayload.okx_connected || false,
-        });
-      }
-
-      if (analyticsResult.data?.members) {
-        const dateMap = new Map();
-        analyticsResult.data.members.forEach(member => {
-          if (member.daily_performance) {
-            member.daily_performance.forEach(day => {
-              if (!dateMap.has(day.date)) {
-                dateMap.set(day.date, { pnl: 0, trades: 0 });
-              }
-              const existing = dateMap.get(day.date);
-              existing.pnl += day.pnl || 0;
-              existing.trades += day.trades || 0;
-            });
-          }
-        });
-        const sortedDates = Array.from(dateMap.keys()).sort();
-        setSeries(sortedDates.map(date => ({ date, pnl: dateMap.get(date).pnl, trades: dateMap.get(date).trades })));
-      } else {
-        setSeries([]);
-      }
-    } catch (err) {
-      console.error("[EnterpriseDashboard] Failed to load:", err);
-      if (isAuthError(err)) {
-        nav("/login");
+      if (demoMode) {
+        // Demo mode - use mock data
+        setTimeout(() => {
+          setData({
+            trades: MOCK_TRADES,
+            summary: {
+              total_trades: MOCK_TRADES.length,
+              wins: MOCK_TRADES.filter(t => t.pnl_usd > 0).length,
+              losses: MOCK_TRADES.filter(t => t.pnl_usd < 0).length,
+              total_pnl: MOCK_TRADES.reduce((sum, t) => sum + t.pnl_usd, 0),
+              win_rate: (MOCK_TRADES.filter(t => t.pnl_usd > 0).length / MOCK_TRADES.length) * 100,
+            },
+            botStats: MOCK_BOT_STATS,
+            notableTrades: {
+              okx: MOCK_TRADES.filter(t => t.bot === "okx").slice(0, 3),
+              futures: MOCK_TRADES.filter(t => t.bot === "futures").slice(0, 3),
+              stocks: MOCK_TRADES.filter(t => t.bot === "stocks").slice(0, 3),
+            },
+            chartData: MOCK_CHART_DATA,
+            loading: false,
+            error: null,
+            lastUpdate: new Date(),
+          });
+          isFetchingRef.current = false;
+        }, 500);
         return;
       }
-      notify(isRateLimitError(err) ? "Too many requests. Please wait a moment." : "Failed to load dashboard data.", "error");
-    } finally {
-      loadingRef.current = false;
-      if (mountedRef.current) {
-        setRefreshing(false);
-        setLoading(false);
+
+      // Live mode - use real API
+      const [statsResponse, tradesResponse, analyticsResponse] = await Promise.all([
+        axios.get(ENTERPRISE_STATS_URL, { timeout: 15000 }),
+        axios.get(ENTERPRISE_TRADES_URL, { timeout: 15000, params: { limit: 50 } }),
+        axios.get(ENTERPRISE_ANALYTICS_URL, { timeout: 15000, params: { days: 30 } }),
+      ]);
+
+      if (statsResponse.data?.success) {
+        const apiData = statsResponse.data.data || {};
+        const trades = (apiData.recent_trades || []).map(normalizeTrade);
+        
+        setData({
+          trades: trades.length > 0 ? trades : [],
+          summary: apiData.summary || {},
+          botStats: apiData.bot_stats || MOCK_BOT_STATS,
+          notableTrades: tradesResponse.data?.data?.trades_by_bot || {},
+          chartData: analyticsResponse.data?.data || MOCK_CHART_DATA,
+          loading: false,
+          error: null,
+          lastUpdate: new Date(),
+        });
+      } else {
+        setData((prev) => ({
+          ...prev,
+          loading: false,
+          error: statsResponse.data?.error || "No data received from server",
+        }));
       }
+    } catch (error) {
+      console.error("❌ Error fetching enterprise data:", error);
+      setData((prev) => ({
+        ...prev,
+        loading: false,
+        error: error.response?.data?.message || error.message || "Failed to fetch enterprise trading data.",
+      }));
+    } finally {
+      isFetchingRef.current = false;
     }
-  }, [getOrganization, getAnalytics, nav, notify, members, demoMode]);
+  }, [demoMode]);
 
   useEffect(() => {
-    mountedRef.current = true;
-    loadDashboardData({ silent: false, force: true });
-    return () => {
-      mountedRef.current = false;
-      window.clearTimeout(refreshTimerRef.current);
-    };
-  }, [loadDashboardData]);
+    fetchData(true);
+    const interval = setInterval(() => fetchData(true), REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
-  const alpacaConnected = !!integrations.alpaca_connected;
-  const okxConnected = !!integrations.okx_connected;
-  const bothConnected = alpacaConnected && okxConnected;
-  const activeStrategy = STRATEGIES.find(s => s.id === currentStrategy) || STRATEGIES[0];
-  const anyTradingActionBusy = togglingPaper || togglingTrading;
+  const allTrades = data.trades || [];
+  const botStats = data.botStats || {};
+  const chartData = data.chartData || MOCK_CHART_DATA;
 
-  // Determine setup card style
-  const getSetupCardStyle = () => {
-    if (!bothConnected) return SETUP_CARD_STYLES.setup;
-    if (!paperTradingEnabled) return SETUP_CARD_STYLES.paper;
-    if (!tradingEnabled) return SETUP_CARD_STYLES.paper;
-    if (tradingEnabled) return SETUP_CARD_STYLES.live;
-    return SETUP_CARD_STYLES.default;
-  };
+  const totalTrades = safeNumber(data.summary.total_trades || allTrades.length);
+  const wins = safeNumber(data.summary.wins);
+  const losses = safeNumber(data.summary.losses);
+  const totalPnl = safeNumber(data.summary.total_pnl);
+  const winRate = safeNumber(data.summary.win_rate) || (wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0);
+  const activeBots = Object.keys(botStats).filter(bot => botStats[bot]?.total_trades > 0).length;
 
-  const displayStats = useMemo(() => ({
-    total_pnl: Number(stats.total_pnl || 0),
-    win_rate: Number(stats.win_rate || 0),
-    total_trades: Math.max(Number(stats.total_trades || 0), (paperTradingEnabled || tradingEnabled) ? 1 : 0),
-    wins: Number(stats.winning_trades || 0),
-    losses: Number(stats.losing_trades || 0),
-    current_streak: Number(stats.current_streak || 0),
-  }), [stats, paperTradingEnabled, tradingEnabled]);
+  const sortedRecentTrades = useMemo(() => {
+    return [...allTrades].sort((a, b) => {
+      if (sortRecentTrades === "pnl") return safeNumber(b.pnl_usd) - safeNumber(a.pnl_usd);
+      if (sortRecentTrades === "percent") return Math.abs(safeNumber(b.pnl_percent)) - Math.abs(safeNumber(a.pnl_percent));
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
+  }, [allTrades, sortRecentTrades]);
 
-  const readiness = useMemo(() => {
-    let score = 0;
-    if (alpacaConnected) score += 20;
-    if (okxConnected) score += 20;
-    if (paperTradingEnabled) score += 20;
-    if (currentStrategy) score += 15;
-    if (tradingEnabled) score += 15;
-    if (members.length >= 3) score += 10;
-    return Math.min(100, score);
-  }, [alpacaConnected, okxConnected, paperTradingEnabled, currentStrategy, tradingEnabled, members.length]);
+  const filteredTrades = useMemo(() => {
+    if (activeTab === "open") return sortedRecentTrades.filter((t) => t.status === "open");
+    if (activeTab === "closed") return sortedRecentTrades.filter((t) => t.status === "closed");
+    return sortedRecentTrades;
+  }, [activeTab, sortedRecentTrades]);
 
-  const achievements = useMemo(() => {
-    const unlocked = [];
-    if (displayStats.total_trades > 0) unlocked.push("first_trade");
-    if (displayStats.current_streak >= 7) unlocked.push("streak_7");
-    if (displayStats.total_trades >= 100) unlocked.push("trades_100");
-    if (displayStats.total_pnl > 0) unlocked.push("profitable");
-    if (members.length >= 5) unlocked.push("team_full");
-    if (bothConnected) unlocked.push("api_ready");
-    return unlocked;
-  }, [displayStats, members.length, bothConnected]);
+  const tabs = [
+    { id: "all", label: "All", count: allTrades.length },
+    { id: "open", label: "Open", count: allTrades.filter((t) => t.status === "open").length },
+    { id: "closed", label: "Closed", count: allTrades.filter((t) => t.status === "closed").length },
+  ];
 
-  const lineData = useMemo(() => ({
-    labels: series.map(p => p.date || "—"),
-    datasets: [{ label: "Team P&L", data: series.map(p => Number(p.pnl || 0)), borderColor: "#4f46e5", backgroundColor: "rgba(79, 70, 229, 0.12)", fill: true, tension: 0.35 }],
-  }), [series]);
-
-  const doughnutData = useMemo(() => {
-    const wins = Number(displayStats.wins || 0);
-    const losses = Number(displayStats.losses || 0);
-    return { labels: ["Wins", "Losses"], datasets: [{ data: wins + losses > 0 ? [wins, losses] : [1, 0], backgroundColor: ["#10b981", "#ef4444"], borderWidth: 0 }] };
-  }, [displayStats]);
-
-  const barData = useMemo(() => ({
-    labels: series.slice(-7).map(p => p.date || "—"),
-    datasets: [{ label: "Team Trades", data: series.slice(-7).map(p => Number(p.trades || 0)), backgroundColor: "#6366f1" }],
-  }), [series]);
-
-  const chartOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { 
-      legend: { 
-        position: "top",
-        labels: { color: "#1e293b", font: { weight: "bold", size: 11 } },
-      },
-      tooltip: { bodyColor: "#1e293b", titleColor: "#0f172a" }
-    },
-    scales: { 
-      x: { ticks: { color: "#475569" }, grid: { color: "rgba(148, 163, 184, 0.25)" } }, 
-      y: { ticks: { color: "#475569" }, grid: { color: "rgba(148, 163, 184, 0.25)" } } 
-    },
-  }), []);
-
-  const handleConnectKeys = () => {
-    if (demoMode) {
-      setIntegrations({ alpaca_connected: true, okx_connected: true });
-      notify("API keys connected in demo mode! Trading ready.", "success");
-    } else {
-      setShowApiModal(false);
-      notify("API key setup guide sent. Contact support@imali-defi.com for assistance.", "info");
-    }
-  };
-
-  const handleTogglePaperTrading = async (enabled) => {
-    if (togglingPaper || togglingTrading) return;
-    if (enabled && !bothConnected) {
-      setShowApiModal(true);
-      notify("Connect Alpaca and OKX before starting paper trading.", "error");
-      return;
-    }
-
-    setTogglingPaper(true);
-    const previousPaper = paperTradingEnabled;
-
-    try {
-      if (demoMode) {
-        // Demo mode: just simulate the toggle
-        setTimeout(() => {
-          setPaperTradingEnabled(enabled);
-          notify(enabled ? "Paper trading started (Demo Mode)." : "Paper trading stopped (Demo Mode).", "success");
-          setTogglingPaper(false);
-        }, 500);
-        return;
-      }
-
-      if (BotAPI.togglePaperTrading) {
-        const result = await BotAPI.togglePaperTrading(enabled);
-        if (result?.success === false) throw new Error(result?.error);
-      } else if (BotAPI.updatePaperTrading) {
-        await BotAPI.updatePaperTrading(enabled);
-      }
-      setPaperTradingEnabled(enabled);
-      notify(enabled ? "Paper trading started for organization." : "Paper trading stopped.", "success");
-    } catch (err) {
-      console.error("[Enterprise] Paper toggle failed:", err);
-      setPaperTradingEnabled(previousPaper);
-      notify(err?.message || "Failed to update paper trading.", "error");
-    } finally {
-      if (!demoMode) setTogglingPaper(false);
-    }
-  };
-
-  const handleToggleTrading = async (enabled) => {
-    if (togglingTrading || togglingPaper) return;
-    if (enabled && !bothConnected) {
-      setShowApiModal(true);
-      notify("Connect Alpaca and OKX before starting live trading.", "error");
-      return;
-    }
-
-    setTogglingTrading(true);
-    const previousLive = tradingEnabled;
-
-    try {
-      if (demoMode) {
-        // Demo mode: just simulate the toggle
-        setTimeout(() => {
-          setTradingEnabled(enabled);
-          setShowLiveConfirm(false);
-          notify(enabled ? "Live trading started (Demo Mode)." : "Live trading stopped (Demo Mode).", "success");
-          setTogglingTrading(false);
-        }, 500);
-        return;
-      }
-
-      if (BotAPI.toggleTrading) {
-        const result = await BotAPI.toggleTrading(enabled);
-        if (result?.success === false) throw new Error(result?.error);
-      } else if (BotAPI.updateLiveTrading) {
-        await BotAPI.updateLiveTrading(enabled);
-      }
-      setTradingEnabled(enabled);
-      setShowLiveConfirm(false);
-      notify(enabled ? "Live trading started for organization." : "Live trading stopped.", "success");
-    } catch (err) {
-      console.error("[Enterprise] Live toggle failed:", err);
-      setTradingEnabled(previousLive);
-      notify(err?.message || "Failed to update live trading.", "error");
-    } finally {
-      if (!demoMode) setTogglingTrading(false);
-    }
-  };
-
-  if (loading || (!demoMode && enterpriseLoading)) {
+  if (data.loading && !data.lastUpdate && allTrades.length === 0) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-center">
-        <div>
-          <div className="text-xl font-extrabold text-slate-900 sm:text-2xl">Loading enterprise dashboard…</div>
-          <div className="mt-2 text-sm font-semibold text-slate-600">Getting organization data, trades, and stats.</div>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+          <p className="text-sm text-gray-500">Loading Enterprise Dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-3 py-4 text-slate-900 sm:p-6">
-      <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
+    <div className="min-h-screen bg-gray-50 text-gray-900">
+      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Link to="/" className="bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-xl font-bold text-transparent">IMALI ENTERPRISE</Link>
+              {demoMode && <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] text-yellow-700">DEMO MODE</span>}
+            </div>
+            <div className="flex items-center gap-2 text-[10px] text-gray-500">
+              <span>{formatNumber(totalTrades)} team trades tracked</span>
+              <span>•</span>
+              <span>Polling every 30s</span>
+              <span>•</span>
+              <span>{activeBots} active bots</span>
+            </div>
+          </div>
+        </div>
+      </header>
 
-      <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
-        {/* Demo Mode Banner */}
-        {demoMode && (
-          <div className="rounded-2xl border border-blue-300 bg-blue-50 p-3 text-center">
-            <p className="text-sm font-semibold text-blue-800">
-              🧪 Demo Mode — Using mock data. No real API calls or trading.
-            </p>
+      <main className="mx-auto max-w-7xl px-3 py-4">
+        {data.error && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
+            <p className="text-xs text-amber-600">⚠️ {data.error}</p>
           </div>
         )}
 
-        {/* Welcome Header */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">
-                {organization?.name || "Enterprise"} Dashboard
-                {demoMode && <span className="ml-2 text-sm font-normal text-blue-600">(Demo)</span>}
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
-                Manage your organization's trading infrastructure, team, and strategies.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>Paper {paperTradingEnabled ? "Active" : "Off"}</StatusPill>
-                <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
-                <StatusPill tone={bothConnected ? "green" : "amber"}>API {bothConnected ? "Connected" : "Needs Keys"}</StatusPill>
-                <StatusPill tone="blue">Strategy: {activeStrategy.name}</StatusPill>
-                <StatusPill tone="purple">{members.length} Team Members</StatusPill>
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:flex">
-              <Button variant="secondary" onClick={() => loadDashboardData({ silent: false, force: false })} disabled={refreshing} className="w-full lg:w-auto">
-                {refreshing ? "Refreshing..." : "Refresh"}
-              </Button>
-              <Button variant="secondary" onClick={() => setShowApiModal(true)} className="w-full lg:w-auto">
-                Connect Keys
-              </Button>
-            </div>
+        <div className="mb-4 text-center">
+          <h1 className="bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-2xl font-bold text-transparent">Enterprise Trading Dashboard</h1>
+          <p className="text-xs text-gray-500">
+            {formatNumber(totalTrades)} team trades • {activeBots} active bots • ${formatNumber(totalPnl)} total P&L • Updating every 30 seconds
+          </p>
+        </div>
+
+        {/* Summary Stats */}
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatMiniCard title="Team P&L" value={formatCurrency(totalPnl)} valueClassName="text-emerald-600" />
+          <StatMiniCard title="Win Rate" value={`${winRate.toFixed(1)}%`} valueClassName="text-purple-600" subtext={`${formatNumber(wins)}W / ${formatNumber(losses)}L`} />
+          <StatMiniCard title="Total Trades" value={formatNumber(totalTrades)} valueClassName="text-indigo-600" />
+          <StatMiniCard title="Active Bots" value={activeBots} valueClassName="text-blue-600" />
+        </div>
+
+        {/* Performance Chart */}
+        <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 font-bold text-gray-900">
+              <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
+              Team Performance
+            </h3>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-purple-700">Last 30 Days</span>
+          </div>
+          <div className="h-64">
+            <PerformanceChart data={chartData} />
           </div>
         </div>
 
-        {/* Setup Progress Card - Using static className */}
-        <div className={`rounded-3xl border p-4 shadow-sm sm:p-6 ${getSetupCardStyle()}`}>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-xl font-extrabold text-slate-900 sm:text-2xl">
-                {!bothConnected ? "Step 1: Connect API keys" : !paperTradingEnabled ? "Step 2: Start paper trading" : !tradingEnabled ? "Paper trading active" : "Live trading active"}
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-800 sm:text-base">
-                {!bothConnected ? "Connect both Alpaca and OKX for your organization to start trading."
-                  : !paperTradingEnabled ? "Your keys are connected. Start with virtual funds first."
-                  : !tradingEnabled ? "Your organization is using virtual funds. Test before live trading."
-                  : "Live trading is active. Monitor performance across your team."}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <StatusPill tone={alpacaConnected ? "green" : "amber"}>Alpaca {alpacaConnected ? "✓" : "Needed"}</StatusPill>
-                <StatusPill tone={okxConnected ? "green" : "amber"}>OKX {okxConnected ? "✓" : "Needed"}</StatusPill>
-                <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>Paper {paperTradingEnabled ? "Active" : "Off"}</StatusPill>
-                <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
-              </div>
-            </div>
-            <div className="w-full shrink-0 lg:w-auto">
-              {!bothConnected ? (
-                <Button variant="warning" onClick={() => setShowApiModal(true)} className="w-full lg:w-auto">Connect API Keys</Button>
-              ) : !paperTradingEnabled ? (
-                <Button onClick={() => handleTogglePaperTrading(true)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
-                  {togglingPaper ? "Starting..." : "Start Paper Trading"}
-                </Button>
-              ) : !tradingEnabled ? (
-                <div className="grid gap-3 sm:grid-cols-2 lg:flex">
-                  <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
-                    {togglingPaper ? "Stopping..." : "Stop Paper"}
-                  </Button>
-                  <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
-                    Start Live Trading
-                  </Button>
-                </div>
-              ) : (
-                <Button variant="danger" onClick={() => handleToggleTrading(false)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
-                  {togglingTrading ? "Stopping..." : "Stop Live Trading"}
-                </Button>
-              )}
-            </div>
+        {/* Win Rate Trend Chart */}
+        <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 font-bold text-gray-900">
+              <span className="h-2.5 w-2.5 rounded-full bg-purple-500" />
+              Win Rate Trend
+            </h3>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-purple-700">Weekly Average</span>
+          </div>
+          <div className="h-48">
+            <WinRateChart data={chartData} />
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-          <Stat label="Team P&L" value={usd(displayStats.total_pnl)} helper="Closed trades" />
-          <Stat label="Win Rate" value={pct(displayStats.win_rate)} helper="Team average" />
-          <Stat label="Total Trades" value={displayStats.total_trades} helper={paperTradingEnabled || tradingEnabled ? "Trading active" : "Not active"} />
-          <Stat label="Team Members" value={members.length} helper="Active members" />
+        {/* Bot Activity Chart */}
+        <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 font-bold text-gray-900">
+              <span className="h-2.5 w-2.5 rounded-full bg-gray-400" />
+              Team Activity (Last 7 Days)
+            </h3>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Weekly Activity</span>
+          </div>
+          <div className="h-64">
+            <BotActivityChart trades={allTrades} />
+          </div>
+          <p className="mt-2 text-center text-[9px] text-gray-400">Relative trading activity based on P&L volume</p>
         </div>
 
-        {/* Quick Actions - Using static className mapping */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {[
-            { title: "Team", path: "/enterprise/team", icon: "👥", color: "indigo" },
-            { title: "Strategies", path: "/enterprise/strategies", icon: "📊", color: "purple" },
-            { title: "Analytics", path: "/enterprise/analytics", icon: "📈", color: "green" },
-            { title: "Audit", path: "/enterprise/audit", icon: "🔍", color: "amber" },
-            { title: "Branding", path: "/enterprise/branding", icon: "🎨", color: "pink" },
-            { title: "Bots", path: "/enterprise/bot-controls", icon: "🤖", color: "blue" },
-          ].map((action) => (
-            <Link 
-              key={action.path} 
-              to={demoMode ? `/test${action.path}` : action.path} 
-              className={`rounded-xl p-3 text-center transition-all shadow-sm ${ACTION_STYLES[action.color]} hover:shadow-md`}
-            >
-              <div className="text-2xl">{action.icon}</div>
-              <div className="mt-1 text-xs font-bold text-slate-800">{action.title}</div>
-            </Link>
-          ))}
-        </div>
-
-        {/* Trading Readiness */}
-        <Card>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <SectionTitle helper="This score helps track your organization's setup completeness.">Organization Readiness</SectionTitle>
-            <div className="text-3xl font-extrabold text-slate-900">{readiness}%</div>
-          </div>
-          <div className="mt-1 h-4 w-full overflow-hidden rounded-full bg-slate-200">
-            <div className={`h-full ${readiness >= 80 ? "bg-emerald-500" : readiness >= 50 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${readiness}%` }} />
-          </div>
-        </Card>
-
-        {/* Charts */}
-        <div className="grid gap-5 xl:grid-cols-3">
-          <Card className="xl:col-span-2">
-            <SectionTitle>Team Performance</SectionTitle>
-            <div className="h-64 sm:h-72">
-              <Line data={lineData} options={chartOptions} />
-            </div>
-          </Card>
-          <Card>
-            <SectionTitle>Win / Loss Ratio</SectionTitle>
-            <div className="h-64 sm:h-72">
-              <Doughnut data={doughnutData} options={{ 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                plugins: { 
-                  legend: { 
-                    position: "top",
-                    labels: { color: "#1e293b", font: { weight: "bold" } } 
-                  } 
-                } 
-              }} />
-            </div>
-          </Card>
-        </div>
-
-        <Card>
-          <SectionTitle>Team Trades — Last 7 Days</SectionTitle>
-          <div className="h-64 sm:h-72">
-            <Bar data={barData} options={chartOptions} />
-          </div>
-        </Card>
-
-        {/* Team Members */}
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <SectionTitle>Team Members ({members.length})</SectionTitle>
-            <Link to={demoMode ? "/test/enterprise-team" : "/enterprise/team"} className="text-sm text-indigo-600 font-bold hover:text-indigo-800">Manage →</Link>
-          </div>
-          <div className="space-y-2">
-            {members.slice(0, 5).map((member, idx) => (
-              <div key={member.user_id || idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50 gap-3 sm:gap-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{member.email?.[0]?.toUpperCase() || "U"}</div>
-                  <div>
-                    <div className="font-bold text-slate-900">{member.email || `Member ${idx + 1}`}</div>
-                    <div className="text-xs text-slate-600 capitalize">{member.role || "member"}</div>
+        {/* Bot Performance Cards */}
+        <div className="mb-5">
+          <h2 className="mb-2 flex items-center gap-2 text-base font-bold text-gray-900">
+            <span>🏆</span> Bot Performance
+            <span className="ml-1 text-[10px] font-normal text-gray-400">Per-bot statistics and notable trades</span>
+          </h2>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {Object.keys(botStats).filter(bot => botStats[bot]?.total_trades > 0).map((bot) => (
+              <div key={bot} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md">
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">{getBotIcon(bot)}</span>
+                      <h3 className="font-bold text-gray-900">{getBotDisplayName(bot)}</h3>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-sm font-bold text-emerald-600">{botStats[bot]?.win_rate?.toFixed(1) || 0}%</div>
+                        <div className="text-[9px] text-gray-500">Win Rate</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-bold text-indigo-600">{botStats[bot]?.total_trades?.toLocaleString() || 0}</div>
+                        <div className="text-[9px] text-gray-500">Trades</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mb-3 grid grid-cols-3 gap-3 border-t border-gray-100 pt-3">
+                    <div className="text-center">
+                      <div className="text-sm font-bold text-emerald-600">{botStats[bot]?.wins?.toLocaleString() || 0}</div>
+                      <div className="text-[9px] text-gray-500">Wins</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-sm font-bold text-red-600">{botStats[bot]?.losses?.toLocaleString() || 0}</div>
+                      <div className="text-[9px] text-gray-500">Losses</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-sm font-bold text-blue-600">{formatCurrency(botStats[bot]?.total_pnl || 0)}</div>
+                      <div className="text-[9px] text-gray-500">Total P&L</div>
+                    </div>
                   </div>
                 </div>
-                <StatusPill tone={member.role === "admin" ? "purple" : "slate"}>{member.role || "Member"}</StatusPill>
               </div>
             ))}
-            {members.length === 0 && <p className="text-center text-slate-600 py-4">No team members yet. Invite your team to get started.</p>}
-            {members.length > 5 && <div className="text-center text-sm text-slate-600 pt-2">+{members.length - 5} more members</div>}
           </div>
-        </Card>
-
-        {/* Achievements */}
-        <Card>
-          <SectionTitle>Organization Achievements</SectionTitle>
-          <div className="flex flex-wrap gap-3">
-            {ACHIEVEMENTS.map((achievement) => {
-              const unlocked = achievements.includes(achievement.id);
-              return (
-                <div key={achievement.id} className={`rounded-2xl border px-4 py-3 text-sm font-extrabold ${unlocked ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
-                  {achievement.icon} {achievement.label}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-
-        {/* Actions */}
-        <div className="grid gap-3 sm:grid-cols-4">
-          <Button onClick={() => nav(demoMode ? "/test/enterprise-team" : "/enterprise/team")} className="w-full">Manage Team</Button>
-          <Button onClick={() => nav(demoMode ? "/test/enterprise-strategies" : "/enterprise/strategies")} className="w-full">Strategies</Button>
-          <Button variant="warning" onClick={() => bothConnected ? setShowLiveConfirm(true) : setShowApiModal(true)} className="w-full">Start Live</Button>
-          <Button variant="secondary" onClick={() => nav(demoMode ? "/test/enterprise-audit" : "/enterprise/audit")} className="w-full">Audit Logs</Button>
         </div>
-      </div>
 
-      {/* Modals */}
-      <ApiKeyModal open={showApiModal} onClose={() => setShowApiModal(false)} onConnect={handleConnectKeys} demoMode={demoMode} />
-      <LiveConfirmModal open={showLiveConfirm} onCancel={() => setShowLiveConfirm(false)} onConfirm={() => handleToggleTrading(true)} busy={togglingTrading} />
+        {/* Recent Trades Table */}
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 bg-gray-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-gray-900">Recent Team Trades</h2>
+                <div className="flex gap-1">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-all ${activeTab === tab.id ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
+                    >
+                      {tab.label} ({tab.count})
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-500">Sort by:</span>
+                <select value={sortRecentTrades} onChange={(e) => setSortRecentTrades(e.target.value)} className="rounded-md border border-gray-300 bg-white px-2 py-0.5 text-[10px]">
+                  <option value="recent">Most Recent</option>
+                  <option value="percent">Highest % Return</option>
+                  <option value="pnl">Highest $ P&L</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div className="max-h-[600px] divide-y divide-gray-100 overflow-y-auto">
+            {filteredTrades.length > 0 ? (
+              filteredTrades.map((trade, idx) => <TradeRow key={trade.id || idx} trade={trade} onClick={setSelectedTrade} />)
+            ) : (
+              <div className="p-8 text-center text-gray-400">
+                <p className="text-sm">No team trades found</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="pb-4 pt-4 text-center text-[9px] text-gray-400">
+          🟡 Polling every 30 seconds • Last update: {data.lastUpdate?.toLocaleTimeString() || "—"}
+          {demoMode && " • Demo Mode - Using mock data"}
+        </div>
+      </main>
+
+      <TradeDetailModal trade={selectedTrade} isOpen={!!selectedTrade} onClose={() => setSelectedTrade(null)} />
     </div>
   );
 }
