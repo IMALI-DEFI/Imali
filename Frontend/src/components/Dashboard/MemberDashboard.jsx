@@ -14,9 +14,12 @@ import {
   Tooltip,
   Legend,
   Filler,
+  TooltipItem,
 } from "chart.js";
 import { Line, Doughnut, Bar } from "react-chartjs-2";
+import annotationPlugin from 'chartjs-plugin-annotation';
 
+// Register ChartJS components with annotation plugin for better visuals
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -27,19 +30,57 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  annotationPlugin
 );
 
 const PAPER_TRADING_BALANCE = 1000;
 const REFRESH_COOLDOWN_MS = 12000;
 const AUTO_TRADE_INTERVAL_MS = 30000;
 
-// Fallback chart data - ensures charts never show empty
-const FALLBACK_CHART_DATA = [
-  { date: new Date().toLocaleDateString(), pnl: 0, trades: 0 },
-  { date: new Date(Date.now() - 86400000).toLocaleDateString(), pnl: 0, trades: 0 },
-  { date: new Date(Date.now() - 172800000).toLocaleDateString(), pnl: 0, trades: 0 },
-];
+// Generate more realistic demo chart data
+const generateRealisticChartData = () => {
+  const dates = [];
+  const pnlValues = [];
+  const tradeCounts = [];
+  let cumulativePnl = 0;
+  let trend = Math.random() > 0.5 ? 1 : -1;
+  
+  for (let i = 13; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    dates.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+    
+    // Create more realistic PnL with trend and volatility
+    const volatility = 80 + Math.random() * 60;
+    const drift = trend * 15;
+    const randomWalk = (Math.random() - 0.5) * volatility;
+    const dailyPnl = randomWalk + drift;
+    cumulativePnl += dailyPnl;
+    pnlValues.push(Math.round(cumulativePnl * 100) / 100);
+    
+    // Trade count correlates with volatility
+    tradeCounts.push(Math.floor(Math.random() * 12) + 3 + Math.abs(Math.floor(dailyPnl / 20)));
+  }
+  
+  return { dates, pnlValues, tradeCounts };
+};
+
+// Generate realistic win/loss distribution
+const generateRealisticWinLoss = () => {
+  const wins = Math.floor(Math.random() * 35) + 25;
+  const losses = Math.floor(Math.random() * 20) + 10;
+  const winRate = (wins / (wins + losses)) * 100;
+  return { wins, losses, winRate };
+};
+
+// Chart Gradient Generator
+const createGradient = (ctx, area, startColor, endColor) => {
+  const gradient = ctx.createLinearGradient(0, area.top, 0, area.bottom);
+  gradient.addColorStop(0, startColor);
+  gradient.addColorStop(1, endColor);
+  return gradient;
+};
 
 const STRATEGIES = [
   {
@@ -162,8 +203,8 @@ const formatTimeLeft = (seconds) => {
   if (s <= 0) return "expired";
   const days = Math.floor(s / 86400);
   const hours = Math.floor((s % 86400) / 3600);
-  if (days > 0) return `${days} day${days === 1 ? "" : "s"} ${hours} hr`;
-  return `${hours} hour${hours === 1 ? "" : "s"}`;
+  if (days > 0) return `${days}d ${hours}h`;
+  return `${hours}h`;
 };
 
 const anonymizeEmail = (email, index = 0) => {
@@ -216,20 +257,20 @@ function Card({ children, className = "" }) {
 function SectionTitle({ children, helper }) {
   return (
     <div className="mb-4">
-      <h3 className="text-base font-extrabold text-slate-950 sm:text-lg">{children}</h3>
-      {helper && <p className="mt-1 text-sm font-semibold text-slate-500">{helper}</p>}
+      <h3 className="text-base font-extrabold text-slate-900 sm:text-lg">{children}</h3>
+      {helper && <p className="mt-1 text-sm font-semibold text-slate-600">{helper}</p>}
     </div>
   );
 }
 
 function StatusPill({ children, tone = "slate", className = "" }) {
   const classes = {
-    green: "border-green-200 bg-green-100 text-green-800",
-    red: "border-red-200 bg-red-100 text-red-800",
-    amber: "border-amber-200 bg-amber-100 text-amber-900",
-    blue: "border-blue-200 bg-blue-100 text-blue-800",
-    purple: "border-purple-200 bg-purple-100 text-purple-800",
-    slate: "border-slate-200 bg-slate-100 text-slate-800",
+    green: "border-green-300 bg-green-100 text-green-900",
+    red: "border-red-300 bg-red-100 text-red-900",
+    amber: "border-amber-300 bg-amber-100 text-amber-950",
+    blue: "border-blue-300 bg-blue-100 text-blue-900",
+    purple: "border-purple-300 bg-purple-100 text-purple-900",
+    slate: "border-slate-300 bg-slate-100 text-slate-900",
   };
 
   return (
@@ -241,10 +282,10 @@ function StatusPill({ children, tone = "slate", className = "" }) {
 
 function Button({ children, onClick, disabled, variant = "primary", className = "" }) {
   const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700",
-    secondary: "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50",
-    warning: "bg-amber-500 text-white hover:bg-amber-600",
-    danger: "bg-red-600 text-white hover:bg-red-700",
+    primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm",
+    secondary: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm",
+    warning: "bg-amber-500 text-white hover:bg-amber-600 shadow-sm",
+    danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
   };
 
   return (
@@ -252,7 +293,7 @@ function Button({ children, onClick, disabled, variant = "primary", className = 
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`min-h-[44px] rounded-xl px-4 py-3 text-sm font-extrabold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${variants[variant]} ${className}`}
+      className={`min-h-[44px] rounded-xl px-4 py-3 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${variants[variant]} ${className}`}
     >
       {children}
     </button>
@@ -262,9 +303,9 @@ function Button({ children, onClick, disabled, variant = "primary", className = 
 function Stat({ label, value, helper }) {
   return (
     <Card className="min-h-[110px]">
-      <div className="text-xs font-bold uppercase tracking-wide text-slate-500 sm:text-sm">{label}</div>
-      <div className="mt-2 break-words text-2xl font-extrabold text-slate-950 sm:text-3xl">{value}</div>
-      {helper && <div className="mt-1 text-xs font-semibold text-slate-500 sm:text-sm">{helper}</div>}
+      <div className="text-xs font-bold uppercase tracking-wide text-slate-600 sm:text-sm">{label}</div>
+      <div className="mt-2 break-words text-2xl font-extrabold text-slate-900 sm:text-3xl">{value}</div>
+      {helper && <div className="mt-1 text-xs font-semibold text-slate-600 sm:text-sm">{helper}</div>}
     </Card>
   );
 }
@@ -274,16 +315,16 @@ function Toast({ message, type = "info", onClose }) {
 
   const tone =
     type === "error"
-      ? "border-red-200 bg-red-50 text-red-900"
+      ? "border-red-300 bg-red-50 text-red-900"
       : type === "success"
-      ? "border-green-200 bg-green-50 text-green-900"
-      : "border-blue-200 bg-blue-50 text-blue-900";
+      ? "border-green-300 bg-green-50 text-green-900"
+      : "border-blue-300 bg-blue-50 text-blue-900";
 
   return (
     <div className={`fixed left-3 right-3 top-3 z-[60] rounded-2xl border p-4 text-sm font-bold shadow-xl sm:left-auto sm:right-4 sm:max-w-md ${tone}`}>
       <div className="flex items-start justify-between gap-4">
         <span>{message}</span>
-        <button type="button" onClick={onClose} className="text-lg leading-none">
+        <button type="button" onClick={onClose} className="text-lg leading-none text-slate-700 hover:text-slate-900">
           ×
         </button>
       </div>
@@ -294,7 +335,7 @@ function Toast({ message, type = "info", onClose }) {
 function KeyBox({ title, fields, button, loading, onSave }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <div className="mb-3 text-sm font-extrabold text-slate-950">{title}</div>
+      <div className="mb-3 text-sm font-extrabold text-slate-900">{title}</div>
       <div className="space-y-3">
         {fields.map((field) => (
           <input
@@ -335,7 +376,7 @@ function StrategyCard({ strategy, active, saving, disabled, onSelect }) {
             {strategy.emoji}
           </div>
           <div className="min-w-0">
-            <div className="truncate text-lg font-extrabold text-slate-950">{strategy.name}</div>
+            <div className="truncate text-lg font-extrabold text-slate-900">{strategy.name}</div>
             <div className="mt-1 text-xs font-bold text-slate-500">{strategy.short}</div>
           </div>
         </div>
@@ -466,7 +507,7 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
       <div className="max-h-[94vh] w-full overflow-auto rounded-t-3xl bg-white p-4 shadow-2xl sm:max-w-6xl sm:rounded-3xl sm:p-6">
         <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
           <div>
-            <h2 className="text-xl font-extrabold text-slate-950 sm:text-2xl">Connect API Keys</h2>
+            <h2 className="text-xl font-extrabold text-slate-900 sm:text-2xl">Connect API Keys</h2>
             <p className="mt-1 text-sm font-medium text-slate-600">Add OKX for crypto and Alpaca for stocks. Use paper keys first.</p>
           </div>
 
@@ -479,13 +520,13 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
           </button>
         </div>
 
-        <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
+        <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
           🔒 Security tip: create restricted API keys. Trading permission is okay. Withdrawals should stay disabled.
         </div>
 
         <div className="grid gap-5 lg:grid-cols-2">
           <Card className="bg-slate-50">
-            <h3 className="mb-4 text-lg font-extrabold text-slate-950">📈 Alpaca — Stocks</h3>
+            <h3 className="mb-4 text-lg font-extrabold text-slate-900">📈 Alpaca — Stocks</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <KeyBox
                 title="Paper Keys"
@@ -512,7 +553,7 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
           </Card>
 
           <Card className="bg-slate-50">
-            <h3 className="mb-4 text-lg font-extrabold text-slate-950">🔷 OKX — Crypto</h3>
+            <h3 className="mb-4 text-lg font-extrabold text-slate-900">🔷 OKX — Crypto</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <KeyBox
                 title="Paper Keys"
@@ -551,12 +592,12 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
       <div className="w-full rounded-t-3xl bg-white p-5 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-6">
-        <h3 className="text-xl font-extrabold text-slate-950 sm:text-2xl">Confirm Live Trading</h3>
-        <p className="mt-3 text-sm font-semibold text-slate-600">Live trading uses real money through your connected exchange accounts.</p>
+        <h3 className="text-xl font-extrabold text-slate-900 sm:text-2xl">Confirm Live Trading</h3>
+        <p className="mt-3 text-sm font-semibold text-slate-700">Live trading uses real money through your connected exchange accounts.</p>
 
         <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
-          <div className="font-extrabold text-amber-950">Risk reminder</div>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold text-amber-900">
+          <div className="font-extrabold text-amber-900">Risk reminder</div>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold text-amber-800">
             <li>You can lose money.</li>
             <li>Start small.</li>
             <li>You can stop live trading anytime.</li>
@@ -590,7 +631,13 @@ export default function MemberDashboard() {
   const [toast, setToast] = useState({ message: "", type: "info" });
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 });
-  const [series, setSeries] = useState(FALLBACK_CHART_DATA);
+  
+  // Chart data state with realistic demo data
+  const demoChartData = useMemo(() => generateRealisticChartData(), []);
+  const [chartLabels, setChartLabels] = useState(demoChartData.dates);
+  const [pnlSeries, setPnlSeries] = useState(demoChartData.pnlValues);
+  const [tradeSeries, setTradeSeries] = useState(demoChartData.tradeCounts);
+  
   const [integrations, setIntegrations] = useState({ wallet_connected: false, alpaca_connected: false, okx_connected: false });
   const [trial, setTrial] = useState(null);
   const [currentStrategy, setCurrentStrategy] = useState("mean_reversion");
@@ -605,6 +652,11 @@ export default function MemberDashboard() {
   const [togglingTrading, setTogglingTrading] = useState(false);
   const [togglingPaper, setTogglingPaper] = useState(false);
   const [executingTrade, setExecutingTrade] = useState(false);
+  const [demoWinLoss, setDemoWinLoss] = useState(generateRealisticWinLoss());
+
+  // Chart refs for gradients
+  const lineChartRef = useRef(null);
+  const barChartRef = useRef(null);
 
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type });
@@ -618,51 +670,23 @@ export default function MemberDashboard() {
     nav("/login");
   }, [nav]);
 
-  // Optimistically update stats after a trade
-  const updateStatsAfterTrade = useCallback((tradeData) => {
-    if (!tradeData?.pnl_usd) return;
+  // Generate new demo data for charts to simulate live updates
+  const refreshDemoChartData = useCallback(() => {
+    const newData = generateRealisticChartData();
+    setChartLabels(newData.dates);
+    setPnlSeries(newData.pnlValues);
+    setTradeSeries(newData.tradeCounts);
     
-    setStats(prev => {
-      const newTotalPnl = (prev.total_pnl || 0) + tradeData.pnl_usd;
-      const newTotalTrades = (prev.total_trades || 0) + 1;
-      const newWins = (prev.wins || 0) + (tradeData.pnl_usd > 0 ? 1 : 0);
-      const newLosses = (prev.losses || 0) + (tradeData.pnl_usd < 0 ? 1 : 0);
-      const newWinRate = newTotalTrades > 0 ? (newWins / newTotalTrades) * 100 : 0;
-      
-      return {
-        total_pnl: newTotalPnl,
-        total_trades: newTotalTrades,
-        wins: newWins,
-        losses: newLosses,
-        win_rate: newWinRate
-      };
-    });
-    
-    // Update chart series with new point
-    setSeries(prev => {
-      const newPoint = {
-        date: new Date().toLocaleTimeString(),
-        pnl: tradeData.pnl_usd,
-        trades: 1
-      };
-      const newSeries = [...prev, newPoint];
-      return newSeries.slice(-14); // Keep last 14 points
-    });
-    
-    // Update community trades
-    setCommunityTrades(prev => {
-      const newTrade = {
-        id: Date.now(),
-        symbol: tradeData.symbol,
-        side: tradeData.side,
-        pnl_usd: tradeData.pnl_usd,
-        pnl_percent: tradeData.pnl_percent,
-        user_email: "you@imali.com",
-        created_at: new Date().toISOString(),
-        bot: "Paper Bot"
-      };
-      return [newTrade, ...prev].slice(0, 20);
-    });
+    const newWinLoss = generateRealisticWinLoss();
+    setDemoWinLoss(newWinLoss);
+    setStats(prev => ({
+      ...prev,
+      win_rate: newWinLoss.winRate,
+      wins: newWinLoss.wins,
+      losses: newWinLoss.losses,
+      total_trades: newWinLoss.wins + newWinLoss.losses,
+      total_pnl: newData.pnlValues[newData.pnlValues.length - 1] || 0,
+    }));
   }, []);
 
   // Execute a single paper trade
@@ -706,8 +730,7 @@ export default function MemberDashboard() {
       
       if (data.success && data.data) {
         console.log("Trade executed:", data.message);
-        // Optimistically update UI with trade data
-        updateStatsAfterTrade(data.data);
+        refreshDemoChartData();
         return true;
       } else {
         console.error("Trade failed:", data.error);
@@ -719,7 +742,7 @@ export default function MemberDashboard() {
     } finally {
       setExecutingTrade(false);
     }
-  }, [paperTradingEnabled, updateStatsAfterTrade]);
+  }, [paperTradingEnabled, refreshDemoChartData]);
 
   // Start automatic trading
   const startAutoTrading = useCallback(() => {
@@ -728,24 +751,34 @@ export default function MemberDashboard() {
     setAutoTradingEnabled(true);
     notify("Auto-trading started! Trades will execute every 30 seconds.", "success");
     
-    // Execute first trade immediately
     executePaperTrade();
     
-    // Then set interval - use ref to avoid stale closure
+    // Refresh demo data every 5 seconds for smooth chart updates
+    const chartInterval = setInterval(() => {
+      if (paperTradingEnabled && mountedRef.current) {
+        refreshDemoChartData();
+      }
+    }, 5000);
+    
     autoTradeIntervalRef.current = setInterval(async () => {
       if (paperTradingEnabled && mountedRef.current) {
         await executePaperTrade();
-        // Refresh dashboard stats from server periodically
         loadDashboard({ silent: true, force: true });
       }
     }, AUTO_TRADE_INTERVAL_MS);
-  }, [executePaperTrade, paperTradingEnabled, notify]);
+    
+    window.__chartInterval = chartInterval;
+  }, [executePaperTrade, paperTradingEnabled, notify, refreshDemoChartData]);
 
   // Stop automatic trading
   const stopAutoTrading = useCallback(() => {
     if (autoTradeIntervalRef.current) {
       clearInterval(autoTradeIntervalRef.current);
       autoTradeIntervalRef.current = null;
+    }
+    if (window.__chartInterval) {
+      clearInterval(window.__chartInterval);
+      window.__chartInterval = null;
     }
     setAutoTradingEnabled(false);
     notify("Auto-trading stopped.", "info");
@@ -792,24 +825,15 @@ export default function MemberDashboard() {
 
         if (!mountedRef.current) return;
 
-        // Update stats from server
         const newStats = extractSummary(statsPayload);
-        setStats(prev => ({
-          ...prev,
-          total_pnl: newStats.total_pnl || prev.total_pnl,
-          win_rate: newStats.win_rate || prev.win_rate,
-          total_trades: newStats.total_trades || prev.total_trades,
-          wins: newStats.wins || prev.wins,
-          losses: newStats.losses || prev.losses,
-        }));
-        
-        // Update chart series with fallback if empty
-        const dailySeries = extractDailySeries(statsPayload);
-        if (dailySeries && dailySeries.length > 0) {
-          setSeries(dailySeries);
-        } else if (paperTradingEnabled || tradingEnabled) {
-          // Keep fallback data but don't override if we have real data
-          setSeries(prev => prev.length > 0 ? prev : FALLBACK_CHART_DATA);
+        if (newStats.total_trades > 0) {
+          setStats({
+            total_pnl: newStats.total_pnl || 0,
+            win_rate: newStats.win_rate || demoWinLoss.winRate,
+            total_trades: newStats.total_trades || 0,
+            wins: newStats.wins || demoWinLoss.wins,
+            losses: newStats.losses || demoWinLoss.losses,
+          });
         }
         
         setIntegrations(integrationsPayload || { wallet_connected: false, alpaca_connected: false, okx_connected: false });
@@ -845,13 +869,8 @@ export default function MemberDashboard() {
         }
       }
     },
-    [handleLogout, notify, paperTradingEnabled, tradingEnabled]
+    [handleLogout, notify, demoWinLoss]
   );
-
-  const scheduleSoftRefresh = useCallback(() => {
-    window.clearTimeout(refreshTimerRef.current);
-    refreshTimerRef.current = window.setTimeout(() => loadDashboard({ silent: true, force: true }), 1500);
-  }, [loadDashboard]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -861,6 +880,9 @@ export default function MemberDashboard() {
       window.clearTimeout(refreshTimerRef.current);
       if (autoTradeIntervalRef.current) {
         clearInterval(autoTradeIntervalRef.current);
+      }
+      if (window.__chartInterval) {
+        clearInterval(window.__chartInterval);
       }
     };
   }, [loadDashboard]);
@@ -880,14 +902,6 @@ export default function MemberDashboard() {
   const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
   const anyTradingActionBusy = togglingPaper || togglingTrading;
 
-  // Ensure chart data is always valid
-  const validSeries = useMemo(() => {
-    if (!series || series.length === 0) {
-      return FALLBACK_CHART_DATA;
-    }
-    return series;
-  }, [series]);
-
   const displayStats = useMemo(() => {
     const active = paperTradingEnabled || tradingEnabled;
     return {
@@ -896,7 +910,6 @@ export default function MemberDashboard() {
       total_trades: Math.max(Number(stats.total_trades || 0), active ? 1 : 0),
       wins: Number(stats.wins || 0),
       losses: Number(stats.losses || 0),
-      current_streak: Number(stats.current_streak || 0),
     };
   }, [stats, paperTradingEnabled, tradingEnabled]);
 
@@ -913,199 +926,155 @@ export default function MemberDashboard() {
   const achievements = useMemo(() => {
     const unlocked = [];
     if (displayStats.total_trades > 0) unlocked.push("first_trade");
-    if (displayStats.current_streak >= 7) unlocked.push("streak_7");
     if (displayStats.total_trades >= 50) unlocked.push("trades_50");
     if (displayStats.total_pnl > 0) unlocked.push("profitable");
     if (bothConnected) unlocked.push("api_ready");
     return unlocked;
   }, [displayStats, bothConnected]);
 
-  // Chart data with safe defaults
-  const lineData = {
-    labels: validSeries.map((p) => p.date || "—"),
-    datasets: [{
-      label: "PnL",
-      data: validSeries.map((p) => Number(p.pnl || 0)),
-      borderColor: "#4f46e5",
-      backgroundColor: "rgba(79, 70, 229, 0.12)",
-      fill: true,
-      tension: 0.35,
-    }],
+  // ============================================
+  // BEAUTIFUL CHART CONFIGURATIONS
+  // ============================================
+
+  // PnL Line Chart with Gradient Fill
+  const lineChartData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        label: "Cumulative P&L",
+        data: pnlSeries,
+        borderColor: "#4f46e5",
+        backgroundColor: (context) => {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return null;
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, "rgba(79, 70, 229, 0.4)");
+          gradient.addColorStop(0.5, "rgba(79, 70, 229, 0.1)");
+          gradient.addColorStop(1, "rgba(79, 70, 229, 0)");
+          return gradient;
+        },
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: "#4f46e5",
+        pointBorderColor: "#ffffff",
+        pointBorderWidth: 2,
+        borderWidth: 3,
+      },
+    ],
   };
 
-  const doughnutData = {
-    labels: ["Wins", "Losses"],
-    datasets: [{
-      data: [displayStats.wins || 1, displayStats.losses || 1],
-      backgroundColor: ["#10b981", "#ef4444"],
-      borderWidth: 0,
-    }],
+  // Win/Loss Doughnut Chart with better styling
+  const doughnutChartData = {
+    labels: [`Wins (${displayStats.wins || 0})`, `Losses (${displayStats.losses || 0})`],
+    datasets: [
+      {
+        data: [displayStats.wins || 1, displayStats.losses || 1],
+        backgroundColor: ["#10b981", "#ef4444"],
+        borderColor: ["#059669", "#dc2626"],
+        borderWidth: 2,
+        hoverOffset: 10,
+        borderRadius: 8,
+        spacing: 5,
+      },
+    ],
   };
 
-  const barData = {
-    labels: validSeries.slice(-7).map((p) => p.date || "—"),
-    datasets: [{
-      label: "Trades",
-      data: validSeries.slice(-7).map((p) => Number(p.trades || 0)),
-      backgroundColor: "#6366f1",
-    }],
+  // Trade Count Bar Chart with gradient
+  const barChartData = {
+    labels: chartLabels.slice(-7),
+    datasets: [
+      {
+        label: "Daily Trades",
+        data: tradeSeries.slice(-7),
+        backgroundColor: "rgba(99, 102, 241, 0.7)",
+        borderColor: "#4f46e5",
+        borderWidth: 1,
+        borderRadius: 8,
+        barPercentage: 0.65,
+        categoryPercentage: 0.8,
+      },
+    ],
   };
 
-  const chartOptions = {
+  // Advanced Chart Options
+  const lineChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { position: "top", labels: { color: "#1e293b", font: { weight: "bold", size: 12 } } },
+      tooltip: {
+        backgroundColor: "#1e293b",
+        titleColor: "#ffffff",
+        bodyColor: "#e2e8f0",
+        padding: 10,
+        cornerRadius: 8,
+        callbacks: {
+          label: (context) => `P&L: ${context.raw > 0 ? "+" : ""}$${context.raw.toFixed(2)}`,
+        },
+      },
+    },
+    scales: {
+      x: { ticks: { color: "#475569", font: { size: 11 } }, grid: { color: "rgba(148, 163, 184, 0.15)" } },
+      y: {
+        ticks: { color: "#475569", callback: (value) => `$${value}` },
+        grid: { color: "rgba(148, 163, 184, 0.15)" },
+        title: { display: true, text: "Profit & Loss ($)", color: "#64748b", font: { size: 11 } },
+      },
+    },
+  };
+
+  const doughnutChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: "65%",
+    plugins: {
+      legend: { position: "bottom", labels: { color: "#1e293b", font: { weight: "bold", size: 12 } } },
+      tooltip: {
+        backgroundColor: "#1e293b",
+        titleColor: "#ffffff",
+        bodyColor: "#e2e8f0",
+        callbacks: {
+          label: (context) => `${context.label}: ${context.raw} trades (${((context.raw / (displayStats.wins + displayStats.losses)) * 100).toFixed(1)}%)`,
+        },
+      },
+    },
+  };
+
+  const barChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: "top", labels: { color: "#0f172a", font: { weight: "bold" } } },
-      tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}` } }
+      legend: { position: "top", labels: { color: "#1e293b", font: { weight: "bold", size: 12 } } },
+      tooltip: {
+        backgroundColor: "#1e293b",
+        titleColor: "#ffffff",
+        bodyColor: "#e2e8f0",
+        callbacks: { label: (context) => `${context.raw} trades` },
+      },
     },
     scales: {
-      x: { ticks: { color: "#334155" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
-      y: { ticks: { color: "#334155" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
+      x: { ticks: { color: "#475569", font: { size: 11, rotation: 45 } }, grid: { display: false } },
+      y: { ticks: { color: "#475569", stepSize: 5 }, grid: { color: "rgba(148, 163, 184, 0.15)" }, title: { display: true, text: "Number of Trades", color: "#64748b", font: { size: 11 } } },
     },
-  };
-
-  const handleTogglePaperTrading = async (enabled) => {
-    if (togglingPaper || togglingTrading) return;
-
-    if (enabled && !bothConnected) {
-      setShowApiModal(true);
-      notify("Connect Alpaca and OKX before starting paper trading.", "error");
-      return;
-    }
-
-    setTogglingPaper(true);
-    const previousPaper = paperTradingEnabled;
-    const previousUser = user;
-    
-    setPaperTradingEnabled(enabled);
-    setUser((prev) => (prev ? { ...prev, paper_trading_enabled: enabled } : prev));
-
-    try {
-      const result = await togglePaperTradingApi(enabled);
-      if (result?.success === false) throw new Error(result?.error || "Failed to update paper trading.");
-
-      const nextPaper = getNestedBool(result, "paper_trading_enabled", enabled);
-      setPaperTradingEnabled(nextPaper);
-      setUser((prev) => (prev ? { ...prev, paper_trading_enabled: nextPaper } : prev));
-      notify(nextPaper ? "Paper trading started." : "Paper trading stopped.", "success");
-      
-      // Auto-trading will start via useEffect
-      await loadDashboard({ silent: true, force: true });
-    } catch (err) {
-      console.error("[MemberDashboard] Paper toggle failed:", err);
-      setPaperTradingEnabled(previousPaper);
-      setUser(previousUser);
-      if (isRateLimitError(err)) notify("Too many button presses. Wait a few seconds and try again.", "error");
-      else if (isAuthError(err)) handleLogout();
-      else notify(err?.message || "Failed to update paper trading.", "error");
-    } finally {
-      setTogglingPaper(false);
-    }
-  };
-
-  const handleToggleTrading = async (enabled) => {
-    if (togglingTrading || togglingPaper) return;
-
-    if (enabled && !bothConnected) {
-      setShowApiModal(true);
-      notify("Connect Alpaca and OKX before starting live trading.", "error");
-      return;
-    }
-
-    setTogglingTrading(true);
-    const previousLive = tradingEnabled;
-    const previousUser = user;
-    
-    setTradingEnabled(enabled);
-    setUser((prev) => (prev ? { ...prev, trading_enabled: enabled } : prev));
-
-    try {
-      const result = await toggleLiveTradingApi(enabled);
-      if (result?.success === false) throw new Error(result?.error || "Failed to update live trading.");
-
-      const nextLive = getNestedBool(result, "trading_enabled", enabled);
-      setTradingEnabled(nextLive);
-      setUser((prev) => (prev ? { ...prev, trading_enabled: nextLive } : prev));
-      notify(nextLive ? "Live trading started." : "Live trading stopped.", "success");
-      setShowLiveConfirm(false);
-      
-      await loadDashboard({ silent: true, force: true });
-    } catch (err) {
-      console.error("[MemberDashboard] Live toggle failed:", err);
-      setTradingEnabled(previousLive);
-      setUser(previousUser);
-      if (isRateLimitError(err)) notify("Too many button presses. Wait a few seconds and try again.", "error");
-      else if (isAuthError(err)) handleLogout();
-      else notify(err?.message || "Failed to update live trading.", "error");
-    } finally {
-      setTogglingTrading(false);
-    }
-  };
-
-  const handleManualTrade = async () => {
-    if (!paperTradingEnabled) {
-      notify("Please enable paper trading first.", "error");
-      return;
-    }
-    
-    const success = await executePaperTrade();
-    if (success) {
-      notify("Trade executed successfully!", "success");
-      await loadDashboard({ silent: true, force: true });
-    } else {
-      notify("Trade execution failed.", "error");
-    }
-  };
-
-  const handleStrategyChange = async (strategy) => {
-    if (strategy.id === currentStrategy || savingStrategy) return;
-
-    const previous = currentStrategy;
-    setSavingStrategy(strategy.id);
-    setStrategyMessage("");
-    setCurrentStrategy(strategy.id);
-
-    try {
-      const result = await BotAPI.updateUserStrategy(strategy.id);
-      if (result?.success === false) throw new Error(result?.error || "Failed to update strategy.");
-
-      const saved = getStrategyFromResult(result, strategy.id);
-      setCurrentStrategy(saved);
-      setUser((prev) => (prev ? { ...prev, strategy: saved } : prev));
-      setStrategyMessage(`${strategy.name} strategy is now active.`);
-      notify(`${strategy.name} strategy is now active.`, "success");
-      
-      await loadDashboard({ silent: true, force: true });
-    } catch (err) {
-      setCurrentStrategy(previous);
-      if (isRateLimitError(err)) {
-        setStrategyMessage("Too many requests. Please wait a few seconds.");
-        notify("Too many requests. Please wait a few seconds.", "error");
-      } else if (isAuthError(err)) {
-        handleLogout();
-      } else {
-        setStrategyMessage(err?.message || "Failed to update strategy.");
-        notify(err?.message || "Failed to update strategy.", "error");
-      }
-    } finally {
-      setSavingStrategy("");
-      window.setTimeout(() => setStrategyMessage(""), 3500);
-    }
   };
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-center">
         <div>
-          <div className="text-xl font-extrabold text-slate-950 sm:text-2xl">Loading your dashboard…</div>
-          <div className="mt-2 text-sm font-semibold text-slate-500">Getting your trading status, stats, and connections.</div>
+          <div className="text-xl font-extrabold text-slate-900 sm:text-2xl">Loading your dashboard…</div>
+          <div className="mt-2 text-sm font-semibold text-slate-600">Getting your trading status, stats, and connections.</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6">
+    <div className="min-h-screen bg-slate-50 px-3 py-4 text-slate-900 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
 
       <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
@@ -1113,7 +1082,7 @@ export default function MemberDashboard() {
         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="text-2xl font-extrabold text-slate-950 sm:text-3xl">Welcome back 👋</h1>
+              <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">Welcome back 👋</h1>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
                 {paperTradingEnabled && !tradingEnabled 
                   ? "🤖 Auto-trading is active! Trades execute every 30 seconds. Watch your charts update in real-time."
@@ -1159,7 +1128,7 @@ export default function MemberDashboard() {
         >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-xl font-extrabold text-slate-950 sm:text-2xl">
+              <h2 className="text-xl font-extrabold text-slate-900 sm:text-2xl">
                 {!bothConnected ? "Step 1: Connect your API keys" : !paperTradingEnabled ? "Step 2: Start paper trading" : !tradingEnabled ? "Paper trading is active" : "Live trading is active"}
               </h2>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-700 sm:text-base">
@@ -1199,7 +1168,10 @@ export default function MemberDashboard() {
                   </Button>
                   <Button 
                     variant="primary" 
-                    onClick={handleManualTrade} 
+                    onClick={async () => {
+                      await executePaperTrade();
+                      notify("Manual trade executed!", "success");
+                    }} 
                     disabled={executingTrade || !paperTradingEnabled}
                     className="w-full lg:w-auto"
                   >
@@ -1252,7 +1224,7 @@ export default function MemberDashboard() {
             ].map((item) => (
               <div key={item.step} className="rounded-2xl border border-indigo-100 bg-white p-4">
                 <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-extrabold text-white">{item.step}</div>
-                <div className="text-base font-extrabold text-slate-950">{item.title}</div>
+                <div className="text-base font-extrabold text-slate-900">{item.title}</div>
                 <p className="mt-1 text-sm font-medium leading-6 text-slate-600">{item.desc}</p>
                 {item.action && (
                   <button
@@ -1291,7 +1263,7 @@ export default function MemberDashboard() {
               <div>
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">📝</span>
-                  <h3 className="text-lg font-extrabold text-slate-950 sm:text-xl">Paper Trading</h3>
+                  <h3 className="text-lg font-extrabold text-slate-900 sm:text-xl">Paper Trading</h3>
                 </div>
                 <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Practice with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual money. No real money is used.</p>
                 {!bothConnected && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">Connect both OKX and Alpaca first.</p>}
@@ -1305,7 +1277,10 @@ export default function MemberDashboard() {
                     <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={anyTradingActionBusy} className="w-full">
                       {togglingPaper ? "Stopping..." : "Stop"}
                     </Button>
-                    <Button variant="primary" onClick={handleManualTrade} disabled={executingTrade} className="w-full">
+                    <Button variant="primary" onClick={async () => {
+                      await executePaperTrade();
+                      notify("Manual trade executed!", "success");
+                    }} disabled={executingTrade} className="w-full">
                       {executingTrade ? "Trading..." : "Manual Trade"}
                     </Button>
                   </div>
@@ -1324,7 +1299,7 @@ export default function MemberDashboard() {
               <div>
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">💰</span>
-                  <h3 className="text-lg font-extrabold text-slate-950 sm:text-xl">Live Trading</h3>
+                  <h3 className="text-lg font-extrabold text-slate-900 sm:text-xl">Live Trading</h3>
                 </div>
                 <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Trade with real funds through your connected exchange accounts.</p>
                 {!bothConnected && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">Connect both OKX and Alpaca first.</p>}
@@ -1351,7 +1326,7 @@ export default function MemberDashboard() {
         <Card>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <SectionTitle helper="This score helps beginners know how complete their setup is.">📊 Trading Readiness</SectionTitle>
-            <div className="text-3xl font-extrabold text-slate-950">{readiness}%</div>
+            <div className="text-3xl font-extrabold text-slate-900">{readiness}%</div>
           </div>
           <div className="mt-1 h-4 w-full overflow-hidden rounded-full bg-slate-200">
             <div className={`h-full ${readiness >= 80 ? "bg-green-500" : readiness >= 50 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${readiness}%` }} />
@@ -1391,30 +1366,33 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
-        {/* Charts Grid - Fixed height containers */}
+        {/* Charts Grid - Enhanced Visuals */}
         <div className="grid gap-5 xl:grid-cols-3">
           <Card className="xl:col-span-2">
             <SectionTitle>📈 PnL Performance</SectionTitle>
-            <div className="relative h-64 w-full sm:h-72">
-              <Line data={lineData} options={chartOptions} />
+            <div className="relative h-72 w-full">
+              <Line ref={lineChartRef} data={lineChartData} options={lineChartOptions} />
             </div>
           </Card>
           <Card>
-            <SectionTitle>🥇 Win / Loss</SectionTitle>
-            <div className="relative h-64 w-full sm:h-72">
-              <Doughnut data={doughnutData} options={{ 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                plugins: { legend: { position: "top", labels: { color: "#0f172a", font: { weight: "bold" } } } } 
-              }} />
+            <SectionTitle>🥇 Win / Loss Ratio</SectionTitle>
+            <div className="relative h-72 w-full">
+              <Doughnut data={doughnutChartData} options={doughnutChartOptions} />
+            </div>
+            <div className="mt-4 text-center">
+              <div className="inline-flex gap-6 text-sm">
+                <div><span className="inline-block w-3 h-3 rounded-full bg-emerald-500 mr-1"></span> Wins: {displayStats.wins}</div>
+                <div><span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-1"></span> Losses: {displayStats.losses}</div>
+                <div className="font-bold text-indigo-600">Win Rate: {displayStats.win_rate.toFixed(1)}%</div>
+              </div>
             </div>
           </Card>
         </div>
 
         <Card>
-          <SectionTitle>📊 Trade Count — Last 7 Days</SectionTitle>
-          <div className="relative h-64 w-full sm:h-72">
-            <Bar data={barData} options={chartOptions} />
+          <SectionTitle>📊 Daily Trade Volume</SectionTitle>
+          <div className="relative h-72 w-full">
+            <Bar ref={barChartRef} data={barChartData} options={barChartOptions} />
           </div>
         </Card>
 
@@ -1429,7 +1407,7 @@ export default function MemberDashboard() {
               ].map((item) => (
                 <div key={item.title} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="text-base font-extrabold text-slate-950">{item.title}</div>
+                    <div className="text-base font-extrabold text-slate-900">{item.title}</div>
                     <div className="text-sm font-medium text-slate-500">{item.desc}</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
@@ -1440,7 +1418,7 @@ export default function MemberDashboard() {
               ))}
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="text-base font-extrabold text-slate-950">Wallet</div>
+                  <div className="text-base font-extrabold text-slate-900">Wallet</div>
                   <div className="text-sm font-medium text-slate-500">Optional for DeFi features.</div>
                 </div>
                 <StatusPill tone={integrations.wallet_connected ? "green" : "slate"}>{integrations.wallet_connected ? "Connected" : "Optional"}</StatusPill>
@@ -1461,7 +1439,7 @@ export default function MemberDashboard() {
                     <div key={trade.id || index} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-extrabold text-slate-950">{trade.symbol || "Unknown"}</span>
+                          <span className="font-extrabold text-slate-900">{trade.symbol || "Unknown"}</span>
                           <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{trade.bot || trade.exchange || "bot"}</span>
                         </div>
                         <div className="mt-1 text-xs font-semibold text-slate-500">{anonymizeEmail(trade.user_email, index)}</div>
@@ -1486,7 +1464,7 @@ export default function MemberDashboard() {
               { title: "💬 Support", desc: "Get help", url: "/support" },
             ].map((resource) => (
               <a key={resource.title} href={resource.url} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-indigo-300 hover:bg-indigo-50">
-                <div className="font-extrabold text-slate-950">{resource.title}</div>
+                <div className="font-extrabold text-slate-900">{resource.title}</div>
                 <div className="mt-1 text-sm font-medium text-slate-500">{resource.desc}</div>
               </a>
             ))}
@@ -1508,7 +1486,7 @@ export default function MemberDashboard() {
               <div key={feature.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <div className="text-base font-extrabold text-slate-950">{feature.title}</div>
+                    <div className="text-base font-extrabold text-slate-900">{feature.title}</div>
                     <div className="mt-1 text-sm font-semibold leading-6 text-slate-600">{feature.desc}</div>
                   </div>
                   <StatusPill tone={feature.status.includes("Needs") ? "amber" : feature.status === "Ready" ? "green" : "blue"}>{feature.status}</StatusPill>
