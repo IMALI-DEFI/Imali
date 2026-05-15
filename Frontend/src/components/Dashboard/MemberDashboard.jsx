@@ -17,6 +17,7 @@ import {
 } from "chart.js";
 import { Line, Doughnut, Bar } from "react-chartjs-2";
 
+// Register ChartJS components
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -451,6 +452,204 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   );
 }
 
+// Improved Chart Components with better compatibility
+const PnLChart = ({ data, options }) => {
+  const chartRef = useRef(null);
+  
+  // Default options with better compatibility
+  const defaultOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          color: '#1e293b',
+          font: { weight: 'bold', size: 12 },
+          usePointStyle: true,
+          boxWidth: 8,
+        },
+      },
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        titleColor: '#fff',
+        bodyColor: '#fff',
+        borderColor: '#4f46e5',
+        borderWidth: 1,
+        callbacks: {
+          label: function(context) {
+            let label = context.dataset.label || '';
+            if (label) label += ': ';
+            if (context.parsed.y !== null) {
+              label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+            }
+            return label;
+          }
+        }
+      },
+    },
+    scales: {
+      x: {
+        ticks: { 
+          color: '#475569',
+          maxRotation: 45,
+          minRotation: 45,
+          autoSkip: true,
+          maxTicksLimit: 8,
+        },
+        grid: { color: 'rgba(148, 163, 184, 0.25)' },
+        title: {
+          display: true,
+          text: 'Date',
+          color: '#64748b',
+          font: { weight: 'bold', size: 12 }
+        }
+      },
+      y: {
+        ticks: { 
+          color: '#475569',
+          callback: function(value) {
+            return '$' + value.toFixed(2);
+          }
+        },
+        grid: { color: 'rgba(148, 163, 184, 0.25)' },
+        title: {
+          display: true,
+          text: 'Profit / Loss (USD)',
+          color: '#64748b',
+          font: { weight: 'bold', size: 12 }
+        }
+      },
+    },
+    interaction: {
+      mode: 'nearest',
+      axis: 'x',
+      intersect: false,
+    },
+    elements: {
+      line: {
+        tension: 0.4,
+        borderWidth: 2,
+      },
+      point: {
+        radius: 3,
+        hoverRadius: 5,
+        backgroundColor: '#4f46e5',
+      },
+    },
+  };
+
+  const mergedOptions = { ...defaultOptions, ...options };
+  
+  return <Line ref={chartRef} data={data} options={mergedOptions} />;
+};
+
+const WinLossChart = ({ data }) => {
+  const chartRef = useRef(null);
+  
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          color: '#1e293b',
+          font: { weight: 'bold', size: 12 },
+          usePointStyle: true,
+          boxWidth: 10,
+        },
+      },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        titleColor: '#fff',
+        bodyColor: '#fff',
+        callbacks: {
+          label: function(context) {
+            const label = context.label || '';
+            const value = context.parsed || 0;
+            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+            const percentage = ((value / total) * 100).toFixed(1);
+            return `${label}: ${value} (${percentage}%)`;
+          }
+        }
+      },
+    },
+    cutout: '60%',
+    radius: '90%',
+  };
+  
+  return <Doughnut ref={chartRef} data={data} options={options} />;
+};
+
+const VolumeChart = ({ data, options }) => {
+  const chartRef = useRef(null);
+  
+  const defaultOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          color: '#1e293b',
+          font: { weight: 'bold', size: 12 },
+        },
+      },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        titleColor: '#fff',
+        bodyColor: '#fff',
+        callbacks: {
+          label: function(context) {
+            let label = context.dataset.label || '';
+            if (label) label += ': ';
+            if (context.parsed.y !== null) {
+              label += context.parsed.y.toFixed(0);
+            }
+            return label;
+          }
+        }
+      },
+    },
+    scales: {
+      x: {
+        ticks: { 
+          color: '#475569',
+          maxRotation: 45,
+          minRotation: 45,
+          autoSkip: true,
+          maxTicksLimit: 7,
+        },
+        grid: { color: 'rgba(148, 163, 184, 0.25)' },
+        title: {
+          display: true,
+          text: 'Date',
+          color: '#64748b',
+          font: { weight: 'bold', size: 12 }
+        }
+      },
+      y: {
+        ticks: { color: '#475569' },
+        grid: { color: 'rgba(148, 163, 184, 0.25)' },
+        title: {
+          display: true,
+          text: 'Number of Trades',
+          color: '#64748b',
+          font: { weight: 'bold', size: 12 }
+        },
+        beginAtZero: true,
+      },
+    },
+  };
+
+  const mergedOptions = { ...defaultOptions, ...options };
+  
+  return <Bar ref={chartRef} data={data} options={mergedOptions} />;
+};
+
 export default function MemberDashboard() {
   const nav = useNavigate();
   const mountedRef = useRef(true);
@@ -517,46 +716,60 @@ export default function MemberDashboard() {
     return unlocked;
   }, [displayStats, bothConnected]);
 
-  // Chart data from backend ONLY
-  const lineChartData = {
-    labels: series.map((p) => p.date || "—"),
-    datasets: [{
-      label: "PnL",
-      data: series.map((p) => Number(p.pnl || 0)),
-      borderColor: "#4f46e5",
-      backgroundColor: "rgba(79, 70, 229, 0.1)",
-      fill: true,
-      tension: 0.35,
-    }],
-  };
+  // Prepare chart data with fallbacks for empty data
+  const lineChartData = useMemo(() => {
+    const labels = series.length > 0 ? series.map((p) => p.date || "—") : ["No Data"];
+    const data = series.length > 0 ? series.map((p) => Number(p.pnl || 0)) : [0];
+    
+    return {
+      labels: labels,
+      datasets: [{
+        label: "PnL",
+        data: data,
+        borderColor: "#4f46e5",
+        backgroundColor: "rgba(79, 70, 229, 0.1)",
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4,
+        pointBackgroundColor: "#4f46e5",
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+      }],
+    };
+  }, [series]);
 
-  const doughnutChartData = {
+  const doughnutChartData = useMemo(() => ({
     labels: ["Wins", "Losses"],
     datasets: [{
       data: [displayStats.wins || 1, displayStats.losses || 1],
       backgroundColor: ["#10b981", "#ef4444"],
-      borderWidth: 0,
+      borderColor: ["#059669", "#dc2626"],
+      borderWidth: 2,
+      hoverOffset: 10,
     }],
-  };
+  }), [displayStats.wins, displayStats.losses]);
 
-  const barChartData = {
-    labels: series.slice(-7).map((p) => p.date || "—"),
-    datasets: [{
-      label: "Trades",
-      data: series.slice(-7).map((p) => Number(p.trades || 0)),
-      backgroundColor: "#6366f1",
-    }],
-  };
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { labels: { color: "#1e293b", font: { weight: "bold" } } } },
-    scales: {
-      x: { ticks: { color: "#475569" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
-      y: { ticks: { color: "#475569" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
-    },
-  };
+  const barChartData = useMemo(() => {
+    const last7Days = series.slice(-7);
+    const labels = last7Days.length > 0 ? last7Days.map((p) => p.date || "—") : ["No Data"];
+    const data = last7Days.length > 0 ? last7Days.map((p) => Number(p.trades || 0)) : [0];
+    
+    return {
+      labels: labels,
+      datasets: [{
+        label: "Trade Volume",
+        data: data,
+        backgroundColor: "#6366f1",
+        borderColor: "#4f46e5",
+        borderWidth: 1,
+        borderRadius: 8,
+        barPercentage: 0.7,
+        categoryPercentage: 0.8,
+      }],
+    };
+  }, [series]);
 
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type });
@@ -610,7 +823,6 @@ export default function MemberDashboard() {
 
       if (!mountedRef.current) return;
 
-      // Update stats from backend ONLY
       const newStats = extractSummary(statsPayload);
       setStats({
         total_pnl: newStats.total_pnl || 0,
@@ -620,7 +832,6 @@ export default function MemberDashboard() {
         losses: newStats.losses || 0,
       });
       
-      // Update chart series from backend ONLY
       const dailySeries = extractDailySeries(statsPayload);
       if (dailySeries && dailySeries.length > 0) {
         setSeries(dailySeries);
@@ -633,7 +844,6 @@ export default function MemberDashboard() {
         )
       );
       
-      // Update community trades from backend ONLY
       if (Array.isArray(tradesPayload?.trades) && tradesPayload.trades.length > 0) {
         setCommunityTrades(tradesPayload.trades);
       }
@@ -685,7 +895,6 @@ export default function MemberDashboard() {
       const data = await response.json();
       
       if (data.success) {
-        // ONLY refresh backend data - NO fake updates
         await loadDashboard({ silent: true, force: true });
         return true;
       }
@@ -720,7 +929,6 @@ export default function MemberDashboard() {
     notify("Auto-trading stopped.", "info");
   }, [notify]);
 
-  // Polling every 30 seconds to refresh dashboard data
   useEffect(() => {
     if (pollingIntervalRef.current) return;
     
@@ -881,7 +1089,6 @@ export default function MemberDashboard() {
     };
   }, [loadDashboard]);
 
-  // Auto-start trading when paper trading is enabled
   useEffect(() => {
     if (paperTradingEnabled && !autoTradingEnabled && !tradingEnabled) {
       startAutoTrading();
@@ -901,9 +1108,6 @@ export default function MemberDashboard() {
     );
   }
 
-  // The rest of the JSX remains the same as your working version
-  // (keeping the same layout structure - the charts sections use the backend data above)
-  
   return (
     <div className="min-h-screen bg-slate-50 px-3 py-4 text-slate-900 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
@@ -1084,13 +1288,47 @@ export default function MemberDashboard() {
           <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-4">{STRATEGIES.map((strategy) => (<StrategyCard key={strategy.id} strategy={strategy} active={currentStrategy === strategy.id} saving={savingStrategy === strategy.id} disabled={!!savingStrategy} onSelect={handleStrategyChange} />))}</div>
         </Card>
 
-        {/* Charts Grid - Using backend data ONLY */}
+        {/* Charts Grid - Using improved chart components */}
         <div className="grid gap-5 xl:grid-cols-3">
-          <Card className="xl:col-span-2"><SectionTitle>📈 PnL Performance</SectionTitle><div className="relative h-72 w-full"><Line data={lineChartData} options={chartOptions} /></div></Card>
-          <Card><SectionTitle>🥇 Win / Loss Ratio</SectionTitle><div className="relative h-72 w-full"><Doughnut data={doughnutChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "top", labels: { color: "#1e293b", font: { weight: "bold" } } } } }} /></div><div className="mt-4 text-center"><div className="inline-flex gap-6 text-sm"><div><span className="inline-block w-3 h-3 rounded-full bg-emerald-500 mr-1"></span> Wins: {displayStats.wins}</div><div><span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-1"></span> Losses: {displayStats.losses}</div><div className="font-bold text-indigo-600">Win Rate: {displayStats.win_rate.toFixed(1)}%</div></div></div></Card>
+          <Card className="xl:col-span-2">
+            <SectionTitle>📈 PnL Performance</SectionTitle>
+            <div className="relative h-80 w-full">
+              {series.length > 0 ? (
+                <PnLChart data={lineChartData} />
+              ) : (
+                <div className="flex h-full items-center justify-center text-slate-500">
+                  No trading data yet. Start paper trading to see your performance chart!
+                </div>
+              )}
+            </div>
+          </Card>
+          <Card>
+            <SectionTitle>🥇 Win / Loss Ratio</SectionTitle>
+            <div className="relative h-80 w-full">
+              <WinLossChart data={doughnutChartData} />
+            </div>
+            <div className="mt-4 text-center">
+              <div className="inline-flex gap-6 text-sm">
+                <div><span className="inline-block w-3 h-3 rounded-full bg-emerald-500 mr-1"></span> Wins: {displayStats.wins}</div>
+                <div><span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-1"></span> Losses: {displayStats.losses}</div>
+                <div className="font-bold text-indigo-600">Win Rate: {displayStats.win_rate.toFixed(1)}%</div>
+              </div>
+            </div>
+          </Card>
         </div>
 
-        <Card><SectionTitle>📊 Daily Trade Volume</SectionTitle><div className="relative h-72 w-full"><Bar data={barChartData} options={chartOptions} /></div></Card>
+        <Card>
+          <SectionTitle>📊 Daily Trade Volume</SectionTitle>
+          <div className="relative h-80 w-full">
+            {series.length > 0 ? (
+              <VolumeChart data={barChartData} />
+            ) : (
+              <div className="flex h-full items-center justify-center text-slate-500">
+                No trading volume yet. Trades will appear here once you start paper trading!
+              </div>
+            )}
+          </div>
+        </Card>
 
         {/* Required Connections */}
         <div className="grid gap-5 xl:grid-cols-2">
