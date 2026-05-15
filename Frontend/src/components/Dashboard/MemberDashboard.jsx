@@ -2,34 +2,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  ArcElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from "chart.js";
-import { Line, Doughnut, Bar } from "react-chartjs-2";
-
-// Register ChartJS components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  ArcElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
 
 const PAPER_TRADING_BALANCE = 1000;
 const REFRESH_COOLDOWN_MS = 12000;
@@ -452,323 +424,390 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   );
 }
 
-// ============ IMPROVED CHART COMPONENTS ============
+// ============ CUSTOM SVG CHARTS (No External Dependencies) ============
 
 // PnL Line Chart Component
 const PnLChart = ({ data }) => {
-  const chartRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+  const containerRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
-  // Validate and prepare data with fallbacks
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const resizeObserver = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        setDimensions({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height
+        });
+      }
+    });
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+  
   const chartData = useMemo(() => {
-    // Check if we have valid data
-    const hasValidData = data && 
-      data.labels && 
-      data.labels.length > 0 && 
-      data.labels[0] !== "No Data" &&
-      data.datasets && 
-      data.datasets[0] && 
-      data.datasets[0].data &&
-      data.datasets[0].data.some(v => v !== 0 && v !== null && v !== undefined);
-    
-    if (!hasValidData) {
-      return {
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-        datasets: [{
-          label: 'PnL (Demo Data)',
-          data: [0, 0, 0, 0, 0, 0],
-          borderColor: '#cbd5e1',
-          backgroundColor: 'rgba(203, 213, 225, 0.1)',
-          borderWidth: 2,
-          borderDash: [5, 5],
-          fill: true,
-          tension: 0.4,
-          pointRadius: 0,
-          pointHoverRadius: 0,
-        }]
-      };
+    if (!data || data.length === 0) {
+      return { points: [], maxValue: 100, minValue: 0 };
     }
     
-    return data;
+    const points = data.map((item, index) => ({
+      x: index,
+      y: item.pnl || 0,
+      label: item.date,
+      value: item.pnl || 0
+    }));
+    
+    const values = points.map(p => p.y);
+    const maxValue = Math.max(...values, 0);
+    const minValue = Math.min(...values, 0);
+    const range = maxValue - minValue;
+    
+    return { points, maxValue, minValue, range };
   }, [data]);
   
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top',
-        labels: {
-          color: '#1e293b',
-          font: { weight: 'bold', size: 12 },
-          usePointStyle: true,
-          boxWidth: 8,
-        },
-      },
-      tooltip: {
-        mode: 'index',
-        intersect: false,
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        borderColor: '#4f46e5',
-        borderWidth: 1,
-        callbacks: {
-          label: function(context) {
-            let label = context.dataset.label || '';
-            if (label) label += ': ';
-            if (context.parsed.y !== null) {
-              label += new Intl.NumberFormat('en-US', { 
-                style: 'currency', 
-                currency: 'USD',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              }).format(context.parsed.y);
-            }
-            return label;
-          }
-        }
-      },
-    },
-    scales: {
-      x: {
-        ticks: { 
-          color: '#475569',
-          maxRotation: 45,
-          minRotation: 45,
-          autoSkip: true,
-          maxTicksLimit: 8,
-        },
-        grid: { color: 'rgba(148, 163, 184, 0.25)' },
-        title: {
-          display: true,
-          text: 'Date',
-          color: '#64748b',
-          font: { weight: 'bold', size: 12 }
-        }
-      },
-      y: {
-        ticks: { 
-          color: '#475569',
-          callback: function(value) {
-            return '$' + value.toFixed(2);
-          }
-        },
-        grid: { color: 'rgba(148, 163, 184, 0.25)' },
-        title: {
-          display: true,
-          text: 'Profit / Loss (USD)',
-          color: '#64748b',
-          font: { weight: 'bold', size: 12 }
-        },
-        beginAtZero: false,
-      },
-    },
-    interaction: {
-      mode: 'nearest',
-      axis: 'x',
-      intersect: false,
-    },
-    elements: {
-      line: {
-        tension: 0.4,
-        borderWidth: 3,
-      },
-      point: {
-        radius: 4,
-        hoverRadius: 6,
-        backgroundColor: '#4f46e5',
-        borderColor: '#fff',
-        borderWidth: 2,
-      },
-    },
+  const getY = (value) => {
+    if (dimensions.height === 0) return 0;
+    const padding = 40;
+    const chartHeight = dimensions.height - padding * 2;
+    const { maxValue, minValue } = chartData;
+    const range = maxValue - minValue || 1;
+    const normalized = (value - minValue) / range;
+    return padding + chartHeight - (normalized * chartHeight);
   };
   
-  return <Line ref={chartRef} data={chartData} options={options} />;
-};
-
-// Win/Loss Doughnut Chart Component
-const WinLossChart = ({ wins, losses }) => {
-  const chartRef = useRef(null);
-  
-  const chartData = {
-    labels: ['Wins', 'Losses'],
-    datasets: [{
-      data: [wins || 0, losses || 0],
-      backgroundColor: ['#10b981', '#ef4444'],
-      borderColor: ['#059669', '#dc2626'],
-      borderWidth: 2,
-      hoverOffset: 10,
-    }],
+  const getX = (index) => {
+    if (dimensions.width === 0 || chartData.points.length <= 1) return 0;
+    const padding = 60;
+    const chartWidth = dimensions.width - padding * 2;
+    const step = chartWidth / (chartData.points.length - 1);
+    return padding + (index * step);
   };
   
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'bottom',
-        labels: {
-          color: '#1e293b',
-          font: { weight: 'bold', size: 12 },
-          usePointStyle: true,
-          boxWidth: 10,
-          padding: 20,
-        },
-      },
-      tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        callbacks: {
-          label: function(context) {
-            const label = context.label || '';
-            const value = context.parsed || 0;
-            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-            return `${label}: ${value} (${percentage}%)`;
-          }
-        }
-      },
-    },
-    cutout: '65%',
-    radius: '90%',
-    animation: {
-      animateScale: true,
-      animateRotate: true,
-    },
-  };
-  
-  const hasData = (wins || 0) + (losses || 0) > 0;
-  
-  if (!hasData) {
+  if (chartData.points.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center">
+      <div className="flex h-full w-full items-center justify-center">
         <div className="text-center text-slate-500">
-          <div className="text-4xl mb-2">📊</div>
+          <div className="text-4xl mb-2">📈</div>
           <p className="text-sm">No trading data yet</p>
-          <p className="text-xs mt-1">Start paper trading to see stats</p>
+          <p className="text-xs mt-1">Start paper trading to see your PnL chart</p>
         </div>
       </div>
     );
   }
   
-  return <Doughnut ref={chartRef} data={chartData} options={options} />;
+  const pathD = chartData.points.map((point, i) => 
+    `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(point.y)}`
+  ).join(' ');
+  
+  const areaPathD = chartData.points.map((point, i) => 
+    `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(point.y)}`
+  ).join(' ') + ` L ${getX(chartData.points.length - 1)} ${getY(0)} L ${getX(0)} ${getY(0)} Z`;
+  
+  return (
+    <div ref={containerRef} className="relative h-full w-full">
+      <svg width={dimensions.width} height={dimensions.height} className="overflow-visible">
+        {/* Grid lines */}
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+          const y = getY(chartData.minValue + (chartData.range * ratio));
+          return (
+            <g key={i}>
+              <line
+                x1={60}
+                y1={y}
+                x2={dimensions.width - 60}
+                y2={y}
+                stroke="#e2e8f0"
+                strokeWidth="1"
+                strokeDasharray="4"
+              />
+              <text x={50} y={y + 4} textAnchor="end" className="text-[10px] fill-slate-500">
+                ${(chartData.minValue + (chartData.range * ratio)).toFixed(0)}
+              </text>
+            </g>
+          );
+        })}
+        
+        {/* Area fill */}
+        <path d={areaPathD} fill="rgba(79, 70, 229, 0.1)" />
+        
+        {/* Line */}
+        <path d={pathD} stroke="#4f46e5" strokeWidth="2" fill="none" />
+        
+        {/* Points */}
+        {chartData.points.map((point, i) => (
+          <g key={i}>
+            <circle
+              cx={getX(i)}
+              cy={getY(point.y)}
+              r="4"
+              fill="#4f46e5"
+              stroke="#fff"
+              strokeWidth="2"
+              className="cursor-pointer hover:r-6 transition-all"
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setTooltip({ x: rect.left, y: rect.top, data: point });
+              }}
+              onMouseLeave={() => setTooltip(null)}
+            />
+            <text x={getX(i)} y={dimensions.height - 15} textAnchor="middle" className="text-[10px] fill-slate-500 transform -rotate-45 origin-center">
+              {point.label?.slice(0, 5)}
+            </text>
+          </g>
+        ))}
+        
+        {/* Axes */}
+        <line x1={60} y1={40} x2={60} y2={dimensions.height - 40} stroke="#cbd5e1" strokeWidth="1" />
+        <line x1={60} y1={dimensions.height - 40} x2={dimensions.width - 40} y2={dimensions.height - 40} stroke="#cbd5e1" strokeWidth="1" />
+      </svg>
+      
+      {/* Tooltip */}
+      {tooltip && (
+        <div
+          className="fixed z-50 rounded-lg bg-slate-900 px-3 py-2 text-white shadow-lg pointer-events-none"
+          style={{ left: tooltip.x + 10, top: tooltip.y - 40 }}
+        >
+          <div className="text-xs font-bold">{tooltip.data.label}</div>
+          <div className="text-sm font-extrabold">${tooltip.data.value.toFixed(2)}</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Win/Loss Donut Chart Component
+const WinLossChart = ({ wins, losses }) => {
+  const total = wins + losses;
+  const winPercent = total > 0 ? (wins / total) * 100 : 0;
+  const lossPercent = total > 0 ? (losses / total) * 100 : 0;
+  const size = 200;
+  const radius = 80;
+  const circumference = 2 * Math.PI * radius;
+  
+  const winOffset = circumference * (1 - winPercent / 100);
+  const lossOffset = circumference * (1 - lossPercent / 100);
+  
+  if (total === 0) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center">
+        <div className="text-center text-slate-500">
+          <div className="text-4xl mb-2">🎯</div>
+          <p className="text-sm">No trades yet</p>
+          <p className="text-xs mt-1">Complete trades to see win/loss ratio</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {/* Background */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="#f1f5f9"
+          strokeWidth="20"
+        />
+        {/* Wins arc */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="#10b981"
+          strokeWidth="20"
+          strokeDasharray={circumference}
+          strokeDashoffset={winOffset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          className="transition-all duration-500"
+        />
+        {/* Losses arc */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="#ef4444"
+          strokeWidth="20"
+          strokeDasharray={circumference}
+          strokeDashoffset={lossOffset}
+          strokeLinecap="round"
+          transform={`rotate(${winPercent * 3.6 - 90} ${size / 2} ${size / 2})`}
+          className="transition-all duration-500"
+        />
+        {/* Center text */}
+        <text
+          x={size / 2}
+          y={size / 2 - 10}
+          textAnchor="middle"
+          className="text-3xl font-extrabold fill-slate-900"
+        >
+          {winPercent.toFixed(0)}%
+        </text>
+        <text
+          x={size / 2}
+          y={size / 2 + 15}
+          textAnchor="middle"
+          className="text-xs fill-slate-500"
+        >
+          Win Rate
+        </text>
+      </svg>
+      
+      <div className="mt-4 flex gap-6">
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-3 rounded-full bg-emerald-500"></div>
+          <span className="text-sm font-semibold text-slate-700">Wins: {wins}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-3 rounded-full bg-red-500"></div>
+          <span className="text-sm font-semibold text-slate-700">Losses: {losses}</span>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // Volume Bar Chart Component
 const VolumeChart = ({ data }) => {
-  const chartRef = useRef(null);
+  const containerRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
-  // Validate and prepare data with fallbacks
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const resizeObserver = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        setDimensions({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height
+        });
+      }
+    });
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+  
   const chartData = useMemo(() => {
-    // Check if we have valid data
-    const hasValidData = data && 
-      data.labels && 
-      data.labels.length > 0 && 
-      data.labels[0] !== "No Data" &&
-      data.datasets && 
-      data.datasets[0] && 
-      data.datasets[0].data &&
-      data.datasets[0].data.some(v => v !== 0 && v !== null && v !== undefined);
-    
-    if (!hasValidData) {
-      return {
-        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        datasets: [{
-          label: 'Trade Volume (Demo)',
-          data: [0, 0, 0, 0, 0, 0, 0],
-          backgroundColor: '#cbd5e1',
-          borderColor: '#94a3b8',
-          borderWidth: 1,
-          borderRadius: 8,
-          barPercentage: 0.7,
-          categoryPercentage: 0.8,
-        }]
-      };
+    if (!data || data.length === 0) {
+      return { bars: [], maxVolume: 10 };
     }
     
-    return data;
+    const bars = data.map((item, index) => ({
+      label: item.date?.slice(0, 5) || `Day ${index + 1}`,
+      value: item.trades || 0
+    }));
+    
+    const maxVolume = Math.max(...bars.map(b => b.value), 1);
+    
+    return { bars, maxVolume };
   }, [data]);
   
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top',
-        labels: {
-          color: '#1e293b',
-          font: { weight: 'bold', size: 12 },
-        },
-      },
-      tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        callbacks: {
-          label: function(context) {
-            let label = context.dataset.label || '';
-            if (label) label += ': ';
-            if (context.parsed.y !== null) {
-              label += context.parsed.y.toFixed(0);
-            }
-            return label;
-          }
-        }
-      },
-    },
-    scales: {
-      x: {
-        ticks: { 
-          color: '#475569',
-          maxRotation: 45,
-          minRotation: 45,
-          autoSkip: true,
-          maxTicksLimit: 7,
-        },
-        grid: { color: 'rgba(148, 163, 184, 0.25)' },
-        title: {
-          display: true,
-          text: 'Date',
-          color: '#64748b',
-          font: { weight: 'bold', size: 12 }
-        }
-      },
-      y: {
-        ticks: { 
-          color: '#475569',
-          stepSize: 1,
-        },
-        grid: { color: 'rgba(148, 163, 184, 0.25)' },
-        title: {
-          display: true,
-          text: 'Number of Trades',
-          color: '#64748b',
-          font: { weight: 'bold', size: 12 }
-        },
-        beginAtZero: true,
-      },
-    },
-    animation: {
-      duration: 750,
-      easing: 'easeInOutQuart',
-    },
+  const getBarHeight = (value) => {
+    if (dimensions.height === 0 || chartData.maxVolume === 0) return 0;
+    const padding = 60;
+    const chartHeight = dimensions.height - padding;
+    return (value / chartData.maxVolume) * chartHeight;
   };
   
-  const hasData = chartData.datasets[0].data.some(v => v > 0);
+  const getBarWidth = () => {
+    if (dimensions.width === 0 || chartData.bars.length === 0) return 30;
+    const padding = 80;
+    const chartWidth = dimensions.width - padding;
+    const barWidth = chartWidth / chartData.bars.length - 8;
+    return Math.min(barWidth, 60);
+  };
+  
+  if (chartData.bars.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <div className="text-center text-slate-500">
+          <div className="text-4xl mb-2">📊</div>
+          <p className="text-sm">No trading volume yet</p>
+          <p className="text-xs mt-1">Trades will appear here</p>
+        </div>
+      </div>
+    );
+  }
+  
+  const barWidth = getBarWidth();
+  const startX = 70;
+  const step = barWidth + 8;
   
   return (
-    <>
-      <Bar ref={chartRef} data={chartData} options={options} />
-      {!hasData && chartData.labels[0] !== "No Data" && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-lg">
-          <div className="text-center text-slate-500">
-            <p className="text-sm">No trading volume yet</p>
-            <p className="text-xs mt-1">Trades will appear here</p>
-          </div>
-        </div>
-      )}
-    </>
+    <div ref={containerRef} className="relative h-full w-full">
+      <svg width={dimensions.width} height={dimensions.height} className="overflow-visible">
+        {/* Grid lines */}
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+          const y = 50 + (dimensions.height - 80) * (1 - ratio);
+          return (
+            <g key={i}>
+              <line
+                x1={60}
+                y1={y}
+                x2={dimensions.width - 40}
+                y2={y}
+                stroke="#e2e8f0"
+                strokeWidth="1"
+                strokeDasharray="4"
+              />
+              <text x={50} y={y + 4} textAnchor="end" className="text-[10px] fill-slate-500">
+                {Math.ceil(chartData.maxVolume * ratio)}
+              </text>
+            </g>
+          );
+        })}
+        
+        {/* Bars */}
+        {chartData.bars.map((bar, i) => {
+          const barHeight = getBarHeight(bar.value);
+          const x = startX + (i * step);
+          const y = dimensions.height - 40 - barHeight;
+          
+          return (
+            <g key={i}>
+              <rect
+                x={x}
+                y={y}
+                width={barWidth}
+                height={barHeight}
+                fill="#6366f1"
+                rx="6"
+                className="transition-all duration-300 hover:opacity-80 cursor-pointer"
+              >
+                <title>{`${bar.label}: ${bar.value} trades`}</title>
+              </rect>
+              <text
+                x={x + barWidth / 2}
+                y={dimensions.height - 25}
+                textAnchor="middle"
+                className="text-[10px] fill-slate-500 transform -rotate-45 origin-center"
+              >
+                {bar.label}
+              </text>
+              {bar.value > 0 && (
+                <text
+                  x={x + barWidth / 2}
+                  y={y - 5}
+                  textAnchor="middle"
+                  className="text-[10px] font-bold fill-indigo-600"
+                >
+                  {bar.value}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        
+        {/* Axes */}
+        <line x1={60} y1={50} x2={60} y2={dimensions.height - 40} stroke="#cbd5e1" strokeWidth="1" />
+        <line x1={60} y1={dimensions.height - 40} x2={dimensions.width - 40} y2={dimensions.height - 40} stroke="#cbd5e1" strokeWidth="1" />
+      </svg>
+    </div>
   );
 };
 
@@ -837,79 +876,6 @@ export default function MemberDashboard() {
     if (bothConnected) unlocked.push("api_ready");
     return unlocked;
   }, [displayStats, bothConnected]);
-
-  // Prepare chart data with proper formatting
-  const lineChartData = useMemo(() => {
-    // If we have real data, use it
-    if (series && series.length > 0 && series.some(s => s.pnl !== 0 && s.pnl !== undefined)) {
-      return {
-        labels: series.map((p) => p.date || "—"),
-        datasets: [{
-          label: "PnL",
-          data: series.map((p) => Number(p.pnl || 0)),
-          borderColor: "#4f46e5",
-          backgroundColor: "rgba(79, 70, 229, 0.1)",
-          borderWidth: 3,
-          fill: true,
-          tension: 0.4,
-          pointBackgroundColor: "#4f46e5",
-          pointBorderColor: "#fff",
-          pointBorderWidth: 2,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-        }],
-      };
-    }
-    
-    // Show demo data with message
-    return {
-      labels: ['Start Trading'],
-      datasets: [{
-        label: 'PnL',
-        data: [0],
-        borderColor: '#cbd5e1',
-        backgroundColor: 'rgba(203, 213, 225, 0.1)',
-        borderWidth: 2,
-        borderDash: [5, 5],
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-      }]
-    };
-  }, [series]);
-
-  const barChartData = useMemo(() => {
-    // If we have real data, use it
-    if (series && series.length > 0 && series.some(s => s.trades > 0)) {
-      const last7Days = series.slice(-7);
-      return {
-        labels: last7Days.map((p) => p.date || "—"),
-        datasets: [{
-          label: "Trade Volume",
-          data: last7Days.map((p) => Number(p.trades || 0)),
-          backgroundColor: "#6366f1",
-          borderColor: "#4f46e5",
-          borderWidth: 1,
-          borderRadius: 8,
-          barPercentage: 0.7,
-          categoryPercentage: 0.8,
-        }],
-      };
-    }
-    
-    // Show empty state with message
-    return {
-      labels: ['No Data'],
-      datasets: [{
-        label: "Trade Volume",
-        data: [0],
-        backgroundColor: "#cbd5e1",
-        borderColor: "#94a3b8",
-        borderWidth: 1,
-        borderRadius: 8,
-      }],
-    };
-  }, [series]);
 
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type });
@@ -1428,20 +1394,12 @@ export default function MemberDashboard() {
           <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-4">{STRATEGIES.map((strategy) => (<StrategyCard key={strategy.id} strategy={strategy} active={currentStrategy === strategy.id} saving={savingStrategy === strategy.id} disabled={!!savingStrategy} onSelect={handleStrategyChange} />))}</div>
         </Card>
 
-        {/* Charts Grid - Using improved chart components */}
+        {/* Charts Grid - Using Custom SVG Charts (No Dependencies!) */}
         <div className="grid gap-5 xl:grid-cols-3">
           <Card className="xl:col-span-2">
             <SectionTitle>📈 PnL Performance</SectionTitle>
             <div className="relative h-80 w-full">
-              <PnLChart data={lineChartData} />
-              {series.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/90 rounded-lg pointer-events-none">
-                  <div className="text-center text-slate-500">
-                    <p className="text-sm font-semibold">No trading data yet</p>
-                    <p className="text-xs mt-1">Start paper trading to see your performance chart!</p>
-                  </div>
-                </div>
-              )}
+              <PnLChart data={series} />
             </div>
           </Card>
           <Card>
@@ -1462,7 +1420,7 @@ export default function MemberDashboard() {
         <Card>
           <SectionTitle>📊 Daily Trade Volume</SectionTitle>
           <div className="relative h-80 w-full">
-            <VolumeChart data={barChartData} />
+            <VolumeChart data={series} />
           </div>
         </Card>
 
