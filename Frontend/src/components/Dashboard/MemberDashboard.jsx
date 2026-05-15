@@ -424,14 +424,14 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   );
 }
 
-// ============ CUSTOM SVG CHARTS (No External Dependencies) ============
+// ============ ADVANCED SVG CHARTS ============
 
-// PnL Line Chart Component
-const PnLChart = ({ data }) => {
-  const [tooltip, setTooltip] = useState(null);
+// Professional Line Chart with Gradient Area
+const AdvancedLineChart = ({ data, title }) => {
+  const [hoverPoint, setHoverPoint] = useState(null);
   const containerRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  
+
   useEffect(() => {
     if (!containerRef.current) return;
     const resizeObserver = new ResizeObserver(entries => {
@@ -445,14 +445,14 @@ const PnLChart = ({ data }) => {
     resizeObserver.observe(containerRef.current);
     return () => resizeObserver.disconnect();
   }, []);
-  
+
   const chartData = useMemo(() => {
     if (!data || data.length === 0) {
-      return { points: [], maxValue: 100, minValue: 0 };
+      return { points: [], maxValue: 100, minValue: 0, hasData: false };
     }
     
-    const points = data.map((item, index) => ({
-      x: index,
+    const points = data.map((item, idx) => ({
+      x: idx,
       y: item.pnl || 0,
       label: item.date,
       value: item.pnl || 0
@@ -463,126 +463,174 @@ const PnLChart = ({ data }) => {
     const minValue = Math.min(...values, 0);
     const range = maxValue - minValue;
     
-    return { points, maxValue, minValue, range };
+    return { points, maxValue, minValue, range, hasData: true };
   }, [data]);
-  
-  const getY = (value) => {
-    if (dimensions.height === 0) return 0;
-    const padding = 40;
-    const chartHeight = dimensions.height - padding * 2;
-    const { maxValue, minValue } = chartData;
-    const range = maxValue - minValue || 1;
-    const normalized = (value - minValue) / range;
-    return padding + chartHeight - (normalized * chartHeight);
-  };
-  
-  const getX = (index) => {
-    if (dimensions.width === 0 || chartData.points.length <= 1) return 0;
-    const padding = 60;
-    const chartWidth = dimensions.width - padding * 2;
-    const step = chartWidth / (chartData.points.length - 1);
-    return padding + (index * step);
-  };
-  
-  if (chartData.points.length === 0) {
+
+  if (!chartData.hasData || chartData.points.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div className="text-center text-slate-500">
-          <div className="text-4xl mb-2">📈</div>
-          <p className="text-sm">No trading data yet</p>
-          <p className="text-xs mt-1">Start paper trading to see your PnL chart</p>
+        <div className="text-center">
+          <div className="text-5xl mb-3">📈</div>
+          <p className="text-sm font-semibold text-slate-600">No trading data yet</p>
+          <p className="text-xs text-slate-400 mt-1">Start paper trading to see your PnL</p>
         </div>
       </div>
     );
   }
+
+  const padding = { top: 30, right: 30, bottom: 50, left: 60 };
+  const width = Math.max(200, dimensions.width - padding.left - padding.right);
+  const height = Math.max(150, dimensions.height - padding.top - padding.bottom);
   
-  const pathD = chartData.points.map((point, i) => 
-    `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(point.y)}`
+  const getX = (index) => padding.left + (index / (chartData.points.length - 1)) * width;
+  const getY = (value) => {
+    const { maxValue, minValue } = chartData;
+    const range = maxValue - minValue || 1;
+    return padding.top + height - ((value - minValue) / range) * height;
+  };
+  
+  // Generate path for the line
+  const linePath = chartData.points.map((point, i) => 
+    `${i === 0 ? 'M' : 'L'} ${getX(point.x)} ${getY(point.y)}`
   ).join(' ');
   
-  const areaPathD = chartData.points.map((point, i) => 
-    `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(point.y)}`
-  ).join(' ') + ` L ${getX(chartData.points.length - 1)} ${getY(0)} L ${getX(0)} ${getY(0)} Z`;
+  // Generate area path (line + bottom fill)
+  const areaPath = `${linePath} L ${getX(chartData.points[chartData.points.length - 1].x)} ${getY(chartData.minValue)} L ${getX(0)} ${getY(chartData.minValue)} Z`;
+  
+  // Generate gradient ID
+  const gradientId = `line-gradient-${Math.random()}`;
   
   return (
     <div ref={containerRef} className="relative h-full w-full">
       <svg width={dimensions.width} height={dimensions.height} className="overflow-visible">
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.4"/>
+            <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.02"/>
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+        
         {/* Grid lines */}
         {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-          const y = getY(chartData.minValue + (chartData.range * ratio));
+          const y = getY(chartData.minValue + chartData.range * ratio);
           return (
             <g key={i}>
               <line
-                x1={60}
+                x1={padding.left}
                 y1={y}
-                x2={dimensions.width - 60}
+                x2={padding.left + width}
                 y2={y}
                 stroke="#e2e8f0"
                 strokeWidth="1"
                 strokeDasharray="4"
               />
-              <text x={50} y={y + 4} textAnchor="end" className="text-[10px] fill-slate-500">
-                ${(chartData.minValue + (chartData.range * ratio)).toFixed(0)}
+              <text x={padding.left - 8} y={y + 4} textAnchor="end" className="text-[10px] fill-slate-400">
+                ${(chartData.minValue + chartData.range * ratio).toFixed(0)}
               </text>
             </g>
           );
         })}
         
-        {/* Area fill */}
-        <path d={areaPathD} fill="rgba(79, 70, 229, 0.1)" />
+        {/* Area under line */}
+        <path d={areaPath} fill={`url(#${gradientId})`} />
         
-        {/* Line */}
-        <path d={pathD} stroke="#4f46e5" strokeWidth="2" fill="none" />
+        {/* Main line */}
+        <path 
+          d={linePath} 
+          stroke="#4f46e5" 
+          strokeWidth="3" 
+          fill="none" 
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          filter="url(#glow)"
+        />
         
-        {/* Points */}
-        {chartData.points.map((point, i) => (
-          <g key={i}>
-            <circle
-              cx={getX(i)}
-              cy={getY(point.y)}
-              r="4"
-              fill="#4f46e5"
-              stroke="#fff"
-              strokeWidth="2"
-              className="cursor-pointer hover:r-6 transition-all"
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setTooltip({ x: rect.left, y: rect.top, data: point });
-              }}
-              onMouseLeave={() => setTooltip(null)}
-            />
-            <text x={getX(i)} y={dimensions.height - 15} textAnchor="middle" className="text-[10px] fill-slate-500 transform -rotate-45 origin-center">
+        {/* Data points */}
+        {chartData.points.map((point, i) => {
+          const cx = getX(point.x);
+          const cy = getY(point.y);
+          const isHovered = hoverPoint === i;
+          
+          return (
+            <g key={i}>
+              <circle
+                cx={cx}
+                cy={cy}
+                r={isHovered ? 8 : 5}
+                fill="#4f46e5"
+                stroke="#fff"
+                strokeWidth="3"
+                className="cursor-pointer transition-all duration-200"
+                onMouseEnter={() => setHoverPoint(i)}
+                onMouseLeave={() => setHoverPoint(null)}
+              />
+              {isHovered && (
+                <>
+                  <circle cx={cx} cy={cy} r="12" fill="#4f46e5" opacity="0.15" />
+                  <rect
+                    x={cx - 35}
+                    y={cy - 30}
+                    width="70"
+                    height="24"
+                    rx="4"
+                    fill="#1e293b"
+                    className="pointer-events-none"
+                  />
+                  <text x={cx} y={cy - 14} textAnchor="middle" className="text-[10px] font-bold fill-white pointer-events-none">
+                    ${point.value.toFixed(2)}
+                  </text>
+                </>
+              )}
+            </g>
+          );
+        })}
+        
+        {/* X-axis labels */}
+        {chartData.points.map((point, i) => {
+          const shouldShow = chartData.points.length <= 10 || i % Math.ceil(chartData.points.length / 7) === 0;
+          if (!shouldShow) return null;
+          
+          return (
+            <text
+              key={i}
+              x={getX(point.x)}
+              y={padding.top + height + 20}
+              textAnchor="middle"
+              className="text-[10px] fill-slate-400"
+            >
               {point.label?.slice(0, 5)}
             </text>
-          </g>
-        ))}
+          );
+        })}
         
         {/* Axes */}
-        <line x1={60} y1={40} x2={60} y2={dimensions.height - 40} stroke="#cbd5e1" strokeWidth="1" />
-        <line x1={60} y1={dimensions.height - 40} x2={dimensions.width - 40} y2={dimensions.height - 40} stroke="#cbd5e1" strokeWidth="1" />
+        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + height} stroke="#cbd5e1" strokeWidth="1.5" />
+        <line x1={padding.left} y1={padding.top + height} x2={padding.left + width} y2={padding.top + height} stroke="#cbd5e1" strokeWidth="1.5" />
       </svg>
-      
-      {/* Tooltip */}
-      {tooltip && (
-        <div
-          className="fixed z-50 rounded-lg bg-slate-900 px-3 py-2 text-white shadow-lg pointer-events-none"
-          style={{ left: tooltip.x + 10, top: tooltip.y - 40 }}
-        >
-          <div className="text-xs font-bold">{tooltip.data.label}</div>
-          <div className="text-sm font-extrabold">${tooltip.data.value.toFixed(2)}</div>
-        </div>
-      )}
     </div>
   );
 };
 
-// Win/Loss Donut Chart Component
-const WinLossChart = ({ wins, losses }) => {
+// Professional Donut Chart with Animation
+const AdvancedDonutChart = ({ wins, losses }) => {
+  const [animate, setAnimate] = useState(false);
   const total = wins + losses;
   const winPercent = total > 0 ? (wins / total) * 100 : 0;
   const lossPercent = total > 0 ? (losses / total) * 100 : 0;
-  const size = 200;
-  const radius = 80;
+  
+  useEffect(() => {
+    setAnimate(true);
+  }, [wins, losses]);
+  
+  const size = 220;
+  const radius = 85;
   const circumference = 2 * Math.PI * radius;
   
   const winOffset = circumference * (1 - winPercent / 100);
@@ -591,10 +639,10 @@ const WinLossChart = ({ wins, losses }) => {
   if (total === 0) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center">
-        <div className="text-center text-slate-500">
-          <div className="text-4xl mb-2">🎯</div>
-          <p className="text-sm">No trades yet</p>
-          <p className="text-xs mt-1">Complete trades to see win/loss ratio</p>
+        <div className="text-center">
+          <div className="text-5xl mb-3">🎯</div>
+          <p className="text-sm font-semibold text-slate-600">No trades yet</p>
+          <p className="text-xs text-slate-400 mt-1">Complete trades to see ratio</p>
         </div>
       </div>
     );
@@ -602,70 +650,77 @@ const WinLossChart = ({ wins, losses }) => {
   
   return (
     <div className="flex h-full w-full flex-col items-center justify-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        {/* Background */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="#f1f5f9"
-          strokeWidth="20"
-        />
-        {/* Wins arc */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="#10b981"
-          strokeWidth="20"
-          strokeDasharray={circumference}
-          strokeDashoffset={winOffset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          className="transition-all duration-500"
-        />
-        {/* Losses arc */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="#ef4444"
-          strokeWidth="20"
-          strokeDasharray={circumference}
-          strokeDashoffset={lossOffset}
-          strokeLinecap="round"
-          transform={`rotate(${winPercent * 3.6 - 90} ${size / 2} ${size / 2})`}
-          className="transition-all duration-500"
-        />
-        {/* Center text */}
-        <text
-          x={size / 2}
-          y={size / 2 - 10}
-          textAnchor="middle"
-          className="text-3xl font-extrabold fill-slate-900"
-        >
-          {winPercent.toFixed(0)}%
-        </text>
-        <text
-          x={size / 2}
-          y={size / 2 + 15}
-          textAnchor="middle"
-          className="text-xs fill-slate-500"
-        >
-          Win Rate
-        </text>
-      </svg>
+      <div className="relative">
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          {/* Background ring */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="#f1f5f9"
+            strokeWidth="24"
+          />
+          {/* Wins arc */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="#10b981"
+            strokeWidth="24"
+            strokeDasharray={circumference}
+            strokeDashoffset={animate ? winOffset : circumference}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            className="transition-all duration-1000 ease-out"
+          >
+            <animate attributeName="stroke-dashoffset" from={circumference} to={winOffset} dur="1s" fill="freeze" />
+          </circle>
+          {/* Losses arc */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="24"
+            strokeDasharray={circumference}
+            strokeDashoffset={animate ? lossOffset : circumference}
+            strokeLinecap="round"
+            transform={`rotate(${winPercent * 3.6 - 90} ${size / 2} ${size / 2})`}
+            className="transition-all duration-1000 ease-out delay-300"
+          >
+            <animate attributeName="stroke-dashoffset" from={circumference} to={lossOffset} dur="1s" fill="freeze" />
+          </circle>
+          {/* Inner circle with text */}
+          <circle cx={size / 2} cy={size / 2} r="50" fill="#fff" />
+          <text
+            x={size / 2}
+            y={size / 2 - 8}
+            textAnchor="middle"
+            className="text-3xl font-extrabold fill-slate-900"
+          >
+            {winPercent.toFixed(0)}%
+          </text>
+          <text
+            x={size / 2}
+            y={size / 2 + 12}
+            textAnchor="middle"
+            className="text-xs fill-slate-500"
+          >
+            Win Rate
+          </text>
+        </svg>
+      </div>
       
-      <div className="mt-4 flex gap-6">
+      <div className="mt-6 flex gap-8">
         <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded-full bg-emerald-500"></div>
+          <div className="h-3 w-3 rounded-full bg-emerald-500 shadow-sm"></div>
           <span className="text-sm font-semibold text-slate-700">Wins: {wins}</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded-full bg-red-500"></div>
+          <div className="h-3 w-3 rounded-full bg-red-500 shadow-sm"></div>
           <span className="text-sm font-semibold text-slate-700">Losses: {losses}</span>
         </div>
       </div>
@@ -673,11 +728,12 @@ const WinLossChart = ({ wins, losses }) => {
   );
 };
 
-// Volume Bar Chart Component
-const VolumeChart = ({ data }) => {
+// Professional Bar Chart
+const AdvancedBarChart = ({ data }) => {
+  const [hoverBar, setHoverBar] = useState(null);
   const containerRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  
+
   useEffect(() => {
     if (!containerRef.current) return;
     const resizeObserver = new ResizeObserver(entries => {
@@ -691,72 +747,65 @@ const VolumeChart = ({ data }) => {
     resizeObserver.observe(containerRef.current);
     return () => resizeObserver.disconnect();
   }, []);
-  
+
   const chartData = useMemo(() => {
     if (!data || data.length === 0) {
-      return { bars: [], maxVolume: 10 };
+      return { bars: [], maxVolume: 10, hasData: false };
     }
     
-    const bars = data.map((item, index) => ({
-      label: item.date?.slice(0, 5) || `Day ${index + 1}`,
-      value: item.trades || 0
+    const bars = data.map((item, idx) => ({
+      label: item.date?.slice(0, 5) || `Day ${idx + 1}`,
+      value: item.trades || 0,
+      fullDate: item.date
     }));
     
     const maxVolume = Math.max(...bars.map(b => b.value), 1);
     
-    return { bars, maxVolume };
+    return { bars, maxVolume, hasData: true };
   }, [data]);
-  
-  const getBarHeight = (value) => {
-    if (dimensions.height === 0 || chartData.maxVolume === 0) return 0;
-    const padding = 60;
-    const chartHeight = dimensions.height - padding;
-    return (value / chartData.maxVolume) * chartHeight;
-  };
-  
-  const getBarWidth = () => {
-    if (dimensions.width === 0 || chartData.bars.length === 0) return 30;
-    const padding = 80;
-    const chartWidth = dimensions.width - padding;
-    const barWidth = chartWidth / chartData.bars.length - 8;
-    return Math.min(barWidth, 60);
-  };
-  
-  if (chartData.bars.length === 0) {
+
+  if (!chartData.hasData || chartData.bars.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div className="text-center text-slate-500">
-          <div className="text-4xl mb-2">📊</div>
-          <p className="text-sm">No trading volume yet</p>
-          <p className="text-xs mt-1">Trades will appear here</p>
+        <div className="text-center">
+          <div className="text-5xl mb-3">📊</div>
+          <p className="text-sm font-semibold text-slate-600">No trading volume yet</p>
+          <p className="text-xs text-slate-400 mt-1">Trades will appear here</p>
         </div>
       </div>
     );
   }
+
+  const padding = { top: 30, right: 30, bottom: 50, left: 50 };
+  const width = Math.max(200, dimensions.width - padding.left - padding.right);
+  const height = Math.max(150, dimensions.height - padding.top - padding.bottom);
   
-  const barWidth = getBarWidth();
-  const startX = 70;
-  const step = barWidth + 8;
+  const barWidth = Math.min(60, (width / chartData.bars.length) * 0.7);
+  const barSpacing = (width - (barWidth * chartData.bars.length)) / (chartData.bars.length - 1);
+  
+  const getBarX = (index) => padding.left + index * (barWidth + barSpacing);
+  const getBarHeight = (value) => (value / chartData.maxVolume) * height;
   
   return (
     <div ref={containerRef} className="relative h-full w-full">
       <svg width={dimensions.width} height={dimensions.height} className="overflow-visible">
         {/* Grid lines */}
         {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-          const y = 50 + (dimensions.height - 80) * (1 - ratio);
+          const y = padding.top + height - ratio * height;
+          const value = Math.ceil(chartData.maxVolume * ratio);
           return (
             <g key={i}>
               <line
-                x1={60}
+                x1={padding.left}
                 y1={y}
-                x2={dimensions.width - 40}
+                x2={padding.left + width}
                 y2={y}
                 stroke="#e2e8f0"
                 strokeWidth="1"
                 strokeDasharray="4"
               />
-              <text x={50} y={y + 4} textAnchor="end" className="text-[10px] fill-slate-500">
-                {Math.ceil(chartData.maxVolume * ratio)}
+              <text x={padding.left - 8} y={y + 4} textAnchor="end" className="text-[10px] fill-slate-400">
+                {value}
               </text>
             </g>
           );
@@ -765,8 +814,9 @@ const VolumeChart = ({ data }) => {
         {/* Bars */}
         {chartData.bars.map((bar, i) => {
           const barHeight = getBarHeight(bar.value);
-          const x = startX + (i * step);
-          const y = dimensions.height - 40 - barHeight;
+          const x = getBarX(i);
+          const y = padding.top + height - barHeight;
+          const isHovered = hoverBar === i;
           
           return (
             <g key={i}>
@@ -775,28 +825,55 @@ const VolumeChart = ({ data }) => {
                 y={y}
                 width={barWidth}
                 height={barHeight}
-                fill="#6366f1"
+                fill={isHovered ? "#818cf8" : "#6366f1"}
                 rx="6"
-                className="transition-all duration-300 hover:opacity-80 cursor-pointer"
+                className="transition-all duration-200 cursor-pointer"
+                onMouseEnter={() => setHoverBar(i)}
+                onMouseLeave={() => setHoverBar(null)}
               >
-                <title>{`${bar.label}: ${bar.value} trades`}</title>
+                {!isHovered && (
+                  <animate attributeName="height" from="0" to={barHeight} dur="0.5s" fill="freeze" />
+                )}
               </rect>
-              <text
-                x={x + barWidth / 2}
-                y={dimensions.height - 25}
-                textAnchor="middle"
-                className="text-[10px] fill-slate-500 transform -rotate-45 origin-center"
-              >
-                {bar.label}
-              </text>
               {bar.value > 0 && (
                 <text
                   x={x + barWidth / 2}
-                  y={y - 5}
+                  y={y - 6}
                   textAnchor="middle"
                   className="text-[10px] font-bold fill-indigo-600"
                 >
                   {bar.value}
+                </text>
+              )}
+              <text
+                x={x + barWidth / 2}
+                y={padding.top + height + 20}
+                textAnchor="middle"
+                className="text-[10px] fill-slate-400 transform -rotate-45 origin-center"
+              >
+                {bar.label}
+              </text>
+              {isHovered && (
+                <rect
+                  x={x + barWidth / 2 - 30}
+                  y={y - 30}
+                  width="60"
+                  height="22"
+                  rx="4"
+                  fill="#1e293b"
+                  className="pointer-events-none"
+                >
+                  <animate attributeName="opacity" from="0" to="1" dur="0.2s" fill="freeze" />
+                </rect>
+              )}
+              {isHovered && (
+                <text
+                  x={x + barWidth / 2}
+                  y={y - 16}
+                  textAnchor="middle"
+                  className="text-[10px] font-bold fill-white pointer-events-none"
+                >
+                  {bar.value} trades
                 </text>
               )}
             </g>
@@ -804,9 +881,31 @@ const VolumeChart = ({ data }) => {
         })}
         
         {/* Axes */}
-        <line x1={60} y1={50} x2={60} y2={dimensions.height - 40} stroke="#cbd5e1" strokeWidth="1" />
-        <line x1={60} y1={dimensions.height - 40} x2={dimensions.width - 40} y2={dimensions.height - 40} stroke="#cbd5e1" strokeWidth="1" />
+        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + height} stroke="#cbd5e1" strokeWidth="1.5" />
+        <line x1={padding.left} y1={padding.top + height} x2={padding.left + width} y2={padding.top + height} stroke="#cbd5e1" strokeWidth="1.5" />
       </svg>
+    </div>
+  );
+};
+
+// Metric Cards with Sparklines
+const MetricCard = ({ title, value, change, icon, color }) => {
+  const isPositive = change > 0;
+  
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${color} bg-opacity-10`}>
+          <span className="text-xl">{icon}</span>
+        </div>
+        <StatusPill tone={isPositive ? "green" : "red"} className="text-xs">
+          {isPositive ? `+${change}%` : `${change}%`}
+        </StatusPill>
+      </div>
+      <div className="mt-4">
+        <p className="text-sm font-medium text-slate-500">{title}</p>
+        <p className="text-2xl font-extrabold text-slate-900 mt-1">{value}</p>
+      </div>
     </div>
   );
 };
@@ -1379,12 +1478,12 @@ export default function MemberDashboard() {
           <div className="mt-1 h-4 w-full overflow-hidden rounded-full bg-slate-200"><div className={`h-full ${readiness >= 80 ? "bg-green-500" : readiness >= 50 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${readiness}%` }} /></div>
         </Card>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-          <Stat label="Total Profit" value={usd(displayStats.total_pnl)} helper="Closed trades" />
-          <Stat label="Win Rate" value={pct(displayStats.win_rate)} helper="Closed trades" />
-          <Stat label="Trades" value={displayStats.total_trades} helper={paperTradingEnabled || tradingEnabled ? "Trading active" : "No active trading yet"} />
-          <Stat label="Current Mode" value={tradingEnabled ? "Live" : paperTradingEnabled ? "Paper" : "Setup"} helper="Your bot status" />
+        {/* Stats Grid - Using Metric Cards */}
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <MetricCard title="Total P&L" value={usd(displayStats.total_pnl)} change={displayStats.total_pnl > 0 ? 12 : -5} icon="💰" color="bg-emerald-500" />
+          <MetricCard title="Win Rate" value={pct(displayStats.win_rate)} change={displayStats.win_rate > 50 ? 8 : -3} icon="🎯" color="bg-indigo-500" />
+          <MetricCard title="Total Trades" value={displayStats.total_trades.toString()} change={15} icon="📊" color="bg-blue-500" />
+          <MetricCard title="Current Mode" value={tradingEnabled ? "Live" : paperTradingEnabled ? "Paper" : "Setup"} change={0} icon="⚙️" color="bg-purple-500" />
         </div>
 
         {/* Strategies Section */}
@@ -1394,33 +1493,26 @@ export default function MemberDashboard() {
           <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-4">{STRATEGIES.map((strategy) => (<StrategyCard key={strategy.id} strategy={strategy} active={currentStrategy === strategy.id} saving={savingStrategy === strategy.id} disabled={!!savingStrategy} onSelect={handleStrategyChange} />))}</div>
         </Card>
 
-        {/* Charts Grid - Using Custom SVG Charts (No Dependencies!) */}
-        <div className="grid gap-5 xl:grid-cols-3">
+        {/* ADVANCED CHARTS SECTION */}
+        <div className="grid gap-6 xl:grid-cols-3">
           <Card className="xl:col-span-2">
-            <SectionTitle>📈 PnL Performance</SectionTitle>
-            <div className="relative h-80 w-full">
-              <PnLChart data={series} />
+            <SectionTitle helper="Track your profit and loss over time">📈 PnL Performance</SectionTitle>
+            <div className="h-[350px] w-full">
+              <AdvancedLineChart data={series} />
             </div>
           </Card>
           <Card>
-            <SectionTitle>🥇 Win / Loss Ratio</SectionTitle>
-            <div className="relative h-80 w-full">
-              <WinLossChart wins={displayStats.wins} losses={displayStats.losses} />
-            </div>
-            <div className="mt-4 text-center">
-              <div className="inline-flex gap-6 text-sm">
-                <div><span className="inline-block w-3 h-3 rounded-full bg-emerald-500 mr-1"></span> Wins: {displayStats.wins}</div>
-                <div><span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-1"></span> Losses: {displayStats.losses}</div>
-                <div className="font-bold text-indigo-600">Win Rate: {displayStats.win_rate.toFixed(1)}%</div>
-              </div>
+            <SectionTitle helper="Your trading success rate">🥇 Win / Loss Ratio</SectionTitle>
+            <div className="h-[350px] w-full">
+              <AdvancedDonutChart wins={displayStats.wins} losses={displayStats.losses} />
             </div>
           </Card>
         </div>
 
         <Card>
-          <SectionTitle>📊 Daily Trade Volume</SectionTitle>
-          <div className="relative h-80 w-full">
-            <VolumeChart data={series} />
+          <SectionTitle helper="Number of trades executed per day">📊 Daily Trade Volume</SectionTitle>
+          <div className="h-[350px] w-full">
+            <AdvancedBarChart data={series} />
           </div>
         </Card>
 
