@@ -452,12 +452,46 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   );
 }
 
-// Improved Chart Components with better compatibility
-const PnLChart = ({ data, options }) => {
+// ============ IMPROVED CHART COMPONENTS ============
+
+// PnL Line Chart Component
+const PnLChart = ({ data }) => {
   const chartRef = useRef(null);
   
-  // Default options with better compatibility
-  const defaultOptions = {
+  // Validate and prepare data with fallbacks
+  const chartData = useMemo(() => {
+    // Check if we have valid data
+    const hasValidData = data && 
+      data.labels && 
+      data.labels.length > 0 && 
+      data.labels[0] !== "No Data" &&
+      data.datasets && 
+      data.datasets[0] && 
+      data.datasets[0].data &&
+      data.datasets[0].data.some(v => v !== 0 && v !== null && v !== undefined);
+    
+    if (!hasValidData) {
+      return {
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        datasets: [{
+          label: 'PnL (Demo Data)',
+          data: [0, 0, 0, 0, 0, 0],
+          borderColor: '#cbd5e1',
+          backgroundColor: 'rgba(203, 213, 225, 0.1)',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+        }]
+      };
+    }
+    
+    return data;
+  }, [data]);
+  
+  const options = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -483,7 +517,12 @@ const PnLChart = ({ data, options }) => {
             let label = context.dataset.label || '';
             if (label) label += ': ';
             if (context.parsed.y !== null) {
-              label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+              label += new Intl.NumberFormat('en-US', { 
+                style: 'currency', 
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              }).format(context.parsed.y);
             }
             return label;
           }
@@ -520,7 +559,8 @@ const PnLChart = ({ data, options }) => {
           text: 'Profit / Loss (USD)',
           color: '#64748b',
           font: { weight: 'bold', size: 12 }
-        }
+        },
+        beginAtZero: false,
       },
     },
     interaction: {
@@ -531,35 +571,48 @@ const PnLChart = ({ data, options }) => {
     elements: {
       line: {
         tension: 0.4,
-        borderWidth: 2,
+        borderWidth: 3,
       },
       point: {
-        radius: 3,
-        hoverRadius: 5,
+        radius: 4,
+        hoverRadius: 6,
         backgroundColor: '#4f46e5',
+        borderColor: '#fff',
+        borderWidth: 2,
       },
     },
   };
-
-  const mergedOptions = { ...defaultOptions, ...options };
   
-  return <Line ref={chartRef} data={data} options={mergedOptions} />;
+  return <Line ref={chartRef} data={chartData} options={options} />;
 };
 
-const WinLossChart = ({ data }) => {
+// Win/Loss Doughnut Chart Component
+const WinLossChart = ({ wins, losses }) => {
   const chartRef = useRef(null);
+  
+  const chartData = {
+    labels: ['Wins', 'Losses'],
+    datasets: [{
+      data: [wins || 0, losses || 0],
+      backgroundColor: ['#10b981', '#ef4444'],
+      borderColor: ['#059669', '#dc2626'],
+      borderWidth: 2,
+      hoverOffset: 10,
+    }],
+  };
   
   const options = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'top',
+        position: 'bottom',
         labels: {
           color: '#1e293b',
           font: { weight: 'bold', size: 12 },
           usePointStyle: true,
           boxWidth: 10,
+          padding: 20,
         },
       },
       tooltip: {
@@ -571,23 +624,73 @@ const WinLossChart = ({ data }) => {
             const label = context.label || '';
             const value = context.parsed || 0;
             const total = context.dataset.data.reduce((a, b) => a + b, 0);
-            const percentage = ((value / total) * 100).toFixed(1);
+            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
             return `${label}: ${value} (${percentage}%)`;
           }
         }
       },
     },
-    cutout: '60%',
+    cutout: '65%',
     radius: '90%',
+    animation: {
+      animateScale: true,
+      animateRotate: true,
+    },
   };
   
-  return <Doughnut ref={chartRef} data={data} options={options} />;
+  const hasData = (wins || 0) + (losses || 0) > 0;
+  
+  if (!hasData) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center">
+        <div className="text-center text-slate-500">
+          <div className="text-4xl mb-2">📊</div>
+          <p className="text-sm">No trading data yet</p>
+          <p className="text-xs mt-1">Start paper trading to see stats</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return <Doughnut ref={chartRef} data={chartData} options={options} />;
 };
 
-const VolumeChart = ({ data, options }) => {
+// Volume Bar Chart Component
+const VolumeChart = ({ data }) => {
   const chartRef = useRef(null);
   
-  const defaultOptions = {
+  // Validate and prepare data with fallbacks
+  const chartData = useMemo(() => {
+    // Check if we have valid data
+    const hasValidData = data && 
+      data.labels && 
+      data.labels.length > 0 && 
+      data.labels[0] !== "No Data" &&
+      data.datasets && 
+      data.datasets[0] && 
+      data.datasets[0].data &&
+      data.datasets[0].data.some(v => v !== 0 && v !== null && v !== undefined);
+    
+    if (!hasValidData) {
+      return {
+        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        datasets: [{
+          label: 'Trade Volume (Demo)',
+          data: [0, 0, 0, 0, 0, 0, 0],
+          backgroundColor: '#cbd5e1',
+          borderColor: '#94a3b8',
+          borderWidth: 1,
+          borderRadius: 8,
+          barPercentage: 0.7,
+          categoryPercentage: 0.8,
+        }]
+      };
+    }
+    
+    return data;
+  }, [data]);
+  
+  const options = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -632,7 +735,10 @@ const VolumeChart = ({ data, options }) => {
         }
       },
       y: {
-        ticks: { color: '#475569' },
+        ticks: { 
+          color: '#475569',
+          stepSize: 1,
+        },
         grid: { color: 'rgba(148, 163, 184, 0.25)' },
         title: {
           display: true,
@@ -643,11 +749,27 @@ const VolumeChart = ({ data, options }) => {
         beginAtZero: true,
       },
     },
+    animation: {
+      duration: 750,
+      easing: 'easeInOutQuart',
+    },
   };
-
-  const mergedOptions = { ...defaultOptions, ...options };
   
-  return <Bar ref={chartRef} data={data} options={mergedOptions} />;
+  const hasData = chartData.datasets[0].data.some(v => v > 0);
+  
+  return (
+    <>
+      <Bar ref={chartRef} data={chartData} options={options} />
+      {!hasData && chartData.labels[0] !== "No Data" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-lg">
+          <div className="text-center text-slate-500">
+            <p className="text-sm">No trading volume yet</p>
+            <p className="text-xs mt-1">Trades will appear here</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
 };
 
 export default function MemberDashboard() {
@@ -716,57 +838,75 @@ export default function MemberDashboard() {
     return unlocked;
   }, [displayStats, bothConnected]);
 
-  // Prepare chart data with fallbacks for empty data
+  // Prepare chart data with proper formatting
   const lineChartData = useMemo(() => {
-    const labels = series.length > 0 ? series.map((p) => p.date || "—") : ["No Data"];
-    const data = series.length > 0 ? series.map((p) => Number(p.pnl || 0)) : [0];
+    // If we have real data, use it
+    if (series && series.length > 0 && series.some(s => s.pnl !== 0 && s.pnl !== undefined)) {
+      return {
+        labels: series.map((p) => p.date || "—"),
+        datasets: [{
+          label: "PnL",
+          data: series.map((p) => Number(p.pnl || 0)),
+          borderColor: "#4f46e5",
+          backgroundColor: "rgba(79, 70, 229, 0.1)",
+          borderWidth: 3,
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: "#4f46e5",
+          pointBorderColor: "#fff",
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        }],
+      };
+    }
     
+    // Show demo data with message
     return {
-      labels: labels,
+      labels: ['Start Trading'],
       datasets: [{
-        label: "PnL",
-        data: data,
-        borderColor: "#4f46e5",
-        backgroundColor: "rgba(79, 70, 229, 0.1)",
+        label: 'PnL',
+        data: [0],
+        borderColor: '#cbd5e1',
+        backgroundColor: 'rgba(203, 213, 225, 0.1)',
         borderWidth: 2,
+        borderDash: [5, 5],
         fill: true,
         tension: 0.4,
-        pointBackgroundColor: "#4f46e5",
-        pointBorderColor: "#fff",
-        pointBorderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-      }],
+        pointRadius: 0,
+      }]
     };
   }, [series]);
 
-  const doughnutChartData = useMemo(() => ({
-    labels: ["Wins", "Losses"],
-    datasets: [{
-      data: [displayStats.wins || 1, displayStats.losses || 1],
-      backgroundColor: ["#10b981", "#ef4444"],
-      borderColor: ["#059669", "#dc2626"],
-      borderWidth: 2,
-      hoverOffset: 10,
-    }],
-  }), [displayStats.wins, displayStats.losses]);
-
   const barChartData = useMemo(() => {
-    const last7Days = series.slice(-7);
-    const labels = last7Days.length > 0 ? last7Days.map((p) => p.date || "—") : ["No Data"];
-    const data = last7Days.length > 0 ? last7Days.map((p) => Number(p.trades || 0)) : [0];
+    // If we have real data, use it
+    if (series && series.length > 0 && series.some(s => s.trades > 0)) {
+      const last7Days = series.slice(-7);
+      return {
+        labels: last7Days.map((p) => p.date || "—"),
+        datasets: [{
+          label: "Trade Volume",
+          data: last7Days.map((p) => Number(p.trades || 0)),
+          backgroundColor: "#6366f1",
+          borderColor: "#4f46e5",
+          borderWidth: 1,
+          borderRadius: 8,
+          barPercentage: 0.7,
+          categoryPercentage: 0.8,
+        }],
+      };
+    }
     
+    // Show empty state with message
     return {
-      labels: labels,
+      labels: ['No Data'],
       datasets: [{
         label: "Trade Volume",
-        data: data,
-        backgroundColor: "#6366f1",
-        borderColor: "#4f46e5",
+        data: [0],
+        backgroundColor: "#cbd5e1",
+        borderColor: "#94a3b8",
         borderWidth: 1,
         borderRadius: 8,
-        barPercentage: 0.7,
-        categoryPercentage: 0.8,
       }],
     };
   }, [series]);
@@ -1293,11 +1433,13 @@ export default function MemberDashboard() {
           <Card className="xl:col-span-2">
             <SectionTitle>📈 PnL Performance</SectionTitle>
             <div className="relative h-80 w-full">
-              {series.length > 0 ? (
-                <PnLChart data={lineChartData} />
-              ) : (
-                <div className="flex h-full items-center justify-center text-slate-500">
-                  No trading data yet. Start paper trading to see your performance chart!
+              <PnLChart data={lineChartData} />
+              {series.length === 0 && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/90 rounded-lg pointer-events-none">
+                  <div className="text-center text-slate-500">
+                    <p className="text-sm font-semibold">No trading data yet</p>
+                    <p className="text-xs mt-1">Start paper trading to see your performance chart!</p>
+                  </div>
                 </div>
               )}
             </div>
@@ -1305,7 +1447,7 @@ export default function MemberDashboard() {
           <Card>
             <SectionTitle>🥇 Win / Loss Ratio</SectionTitle>
             <div className="relative h-80 w-full">
-              <WinLossChart data={doughnutChartData} />
+              <WinLossChart wins={displayStats.wins} losses={displayStats.losses} />
             </div>
             <div className="mt-4 text-center">
               <div className="inline-flex gap-6 text-sm">
@@ -1320,13 +1462,7 @@ export default function MemberDashboard() {
         <Card>
           <SectionTitle>📊 Daily Trade Volume</SectionTitle>
           <div className="relative h-80 w-full">
-            {series.length > 0 ? (
-              <VolumeChart data={barChartData} />
-            ) : (
-              <div className="flex h-full items-center justify-center text-slate-500">
-                No trading volume yet. Trades will appear here once you start paper trading!
-              </div>
-            )}
+            <VolumeChart data={barChartData} />
           </div>
         </Card>
 
