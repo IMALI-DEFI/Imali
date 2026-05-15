@@ -1,7 +1,35 @@
-// src/components/Dashboard/MemberDashboard.jsx - COMPLETE REWRITE WITH DIFFERENT CHARTS
+// src/components/Dashboard/MemberDashboard.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  RadialLinearScale,
+  Filler,
+  Tooltip,
+  Legend,
+} from "chart.js";
+import { Line, Bar, Radar } from "react-chartjs-2";
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  RadialLinearScale,
+  Filler,
+  Tooltip,
+  Legend
+);
 
 const PAPER_TRADING_BALANCE = 1000;
 const REFRESH_COOLDOWN_MS = 12000;
@@ -18,6 +46,7 @@ const STRATEGIES = [
     description: "Looks for dips and safer rebounds.",
     plainEnglish: "The bot waits for a price drop, then looks for a rebound.",
     bullets: ["Lower risk", "Beginner friendly", "Best for testing"],
+    radarData: [95, 30, 40, 90, 20, 45],
   },
   {
     id: "ai_weighted",
@@ -29,6 +58,7 @@ const STRATEGIES = [
     description: "Uses a mix of multiple trading signals.",
     plainEnglish: "The bot checks several signals before making a decision.",
     bullets: ["Balanced risk", "Good default", "Signal based"],
+    radarData: [75, 65, 70, 80, 60, 85],
   },
   {
     id: "momentum",
@@ -40,6 +70,7 @@ const STRATEGIES = [
     description: "Follows strong price moves.",
     plainEnglish: "The bot tries to ride strong moves when the market is moving fast.",
     bullets: ["Higher risk", "Trend following", "Fast markets"],
+    radarData: [50, 95, 90, 45, 95, 70],
   },
   {
     id: "arbitrage",
@@ -51,6 +82,7 @@ const STRATEGIES = [
     description: "Looks for price differences across venues.",
     plainEnglish: "The bot looks for small price differences between markets.",
     bullets: ["Advanced", "Price gaps", "Exchange based"],
+    radarData: [80, 70, 85, 75, 65, 90],
   },
 ];
 
@@ -219,16 +251,6 @@ function Button({ children, onClick, disabled, variant = "primary", className = 
     >
       {children}
     </button>
-  );
-}
-
-function Stat({ label, value, helper }) {
-  return (
-    <Card className="min-h-[110px]">
-      <div className="text-xs font-bold uppercase tracking-wide text-slate-600 sm:text-sm">{label}</div>
-      <div className="mt-2 break-words text-2xl font-extrabold text-slate-900 sm:text-3xl">{value}</div>
-      {helper && <div className="mt-1 text-xs font-semibold text-slate-600 sm:text-sm">{helper}</div>}
-    </Card>
   );
 }
 
@@ -424,66 +446,297 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   );
 }
 
-// ============ BRAND NEW CHART DESIGNS ============
+// ============ PROFESSIONAL CHART.JS CHARTS ============
 
-// 1. HORIZONTAL PROGRESS BARS (Instead of Line Chart)
-const PerformanceBars = ({ data }) => {
+// 1. Animated Gradient Line Chart (Equity Curve)
+const EquityCurveChart = ({ data }) => {
+  const chartRef = useRef(null);
+  
+  const chartData = useMemo(() => {
+    const labels = data?.map((d, i) => d.date || `Day ${i + 1}`) || [];
+    let runningBalance = PAPER_TRADING_BALANCE;
+    const equity = data?.map((d) => {
+      runningBalance += Number(d.pnl || 0);
+      return runningBalance;
+    }) || [];
+    
+    return {
+      labels,
+      datasets: [
+        {
+          label: "Portfolio Value",
+          data: equity,
+          borderColor: "#6366f1",
+          borderWidth: 3,
+          tension: 0.45,
+          fill: true,
+          pointRadius: 0,
+          pointHoverRadius: 6,
+          pointHoverBackgroundColor: "#6366f1",
+          pointHoverBorderColor: "#fff",
+          pointHoverBorderWidth: 2,
+          backgroundColor: (context) => {
+            const chart = context.chart;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return null;
+            const gradient = ctx.createLinearGradient(
+              0,
+              chartArea.top,
+              0,
+              chartArea.bottom
+            );
+            gradient.addColorStop(0, "rgba(99,102,241,0.35)");
+            gradient.addColorStop(0.5, "rgba(99,102,241,0.15)");
+            gradient.addColorStop(1, "rgba(99,102,241,0)");
+            return gradient;
+          },
+        },
+      ],
+    };
+  }, [data]);
+  
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: {
+      duration: 1400,
+      easing: 'easeInOutQuart',
+    },
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: '#1e293b',
+        titleColor: '#fff',
+        bodyColor: '#cbd5e1',
+        borderColor: '#6366f1',
+        borderWidth: 1,
+        callbacks: {
+          label: function(context) {
+            return `Portfolio: $${context.parsed.y.toFixed(2)}`;
+          }
+        }
+      },
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false,
+        },
+        ticks: {
+          color: "#64748b",
+          maxRotation: 45,
+          minRotation: 45,
+        },
+      },
+      y: {
+        grid: {
+          color: "rgba(148,163,184,0.08)",
+          drawBorder: false,
+        },
+        ticks: {
+          color: "#64748b",
+          callback: function(value) {
+            return '$' + value.toFixed(0);
+          }
+        },
+        beginAtZero: false,
+      },
+    },
+  };
+  
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <div className="text-center">
+          <div className="text-5xl mb-3">📈</div>
+          <p className="text-sm font-semibold text-slate-600">No equity data yet</p>
+          <p className="text-xs text-slate-400 mt-1">Start trading to see your portfolio grow</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="h-full w-full">
+      <Line ref={chartRef} data={chartData} options={options} />
+    </div>
+  );
+};
+
+// 2. Animated Bar Chart (Trade Volume)
+const TradeVolumeChart = ({ data }) => {
+  const chartRef = useRef(null);
+  
+  const chartData = useMemo(() => ({
+    labels: data?.map((d, i) => d.date || `Day ${i + 1}`) || [],
+    datasets: [
+      {
+        label: "Trades",
+        data: data?.map((d) => d.trades || 0) || [],
+        backgroundColor: "#6366f1",
+        borderRadius: 12,
+        borderSkipped: false,
+        barPercentage: 0.65,
+        categoryPercentage: 0.8,
+      },
+    ],
+  }), [data]);
+  
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: {
+      duration: 1200,
+      easing: 'easeOutCubic',
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: '#1e293b',
+        titleColor: '#fff',
+        bodyColor: '#cbd5e1',
+        borderColor: '#6366f1',
+        borderWidth: 1,
+        callbacks: {
+          label: function(context) {
+            return `Trades: ${context.parsed.y}`;
+          }
+        }
+      },
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false,
+        },
+        ticks: {
+          color: "#64748b",
+          maxRotation: 45,
+          minRotation: 45,
+        },
+      },
+      y: {
+        grid: {
+          color: "rgba(148,163,184,0.08)",
+          drawBorder: false,
+        },
+        ticks: {
+          color: "#64748b",
+          stepSize: 1,
+        },
+        beginAtZero: true,
+      },
+    },
+  };
+  
   if (!data || data.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center">
         <div className="text-center">
           <div className="text-5xl mb-3">📊</div>
-          <p className="text-sm font-semibold text-slate-600">No performance data</p>
-          <p className="text-xs text-slate-400 mt-1">Start trading to see results</p>
+          <p className="text-sm font-semibold text-slate-600">No volume data yet</p>
+          <p className="text-xs text-slate-400 mt-1">Trades will appear here</p>
         </div>
       </div>
     );
   }
-
-  // Get last 7 days for better display
-  const recentData = data.slice(-7);
-  const maxValue = Math.max(...recentData.map(d => Math.abs(d.pnl || 0)), 1);
   
   return (
-    <div className="h-full w-full overflow-y-auto px-2">
-      <div className="space-y-4">
-        {recentData.map((item, idx) => {
-          const value = item.pnl || 0;
-          const isPositive = value >= 0;
-          const percentage = (Math.abs(value) / maxValue) * 100;
-          
-          return (
-            <div key={idx} className="group">
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-medium text-slate-600">{item.date || `Day ${idx + 1}`}</span>
-                <span className={`font-bold ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {isPositive ? '+' : ''}{usd(value)}
-                </span>
-              </div>
-              <div className="relative h-8 w-full overflow-hidden rounded-full bg-slate-100">
-                <div 
-                  className={`absolute top-0 h-full transition-all duration-700 ease-out ${isPositive ? 'bg-emerald-500' : 'bg-red-500'}`}
-                  style={{ 
-                    width: `${percentage}%`,
-                    left: isPositive ? '50%' : `${50 - percentage}%`,
-                    right: isPositive ? 'auto' : '50%'
-                  }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xs font-bold text-slate-700">
-                    {isPositive ? '▲' : '▼'} {Math.abs(value).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    <div className="h-full w-full">
+      <Bar ref={chartRef} data={chartData} options={options} />
     </div>
   );
 };
 
-// 2. CIRCULAR METER (Instead of Donut Chart)
+// 3. Strategy Radar Chart
+const StrategyRadarChart = ({ strategyData }) => {
+  const chartRef = useRef(null);
+  
+  const chartData = {
+    labels: [
+      "Safety",
+      "Speed",
+      "Profitability",
+      "Stability",
+      "Aggression",
+      "AI Integration",
+    ],
+    datasets: [
+      {
+        label: "Strategy Profile",
+        data: strategyData,
+        backgroundColor: "rgba(99,102,241,0.2)",
+        borderColor: "#6366f1",
+        borderWidth: 2,
+        pointBackgroundColor: "#6366f1",
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+      },
+    ],
+  };
+  
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: {
+      duration: 1500,
+      easing: 'easeInOutQuart',
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: '#1e293b',
+        titleColor: '#fff',
+        bodyColor: '#cbd5e1',
+        borderColor: '#6366f1',
+        borderWidth: 1,
+      },
+    },
+    scales: {
+      r: {
+        angleLines: {
+          color: "rgba(148,163,184,0.15)",
+        },
+        grid: {
+          color: "rgba(148,163,184,0.15)",
+        },
+        pointLabels: {
+          color: "#475569",
+          font: {
+            size: 11,
+            weight: "bold",
+          },
+        },
+        ticks: {
+          display: false,
+          stepSize: 25,
+        },
+        min: 0,
+        max: 100,
+      },
+    },
+  };
+  
+  return (
+    <div className="h-full w-full">
+      <Radar ref={chartRef} data={chartData} options={options} />
+    </div>
+  );
+};
+
+// 4. Custom Gauge Meter (Win Rate) - Kept from your design
 const WinRateMeter = ({ wins, losses }) => {
   const total = wins + losses;
   const winRate = total > 0 ? (wins / total) * 100 : 0;
@@ -492,8 +745,22 @@ const WinRateMeter = ({ wins, losses }) => {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center">
       <div className="relative">
-        {/* Semi-circle background */}
         <svg width="260" height="150" viewBox="0 0 260 150">
+          <defs>
+            <linearGradient id="winGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#ef4444" />
+              <stop offset="50%" stopColor="#f59e0b" />
+              <stop offset="100%" stopColor="#10b981" />
+            </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          {/* Semi-circle background */}
           <path
             d="M 30 130 A 100 100 0 0 1 230 130"
             fill="none"
@@ -501,17 +768,17 @@ const WinRateMeter = ({ wins, losses }) => {
             strokeWidth="25"
             strokeLinecap="round"
           />
-          {/* Progress arc */}
+          {/* Gradient progress arc */}
           <path
             d="M 30 130 A 100 100 0 0 1 230 130"
             fill="none"
-            stroke="#10b981"
+            stroke="url(#winGradient)"
             strokeWidth="25"
             strokeLinecap="round"
             strokeDasharray={`${(angle / 180) * 314} 314`}
             className="transition-all duration-1000"
           />
-          {/* Needle */}
+          {/* Needle with glow */}
           <line
             x1="130"
             y1="130"
@@ -520,95 +787,50 @@ const WinRateMeter = ({ wins, losses }) => {
             stroke="#1e293b"
             strokeWidth="3"
             strokeLinecap="round"
+            filter="url(#glow)"
             className="transition-all duration-1000"
           />
           <circle cx="130" cy="130" r="8" fill="#1e293b" />
+          <circle cx="130" cy="130" r="4" fill="#6366f1" />
           
           {/* Center text */}
           <text x="130" y="80" textAnchor="middle" className="text-4xl font-extrabold fill-slate-900">
             {winRate.toFixed(0)}%
           </text>
-          <text x="130" y="100" textAnchor="middle" className="text-xs fill-slate-500">
+          <text x="130" y="100" textAnchor="middle" className="text-xs fill-slate-500 font-semibold">
             Win Rate
           </text>
         </svg>
       </div>
       
-      <div className="mt-8 flex gap-8">
+      <div className="mt-6 flex gap-8">
         <div className="text-center">
           <div className="text-2xl font-extrabold text-emerald-600">{wins}</div>
-          <div className="text-xs text-slate-500">Wins</div>
+          <div className="text-xs text-slate-500 font-medium">Wins</div>
         </div>
         <div className="text-center">
           <div className="text-2xl font-extrabold text-red-600">{losses}</div>
-          <div className="text-xs text-slate-500">Losses</div>
+          <div className="text-xs text-slate-500 font-medium">Losses</div>
         </div>
       </div>
     </div>
   );
 };
 
-// 3. STACKED HORIZONTAL METER (Instead of Bar Chart)
-const VolumeMeter = ({ data }) => {
-  if (!data || data.length === 0) {
-    return (
-      <div className="flex h-full w-full items-center justify-center">
-        <div className="text-center">
-          <div className="text-5xl mb-3">📈</div>
-          <p className="text-sm font-semibold text-slate-600">No volume data</p>
-          <p className="text-xs text-slate-400 mt-1">Trades will appear here</p>
-        </div>
-      </div>
-    );
-  }
-
-  const recentData = data.slice(-7);
-  const maxVolume = Math.max(...recentData.map(d => d.trades || 0), 1);
+// 5. Premium Metric Tile
+const PremiumMetricTile = ({ title, value, change, icon, color }) => {
+  const isPositive = change > 0;
   
   return (
-    <div className="h-full w-full space-y-4 overflow-y-auto px-2">
-      {recentData.map((item, idx) => {
-        const volume = item.trades || 0;
-        const percentage = (volume / maxVolume) * 100;
-        
-        return (
-          <div key={idx} className="group">
-            <div className="flex justify-between text-xs mb-1">
-              <span className="font-medium text-slate-600">{item.date || `Day ${idx + 1}`}</span>
-              <span className="font-bold text-indigo-600">{volume} trades</span>
-            </div>
-            <div className="relative h-10 w-full overflow-hidden rounded-xl bg-slate-100">
-              <div 
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-indigo-400 to-indigo-600 transition-all duration-700 ease-out"
-                style={{ width: `${percentage}%` }}
-              >
-                <div className="absolute inset-0 bg-white/20 animate-pulse" />
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-xs font-bold text-slate-700">
-                  {Array(Math.min(5, Math.ceil(volume / 2))).fill('▮').join('')}
-                </span>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-// 4. METRIC TILES (Better than stats)
-const MetricTile = ({ title, value, change, icon, color }) => {
-  return (
-    <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-sm border border-slate-200">
-      <div className="absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full bg-gradient-to-br from-slate-100 to-transparent" />
+    <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300">
+      <div className="absolute top-0 right-0 w-32 h-32 -mr-10 -mt-10 rounded-full bg-gradient-to-br from-indigo-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
       <div className="relative">
         <div className="flex items-center justify-between">
-          <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${color}`}>
+          <div className={`h-12 w-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${color} shadow-lg`}>
             <span className="text-xl">{icon}</span>
           </div>
-          <StatusPill tone={change >= 0 ? "green" : "red"} className="text-xs">
-            {change >= 0 ? `+${change}` : change}%
+          <StatusPill tone={isPositive ? "green" : "red"} className="text-xs">
+            {isPositive ? `↑ +${change}%` : `↓ ${change}%`}
           </StatusPill>
         </div>
         <div className="mt-4">
@@ -655,6 +877,9 @@ export default function MemberDashboard() {
   const bothConnected = alpacaConnected && okxConnected;
   const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
   const anyTradingActionBusy = togglingPaper || togglingTrading;
+  
+  // Get radar data for current strategy
+  const currentRadarData = activeStrategy?.radarData || STRATEGIES[0].radarData;
 
   const displayStats = useMemo(() => {
     const active = paperTradingEnabled || tradingEnabled;
@@ -1024,18 +1249,18 @@ export default function MemberDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-3 py-4 text-slate-900 sm:p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-3 py-4 text-slate-900 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
       <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
         {/* Header */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="rounded-3xl border border-slate-200 bg-white/80 backdrop-blur-sm p-4 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">Welcome back 👋</h1>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
                 {paperTradingEnabled && !tradingEnabled 
-                  ? "🤖 Auto-trading is active! Trades execute every 30 seconds. Watch your charts update in real-time."
-                  : "Start with paper trading, watch the charts, then turn on live trading when you are ready."}
+                  ? "🤖 Auto-trading is active! Trades execute every 30 seconds. Watch your portfolio grow in real-time."
+                  : "Start with paper trading, watch your equity curve, then turn on live trading when you are ready."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>Paper {paperTradingEnabled ? "Active" : "Off"}</StatusPill>
@@ -1058,10 +1283,10 @@ export default function MemberDashboard() {
         </div>
 
         {/* Setup Progress Card */}
-        <div className={`rounded-3xl border p-4 shadow-sm sm:p-6 ${
-          bothConnected && !paperTradingEnabled && !tradingEnabled ? "border-blue-300 bg-blue-50" :
-          paperTradingEnabled && !tradingEnabled ? "border-green-300 bg-green-50" :
-          tradingEnabled ? "border-purple-300 bg-purple-50" : "border-amber-300 bg-amber-50"
+        <div className={`rounded-3xl border p-4 shadow-sm sm:p-6 backdrop-blur-sm ${
+          bothConnected && !paperTradingEnabled && !tradingEnabled ? "border-blue-300 bg-blue-50/50" :
+          paperTradingEnabled && !tradingEnabled ? "border-green-300 bg-green-50/50" :
+          tradingEnabled ? "border-purple-300 bg-purple-50/50" : "border-amber-300 bg-amber-50/50"
         }`}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -1071,7 +1296,7 @@ export default function MemberDashboard() {
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-700 sm:text-base">
                 {!bothConnected ? "Connect both Alpaca and OKX so Imali can run paper trading and live trading."
                   : !paperTradingEnabled ? "Your accounts are connected. Start with virtual money first."
-                  : !tradingEnabled ? "Imali is using virtual funds. Auto-trading executes every 30 seconds. Watch your charts, trades, and strategy before using real money."
+                  : !tradingEnabled ? "Imali is using virtual funds. Auto-trading executes every 30 seconds. Watch your equity curve and strategy performance."
                   : "Real money trading is turned on. Monitor performance and stop live trading anytime."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -1111,11 +1336,11 @@ export default function MemberDashboard() {
 
         {/* Auto-Trading Status Card */}
         {autoTradingEnabled && paperTradingEnabled && !tradingEnabled && (
-          <Card className="border-green-200 bg-green-50">
+          <Card className="border-green-200 bg-green-50/50 backdrop-blur-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-extrabold text-green-800 sm:text-xl">🤖 Auto-Trading Active</h2>
-                <p className="mt-1 text-sm font-semibold text-green-700">Trades are executing automatically every 30 seconds using your selected strategy. Watch the charts update in real-time!</p>
+                <p className="mt-1 text-sm font-semibold text-green-700">Trades are executing automatically every 30 seconds. Watch your equity curve and strategy performance update in real-time!</p>
               </div>
               <Button variant="danger" onClick={stopAutoTrading} className="w-full sm:w-auto">Stop Auto-Trading</Button>
             </div>
@@ -1123,7 +1348,7 @@ export default function MemberDashboard() {
         )}
 
         {/* Quick Start Guide */}
-        <Card className="border-indigo-200 bg-indigo-50">
+        <Card className="border-indigo-200 bg-indigo-50/50 backdrop-blur-sm">
           <div className="mb-4 flex items-center gap-3"><span className="text-3xl">🎓</span><div><h3 className="text-lg font-extrabold text-indigo-950 sm:text-xl">Quick Start Guide</h3><p className="text-sm font-semibold text-indigo-800">Follow these steps in order.</p></div></div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
@@ -1143,7 +1368,7 @@ export default function MemberDashboard() {
         </Card>
 
         {/* Paper Trading Card */}
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-blue-200 bg-blue-50/50 backdrop-blur-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div><h2 className="text-lg font-extrabold text-blue-950 sm:text-xl">🎯 Paper Trading</h2><p className="mt-1 text-sm font-bold leading-6 text-blue-900">{paperTradingEnabled ? `Active with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. Auto-trading every 30 seconds.` : `Available with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`}{trial?.seconds_remaining ? ` Trial time left: ${formatTimeLeft(trial.seconds_remaining)}.` : ""}</p></div>
             <StatusPill tone={paperTradingEnabled ? "green" : "blue"}>{paperTradingEnabled ? "Active" : "Ready"}</StatusPill>
@@ -1152,7 +1377,7 @@ export default function MemberDashboard() {
 
         {/* Trading Cards Row */}
         <div className="grid gap-5 xl:grid-cols-2">
-          <Card className={paperTradingEnabled ? "border-green-300 bg-green-50" : "bg-white"}>
+          <Card className={paperTradingEnabled ? "border-green-300 bg-green-50/50" : "bg-white"}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div><div className="flex items-center gap-3"><span className="text-3xl">📝</span><h3 className="text-lg font-extrabold text-slate-900 sm:text-xl">Paper Trading</h3></div><p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Practice with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual money. No real money is used.</p>{!bothConnected && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">Connect both OKX and Alpaca first.</p>}<div className="mt-4"><StatusPill tone={paperTradingEnabled ? "green" : "slate"}>{paperTradingEnabled ? "Paper Trading Active" : bothConnected ? "Ready to Start" : "Connect Keys First"}</StatusPill></div></div>
               <div className="w-full shrink-0 sm:w-auto">
@@ -1168,7 +1393,7 @@ export default function MemberDashboard() {
             </div>
           </Card>
 
-          <Card className={tradingEnabled ? "border-green-300 bg-green-50" : "bg-white"}>
+          <Card className={tradingEnabled ? "border-green-300 bg-green-50/50" : "bg-white"}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div><div className="flex items-center gap-3"><span className="text-3xl">💰</span><h3 className="text-lg font-extrabold text-slate-900 sm:text-xl">Live Trading</h3></div><p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Trade with real funds through your connected exchange accounts.</p>{!bothConnected && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">Connect both OKX and Alpaca first.</p>}<div className="mt-4"><StatusPill tone={tradingEnabled ? "green" : "slate"}>{tradingEnabled ? "Live Trading Active" : bothConnected ? "Ready When You Are" : "Connect Keys First"}</StatusPill></div></div>
               <div className="w-full shrink-0 sm:w-auto">
@@ -1188,12 +1413,12 @@ export default function MemberDashboard() {
           <div className="mt-1 h-4 w-full overflow-hidden rounded-full bg-slate-200"><div className={`h-full ${readiness >= 80 ? "bg-green-500" : readiness >= 50 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${readiness}%` }} /></div>
         </Card>
 
-        {/* NEW METRIC TILES - Different from before */}
+        {/* Premium Metric Tiles */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <MetricTile title="Total P&L" value={usd(displayStats.total_pnl)} change={displayStats.total_pnl > 0 ? 12 : -5} icon="💰" color="bg-emerald-500" />
-          <MetricTile title="Win Rate" value={pct(displayStats.win_rate)} change={displayStats.win_rate > 50 ? 8 : -3} icon="🎯" color="bg-indigo-500" />
-          <MetricTile title="Total Trades" value={displayStats.total_trades.toString()} change={15} icon="📊" color="bg-blue-500" />
-          <MetricTile title="Current Mode" value={tradingEnabled ? "Live" : paperTradingEnabled ? "Paper" : "Setup"} change={0} icon="⚙️" color="bg-purple-500" />
+          <PremiumMetricTile title="Total P&L" value={usd(displayStats.total_pnl)} change={displayStats.total_pnl > 0 ? 12 : -5} icon="💰" color="from-emerald-500 to-emerald-600" />
+          <PremiumMetricTile title="Win Rate" value={pct(displayStats.win_rate)} change={displayStats.win_rate > 50 ? 8 : -3} icon="🎯" color="from-indigo-500 to-indigo-600" />
+          <PremiumMetricTile title="Total Trades" value={displayStats.total_trades.toString()} change={15} icon="📊" color="from-blue-500 to-blue-600" />
+          <PremiumMetricTile title="Current Mode" value={tradingEnabled ? "Live" : paperTradingEnabled ? "Paper" : "Setup"} change={0} icon="⚙️" color="from-purple-500 to-purple-600" />
         </div>
 
         {/* Strategies Section */}
@@ -1203,29 +1428,46 @@ export default function MemberDashboard() {
           <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-4">{STRATEGIES.map((strategy) => (<StrategyCard key={strategy.id} strategy={strategy} active={currentStrategy === strategy.id} saving={savingStrategy === strategy.id} disabled={!!savingStrategy} onSelect={handleStrategyChange} />))}</div>
         </Card>
 
-        {/* BRAND NEW CHARTS SECTION - Completely different visual style */}
+        {/* PROFESSIONAL CHARTS SECTION - Chart.js Premium Visuals */}
         <div className="grid gap-6 xl:grid-cols-2">
+          {/* Equity Curve - Animated Line Chart */}
           <Card>
-            <SectionTitle helper="Daily profit and loss performance">📊 Performance Overview</SectionTitle>
-            <div className="h-[320px] w-full">
-              <PerformanceBars data={series} />
+            <SectionTitle helper="Your portfolio value over time">📈 Equity Curve</SectionTitle>
+            <div className="h-[350px] w-full">
+              <EquityCurveChart data={series} />
             </div>
           </Card>
           
+          {/* Win Rate Gauge - Custom Meter */}
           <Card>
             <SectionTitle helper="Your trading success meter">🎯 Win Rate Meter</SectionTitle>
-            <div className="h-[320px] w-full">
+            <div className="h-[350px] w-full">
               <WinRateMeter wins={displayStats.wins} losses={displayStats.losses} />
             </div>
           </Card>
         </div>
 
-        <Card>
-          <SectionTitle helper="Number of trades per day">📈 Trading Volume</SectionTitle>
-          <div className="h-[320px] w-full">
-            <VolumeMeter data={series} />
-          </div>
-        </Card>
+        {/* Trade Volume & Strategy Radar Grid */}
+        <div className="grid gap-6 xl:grid-cols-2">
+          {/* Trade Volume - Animated Bar Chart */}
+          <Card>
+            <SectionTitle helper="Number of trades executed per day">📊 Trade Volume</SectionTitle>
+            <div className="h-[350px] w-full">
+              <TradeVolumeChart data={series} />
+            </div>
+          </Card>
+
+          {/* Strategy Radar Chart - Premium Addition */}
+          <Card>
+            <SectionTitle helper="Strategy behavior analysis">🧠 Strategy Analysis</SectionTitle>
+            <div className="h-[350px] w-full">
+              <StrategyRadarChart strategyData={currentRadarData} />
+            </div>
+            <div className="mt-4 text-center">
+              <p className="text-xs text-slate-500">Current: <span className="font-bold text-indigo-600">{activeStrategy.name}</span> strategy profile</p>
+            </div>
+          </Card>
+        </div>
 
         {/* Required Connections */}
         <div className="grid gap-5 xl:grid-cols-2">
@@ -1258,7 +1500,7 @@ export default function MemberDashboard() {
                   const pnl = Number(trade.pnl_usd || trade.pnl || 0);
                   const positive = pnl >= 0;
                   return (
-                    <div key={trade.id || index} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <div key={trade.id || index} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:shadow-md">
                       <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-extrabold text-slate-900">{trade.symbol || "Unknown"}</span><span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{trade.bot || trade.exchange || "bot"}</span></div><div className="mt-1 text-xs font-semibold text-slate-500">{anonymizeEmail(trade.user_email, index)}</div></div>
                       <div className={`shrink-0 text-sm font-extrabold ${positive ? "text-green-700" : "text-red-700"}`}>{usd(pnl)}</div>
                     </div>
