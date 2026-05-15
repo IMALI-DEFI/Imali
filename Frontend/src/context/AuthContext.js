@@ -200,6 +200,7 @@ export function AuthProvider({ children }) {
 
   const loadAttemptedRef = useRef(false);
   const lastRefreshTimeRef = useRef(0);
+  const refreshPromiseRef = useRef(null);
 
   const persistUser = useCallback((userData) => {
     const normalized = normalizeUser(userData);
@@ -229,6 +230,7 @@ export function AuthProvider({ children }) {
     clearToken();
     safeStorageRemove(USER_KEY);
     safeStorageRemove(ACTIVATION_KEY);
+    refreshPromiseRef.current = null;
   }, []);
 
   const loadCachedState = useCallback(() => {
@@ -260,34 +262,54 @@ export function AuthProvider({ children }) {
         return null;
       }
 
+      // If there's already a refresh in progress, return that promise
+      if (refreshPromiseRef.current && !force) {
+        console.log("[Auth] Using existing refresh promise");
+        return refreshPromiseRef.current;
+      }
+
       const now = Date.now();
+      
+      // Allow force refresh to bypass cooldown
       if (!force && now - lastRefreshTimeRef.current < REFRESH_COOLDOWN_MS) {
+        console.log("[Auth] Using cached activation (cooldown active)");
         return activation;
       }
 
-      if (refreshing && !force) return activation;
+      // Create new refresh promise
+      refreshPromiseRef.current = (async () => {
+        setRefreshing(true);
+        lastRefreshTimeRef.current = now;
 
-      setRefreshing(true);
-      lastRefreshTimeRef.current = now;
+        try {
+          console.log("[Auth] Fetching fresh activation status...");
+          const data = await apiFetch("/api/me/activation-status", { method: "GET" });
+          const status = data?.data?.status || data?.status || data;
+          console.log("[Auth] Activation status received:", {
+            okx_connected: status?.okx_connected,
+            alpaca_connected: status?.alpaca_connected,
+            wallet_connected: status?.wallet_connected,
+            trading_enabled: status?.trading_enabled,
+          });
+          return persistActivation(status || defaultActivation());
+        } catch (err) {
+          console.warn("[Auth] refreshActivation failed:", err.message);
 
-      try {
-        const data = await apiFetch("/api/me/activation-status", { method: "GET" });
-        const status = data?.data?.status || data?.status || data;
-        return persistActivation(status || defaultActivation());
-      } catch (err) {
-        console.warn("[Auth] refreshActivation failed:", err.message);
+          if (err.status === 401) {
+            clearAuth();
+            return null;
+          }
 
-        if (err.status === 401) {
-          clearAuth();
-          return null;
+          return activation || defaultActivation();
+        } finally {
+          setRefreshing(false);
+          refreshPromiseRef.current = null;
         }
+      })();
 
-        return activation || defaultActivation();
-      } finally {
-        setRefreshing(false);
-      }
+      return refreshPromiseRef.current;
     },
-    [activation, refreshing, persistActivation, clearAuth]
+    [activation, persistActivation, clearAuth]
   );
 
   const loadUser = useCallback(
@@ -316,7 +338,10 @@ export function AuthProvider({ children }) {
         }
 
         setError(null);
+        
+        // Force refresh activation after loading user (bypass cooldown)
         await refreshActivation(true);
+        
         setLoading(false);
         setIsInitialized(true);
         return normalizedUser;
@@ -381,7 +406,6 @@ export function AuthProvider({ children }) {
     [loadUser]
   );
 
-  // FIXED: Added accepted_terms to the signup payload
   const signup = useCallback(
     async (userData) => {
       setError(null);
@@ -414,7 +438,6 @@ export function AuthProvider({ children }) {
         }
       }
 
-      // Check if terms were accepted
       if (!userData.accepted_terms && !userData.acceptTerms) {
         const message = "You must accept the Terms of Service";
         setError(message);
@@ -427,7 +450,7 @@ export function AuthProvider({ children }) {
           tier: userData.tier || "starter",
           strategy: userData.strategy || "ai_weighted",
           mode: userData.mode || "consumer",
-          accepted_terms: true,  // ✅ FIXED: Always send accepted_terms: true
+          accepted_terms: true,
         };
 
         if (!isEnterprise && userData.password) {
@@ -444,7 +467,7 @@ export function AuthProvider({ children }) {
           payload.use_case = userData.useCase;
         }
 
-        console.log("Signup payload:", payload); // Debug log
+        console.log("[Auth] Signup payload:", payload);
 
         const data = await apiFetch("/api/auth/signup", {
           method: "POST",
@@ -499,6 +522,7 @@ export function AuthProvider({ children }) {
         ...(updates || {}),
       };
       persistActivation(nextActivation);
+      // Force refresh to ensure we have latest from server
       return refreshActivation(true);
     },
     [activation, persistActivation, refreshActivation]
@@ -570,7 +594,8 @@ export function AuthProvider({ children }) {
     if (!token || !user) return;
 
     const intervalId = setInterval(() => {
-      refreshActivation();
+      // Use force=false for periodic refresh (respect cooldown)
+      refreshActivation(false);
     }, 5 * 60 * 1000);
 
     return () => clearInterval(intervalId);
