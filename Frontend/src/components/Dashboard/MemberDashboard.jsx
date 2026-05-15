@@ -372,6 +372,7 @@ function StrategyCard({ strategy, active, saving, disabled, onSelect }) {
   );
 }
 
+// FIXED: ApiKeysModal with proper force refresh
 function ApiKeysModal({ open, onClose, onSaved, notify }) {
   const [saving, setSaving] = useState("");
   const [alpacaPaper, setAlpacaPaper] = useState({ apiKey: "", secret: "" });
@@ -405,7 +406,16 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
       if (mode === "paper") setAlpacaPaper({ apiKey: "", secret: "" });
       if (mode === "live") setAlpacaLive({ apiKey: "", secret: "" });
 
-      await onSaved?.();
+      // FIXED: Force refresh after saving - call onSaved which triggers full dashboard refresh
+      if (onSaved) {
+        await onSaved();
+      }
+      
+      // Small delay to ensure backend has processed
+      setTimeout(() => {
+        if (onSaved) onSaved();
+      }, 500);
+      
     } catch (err) {
       notify(err?.message || "Failed to save Alpaca keys.", "error");
     } finally {
@@ -438,7 +448,15 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
       if (mode === "paper") setOkxPaper({ apiKey: "", secret: "", passphrase: "" });
       if (mode === "live") setOkxLive({ apiKey: "", secret: "", passphrase: "" });
 
-      await onSaved?.();
+      // FIXED: Force refresh after saving
+      if (onSaved) {
+        await onSaved();
+      }
+      
+      setTimeout(() => {
+        if (onSaved) onSaved();
+      }, 500);
+      
     } catch (err) {
       notify(err?.message || "Failed to save OKX keys.", "error");
     } finally {
@@ -600,11 +618,13 @@ export default function MemberDashboard() {
     nav("/login");
   }, [nav]);
 
+  // FIXED: loadDashboard with better force refresh handling
   const loadDashboard = useCallback(
     async ({ silent = false, force = false } = {}) => {
       if (loadingRef.current) return;
       const now = Date.now();
 
+      // Allow force refresh to bypass cooldown
       if (!force && now - lastRefreshRef.current < REFRESH_COOLDOWN_MS) {
         if (!silent) notify("Dashboard was just refreshed. Try again in a few seconds.", "info");
         return;
@@ -616,6 +636,11 @@ export default function MemberDashboard() {
       setRefreshing(true);
 
       try {
+        // FIXED: Force refresh auth activation status first
+        if (BotAPI.refreshActivation) {
+          await BotAPI.refreshActivation(true);
+        }
+        
         const me = await BotAPI.getMe?.(true);
         if (!me?.id && !me?.email) {
           handleLogout();
@@ -673,7 +698,7 @@ export default function MemberDashboard() {
 
   const scheduleSoftRefresh = useCallback(() => {
     window.clearTimeout(refreshTimerRef.current);
-    refreshTimerRef.current = window.setTimeout(() => loadDashboard({ silent: true, force: true }), 2500);
+    refreshTimerRef.current = window.setTimeout(() => loadDashboard({ silent: true, force: true }), 1500);
   }, [loadDashboard]);
 
   useEffect(() => {
@@ -770,9 +795,11 @@ export default function MemberDashboard() {
     []
   );
 
+  // FIXED: Better paper trading toggle with proper state handling
   const handleTogglePaperTrading = async (enabled) => {
     if (togglingPaper || togglingTrading) return;
 
+    // Check if both exchanges are connected
     if (enabled && !bothConnected) {
       setShowApiModal(true);
       notify("Connect Alpaca and OKX before starting paper trading.", "error");
@@ -782,6 +809,8 @@ export default function MemberDashboard() {
     setTogglingPaper(true);
     const previousPaper = paperTradingEnabled;
     const previousUser = user;
+    
+    // Optimistic update
     setPaperTradingEnabled(enabled);
     setUser((prev) => (prev ? { ...prev, paper_trading_enabled: enabled } : prev));
 
@@ -793,7 +822,9 @@ export default function MemberDashboard() {
       setPaperTradingEnabled(nextPaper);
       setUser((prev) => (prev ? { ...prev, paper_trading_enabled: nextPaper } : prev));
       notify(nextPaper ? "Paper trading started." : "Paper trading stopped.", "success");
-      scheduleSoftRefresh();
+      
+      // Force refresh dashboard data
+      await loadDashboard({ silent: true, force: true });
     } catch (err) {
       console.error("[MemberDashboard] Paper toggle failed:", err);
       setPaperTradingEnabled(previousPaper);
@@ -806,6 +837,7 @@ export default function MemberDashboard() {
     }
   };
 
+  // FIXED: Live trading toggle with proper confirmation
   const handleToggleTrading = async (enabled) => {
     if (togglingTrading || togglingPaper) return;
 
@@ -818,6 +850,8 @@ export default function MemberDashboard() {
     setTogglingTrading(true);
     const previousLive = tradingEnabled;
     const previousUser = user;
+    
+    // Optimistic update
     setTradingEnabled(enabled);
     setUser((prev) => (prev ? { ...prev, trading_enabled: enabled } : prev));
 
@@ -830,7 +864,9 @@ export default function MemberDashboard() {
       setUser((prev) => (prev ? { ...prev, trading_enabled: nextLive } : prev));
       notify(nextLive ? "Live trading started." : "Live trading stopped.", "success");
       setShowLiveConfirm(false);
-      scheduleSoftRefresh();
+      
+      // Force refresh dashboard data
+      await loadDashboard({ silent: true, force: true });
     } catch (err) {
       console.error("[MemberDashboard] Live toggle failed:", err);
       setTradingEnabled(previousLive);
@@ -860,6 +896,9 @@ export default function MemberDashboard() {
       setUser((prev) => (prev ? { ...prev, strategy: saved } : prev));
       setStrategyMessage(`${strategy.name} strategy is now active.`);
       notify(`${strategy.name} strategy is now active.`, "success");
+      
+      // Refresh dashboard data
+      await loadDashboard({ silent: true, force: true });
     } catch (err) {
       setCurrentStrategy(previous);
       if (isRateLimitError(err)) {
@@ -910,7 +949,7 @@ export default function MemberDashboard() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3 lg:flex lg:flex-wrap">
-              <Button variant="secondary" onClick={() => loadDashboard({ silent: false, force: false })} disabled={refreshing} className="w-full lg:w-auto">
+              <Button variant="secondary" onClick={() => loadDashboard({ silent: false, force: true })} disabled={refreshing} className="w-full lg:w-auto">
                 {refreshing ? "Refreshing..." : "Refresh"}
               </Button>
               <Button variant="secondary" onClick={() => setShowApiModal(true)} className="w-full lg:w-auto">
