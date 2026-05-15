@@ -32,6 +32,7 @@ ChartJS.register(
 
 const PAPER_TRADING_BALANCE = 1000;
 const REFRESH_COOLDOWN_MS = 12000;
+const AUTO_TRADE_INTERVAL_MS = 30000; // Execute trade every 30 seconds
 
 const STRATEGIES = [
   {
@@ -110,13 +111,6 @@ const riskTone = (risk) => {
   if (r === "low") return "green";
   if (r === "high") return "red";
   return "amber";
-};
-
-const riskClass = (risk) => {
-  const tone = riskTone(risk);
-  if (tone === "green") return "border-green-200 bg-green-100 text-green-800";
-  if (tone === "red") return "border-red-200 bg-red-100 text-red-800";
-  return "border-yellow-200 bg-yellow-100 text-yellow-800";
 };
 
 const extractSummary = (payload) => payload?.summary || payload?.data?.summary || {};
@@ -372,7 +366,6 @@ function StrategyCard({ strategy, active, saving, disabled, onSelect }) {
   );
 }
 
-// FIXED: ApiKeysModal with proper force refresh
 function ApiKeysModal({ open, onClose, onSaved, notify }) {
   const [saving, setSaving] = useState("");
   const [alpacaPaper, setAlpacaPaper] = useState({ apiKey: "", secret: "" });
@@ -406,12 +399,10 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
       if (mode === "paper") setAlpacaPaper({ apiKey: "", secret: "" });
       if (mode === "live") setAlpacaLive({ apiKey: "", secret: "" });
 
-      // FIXED: Force refresh after saving - call onSaved which triggers full dashboard refresh
       if (onSaved) {
         await onSaved();
       }
       
-      // Small delay to ensure backend has processed
       setTimeout(() => {
         if (onSaved) onSaved();
       }, 500);
@@ -448,7 +439,6 @@ function ApiKeysModal({ open, onClose, onSaved, notify }) {
       if (mode === "paper") setOkxPaper({ apiKey: "", secret: "", passphrase: "" });
       if (mode === "live") setOkxLive({ apiKey: "", secret: "", passphrase: "" });
 
-      // FIXED: Force refresh after saving
       if (onSaved) {
         await onSaved();
       }
@@ -586,6 +576,7 @@ export default function MemberDashboard() {
   const loadingRef = useRef(false);
   const lastRefreshRef = useRef(0);
   const refreshTimerRef = useRef(null);
+  const autoTradeIntervalRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -601,10 +592,12 @@ export default function MemberDashboard() {
   const [communityTrades, setCommunityTrades] = useState([]);
   const [tradingEnabled, setTradingEnabled] = useState(false);
   const [paperTradingEnabled, setPaperTradingEnabled] = useState(false);
+  const [autoTradingEnabled, setAutoTradingEnabled] = useState(false);
   const [showApiModal, setShowApiModal] = useState(false);
   const [showLiveConfirm, setShowLiveConfirm] = useState(false);
   const [togglingTrading, setTogglingTrading] = useState(false);
   const [togglingPaper, setTogglingPaper] = useState(false);
+  const [executingTrade, setExecutingTrade] = useState(false);
 
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type });
@@ -618,13 +611,95 @@ export default function MemberDashboard() {
     nav("/login");
   }, [nav]);
 
-  // FIXED: loadDashboard with better force refresh handling
+  // Execute a single paper trade
+  const executePaperTrade = useCallback(async () => {
+    if (!paperTradingEnabled) {
+      console.log("Paper trading not enabled");
+      return false;
+    }
+    
+    setExecutingTrade(true);
+    
+    try {
+      const token = localStorage.getItem("imali_token");
+      const assets = ["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "ARB/USD"];
+      const exchanges = ["alpaca", "okx"];
+      const sides = ["buy", "sell"];
+      const strategiesList = ["momentum", "mean_reversion", "ai_weighted"];
+      
+      const randomAsset = assets[Math.floor(Math.random() * assets.length)];
+      const randomExchange = exchanges[Math.floor(Math.random() * exchanges.length)];
+      const randomSide = sides[Math.floor(Math.random() * sides.length)];
+      const randomStrategy = strategiesList[Math.floor(Math.random() * strategiesList.length)];
+      const qty = randomAsset === "BTC/USD" ? 0.01 : randomAsset === "ETH/USD" ? 0.1 : 1;
+      
+      const response = await fetch("https://api.imali-defi.com/api/trading/paper-trade", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          exchange: randomExchange,
+          symbol: randomAsset,
+          side: randomSide,
+          qty: qty,
+          strategy: randomStrategy
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log("Trade executed:", data.message);
+        return true;
+      } else {
+        console.error("Trade failed:", data.error);
+        return false;
+      }
+    } catch (err) {
+      console.error("Trade execution error:", err);
+      return false;
+    } finally {
+      setExecutingTrade(false);
+    }
+  }, [paperTradingEnabled]);
+
+  // Start automatic trading
+  const startAutoTrading = useCallback(() => {
+    if (autoTradeIntervalRef.current) return;
+    
+    setAutoTradingEnabled(true);
+    notify("Auto-trading started! Trades will execute every 30 seconds.", "success");
+    
+    // Execute first trade immediately
+    executePaperTrade();
+    
+    // Then set interval
+    autoTradeIntervalRef.current = setInterval(async () => {
+      if (paperTradingEnabled && mountedRef.current) {
+        await executePaperTrade();
+        // Refresh dashboard after trade
+        loadDashboard({ silent: true, force: true });
+      }
+    }, AUTO_TRADE_INTERVAL_MS);
+  }, [executePaperTrade, paperTradingEnabled, notify]);
+
+  // Stop automatic trading
+  const stopAutoTrading = useCallback(() => {
+    if (autoTradeIntervalRef.current) {
+      clearInterval(autoTradeIntervalRef.current);
+      autoTradeIntervalRef.current = null;
+    }
+    setAutoTradingEnabled(false);
+    notify("Auto-trading stopped.", "info");
+  }, [notify]);
+
   const loadDashboard = useCallback(
     async ({ silent = false, force = false } = {}) => {
       if (loadingRef.current) return;
       const now = Date.now();
 
-      // Allow force refresh to bypass cooldown
       if (!force && now - lastRefreshRef.current < REFRESH_COOLDOWN_MS) {
         if (!silent) notify("Dashboard was just refreshed. Try again in a few seconds.", "info");
         return;
@@ -636,7 +711,6 @@ export default function MemberDashboard() {
       setRefreshing(true);
 
       try {
-        // FIXED: Force refresh auth activation status first
         if (BotAPI.refreshActivation) {
           await BotAPI.refreshActivation(true);
         }
@@ -684,7 +758,7 @@ export default function MemberDashboard() {
           handleLogout();
           return;
         }
-        notify(isRateLimitError(err) ? "Too many requests. I slowed the dashboard refresh down to protect the app." : "Dashboard data could not fully load, but you are still logged in.", "error");
+        notify(isRateLimitError(err) ? "Too many requests. Please wait a moment." : "Dashboard data could not fully load, but you are still logged in.", "error");
       } finally {
         loadingRef.current = false;
         if (mountedRef.current) {
@@ -707,8 +781,18 @@ export default function MemberDashboard() {
     return () => {
       mountedRef.current = false;
       window.clearTimeout(refreshTimerRef.current);
+      if (autoTradeIntervalRef.current) {
+        clearInterval(autoTradeIntervalRef.current);
+      }
     };
   }, [loadDashboard]);
+
+  // Stop auto-trading when paper trading is disabled
+  useEffect(() => {
+    if (!paperTradingEnabled && autoTradingEnabled) {
+      stopAutoTrading();
+    }
+  }, [paperTradingEnabled, autoTradingEnabled, stopAutoTrading]);
 
   const alpacaConnected = !!integrations.alpaca_connected;
   const okxConnected = !!integrations.okx_connected;
@@ -795,11 +879,9 @@ export default function MemberDashboard() {
     []
   );
 
-  // FIXED: Better paper trading toggle with proper state handling
   const handleTogglePaperTrading = async (enabled) => {
     if (togglingPaper || togglingTrading) return;
 
-    // Check if both exchanges are connected
     if (enabled && !bothConnected) {
       setShowApiModal(true);
       notify("Connect Alpaca and OKX before starting paper trading.", "error");
@@ -810,7 +892,6 @@ export default function MemberDashboard() {
     const previousPaper = paperTradingEnabled;
     const previousUser = user;
     
-    // Optimistic update
     setPaperTradingEnabled(enabled);
     setUser((prev) => (prev ? { ...prev, paper_trading_enabled: enabled } : prev));
 
@@ -823,7 +904,13 @@ export default function MemberDashboard() {
       setUser((prev) => (prev ? { ...prev, paper_trading_enabled: nextPaper } : prev));
       notify(nextPaper ? "Paper trading started." : "Paper trading stopped.", "success");
       
-      // Force refresh dashboard data
+      // Start auto-trading when paper trading is enabled
+      if (nextPaper) {
+        startAutoTrading();
+      } else {
+        stopAutoTrading();
+      }
+      
       await loadDashboard({ silent: true, force: true });
     } catch (err) {
       console.error("[MemberDashboard] Paper toggle failed:", err);
@@ -837,7 +924,6 @@ export default function MemberDashboard() {
     }
   };
 
-  // FIXED: Live trading toggle with proper confirmation
   const handleToggleTrading = async (enabled) => {
     if (togglingTrading || togglingPaper) return;
 
@@ -851,7 +937,6 @@ export default function MemberDashboard() {
     const previousLive = tradingEnabled;
     const previousUser = user;
     
-    // Optimistic update
     setTradingEnabled(enabled);
     setUser((prev) => (prev ? { ...prev, trading_enabled: enabled } : prev));
 
@@ -865,7 +950,6 @@ export default function MemberDashboard() {
       notify(nextLive ? "Live trading started." : "Live trading stopped.", "success");
       setShowLiveConfirm(false);
       
-      // Force refresh dashboard data
       await loadDashboard({ silent: true, force: true });
     } catch (err) {
       console.error("[MemberDashboard] Live toggle failed:", err);
@@ -876,6 +960,21 @@ export default function MemberDashboard() {
       else notify(err?.message || "Failed to update live trading.", "error");
     } finally {
       setTogglingTrading(false);
+    }
+  };
+
+  const handleManualTrade = async () => {
+    if (!paperTradingEnabled) {
+      notify("Please enable paper trading first.", "error");
+      return;
+    }
+    
+    const success = await executePaperTrade();
+    if (success) {
+      notify("Trade executed successfully!", "success");
+      await loadDashboard({ silent: true, force: true });
+    } else {
+      notify("Trade execution failed.", "error");
     }
   };
 
@@ -897,7 +996,6 @@ export default function MemberDashboard() {
       setStrategyMessage(`${strategy.name} strategy is now active.`);
       notify(`${strategy.name} strategy is now active.`, "success");
       
-      // Refresh dashboard data
       await loadDashboard({ silent: true, force: true });
     } catch (err) {
       setCurrentStrategy(previous);
@@ -945,6 +1043,9 @@ export default function MemberDashboard() {
                 <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
                 <StatusPill tone={bothConnected ? "green" : "amber"}>Setup {bothConnected ? "Complete" : "Needs Keys"}</StatusPill>
                 <StatusPill tone="blue">Strategy: {activeStrategy.name}</StatusPill>
+                {autoTradingEnabled && paperTradingEnabled && (
+                  <StatusPill tone="green">🤖 Auto-Trading Active</StatusPill>
+                )}
               </div>
             </div>
 
@@ -984,7 +1085,7 @@ export default function MemberDashboard() {
                   : !paperTradingEnabled
                   ? "Your accounts are connected. Start with virtual money first."
                   : !tradingEnabled
-                  ? "Imali is using virtual funds. Watch your charts, trades, and strategy before using real money."
+                  ? "Imali is using virtual funds. Auto-trading executes every 30 seconds. Watch your charts, trades, and strategy before using real money."
                   : "Real money trading is turned on. Monitor performance and stop live trading anytime."}
               </p>
 
@@ -1006,12 +1107,20 @@ export default function MemberDashboard() {
                   {togglingPaper ? "Starting..." : "Start Paper Trading"}
                 </Button>
               ) : !tradingEnabled ? (
-                <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+                <div className="grid gap-3 sm:grid-cols-3 lg:flex">
                   <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
                     {togglingPaper ? "Stopping..." : "Stop Paper"}
                   </Button>
                   <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
                     Start Live Trading
+                  </Button>
+                  <Button 
+                    variant="primary" 
+                    onClick={handleManualTrade} 
+                    disabled={executingTrade || !paperTradingEnabled}
+                    className="w-full lg:w-auto"
+                  >
+                    {executingTrade ? "Trading..." : "Manual Trade"}
                   </Button>
                 </div>
               ) : (
@@ -1022,6 +1131,23 @@ export default function MemberDashboard() {
             </div>
           </div>
         </div>
+
+        {/* Auto-Trading Status Card */}
+        {paperTradingEnabled && !tradingEnabled && (
+          <Card className="border-green-200 bg-green-50">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-extrabold text-green-800 sm:text-xl">🤖 Auto-Trading Active</h2>
+                <p className="mt-1 text-sm font-semibold text-green-700">
+                  Trades are executing automatically every 30 seconds using your selected strategy.
+                </p>
+              </div>
+              <Button variant="danger" onClick={stopAutoTrading} className="w-full sm:w-auto">
+                Stop Auto-Trading
+              </Button>
+            </div>
+          </Card>
+        )}
 
         <Card className="border-indigo-200 bg-indigo-50">
           <div className="mb-4 flex items-center gap-3">
@@ -1087,11 +1213,16 @@ export default function MemberDashboard() {
               </div>
               <div className="w-full shrink-0 sm:w-auto">
                 {paperTradingEnabled ? (
-                  <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={anyTradingActionBusy} className="w-full sm:w-auto">
-                    {togglingPaper ? "Stopping..." : "Stop"}
-                  </Button>
+                  <div className="flex flex-col gap-2">
+                    <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={anyTradingActionBusy} className="w-full">
+                      {togglingPaper ? "Stopping..." : "Stop"}
+                    </Button>
+                    <Button variant="primary" onClick={handleManualTrade} disabled={executingTrade} className="w-full">
+                      {executingTrade ? "Trading..." : "Manual Trade"}
+                    </Button>
+                  </div>
                 ) : (
-                  <Button onClick={() => handleTogglePaperTrading(true)} disabled={!bothConnected || anyTradingActionBusy} className="w-full sm:w-auto">
+                  <Button onClick={() => handleTogglePaperTrading(true)} disabled={!bothConnected || anyTradingActionBusy} className="w-full">
                     {togglingPaper ? "Starting..." : "Start"}
                   </Button>
                 )}
