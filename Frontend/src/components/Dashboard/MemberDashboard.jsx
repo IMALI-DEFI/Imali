@@ -32,7 +32,14 @@ ChartJS.register(
 
 const PAPER_TRADING_BALANCE = 1000;
 const REFRESH_COOLDOWN_MS = 12000;
-const AUTO_TRADE_INTERVAL_MS = 30000; // Execute trade every 30 seconds
+const AUTO_TRADE_INTERVAL_MS = 30000;
+
+// Fallback chart data - ensures charts never show empty
+const FALLBACK_CHART_DATA = [
+  { date: new Date().toLocaleDateString(), pnl: 0, trades: 0 },
+  { date: new Date(Date.now() - 86400000).toLocaleDateString(), pnl: 0, trades: 0 },
+  { date: new Date(Date.now() - 172800000).toLocaleDateString(), pnl: 0, trades: 0 },
+];
 
 const STRATEGIES = [
   {
@@ -582,8 +589,8 @@ export default function MemberDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "info" });
   const [user, setUser] = useState(null);
-  const [stats, setStats] = useState({});
-  const [series, setSeries] = useState([]);
+  const [stats, setStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 });
+  const [series, setSeries] = useState(FALLBACK_CHART_DATA);
   const [integrations, setIntegrations] = useState({ wallet_connected: false, alpaca_connected: false, okx_connected: false });
   const [trial, setTrial] = useState(null);
   const [currentStrategy, setCurrentStrategy] = useState("mean_reversion");
@@ -610,6 +617,53 @@ export default function MemberDashboard() {
     BotAPI.clearApiKey?.();
     nav("/login");
   }, [nav]);
+
+  // Optimistically update stats after a trade
+  const updateStatsAfterTrade = useCallback((tradeData) => {
+    if (!tradeData?.pnl_usd) return;
+    
+    setStats(prev => {
+      const newTotalPnl = (prev.total_pnl || 0) + tradeData.pnl_usd;
+      const newTotalTrades = (prev.total_trades || 0) + 1;
+      const newWins = (prev.wins || 0) + (tradeData.pnl_usd > 0 ? 1 : 0);
+      const newLosses = (prev.losses || 0) + (tradeData.pnl_usd < 0 ? 1 : 0);
+      const newWinRate = newTotalTrades > 0 ? (newWins / newTotalTrades) * 100 : 0;
+      
+      return {
+        total_pnl: newTotalPnl,
+        total_trades: newTotalTrades,
+        wins: newWins,
+        losses: newLosses,
+        win_rate: newWinRate
+      };
+    });
+    
+    // Update chart series with new point
+    setSeries(prev => {
+      const newPoint = {
+        date: new Date().toLocaleTimeString(),
+        pnl: tradeData.pnl_usd,
+        trades: 1
+      };
+      const newSeries = [...prev, newPoint];
+      return newSeries.slice(-14); // Keep last 14 points
+    });
+    
+    // Update community trades
+    setCommunityTrades(prev => {
+      const newTrade = {
+        id: Date.now(),
+        symbol: tradeData.symbol,
+        side: tradeData.side,
+        pnl_usd: tradeData.pnl_usd,
+        pnl_percent: tradeData.pnl_percent,
+        user_email: "you@imali.com",
+        created_at: new Date().toISOString(),
+        bot: "Paper Bot"
+      };
+      return [newTrade, ...prev].slice(0, 20);
+    });
+  }, []);
 
   // Execute a single paper trade
   const executePaperTrade = useCallback(async () => {
@@ -650,8 +704,10 @@ export default function MemberDashboard() {
       
       const data = await response.json();
       
-      if (data.success) {
+      if (data.success && data.data) {
         console.log("Trade executed:", data.message);
+        // Optimistically update UI with trade data
+        updateStatsAfterTrade(data.data);
         return true;
       } else {
         console.error("Trade failed:", data.error);
@@ -663,7 +719,7 @@ export default function MemberDashboard() {
     } finally {
       setExecutingTrade(false);
     }
-  }, [paperTradingEnabled]);
+  }, [paperTradingEnabled, updateStatsAfterTrade]);
 
   // Start automatic trading
   const startAutoTrading = useCallback(() => {
@@ -675,11 +731,11 @@ export default function MemberDashboard() {
     // Execute first trade immediately
     executePaperTrade();
     
-    // Then set interval
+    // Then set interval - use ref to avoid stale closure
     autoTradeIntervalRef.current = setInterval(async () => {
       if (paperTradingEnabled && mountedRef.current) {
         await executePaperTrade();
-        // Refresh dashboard after trade
+        // Refresh dashboard stats from server periodically
         loadDashboard({ silent: true, force: true });
       }
     }, AUTO_TRADE_INTERVAL_MS);
@@ -736,15 +792,37 @@ export default function MemberDashboard() {
 
         if (!mountedRef.current) return;
 
-        setStats(extractSummary(statsPayload));
-        setSeries(extractDailySeries(statsPayload));
+        // Update stats from server
+        const newStats = extractSummary(statsPayload);
+        setStats(prev => ({
+          ...prev,
+          total_pnl: newStats.total_pnl || prev.total_pnl,
+          win_rate: newStats.win_rate || prev.win_rate,
+          total_trades: newStats.total_trades || prev.total_trades,
+          wins: newStats.wins || prev.wins,
+          losses: newStats.losses || prev.losses,
+        }));
+        
+        // Update chart series with fallback if empty
+        const dailySeries = extractDailySeries(statsPayload);
+        if (dailySeries && dailySeries.length > 0) {
+          setSeries(dailySeries);
+        } else if (paperTradingEnabled || tradingEnabled) {
+          // Keep fallback data but don't override if we have real data
+          setSeries(prev => prev.length > 0 ? prev : FALLBACK_CHART_DATA);
+        }
+        
         setIntegrations(integrationsPayload || { wallet_connected: false, alpaca_connected: false, okx_connected: false });
         setCurrentStrategy(
           normalizeStrategyId(
             strategiesPayload?.current_strategy || strategiesPayload?.data?.current_strategy || me?.strategy || "mean_reversion"
           )
         );
-        setCommunityTrades(Array.isArray(tradesPayload?.trades) ? tradesPayload.trades : []);
+        
+        if (Array.isArray(tradesPayload?.trades) && tradesPayload.trades.length > 0) {
+          setCommunityTrades(tradesPayload.trades);
+        }
+        
         setTrial(
           trialPayload || {
             trial_status: "trial",
@@ -767,7 +845,7 @@ export default function MemberDashboard() {
         }
       }
     },
-    [handleLogout, notify]
+    [handleLogout, notify, paperTradingEnabled, tradingEnabled]
   );
 
   const scheduleSoftRefresh = useCallback(() => {
@@ -787,18 +865,28 @@ export default function MemberDashboard() {
     };
   }, [loadDashboard]);
 
-  // Stop auto-trading when paper trading is disabled
+  // Start auto-trading when paper trading is enabled
   useEffect(() => {
-    if (!paperTradingEnabled && autoTradingEnabled) {
+    if (paperTradingEnabled && !autoTradingEnabled && !tradingEnabled) {
+      startAutoTrading();
+    } else if (!paperTradingEnabled && autoTradingEnabled) {
       stopAutoTrading();
     }
-  }, [paperTradingEnabled, autoTradingEnabled, stopAutoTrading]);
+  }, [paperTradingEnabled, autoTradingEnabled, tradingEnabled, startAutoTrading, stopAutoTrading]);
 
   const alpacaConnected = !!integrations.alpaca_connected;
   const okxConnected = !!integrations.okx_connected;
   const bothConnected = alpacaConnected && okxConnected;
   const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
   const anyTradingActionBusy = togglingPaper || togglingTrading;
+
+  // Ensure chart data is always valid
+  const validSeries = useMemo(() => {
+    if (!series || series.length === 0) {
+      return FALLBACK_CHART_DATA;
+    }
+    return series;
+  }, [series]);
 
   const displayStats = useMemo(() => {
     const active = paperTradingEnabled || tradingEnabled;
@@ -832,52 +920,49 @@ export default function MemberDashboard() {
     return unlocked;
   }, [displayStats, bothConnected]);
 
-  const lineData = useMemo(
-    () => ({
-      labels: series.map((p) => p.date || "—"),
-      datasets: [
-        {
-          label: "PnL",
-          data: series.map((p) => Number(p.pnl || 0)),
-          borderColor: "#4f46e5",
-          backgroundColor: "rgba(79, 70, 229, 0.12)",
-          fill: true,
-          tension: 0.35,
-        },
-      ],
-    }),
-    [series]
-  );
+  // Chart data with safe defaults
+  const lineData = {
+    labels: validSeries.map((p) => p.date || "—"),
+    datasets: [{
+      label: "PnL",
+      data: validSeries.map((p) => Number(p.pnl || 0)),
+      borderColor: "#4f46e5",
+      backgroundColor: "rgba(79, 70, 229, 0.12)",
+      fill: true,
+      tension: 0.35,
+    }],
+  };
 
-  const doughnutData = useMemo(() => {
-    const wins = Number(displayStats.wins || 0);
-    const losses = Number(displayStats.losses || 0);
-    return {
-      labels: ["Wins", "Losses"],
-      datasets: [{ data: wins + losses > 0 ? [wins, losses] : [1, 0], backgroundColor: ["#10b981", "#ef4444"], borderWidth: 0 }],
-    };
-  }, [displayStats]);
+  const doughnutData = {
+    labels: ["Wins", "Losses"],
+    datasets: [{
+      data: [displayStats.wins || 1, displayStats.losses || 1],
+      backgroundColor: ["#10b981", "#ef4444"],
+      borderWidth: 0,
+    }],
+  };
 
-  const barData = useMemo(
-    () => ({
-      labels: series.slice(-7).map((p) => p.date || "—"),
-      datasets: [{ label: "Trades", data: series.slice(-7).map((p) => Number(p.trades || 0)), backgroundColor: "#6366f1" }],
-    }),
-    [series]
-  );
+  const barData = {
+    labels: validSeries.slice(-7).map((p) => p.date || "—"),
+    datasets: [{
+      label: "Trades",
+      data: validSeries.slice(-7).map((p) => Number(p.trades || 0)),
+      backgroundColor: "#6366f1",
+    }],
+  };
 
-  const chartOptions = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: "#0f172a", font: { weight: "bold" } } } },
-      scales: {
-        x: { ticks: { color: "#334155" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
-        y: { ticks: { color: "#334155" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
-      },
-    }),
-    []
-  );
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: "top", labels: { color: "#0f172a", font: { weight: "bold" } } },
+      tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}` } }
+    },
+    scales: {
+      x: { ticks: { color: "#334155" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
+      y: { ticks: { color: "#334155" }, grid: { color: "rgba(148, 163, 184, 0.25)" } },
+    },
+  };
 
   const handleTogglePaperTrading = async (enabled) => {
     if (togglingPaper || togglingTrading) return;
@@ -904,13 +989,7 @@ export default function MemberDashboard() {
       setUser((prev) => (prev ? { ...prev, paper_trading_enabled: nextPaper } : prev));
       notify(nextPaper ? "Paper trading started." : "Paper trading stopped.", "success");
       
-      // Start auto-trading when paper trading is enabled
-      if (nextPaper) {
-        startAutoTrading();
-      } else {
-        stopAutoTrading();
-      }
-      
+      // Auto-trading will start via useEffect
       await loadDashboard({ silent: true, force: true });
     } catch (err) {
       console.error("[MemberDashboard] Paper toggle failed:", err);
@@ -1030,12 +1109,15 @@ export default function MemberDashboard() {
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
 
       <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
+        {/* Header */}
         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="text-2xl font-extrabold text-slate-950 sm:text-3xl">Welcome back 👋</h1>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
-                Start with paper trading, watch the charts, then turn on live trading when you are ready.
+                {paperTradingEnabled && !tradingEnabled 
+                  ? "🤖 Auto-trading is active! Trades execute every 30 seconds. Watch your charts update in real-time."
+                  : "Start with paper trading, watch the charts, then turn on live trading when you are ready."}
               </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
@@ -1043,7 +1125,7 @@ export default function MemberDashboard() {
                 <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
                 <StatusPill tone={bothConnected ? "green" : "amber"}>Setup {bothConnected ? "Complete" : "Needs Keys"}</StatusPill>
                 <StatusPill tone="blue">Strategy: {activeStrategy.name}</StatusPill>
-                {autoTradingEnabled && paperTradingEnabled && (
+                {autoTradingEnabled && paperTradingEnabled && !tradingEnabled && (
                   <StatusPill tone="green">🤖 Auto-Trading Active</StatusPill>
                 )}
               </div>
@@ -1063,6 +1145,7 @@ export default function MemberDashboard() {
           </div>
         </div>
 
+        {/* Setup Progress Card */}
         <div
           className={`rounded-3xl border p-4 shadow-sm sm:p-6 ${
             bothConnected && !paperTradingEnabled && !tradingEnabled
@@ -1133,13 +1216,14 @@ export default function MemberDashboard() {
         </div>
 
         {/* Auto-Trading Status Card */}
-        {paperTradingEnabled && !tradingEnabled && (
+        {autoTradingEnabled && paperTradingEnabled && !tradingEnabled && (
           <Card className="border-green-200 bg-green-50">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-extrabold text-green-800 sm:text-xl">🤖 Auto-Trading Active</h2>
                 <p className="mt-1 text-sm font-semibold text-green-700">
                   Trades are executing automatically every 30 seconds using your selected strategy.
+                  Watch the charts update in real-time!
                 </p>
               </div>
               <Button variant="danger" onClick={stopAutoTrading} className="w-full sm:w-auto">
@@ -1149,6 +1233,7 @@ export default function MemberDashboard() {
           </Card>
         )}
 
+        {/* Quick Start Guide */}
         <Card className="border-indigo-200 bg-indigo-50">
           <div className="mb-4 flex items-center gap-3">
             <span className="text-3xl">🎓</span>
@@ -1184,12 +1269,13 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
+        {/* Paper Trading Card */}
         <Card className="border-blue-200 bg-blue-50">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-extrabold text-blue-950 sm:text-xl">🎯 Paper Trading</h2>
               <p className="mt-1 text-sm font-bold leading-6 text-blue-900">
-                {paperTradingEnabled ? `Active with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.` : `Available with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`}
+                {paperTradingEnabled ? `Active with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. Auto-trading every 30 seconds.` : `Available with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`}
                 {trial?.seconds_remaining ? ` Trial time left: ${formatTimeLeft(trial.seconds_remaining)}.` : ""}
               </p>
             </div>
@@ -1197,7 +1283,9 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
+        {/* Trading Cards Row */}
         <div className="grid gap-5 xl:grid-cols-2">
+          {/* Paper Trading Card */}
           <Card className={paperTradingEnabled ? "border-green-300 bg-green-50" : "bg-white"}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -1230,6 +1318,7 @@ export default function MemberDashboard() {
             </div>
           </Card>
 
+          {/* Live Trading Card */}
           <Card className={tradingEnabled ? "border-green-300 bg-green-50" : "bg-white"}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -1258,6 +1347,7 @@ export default function MemberDashboard() {
           </Card>
         </div>
 
+        {/* Trading Readiness */}
         <Card>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <SectionTitle helper="This score helps beginners know how complete their setup is.">📊 Trading Readiness</SectionTitle>
@@ -1268,6 +1358,7 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
+        {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <Stat label="Total Profit" value={usd(displayStats.total_pnl)} helper="Closed trades" />
           <Stat label="Win Rate" value={pct(displayStats.win_rate)} helper="Closed trades" />
@@ -1275,6 +1366,7 @@ export default function MemberDashboard() {
           <Stat label="Current Mode" value={tradingEnabled ? "Live" : paperTradingEnabled ? "Paper" : "Setup"} helper="Your bot status" />
         </div>
 
+        {/* Strategies Section */}
         <Card>
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <SectionTitle helper="Pick one strategy. You can change it later.">🎯 Choose Your Strategy</SectionTitle>
@@ -1299,24 +1391,34 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
+        {/* Charts Grid - Fixed height containers */}
         <div className="grid gap-5 xl:grid-cols-3">
           <Card className="xl:col-span-2">
             <SectionTitle>📈 PnL Performance</SectionTitle>
-            <div className="h-64 sm:h-72"><Line data={lineData} options={chartOptions} /></div>
+            <div className="relative h-64 w-full sm:h-72">
+              <Line data={lineData} options={chartOptions} />
+            </div>
           </Card>
           <Card>
             <SectionTitle>🥇 Win / Loss</SectionTitle>
-            <div className="h-64 sm:h-72">
-              <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: "#0f172a", font: { weight: "bold" } } } } }} />
+            <div className="relative h-64 w-full sm:h-72">
+              <Doughnut data={doughnutData} options={{ 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { position: "top", labels: { color: "#0f172a", font: { weight: "bold" } } } } 
+              }} />
             </div>
           </Card>
         </div>
 
         <Card>
           <SectionTitle>📊 Trade Count — Last 7 Days</SectionTitle>
-          <div className="h-64 sm:h-72"><Bar data={barData} options={chartOptions} /></div>
+          <div className="relative h-64 w-full sm:h-72">
+            <Bar data={barData} options={chartOptions} />
+          </div>
         </Card>
 
+        {/* Required Connections */}
         <div className="grid gap-5 xl:grid-cols-2">
           <Card>
             <SectionTitle>🔌 Required Connections</SectionTitle>
@@ -1349,14 +1451,14 @@ export default function MemberDashboard() {
           <Card>
             <SectionTitle>🌍 Community Trades</SectionTitle>
             {communityTrades.length === 0 ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">No community trades yet.</div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">No community trades yet. Start paper trading to see trades appear!</div>
             ) : (
               <div className="max-h-80 space-y-3 overflow-auto">
-                {communityTrades.map((trade, index) => {
+                {communityTrades.slice(0, 10).map((trade, index) => {
                   const pnl = Number(trade.pnl_usd || trade.pnl || 0);
                   const positive = pnl >= 0;
                   return (
-                    <div key={trade.id || `${trade.symbol}-${index}`} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <div key={trade.id || index} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-extrabold text-slate-950">{trade.symbol || "Unknown"}</span>
@@ -1373,6 +1475,7 @@ export default function MemberDashboard() {
           </Card>
         </div>
 
+        {/* Helpful Resources */}
         <Card>
           <SectionTitle>📚 Helpful Resources</SectionTitle>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1390,6 +1493,7 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
+        {/* Available Features */}
         <Card>
           <SectionTitle>✅ Available Features</SectionTitle>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1414,6 +1518,7 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
+        {/* Achievements */}
         <Card>
           <SectionTitle>🏆 Achievements</SectionTitle>
           <div className="flex flex-wrap gap-3">
@@ -1428,6 +1533,7 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
+        {/* Action Buttons */}
         <div className="grid gap-3 sm:grid-cols-3">
           <Button onClick={() => nav("/trade-demo")} className="w-full">Paper Trade Demo</Button>
           <Button variant="warning" onClick={() => (bothConnected ? setShowLiveConfirm(true) : setShowApiModal(true))} disabled={anyTradingActionBusy} className="w-full">Start Live Trading</Button>
