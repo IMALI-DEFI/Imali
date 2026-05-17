@@ -60,6 +60,7 @@ const STRATEGIES = [
     short: "Capital preservation",
     description: "Focuses on capital preservation with lower risk positions.",
     bullets: ["Lower risk", "Steady returns", "Capital preservation"],
+    radarData: [85, 75, 60, 80, 50, 70],
   },
   {
     id: "balanced",
@@ -70,6 +71,7 @@ const STRATEGIES = [
     short: "Best default",
     description: "Balanced approach between risk and return.",
     bullets: ["Balanced risk", "Consistent returns", "Team favorite"],
+    radarData: [75, 85, 75, 75, 70, 85],
   },
   {
     id: "aggressive",
@@ -80,6 +82,7 @@ const STRATEGIES = [
     short: "Higher returns",
     description: "Aims for higher returns with increased risk tolerance.",
     bullets: ["Higher risk", "Growth focused", "Larger positions"],
+    radarData: [60, 70, 90, 60, 95, 80],
   },
 ];
 
@@ -440,20 +443,15 @@ export default function EnterpriseDashboard({ demoMode = false }) {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [error, setError] = useState(null);
 
+  const activeStrategy = STRATEGIES.find(s => s.id === currentStrategy) || STRATEGIES[1];
+  const currentRadarData = activeStrategy.radarData;
+
   // Redirect if not enterprise user
   useEffect(() => {
     if (!demoMode && !loading && !isEnterpriseUser) {
       navigate("/dashboard", { replace: true });
     }
   }, [demoMode, loading, isEnterpriseUser, navigate]);
-
-  const getRadarDataForStrategy = (strategyId) => {
-    const data = { conservative: [85, 75, 60, 80, 50, 70], balanced: [75, 85, 75, 75, 70, 85], aggressive: [60, 70, 90, 60, 95, 80] };
-    return data[strategyId] || data.balanced;
-  };
-
-  const activeStrategy = STRATEGIES.find(s => s.id === currentStrategy) || STRATEGIES[1];
-  const currentRadarData = getRadarDataForStrategy(currentStrategy);
 
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type });
@@ -499,7 +497,7 @@ export default function EnterpriseDashboard({ demoMode = false }) {
       
       if (data.success) {
         console.log(`✅ Auto-trade executed: ${randomAsset} ${randomSide} on ${randomExchange}`);
-        await fetchData(); // Refresh dashboard
+        await fetchData();
         return true;
       }
       return false;
@@ -558,7 +556,6 @@ export default function EnterpriseDashboard({ demoMode = false }) {
     
     setRefreshing(true);
     try {
-      // Mock data for demo mode
       if (demoMode) {
         setTimeout(() => {
           setStats({
@@ -589,11 +586,9 @@ export default function EnterpriseDashboard({ demoMode = false }) {
         return;
       }
       
-      // Real API calls for authenticated enterprise users
       const token = localStorage.getItem("imali_token");
       const headers = { Authorization: `Bearer ${token}` };
       
-      // Fetch organization stats
       const statsRes = await axios.get(`${API_BASE}/api/enterprise/stats`, { headers });
       if (statsRes.data?.success) {
         const summary = statsRes.data.data?.summary || {};
@@ -606,13 +601,11 @@ export default function EnterpriseDashboard({ demoMode = false }) {
         });
       }
       
-      // Fetch team members
       const membersRes = await axios.get(`${API_BASE}/api/enterprise/members`, { headers });
       if (membersRes.data?.success) {
         setMembers(membersRes.data.data?.members || []);
       }
       
-      // Fetch analytics
       const analyticsRes = await axios.get(`${API_BASE}/api/enterprise/analytics`, { headers });
       if (analyticsRes.data?.success) {
         const chartData = analyticsRes.data.data || {};
@@ -993,6 +986,11 @@ export default function EnterpriseDashboard({ demoMode = false }) {
                 <StatusPill tone={member.role === "admin" ? "purple" : "blue"}>{member.role || "Member"}</StatusPill>
               </div>
             ))}
+            {members.length === 0 && (
+              <div className="text-center py-8 text-slate-500">
+                <p>No team members yet. Invite your team to get started.</p>
+              </div>
+            )}
           </div>
         </Card>
 
