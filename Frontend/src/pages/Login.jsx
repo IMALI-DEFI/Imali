@@ -141,7 +141,7 @@ const ForgotPasswordModal = ({ isOpen, onClose, initialEmail = "" }) => {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, user, isEnterpriseUser } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -163,10 +163,33 @@ export default function Login() {
     return typeof raw === "string" ? raw : "";
   }, [location.state]);
 
+  // Determine redirect destination based on user type
+  const getRedirectDestination = useCallback((userData) => {
+    // Check if user is enterprise
+    if (userData?.tier === "enterprise" || userData?.organization_id) {
+      return "/enterprise-dashboard";
+    }
+    // Check if user is admin
+    if (userData?.is_admin === true || userData?.isAdmin === true) {
+      return "/admin";
+    }
+    // Default to activation or dashboard
+    return "/activation";
+  }, []);
+
   const destination = useMemo(() => {
-    const raw = nextFromQuery || fromState || "/activation";
-    return safeInternalPath(raw, "/activation");
-  }, [nextFromQuery, fromState]);
+    // If we already have a user, determine their destination
+    if (user) {
+      return getRedirectDestination(user);
+    }
+    
+    // Otherwise use the requested destination or default
+    const raw = nextFromQuery || fromState;
+    if (raw && raw !== "/activation") {
+      return safeInternalPath(raw, "/activation");
+    }
+    return "/activation";
+  }, [nextFromQuery, fromState, user, getRedirectDestination]);
 
   const expiredMessage = useMemo(() => {
     try {
@@ -182,6 +205,19 @@ export default function Login() {
     setEmail("");
     setPassword("");
   }, []);
+
+  // If user is already logged in and is enterprise, redirect immediately
+  useEffect(() => {
+    if (user && !loading) {
+      if (isEnterpriseUser) {
+        console.log("[Login] Enterprise user detected, redirecting to enterprise dashboard");
+        navigate("/enterprise-dashboard", { replace: true });
+      } else if (user.is_admin || user.isAdmin) {
+        console.log("[Login] Admin user detected, redirecting to admin dashboard");
+        navigate("/admin", { replace: true });
+      }
+    }
+  }, [user, loading, isEnterpriseUser, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -203,6 +239,7 @@ export default function Login() {
 
       if (!result?.success) {
         setError(result?.error || "Login failed. Please try again.");
+        setLoading(false);
         return;
       }
 
@@ -212,11 +249,25 @@ export default function Login() {
         console.warn("[Login] Failed to store IMALI_EMAIL:", err);
       }
 
-      navigate(destination, { replace: true });
+      // Check if the logged in user is enterprise
+      const userData = result.user;
+      const isEnterprise = userData?.tier === "enterprise" || userData?.organization_id;
+      
+      let redirectPath = destination;
+      
+      // Override redirect if enterprise
+      if (isEnterprise) {
+        redirectPath = "/enterprise-dashboard";
+        console.log("[Login] Enterprise login, redirecting to enterprise dashboard");
+      } else if (userData?.is_admin || userData?.isAdmin) {
+        redirectPath = "/admin";
+        console.log("[Login] Admin login, redirecting to admin dashboard");
+      }
+      
+      navigate(redirectPath, { replace: true });
     } catch (err) {
       console.error("[Login] Login error:", err);
       setError(parseApiError(err, "Login failed. Please try again."));
-    } finally {
       setLoading(false);
     }
   };
