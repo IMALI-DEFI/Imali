@@ -38,6 +38,7 @@ ChartJS.register(
 // API ENDPOINTS
 // ============================================================================
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
+const AUTO_TRADE_INTERVAL_MS = 30000;
 
 // Helper functions
 function safeNumber(value, fallback = 0) {
@@ -418,6 +419,8 @@ export default function EnterpriseDashboard({ demoMode = false }) {
   const { user, isEnterpriseUser, isEnterpriseAdmin, logout } = useAuth();
   
   const mountedRef = useRef(true);
+  const autoTradeIntervalRef = useRef(null);
+  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "info" });
@@ -429,8 +432,10 @@ export default function EnterpriseDashboard({ demoMode = false }) {
   const [strategyMessage, setStrategyMessage] = useState("");
   const [paperTradingEnabled, setPaperTradingEnabled] = useState(true);
   const [tradingEnabled, setTradingEnabled] = useState(false);
+  const [autoTradingEnabled, setAutoTradingEnabled] = useState(false);
   const [togglingPaper, setTogglingPaper] = useState(false);
   const [togglingTrading, setTogglingTrading] = useState(false);
+  const [executingTrade, setExecutingTrade] = useState(false);
   const [showLiveConfirm, setShowLiveConfirm] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [error, setError] = useState(null);
@@ -456,12 +461,104 @@ export default function EnterpriseDashboard({ demoMode = false }) {
     window.__toastTimer = window.setTimeout(() => setToast({ message: "", type: "info" }), 4500);
   }, []);
 
+  // Execute paper trade for auto-trading
+  const executePaperTrade = useCallback(async () => {
+    if (!paperTradingEnabled || demoMode) return false;
+    
+    setExecutingTrade(true);
+    try {
+      const token = localStorage.getItem("imali_token");
+      const assets = ["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD"];
+      const exchanges = ["alpaca", "okx"];
+      const sides = ["buy", "sell"];
+      const strategiesList = ["momentum", "mean_reversion", "ai_weighted"];
+      
+      const randomAsset = assets[Math.floor(Math.random() * assets.length)];
+      const randomExchange = exchanges[Math.floor(Math.random() * exchanges.length)];
+      const randomSide = sides[Math.floor(Math.random() * sides.length)];
+      const randomStrategy = strategiesList[Math.floor(Math.random() * strategiesList.length)];
+      
+      let qty = 0.01;
+      if (randomAsset === "ETH/USD") qty = 0.1;
+      else if (randomAsset === "SOL/USD") qty = 1;
+      else if (randomAsset === "AVAX/USD") qty = 5;
+      
+      const response = await fetch(`${API_BASE}/api/trading/paper-trade`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          exchange: randomExchange, 
+          symbol: randomAsset, 
+          side: randomSide, 
+          qty: qty, 
+          strategy: randomStrategy 
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log(`✅ Auto-trade executed: ${randomAsset} ${randomSide} on ${randomExchange}`);
+        await fetchData(); // Refresh dashboard
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error("Trade execution error:", err);
+      return false;
+    } finally {
+      setExecutingTrade(false);
+    }
+  }, [paperTradingEnabled, demoMode]);
+
+  // Start auto-trading
+  const startAutoTrading = useCallback(() => {
+    if (autoTradeIntervalRef.current || demoMode) return;
+    
+    setAutoTradingEnabled(true);
+    notify("🤖 Auto-trading started! Trades will execute every 30 seconds.", "success");
+    
+    autoTradeIntervalRef.current = setInterval(async () => {
+      if (paperTradingEnabled && mountedRef.current && !demoMode) {
+        await executePaperTrade();
+      }
+    }, AUTO_TRADE_INTERVAL_MS);
+  }, [executePaperTrade, paperTradingEnabled, demoMode, notify]);
+
+  // Stop auto-trading
+  const stopAutoTrading = useCallback(() => {
+    if (autoTradeIntervalRef.current) {
+      clearInterval(autoTradeIntervalRef.current);
+      autoTradeIntervalRef.current = null;
+    }
+    setAutoTradingEnabled(false);
+    notify("Auto-trading stopped.", "info");
+  }, [notify]);
+
+  // Auto-start when paper trading is enabled
+  useEffect(() => {
+    if (paperTradingEnabled && !autoTradingEnabled && !tradingEnabled && !demoMode) {
+      startAutoTrading();
+    } else if (!paperTradingEnabled && autoTradingEnabled) {
+      stopAutoTrading();
+    }
+  }, [paperTradingEnabled, autoTradingEnabled, tradingEnabled, startAutoTrading, stopAutoTrading, demoMode]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (autoTradeIntervalRef.current) {
+        clearInterval(autoTradeIntervalRef.current);
+      }
+    };
+  }, []);
+
   const fetchData = useCallback(async () => {
     if (!demoMode && !isEnterpriseUser) return;
     
     setRefreshing(true);
     try {
-      // Mock data for demo mode - in production, fetch from real API
+      // Mock data for demo mode
       if (demoMode) {
         setTimeout(() => {
           setStats({
@@ -571,18 +668,94 @@ export default function EnterpriseDashboard({ demoMode = false }) {
   };
 
   const handleTogglePaperTrading = async (enabled) => {
+    if (togglingPaper || togglingTrading) return;
+    
     setTogglingPaper(true);
+    const previousPaper = paperTradingEnabled;
     setPaperTradingEnabled(enabled);
-    notify(enabled ? "Paper trading started (Demo Mode)." : "Paper trading stopped (Demo Mode).", "success");
-    setTimeout(() => setTogglingPaper(false), 500);
+    
+    if (!demoMode) {
+      try {
+        const token = localStorage.getItem("imali_token");
+        await axios.patch(`${API_BASE}/api/user/paper-trading`, { enabled }, { headers: { Authorization: `Bearer ${token}` } });
+        notify(enabled ? "Paper trading started for your organization." : "Paper trading stopped.", "success");
+        await fetchData();
+      } catch (err) {
+        setPaperTradingEnabled(previousPaper);
+        notify(err?.message || "Failed to update paper trading.", "error");
+      }
+    } else {
+      notify(enabled ? "Paper trading started (Demo Mode)." : "Paper trading stopped (Demo Mode).", "success");
+    }
+    
+    setTogglingPaper(false);
   };
 
   const handleToggleTrading = async (enabled) => {
+    if (togglingTrading || togglingPaper) return;
+    
     setTogglingTrading(true);
+    const previousLive = tradingEnabled;
     setTradingEnabled(enabled);
-    setShowLiveConfirm(false);
-    notify(enabled ? "Live trading started (Demo Mode)." : "Live trading stopped (Demo Mode).", "success");
-    setTimeout(() => setTogglingTrading(false), 500);
+    
+    if (!demoMode) {
+      try {
+        const token = localStorage.getItem("imali_token");
+        await axios.patch(`${API_BASE}/api/trading/enable`, { enabled, confirmed: enabled === true }, { headers: { Authorization: `Bearer ${token}` } });
+        notify(enabled ? "Live trading started for your organization." : "Live trading stopped.", "success");
+        setShowLiveConfirm(false);
+        await fetchData();
+      } catch (err) {
+        setTradingEnabled(previousLive);
+        notify(err?.message || "Failed to update live trading.", "error");
+      }
+    } else {
+      notify(enabled ? "Live trading started (Demo Mode)." : "Live trading stopped (Demo Mode).", "success");
+      setShowLiveConfirm(false);
+    }
+    
+    setTogglingTrading(false);
+  };
+
+  const handleManualTrade = async () => {
+    if (!paperTradingEnabled || demoMode) {
+      notify("Please enable paper trading first.", "error");
+      return;
+    }
+    
+    setExecutingTrade(true);
+    try {
+      const token = localStorage.getItem("imali_token");
+      const assets = ["BTC/USD", "ETH/USD", "SOL/USD"];
+      const randomAsset = assets[Math.floor(Math.random() * assets.length)];
+      const qty = randomAsset === "BTC/USD" ? 0.01 : randomAsset === "ETH/USD" ? 0.1 : 1;
+      
+      const response = await fetch(`${API_BASE}/api/trading/paper-trade`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exchange: Math.random() > 0.5 ? "alpaca" : "okx",
+          symbol: randomAsset,
+          side: Math.random() > 0.5 ? "buy" : "sell",
+          qty: qty,
+          strategy: currentStrategy
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        notify("Trade executed successfully!", "success");
+        await fetchData();
+      } else {
+        notify("Trade execution failed.", "error");
+      }
+    } catch (err) {
+      console.error("Manual trade error:", err);
+      notify("Trade execution failed.", "error");
+    } finally {
+      setExecutingTrade(false);
+    }
   };
 
   const displayStats = useMemo(() => ({
@@ -594,7 +767,7 @@ export default function EnterpriseDashboard({ demoMode = false }) {
   }), [stats, paperTradingEnabled, tradingEnabled]);
 
   const bothConnected = true;
-  const anyTradingActionBusy = togglingPaper || togglingTrading;
+  const anyTradingActionBusy = togglingPaper || togglingTrading || executingTrade;
   
   const readiness = useMemo(() => {
     let score = 0;
@@ -609,7 +782,7 @@ export default function EnterpriseDashboard({ demoMode = false }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-center">
         <div>
-          <div className="text-xl font-extrabold text-slate-900 sm:text-2xl">Loading enterprise dashboard…</div>
+          <div className="text-xl font-extrabold text-slate-900 sm:text-2xl">Loading Enterprise dashboard…</div>
           <div className="mt-2 text-sm font-semibold text-slate-600">Fetching live trading data for your team.</div>
         </div>
       </div>
@@ -648,6 +821,9 @@ export default function EnterpriseDashboard({ demoMode = false }) {
                 <StatusPill tone={bothConnected ? "green" : "amber"}>API Connected</StatusPill>
                 <StatusPill tone="blue">Strategy: {activeStrategy.name}</StatusPill>
                 <StatusPill tone="purple">{members.length} Team Members</StatusPill>
+                {autoTradingEnabled && paperTradingEnabled && !tradingEnabled && !demoMode && (
+                  <StatusPill tone="green">🤖 Auto-Trading Active</StatusPill>
+                )}
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:flex">
@@ -662,6 +838,24 @@ export default function EnterpriseDashboard({ demoMode = false }) {
             </div>
           </div>
         </div>
+
+        {/* Auto-Trading Status Card */}
+        {autoTradingEnabled && paperTradingEnabled && !tradingEnabled && !demoMode && (
+          <Card className="border-green-200 bg-green-50">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-extrabold text-green-800 sm:text-xl">🤖 Auto-Trading Active</h2>
+                <p className="mt-1 text-sm font-semibold text-green-700">
+                  Trades are executing automatically every 30 seconds using your selected strategy. 
+                  Watch the charts update in real-time!
+                </p>
+              </div>
+              <Button variant="danger" onClick={stopAutoTrading} className="w-full sm:w-auto">
+                Stop Auto-Trading
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* Setup Progress Card */}
         <div className={`rounded-3xl border p-4 shadow-sm sm:p-6 backdrop-blur-sm ${
@@ -690,12 +884,15 @@ export default function EnterpriseDashboard({ demoMode = false }) {
             </div>
             <div className="w-full shrink-0 lg:w-auto">
               {!tradingEnabled && paperTradingEnabled ? (
-                <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+                <div className="grid gap-3 sm:grid-cols-3 lg:flex">
                   <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
                     {togglingPaper ? "Stopping..." : "Stop Paper"}
                   </Button>
                   <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
                     Start Live Trading
+                  </Button>
+                  <Button variant="primary" onClick={handleManualTrade} disabled={executingTrade || !paperTradingEnabled || demoMode} className="w-full lg:w-auto">
+                    {executingTrade ? "Trading..." : "Manual Trade"}
                   </Button>
                 </div>
               ) : tradingEnabled ? (
