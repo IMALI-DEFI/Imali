@@ -13,6 +13,7 @@ const AuthContext = createContext(null);
 const TOKEN_KEY = "imali_token";
 const USER_KEY = "imali_user";
 const ACTIVATION_KEY = "imali_activation";
+const REDIRECT_KEY = "imali_redirect";
 
 const API_BASE_URL =
   (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
@@ -80,6 +81,7 @@ const normalizeUser = (userData) => {
     tier: tier,
     strategy: userData.strategy || "ai_weighted",
     trading_enabled: normalizeBoolean(userData.trading_enabled),
+    paper_trading_enabled: normalizeBoolean(userData.paper_trading_enabled),
     is_admin: normalizeBoolean(userData.is_admin),
     isAdmin: normalizeBoolean(userData.isAdmin),
     has_card_on_file: normalizeBoolean(userData.has_card_on_file),
@@ -97,6 +99,9 @@ const normalizeUser = (userData) => {
     custom_branding: userData.custom_branding || null,
     enhanced_bot_controls: normalizeBoolean(userData.enhanced_bot_controls),
     admin_panel_access: normalizeBoolean(userData.admin_panel_access),
+    alpaca_connected: normalizeBoolean(userData.alpaca_connected),
+    okx_connected: normalizeBoolean(userData.okx_connected),
+    wallet_connected: normalizeBoolean(userData.wallet_connected),
   };
 };
 
@@ -110,6 +115,7 @@ const normalizeActivation = (activationData) => {
     has_card_on_file: normalizeBoolean(activationData.has_card_on_file),
     billing_complete: normalizeBoolean(activationData.billing_complete),
     trading_enabled: normalizeBoolean(activationData.trading_enabled),
+    paper_trading_enabled: normalizeBoolean(activationData.paper_trading_enabled),
     wallet_connected: normalizeBoolean(activationData.wallet_connected),
     okx_connected: normalizeBoolean(activationData.okx_connected),
     alpaca_connected: normalizeBoolean(activationData.alpaca_connected),
@@ -128,6 +134,7 @@ const defaultActivation = () => ({
   has_card_on_file: false,
   billing_complete: false,
   trading_enabled: false,
+  paper_trading_enabled: false,
   wallet_connected: false,
   okx_connected: false,
   alpaca_connected: false,
@@ -197,6 +204,7 @@ export function AuthProvider({ children }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [intendedRedirect, setIntendedRedirect] = useState(null);
 
   const loadAttemptedRef = useRef(false);
   const lastRefreshTimeRef = useRef(0);
@@ -227,9 +235,11 @@ export function AuthProvider({ children }) {
     setActivation(null);
     setError(null);
     setRefreshing(false);
+    setIntendedRedirect(null);
     clearToken();
     safeStorageRemove(USER_KEY);
     safeStorageRemove(ACTIVATION_KEY);
+    safeStorageRemove(REDIRECT_KEY);
     refreshPromiseRef.current = null;
   }, []);
 
@@ -262,7 +272,6 @@ export function AuthProvider({ children }) {
         return null;
       }
 
-      // If there's already a refresh in progress, return that promise
       if (refreshPromiseRef.current && !force) {
         console.log("[Auth] Using existing refresh promise");
         return refreshPromiseRef.current;
@@ -270,13 +279,11 @@ export function AuthProvider({ children }) {
 
       const now = Date.now();
       
-      // Allow force refresh to bypass cooldown
       if (!force && now - lastRefreshTimeRef.current < REFRESH_COOLDOWN_MS) {
         console.log("[Auth] Using cached activation (cooldown active)");
         return activation;
       }
 
-      // Create new refresh promise
       refreshPromiseRef.current = (async () => {
         setRefreshing(true);
         lastRefreshTimeRef.current = now;
@@ -312,6 +319,21 @@ export function AuthProvider({ children }) {
     [activation, persistActivation, clearAuth]
   );
 
+  const getRedirectPath = useCallback((userData) => {
+    // Check if user is enterprise
+    if (userData?.tier === "enterprise" || userData?.organization_id) {
+      return "/enterprise-dashboard";
+    }
+    
+    // Check if user is admin
+    if (userData?.is_admin === true || userData?.isAdmin === true) {
+      return "/admin";
+    }
+    
+    // Default to member dashboard
+    return "/dashboard";
+  }, []);
+
   const loadUser = useCallback(
     async (skipCache = false) => {
       const token = getToken();
@@ -339,11 +361,33 @@ export function AuthProvider({ children }) {
 
         setError(null);
         
-        // Force refresh activation after loading user (bypass cooldown)
         await refreshActivation(true);
         
         setLoading(false);
         setIsInitialized(true);
+        
+        // Check for stored redirect or compute default
+        const storedRedirect = safeStorageGet(REDIRECT_KEY);
+        if (storedRedirect) {
+          safeStorageRemove(REDIRECT_KEY);
+          window.location.href = storedRedirect;
+        } else {
+          // Auto-redirect enterprise users to correct dashboard
+          const redirectPath = getRedirectPath(normalizedUser);
+          const currentPath = window.location.pathname;
+          
+          // Don't redirect if already on the correct page or login/signup
+          if (
+            currentPath !== redirectPath && 
+            !currentPath.includes('/login') && 
+            !currentPath.includes('/signup') &&
+            currentPath !== '/activation'
+          ) {
+            console.log(`[Auth] Auto-redirecting to ${redirectPath} based on user type`);
+            window.location.href = redirectPath;
+          }
+        }
+        
         return normalizedUser;
       } catch (err) {
         console.error("[Auth] loadUser failed:", err.message);
@@ -359,11 +403,11 @@ export function AuthProvider({ children }) {
         return null;
       }
     },
-    [user, loadCachedState, persistUser, refreshActivation, clearAuth]
+    [user, loadCachedState, persistUser, refreshActivation, clearAuth, getRedirectPath]
   );
 
   const login = useCallback(
-    async (email, password) => {
+    async (email, password, redirectPath = null) => {
       setError(null);
 
       if (!email || !password) {
@@ -380,6 +424,7 @@ export function AuthProvider({ children }) {
 
         const token = data?.data?.token || data?.token;
         const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
+        const userData = data?.data?.user || data?.user || null;
 
         if (!token) {
           const message = "Login succeeded but no token was returned";
@@ -388,22 +433,37 @@ export function AuthProvider({ children }) {
         }
 
         setToken(token);
-        const loadedUser = await loadUser(true);
-
-        if (!loadedUser) {
-          const message = "Login succeeded but user profile could not be loaded";
-          setError(message);
-          return { success: false, error: message };
+        
+        // Store intended redirect if provided
+        if (redirectPath) {
+          safeStorageSet(REDIRECT_KEY, redirectPath);
         }
-
-        return { success: true, token, api_key: apiKey, user: loadedUser };
+        
+        const normalizedUser = persistUser(userData);
+        await refreshActivation(true);
+        
+        // Determine where to redirect
+        const finalRedirect = redirectPath || getRedirectPath(normalizedUser);
+        
+        setLoading(false);
+        setIsInitialized(true);
+        
+        console.log(`[Auth] Login successful, redirecting to ${finalRedirect}`);
+        
+        return { 
+          success: true, 
+          token, 
+          api_key: apiKey, 
+          user: normalizedUser,
+          redirectTo: finalRedirect
+        };
       } catch (err) {
         const message = err.message || "Login failed";
         setError(message);
         return { success: false, error: message };
       }
     },
-    [loadUser]
+    [loadUser, persistUser, refreshActivation, getRedirectPath]
   );
 
   const signup = useCallback(
@@ -476,6 +536,7 @@ export function AuthProvider({ children }) {
 
         const token = data?.data?.token || data?.token;
         const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
+        const userFromResponse = data?.data?.user || data?.user || null;
 
         if (!token && !isEnterprise) {
           const message = "Signup succeeded but no token was returned";
@@ -485,15 +546,23 @@ export function AuthProvider({ children }) {
 
         if (token) {
           setToken(token);
-          const loadedUser = await loadUser(true);
-
-          if (!loadedUser && !isEnterprise) {
-            const message = "Signup succeeded but user profile could not be loaded";
-            setError(message);
-            return { success: false, error: message };
-          }
-
-          return { success: true, token, api_key: apiKey, user: loadedUser };
+          
+          const normalizedUser = persistUser(userFromResponse);
+          await refreshActivation(true);
+          
+          // Auto-redirect enterprise users to correct dashboard
+          const redirectPath = getRedirectPath(normalizedUser);
+          
+          setLoading(false);
+          setIsInitialized(true);
+          
+          return { 
+            success: true, 
+            token, 
+            api_key: apiKey, 
+            user: normalizedUser,
+            redirectTo: redirectPath
+          };
         }
 
         return { 
@@ -507,7 +576,7 @@ export function AuthProvider({ children }) {
         return { success: false, error: message };
       }
     },
-    [loadUser]
+    [persistUser, refreshActivation, getRedirectPath]
   );
 
   const logout = useCallback(() => {
@@ -522,11 +591,27 @@ export function AuthProvider({ children }) {
         ...(updates || {}),
       };
       persistActivation(nextActivation);
-      // Force refresh to ensure we have latest from server
       return refreshActivation(true);
     },
     [activation, persistActivation, refreshActivation]
   );
+
+  // Enterprise-specific API calls
+  const getOrganizationDetails = useCallback(async () => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/organizations/${user.organization_id}`, {
+        method: "GET",
+      });
+      return { success: true, organization: data?.data };
+    } catch (err) {
+      console.error("[Auth] Failed to get organization details:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
 
   const getOrganizationUsers = useCallback(async () => {
     if (!user?.organization_id || user?.tier !== "enterprise") {
@@ -561,22 +646,133 @@ export function AuthProvider({ children }) {
     }
   }, [user]);
 
-  const updateCustomStrategy = useCallback(async (strategyConfig) => {
+  const removeTeamMember = useCallback(async (userId) => {
     if (!user?.organization_id || user?.tier !== "enterprise") {
       return { success: false, error: "Not an enterprise user" };
     }
 
     try {
-      const data = await apiFetch(`/api/enterprise/strategies/customize`, {
-        method: "POST",
-        body: JSON.stringify({
-          organization_id: user.organization_id,
-          strategy_config: strategyConfig,
-        }),
+      const data = await apiFetch(`/api/enterprise/organizations/${user.organization_id}/users/${userId}`, {
+        method: "DELETE",
       });
-      return { success: true, config: data?.data };
+      return { success: true };
+    } catch (err) {
+      console.error("[Auth] Failed to remove team member:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
+  const updateTeamMemberRole = useCallback(async (userId, role) => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/organizations/${user.organization_id}/users/${userId}/role`, {
+        method: "PUT",
+        body: JSON.stringify({ role }),
+      });
+      return { success: true };
+    } catch (err) {
+      console.error("[Auth] Failed to update team member role:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
+  const getCustomStrategies = useCallback(async () => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/strategies`, {
+        method: "GET",
+      });
+      return { success: true, strategies: data?.data?.strategies || [] };
+    } catch (err) {
+      console.error("[Auth] Failed to get custom strategies:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
+  const createCustomStrategy = useCallback(async (name, description, strategyConfig) => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/strategies`, {
+        method: "POST",
+        body: JSON.stringify({ name, description, strategy_config: strategyConfig }),
+      });
+      return { success: true, strategy: data?.data?.strategy };
+    } catch (err) {
+      console.error("[Auth] Failed to create custom strategy:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
+  const updateCustomStrategy = useCallback(async (strategyId, updates) => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/strategies/${strategyId}`, {
+        method: "PUT",
+        body: JSON.stringify(updates),
+      });
+      return { success: true };
     } catch (err) {
       console.error("[Auth] Failed to update custom strategy:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
+  const deleteCustomStrategy = useCallback(async (strategyId) => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/strategies/${strategyId}`, {
+        method: "DELETE",
+      });
+      return { success: true };
+    } catch (err) {
+      console.error("[Auth] Failed to delete custom strategy:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
+  const getEnterpriseAnalytics = useCallback(async (days = 30) => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/analytics?days=${days}`, {
+        method: "GET",
+      });
+      return { success: true, analytics: data?.data };
+    } catch (err) {
+      console.error("[Auth] Failed to get enterprise analytics:", err);
+      return { success: false, error: err.message };
+    }
+  }, [user]);
+
+  const getAuditLogs = useCallback(async (limit = 50, offset = 0) => {
+    if (!user?.organization_id || user?.tier !== "enterprise") {
+      return { success: false, error: "Not an enterprise user" };
+    }
+
+    try {
+      const data = await apiFetch(`/api/enterprise/audit-logs?limit=${limit}&offset=${offset}`, {
+        method: "GET",
+      });
+      return { success: true, logs: data?.data?.logs || [], total: data?.data?.total || 0 };
+    } catch (err) {
+      console.error("[Auth] Failed to get audit logs:", err);
       return { success: false, error: err.message };
     }
   }, [user]);
@@ -594,7 +790,6 @@ export function AuthProvider({ children }) {
     if (!token || !user) return;
 
     const intervalId = setInterval(() => {
-      // Use force=false for periodic refresh (respect cooldown)
       refreshActivation(false);
     }, 5 * 60 * 1000);
 
@@ -604,14 +799,15 @@ export function AuthProvider({ children }) {
   const isAuthenticated = useMemo(() => !!getToken() && !!user, [user]);
   
   const isEnterpriseUser = useMemo(() => {
-    return user?.tier === "enterprise";
+    return user?.tier === "enterprise" || !!user?.organization_id;
   }, [user]);
 
   const isEnterpriseAdmin = useMemo(() => {
     return isEnterpriseUser && (
       user?.organization_role === "admin" ||
       user?.organization_role === "owner" ||
-      user?.is_admin === true
+      user?.is_admin === true ||
+      user?.isAdmin === true
     );
   }, [isEnterpriseUser, user]);
 
@@ -699,9 +895,19 @@ export function AuthProvider({ children }) {
       updateActivation,
       clearAuth,
       getApiKey: () => user?.api_key || null,
+      // Enterprise methods
+      getOrganizationDetails,
       getOrganizationUsers,
       inviteTeamMember,
+      removeTeamMember,
+      updateTeamMemberRole,
+      getCustomStrategies,
+      createCustomStrategy,
       updateCustomStrategy,
+      deleteCustomStrategy,
+      getEnterpriseAnalytics,
+      getAuditLogs,
+      getRedirectPath: () => getRedirectPath(user),
     }),
     [
       user,
@@ -726,9 +932,18 @@ export function AuthProvider({ children }) {
       refreshActivation,
       updateActivation,
       clearAuth,
+      getOrganizationDetails,
       getOrganizationUsers,
       inviteTeamMember,
+      removeTeamMember,
+      updateTeamMemberRole,
+      getCustomStrategies,
+      createCustomStrategy,
       updateCustomStrategy,
+      deleteCustomStrategy,
+      getEnterpriseAnalytics,
+      getAuditLogs,
+      getRedirectPath,
     ]
   );
 
