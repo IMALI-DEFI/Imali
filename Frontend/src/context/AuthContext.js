@@ -322,7 +322,7 @@ export function AuthProvider({ children }) {
   const getRedirectPath = useCallback((userData) => {
     // Check if user is enterprise
     if (userData?.tier === "enterprise" || userData?.organization_id) {
-      return "/enterprise-dashboard";
+      return "/enterprise/dashboard";
     }
     
     // Check if user is admin
