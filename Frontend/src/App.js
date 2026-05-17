@@ -358,6 +358,7 @@ function MainAppRoutes() {
               These require enterprise tier and use the SAME component with demoMode=false
             */}
             <Route path="/enterprise/dashboard" element={<RequireEnterprise><EnterpriseDashboard demoMode={false} /></RequireEnterprise>} />
+            <Route path="/enterprise-dashboard" element={<Navigate to="/enterprise/dashboard" replace />} />
             
             {/* Enterprise sub-pages still use their individual components */}
             <Route path="/enterprise/team" element={<RequireEnterpriseAdmin><TeamPage /></RequireEnterpriseAdmin>} />
