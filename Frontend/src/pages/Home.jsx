@@ -175,13 +175,6 @@ function PromoMeter({ promo }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-
-      {!promo.loading && (
-        <p className="text-center text-xs text-gray-500">
-          Only {promo.feePercent}% fee on profits over {promo.thresholdPercent}% for{" "}
-          {promo.durationDays} days
-        </p>
-      )}
     </div>
   );
 }
@@ -463,35 +456,47 @@ export default function Home() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-white via-emerald-50/40 to-white text-gray-900">
-      {/* TOP BAR MOVED UNDER TAGLINE AREA, so removed fixed top-right bar */}
+      {/* TOP PROMO BANNER - MOVED TO TOP */}
+      <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl animate-bounce">🎁</span>
+              <div>
+                <p className="text-base font-bold text-white sm:text-lg">
+                  🚀 Paper Trade with $1,000 for 7 Days Free!
+                </p>
+                <p className="text-xs text-white/90">
+                  Test our automated bots risk-free. No credit card required.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowForm(true)}
+              className="rounded-full bg-white px-6 py-2 text-sm font-bold text-orange-600 shadow-lg transition hover:bg-gray-100"
+            >
+              Claim Free Trial →
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* HERO */}
       <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-16 lg:px-8">
-        {/* PROMO */}
-        <div className="mx-auto max-w-4xl rounded-3xl bg-gradient-to-r from-emerald-600 to-cyan-600 p-8 text-center text-white shadow-2xl">
-          <h2 className="text-3xl font-extrabold sm:text-4xl">
-            🎁 Early Bird Promotion
-          </h2>
-          <p className="mt-3 text-lg opacity-95">
-            Start with paper trading first. Move to live automated trading when you are ready.
-          </p>
-        </div>
-
         {/* HEADLINE */}
-        <div className="mt-14 text-center">
+        <div className="text-center">
           <h1 className="mx-auto max-w-6xl bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-4xl font-extrabold text-transparent sm:text-6xl lg:text-7xl">
             Automated Trading for Stock and Crypto
           </h1>
 
           <p className="mx-auto mt-8 max-w-4xl text-xl leading-relaxed text-gray-700 sm:text-2xl">
             <span className="font-bold text-emerald-600">
-              Take profits automatically and reducing loses trading stock and crypto.
+              Take profits automatically and reduce losses trading stock and crypto.
             </span>
           </p>
 
-          {/* TOP LINE MOVED UNDER TAGLINE */}
           <p className="mx-auto mt-4 max-w-4xl text-lg text-gray-600">
-            Start with paper trading (fake money real auto trading) move to live auto trading.
+            Start with $1,000 paper trading for 7 days free. Move to live auto trading when ready.
             Cancel any time.
           </p>
 
@@ -500,6 +505,7 @@ export default function Home() {
             <Pill color="purple">📈 Stocks + Crypto</Pill>
             <Pill color="amber">💸 Cancel Any Time</Pill>
             <Pill color="default">🤖 AI Automation</Pill>
+            <Pill color="emerald">🎁 $1,000 Free Paper Trading</Pill>
           </div>
 
           <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
@@ -551,50 +557,51 @@ export default function Home() {
             Start in 3 Easy Steps
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-600">
-            Built for beginners. Start with fake money first, then switch to live trading when ready.
+            Built for beginners. Start with $1,000 free paper trading, then switch to live when ready.
           </p>
         </div>
 
         <div className="mt-12 grid gap-6 md:grid-cols-3">
           <StepCard
             num="1"
+            title="Claim Free Trial"
+            text="Sign up for your 7-day free trial with $1,000 paper trading credits."
+          />
+          <StepCard
+            num="2"
             title="Connect Accounts"
             text="Connect your stock broker and crypto wallet: Alpaca, OKX, and MetaMask."
           />
           <StepCard
-            num="2"
-            title="Select a Strategy"
-            text="Choose the trading strategy that fits your goals and comfort level."
-          />
-          <StepCard
             num="3"
-            title="Begin Trading"
-            text="Start with paper trading, then move to live automated trading when you are ready."
+            title="Start Trading"
+            text="Begin with paper trading, then move to live automated trading when ready."
           />
         </div>
       </section>
 
-      {/* PROMO + CLAIM FORM */}
+      {/* PROMO + CLAIM FORM - Now with updated messaging */}
       <section className="mx-auto max-w-3xl px-4 pb-16 sm:px-6 lg:px-8">
         <Card className="p-6 shadow-xl sm:p-8">
           <div className="mb-4 flex items-start gap-3 sm:items-center">
-            <span className="text-3xl">🎁</span>
+            <span className="text-4xl animate-pulse">🎁</span>
             <div>
-              <h3 className="text-2xl font-bold text-gray-900">Claim Your Promotion</h3>
+              <h3 className="text-2xl font-bold text-gray-900">7-Day Free Paper Trading Trial</h3>
               <p className="text-sm text-gray-500">
-                Limited spots available for new users.
+                Get $1,000 in paper trading credits. No risk, no credit card required.
               </p>
             </div>
           </div>
 
           <div className="mb-5 space-y-3 rounded-2xl border border-gray-100 bg-gradient-to-r from-emerald-50 to-cyan-50 p-4">
             <FeatureRow
-              icon="✅"
-              label={`Only ${promo.feePercent}% fee on profits over ${promo.thresholdPercent}%`}
+              icon="💰"
+              label="Start with $1,000 in paper trading credits"
             />
-            <FeatureRow icon="✅" label={`Locked in for ${promo.durationDays} days`} />
-            <FeatureRow icon="✅" label="Start with paper trading, then go live when ready" />
-            <FeatureRow icon="✅" label="Cancel any time" />
+            <FeatureRow icon="🤖" label="Test all automated bots risk-free" />
+            <FeatureRow icon="🎯" label="Learn to trade without losing real money" />
+            <FeatureRow icon="🚀" label="Switch to live trading when you're ready" />
+            <FeatureRow icon="✅" label="Cancel any time, no commitment" />
           </div>
 
           <PromoMeter promo={promo} />
@@ -604,7 +611,7 @@ export default function Home() {
               onClick={() => setShowForm(true)}
               className="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-600 to-cyan-600 py-4 text-base font-bold text-white shadow-lg hover:from-emerald-500 hover:to-cyan-500"
             >
-              🎉 Claim My Spot Now
+              🎁 Claim My $1,000 Free Trial Now
             </button>
           )}
 
@@ -632,7 +639,7 @@ export default function Home() {
                 onChange={(e) => setSelectedTier(e.target.value)}
                 className="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-4 text-sm text-gray-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
               >
-                <option value="starter">Starter - Free</option>
+                <option value="starter">Starter - Free Trial</option>
                 <option value="pro">Pro - $19/mo</option>
                 <option value="elite">Elite - $49/mo</option>
                 <option value="stock">DeFi - $99/mo</option>
@@ -651,7 +658,7 @@ export default function Home() {
                   disabled={promoClaim.state.loading}
                   className="flex-1 rounded-2xl bg-emerald-600 py-4 text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-500"
                 >
-                  {promoClaim.state.loading ? "Claiming..." : "✅ Confirm My Spot"}
+                  {promoClaim.state.loading ? "Processing..." : "✅ Start My Free Trial"}
                 </button>
 
                 <button
@@ -670,14 +677,14 @@ export default function Home() {
 
           {promoClaim.state.success && (
             <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
-              <div className="mb-2 text-3xl">🎉</div>
-              <p className="text-lg font-bold text-emerald-700">You're in!</p>
+              <div className="mb-2 text-4xl">🎉</div>
+              <p className="text-lg font-bold text-emerald-700">Free Trial Activated!</p>
               <p className="mt-1 text-sm text-gray-600">
                 Check your email, then{" "}
                 <Link to={`/signup?tier=${selectedTier}`} className="text-emerald-600 underline">
                   create your account
                 </Link>{" "}
-                to get started.
+                to start trading with $1,000 paper credits.
               </p>
             </div>
           )}
@@ -800,7 +807,8 @@ export default function Home() {
       <section className="bg-gradient-to-r from-emerald-600 to-cyan-600 py-20 text-center text-white">
         <h2 className="text-4xl font-extrabold">Ready to Begin?</h2>
         <p className="mx-auto mt-4 max-w-2xl text-xl opacity-95">
-          Start with paper trading. Move to live automated trading when ready. Cancel any time.
+          Start with $1,000 paper trading for 7 days free. Move to live automated trading when ready.
+          Cancel any time.
         </p>
 
         <Link
