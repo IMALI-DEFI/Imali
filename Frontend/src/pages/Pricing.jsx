@@ -2,30 +2,14 @@ import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 
-// 🖼️ Tier NFT art (ensure these paths exist)
-import StarterNFT from "../assets/images/nfts/nft-starter.png";
-import ProNFT from "../assets/images/nfts/nft-pro.png";
-import EliteNFT from "../assets/images/nfts/nft-elite.png";
-import StockNFT from "../assets/images/nfts/nft-stock.png";
-import BundleNFT from "../assets/images/nfts/nft-bundle.png";
-
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const PROMO_STATUS_URL = `${API_BASE}/api/promo/status`;
 
-/* ===================== HELPERS ===================== */
-
-const envNum = (k, fallback) => {
-  const v = process.env[k];
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-};
-
 const PRICE = {
-  starter: envNum("REACT_APP_PRICE_STARTER", 0),
-  pro: envNum("REACT_APP_PRICE_PRO", 19),
-  elite: envNum("REACT_APP_PRICE_ELITE", 49),
-  stock: envNum("REACT_APP_PRICE_STOCK", 99),
-  bundle: envNum("REACT_APP_PRICE_BUNDLE", 199),
+  starter: 0,
+  pro: 19,
+  elite: 49,
+  bundle: 99,
   enterprise: "Custom",
 };
 
@@ -37,61 +21,24 @@ const Pill = ({ children, tone = "gray" }) => {
       ? "bg-emerald-100 text-emerald-700 border-emerald-200"
       : tone === "blue"
       ? "bg-sky-100 text-sky-700 border-sky-200"
-      : tone === "amber"
-      ? "bg-amber-100 text-amber-700 border-amber-200"
-      : tone === "purple"
-      ? "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200"
-      : tone === "indigo"
-      ? "bg-indigo-100 text-indigo-700 border-indigo-200"
+      : tone === "orange"
+      ? "bg-orange-100 text-orange-700 border-orange-200"
       : "bg-gray-100 text-gray-700 border-gray-200";
 
   return (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs border ${cls}`}>
+    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${cls}`}>
       {children}
     </span>
   );
 };
 
-const SectionTitle = ({ children }) => (
-  <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">{children}</div>
-);
-
-const CTA = ({ to, children, external = false }) => {
-  if (external) {
-    return (
-      <a
-        href={to}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-5 w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition font-semibold text-center text-white block"
-      >
-        {children}
-      </a>
-    );
-  }
-  return (
-    <Link
-      to={to}
-      className="mt-5 w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition font-semibold text-center text-white block"
-    >
-      {children}
-    </Link>
-  );
-};
-
-/* ===================== PAGE ===================== */
-
 export default function Pricing() {
   const [promoData, setPromoData] = useState({
-    limit: 50,
+    limit: 100,
     claimed: 0,
-    spotsLeft: 50,
-    feePercent: 5,
-    thresholdPercent: 3,
-    durationDays: 90,
+    spotsLeft: 100,
     active: true,
     loading: true,
-    error: null,
   });
 
   const fetchPromoStatus = useCallback(async () => {
@@ -100,342 +47,273 @@ export default function Pricing() {
       if (response.data?.success) {
         const data = response.data.data;
         setPromoData({
-          limit: data.limit || 50,
+          limit: data.limit || 100,
           claimed: data.claimed || 0,
-          spotsLeft: data.spots_left || 50,
-          feePercent: data.fee_percent || 5,
-          thresholdPercent: data.threshold_percent || 3,
-          durationDays: data.duration_days || 90,
+          spotsLeft: data.spots_left || 100,
           active: data.active || true,
           loading: false,
-          error: null,
         });
       } else {
-        setPromoData(prev => ({ ...prev, loading: false, error: "Failed to load promo data" }));
+        setPromoData(prev => ({ ...prev, loading: false }));
       }
     } catch (error) {
-      console.error("Error fetching promo status:", error);
-      setPromoData(prev => ({ ...prev, loading: false, error: error.message }));
+      console.error("Error fetching promo:", error);
+      setPromoData(prev => ({ ...prev, loading: false }));
     }
   }, []);
 
   useEffect(() => {
     fetchPromoStatus();
-    // Refresh promo status every 60 seconds
-    const interval = setInterval(fetchPromoStatus, 60000);
-    return () => clearInterval(interval);
   }, [fetchPromoStatus]);
 
-  const { limit, claimed, spotsLeft, feePercent, thresholdPercent, durationDays, active, loading } = promoData;
-  const totalClaimed = claimed;
+  const { spotsLeft, limit, active, loading } = promoData;
   const spotsLeftNum = spotsLeft;
 
-  // Plans (keep slugs aligned with backend: starter/pro/elite/stock/bundle/enterprise)
   const plans = [
     {
-      name: "Starter",
+      name: "Free Trial",
       slug: "starter",
-      price: fmt(PRICE.starter),
-      badge: <Pill tone="blue">Best for beginners</Pill>,
-      nft: StarterNFT,
-      bots: {
-        "Established Crypto": ["OKX bot (CEX)"],
-        Stocks: ["Alpaca bot"],
-        "New Crypto": ["—"],
-      },
-      fees: ["30% performance fee only when up > 3% (monthly)"],
-      cta: "Start Free",
-      frame: "from-sky-400 to-indigo-400",
-      popular: false,
+      price: "$0",
+      period: "7 days",
+      priceDetail: "Then $19/month",
+      badge: <Pill tone="green">No credit card</Pill>,
+      features: [
+        { text: "$1,000 paper trading credits", included: true },
+        { text: "Test all bots risk-free", included: true },
+        { text: "Stock & crypto trading", included: true },
+        { text: "Basic strategies", included: true },
+        { text: "Email support", included: true },
+      ],
+      cta: "Start Free Trial →",
+      highlight: false,
     },
     {
       name: "Pro",
       slug: "pro",
-      price: fmt(PRICE.pro),
-      badge: <Pill tone="purple">More control</Pill>,
-      nft: ProNFT,
-      bots: {
-        Stocks: ["Alpaca bot"],
-        "Established Crypto": ["Optional (if enabled for your account)"],
-        "New Crypto": ["—"],
-      },
-      fees: [`$${PRICE.pro}/mo + ${feePercent}% performance fee only when up > ${thresholdPercent}% (monthly)`],
-      cta: "Choose Pro",
-      frame: "from-fuchsia-400 to-purple-400",
-      popular: true,
-    },
-    {
-      name: "Elite",
-      slug: "elite",
-      price: fmt(PRICE.elite),
-      badge: <Pill tone="amber">Serious trader</Pill>,
-      nft: EliteNFT,
-      bots: {
-        "Established Crypto": ["OKX bot (CEX)"],
-        Stocks: ["Alpaca bot"],
-        "New Crypto": ["—"],
-      },
-      fees: [`$${PRICE.elite}/mo + ${feePercent}% performance fee only when up > ${thresholdPercent}% (monthly)`],
-      cta: "Choose Elite",
-      frame: "from-amber-400 to-orange-400",
-      popular: false,
-    },
-    {
-      name: "DeFi (New Crypto)",
-      slug: "stock",
-      price: fmt(PRICE.stock),
-      badge: <Pill tone="green">New Crypto</Pill>,
-      nft: StockNFT,
-      bots: {
-        "New Crypto": ["DEX bot (Uniswap / QuickSwap-style)"],
-        "Established Crypto": ["Optional add-on path"],
-        Stocks: ["Optional add-on path"],
-      },
-      fees: [`$${PRICE.stock}/mo (DEX fees + gas not included)`],
-      cta: "Unlock DeFi",
-      frame: "from-emerald-400 to-teal-400",
-      popular: false,
+      price: "$19",
+      period: "/month",
+      priceDetail: "billed monthly",
+      badge: <Pill tone="orange">Most Popular</Pill>,
+      features: [
+        { text: "Live trading enabled", included: true },
+        { text: "All bots (Stocks + Crypto)", included: true },
+        { text: "Advanced strategies", included: true },
+        { text: "Priority support", included: true },
+        { text: "API access", included: true },
+        { text: "No profit sharing", included: true, highlight: true },
+      ],
+      cta: "Start Pro →",
+      highlight: true,
     },
     {
       name: "Bundle",
       slug: "bundle",
-      price: fmt(PRICE.bundle),
-      badge: <Pill>Everything</Pill>,
-      nft: BundleNFT,
-      bots: {
-        "New Crypto": ["DEX bot (Uniswap / QuickSwap-style)"],
-        "Established Crypto": ["OKX bot (CEX)"],
-        Stocks: ["Alpaca bot"],
-      },
-      fees: [`$${PRICE.bundle}/mo (platform + exchange fees may apply)`],
-      cta: "Get Bundle",
-      frame: "from-gray-400 to-slate-500",
-      popular: false,
-    },
-    {
-      name: "Enterprise",
-      slug: "enterprise",
-      price: "Custom",
-      badge: <Pill tone="indigo">Custom solution</Pill>,
-      nft: "/enterprise.PNG",
-      bots: {
-        "All Assets": ["Full access to all bots"],
-        "Custom Strategies": ["Build & deploy proprietary logic"],
-        "Admin Controls": ["Role-based access & approval flows"],
-      },
-      fees: ["Tailored pricing based on volume & requirements"],
-      cta: "Contact Sales",
-      frame: "from-indigo-400 to-purple-600",
-      popular: false,
-      enterprise: true,
+      price: "$99",
+      period: "/month",
+      priceDetail: "billed monthly",
+      badge: <Pill tone="blue">Best Value</Pill>,
+      features: [
+        { text: "Everything in Pro", included: true },
+        { text: "DEX trading (Uniswap, QuickSwap)", included: true },
+        { text: "Custom strategies", included: true },
+        { text: "Priority execution", included: true },
+        { text: "24/7 support", included: true },
+        { text: "Save 48% vs separate plans", included: true, highlight: true },
+      ],
+      cta: "Get Bundle →",
+      highlight: false,
     },
   ];
 
   return (
-    <div className="relative min-h-screen bg-white text-gray-900">
-      {/* Header */}
-      <div className="relative max-w-6xl mx-auto px-6 pt-24 pb-16">
-        <div className="text-center mb-10">
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-sky-600 via-amber-600 to-pink-600 text-transparent bg-clip-text">
-            Simple, Clear Pricing
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      {/* Hero Section */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-12">
+        <div className="text-center">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold">
+            <span className="bg-gradient-to-r from-emerald-600 to-sky-600 bg-clip-text text-transparent">
+              Simple, Transparent Pricing
+            </span>
           </h1>
-          <p className="mt-3 text-gray-600">
-            Pick a plan. Connect your accounts. Enable trading.
+          <p className="mt-4 text-xl text-gray-600 max-w-2xl mx-auto">
+            Start free. Upgrade when you're ready. Cancel anytime.
           </p>
 
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <Pill tone="green">New Crypto = DEX</Pill>
-            <Pill tone="blue">Established Crypto = OKX</Pill>
-            <Pill>Stocks = Alpaca</Pill>
-            <Link
-              to="/trade-demo"
-              className="inline-flex items-center px-3 py-1 rounded-full text-xs border border-gray-300 bg-white hover:bg-gray-50 transition text-gray-700"
-            >
-              Try the demo →
-            </Link>
+          {/* Trust badges */}
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Pill tone="green">✅ Cancel anytime</Pill>
+            <Pill tone="blue">💳 No hidden fees</Pill>
+            <Pill>🎯 7-day free trial</Pill>
           </div>
         </div>
 
-        {/* First 50 promo - using real API data */}
-        {!loading && active && (
-          <div className="mb-10 rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-emerald-700">Limited promo</div>
-                <div className="text-lg md:text-xl font-extrabold mt-1 text-gray-900">
-                  First {limit} customers: {feePercent}% performance fee when up &gt; {thresholdPercent}% ({durationDays} days)
+        {/* Urgency banner */}
+        {!loading && active && spotsLeftNum < 50 && (
+          <div className="mt-8 max-w-2xl mx-auto">
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl px-6 py-4">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-orange-700">🔥 Limited offer</div>
+                  <div className="text-sm text-gray-700">
+                    Only <span className="font-bold text-orange-700">{spotsLeftNum}</span> spots left at this price
+                  </div>
                 </div>
-                <div className="text-sm text-gray-600 mt-1">
-                  Promo ends when spots are filled.
+                <div className="text-xs text-gray-500">
+                  Join {limit - spotsLeftNum}+ traders already using IMALI
                 </div>
               </div>
-
-              <div className="shrink-0">
-                <div className="text-xs text-gray-600">Spots left</div>
-                <div className="text-3xl font-extrabold text-emerald-600 tabular-nums">
-                  {spotsLeftNum}
-                </div>
-                <div className="text-[11px] text-gray-500">out of {limit}</div>
-              </div>
-            </div>
-
-            <div className="mt-4 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                style={{ width: `${(totalClaimed / limit) * 100}%` }}
-              />
             </div>
           </div>
         )}
+      </div>
 
-        {loading && (
-          <div className="mb-10 rounded-2xl border border-gray-200 bg-gray-50 px-6 py-5 text-center">
-            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
-            <p className="mt-2 text-sm text-gray-500">Loading promo...</p>
-          </div>
-        )}
-
-        {/* Plans - Grid adjusts for enterprise */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {plans.map((p) => (
+      {/* Pricing Cards */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+        <div className="grid md:grid-cols-3 gap-6 items-stretch">
+          {plans.map((plan) => (
             <div
-              key={p.slug}
-              className={`relative rounded-2xl border border-gray-200 bg-white shadow-lg hover:shadow-xl transition-shadow overflow-hidden ${p.enterprise ? 'md:col-span-2 lg:col-span-1' : ''}`}
+              key={plan.slug}
+              className={`relative rounded-2xl transition-all duration-300 flex flex-col ${
+                plan.highlight
+                  ? "bg-white shadow-2xl border-2 border-emerald-500 scale-105 md:scale-105 z-10"
+                  : "bg-white shadow-lg border border-gray-200 hover:shadow-xl"
+              }`}
             >
-              {p.enterprise && (
-                <div className="absolute top-4 right-4">
-                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
-                    TEAMS & ORGS
+              {plan.highlight && (
+                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                  <span className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg">
+                    🎯 MOST POPULAR
                   </span>
                 </div>
               )}
-              <div className="h-full rounded-2xl p-6 flex flex-col">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xl font-bold text-gray-900">{p.name}</h2>
-                      {p.popular ? (
-                        <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-                          POPULAR
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="mt-2">{p.badge}</div>
-                  </div>
 
-                  <div className="text-right">
-                    <div className="text-2xl font-extrabold text-gray-900">{p.price}</div>
-                    {!p.enterprise && <div className="text-xs text-gray-500">cancel anytime</div>}
+              <div className="p-6 flex-grow">
+                {/* Plan name */}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">{plan.name}</h3>
+                    <div className="mt-2">{plan.badge}</div>
                   </div>
                 </div>
 
-                {/* NFT / Enterprise image */}
-                <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
-                  {typeof p.nft === 'string' && p.nft.startsWith('/') ? (
-                    <img
-                      src={p.nft}
-                      alt={`${p.name} Solution`}
-                      loading="lazy"
-                      className="w-full h-40 object-contain"
-                    />
-                  ) : (
-                    <img
-                      src={p.nft}
-                      alt={`${p.name} Pass`}
-                      loading="lazy"
-                      className="w-full h-40 object-contain"
-                    />
+                {/* Price */}
+                <div className="mt-6">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-extrabold text-gray-900">{plan.price}</span>
+                    {plan.period && <span className="text-gray-500">{plan.period}</span>}
+                  </div>
+                  {plan.priceDetail && (
+                    <div className="text-sm text-gray-500 mt-1">{plan.priceDetail}</div>
                   )}
                 </div>
 
-                {/* What you get */}
-                <div className="mt-5">
-                  <SectionTitle>What you get</SectionTitle>
-                  <div className="space-y-2 text-sm text-gray-700">
-                    {Object.entries(p.bots).map(([k, arr]) => (
-                      <div key={k} className="flex items-start justify-between gap-3">
-                        <div className="text-gray-500">{k}</div>
-                        <div className="text-right">
-                          {arr.map((x, i) => (
-                            <div key={i} className="text-gray-800">
-                              {x}
-                            </div>
-                          ))}
-                        </div>
+                {/* CTA Button */}
+                <Link
+                  to={`/signup?tier=${plan.slug}`}
+                  className={`mt-6 w-full py-3 rounded-xl font-semibold text-center transition-all block ${
+                    plan.highlight
+                      ? "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-lg"
+                      : "bg-gray-900 hover:bg-gray-800 text-white"
+                  }`}
+                >
+                  {plan.cta}
+                </Link>
+
+                {/* Features */}
+                <div className="mt-8">
+                  <p className="text-sm font-semibold text-gray-900 mb-3">What's included:</p>
+                  <div className="space-y-2.5">
+                    {plan.features.map((feature, idx) => (
+                      <div key={idx} className="flex items-start gap-2.5">
+                        <svg
+                          className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                            feature.included ? "text-emerald-500" : "text-gray-300"
+                          }`}
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        <span
+                          className={`text-sm ${
+                            feature.highlight
+                              ? "text-emerald-700 font-semibold"
+                              : feature.included
+                              ? "text-gray-700"
+                              : "text-gray-400 line-through"
+                          }`}
+                        >
+                          {feature.text}
+                        </span>
                       </div>
                     ))}
                   </div>
                 </div>
-
-                {/* Enterprise-specific features */}
-                {p.enterprise && (
-                  <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-4">
-                    <SectionTitle>Enterprise features</SectionTitle>
-                    <ul className="text-sm text-gray-700 space-y-2">
-                      <li>✓ Custom branded trading dashboard</li>
-                      <li>✓ Dedicated admin panel with user management</li>
-                      <li>✓ Enhanced bot strategy controls & parameters</li>
-                      <li>✓ Priority support & SLA guarantees</li>
-                      <li>✓ White-label options available</li>
-                      <li>✓ Team permissions & approval workflows</li>
-                    </ul>
-                  </div>
-                )}
-
-                {/* Fees */}
-                <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50 p-4">
-                  <SectionTitle>{p.enterprise ? "Pricing model" : "Fees"}</SectionTitle>
-                  <ul className="text-sm text-gray-700 space-y-1">
-                    {p.fees.map((f, i) => (
-                      <li key={i}>• {f}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* CTA - Enterprise links to signup with enterprise param */}
-                {p.enterprise ? (
-                  <CTA to="https://imali-defi.com/signup?tier=enterprise" external>
-                    {p.cta}
-                  </CTA>
-                ) : (
-                  <CTA to={`/signup?tier=${p.slug}`}>{p.cta}</CTA>
-                )}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Signup link section */}
-        <div className="mt-12 text-center">
-          <Link 
-            to="https://imali-defi.com/signup"
-            className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-semibold transition"
-          >
-            Already have an account? Sign in →
-          </Link>
-          <div className="mt-4">
-            <Link 
-              to="https://imali-defi.com/signup"
-              className="inline-block px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold hover:from-indigo-700 hover:to-purple-700 transition shadow-md"
+        {/* Enterprise Section */}
+        <div className="mt-16 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl overflow-hidden shadow-xl">
+          <div className="px-6 py-8 md:px-8 md:py-10 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="text-center md:text-left">
+              <h3 className="text-2xl font-bold text-white">Need a custom solution?</h3>
+              <p className="text-indigo-100 mt-2 max-w-md">
+                Enterprise plans with dedicated support, custom branding, and team management
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3 justify-center md:justify-start">
+                <span className="text-xs bg-white/20 text-white px-2 py-1 rounded-full">Custom bots</span>
+                <span className="text-xs bg-white/20 text-white px-2 py-1 rounded-full">Team controls</span>
+                <span className="text-xs bg-white/20 text-white px-2 py-1 rounded-full">White-label</span>
+              </div>
+            </div>
+            <Link
+              to="/signup?tier=enterprise"
+              className="px-8 py-3 bg-white text-indigo-700 font-bold rounded-xl hover:bg-gray-100 transition shadow-lg whitespace-nowrap"
             >
-              Create your free account
+              Contact Sales →
             </Link>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="mt-16 text-sm text-gray-500 space-y-2 text-center">
+        {/* FAQ / Social Proof */}
+        <div className="mt-16 grid md:grid-cols-3 gap-6 text-center">
           <div>
-            Trading is risky. Not financial advice.
+            <div className="text-3xl mb-2">🚀</div>
+            <p className="font-semibold text-gray-900">Start with $1,000</p>
+            <p className="text-sm text-gray-500">Paper trading credits to test risk-free</p>
           </div>
           <div>
-            Exchange fees, spreads, funding rates, and blockchain gas (for DEX) are not included.
+            <div className="text-3xl mb-2">💳</div>
+            <p className="font-semibold text-gray-900">No credit card required</p>
+            <p className="text-sm text-gray-500">For the free trial. Cancel anytime</p>
           </div>
-          <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/terms" className="underline hover:text-gray-800">Terms</Link>
-            <Link to="/privacy" className="underline hover:text-gray-800">Privacy</Link>
-            <Link to="https://imali-defi.com/signup" className="underline hover:text-gray-800">Get started</Link>
+          <div>
+            <div className="text-3xl mb-2">⚡</div>
+            <p className="font-semibold text-gray-900">Setup in 5 minutes</p>
+            <p className="text-sm text-gray-500">Connect exchanges and start trading</p>
           </div>
+        </div>
+
+        {/* Final CTA */}
+        <div className="mt-12 text-center">
+          <Link
+            to="/signup"
+            className="inline-flex items-center gap-2 text-emerald-600 hover:text-emerald-700 font-semibold transition"
+          >
+            Already have an account? Sign in →
+          </Link>
+        </div>
+
+        {/* Footer disclaimer */}
+        <div className="mt-12 text-xs text-gray-400 text-center space-y-2">
+          <p>Trading involves risk. Past performance doesn't guarantee future results.</p>
+          <p>Exchange fees, spreads, and gas fees may apply.</p>
         </div>
       </div>
     </div>
