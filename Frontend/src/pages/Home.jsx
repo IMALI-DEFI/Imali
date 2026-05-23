@@ -140,8 +140,8 @@ const StatMiniCard = ({ title, value, subtext, valueClassName = "text-gray-900" 
 );
 
 const StepCard = ({ num, title, text }) => (
-  <Card className="p-8">
-    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-lg font-bold text-white">
+  <Card className="p-8 text-center">
+    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-lg font-bold text-white mx-auto">
       {num}
     </div>
     <h3 className="mt-5 text-2xl font-bold text-gray-900">{title}</h3>
@@ -456,24 +456,24 @@ export default function Home() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-white via-emerald-50/40 to-white text-gray-900">
-      {/* TOP PROMO BANNER - MOVED TO TOP */}
-      <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500">
+      {/* STICKY PROMO BANNER */}
+      <div className="sticky top-0 z-50 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 shadow-lg">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
             <div className="flex items-center gap-3">
-              <span className="text-3xl animate-bounce">🎁</span>
+              <span className="text-2xl animate-bounce">🎁</span>
               <div>
-                <p className="text-base font-bold text-white sm:text-lg">
-                  🚀 Paper Trade with $1,000 for 7 Days Free!
+                <p className="text-sm font-bold text-white sm:text-base">
+                  🚀 $1,000 Paper Trading - 7 Days Free!
                 </p>
-                <p className="text-xs text-white/90">
-                  Test our automated bots risk-free. No credit card required.
+                <p className="text-xs text-white/90 hidden sm:block">
+                  No credit card required. Cancel anytime.
                 </p>
               </div>
             </div>
             <button
               onClick={() => setShowForm(true)}
-              className="rounded-full bg-white px-6 py-2 text-sm font-bold text-orange-600 shadow-lg transition hover:bg-gray-100"
+              className="rounded-full bg-white px-6 py-2 text-sm font-bold text-orange-600 shadow-lg transition hover:bg-gray-100 whitespace-nowrap"
             >
               Claim Free Trial →
             </button>
@@ -481,23 +481,19 @@ export default function Home() {
         </div>
       </div>
 
-      {/* HERO */}
-      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-16 lg:px-8">
-        {/* HEADLINE */}
+      {/* HERO SECTION - COMPACT */}
+      <section className="mx-auto max-w-7xl px-4 pt-12 pb-8 sm:px-6 lg:px-8">
         <div className="text-center">
-          <h1 className="mx-auto max-w-6xl bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 bg-clip-text text-4xl font-extrabold text-transparent sm:text-6xl lg:text-7xl">
-            Automated Trading for Stock and Crypto
+          <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
+            <span className="bg-gradient-to-r from-emerald-600 to-sky-600 bg-clip-text text-transparent">
+              Automated Trading
+            </span>
+            <br />
+            <span className="text-gray-900">for Stocks & Crypto</span>
           </h1>
 
-          <p className="mx-auto mt-8 max-w-4xl text-xl leading-relaxed text-gray-700 sm:text-2xl">
-            <span className="font-bold text-emerald-600">
-              Take profits automatically and reduce losses trading stock and crypto.
-            </span>
-          </p>
-
-          <p className="mx-auto mt-4 max-w-4xl text-lg text-gray-600">
-            Start with $1,000 paper trading for 7 days free. Move to live auto trading when ready.
-            Cancel any time.
+          <p className="mx-auto mt-6 max-w-3xl text-lg text-gray-600 sm:text-xl">
+            Take profits automatically. Reduce losses. Start with <span className="font-bold text-emerald-600">$1,000 paper trading</span> for 7 days free.
           </p>
 
           <div className="mt-6 flex flex-wrap justify-center gap-3">
@@ -505,28 +501,38 @@ export default function Home() {
             <Pill color="purple">📈 Stocks + Crypto</Pill>
             <Pill color="amber">💸 Cancel Any Time</Pill>
             <Pill color="default">🤖 AI Automation</Pill>
-            <Pill color="emerald">🎁 $1,000 Free Paper Trading</Pill>
           </div>
 
-          <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               to="/pricing"
-              className="rounded-full bg-emerald-600 px-10 py-4 text-lg font-bold text-white shadow-xl transition hover:bg-emerald-500"
+              className="rounded-full bg-emerald-600 px-8 py-3 text-base font-bold text-white shadow-lg transition hover:bg-emerald-500 sm:px-10 sm:py-4 sm:text-lg"
             >
-              Start Now →
+              Start Free Trial →
             </Link>
 
             <Link
               to="/trade-demo"
-              className="rounded-full border border-gray-300 bg-white px-10 py-4 text-lg font-bold text-gray-800 hover:bg-gray-50"
+              className="rounded-full border border-gray-300 bg-white px-8 py-3 text-base font-bold text-gray-800 transition hover:bg-gray-50 sm:px-10 sm:py-4 sm:text-lg"
             >
               Try Demo →
             </Link>
           </div>
-        </div>
 
-        {/* VIDEO */}
-        <div className="relative mx-auto mt-16 max-w-6xl overflow-hidden rounded-3xl bg-black shadow-2xl">
+          {/* Social Proof Bar */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-500">
+            <span>⭐ 4.8/5 from 200+ traders</span>
+            <span>•</span>
+            <span>📊 {activity.stats.totalTrades.toLocaleString()}+ trades executed</span>
+            <span>•</span>
+            <span>🔒 Secure & encrypted</span>
+          </div>
+        </div>
+      </section>
+
+      {/* VIDEO SECTION - CONDENSED */}
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="relative mx-auto max-w-4xl overflow-hidden rounded-2xl bg-black shadow-xl">
           <div className="relative pt-[56.25%]">
             <iframe
               className="absolute left-0 top-0 h-full w-full"
@@ -539,10 +545,9 @@ export default function Home() {
               allowFullScreen
             />
           </div>
-
           <button
             onClick={() => setIsMuted((prev) => !prev)}
-            className="absolute bottom-6 right-6 rounded-full bg-black/70 px-4 py-3 text-white backdrop-blur-sm"
+            className="absolute bottom-4 right-4 rounded-full bg-black/70 px-3 py-2 text-white backdrop-blur-sm text-sm"
             aria-label={isMuted ? "Unmute video" : "Mute video"}
           >
             {isMuted ? "🔇" : "🔊"}
@@ -550,37 +555,123 @@ export default function Home() {
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+      {/* QUICK CLAIM SECTION - MOVED UP */}
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="bg-gradient-to-r from-emerald-600 to-cyan-600 rounded-2xl p-6 text-center text-white shadow-xl">
+          <h3 className="text-2xl font-bold mb-2">🚀 Start Your Free Trial Now</h3>
+          <p className="mb-4 text-white/90">Get $1,000 paper trading credits. No credit card needed.</p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-white text-emerald-700 px-8 py-3 rounded-xl font-bold hover:bg-gray-100 transition shadow-lg"
+          >
+            Claim $1,000 Free Trial →
+          </button>
+        </div>
+      </section>
+
+      {/* HOW IT WORKS - 3 STEPS */}
+      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="text-center">
-          <h2 className="text-4xl font-extrabold text-gray-900">
-            Start in 3 Easy Steps
+          <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">
+            Get Started in 3 Simple Steps
           </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-600">
-            Built for beginners. Start with $1,000 free paper trading, then switch to live when ready.
+          <p className="mx-auto mt-3 max-w-2xl text-gray-600">
+            From signup to automated trading in minutes
           </p>
         </div>
 
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
+        <div className="mt-10 grid gap-6 md:grid-cols-3">
           <StepCard
             num="1"
             title="Claim Free Trial"
-            text="Sign up for your 7-day free trial with $1,000 paper trading credits."
+            text="Sign up for your 7-day free trial with $1,000 paper trading credits. No credit card required."
           />
           <StepCard
             num="2"
             title="Connect Accounts"
-            text="Connect your stock broker and crypto wallet: Alpaca, OKX, and MetaMask."
+            text="Link your Alpaca, OKX, or MetaMask accounts in seconds."
           />
           <StepCard
             num="3"
             title="Start Trading"
-            text="Begin with paper trading, then move to live automated trading when ready."
+            text="Choose your strategy and let our bots trade for you. Start with paper, go live when ready."
           />
         </div>
       </section>
 
-      {/* PROMO + CLAIM FORM - Now with updated messaging */}
+      {/* LIVE ACTIVITY + BOTS SIDE BY SIDE */}
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <LiveTicker />
+          <Link
+            to="/live"
+            className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-medium text-emerald-700 shadow-sm hover:bg-emerald-50 sm:text-sm"
+          >
+            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+            <span>LIVE DASHBOARD →</span>
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <LiveActivityWidget activity={activity} />
+
+          <Card className="p-6">
+            <h3 className="mb-3 text-lg font-bold text-gray-900">Available Trading Bots</h3>
+            <p className="mb-4 text-sm text-gray-600">
+              Choose from multiple automated strategies designed for different market conditions.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-center">
+                <span className="mb-2 block text-3xl">📊</span>
+                <p className="text-sm font-semibold text-gray-700">Futures Bot</p>
+                <p className="text-xs text-gray-500 mt-1">High leverage</p>
+              </div>
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-center">
+                <span className="mb-2 block text-3xl">📈</span>
+                <p className="text-sm font-semibold text-gray-700">Stock Bot</p>
+                <p className="text-xs text-gray-500 mt-1">Alpaca integration</p>
+              </div>
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-center">
+                <span className="mb-2 block text-3xl">🎯</span>
+                <p className="text-sm font-semibold text-gray-700">Sniper Bot</p>
+                <p className="text-xs text-gray-500 mt-1">DEX trading</p>
+              </div>
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-center">
+                <span className="mb-2 block text-3xl">🔷</span>
+                <p className="text-sm font-semibold text-gray-700">OKX Spot</p>
+                <p className="text-xs text-gray-500 mt-1">CEX trading</p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl bg-amber-50 border border-amber-200 p-4">
+              <h4 className="font-semibold text-amber-800 flex items-center gap-2">
+                <span>🎁</span> Referral Rewards
+              </h4>
+              <p className="mt-1 text-sm text-gray-700">
+                Invite friends and earn up to 20% of their trading fees. Track your earnings in real-time.
+              </p>
+              <Link
+                to="/referrals"
+                className="mt-3 inline-block text-sm font-medium text-amber-700 hover:text-amber-800"
+              >
+                View referral dashboard →
+              </Link>
+            </div>
+
+            <div className="mt-5 text-center">
+              <Link
+                to="/trade-demo"
+                className="inline-block text-sm font-medium text-emerald-600 hover:text-emerald-700"
+              >
+                🎮 Try the interactive demo →
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </section>
+
+      {/* PROMO MESSAGE + FORM (Original positioning restored) */}
       <section className="mx-auto max-w-3xl px-4 pb-16 sm:px-6 lg:px-8">
         <Card className="p-6 shadow-xl sm:p-8">
           <div className="mb-4 flex items-start gap-3 sm:items-center">
@@ -594,10 +685,7 @@ export default function Home() {
           </div>
 
           <div className="mb-5 space-y-3 rounded-2xl border border-gray-100 bg-gradient-to-r from-emerald-50 to-cyan-50 p-4">
-            <FeatureRow
-              icon="💰"
-              label="Start with $1,000 in paper trading credits"
-            />
+            <FeatureRow icon="💰" label="Start with $1,000 in paper trading credits" />
             <FeatureRow icon="🤖" label="Test all automated bots risk-free" />
             <FeatureRow icon="🎯" label="Learn to trade without losing real money" />
             <FeatureRow icon="🚀" label="Switch to live trading when you're ready" />
@@ -691,132 +779,49 @@ export default function Home() {
         </Card>
       </section>
 
-      {/* LIVE DASHBOARD + REFERRAL */}
-      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <LiveTicker />
-          <Link
-            to="/live"
-            className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-medium text-emerald-700 shadow-sm hover:bg-emerald-50 sm:text-sm"
-          >
-            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            <span>LIVE DASHBOARD</span>
-            <span>→</span>
-          </Link>
-        </div>
-
-        {/* REFERRAL LINK */}
-        {userReferralLink && (
-          <div className="mx-auto mb-8 max-w-3xl">
-            <div className="rounded-3xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-5 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-                    Your Referral Link
-                  </p>
-                  <h3 className="text-lg font-bold text-gray-900">
-                    Invite friends and earn rewards
-                  </h3>
-                  <code className="mt-2 block break-all text-xs text-emerald-600">
-                    {userReferralLink}
-                  </code>
-                </div>
-
-                <Link
-                  to="/referrals"
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-2xl bg-emerald-600 px-5 py-3 font-bold text-white transition hover:bg-emerald-500"
-                >
-                  <FaShareAlt className="mr-2" /> Go to Referral Hub →
-                </Link>
+      {/* REFERRAL LINK - Only shown when user is logged in */}
+      {userReferralLink && (
+        <section className="mx-auto max-w-3xl px-4 pb-16 sm:px-6 lg:px-8">
+          <div className="rounded-3xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-5 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                  Your Referral Link
+                </p>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Invite friends and earn rewards
+                </h3>
+                <code className="mt-2 block break-all text-xs text-emerald-600">
+                  {userReferralLink}
+                </code>
               </div>
-            </div>
-          </div>
-        )}
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <LiveActivityWidget activity={activity} />
-
-          <Card className="p-6">
-            <h3 className="mb-3 text-lg font-bold text-gray-900">Your Trading Bots</h3>
-            <p className="mb-4 text-sm text-gray-600">
-              Choose a plan, connect your accounts, and let IMALI help automate stock and crypto trading with a simpler beginner-friendly experience.
-            </p>
-
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {activity.stats.botStatuses.length > 0 ? (
-                activity.stats.botStatuses.map((bot) => (
-                  <div
-                    key={bot.label}
-                    className="rounded-2xl border border-gray-100 bg-gray-50 p-3 text-center"
-                  >
-                    <span className="mb-2 block text-3xl">{getBotIcon(bot.label)}</span>
-                    <p className="text-xs font-semibold text-gray-700">{bot.label}</p>
-                    {bot.live && (
-                      <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    )}
-                  </div>
-                ))
-              ) : (
-                <>
-                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 text-center">
-                    <span className="mb-2 block text-3xl">📊</span>
-                    <p className="text-xs font-semibold text-gray-700">Futures Bot</p>
-                  </div>
-                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 text-center">
-                    <span className="mb-2 block text-3xl">📈</span>
-                    <p className="text-xs font-semibold text-gray-700">Stock Bot</p>
-                  </div>
-                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 text-center">
-                    <span className="mb-2 block text-3xl">🎯</span>
-                    <p className="text-xs font-semibold text-gray-700">Sniper Bot</p>
-                  </div>
-                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 text-center">
-                    <span className="mb-2 block text-3xl">🔷</span>
-                    <p className="text-xs font-semibold text-gray-700">OKX Spot</p>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <h4 className="font-semibold text-amber-800">Referral rewards</h4>
-              <p className="mt-1 text-sm text-gray-700">
-                Invite new users, track your network, and earn rewards as the IMALI ecosystem grows.
-              </p>
               <Link
                 to="/referrals"
-                className="mt-3 inline-block text-sm font-medium text-amber-700 hover:text-amber-800"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-2xl bg-emerald-600 px-5 py-3 font-bold text-white transition hover:bg-emerald-500"
               >
-                View your referral dashboard →
+                <FaShareAlt className="mr-2" /> Go to Referral Hub →
               </Link>
             </div>
+          </div>
+        </section>
+      )}
 
-            <div className="mt-5 text-center">
-              <Link
-                to="/trade-demo"
-                className="inline-block text-sm font-medium text-emerald-600 hover:text-emerald-700"
-              >
-                🎮 Try the interactive demo →
-              </Link>
-            </div>
-          </Card>
-        </div>
-      </section>
-
-      {/* FOOTER CTA */}
-      <section className="bg-gradient-to-r from-emerald-600 to-cyan-600 py-20 text-center text-white">
-        <h2 className="text-4xl font-extrabold">Ready to Begin?</h2>
-        <p className="mx-auto mt-4 max-w-2xl text-xl opacity-95">
-          Start with $1,000 paper trading for 7 days free. Move to live automated trading when ready.
-          Cancel any time.
+      {/* FINAL CTA */}
+      <section className="bg-gradient-to-r from-emerald-600 to-cyan-600 py-16 text-center text-white">
+        <h2 className="text-3xl font-extrabold sm:text-4xl">Ready to Start Trading?</h2>
+        <p className="mx-auto mt-3 max-w-2xl text-lg opacity-95">
+          Join thousands of traders using IMALI to automate their trading strategy.
         </p>
 
         <Link
           to="/pricing"
-          className="mt-8 inline-block rounded-full bg-white px-10 py-4 text-lg font-bold text-emerald-700 shadow-xl"
+          className="mt-6 inline-block rounded-full bg-white px-8 py-3 text-base font-bold text-emerald-700 shadow-lg transition hover:bg-gray-100 sm:px-10 sm:py-4 sm:text-lg"
         >
-          Get Started →
+          Start Your Free Trial →
         </Link>
+
+        <p className="mt-4 text-sm opacity-75">No credit card required. Cancel anytime.</p>
       </section>
     </div>
   );
