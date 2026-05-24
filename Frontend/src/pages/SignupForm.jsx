@@ -1,766 +1,187 @@
-import React, { useMemo, useState, useEffect } from "react";
-import {
-  useNavigate,
-  Link,
-  useLocation,
-  useSearchParams,
-} from "react-router-dom";
+// src/pages/Signup.jsx - COMPLETELY REWRITTEN
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-
-const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle", "enterprise"];
-
-const TIER_LABELS = {
-  starter: {
-    name: "Starter",
-    price: "Free",
-    summary: "Beginner access, simulator access, and paper-friendly onboarding.",
-  },
-  pro: {
-    name: "Pro",
-    price: "$19/mo",
-    summary: "More tools, stronger analytics, and expanded automation.",
-  },
-  elite: {
-    name: "Elite",
-    price: "$49/mo",
-    summary: "Advanced features, deeper automation, and stronger trading controls.",
-  },
-  stock: {
-    name: "DeFi",
-    price: "$99/mo",
-    summary: "DEX-focused automation tools and DeFi trading features.",
-  },
-  bundle: {
-    name: "Bundle",
-    price: "$199/mo",
-    summary: "Full platform access across trading, automation, and analytics.",
-  },
-  enterprise: {
-    name: "Enterprise",
-    price: "Custom",
-    summary: "Custom branded solution with admin panel and enhanced bot controls.",
-  },
-};
-
-const ENTERPRISE_TIERS = {
-  starter: {
-    name: "Community Demo",
-    price: "Pilot",
-    summary:
-      "Simulation-based access for education, workforce, and community programs.",
-  },
-  pro: {
-    name: "Program Pilot",
-    price: "Custom",
-    summary:
-      "Expanded organization pilot with participant tracking and reporting.",
-  },
-  elite: {
-    name: "Enterprise Lab",
-    price: "Custom",
-    summary:
-      "Advanced organization access for workforce, education, and innovation programs.",
-  },
-  stock: {
-    name: "Innovation Lab",
-    price: "Custom",
-    summary:
-      "Sandbox-style access for AI, automation, analytics, and financial education.",
-  },
-  bundle: {
-    name: "Full Organization Suite",
-    price: "Custom",
-    summary:
-      "Complete organization package with simulation, analytics, and admin visibility.",
-  },
-  enterprise: {
-    name: "Enterprise Custom",
-    price: "Contact Sales",
-    summary:
-      "Fully branded solution with dedicated admin panel and enhanced bot strategy controls.",
-  },
-};
-
-const STRATEGIES = {
-  ai_weighted: {
-    title: "AI Weighted",
-    badge: "Recommended",
-    risk: "Balanced",
-    bestFor: "Most users and programs",
-    explanation:
-      "Blends multiple signals and gives more weight to stronger opportunities.",
-    enterpriseExplanation:
-      "Helps participants understand how AI-assisted decision systems compare multiple signals before taking action.",
-    example:
-      "Instead of trusting one clue, it scores several clues before entering a trade.",
-  },
-  momentum: {
-    title: "Momentum",
-    badge: "Trend-following",
-    risk: "Medium to High",
-    bestFor: "Users who like strong market moves",
-    explanation:
-      "Looks for assets already moving strongly and tries to ride the trend.",
-    enterpriseExplanation:
-      "Shows participants how automated systems can identify trends and react to market movement.",
-    example:
-      "If a coin keeps pushing higher with strength, Momentum may try to follow that move.",
-  },
-  mean_reversion: {
-    title: "Mean Reversion",
-    badge: "More conservative",
-    risk: "Lower",
-    bestFor: "Users who want steadier entries",
-    explanation:
-      "Looks for assets that may have moved too far and could return closer to normal.",
-    enterpriseExplanation:
-      "Teaches participants how systems can look for overextended moves and possible recovery zones.",
-    example:
-      "If a stock drops too fast and looks oversold, it may look for a bounce instead of chasing.",
-  },
-  volume_spike: {
-    title: "Volume Spike",
-    badge: "Fast action",
-    risk: "Higher",
-    bestFor: "Users comfortable with more volatility",
-    explanation:
-      "Watches for sudden bursts in trading volume that may signal a breakout.",
-    enterpriseExplanation:
-      "Demonstrates how activity spikes can be used as signals in automated decision-making.",
-    example:
-      "If activity suddenly explodes, the bot may treat that as a sign something important is happening.",
-  },
-};
-
-const normalizeTier = (value) => {
-  const tier = String(value || "").toLowerCase().trim();
-  return VALID_TIERS.includes(tier) ? tier : "starter";
-};
-
-const safeGetLocalStorage = (key, fallback = "") => {
-  try {
-    return localStorage.getItem(key) || fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const safeSetLocalStorage = (key, value) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // fail silently
-  }
-};
+import { FaGoogle, FaGithub, FaApple } from "react-icons/fa";
 
 export default function Signup() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
   const { signup } = useAuth();
-
-  const mode = String(searchParams.get("mode") || "").toLowerCase();
-  const isEnterprise = mode === "enterprise" || mode === "organization";
-  const isDirectEnterprise = searchParams.get("tier") === "enterprise";
-
-  const labels = isEnterprise ? ENTERPRISE_TIERS : TIER_LABELS;
-
-  const initialTier = useMemo(() => {
-    const queryTier = searchParams.get("tier");
-    const stateTier = location.state?.selectedTier;
-    const savedTier = safeGetLocalStorage("imali_selected_tier", "starter");
-
-    if (queryTier === "enterprise") return "enterprise";
-    
-    return normalizeTier(queryTier || stateTier || savedTier || "starter");
-  }, [searchParams, location.state]);
-
+  
   const [form, setForm] = useState({
     email: "",
     password: "",
     confirmPassword: "",
-    tier: initialTier,
-    strategy: "ai_weighted",
     acceptTerms: false,
-    organizationName: "",
-    contactName: "",
-    useCase: "financial_literacy",
-    companySize: "",
-    desiredFeatures: [],
   });
-
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [step, setStep] = useState("");
-
-  useEffect(() => {
-    setForm((prev) => ({ ...prev, tier: initialTier }));
-  }, [initialTier]);
-
-  useEffect(() => {
-    safeSetLocalStorage("imali_selected_tier", form.tier);
-  }, [form.tier]);
-
-  const currentStrategy = STRATEGIES[form.strategy];
-  const currentTier = labels[form.tier] || labels.starter;
 
   const validate = () => {
-    if (form.tier === "enterprise") {
-      if (!form.organizationName.trim()) {
-        return "Organization name is required for Enterprise.";
-      }
-      if (!form.contactName.trim()) {
-        return "Contact name is required.";
-      }
-    }
-
-    if (isEnterprise && !isDirectEnterprise && !form.organizationName.trim()) {
-      return "Organization name is required.";
-    }
-
-    if (isEnterprise && !isDirectEnterprise && !form.contactName.trim()) {
-      return "Contact name is required.";
-    }
-
-    if (!form.email.trim()) {
-      return "Email is required.";
-    }
-
-    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) {
-      return "Enter a valid email address.";
-    }
-
-    if (form.tier !== "enterprise") {
-      if (form.password.length < 8) {
-        return "Password must be at least 8 characters.";
-      }
-
-      if (form.password.length > 72) {
-        return "Password must be 72 characters or less.";
-      }
-
-      if (form.password !== form.confirmPassword) {
-        return "Passwords do not match.";
-      }
-    }
-
-    if (!form.acceptTerms) {
-      return "You must accept the Terms and Privacy Policy.";
-    }
-
+    if (!form.email.trim()) return "Email is required";
+    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return "Enter a valid email address";
+    if (form.password.length < 8) return "Password must be at least 8 characters";
+    if (form.password !== form.confirmPassword) return "Passwords do not match";
+    if (!form.acceptTerms) return "You must accept the Terms and Privacy Policy";
     return null;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (loading) return;
-
+    
     const validationError = validate();
-
     if (validationError) {
       setError(validationError);
       return;
     }
-
+    
     setLoading(true);
     setError("");
-    setStep("creating");
-
-    const email = form.email.trim().toLowerCase();
-
+    
     try {
-      if (form.tier === "enterprise") {
-        setStep("redirecting");
-        const inquiryData = {
-          email,
-          organizationName: form.organizationName.trim(),
-          contactName: form.contactName.trim(),
-          companySize: form.companySize,
-          desiredFeatures: form.desiredFeatures,
-          useCase: form.useCase,
-          timestamp: new Date().toISOString(),
-          accepted_terms: form.acceptTerms,
-        };
-        
-        safeSetLocalStorage("imali_enterprise_inquiry", JSON.stringify(inquiryData));
-        
-        navigate("/contact-sales", {
-          state: { inquiryData, fromEnterpriseSignup: true }
-        });
-        return;
-      }
-
-      const signupResult = await signup({
-        email,
+      const result = await signup({
+        email: form.email.trim().toLowerCase(),
         password: form.password,
-        tier: form.tier,
-        strategy: form.strategy,
-        mode: isEnterprise ? "enterprise" : "consumer",
-        organizationName: form.organizationName.trim(),
-        contactName: form.contactName.trim(),
-        useCase: form.useCase,
-        accepted_terms: form.acceptTerms,  // ✅ FIX: Added accepted_terms
+        tier: "starter",
+        strategy: "ai_weighted",
+        accepted_terms: form.acceptTerms,
       });
-
-      if (!signupResult?.success) {
-        setError(signupResult?.error || "Signup failed. Please try again.");
-        setStep("");
+      
+      if (!result?.success) {
+        setError(result?.error || "Signup failed. Please try again.");
         setLoading(false);
         return;
       }
-
-      safeSetLocalStorage("IMALI_EMAIL", email);
-      safeSetLocalStorage("IMALI_TIER", form.tier);
-      safeSetLocalStorage("IMALI_STRATEGY", form.strategy);
-      safeSetLocalStorage("IMALI_MODE", isEnterprise ? "enterprise" : "consumer");
-
-      if (isEnterprise) {
-        safeSetLocalStorage("IMALI_ORGANIZATION", form.organizationName.trim());
-        safeSetLocalStorage("IMALI_CONTACT_NAME", form.contactName.trim());
-        safeSetLocalStorage("IMALI_USE_CASE", form.useCase);
-      }
-
-      setStep("redirecting");
-
-      navigate(isEnterprise ? "/billing?mode=enterprise" : "/billing", {
+      
+      // Redirect DIRECTLY to Trade Demo (not activation!)
+      navigate("/trade-demo", { 
         replace: true,
-        state: {
-          email,
-          tier: form.tier,
-          strategy: form.strategy,
-          fromSignup: true,
-          mode: isEnterprise ? "enterprise" : "consumer",
-          organizationName: form.organizationName.trim(),
-          contactName: form.contactName.trim(),
-          useCase: form.useCase,
-          accepted_terms: form.acceptTerms,
-        },
+        state: { justSignedUp: true, email: form.email }
       });
     } catch (err) {
-      console.error("[Signup] Unexpected error:", err);
       setError(err?.message || "Signup failed. Please try again.");
-      setStep("");
-    } finally {
       setLoading(false);
     }
   };
 
-  const getButtonText = () => {
-    if (form.tier === "enterprise") {
-      return step === "redirecting" ? "Redirecting to sales..." : "Contact Sales →";
-    }
-    
-    switch (step) {
-      case "creating":
-        return isEnterprise ? "Creating pilot account…" : "Creating account…";
-      case "redirecting":
-        return isEnterprise ? "Preparing pilot setup…" : "Redirecting to billing…";
-      default:
-        return loading
-          ? "Please wait…"
-          : isEnterprise
-          ? "Create pilot account"
-          : "Create account & continue";
-    }
-  };
-
-  const showPasswordFields = form.tier !== "enterprise";
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950 px-4 py-28">
-      <div className="w-full max-w-4xl bg-gray-900 border border-gray-800 rounded-2xl p-6 md:p-8 shadow-xl">
-        <div className="mb-7">
-          <div className="inline-flex mb-4 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-200">
-            {form.tier === "enterprise" 
-              ? "IMALI Enterprise" 
-              : isEnterprise 
-              ? "IMALI Enterprise / Community Lab" 
-              : "IMALI Trading Platform"}
-          </div>
-
-          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-            {form.tier === "enterprise"
-              ? "Request Enterprise Access"
-              : isEnterprise 
-              ? "Create your organization demo account" 
-              : "Create your account"}
-          </h1>
-
-          <p className="text-gray-400">
-            {form.tier === "enterprise"
-              ? "Get a custom-branded solution with admin panel and enhanced bot strategy controls."
-              : isEnterprise
-              ? "Set up a safe simulation account for financial education, workforce training, and program demos."
-              : "Start with AI-powered trading tools, strategy selection, and paper-friendly onboarding."}
-          </p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 to-black px-4 py-12">
+      <div className="w-full max-w-md">
+        
+        {/* Logo/Brand */}
+        <div className="text-center mb-8">
+          <div className="text-5xl mb-3">🤖</div>
+          <h1 className="text-3xl font-bold text-white">Create your account</h1>
+          <p className="text-gray-400 mt-2">Start trading with $1,000 paper credits</p>
         </div>
 
-        {error && (
-          <div className="mb-5 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="mb-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-          <div className="text-sm text-gray-300">
-            {form.tier === "enterprise" ? "Selected solution" : isEnterprise ? "Selected pilot option" : "Selected plan"}
-          </div>
-
-          <div className="mt-1 text-xl font-bold text-white">
-            {currentTier.name}{" "}
-            <span className="text-emerald-400">{currentTier.price}</span>
-          </div>
-
-          <div className="text-sm text-gray-400">{currentTier.summary}</div>
-
-          <div className="mt-3 flex flex-wrap gap-3">
-            <Link
-              to={form.tier === "enterprise" ? "/pricing" : isEnterprise ? "/enterprise" : "/pricing"}
-              className="text-sm text-emerald-300 underline"
-            >
-              {form.tier === "enterprise" ? "Back to pricing" : isEnterprise ? "Back to enterprise overview" : "Change plan"}
-            </Link>
-
-            {!isEnterprise && form.tier !== "enterprise" && (
-              <Link
-                to="/signup?mode=enterprise"
-                className="text-sm text-blue-300 underline"
-              >
-                Signing up for an organization?
-              </Link>
-            )}
-
-            {isEnterprise && form.tier !== "enterprise" && (
-              <Link to="/signup" className="text-sm text-blue-300 underline">
-                Signing up as an individual?
-              </Link>
-            )}
-            
-            {form.tier !== "enterprise" && !isEnterprise && (
-              <Link
-                to="/signup?tier=enterprise"
-                className="text-sm text-purple-300 underline"
-              >
-                Need a custom enterprise solution?
-              </Link>
-            )}
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {(isEnterprise || form.tier === "enterprise") && (
-            <div className="grid md:grid-cols-2 gap-4">
-              <input
-                type="text"
-                required={form.tier === "enterprise"}
-                placeholder="Organization / program name"
-                value={form.organizationName}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, organizationName: e.target.value }))
-                }
-                className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={loading}
-              />
-
-              <input
-                type="text"
-                required={form.tier === "enterprise"}
-                placeholder="Your name"
-                value={form.contactName}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, contactName: e.target.value }))
-                }
-                className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={loading}
-              />
+        {/* Main Card */}
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur">
+          
+          {error && (
+            <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+              {error}
             </div>
           )}
 
-          <div className="grid md:grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <input
               type="email"
               required
               autoComplete="email"
-              placeholder={form.tier === "enterprise" ? "Work email" : "Email"}
+              placeholder="Email address"
               value={form.email}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, email: e.target.value }))
-              }
-              className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
+              className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               disabled={loading}
             />
 
-            <select
-              value={form.tier}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, tier: normalizeTier(e.target.value) }))
-              }
-              className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            <input
+              type="password"
+              required
+              autoComplete="new-password"
+              placeholder="Password"
+              value={form.password}
+              onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))}
+              className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               disabled={loading}
+            />
+
+            <input
+              type="password"
+              required
+              autoComplete="new-password"
+              placeholder="Confirm password"
+              value={form.confirmPassword}
+              onChange={(e) => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
+              className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              disabled={loading}
+            />
+
+            <label className="flex items-start gap-3 text-sm text-gray-400">
+              <input
+                type="checkbox"
+                checked={form.acceptTerms}
+                onChange={(e) => setForm(f => ({ ...f, acceptTerms: e.target.checked }))}
+                className="mt-1"
+                disabled={loading}
+              />
+              <span>
+                I agree to the{" "}
+                <Link to="/terms" className="text-emerald-400 underline">Terms</Link>
+                {" "}and{" "}
+                <Link to="/privacy" className="text-emerald-400 underline">Privacy Policy</Link>
+              </span>
+            </label>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-semibold disabled:opacity-50 transition hover:from-emerald-500 hover:to-cyan-500"
             >
-              {isEnterprise ? (
-                <>
-                  <option value="starter">Community Demo</option>
-                  <option value="pro">Program Pilot</option>
-                  <option value="elite">Enterprise Lab</option>
-                  <option value="stock">Innovation Lab</option>
-                  <option value="bundle">Full Organization Suite</option>
-                  <option value="enterprise">Enterprise Custom →</option>
-                </>
-              ) : (
-                <>
-                  <option value="starter">Starter</option>
-                  <option value="pro">Pro</option>
-                  <option value="elite">Elite</option>
-                  <option value="stock">DeFi</option>
-                  <option value="bundle">Bundle</option>
-                  <option value="enterprise">Enterprise (Contact Sales)</option>
-                </>
-              )}
-            </select>
+              {loading ? "Creating account..." : "Start Free Trial →"}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="px-2 bg-transparent text-gray-500">Or continue with</span>
+            </div>
           </div>
 
-          {form.tier === "enterprise" && (
-            <>
-              <div>
-                <label className="block text-sm font-semibold text-white mb-2">
-                  Company size
-                </label>
-                <select
-                  value={form.companySize}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, companySize: e.target.value }))
-                  }
-                  className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select size...</option>
-                  <option value="1-10">1-10 employees</option>
-                  <option value="11-50">11-50 employees</option>
-                  <option value="51-200">51-200 employees</option>
-                  <option value="201-500">201-500 employees</option>
-                  <option value="500+">500+ employees</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-white mb-2">
-                  Desired features (select all that apply)
-                </label>
-                <div className="space-y-2">
-                  {[
-                    "Custom branding",
-                    "Admin panel with user management",
-                    "Enhanced bot strategy controls",
-                    "White-label solution",
-                    "Team permissions & approval workflows",
-                    "Priority support & SLA",
-                    "Custom strategy development",
-                    "API access for custom integrations",
-                  ].map((feature) => (
-                    <label key={feature} className="flex items-center gap-2 text-gray-300">
-                      <input
-                        type="checkbox"
-                        value={feature}
-                        checked={form.desiredFeatures.includes(feature)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setForm((f) => ({
-                              ...f,
-                              desiredFeatures: [...f.desiredFeatures, feature],
-                            }));
-                          } else {
-                            setForm((f) => ({
-                              ...f,
-                              desiredFeatures: f.desiredFeatures.filter(
-                                (f) => f !== feature
-                              ),
-                            }));
-                          }
-                        }}
-                        className="rounded"
-                      />
-                      <span className="text-sm">{feature}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {isEnterprise && form.tier !== "enterprise" && (
-            <div>
-              <label className="block text-sm font-semibold text-white mb-2">
-                Main use case
-              </label>
-
-              <select
-                value={form.useCase}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, useCase: e.target.value }))
-                }
-                className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={loading}
-              >
-                <option value="financial_literacy">Financial literacy program</option>
-                <option value="workforce_training">Workforce training</option>
-                <option value="small_business">Small business support</option>
-                <option value="innovation_sandbox">Innovation sandbox</option>
-                <option value="education">School / education program</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-          )}
-
-          {showPasswordFields && (
-            <div className="grid md:grid-cols-2 gap-4">
-              <input
-                type="password"
-                required
-                autoComplete="new-password"
-                placeholder="Password"
-                value={form.password}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, password: e.target.value }))
-                }
-                className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={loading}
-              />
-
-              <input
-                type="password"
-                required
-                autoComplete="new-password"
-                placeholder="Confirm password"
-                value={form.confirmPassword}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, confirmPassword: e.target.value }))
-                }
-                className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={loading}
-              />
-            </div>
-          )}
-
-          {form.tier !== "enterprise" && (
-            <div className="space-y-3">
-              <div className="text-sm font-semibold text-white">
-                {isEnterprise
-                  ? "Choose a learning strategy model"
-                  : "Choose your strategy"}
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-3">
-                {Object.entries(STRATEGIES).map(([value, strategy]) => {
-                  const selected = form.strategy === value;
-
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, strategy: value }))}
-                      className={`text-left rounded-xl border p-4 transition ${
-                        selected
-                          ? "border-emerald-400 bg-emerald-500/10"
-                          : "border-gray-700 bg-gray-800 hover:border-gray-500"
-                      }`}
-                      disabled={loading}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold text-white">
-                          {strategy.title}
-                        </div>
-
-                        <span className="text-[11px] px-2 py-1 rounded-full bg-gray-700 text-gray-200">
-                          {strategy.badge}
-                        </span>
-                      </div>
-
-                      <div className="mt-2 text-sm text-gray-300">
-                        {isEnterprise
-                          ? strategy.enterpriseExplanation
-                          : strategy.explanation}
-                      </div>
-
-                      <div className="mt-3 text-xs text-gray-400">
-                        <div>
-                          <span className="font-semibold text-gray-300">
-                            Risk:
-                          </span>{" "}
-                          {strategy.risk}
-                        </div>
-
-                        <div>
-                          <span className="font-semibold text-gray-300">
-                            Best for:
-                          </span>{" "}
-                          {strategy.bestFor}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-100">
-                <div className="font-semibold">{currentStrategy.title}</div>
-                <div className="mt-1">{currentStrategy.example}</div>
-              </div>
-            </div>
-          )}
-
-          <label className="flex items-start gap-3 text-sm text-gray-400">
-            <input
-              type="checkbox"
-              checked={form.acceptTerms}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  acceptTerms: e.target.checked,
-                }))
-              }
-              className="mt-1"
-              disabled={loading}
-            />
-
-            <span>
-              I agree to the{" "}
-              <Link to="/terms" className="text-blue-400 underline">
-                Terms
-              </Link>{" "}
-              and{" "}
-              <Link to="/privacy" className="text-blue-400 underline">
-                Privacy Policy
-              </Link>
-              {(isEnterprise || form.tier === "enterprise") && (
-                <>
-                  {" "}
-                  and understand this pilot/demo uses simulation-first tools unless
-                  live access is separately approved.
-                </>
-              )}
-            </span>
-          </label>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full py-3 rounded-xl text-white font-semibold disabled:opacity-50 transition ${
-              form.tier === "enterprise"
-                ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500"
-                : "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500"
-            }`}
-          >
-            {getButtonText()}
-          </button>
-        </form>
+          {/* Social Buttons */}
+          <div className="space-y-2">
+            <button className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 text-white hover:bg-white/10 transition flex items-center justify-center gap-2">
+              <FaGoogle /> Google
+            </button>
+            <button className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 text-white hover:bg-white/10 transition flex items-center justify-center gap-2">
+              <FaGithub /> GitHub
+            </button>
+            <button className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 text-white hover:bg-white/10 transition flex items-center justify-center gap-2">
+              <FaApple /> Apple
+            </button>
+          </div>
+        </div>
 
         <p className="mt-6 text-center text-gray-400 text-sm">
           Already have an account?{" "}
-          <Link to="/login" className="text-blue-400 underline">
-            Log in
-          </Link>
+          <Link to="/login" className="text-emerald-400 underline">Log in</Link>
         </p>
+
+        {/* Trust Badge */}
+        <div className="mt-6 text-center text-xs text-gray-500">
+          <span>✅ Cancel anytime</span>
+          <span className="mx-2">•</span>
+          <span>💰 $1,000 paper trading included</span>
+          <span className="mx-2">•</span>
+          <span>🔒 No credit card required</span>
+        </div>
       </div>
     </div>
   );
