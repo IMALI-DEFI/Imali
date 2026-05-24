@@ -1,8 +1,7 @@
-// src/pages/Signup.jsx - COMPLETELY REWRITTEN
+// src/pages/Signup.jsx - REWRITTEN (No social login options)
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { FaGoogle, FaGithub, FaApple } from "react-icons/fa";
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -44,8 +43,6 @@ export default function Signup() {
       const result = await signup({
         email: form.email.trim().toLowerCase(),
         password: form.password,
-        tier: "starter",
-        strategy: "ai_weighted",
         accepted_terms: form.acceptTerms,
       });
       
@@ -145,28 +142,13 @@ export default function Signup() {
             </button>
           </form>
 
-          {/* Divider */}
+          {/* Simple divider without social buttons */}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-white/10"></div>
             </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="px-2 bg-transparent text-gray-500">Or continue with</span>
-            </div>
           </div>
 
-          {/* Social Buttons */}
-          <div className="space-y-2">
-            <button className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 text-white hover:bg-white/10 transition flex items-center justify-center gap-2">
-              <FaGoogle /> Google
-            </button>
-            <button className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 text-white hover:bg-white/10 transition flex items-center justify-center gap-2">
-              <FaGithub /> GitHub
-            </button>
-            <button className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 text-white hover:bg-white/10 transition flex items-center justify-center gap-2">
-              <FaApple /> Apple
-            </button>
-          </div>
         </div>
 
         <p className="mt-6 text-center text-gray-400 text-sm">
@@ -181,6 +163,11 @@ export default function Signup() {
           <span>💰 $1,000 paper trading included</span>
           <span className="mx-2">•</span>
           <span>🔒 No credit card required</span>
+        </div>
+
+        {/* Trial Info */}
+        <div className="mt-4 text-center text-xs text-gray-600">
+          <span>🎁 7-day free trial • Paper trading only • No real money used</span>
         </div>
       </div>
     </div>
