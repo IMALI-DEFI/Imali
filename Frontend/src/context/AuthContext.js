@@ -1,3 +1,4 @@
+// src/context/AuthContext.js
 import React, {
   createContext,
   useContext,
@@ -21,6 +22,10 @@ const API_BASE_URL =
 const REFRESH_COOLDOWN_MS = 30_000;
 const isBrowser = typeof window !== "undefined";
 
+// Trial configuration
+const TRIAL_DAYS = 7;
+
+// Helper functions
 const safeStorageGet = (key) => {
   if (!isBrowser) return null;
   try {
@@ -50,12 +55,10 @@ const safeStorageRemove = (key) => {
 };
 
 const getToken = () => safeStorageGet(TOKEN_KEY);
-
 const setToken = (token) => {
   if (token) safeStorageSet(TOKEN_KEY, token);
   else safeStorageRemove(TOKEN_KEY);
 };
-
 const clearToken = () => safeStorageRemove(TOKEN_KEY);
 
 const normalizeBoolean = (value) => {
@@ -88,9 +91,7 @@ const normalizeUser = (userData) => {
     billing_complete: normalizeBoolean(userData.billing_complete),
     referral_code: userData.referral_code || null,
     api_key: userData.api_key || null,
-    wallet_addresses: Array.isArray(userData.wallet_addresses)
-      ? userData.wallet_addresses
-      : [],
+    wallet_addresses: Array.isArray(userData.wallet_addresses) ? userData.wallet_addresses : [],
     portfolio_value: Number(userData.portfolio_value || 1000),
     created_at: userData.created_at || null,
     updated_at: userData.updated_at || null,
@@ -102,6 +103,9 @@ const normalizeUser = (userData) => {
     alpaca_connected: normalizeBoolean(userData.alpaca_connected),
     okx_connected: normalizeBoolean(userData.okx_connected),
     wallet_connected: normalizeBoolean(userData.wallet_connected),
+    trial_status: userData.trial_status || "trial",
+    trial_ends_at: userData.trial_ends_at || null,
+    subscription_status: userData.subscription_status || "trial",
   };
 };
 
@@ -121,8 +125,7 @@ const normalizeActivation = (activationData) => {
     alpaca_connected: normalizeBoolean(activationData.alpaca_connected),
     activation_complete: normalizeBoolean(activationData.activation_complete),
     tier_requirements_met: normalizeBoolean(activationData.tier_requirements_met),
-    tier_required_integration:
-      activationData.tier_required_integration || "Alpaca & OKX (both)",
+    tier_required_integration: activationData.tier_required_integration || "Alpaca & OKX (both)",
     enterprise_approved: normalizeBoolean(activationData.enterprise_approved),
     custom_strategy_access: normalizeBoolean(activationData.custom_strategy_access),
     admin_panel_enabled: normalizeBoolean(activationData.admin_panel_enabled),
@@ -145,6 +148,15 @@ const defaultActivation = () => ({
   custom_strategy_access: false,
   admin_panel_enabled: false,
 });
+
+// Helper to calculate trial days remaining
+const getTrialDaysRemaining = (trialEndsAt) => {
+  if (!trialEndsAt) return 0;
+  const end = new Date(trialEndsAt);
+  const now = new Date();
+  const diff = end - now;
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+};
 
 const apiFetch = async (path, options = {}) => {
   const token = getToken();
@@ -273,14 +285,12 @@ export function AuthProvider({ children }) {
       }
 
       if (refreshPromiseRef.current && !force) {
-        console.log("[Auth] Using existing refresh promise");
         return refreshPromiseRef.current;
       }
 
       const now = Date.now();
       
       if (!force && now - lastRefreshTimeRef.current < REFRESH_COOLDOWN_MS) {
-        console.log("[Auth] Using cached activation (cooldown active)");
         return activation;
       }
 
@@ -289,15 +299,8 @@ export function AuthProvider({ children }) {
         lastRefreshTimeRef.current = now;
 
         try {
-          console.log("[Auth] Fetching fresh activation status...");
           const data = await apiFetch("/api/me/activation-status", { method: "GET" });
           const status = data?.data?.status || data?.status || data;
-          console.log("[Auth] Activation status received:", {
-            okx_connected: status?.okx_connected,
-            alpaca_connected: status?.alpaca_connected,
-            wallet_connected: status?.wallet_connected,
-            trading_enabled: status?.trading_enabled,
-          });
           return persistActivation(status || defaultActivation());
         } catch (err) {
           console.warn("[Auth] refreshActivation failed:", err.message);
@@ -320,17 +323,19 @@ export function AuthProvider({ children }) {
   );
 
   const getRedirectPath = useCallback((userData) => {
-    // Check if user is enterprise
+    // NEW: After signup, go to trade demo first
+    if (!userData?.trading_enabled && !userData?.has_card_on_file) {
+      return "/trade-demo";
+    }
+    
     if (userData?.tier === "enterprise" || userData?.organization_id) {
       return "/enterprise/dashboard";
     }
     
-    // Check if user is admin
     if (userData?.is_admin === true || userData?.isAdmin === true) {
       return "/admin";
     }
     
-    // Default to member dashboard
     return "/dashboard";
   }, []);
 
@@ -366,26 +371,10 @@ export function AuthProvider({ children }) {
         setLoading(false);
         setIsInitialized(true);
         
-        // Check for stored redirect or compute default
         const storedRedirect = safeStorageGet(REDIRECT_KEY);
         if (storedRedirect) {
           safeStorageRemove(REDIRECT_KEY);
           window.location.href = storedRedirect;
-        } else {
-          // Auto-redirect enterprise users to correct dashboard
-          const redirectPath = getRedirectPath(normalizedUser);
-          const currentPath = window.location.pathname;
-          
-          // Don't redirect if already on the correct page or login/signup
-          if (
-            currentPath !== redirectPath && 
-            !currentPath.includes('/login') && 
-            !currentPath.includes('/signup') &&
-            currentPath !== '/activation'
-          ) {
-            console.log(`[Auth] Auto-redirecting to ${redirectPath} based on user type`);
-            window.location.href = redirectPath;
-          }
         }
         
         return normalizedUser;
@@ -403,9 +392,10 @@ export function AuthProvider({ children }) {
         return null;
       }
     },
-    [user, loadCachedState, persistUser, refreshActivation, clearAuth, getRedirectPath]
+    [user, loadCachedState, persistUser, refreshActivation, clearAuth]
   );
 
+  // SIMPLIFIED LOGIN - Redirect to dashboard or demo
   const login = useCallback(
     async (email, password, redirectPath = null) => {
       setError(null);
@@ -423,7 +413,6 @@ export function AuthProvider({ children }) {
         });
 
         const token = data?.data?.token || data?.token;
-        const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
         const userData = data?.data?.user || data?.user || null;
 
         if (!token) {
@@ -434,7 +423,6 @@ export function AuthProvider({ children }) {
 
         setToken(token);
         
-        // Store intended redirect if provided
         if (redirectPath) {
           safeStorageSet(REDIRECT_KEY, redirectPath);
         }
@@ -442,18 +430,15 @@ export function AuthProvider({ children }) {
         const normalizedUser = persistUser(userData);
         await refreshActivation(true);
         
-        // Determine where to redirect
+        // Determine redirect path
         const finalRedirect = redirectPath || getRedirectPath(normalizedUser);
         
         setLoading(false);
         setIsInitialized(true);
         
-        console.log(`[Auth] Login successful, redirecting to ${finalRedirect}`);
-        
         return { 
           success: true, 
           token, 
-          api_key: apiKey, 
           user: normalizedUser,
           redirectTo: finalRedirect
         };
@@ -463,9 +448,10 @@ export function AuthProvider({ children }) {
         return { success: false, error: message };
       }
     },
-    [loadUser, persistUser, refreshActivation, getRedirectPath]
+    [persistUser, refreshActivation, getRedirectPath]
   );
 
+  // SIMPLIFIED SIGNUP - No tier selection, no strategy, redirect to trade demo
   const signup = useCallback(
     async (userData) => {
       setError(null);
@@ -476,26 +462,17 @@ export function AuthProvider({ children }) {
         return { success: false, error: message };
       }
 
-      const isEnterprise = userData.tier === "enterprise" || userData.mode === "enterprise";
-      
-      if (!isEnterprise) {
-        if (!userData?.password) {
-          const message = "Password is required";
-          setError(message);
-          return { success: false, error: message };
-        }
+      // Always require password for regular signup
+      if (!userData?.password) {
+        const message = "Password is required";
+        setError(message);
+        return { success: false, error: message };
+      }
 
-        if (userData.password.length < 8) {
-          const message = "Password must be at least 8 characters";
-          setError(message);
-          return { success: false, error: message };
-        }
-
-        if (userData.password.length > 72) {
-          const message = "Password must be 72 characters or less";
-          setError(message);
-          return { success: false, error: message };
-        }
+      if (userData.password.length < 8) {
+        const message = "Password must be at least 8 characters";
+        setError(message);
+        return { success: false, error: message };
       }
 
       if (!userData.accepted_terms && !userData.acceptTerms) {
@@ -505,29 +482,16 @@ export function AuthProvider({ children }) {
       }
 
       try {
+        // Simplified payload - always starter tier, ai_weighted strategy
         const payload = {
           email: userData.email,
-          tier: userData.tier || "starter",
-          strategy: userData.strategy || "ai_weighted",
-          mode: userData.mode || "consumer",
+          password: userData.password,
+          tier: "starter",
+          strategy: "ai_weighted",
           accepted_terms: true,
         };
 
-        if (!isEnterprise && userData.password) {
-          payload.password = userData.password;
-        }
-
-        if (userData.organizationName) {
-          payload.organization_name = userData.organizationName;
-        }
-        if (userData.contactName) {
-          payload.contact_name = userData.contactName;
-        }
-        if (userData.useCase) {
-          payload.use_case = userData.useCase;
-        }
-
-        console.log("[Auth] Signup payload:", payload);
+        console.log("[Auth] Signup payload (simplified):", { email: payload.email, tier: payload.tier });
 
         const data = await apiFetch("/api/auth/signup", {
           method: "POST",
@@ -535,40 +499,32 @@ export function AuthProvider({ children }) {
         });
 
         const token = data?.data?.token || data?.token;
-        const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
         const userFromResponse = data?.data?.user || data?.user || null;
 
-        if (!token && !isEnterprise) {
+        if (!token) {
           const message = "Signup succeeded but no token was returned";
           setError(message);
           return { success: false, error: message };
         }
 
-        if (token) {
-          setToken(token);
-          
-          const normalizedUser = persistUser(userFromResponse);
-          await refreshActivation(true);
-          
-          // Auto-redirect enterprise users to correct dashboard
-          const redirectPath = getRedirectPath(normalizedUser);
-          
-          setLoading(false);
-          setIsInitialized(true);
-          
-          return { 
-            success: true, 
-            token, 
-            api_key: apiKey, 
-            user: normalizedUser,
-            redirectTo: redirectPath
-          };
-        }
-
+        setToken(token);
+        
+        const normalizedUser = persistUser(userFromResponse);
+        await refreshActivation(true);
+        
+        // CRITICAL: Redirect to trade demo first, not activation!
+        const redirectPath = "/trade-demo";
+        
+        setLoading(false);
+        setIsInitialized(true);
+        
         return { 
           success: true, 
-          requiresApproval: true,
-          message: "Enterprise signup request received. Our sales team will contact you shortly."
+          token, 
+          user: normalizedUser,
+          redirectTo: redirectPath,
+          isTrial: true,
+          trialDays: TRIAL_DAYS
         };
       } catch (err) {
         const message = err.message || "Signup failed";
@@ -576,7 +532,7 @@ export function AuthProvider({ children }) {
         return { success: false, error: message };
       }
     },
-    [persistUser, refreshActivation, getRedirectPath]
+    [persistUser, refreshActivation]
   );
 
   const logout = useCallback(() => {
@@ -596,7 +552,21 @@ export function AuthProvider({ children }) {
     [activation, persistActivation, refreshActivation]
   );
 
-  // Enterprise-specific API calls
+  // Helper to check if user is on trial
+  const isTrialActive = useMemo(() => {
+    if (user?.subscription_status === 'active') return false;
+    if (user?.trial_status === 'active' && user?.trial_ends_at) {
+      return new Date(user.trial_ends_at) > new Date();
+    }
+    return false;
+  }, [user]);
+
+  const trialDaysRemaining = useMemo(() => {
+    if (!isTrialActive || !user?.trial_ends_at) return 0;
+    return getTrialDaysRemaining(user.trial_ends_at);
+  }, [isTrialActive, user]);
+
+  // Enterprise methods
   const getOrganizationDetails = useCallback(async () => {
     if (!user?.organization_id || user?.tier !== "enterprise") {
       return { success: false, error: "Not an enterprise user" };
@@ -777,6 +747,7 @@ export function AuthProvider({ children }) {
     }
   }, [user]);
 
+  // Initial load
   useEffect(() => {
     if (!loadAttemptedRef.current) {
       loadAttemptedRef.current = true;
@@ -785,6 +756,7 @@ export function AuthProvider({ children }) {
     }
   }, [loadCachedState, loadUser]);
 
+  // Auto-refresh activation every 5 minutes
   useEffect(() => {
     const token = getToken();
     if (!token || !user) return;
@@ -821,8 +793,7 @@ export function AuthProvider({ children }) {
 
   const activationComplete = useMemo(() => {
     if (isEnterpriseUser) {
-      return activation?.enterprise_approved === true && 
-             activation?.trading_enabled === true;
+      return activation?.enterprise_approved === true && activation?.trading_enabled === true;
     }
     return activation?.trading_enabled === true && activation?.activation_complete === true;
   }, [activation, isEnterpriseUser]);
@@ -835,9 +806,7 @@ export function AuthProvider({ children }) {
   const hasRequiredIntegrations = useMemo(() => {
     if (!activation) return false;
     
-    if (isEnterpriseUser) {
-      return true;
-    }
+    if (isEnterpriseUser) return true;
 
     const tier = activation.tier || user?.tier || "starter";
 
@@ -887,6 +856,8 @@ export function AuthProvider({ children }) {
       isEnterpriseAdmin,
       hasEnhancedBotControls,
       hasAdminPanelAccess,
+      isTrialActive,
+      trialDaysRemaining,
       signup,
       login,
       logout,
@@ -925,6 +896,8 @@ export function AuthProvider({ children }) {
       isEnterpriseAdmin,
       hasEnhancedBotControls,
       hasAdminPanelAccess,
+      isTrialActive,
+      trialDaysRemaining,
       signup,
       login,
       logout,
