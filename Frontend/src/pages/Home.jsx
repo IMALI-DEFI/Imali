@@ -28,6 +28,16 @@ const API_BASE =
   process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
 const PUBLIC_STATS_URL = `${API_BASE}/api/public/live-stats`;
 
+// Updated pricing structure (matches your actual plans)
+const TIER_PRICES = {
+  starter: { monthly: 0, name: "Starter", description: "7-day free trial" },
+  pro: { monthly: 19, name: "Pro", description: "Live trading + advanced features" },
+  elite: { monthly: 49, name: "Elite", description: "Priority execution + DEX" },
+  stock: { monthly: 99, name: "DeFi", description: "DEX-focused automation" },
+  bundle: { monthly: 199, name: "Bundle", description: "Full platform access" },
+  enterprise: { monthly: "Custom", name: "Enterprise", description: "Custom solution" },
+};
+
 const safeNumber = (value, fallback = 0) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
@@ -454,6 +464,19 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchActivity]);
 
+  // Get the display text for selected tier
+  const getTierDisplayText = (tier) => {
+    const price = TIER_PRICES[tier];
+    if (!price) return "Starter - Free Trial";
+    if (tier === "starter") return "Starter - 7-Day Free Trial";
+    return `${price.name} - $${price.monthly}/mo`;
+  };
+
+  // Get the signup link with tier
+  const getSignupLink = (tier) => {
+    return `/signup?tier=${tier}`;
+  };
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-white via-emerald-50/40 to-white text-gray-900">
       {/* STICKY PROMO BANNER */}
@@ -671,7 +694,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PROMO MESSAGE + FORM (Original positioning restored) */}
+      {/* PROMO MESSAGE + FORM - CORRECT PRICES */}
       <section className="mx-auto max-w-3xl px-4 pb-16 sm:px-6 lg:px-8">
         <Card className="p-6 shadow-xl sm:p-8">
           <div className="mb-4 flex items-start gap-3 sm:items-center">
@@ -727,11 +750,12 @@ export default function Home() {
                 onChange={(e) => setSelectedTier(e.target.value)}
                 className="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-4 text-sm text-gray-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
               >
-                <option value="starter">Starter - Free Trial</option>
-                <option value="pro">Pro - $19/mo</option>
-                <option value="elite">Elite - $49/mo</option>
-                <option value="stock">DeFi - $99/mo</option>
-                <option value="bundle">Bundle - $199/mo</option>
+                <option value="starter">Starter - 7-Day Free Trial</option>
+                <option value="pro">Pro - $19/month</option>
+                <option value="elite">Elite - $49/month</option>
+                <option value="stock">DeFi - $99/month</option>
+                <option value="bundle">Bundle - $199/month</option>
+                <option value="enterprise">Enterprise - Contact Sales</option>
               </select>
 
               {promoClaim.state.error && (
@@ -760,6 +784,16 @@ export default function Home() {
                   Cancel
                 </button>
               </div>
+
+              {/* Price breakdown helper text */}
+              <p className="text-xs text-center text-gray-400 mt-2">
+                {selectedTier === "starter" && "✓ 7-day free trial with $1,000 paper credits"}
+                {selectedTier === "pro" && "✓ $19/month after trial • Live trading + advanced features"}
+                {selectedTier === "elite" && "✓ $49/month after trial • Priority execution + DEX"}
+                {selectedTier === "stock" && "✓ $99/month after trial • DEX-focused automation"}
+                {selectedTier === "bundle" && "✓ $199/month after trial • Full platform access"}
+                {selectedTier === "enterprise" && "✓ Custom pricing • Contact our sales team"}
+              </p>
             </form>
           )}
 
@@ -769,11 +803,16 @@ export default function Home() {
               <p className="text-lg font-bold text-emerald-700">Free Trial Activated!</p>
               <p className="mt-1 text-sm text-gray-600">
                 Check your email, then{" "}
-                <Link to={`/signup?tier=${selectedTier}`} className="text-emerald-600 underline">
+                <Link to={getSignupLink(selectedTier)} className="text-emerald-600 underline">
                   create your account
                 </Link>{" "}
                 to start trading with $1,000 paper credits.
               </p>
+              <div className="mt-3 text-xs text-gray-500">
+                {selectedTier === "starter" && "Your 7-day free trial starts now!"}
+                {selectedTier !== "starter" && selectedTier !== "enterprise" && 
+                  `Your 7-day free trial includes ${TIER_PRICES[selectedTier]?.name} features. Then $${TIER_PRICES[selectedTier]?.monthly}/month.`}
+              </div>
             </div>
           )}
         </Card>
