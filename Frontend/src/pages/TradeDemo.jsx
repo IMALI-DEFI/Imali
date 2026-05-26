@@ -1,4 +1,4 @@
-// src/pages/TradeDemo.jsx - REWRITTEN WITH TRIAL BANNER
+// src/pages/TradeDemo.jsx - REWRITTEN FOR EVENT (Neutral, Demo-First)
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -14,10 +14,11 @@ import {
   FaArrowRight,
   FaWallet,
   FaExchangeAlt,
+  FaBuilding,
 } from "react-icons/fa";
 
 const START_BALANCE = 1000;
-const TRIAL_DAYS = 7;
+const DEMO_ACCESS_DAYS = 7;
 
 const STRATEGIES = [
   {
@@ -89,7 +90,7 @@ export default function TradeDemo() {
   const [streak, setStreak] = useState(0);
 
   const [feed, setFeed] = useState([]);
-  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showDemoPrompt, setShowDemoPrompt] = useState(false);
 
   const justSignedUp = location.state?.justSignedUp;
 
@@ -150,26 +151,26 @@ export default function TradeDemo() {
     setFeed([]);
   };
 
-  // Show upgrade prompt after some demo usage
+  // Show demo prompt after some demo usage
   useEffect(() => {
-    if (totalTrades > 10 && !showUpgrade && !user?.trading_enabled) {
-      setShowUpgrade(true);
+    if (totalTrades > 10 && !showDemoPrompt && !user?.trading_enabled) {
+      setShowDemoPrompt(true);
     }
   }, [totalTrades, user]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
-      {/* TRIAL BANNER - CRITICAL ADDITION */}
+      {/* DEMO ACCESS BANNER - Neutral wording */}
       <div className="sticky top-0 z-50 bg-gradient-to-r from-emerald-600 to-cyan-600">
         <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🎁</span>
             <div>
               <p className="text-sm font-bold text-white">
-                ✅ Your {TRIAL_DAYS}-day free trial has started!
+                Demo Access Active
               </p>
               <p className="text-xs text-white/90">
-                You are currently using simulated trading with virtual funds. No real money used.
+                Explore IMALI using simulated trading and virtual funds. No real money is used.
               </p>
             </div>
           </div>
@@ -183,6 +184,25 @@ export default function TradeDemo() {
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
+        {/* WHAT THIS DEMO SHOWS - New informational box */}
+        <div className={`${card} border-cyan-500/20 bg-gradient-to-r from-cyan-500/5 to-indigo-500/5`}>
+          <h2 className="text-2xl font-bold mb-4 text-white">What This Demo Shows</h2>
+          <div className="grid md:grid-cols-3 gap-4 text-sm text-slate-300">
+            <div className="flex items-start gap-2">
+              <span className="text-emerald-400">✅</span>
+              <span>How automated trading decisions are simulated</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-emerald-400">✅</span>
+              <span>How strategies affect risk and activity</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-emerald-400">✅</span>
+              <span>How users can learn before connecting real accounts</span>
+            </div>
+          </div>
+        </div>
+
         {/* HERO */}
         <div className={`${card} overflow-hidden`}>
           <div className="flex flex-col lg:flex-row gap-8 items-center justify-between">
@@ -192,8 +212,9 @@ export default function TradeDemo() {
                 AI Trading Simulator
               </div>
 
+              {/* Neutral hero headline */}
               <h1 className="text-4xl md:text-5xl font-extrabold mt-5 leading-tight">
-                Practice Automated Trading With Zero Risk
+                Explore Automated Trading in a Safe Demo Environment
               </h1>
 
               <p className="text-slate-300 mt-5 text-lg leading-8">
@@ -220,7 +241,22 @@ export default function TradeDemo() {
                   <FaRedo />
                   Reset
                 </button>
+
+                {/* Enterprise CTA for event leads */}
+                <button
+                  onClick={() => navigate("/enterprise")}
+                  className="rounded-2xl px-6 py-3 font-bold bg-white/10 hover:bg-white/20 border border-white/10 flex items-center gap-2"
+                >
+                  <FaBuilding />
+                  View Enterprise Overview
+                </button>
               </div>
+
+              {/* No account connection required message */}
+              <p className="text-sm text-slate-400 mt-4 flex items-center gap-2">
+                <FaShieldAlt className="text-emerald-400 text-xs" />
+                No API keys, wallet, or brokerage connection required for this demo.
+              </p>
             </div>
 
             <div className="w-full max-w-sm">
@@ -352,29 +388,29 @@ export default function TradeDemo() {
                 <li>✅ Learn automation safely</li>
                 <li>✅ Explore risk management</li>
                 <li>✅ Understand AI-assisted strategies</li>
-                <li>✅ Practice before live trading</li>
+                <li>✅ Practice before connecting real accounts</li>
               </ul>
             </div>
 
-            {/* UPGRADE PROMPT - Shows after user enjoys the demo */}
-            {showUpgrade && (
-              <div className="rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 p-5 animate-pulse">
-                <div className="text-3xl mb-3">🚀</div>
-                <h3 className="font-bold text-lg">Ready to unlock live trading?</h3>
+            {/* Demo continuation prompt - Neutral wording */}
+            {showDemoPrompt && (
+              <div className="rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 p-5">
+                <div className="text-3xl mb-3">💡</div>
+                <h3 className="font-bold text-lg">Want to continue after the demo?</h3>
                 <p className="text-sm text-gray-300 mt-2">
-                  Connect OKX or Alpaca to start trading with real markets.
+                  Users can connect supported accounts later if they choose to continue.
                 </p>
                 <button
                   onClick={() => navigate("/activation")}
                   className="mt-4 w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold transition flex items-center justify-center gap-2"
                 >
-                  <FaExchangeAlt /> Connect Exchange
+                  <FaExchangeAlt /> Continue Setup
                 </button>
                 <button
                   onClick={() => navigate("/pricing")}
                   className="mt-2 w-full py-2 rounded-xl border border-white/20 hover:bg-white/10 font-semibold transition text-sm"
                 >
-                  View Plans →
+                  View Access Options →
                 </button>
               </div>
             )}
@@ -382,49 +418,55 @@ export default function TradeDemo() {
             <div className={card}>
               <div className="flex items-center gap-2 mb-4">
                 <FaTrophy className="text-yellow-300" />
-                <h2 className="font-bold text-xl">Available Plans</h2>
+                <h2 className="font-bold text-xl">Access Options</h2>
               </div>
               <div className="space-y-3">
                 <div className="rounded-2xl bg-black/20 border border-white/10 p-4">
-                  <div className="font-bold">🎟️ Starter</div>
-                  <div className="text-sm text-white/50 mt-1">Learn with paper trading</div>
+                  <div className="font-bold">🎟️ Demo Access</div>
+                  <div className="text-sm text-white/50 mt-1">Learn with paper trading simulator</div>
                 </div>
                 <div className="rounded-2xl bg-black/20 border border-white/10 p-4">
-                  <div className="font-bold">⭐ Pro</div>
-                  <div className="text-sm text-white/50 mt-1">Advanced analytics + AI</div>
+                  <div className="font-bold">⭐ Pro Access</div>
+                  <div className="text-sm text-white/50 mt-1">Advanced analytics + AI strategies</div>
                 </div>
                 <div className="rounded-2xl bg-black/20 border border-white/10 p-4">
-                  <div className="font-bold">👑 Elite</div>
-                  <div className="text-sm text-white/50 mt-1">Full exchange access</div>
+                  <div className="font-bold">👑 Elite Access</div>
+                  <div className="text-sm text-white/50 mt-1">Full exchange connectivity + DeFi</div>
                 </div>
               </div>
-              <Link to="/pricing" className="mt-5 flex items-center justify-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-3 font-bold transition">
-                View Pricing <FaArrowRight />
-              </Link>
+              <button
+                onClick={() => navigate("/pricing")}
+                className="mt-5 flex items-center justify-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-3 font-bold transition w-full"
+              >
+                View Access Options <FaArrowRight />
+              </button>
             </div>
           </div>
         </div>
 
-        {/* FINAL CTA - After enjoying demo */}
+        {/* FINAL CTA - Neutral wording */}
         <div className="rounded-3xl border border-indigo-500/20 bg-gradient-to-r from-indigo-600/10 to-purple-600/10 p-8 text-center">
           <div className="text-5xl mb-4">🚀</div>
-          <h2 className="text-3xl font-extrabold">Ready to continue after your free trial?</h2>
+          <h2 className="text-3xl font-extrabold">Want to continue after the demo?</h2>
           <p className="text-slate-300 mt-4 max-w-3xl mx-auto leading-8">
-            Upgrade to Pro for live trading, advanced automation, and full exchange connectivity.
+            Users can upgrade to Pro for live trading, advanced automation, and full exchange connectivity when they're ready.
           </p>
           <div className="flex flex-wrap justify-center gap-4 mt-8">
             <button onClick={() => navigate("/pricing")} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-8 py-4 font-bold transition">
-              Upgrade to Pro →
+              View Access Options →
+            </button>
+            <button onClick={() => navigate("/enterprise")} className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-8 py-4 font-bold transition">
+              View Enterprise Overview
             </button>
             <button onClick={() => navigate("/activation")} className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-8 py-4 font-bold transition">
-              Connect Exchange Later
+              Continue Setup Later
             </button>
           </div>
         </div>
 
         <div className="text-center text-xs text-white/30 pb-4">
           Demo environment only. Educational and simulation purposes. No real money used.
-          Your {TRIAL_DAYS}-day free trial is active.
+          Demo access is active.
         </div>
       </div>
     </div>
