@@ -1,4 +1,4 @@
-// src/admin/ReportsTab.jsx
+// src/admin/ReportsTab.jsx - Updated version using the API
 import React, { useState } from "react";
 import { 
   FaDownload, 
@@ -15,6 +15,18 @@ import {
   FaClock,
   FaExchangeAlt
 } from "react-icons/fa";
+import { getTradeReport, getUserReport, exportReport } from "../api/user-api";
+
+// Safe number formatter
+const safeToFixed = (value, decimals = 2) => {
+  const num = typeof value === 'number' ? value : parseFloat(value);
+  return isNaN(num) ? '0.00' : num.toFixed(decimals);
+};
+
+const safeNumber = (value) => {
+  const num = typeof value === 'number' ? value : parseFloat(value);
+  return isNaN(num) ? 0 : num;
+};
 
 export default function ReportsTab({ apiBase, showToast }) {
   const [reportType, setReportType] = useState("trades");
@@ -36,20 +48,23 @@ export default function ReportsTab({ apiBase, showToast }) {
   const generateReport = async () => {
     setLoading(true);
     try {
-      let url = `/api/admin/reports/${reportType}?`;
-      
-      if (dateRange.start) url += `start_date=${dateRange.start}&`;
-      if (dateRange.end) url += `end_date=${dateRange.end}&`;
-      if (filters.bot) url += `bot=${filters.bot}&`;
-      if (filters.status) url += `status=${filters.status}&`;
-      if (filters.min_pnl) url += `min_pnl=${filters.min_pnl}&`;
-      if (filters.max_pnl) url += `max_pnl=${filters.max_pnl}&`;
-      if (filters.symbol) url += `symbol=${filters.symbol}&`;
-      
-      const response = await fetch(`${apiBase}${url}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
-      });
-      const data = await response.json();
+      let data;
+      if (reportType === 'trades') {
+        data = await getTradeReport({
+          start_date: dateRange.start,
+          end_date: dateRange.end,
+          bot: filters.bot,
+          status: filters.status,
+          symbol: filters.symbol,
+          min_pnl: filters.min_pnl,
+          max_pnl: filters.max_pnl
+        });
+      } else {
+        data = await getUserReport({
+          start_date: dateRange.start,
+          end_date: dateRange.end
+        });
+      }
       
       if (data.success) {
         setReportData(data.data);
@@ -59,34 +74,39 @@ export default function ReportsTab({ apiBase, showToast }) {
       }
     } catch (error) {
       console.error("Report generation failed:", error);
-      showToast("Failed to generate report", "error");
+      showToast(error.message || "Failed to generate report", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const exportReport = async () => {
+  const exportReportHandler = async () => {
     try {
-      let url = `/api/admin/reports/${reportType}?format=${exportFormat}`;
-      if (dateRange.start) url += `&start_date=${dateRange.start}`;
-      if (dateRange.end) url += `&end_date=${dateRange.end}`;
-      if (filters.bot) url += `&bot=${filters.bot}`;
-      if (filters.status) url += `&status=${filters.status}`;
+      const params = {
+        start_date: dateRange.start,
+        end_date: dateRange.end
+      };
       
-      const response = await fetch(`${apiBase}${url}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('imali_token')}` }
-      });
+      if (reportType === 'trades') {
+        params.bot = filters.bot;
+        params.status = filters.status;
+        params.symbol = filters.symbol;
+        params.min_pnl = filters.min_pnl;
+        params.max_pnl = filters.max_pnl;
+      }
       
-      const blob = await response.blob();
+      const blob = await exportReport(reportType, exportFormat, params);
+      
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
-      a.download = `${reportType}_report_${Date.now()}.${exportFormat === "csv" ? "csv" : "xlsx"}`;
+      a.download = `${reportType}_report_${Date.now()}.${exportFormat === 'csv' ? 'csv' : 'xlsx'}`;
       a.click();
       window.URL.revokeObjectURL(downloadUrl);
       showToast("Export started", "success");
     } catch (error) {
-      showToast("Export failed", "error");
+      console.error("Export failed:", error);
+      showToast(error.message || "Export failed", "error");
     }
   };
 
@@ -102,6 +122,7 @@ export default function ReportsTab({ apiBase, showToast }) {
       start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       end: new Date().toISOString().split('T')[0]
     });
+    setReportData(null);
   };
 
   const getQuickDateRange = (days) => {
@@ -128,7 +149,7 @@ export default function ReportsTab({ apiBase, showToast }) {
             <label className="mb-2 block text-sm text-white/70">Report Type</label>
             <div className="flex gap-3">
               <button
-                onClick={() => setReportType("trades")}
+                onClick={() => { setReportType("trades"); setReportData(null); }}
                 className={`flex-1 rounded-lg px-4 py-3 text-sm font-medium transition-all ${
                   reportType === "trades" 
                     ? "bg-emerald-600 shadow-lg" 
@@ -138,7 +159,7 @@ export default function ReportsTab({ apiBase, showToast }) {
                 <FaExchangeAlt className="inline mr-2" /> Trade Report
               </button>
               <button
-                onClick={() => setReportType("users")}
+                onClick={() => { setReportType("users"); setReportData(null); }}
                 className={`flex-1 rounded-lg px-4 py-3 text-sm font-medium transition-all ${
                   reportType === "users" 
                     ? "bg-emerald-600 shadow-lg" 
@@ -227,7 +248,7 @@ export default function ReportsTab({ apiBase, showToast }) {
                 type="text"
                 placeholder="e.g., BTC, ETH, AAPL"
                 value={filters.symbol}
-                onChange={(e) => setFilters({ ...filters, symbol: e.target.value })}
+                onChange={(e) => setFilters({ ...filters, symbol: e.target.value.toUpperCase() })}
                 className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/30"
               />
             </div>
@@ -279,7 +300,7 @@ export default function ReportsTab({ apiBase, showToast }) {
                   <option value="excel">Excel</option>
                 </select>
                 <button
-                  onClick={exportReport}
+                  onClick={exportReportHandler}
                   className="flex items-center gap-2 rounded-lg border border-white/10 px-6 py-2.5 font-medium transition hover:bg-white/5"
                 >
                   {exportFormat === "csv" ? <FaFileCsv /> : <FaFileExcel />}
@@ -314,21 +335,25 @@ export default function ReportsTab({ apiBase, showToast }) {
           <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
             <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-center">
               <div className="text-xs text-white/50">Total {reportType === "trades" ? "Trades" : "Users"}</div>
-              <div className="text-xl font-bold text-white">{reportData.summary?.total_trades || reportData.users?.length || 0}</div>
+              <div className="text-xl font-bold text-white">
+                {reportType === "trades" 
+                  ? reportData.summary?.total_trades || 0
+                  : reportData.summary?.total_users || 0}
+              </div>
             </div>
             <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-center">
               <div className="text-xs text-white/50">Total PnL</div>
-              <div className={`text-xl font-bold ${(reportData.summary?.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ${(reportData.summary?.total_pnl || 0).toFixed(2)}
+              <div className={`text-xl font-bold ${safeNumber(reportData.summary?.total_pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                ${safeToFixed(reportData.summary?.total_pnl)}
               </div>
             </div>
             <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-center">
               <div className="text-xs text-white/50">Win Rate</div>
-              <div className="text-xl font-bold text-white">{reportData.summary?.win_rate || 0}%</div>
+              <div className="text-xl font-bold text-white">{safeToFixed(reportData.summary?.win_rate)}%</div>
             </div>
             <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-center">
               <div className="text-xs text-white/50">Total Volume</div>
-              <div className="text-xl font-bold text-white">${(reportData.summary?.total_volume || 0).toFixed(2)}</div>
+              <div className="text-xl font-bold text-white">${safeToFixed(reportData.summary?.total_volume)}</div>
             </div>
           </div>
 
@@ -355,8 +380,8 @@ export default function ReportsTab({ apiBase, showToast }) {
                       <tr key={name} className="border-b border-white/5">
                         <td className="px-3 py-2 font-medium capitalize">{name}</td>
                         <td className="px-3 py-2 text-right">{data.count}</td>
-                        <td className={`px-3 py-2 text-right ${data.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          ${data.pnl.toFixed(2)}
+                        <td className={`px-3 py-2 text-right ${safeNumber(data.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          ${safeToFixed(data.pnl)}
                         </td>
                         <td className="px-3 py-2 text-right text-green-400">{data.wins}</td>
                         <td className="px-3 py-2 text-right text-red-400">{data.losses}</td>
@@ -395,13 +420,13 @@ export default function ReportsTab({ apiBase, showToast }) {
                       <tr key={idx} className="border-b border-white/5 hover:bg-white/5">
                         <td className="px-3 py-2">{user.email?.split('@')[0] || user.id?.slice(0, 8)}</td>
                         <td className="px-3 py-2 text-right">{user.total_trades || 0}</td>
-                        <td className={`px-3 py-2 text-right ${(user.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          ${(user.total_pnl || 0).toFixed(2)}
+                        <td className={`px-3 py-2 text-right ${safeNumber(user.total_pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          ${safeToFixed(user.total_pnl)}
                         </td>
                         <td className="px-3 py-2 text-right text-green-400">{user.winning_trades || 0}</td>
                         <td className="px-3 py-2 text-right text-red-400">{user.losing_trades || 0}</td>
-                        <td className="px-3 py-2 text-right">{user.win_rate?.toFixed(1) || 0}%</td>
-                        <td className="px-3 py-2 text-right">${(user.total_volume || 0).toFixed(2)}</td>
+                        <td className="px-3 py-2 text-right">{safeToFixed(user.win_rate)}%</td>
+                        <td className="px-3 py-2 text-right">${safeToFixed(user.total_volume)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -434,13 +459,13 @@ export default function ReportsTab({ apiBase, showToast }) {
                       <tr key={idx} className="border-b border-white/5">
                         <td className="px-2 py-2">{trade.user_email?.split('@')[0] || trade.user_id?.slice(0, 8)}</td>
                         <td className="px-2 py-2 font-medium">{trade.symbol}</td>
-                        <td className="px-2 py-2 text-right">{trade.qty?.toFixed(4)}</td>
-                        <td className="px-2 py-2 text-right">${trade.price?.toFixed(2)}</td>
-                        <td className={`px-2 py-2 text-right ${trade.pnl_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          ${trade.pnl_usd?.toFixed(2)}
+                        <td className="px-2 py-2 text-right">{safeToFixed(trade.qty, 4)}</td>
+                        <td className="px-2 py-2 text-right">${safeToFixed(trade.price)}</td>
+                        <td className={`px-2 py-2 text-right ${safeNumber(trade.pnl_usd) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          ${safeToFixed(trade.pnl_usd)}
                         </td>
                         <td className="px-2 py-2 capitalize">{trade.bot || '-'}</td>
-                        <td className="px-2 py-2">{new Date(trade.created_at).toLocaleDateString()}</td>
+                        <td className="px-2 py-2">{trade.created_at ? new Date(trade.created_at).toLocaleDateString() : 'N/A'}</td>
                       </tr>
                     ))}
                   </tbody>
