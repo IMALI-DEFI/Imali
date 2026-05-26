@@ -84,6 +84,9 @@ const TradesManagement = lazy(() => import("../admin/TradesManagement.jsx"));
 const AutoResponder = lazy(() => import("../admin/AutoResponder.jsx"));
 const NewsletterManager = lazy(() => import("../admin/NewsletterManager.jsx"));
 
+// NEW: Referral Partners Component
+const ReferralPartners = lazy(() => import("../admin/ReferralPartners.jsx"));
+
 // Enterprise Admin Components
 const EnterpriseRequestsManager = lazy(() => import("../admin/EnterpriseRequestsManager.jsx"));
 const OrganizationManager = lazy(() => import("../admin/OrganizationManager.jsx"));
@@ -385,9 +388,20 @@ const TAB_SECTIONS = [
         actions: [{ id: "refresh", label: "Refresh", icon: "🔄", endpoint: "/api/admin/promo/list", method: "GET" }],
       },
       {
+        key: "referral-partners",
+        label: "Referral Partners",
+        emoji: "🤝",
+        component: ReferralPartners,
+        description: "Users who have referred others to the platform.",
+        help: "See all referral partners, their referral codes, earnings, and track which users they've referred.",
+        actions: [
+          { id: "refresh", label: "Refresh List", icon: "🔄", endpoint: "/api/admin/referrals/partners", method: "GET" }
+        ],
+      },
+      {
         key: "referrals",
-        label: "Referrals",
-        emoji: "🧲",
+        label: "Referral Analytics",
+        emoji: "📊",
         component: ReferralAnalytics,
         description: "Track user invite performance.",
         help: "View top referrers and referral conversion rates.",
@@ -590,7 +604,7 @@ export default function AdminPanel({ forceOwner = false }) {
       totalUsers: Number(data.users?.total || 0),
       totalTrades: Number(data.trades?.total || 0),
       totalPnl: Number(data.pnl?.total || 0),
-      winRate: Number(data.trades?.win_rate || 0),
+      winRate: Number(data.trading?.winRate || 0),
       pendingWithdrawals: Number(data.revenue?.pending_withdrawals || 0),
       openTickets: Number(data.tickets?.length || 0),
       activePromos: Number(data.promos?.length || 0),
