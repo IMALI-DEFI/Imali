@@ -1,4 +1,4 @@
-// src/admin/ReportsTab.jsx - Updated version using the API
+// src/admin/ReportsTab.jsx
 import React, { useState } from "react";
 import { 
   FaDownload, 
@@ -15,7 +15,7 @@ import {
   FaClock,
   FaExchangeAlt
 } from "react-icons/fa";
-import { getTradeReport, getUserReport, exportReport } from "../api/user-api";
+import useAdmin from "../hooks/useAdmin";
 
 // Safe number formatter
 const safeToFixed = (value, decimals = 2) => {
@@ -29,6 +29,7 @@ const safeNumber = (value) => {
 };
 
 export default function ReportsTab({ apiBase, showToast }) {
+  const { adminFetch } = useAdmin();
   const [reportType, setReportType] = useState("trades");
   const [dateRange, setDateRange] = useState({ 
     start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], 
@@ -48,29 +49,25 @@ export default function ReportsTab({ apiBase, showToast }) {
   const generateReport = async () => {
     setLoading(true);
     try {
-      let data;
+      let url;
       if (reportType === 'trades') {
-        data = await getTradeReport({
-          start_date: dateRange.start,
-          end_date: dateRange.end,
-          bot: filters.bot,
-          status: filters.status,
-          symbol: filters.symbol,
-          min_pnl: filters.min_pnl,
-          max_pnl: filters.max_pnl
-        });
+        url = `/api/admin/reports/trades?start_date=${dateRange.start}&end_date=${dateRange.end}`;
+        if (filters.bot) url += `&bot=${filters.bot}`;
+        if (filters.status) url += `&status=${filters.status}`;
+        if (filters.symbol) url += `&symbol=${filters.symbol}`;
+        if (filters.min_pnl) url += `&min_pnl=${filters.min_pnl}`;
+        if (filters.max_pnl) url += `&max_pnl=${filters.max_pnl}`;
       } else {
-        data = await getUserReport({
-          start_date: dateRange.start,
-          end_date: dateRange.end
-        });
+        url = `/api/admin/reports/users?start_date=${dateRange.start}&end_date=${dateRange.end}`;
       }
       
-      if (data.success) {
+      const data = await adminFetch(url);
+      
+      if (data && data.success) {
         setReportData(data.data);
         showToast("Report generated successfully", "success");
       } else {
-        showToast(data.error || "Failed to generate report", "error");
+        showToast(data?.error || "Failed to generate report", "error");
       }
     } catch (error) {
       console.error("Report generation failed:", error);
@@ -82,21 +79,31 @@ export default function ReportsTab({ apiBase, showToast }) {
 
   const exportReportHandler = async () => {
     try {
-      const params = {
-        start_date: dateRange.start,
-        end_date: dateRange.end
-      };
+      let url = `/api/admin/reports/${reportType}?format=${exportFormat}`;
+      url += `&start_date=${dateRange.start}&end_date=${dateRange.end}`;
       
       if (reportType === 'trades') {
-        params.bot = filters.bot;
-        params.status = filters.status;
-        params.symbol = filters.symbol;
-        params.min_pnl = filters.min_pnl;
-        params.max_pnl = filters.max_pnl;
+        if (filters.bot) url += `&bot=${filters.bot}`;
+        if (filters.status) url += `&status=${filters.status}`;
+        if (filters.symbol) url += `&symbol=${filters.symbol}`;
+        if (filters.min_pnl) url += `&min_pnl=${filters.min_pnl}`;
+        if (filters.max_pnl) url += `&max_pnl=${filters.max_pnl}`;
       }
       
-      const blob = await exportReport(reportType, exportFormat, params);
+      // Get auth token
+      const token = localStorage.getItem('imali_token');
+      const response = await fetch(`${apiBase}${url}`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
       
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
@@ -466,7 +473,7 @@ export default function ReportsTab({ apiBase, showToast }) {
                         </td>
                         <td className="px-2 py-2 capitalize">{trade.bot || '-'}</td>
                         <td className="px-2 py-2">{trade.created_at ? new Date(trade.created_at).toLocaleDateString() : 'N/A'}</td>
-                      </tr>
+                      </table>
                     ))}
                   </tbody>
                 </table>
