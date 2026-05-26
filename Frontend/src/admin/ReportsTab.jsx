@@ -90,7 +90,6 @@ export default function ReportsTab({ apiBase, showToast }) {
         if (filters.max_pnl) url += `&max_pnl=${filters.max_pnl}`;
       }
       
-      // Get auth token
       const token = localStorage.getItem('imali_token');
       const response = await fetch(`${apiBase}${url}`, {
         headers: { 
@@ -473,7 +472,7 @@ export default function ReportsTab({ apiBase, showToast }) {
                         </td>
                         <td className="px-2 py-2 capitalize">{trade.bot || '-'}</td>
                         <td className="px-2 py-2">{trade.created_at ? new Date(trade.created_at).toLocaleDateString() : 'N/A'}</td>
-                      </table>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
