@@ -94,6 +94,48 @@ const ACHIEVEMENTS = [
   { id: "api_ready", label: "API Ready", icon: "🔌" },
 ];
 
+// ==============================================
+// TIER ACCESS DEFINITIONS
+// ==============================================
+const tierAccess = {
+  starter: {
+    label: "Starter",
+    canPaperTrade: true,
+    canLiveTrade: false,
+    canUseStocks: false,
+    canUseCrypto: false,
+    canUseDefi: false,
+    upgradeMessage: "Upgrade to Pro for live trading with real funds.",
+  },
+  pro: {
+    label: "Pro",
+    canPaperTrade: true,
+    canLiveTrade: true,
+    canUseStocks: true,
+    canUseCrypto: true,
+    canUseDefi: false,
+    upgradeMessage: null,
+  },
+  elite: {
+    label: "Elite",
+    canPaperTrade: true,
+    canLiveTrade: true,
+    canUseStocks: true,
+    canUseCrypto: true,
+    canUseDefi: true,
+    upgradeMessage: null,
+  },
+  bundle: {
+    label: "Bundle",
+    canPaperTrade: true,
+    canLiveTrade: true,
+    canUseStocks: true,
+    canUseCrypto: true,
+    canUseDefi: true,
+    upgradeMessage: null,
+  },
+};
+
 const usd = (n = 0) => `$${Number(n || 0).toFixed(2)}`;
 const pct = (n = 0) => `${Number(n || 0).toFixed(1)}%`;
 
@@ -448,7 +490,6 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
 
 // ============ PROFESSIONAL CHART.JS CHARTS ============
 
-// 1. Animated Gradient Line Chart (Equity Curve)
 const EquityCurveChart = ({ data }) => {
   const chartRef = useRef(null);
   
@@ -569,7 +610,6 @@ const EquityCurveChart = ({ data }) => {
   );
 };
 
-// 2. Animated Bar Chart (Trade Volume)
 const TradeVolumeChart = ({ data }) => {
   const chartRef = useRef(null);
   
@@ -656,7 +696,6 @@ const TradeVolumeChart = ({ data }) => {
   );
 };
 
-// 3. Strategy Radar Chart
 const StrategyRadarChart = ({ strategyData }) => {
   const chartRef = useRef(null);
   
@@ -736,7 +775,6 @@ const StrategyRadarChart = ({ strategyData }) => {
   );
 };
 
-// 4. Custom Gauge Meter (Win Rate) - Kept from your design
 const WinRateMeter = ({ wins, losses }) => {
   const total = wins + losses;
   const winRate = total > 0 ? (wins / total) * 100 : 0;
@@ -760,7 +798,6 @@ const WinRateMeter = ({ wins, losses }) => {
               </feMerge>
             </filter>
           </defs>
-          {/* Semi-circle background */}
           <path
             d="M 30 130 A 100 100 0 0 1 230 130"
             fill="none"
@@ -768,7 +805,6 @@ const WinRateMeter = ({ wins, losses }) => {
             strokeWidth="25"
             strokeLinecap="round"
           />
-          {/* Gradient progress arc */}
           <path
             d="M 30 130 A 100 100 0 0 1 230 130"
             fill="none"
@@ -778,7 +814,6 @@ const WinRateMeter = ({ wins, losses }) => {
             strokeDasharray={`${(angle / 180) * 314} 314`}
             className="transition-all duration-1000"
           />
-          {/* Needle with glow */}
           <line
             x1="130"
             y1="130"
@@ -793,7 +828,6 @@ const WinRateMeter = ({ wins, losses }) => {
           <circle cx="130" cy="130" r="8" fill="#1e293b" />
           <circle cx="130" cy="130" r="4" fill="#6366f1" />
           
-          {/* Center text */}
           <text x="130" y="80" textAnchor="middle" className="text-4xl font-extrabold fill-slate-900">
             {winRate.toFixed(0)}%
           </text>
@@ -817,7 +851,6 @@ const WinRateMeter = ({ wins, losses }) => {
   );
 };
 
-// 5. Premium Metric Tile
 const PremiumMetricTile = ({ title, value, change, icon, color }) => {
   const isPositive = change > 0;
   
@@ -841,6 +874,124 @@ const PremiumMetricTile = ({ title, value, change, icon, color }) => {
     </div>
   );
 };
+
+// ==============================================
+// TIER AWARE CARD COMPONENT
+// ==============================================
+function TierAwareCard({ tier, access, onUpgrade }) {
+  const isUpgradeNeeded = !access.canLiveTrade;
+  
+  return (
+    <div className="rounded-3xl border-2 border-purple-200 bg-gradient-to-r from-purple-50/80 to-indigo-50/60 p-5 shadow-md backdrop-blur-sm sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-extrabold text-purple-950 sm:text-2xl">
+              Your Plan: {access.label}
+            </h2>
+            <StatusPill tone={access.canLiveTrade ? "green" : "amber"}>
+              {access.canLiveTrade ? "Live Ready" : "Paper Only"}
+            </StatusPill>
+          </div>
+          <p className="mt-2 text-sm font-semibold text-purple-800">
+            {access.canLiveTrade
+              ? "✅ You can connect APIs and use live trading features."
+              : "📝 Your current plan is best for demo and paper trading. Practice with virtual funds first."}
+          </p>
+          {!access.canUseStocks && (
+            <p className="mt-1 text-xs text-purple-700">
+              ⚠️ Stocks require Pro or higher
+            </p>
+          )}
+          {!access.canUseCrypto && (
+            <p className="mt-1 text-xs text-purple-700">
+              ⚠️ Crypto requires Pro or higher
+            </p>
+          )}
+          {!access.canUseDefi && access.canLiveTrade && (
+            <p className="mt-1 text-xs text-purple-700">
+              💎 DeFi features require Elite upgrade
+            </p>
+          )}
+        </div>
+        {isUpgradeNeeded && (
+          <Button variant="warning" onClick={onUpgrade} className="w-full sm:w-auto">
+            🚀 Upgrade to Live Trading
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ==============================================
+// NEXT ACTION CARD - "What should I do next?"
+// ==============================================
+function NextActionCard({ nextAction, onAction }) {
+  if (!nextAction) return null;
+  
+  const actionConfig = {
+    connect_keys: {
+      title: "🔌 Connect Your API Keys",
+      description: "Imali needs Alpaca and OKX keys to trade for you.",
+      buttonText: "Connect Keys",
+      color: "warning",
+    },
+    start_paper: {
+      title: "🎮 Start Paper Trading",
+      description: "Practice with $1,000 virtual funds. No real money risk.",
+      buttonText: "Start Paper Trading",
+      color: "primary",
+    },
+    choose_strategy: {
+      title: "🎯 Choose Your Strategy",
+      description: "Pick a trading strategy that matches your risk tolerance.",
+      buttonText: "Pick Strategy",
+      color: "secondary",
+    },
+    upgrade_to_live: {
+      title: "💰 Upgrade to Live Trading",
+      description: "Your Pro/Elite plan is ready. Connect keys and start live trading.",
+      buttonText: "View Plans",
+      color: "warning",
+    },
+    enable_live: {
+      title: "⚡ Enable Live Trading",
+      description: "Your keys are connected. Turn on live trading with real funds.",
+      buttonText: "Enable Live",
+      color: "warning",
+    },
+    learn_defi: {
+      title: "🔗 Connect DeFi Wallet",
+      description: "Elite users can connect MetaMask for decentralized trading.",
+      buttonText: "Connect Wallet",
+      color: "purple",
+    },
+    complete_setup: {
+      title: "✅ Complete Your Setup",
+      description: "Visit Activation to finish your account configuration.",
+      buttonText: "Go to Activation",
+      color: "secondary",
+    },
+  };
+  
+  const config = actionConfig[nextAction];
+  if (!config) return null;
+  
+  return (
+    <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-blue-50/60">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-lg font-extrabold text-indigo-950">{config.title}</h3>
+          <p className="mt-1 text-sm font-semibold text-indigo-800">{config.description}</p>
+        </div>
+        <Button variant={config.color} onClick={onAction} className="w-full sm:w-auto">
+          {config.buttonText}
+        </Button>
+      </div>
+    </Card>
+  );
+}
 
 export default function MemberDashboard() {
   const nav = useNavigate();
@@ -872,13 +1023,39 @@ export default function MemberDashboard() {
   const [togglingPaper, setTogglingPaper] = useState(false);
   const [executingTrade, setExecutingTrade] = useState(false);
 
+  // Get user tier
+  const userTier = useMemo(() => {
+    const tier = user?.tier || user?.plan || "starter";
+    return tier.toLowerCase();
+  }, [user?.tier, user?.plan]);
+  
+  const access = useMemo(() => tierAccess[userTier] || tierAccess.starter, [userTier]);
+  
   const alpacaConnected = !!integrations.alpaca_connected;
   const okxConnected = !!integrations.okx_connected;
   const bothConnected = alpacaConnected && okxConnected;
   const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
   const anyTradingActionBusy = togglingPaper || togglingTrading;
   
-  // Get radar data for current strategy
+  // Determine next recommended action based on user status and tier
+  const nextAction = useMemo(() => {
+    // Starter tier - can't do live trading
+    if (!access.canLiveTrade) {
+      if (!bothConnected) return "connect_keys";
+      if (!paperTradingEnabled) return "start_paper";
+      if (paperTradingEnabled) return "upgrade_to_live";
+      return "complete_setup";
+    }
+    
+    // Pro/Elite tier - can do live trading
+    if (!bothConnected) return "connect_keys";
+    if (!paperTradingEnabled) return "start_paper";
+    if (paperTradingEnabled && !tradingEnabled && bothConnected) return "enable_live";
+    if (access.canUseDefi && !integrations.wallet_connected) return "learn_defi";
+    if (paperTradingEnabled && tradingEnabled) return null; // All good!
+    return "complete_setup";
+  }, [access, bothConnected, paperTradingEnabled, tradingEnabled, integrations.wallet_connected]);
+  
   const currentRadarData = activeStrategy?.radarData || STRATEGIES[0].radarData;
 
   const displayStats = useMemo(() => {
@@ -894,11 +1071,11 @@ export default function MemberDashboard() {
 
   const readiness = useMemo(() => {
     let score = 0;
-    if (alpacaConnected) score += 25;
-    if (okxConnected) score += 25;
+    if (alpacaConnected) score += 20;
+    if (okxConnected) score += 20;
     if (paperTradingEnabled) score += 20;
-    if (currentStrategy) score += 15;
-    if (tradingEnabled) score += 15;
+    if (currentStrategy) score += 20;
+    if (tradingEnabled) score += 20;
     return Math.min(100, score);
   }, [alpacaConnected, okxConnected, paperTradingEnabled, currentStrategy, tradingEnabled]);
 
@@ -916,6 +1093,10 @@ export default function MemberDashboard() {
     window.clearTimeout(window.__imaliToastTimer);
     window.__imaliToastTimer = window.setTimeout(() => setToast({ message: "", type: "info" }), 4500);
   }, []);
+
+  const handleUpgrade = useCallback(() => {
+    nav("/pricing");
+  }, [nav]);
 
   const handleLogout = useCallback(() => {
     BotAPI.clearToken?.();
@@ -1087,6 +1268,12 @@ export default function MemberDashboard() {
   const handleTogglePaperTrading = async (enabled) => {
     if (togglingPaper || togglingTrading) return;
 
+    // Check tier access first
+    if (!access.canPaperTrade) {
+      notify("Your plan does not include paper trading.", "error");
+      return;
+    }
+
     if (enabled && !bothConnected) {
       setShowApiModal(true);
       notify("Connect Alpaca and OKX before starting paper trading.", "error");
@@ -1130,6 +1317,12 @@ export default function MemberDashboard() {
 
   const handleToggleTrading = async (enabled) => {
     if (togglingTrading || togglingPaper) return;
+
+    // Check tier access first
+    if (!access.canLiveTrade) {
+      notify(`Your ${access.label} plan does not include live trading. Upgrade to Pro or Elite.`, "error");
+      return;
+    }
 
     if (enabled && !bothConnected) {
       setShowApiModal(true);
@@ -1218,6 +1411,34 @@ export default function MemberDashboard() {
     }
   };
 
+  const handleNextAction = useCallback(() => {
+    switch (nextAction) {
+      case "connect_keys":
+        setShowApiModal(true);
+        break;
+      case "start_paper":
+        handleTogglePaperTrading(true);
+        break;
+      case "choose_strategy":
+        document.getElementById("strategies-section")?.scrollIntoView({ behavior: "smooth" });
+        break;
+      case "upgrade_to_live":
+        nav("/pricing");
+        break;
+      case "enable_live":
+        setShowLiveConfirm(true);
+        break;
+      case "learn_defi":
+        nav("/activation?step=wallet");
+        break;
+      case "complete_setup":
+        nav("/activation");
+        break;
+      default:
+        break;
+    }
+  }, [nextAction, nav, handleTogglePaperTrading]);
+
   useEffect(() => {
     mountedRef.current = true;
     loadDashboard({ silent: false, force: true });
@@ -1230,12 +1451,12 @@ export default function MemberDashboard() {
   }, [loadDashboard]);
 
   useEffect(() => {
-    if (paperTradingEnabled && !autoTradingEnabled && !tradingEnabled) {
+    if (paperTradingEnabled && !autoTradingEnabled && !tradingEnabled && access.canPaperTrade) {
       startAutoTrading();
     } else if (!paperTradingEnabled && autoTradingEnabled) {
       stopAutoTrading();
     }
-  }, [paperTradingEnabled, autoTradingEnabled, tradingEnabled, startAutoTrading, stopAutoTrading]);
+  }, [paperTradingEnabled, autoTradingEnabled, tradingEnabled, access.canPaperTrade, startAutoTrading, stopAutoTrading]);
 
   if (loading) {
     return (
@@ -1260,7 +1481,9 @@ export default function MemberDashboard() {
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
                 {paperTradingEnabled && !tradingEnabled 
                   ? "🤖 Auto-trading is active! Trades execute every 30 seconds. Watch your portfolio grow in real-time."
-                  : "Start with paper trading, watch your equity curve, then turn on live trading when you are ready."}
+                  : access.canLiveTrade 
+                    ? "Ready for live trading? Connect your API keys and start with paper trading first."
+                    : "Start with paper trading, then upgrade to Pro when you're ready for live funds."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>Paper {paperTradingEnabled ? "Active" : "Off"}</StatusPill>
@@ -1270,6 +1493,7 @@ export default function MemberDashboard() {
                 {autoTradingEnabled && paperTradingEnabled && !tradingEnabled && (
                   <StatusPill tone="green">🤖 Auto-Trading Active</StatusPill>
                 )}
+                <StatusPill tone={access.canLiveTrade ? "green" : "amber"}>{access.label}</StatusPill>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3 lg:flex lg:flex-wrap">
@@ -1282,7 +1506,15 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        {/* Setup Progress Card */}
+        {/* TIER AWARE CARD - NEW */}
+        <TierAwareCard tier={userTier} access={access} onUpgrade={handleUpgrade} />
+
+        {/* NEXT ACTION CARD - "What should I do next?" */}
+        {nextAction && (
+          <NextActionCard nextAction={nextAction} onAction={handleNextAction} />
+        )}
+
+        {/* Setup Progress Card - tier aware */}
         <div className={`rounded-3xl border p-4 shadow-sm sm:p-6 backdrop-blur-sm ${
           bothConnected && !paperTradingEnabled && !tradingEnabled ? "border-blue-300 bg-blue-50/50" :
           paperTradingEnabled && !tradingEnabled ? "border-green-300 bg-green-50/50" :
@@ -1291,23 +1523,37 @@ export default function MemberDashboard() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-xl font-extrabold text-slate-900 sm:text-2xl">
-                {!bothConnected ? "Step 1: Connect your API keys" : !paperTradingEnabled ? "Step 2: Start paper trading" : !tradingEnabled ? "Paper trading is active" : "Live trading is active"}
+                {!access.canLiveTrade ? "Paper Trading Only" :
+                  !bothConnected ? "Step 1: Connect your API keys" : 
+                  !paperTradingEnabled ? "Step 2: Start paper trading" : 
+                  !tradingEnabled ? "Paper trading is active" : "Live trading is active"}
               </h2>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-700 sm:text-base">
-                {!bothConnected ? "Connect both Alpaca and OKX so Imali can run paper trading and live trading."
-                  : !paperTradingEnabled ? "Your accounts are connected. Start with virtual money first."
-                  : !tradingEnabled ? "Imali is using virtual funds. Auto-trading executes every 30 seconds. Watch your equity curve and strategy performance."
-                  : "Real money trading is turned on. Monitor performance and stop live trading anytime."}
+                {!access.canLiveTrade 
+                  ? `Your ${access.label} plan includes paper trading with virtual funds. Upgrade to Pro for live trading.`
+                  : !bothConnected 
+                    ? "Connect both Alpaca and OKX so Imali can run paper trading and live trading."
+                    : !paperTradingEnabled 
+                      ? "Your accounts are connected. Start with virtual money first."
+                      : !tradingEnabled 
+                        ? "Imali is using virtual funds. Auto-trading executes every 30 seconds. Watch your equity curve and strategy performance."
+                        : "Real money trading is turned on. Monitor performance and stop live trading anytime."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <StatusPill tone={alpacaConnected ? "green" : "amber"}>Alpaca {alpacaConnected ? "Connected" : "Needed"}</StatusPill>
                 <StatusPill tone={okxConnected ? "green" : "amber"}>OKX {okxConnected ? "Connected" : "Needed"}</StatusPill>
-                <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>Paper {paperTradingEnabled ? "Active" : "Off"}</StatusPill>
-                <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
+                {access.canLiveTrade && (
+                  <>
+                    <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>Paper {paperTradingEnabled ? "Active" : "Off"}</StatusPill>
+                    <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
+                  </>
+                )}
               </div>
             </div>
             <div className="w-full shrink-0 lg:w-auto">
-              {!bothConnected ? (
+              {!access.canLiveTrade ? (
+                <Button variant="warning" onClick={handleUpgrade} className="w-full lg:w-auto">Upgrade to Pro</Button>
+              ) : !bothConnected ? (
                 <Button variant="warning" onClick={() => setShowApiModal(true)} className="w-full lg:w-auto">Connect API Keys</Button>
               ) : !paperTradingEnabled ? (
                 <Button onClick={() => handleTogglePaperTrading(true)} disabled={anyTradingActionBusy} className="w-full lg:w-auto">
@@ -1347,15 +1593,15 @@ export default function MemberDashboard() {
           </Card>
         )}
 
-        {/* Quick Start Guide */}
+        {/* Quick Start Guide - tier aware */}
         <Card className="border-indigo-200 bg-indigo-50/50 backdrop-blur-sm">
           <div className="mb-4 flex items-center gap-3"><span className="text-3xl">🎓</span><div><h3 className="text-lg font-extrabold text-indigo-950 sm:text-xl">Quick Start Guide</h3><p className="text-sm font-semibold text-indigo-800">Follow these steps in order.</p></div></div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { step: 1, title: "Connect API keys", desc: "Add Alpaca for stocks and OKX for crypto.", action: "Connect Keys", onClick: () => setShowApiModal(true), disabled: false },
-              { step: 2, title: "Start paper trading", desc: `Practice with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`, action: "Paper Trade", onClick: () => handleTogglePaperTrading(true), disabled: !bothConnected || anyTradingActionBusy || paperTradingEnabled },
+              { step: 2, title: "Start paper trading", desc: access.canLiveTrade ? `Practice with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.` : `Free paper trading with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`, action: "Paper Trade", onClick: () => handleTogglePaperTrading(true), disabled: !bothConnected || anyTradingActionBusy || paperTradingEnabled },
               { step: 3, title: "Choose a strategy", desc: "Pick Conservative, Balanced, Momentum, or Arbitrage.", action: null },
-              { step: 4, title: "Go live when ready", desc: "Turn on live trading after testing with paper trading.", action: "Go Live", onClick: () => setShowLiveConfirm(true), disabled: !bothConnected || anyTradingActionBusy || tradingEnabled },
+              { step: 4, title: access.canLiveTrade ? "Go live when ready" : "Upgrade to Pro", desc: access.canLiveTrade ? "Turn on live trading after testing with paper trading." : "Unlock live trading with real funds.", action: access.canLiveTrade ? "Go Live" : "Upgrade", onClick: access.canLiveTrade ? () => setShowLiveConfirm(true) : handleUpgrade, disabled: access.canLiveTrade ? (!bothConnected || anyTradingActionBusy || tradingEnabled) : false },
             ].map((item) => (
               <div key={item.step} className="rounded-2xl border border-indigo-100 bg-white p-4">
                 <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-extrabold text-white">{item.step}</div>
@@ -1367,7 +1613,7 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
-        {/* Paper Trading Card */}
+        {/* Paper Trading Card - tier aware */}
         <Card className="border-blue-200 bg-blue-50/50 backdrop-blur-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div><h2 className="text-lg font-extrabold text-blue-950 sm:text-xl">🎯 Paper Trading</h2><p className="mt-1 text-sm font-bold leading-6 text-blue-900">{paperTradingEnabled ? `Active with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. Auto-trading every 30 seconds.` : `Available with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`}{trial?.seconds_remaining ? ` Trial time left: ${formatTimeLeft(trial.seconds_remaining)}.` : ""}</p></div>
@@ -1375,7 +1621,7 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
-        {/* Trading Cards Row */}
+        {/* Trading Cards Row - tier aware */}
         <div className="grid gap-5 xl:grid-cols-2">
           <Card className={paperTradingEnabled ? "border-green-300 bg-green-50/50" : "bg-white"}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1393,11 +1639,13 @@ export default function MemberDashboard() {
             </div>
           </Card>
 
-          <Card className={tradingEnabled ? "border-green-300 bg-green-50/50" : "bg-white"}>
+          <Card className={tradingEnabled ? "border-green-300 bg-green-50/50" : access.canLiveTrade ? "bg-white" : "bg-slate-50"}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div><div className="flex items-center gap-3"><span className="text-3xl">💰</span><h3 className="text-lg font-extrabold text-slate-900 sm:text-xl">Live Trading</h3></div><p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Trade with real funds through your connected exchange accounts.</p>{!bothConnected && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">Connect both OKX and Alpaca first.</p>}<div className="mt-4"><StatusPill tone={tradingEnabled ? "green" : "slate"}>{tradingEnabled ? "Live Trading Active" : bothConnected ? "Ready When You Are" : "Connect Keys First"}</StatusPill></div></div>
+              <div><div className="flex items-center gap-3"><span className="text-3xl">💰</span><h3 className="text-lg font-extrabold text-slate-900 sm:text-xl">Live Trading</h3></div><p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{access.canLiveTrade ? "Trade with real funds through your connected exchange accounts." : "Upgrade to Pro or Elite to trade with real funds."}</p>{!bothConnected && access.canLiveTrade && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">Connect both OKX and Alpaca first.</p>}<div className="mt-4"><StatusPill tone={tradingEnabled ? "green" : access.canLiveTrade ? "slate" : "amber"}>{tradingEnabled ? "Live Trading Active" : access.canLiveTrade ? bothConnected ? "Ready When You Are" : "Connect Keys First" : "Upgrade Required"}</StatusPill></div></div>
               <div className="w-full shrink-0 sm:w-auto">
-                {tradingEnabled ? (
+                {!access.canLiveTrade ? (
+                  <Button variant="warning" onClick={handleUpgrade} className="w-full sm:w-auto">Upgrade to Pro</Button>
+                ) : tradingEnabled ? (
                   <Button variant="danger" onClick={() => handleToggleTrading(false)} disabled={anyTradingActionBusy} className="w-full sm:w-auto">{togglingTrading ? "Stopping..." : "Stop"}</Button>
                 ) : (
                   <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={!bothConnected || anyTradingActionBusy} className="w-full sm:w-auto">Start</Button>
@@ -1418,19 +1666,18 @@ export default function MemberDashboard() {
           <PremiumMetricTile title="Total P&L" value={usd(displayStats.total_pnl)} change={displayStats.total_pnl > 0 ? 12 : -5} icon="💰" color="from-emerald-500 to-emerald-600" />
           <PremiumMetricTile title="Win Rate" value={pct(displayStats.win_rate)} change={displayStats.win_rate > 50 ? 8 : -3} icon="🎯" color="from-indigo-500 to-indigo-600" />
           <PremiumMetricTile title="Total Trades" value={displayStats.total_trades.toString()} change={15} icon="📊" color="from-blue-500 to-blue-600" />
-          <PremiumMetricTile title="Current Mode" value={tradingEnabled ? "Live" : paperTradingEnabled ? "Paper" : "Setup"} change={0} icon="⚙️" color="from-purple-500 to-purple-600" />
+          <PremiumMetricTile title="Current Mode" value={tradingEnabled ? "Live" : paperTradingEnabled ? "Paper" : access.canLiveTrade ? "Setup" : "Starter"} change={0} icon="⚙️" color="from-purple-500 to-purple-600" />
         </div>
 
         {/* Strategies Section */}
-        <Card>
+        <Card id="strategies-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><SectionTitle helper="Pick one strategy. You can change it later.">🎯 Choose Your Strategy</SectionTitle>{strategyMessage && <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-extrabold text-indigo-800">{strategyMessage}</div>}</div>
           <div className="md:hidden"><div className="flex snap-x gap-3 overflow-x-auto pb-3">{STRATEGIES.map((strategy) => (<div key={strategy.id} className="min-w-[82%] snap-start"><StrategyCard strategy={strategy} active={currentStrategy === strategy.id} saving={savingStrategy === strategy.id} disabled={!!savingStrategy} onSelect={handleStrategyChange} /></div>))}</div><p className="mt-1 text-center text-xs font-semibold text-slate-500">Swipe to see more strategies</p></div>
           <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-4">{STRATEGIES.map((strategy) => (<StrategyCard key={strategy.id} strategy={strategy} active={currentStrategy === strategy.id} saving={savingStrategy === strategy.id} disabled={!!savingStrategy} onSelect={handleStrategyChange} />))}</div>
         </Card>
 
-        {/* PROFESSIONAL CHARTS SECTION - Chart.js Premium Visuals */}
+        {/* PROFESSIONAL CHARTS SECTION */}
         <div className="grid gap-6 xl:grid-cols-2">
-          {/* Equity Curve - Animated Line Chart */}
           <Card>
             <SectionTitle helper="Your portfolio value over time">📈 Equity Curve</SectionTitle>
             <div className="h-[350px] w-full">
@@ -1438,7 +1685,6 @@ export default function MemberDashboard() {
             </div>
           </Card>
           
-          {/* Win Rate Gauge - Custom Meter */}
           <Card>
             <SectionTitle helper="Your trading success meter">🎯 Win Rate Meter</SectionTitle>
             <div className="h-[350px] w-full">
@@ -1447,9 +1693,7 @@ export default function MemberDashboard() {
           </Card>
         </div>
 
-        {/* Trade Volume & Strategy Radar Grid */}
         <div className="grid gap-6 xl:grid-cols-2">
-          {/* Trade Volume - Animated Bar Chart */}
           <Card>
             <SectionTitle helper="Number of trades executed per day">📊 Trade Volume</SectionTitle>
             <div className="h-[350px] w-full">
@@ -1457,7 +1701,6 @@ export default function MemberDashboard() {
             </div>
           </Card>
 
-          {/* Strategy Radar Chart - Premium Addition */}
           <Card>
             <SectionTitle helper="Strategy behavior analysis">🧠 Strategy Analysis</SectionTitle>
             <div className="h-[350px] w-full">
@@ -1469,23 +1712,43 @@ export default function MemberDashboard() {
           </Card>
         </div>
 
-        {/* Required Connections */}
+        {/* Required Connections - tier aware */}
         <div className="grid gap-5 xl:grid-cols-2">
           <Card>
             <SectionTitle>🔌 Required Connections</SectionTitle>
             <div className="space-y-3">
               {[
-                { title: "Alpaca", desc: "Needed for stock trading.", connected: alpacaConnected, needed: "Needed" },
-                { title: "OKX", desc: "Needed for crypto trading.", connected: okxConnected, needed: "Needed" },
+                { title: "Alpaca", desc: "Needed for stock trading.", connected: alpacaConnected, needed: access.canUseStocks ? "Required" : "Pro+ Required" },
+                { title: "OKX", desc: "Needed for crypto trading.", connected: okxConnected, needed: access.canUseCrypto ? "Required" : "Pro+ Required" },
               ].map((item) => (
                 <div key={item.title} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div><div className="text-base font-extrabold text-slate-900">{item.title}</div><div className="text-sm font-medium text-slate-500">{item.desc}</div></div>
-                  <div className="flex flex-wrap items-center gap-3"><StatusPill tone={item.connected ? "green" : "amber"}>{item.connected ? "Connected" : item.needed}</StatusPill>{!item.connected && <Button variant="secondary" onClick={() => setShowApiModal(true)} className="px-3 py-2">Connect</Button>}</div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusPill tone={item.connected ? "green" : !access.canUseStocks && item.title === "Alpaca" ? "amber" : "amber"}>
+                      {item.connected ? "Connected" : item.needed}
+                    </StatusPill>
+                    {!item.connected && access.canUseStocks && <Button variant="secondary" onClick={() => setShowApiModal(true)} className="px-3 py-2">Connect</Button>}
+                    {!item.connected && !access.canUseStocks && <Button variant="warning" onClick={handleUpgrade} className="px-3 py-2">Upgrade</Button>}
+                  </div>
                 </div>
               ))}
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div><div className="text-base font-extrabold text-slate-900">Wallet</div><div className="text-sm font-medium text-slate-500">Optional for DeFi features.</div></div>
-                <StatusPill tone={integrations.wallet_connected ? "green" : "slate"}>{integrations.wallet_connected ? "Connected" : "Optional"}</StatusPill>
+                <div><div className="text-base font-extrabold text-slate-900">Wallet (MetaMask)</div><div className="text-sm font-medium text-slate-500">{access.canUseDefi ? "Connect for DeFi features." : "DeFi features require Elite."}</div></div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusPill tone={integrations.wallet_connected ? "green" : access.canUseDefi ? "slate" : "amber"}>
+                    {integrations.wallet_connected ? "Connected" : access.canUseDefi ? "Optional" : "Elite Required"}
+                  </StatusPill>
+                  {!integrations.wallet_connected && access.canUseDefi && (
+                    <Button variant="secondary" onClick={() => nav("/activation?step=wallet")} className="px-3 py-2">
+                      Connect MetaMask
+                    </Button>
+                  )}
+                  {!integrations.wallet_connected && !access.canUseDefi && access.canLiveTrade && (
+                    <Button variant="warning" onClick={handleUpgrade} className="px-3 py-2">
+                      Upgrade to Elite
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </Card>
@@ -1529,25 +1792,34 @@ export default function MemberDashboard() {
           </div>
         </Card>
 
-        {/* Available Features */}
+        {/* Available Features - tier aware */}
         <Card>
           <SectionTitle>✅ Available Features</SectionTitle>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {[
-              { title: "Paper Trading", desc: "Practice before risking real money.", status: "Unlocked" },
-              { title: "Live Trading", desc: "Available after API setup.", status: bothConnected ? "Ready" : "Needs Keys" },
-              { title: "Stocks", desc: "Trade through Alpaca.", status: alpacaConnected ? "Ready" : "Needs Alpaca" },
-              { title: "Crypto Spot", desc: "Trade through OKX.", status: okxConnected ? "Ready" : "Needs OKX" },
-              { title: "Strategies", desc: "Choose Conservative, Balanced, Momentum, or Arbitrage.", status: "Available" },
-              { title: "Support", desc: "Beginner help and setup resources.", status: "Available" },
-            ].map((feature) => (
-              <div key={feature.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div><div className="text-base font-extrabold text-slate-900">{feature.title}</div><div className="mt-1 text-sm font-semibold leading-6 text-slate-600">{feature.desc}</div></div>
-                  <StatusPill tone={feature.status.includes("Needs") ? "amber" : feature.status === "Ready" ? "green" : "blue"}>{feature.status}</StatusPill>
+              { title: "Paper Trading", desc: "Practice before risking real money.", status: "Unlocked", requires: null },
+              { title: "Live Trading", desc: "Trade with real funds.", status: access.canLiveTrade ? (bothConnected ? "Ready" : "Needs Keys") : "Upgrade to Pro", requires: "Pro+" },
+              { title: "Stocks", desc: "Trade through Alpaca.", status: access.canUseStocks ? (alpacaConnected ? "Ready" : "Needs Keys") : "Upgrade to Pro", requires: "Pro+" },
+              { title: "Crypto Spot", desc: "Trade through OKX.", status: access.canUseCrypto ? (okxConnected ? "Ready" : "Needs Keys") : "Upgrade to Pro", requires: "Pro+" },
+              { title: "DeFi", desc: "Decentralized trading.", status: access.canUseDefi ? (integrations.wallet_connected ? "Ready" : "Connect Wallet") : "Upgrade to Elite", requires: "Elite" },
+              { title: "Strategies", desc: "Choose from 4 strategies.", status: "Available", requires: null },
+            ].map((feature) => {
+              let tone = "blue";
+              if (feature.status === "Upgrade to Pro") tone = "amber";
+              else if (feature.status === "Upgrade to Elite") tone = "purple";
+              else if (feature.status === "Ready") tone = "green";
+              else if (feature.status === "Needs Keys") tone = "amber";
+              else if (feature.status === "Connect Wallet") tone = "blue";
+              
+              return (
+                <div key={feature.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div><div className="text-base font-extrabold text-slate-900">{feature.title}</div><div className="mt-1 text-sm font-semibold leading-6 text-slate-600">{feature.desc}</div></div>
+                    <StatusPill tone={tone}>{feature.status}</StatusPill>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
 
@@ -1569,7 +1841,9 @@ export default function MemberDashboard() {
         {/* Action Buttons */}
         <div className="grid gap-3 sm:grid-cols-3">
           <Button onClick={() => nav("/trade-demo")} className="w-full">Paper Trade Demo</Button>
-          <Button variant="warning" onClick={() => (bothConnected ? setShowLiveConfirm(true) : setShowApiModal(true))} disabled={anyTradingActionBusy} className="w-full">Start Live Trading</Button>
+          <Button variant="warning" onClick={() => (access.canLiveTrade && bothConnected ? setShowLiveConfirm(true) : !access.canLiveTrade ? handleUpgrade() : setShowApiModal(true))} disabled={anyTradingActionBusy} className="w-full">
+            {!access.canLiveTrade ? "Upgrade to Trade Live" : bothConnected ? "Start Live Trading" : "Connect Keys First"}
+          </Button>
           <Button variant="secondary" onClick={() => nav("/activation")} className="w-full">Complete Activation</Button>
         </div>
       </div>
