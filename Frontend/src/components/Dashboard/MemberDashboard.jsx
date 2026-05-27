@@ -1,6 +1,6 @@
 // src/components/Dashboard/MemberDashboard.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
 import {
   Chart as ChartJS,
@@ -191,8 +191,8 @@ function Card({ children, className = "", id }) {
 function SectionTitle({ children, helper }) {
   return (
     <div className="mb-4">
-      <h3 className="text-base font-extrabold text-slate-900 sm:text-lg">{children}</h3>
-      {helper && <p className="mt-1 text-sm font-semibold text-slate-600">{helper}</p>}
+      <h3 className="text-base font-extrabold text-gray-900 sm:text-lg">{children}</h3>
+      {helper && <p className="mt-1 text-sm font-semibold text-gray-600">{helper}</p>}
     </div>
   );
 }
@@ -201,10 +201,10 @@ function StatusPill({ children, tone = "slate", className = "" }) {
   const classes = {
     green: "border-green-300 bg-green-100 text-green-900",
     red: "border-red-300 bg-red-100 text-red-900",
-    amber: "border-amber-300 bg-amber-100 text-amber-950",
+    amber: "border-amber-300 bg-amber-100 text-amber-900",
     blue: "border-blue-300 bg-blue-100 text-blue-900",
     purple: "border-purple-300 bg-purple-100 text-purple-900",
-    slate: "border-slate-300 bg-slate-100 text-slate-900",
+    slate: "border-gray-300 bg-gray-100 text-gray-900",
   };
   return (
     <span className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-[11px] font-extrabold leading-none sm:text-xs ${classes[tone] || classes.slate} ${className}`}>
@@ -216,7 +216,7 @@ function StatusPill({ children, tone = "slate", className = "" }) {
 function Button({ children, onClick, disabled, variant = "primary", className = "" }) {
   const variants = {
     primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm",
-    secondary: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm",
+    secondary: "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 shadow-sm",
     warning: "bg-amber-500 text-white hover:bg-amber-600 shadow-sm",
     danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
     purple: "bg-purple-600 text-white hover:bg-purple-700 shadow-sm",
@@ -244,7 +244,7 @@ function Toast({ message, type = "info", onClose }) {
     <div className={`fixed left-3 right-3 top-3 z-[60] rounded-2xl border p-4 text-sm font-bold shadow-xl sm:left-auto sm:right-4 sm:max-w-md ${tone}`}>
       <div className="flex items-start justify-between gap-4">
         <span>{message}</span>
-        <button type="button" onClick={onClose} className="text-lg leading-none text-slate-700 hover:text-slate-900">×</button>
+        <button type="button" onClick={onClose} className="text-lg leading-none text-gray-700 hover:text-gray-900">×</button>
       </div>
     </div>
   );
@@ -287,7 +287,7 @@ const EquityCurveChart = ({ data }) => {
   };
   
   if (!data || data.length === 0) {
-    return <div className="flex h-full items-center justify-center text-center"><div><div className="text-5xl mb-3">📈</div><p className="text-sm font-semibold text-slate-600">No equity data yet</p><p className="text-xs text-slate-400 mt-1">Start trading to see growth</p></div></div>;
+    return <div className="flex h-full items-center justify-center text-center"><div><div className="text-5xl mb-3">📈</div><p className="text-sm font-semibold text-gray-600">No equity data yet</p><p className="text-xs text-gray-400 mt-1">Start trading to see growth</p></div></div>;
   }
   
   return <Line data={chartData} options={options} />;
@@ -302,7 +302,7 @@ const TradeVolumeChart = ({ data }) => {
   const options = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
   
   if (!data || data.length === 0) {
-    return <div className="flex h-full items-center justify-center text-center"><div><div className="text-5xl mb-3">📊</div><p className="text-sm font-semibold text-slate-600">No volume data yet</p></div></div>;
+    return <div className="flex h-full items-center justify-center text-center"><div><div className="text-5xl mb-3">📊</div><p className="text-sm font-semibold text-gray-600">No volume data yet</p></div></div>;
   }
   
   return <Bar data={chartData} options={options} />;
@@ -320,13 +320,13 @@ const WinRateMeter = ({ wins, losses }) => {
           <circle cx="50" cy="50" r="45" fill="none" stroke="#10b981" strokeWidth="8" strokeDasharray={`${winRate * 2.827} 283`} className="transition-all duration-1000" />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-extrabold text-slate-900">{winRate.toFixed(0)}%</span>
-          <span className="text-xs text-slate-500">Win Rate</span>
+          <span className="text-3xl font-extrabold text-gray-900">{winRate.toFixed(0)}%</span>
+          <span className="text-xs text-gray-500">Win Rate</span>
         </div>
       </div>
       <div className="mt-4 flex gap-6">
-        <div className="text-center"><div className="text-xl font-extrabold text-emerald-600">{wins}</div><div className="text-xs text-slate-500">Wins</div></div>
-        <div className="text-center"><div className="text-xl font-extrabold text-red-600">{losses}</div><div className="text-xs text-slate-500">Losses</div></div>
+        <div className="text-center"><div className="text-xl font-extrabold text-emerald-600">{wins}</div><div className="text-xs text-gray-500">Wins</div></div>
+        <div className="text-center"><div className="text-xl font-extrabold text-red-600">{losses}</div><div className="text-xs text-gray-500">Losses</div></div>
       </div>
     </div>
   );
@@ -377,7 +377,6 @@ export default function MemberDashboard() {
   const bothConnected = alpacaConnected && okxConnected;
   const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
   
-  // Determine if user is new (no paper/live trading)
   const isNewUser = !paperTradingEnabled && !tradingEnabled;
   const needsApiEducation = !bothConnected;
 
@@ -514,23 +513,23 @@ export default function MemberDashboard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-        <div className="text-center"><div className="text-xl font-extrabold">Loading your dashboard…</div><div className="mt-2 text-sm text-slate-600">Getting your trading status...</div></div>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+        <div className="text-center"><div className="text-xl font-extrabold text-gray-900">Loading your dashboard…</div><div className="mt-2 text-sm text-gray-600">Getting your trading status...</div></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-3 py-4 sm:p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 px-3 py-4 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
       <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
         
         {/* HEADER */}
-        <div className="rounded-3xl border border-slate-200 bg-white/80 backdrop-blur-sm p-4 shadow-sm sm:p-6">
+        <div className="rounded-3xl border border-gray-200 bg-white/80 backdrop-blur-sm p-4 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">Welcome back 👋</h1>
-              <p className="mt-2 text-sm font-semibold text-slate-600">
+              <h1 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">Welcome back 👋</h1>
+              <p className="mt-2 text-sm font-semibold text-gray-600">
                 {paperTradingEnabled ? "🎮 Paper trading active - learning with virtual funds" : 
                  tradingEnabled ? "💰 Live trading active - real funds at work" :
                  "📝 Start with paper trading to learn the platform safely"}
@@ -550,8 +549,8 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        {/* TAB NAVIGATION - Collapses sections */}
-        <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+        {/* TAB NAVIGATION */}
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
           {[
             { id: "overview", label: "Overview", emoji: "📊" },
             { id: "trading", label: "Trading", emoji: "🎯" },
@@ -565,7 +564,7 @@ export default function MemberDashboard() {
               className={`px-4 py-2 rounded-xl font-bold transition-all ${
                 activeTab === tab.id 
                   ? "bg-indigo-600 text-white shadow-md" 
-                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                  : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
               }`}
             >
               {tab.emoji} {tab.label}
@@ -573,17 +572,15 @@ export default function MemberDashboard() {
           ))}
         </div>
 
-        {/* ============================================== */}
-        {/* OVERVIEW TAB - What's shown first for new users */}
-        {/* ============================================== */}
+        {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
           <div className="space-y-5">
             
-            {/* NEXT ACTION CARD - Always first */}
+            {/* NEXT ACTION CARD */}
             <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-blue-50/60">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-lg font-extrabold text-indigo-950">
+                  <h3 className="text-lg font-extrabold text-indigo-900">
                     {!bothConnected ? "Step 1: Connect Your API Keys" :
                      !paperTradingEnabled ? "Step 2: Start Paper Trading" :
                      !tradingEnabled && access.canLiveTrade ? "Step 3: Ready for Live Trading" :
@@ -614,15 +611,17 @@ export default function MemberDashboard() {
               </div>
             </Card>
 
-            {/* FUNDING GUIDE CARD - For new users */}
+            {/* FUNDING GUIDE CARD */}
             {needsApiEducation && (
               <Card className="border-emerald-200 bg-emerald-50/80">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h3 className="text-lg font-extrabold text-emerald-950">🛡️ New here? Learn how to connect safely first</h3>
+                    <h3 className="text-lg font-extrabold text-emerald-900">🛡️ New here? Learn how to connect safely first</h3>
                     <p className="mt-1 text-sm font-semibold text-emerald-800">Before adding API keys, read the Funding Guide to learn how to create restricted OKX and Alpaca keys with trading permission only (no withdrawals).</p>
                   </div>
-                  <Button variant="primary" onClick={() => window.open("/funding-guide", "_blank")} className="w-full sm:w-auto">Read Funding Guide</Button>
+                  <Link to="/guides/api-setup" target="_blank" className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-emerald-600 px-6 py-3 text-sm font-extrabold text-white shadow-sm hover:bg-emerald-700 transition">
+                    Read Funding Guide →
+                  </Link>
                 </div>
               </Card>
             )}
@@ -631,7 +630,7 @@ export default function MemberDashboard() {
             <Card className="border-purple-200 bg-gradient-to-r from-purple-50/80 to-indigo-50/60">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-xl font-extrabold text-purple-950">Your Plan: {access.label}</h2>
+                  <h2 className="text-xl font-extrabold text-purple-900">Your Plan: {access.label}</h2>
                   <p className="mt-1 text-sm font-semibold text-purple-800">
                     {access.canLiveTrade ? "✅ Live trading ready. Connect your exchange accounts to start." : "📝 Free paper trading with virtual funds. Upgrade for live trading."}
                   </p>
@@ -640,23 +639,23 @@ export default function MemberDashboard() {
               </div>
             </Card>
 
-            {/* SIMPLE STATS - Only for new users */}
+            {/* SIMPLE STATS */}
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <div className="rounded-2xl bg-white p-4 border border-slate-200 text-center">
-                <div className="text-2xl font-extrabold text-slate-900">{usd(displayStats.total_pnl)}</div>
-                <div className="text-xs text-slate-500 font-medium">Total P&L</div>
+              <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
+                <div className="text-2xl font-extrabold text-gray-900">{usd(displayStats.total_pnl)}</div>
+                <div className="text-xs text-gray-500 font-medium">Total P&L</div>
               </div>
-              <div className="rounded-2xl bg-white p-4 border border-slate-200 text-center">
-                <div className="text-2xl font-extrabold text-slate-900">{pct(displayStats.win_rate)}</div>
-                <div className="text-xs text-slate-500 font-medium">Win Rate</div>
+              <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
+                <div className="text-2xl font-extrabold text-gray-900">{pct(displayStats.win_rate)}</div>
+                <div className="text-xs text-gray-500 font-medium">Win Rate</div>
               </div>
-              <div className="rounded-2xl bg-white p-4 border border-slate-200 text-center">
-                <div className="text-2xl font-extrabold text-slate-900">{displayStats.total_trades}</div>
-                <div className="text-xs text-slate-500 font-medium">Total Trades</div>
+              <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
+                <div className="text-2xl font-extrabold text-gray-900">{displayStats.total_trades}</div>
+                <div className="text-xs text-gray-500 font-medium">Total Trades</div>
               </div>
-              <div className="rounded-2xl bg-white p-4 border border-slate-200 text-center">
-                <div className="text-2xl font-extrabold text-slate-900">{paperTradingEnabled ? "Paper" : tradingEnabled ? "Live" : "Setup"}</div>
-                <div className="text-xs text-slate-500 font-medium">Mode</div>
+              <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
+                <div className="text-2xl font-extrabold text-gray-900">{paperTradingEnabled ? "Paper" : tradingEnabled ? "Live" : "Setup"}</div>
+                <div className="text-xs text-gray-500 font-medium">Mode</div>
               </div>
             </div>
 
@@ -664,8 +663,8 @@ export default function MemberDashboard() {
             <Card className="border-blue-200 bg-blue-50/50">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-extrabold text-blue-950 sm:text-xl">🎯 Paper Trading</h2>
-                  <p className="mt-1 text-sm font-bold text-blue-900">
+                  <h2 className="text-lg font-extrabold text-blue-900 sm:text-xl">🎯 Paper Trading</h2>
+                  <p className="mt-1 text-sm font-bold text-blue-800">
                     {paperTradingEnabled 
                       ? `Active with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.` 
                       : `Available with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. No real money.`}
@@ -675,13 +674,13 @@ export default function MemberDashboard() {
               </div>
             </Card>
 
-            {/* LIVE TRADING CARD - Only show if tier allows */}
+            {/* LIVE TRADING CARD */}
             {access.canLiveTrade && (
               <Card className={tradingEnabled ? "border-green-300 bg-green-50/50" : "bg-white"}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h2 className="text-lg font-extrabold text-slate-900 sm:text-xl">💰 Live Trading</h2>
-                    <p className="mt-1 text-sm font-semibold text-slate-600">
+                    <h2 className="text-lg font-extrabold text-gray-900 sm:text-xl">💰 Live Trading</h2>
+                    <p className="mt-1 text-sm font-semibold text-gray-600">
                       {tradingEnabled ? "Active with real funds through your exchange accounts." : "Ready to trade with real money?"}
                     </p>
                   </div>
@@ -696,27 +695,27 @@ export default function MemberDashboard() {
               </Card>
             )}
 
-            {/* EQUITY CURVE CHART - Show for all, but simplified */}
+            {/* EQUITY CURVE CHART */}
             <Card>
               <SectionTitle helper="Your portfolio value over time">📈 Equity Curve</SectionTitle>
               <div className="h-[300px] w-full"><EquityCurveChart data={series} /></div>
             </Card>
 
-            {/* QUICK START GUIDE - For new users */}
+            {/* QUICK START GUIDE */}
             {isNewUser && (
               <Card className="border-indigo-200 bg-indigo-50/50">
-                <div className="mb-4 flex items-center gap-3"><span className="text-3xl">🎓</span><div><h3 className="text-lg font-extrabold text-indigo-950">Quick Start Guide</h3><p className="text-sm font-semibold text-indigo-800">Follow these steps in order.</p></div></div>
+                <div className="mb-4 flex items-center gap-3"><span className="text-3xl">🎓</span><div><h3 className="text-lg font-extrabold text-indigo-900">Quick Start Guide</h3><p className="text-sm font-semibold text-indigo-800">Follow these steps in order.</p></div></div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {[
-                    { step: 1, title: "Read Funding Guide", desc: "Learn how to create safe API keys.", action: "Read Guide", onClick: () => window.open("/funding-guide", "_blank"), disabled: false },
+                    { step: 1, title: "Read Funding Guide", desc: "Learn how to create safe API keys.", action: "Read Guide", onClick: () => window.open("/guides/api-setup", "_blank"), disabled: false },
                     { step: 2, title: "Connect API Keys", desc: "Add Alpaca and OKX with restricted permissions.", action: "Connect Keys", onClick: () => setShowApiModal(true), disabled: false },
                     { step: 3, title: "Start Paper Trading", desc: `Practice with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`, action: "Start", onClick: () => handleTogglePaperTrading(true), disabled: !bothConnected },
                     { step: 4, title: "Upgrade to Pro", desc: "Ready for live trading? Upgrade when comfortable.", action: "Upgrade", onClick: handleUpgrade, disabled: false },
                   ].map((item) => (
                     <div key={item.step} className="rounded-2xl border border-indigo-100 bg-white p-4">
                       <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-extrabold text-white">{item.step}</div>
-                      <div className="text-base font-extrabold text-slate-900">{item.title}</div>
-                      <p className="mt-1 text-sm font-medium text-slate-600">{item.desc}</p>
+                      <div className="text-base font-extrabold text-gray-900">{item.title}</div>
+                      <p className="mt-1 text-sm font-medium text-gray-600">{item.desc}</p>
                       <button onClick={item.onClick} disabled={item.disabled} className="mt-3 min-h-[40px] w-full rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-extrabold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50">{item.action}</button>
                     </div>
                   ))}
@@ -734,19 +733,17 @@ export default function MemberDashboard() {
                   { title: "❓ FAQ", desc: "Common beginner questions", url: "/faq" },
                   { title: "💬 Support", desc: "Get help", url: "/support" },
                 ].map((resource) => (
-                  <a key={resource.title} href={resource.url} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-indigo-300 hover:bg-indigo-50">
-                    <div className="font-extrabold text-slate-900">{resource.title}</div>
-                    <div className="mt-1 text-sm font-medium text-slate-500">{resource.desc}</div>
-                  </a>
+                  <Link key={resource.title} to={resource.url} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 transition hover:border-indigo-300 hover:bg-indigo-50">
+                    <div className="font-extrabold text-gray-900">{resource.title}</div>
+                    <div className="mt-1 text-sm font-medium text-gray-500">{resource.desc}</div>
+                  </Link>
                 ))}
               </div>
             </Card>
           </div>
         )}
 
-        {/* ============================================== */}
         {/* TRADING TAB */}
-        {/* ============================================== */}
         {activeTab === "trading" && (
           <div className="space-y-5">
             <div className="grid gap-6 xl:grid-cols-2">
@@ -764,20 +761,20 @@ export default function MemberDashboard() {
             {paperTradingEnabled && !tradingEnabled && (
               <Card>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div><h3 className="font-extrabold">Manual Trade</h3><p className="text-sm text-slate-500">Execute a random paper trade to test the system</p></div>
+                  <div><h3 className="font-extrabold text-gray-900">Manual Trade</h3><p className="text-sm text-gray-500">Execute a random paper trade to test the system</p></div>
                   <Button variant="primary" onClick={async () => { await BotAPI.executePaperTrade?.(); await loadDashboard({ force: true }); notify("Trade executed!", "success"); }}>Execute Random Trade</Button>
                 </div>
               </Card>
             )}
 
-            {/* Community Trades - Pro and above */}
+            {/* Community Trades */}
             {access.showCommunityTrades && communityTrades.length > 0 && (
               <Card>
                 <SectionTitle>🌍 Community Activity</SectionTitle>
                 <div className="space-y-2 max-h-80 overflow-auto">
                   {communityTrades.slice(0, 10).map((trade, i) => (
-                    <div key={trade.id || i} className="flex justify-between items-center p-3 border-b border-slate-100">
-                      <div><span className="font-bold">{trade.symbol}</span><span className="text-xs text-slate-400 ml-2">{trade.bot}</span></div>
+                    <div key={trade.id || i} className="flex justify-between items-center p-3 border-b border-gray-100">
+                      <div><span className="font-bold text-gray-900">{trade.symbol}</span><span className="text-xs text-gray-400 ml-2">{trade.bot}</span></div>
                       <div className={Number(trade.pnl_usd) >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>{usd(trade.pnl_usd)}</div>
                     </div>
                   ))}
@@ -787,9 +784,7 @@ export default function MemberDashboard() {
           </div>
         )}
 
-        {/* ============================================== */}
         {/* STRATEGIES TAB */}
-        {/* ============================================== */}
         {activeTab === "strategies" && (
           <div className="space-y-5">
             <Card id="strategies-section">
@@ -800,30 +795,28 @@ export default function MemberDashboard() {
                     key={strategy.id}
                     onClick={() => handleStrategyChange(strategy)}
                     disabled={!!savingStrategy}
-                    className={`rounded-2xl border p-4 text-left transition ${currentStrategy === strategy.id ? "border-indigo-500 bg-indigo-50 shadow-md" : "border-slate-200 bg-white hover:border-indigo-300"}`}
+                    className={`rounded-2xl border p-4 text-left transition ${currentStrategy === strategy.id ? "border-indigo-500 bg-indigo-50 shadow-md" : "border-gray-200 bg-white hover:border-indigo-300"}`}
                   >
-                    <div className="flex items-center gap-2 mb-2"><span className="text-2xl">{strategy.emoji}</span><span className="font-extrabold">{strategy.name}</span><StatusPill tone={strategy.risk === "Low" ? "green" : strategy.risk === "High" ? "red" : "amber"}>{strategy.risk}</StatusPill></div>
-                    <p className="text-sm text-slate-600">{strategy.description}</p>
+                    <div className="flex items-center gap-2 mb-2"><span className="text-2xl">{strategy.emoji}</span><span className="font-extrabold text-gray-900">{strategy.name}</span><StatusPill tone={strategy.risk === "Low" ? "green" : strategy.risk === "High" ? "red" : "amber"}>{strategy.risk}</StatusPill></div>
+                    <p className="text-sm text-gray-600">{strategy.description}</p>
                     {currentStrategy === strategy.id && <div className="mt-3 text-xs font-bold text-indigo-600">✓ Active</div>}
                   </button>
                 ))}
               </div>
             </Card>
 
-            {/* Strategy Radar - Starter only, cleaner look */}
+            {/* Strategy Radar */}
             {access.showStrategyRadar && (
               <Card>
                 <SectionTitle helper="Strategy behavior analysis">🧠 Strategy Analysis</SectionTitle>
                 <div className="h-[300px]"><StrategyRadarChart data={activeStrategy.radarData} /></div>
-                <div className="mt-3 text-center text-sm text-slate-500">Current: <span className="font-bold text-indigo-600">{activeStrategy.name}</span></div>
+                <div className="mt-3 text-center text-sm text-gray-500">Current: <span className="font-bold text-indigo-600">{activeStrategy.name}</span></div>
               </Card>
             )}
           </div>
         )}
 
-        {/* ============================================== */}
         {/* CONNECTIONS TAB */}
-        {/* ============================================== */}
         {activeTab === "connections" && (
           <div className="space-y-5">
             <Card>
@@ -834,8 +827,8 @@ export default function MemberDashboard() {
                   { title: "OKX", desc: "Crypto trading", connected: okxConnected, needed: "Required" },
                   { title: "MetaMask", desc: "DeFi (Elite only)", connected: integrations.wallet_connected, needed: access.canUseDefi ? "Optional" : "Elite+" },
                 ].map((item) => (
-                  <div key={item.title} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div><div className="font-extrabold">{item.title}</div><div className="text-sm text-slate-500">{item.desc}</div></div>
+                  <div key={item.title} className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div><div className="font-extrabold text-gray-900">{item.title}</div><div className="text-sm text-gray-500">{item.desc}</div></div>
                     <div className="flex items-center gap-3">
                       <StatusPill tone={item.connected ? "green" : "amber"}>{item.connected ? "Connected" : item.needed}</StatusPill>
                       {!item.connected && (item.title === "Alpaca" || item.title === "OKX") && <Button variant="secondary" onClick={() => setShowApiModal(true)}>Connect</Button>}
@@ -853,32 +846,36 @@ export default function MemberDashboard() {
           </div>
         )}
 
-        {/* ============================================== */}
         {/* LEARN TAB */}
-        {/* ============================================== */}
         {activeTab === "learn" && (
           <div className="space-y-5">
             <Card>
               <SectionTitle>📚 Getting Started</SectionTitle>
-              <div className="prose prose-slate max-w-none">
-                <h3>1. Understand API Key Safety</h3>
-                <p>Imali only needs <strong>trading permission</strong>. Never share keys with withdrawal permission.</p>
-                <h3>2. Connect Your Exchanges</h3>
-                <p>Add both Alpaca (stocks) and OKX (crypto) keys. Start with paper mode.</p>
-                <h3>3. Start Paper Trading</h3>
-                <p>Practice with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. No real money risk.</p>
-                <h3>4. Monitor Performance</h3>
-                <p>Watch your equity curve and win rate. Adjust strategy as needed.</p>
-                <h3>5. Upgrade When Ready</h3>
-                <p>Once comfortable, upgrade to Pro or Elite for live trading with real funds.</p>
+              <div className="prose prose-gray max-w-none">
+                <h3 className="text-gray-900">1. Understand API Key Safety</h3>
+                <p className="text-gray-600">Imali only needs <strong>trading permission</strong>. Never share keys with withdrawal permission.</p>
+                <h3 className="text-gray-900">2. Connect Your Exchanges</h3>
+                <p className="text-gray-600">Add both Alpaca (stocks) and OKX (crypto) keys. Start with paper mode.</p>
+                <h3 className="text-gray-900">3. Start Paper Trading</h3>
+                <p className="text-gray-600">Practice with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. No real money risk.</p>
+                <h3 className="text-gray-900">4. Monitor Performance</h3>
+                <p className="text-gray-600">Watch your equity curve and win rate. Adjust strategy as needed.</p>
+                <h3 className="text-gray-900">5. Upgrade When Ready</h3>
+                <p className="text-gray-600">Once comfortable, upgrade to Pro or Elite for live trading with real funds.</p>
               </div>
             </Card>
 
             <Card>
               <SectionTitle>📖 Video Tutorials</SectionTitle>
               <div className="grid gap-4 sm:grid-cols-2">
-                <a href="/guides/api-setup" className="block p-4 rounded-2xl border border-slate-200 hover:border-indigo-300"><div className="font-bold">🔧 API Setup Walkthrough</div><div className="text-sm text-slate-500">Step-by-step video guide</div></a>
-                <a href="/guides/strategies" className="block p-4 rounded-2xl border border-slate-200 hover:border-indigo-300"><div className="font-bold">🎯 Strategy Selection</div><div className="text-sm text-slate-500">Which strategy is right for you?</div></a>
+                <Link to="/guides/api-setup" className="block p-4 rounded-2xl border border-gray-200 hover:border-indigo-300">
+                  <div className="font-bold text-gray-900">🔧 API Setup Walkthrough</div>
+                  <div className="text-sm text-gray-500">Step-by-step video guide</div>
+                </Link>
+                <Link to="/guides/strategies" className="block p-4 rounded-2xl border border-gray-200 hover:border-indigo-300">
+                  <div className="font-bold text-gray-900">🎯 Strategy Selection</div>
+                  <div className="text-sm text-gray-500">Which strategy is right for you?</div>
+                </Link>
               </div>
             </Card>
 
@@ -896,7 +893,7 @@ export default function MemberDashboard() {
                                   (displayStats.total_pnl > 0 && achievement.id === "profitable") ||
                                   (bothConnected && achievement.id === "api_ready");
                   return (
-                    <div key={achievement.id} className={`rounded-2xl border px-4 py-2 text-sm font-extrabold ${unlocked ? "border-green-300 bg-green-50 text-green-800" : "border-slate-200 bg-slate-50 text-slate-400"}`}>
+                    <div key={achievement.id} className={`rounded-2xl border px-4 py-2 text-sm font-extrabold ${unlocked ? "border-green-300 bg-green-50 text-green-800" : "border-gray-200 bg-gray-50 text-gray-400"}`}>
                       {achievement.icon} {achievement.label}
                     </div>
                   );
@@ -918,27 +915,27 @@ export default function MemberDashboard() {
       {showApiModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
           <div className="max-h-[94vh] w-full max-w-2xl overflow-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
-            <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-extrabold">Connect API Keys</h2><button onClick={() => setShowApiModal(false)} className="text-3xl">×</button></div>
+            <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-extrabold text-gray-900">Connect API Keys</h2><button onClick={() => setShowApiModal(false)} className="text-3xl text-gray-500 hover:text-gray-700">×</button></div>
             
             {/* Safety warning for new users */}
             <div className="mb-5 rounded-2xl border border-blue-300 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
-              🔒 New users should read the <button onClick={() => window.open("/funding-guide", "_blank")} className="font-extrabold underline">Funding Guide</button> before creating API keys.
+              🔒 New users should read the <Link to="/guides/api-setup" className="font-extrabold underline text-blue-700">Funding Guide</Link> before creating API keys.
             </div>
             
             <div className="space-y-4">
               <div className="border rounded-xl p-4">
-                <h3 className="font-bold">Alpaca (Stocks)</h3>
-                <p className="text-sm text-slate-500 mb-2">Create API key with <strong>trading permission only</strong></p>
+                <h3 className="font-bold text-gray-900">Alpaca (Stocks)</h3>
+                <p className="text-sm text-gray-500 mb-2">Create API key with <strong>trading permission only</strong></p>
                 <Button variant="secondary" onClick={() => window.open("https://app.alpaca.markets/paper/dashboard/api-keys", "_blank")}>Create Alpaca Keys →</Button>
               </div>
               <div className="border rounded-xl p-4">
-                <h3 className="font-bold">OKX (Crypto)</h3>
-                <p className="text-sm text-slate-500 mb-2">Create API key with <strong>trade permission only</strong></p>
+                <h3 className="font-bold text-gray-900">OKX (Crypto)</h3>
+                <p className="text-sm text-gray-500 mb-2">Create API key with <strong>trade permission only</strong></p>
                 <Button variant="secondary" onClick={() => window.open("https://www.okx.com/account/my-api", "_blank")}>Create OKX Keys →</Button>
               </div>
             </div>
             
-            <div className="mt-5 text-center text-xs text-slate-400">
+            <div className="mt-5 text-center text-xs text-gray-400">
               Already have keys? Enter them in the dashboard settings.
             </div>
           </div>
@@ -956,9 +953,9 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
       <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
-        <h3 className="text-xl font-extrabold">Confirm Live Trading</h3>
-        <p className="mt-2 text-sm">Live trading uses real money through your connected exchange accounts.</p>
-        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm"><strong>⚠️ Risk reminder:</strong> You can lose money. Start small. You can stop anytime.</div>
+        <h3 className="text-xl font-extrabold text-gray-900">Confirm Live Trading</h3>
+        <p className="mt-2 text-sm text-gray-600">Live trading uses real money through your connected exchange accounts.</p>
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm"><strong className="text-amber-900">⚠️ Risk reminder:</strong> <span className="text-amber-800">You can lose money. Start small. You can stop anytime.</span></div>
         <div className="mt-5 flex gap-3"><Button variant="warning" onClick={onConfirm} disabled={busy} className="flex-1">{busy ? "Starting..." : "Enable Live"}</Button><Button variant="secondary" onClick={onCancel} className="flex-1">Cancel</Button></div>
       </div>
     </div>
