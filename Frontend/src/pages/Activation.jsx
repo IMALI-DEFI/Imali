@@ -255,6 +255,12 @@ export default function Activation() {
       if (billingCheckedRef.current) return;
       billingCheckedRef.current = true;
       
+      // Skip billing check for Starter users
+      if (tier === "starter") {
+        console.log("[Activation] Starter user - skipping billing check");
+        return;
+      }
+      
       try {
         const cardStatus = await BotAPI.getCardStatus();
         if (cardStatus?.has_card || cardStatus?.billing_complete) {
@@ -266,7 +272,7 @@ export default function Activation() {
     };
     
     checkBillingOnce();
-  }, [refreshActivation]);
+  }, [refreshActivation, tier]);
 
   // Initial load
   useEffect(() => {
@@ -400,7 +406,15 @@ export default function Activation() {
 
   // Skip to dashboard - always works, bypasses activation
   const handleSkipToDashboard = () => {
-    sessionStorage.setItem("activation_skipped", "true");
+    // Clear any activation skip flag
+    sessionStorage.removeItem("activation_skipped");
+    // Direct navigation to dashboard
+    navigate("/dashboard", { replace: true });
+  };
+
+  // Direct navigation for Starter users
+  const handleGoToPaperTrading = () => {
+    console.log("[Activation] Starter user going to paper trading dashboard");
     navigate("/dashboard", { replace: true });
   };
 
@@ -415,8 +429,32 @@ export default function Activation() {
     }
   };
 
-  // For Starter tier, show minimal activation UI
+  // For Starter tier, show minimal activation UI and redirect immediately
   const isStarter = tier === "starter";
+
+  // Immediate redirect for Starter users who already have dashboard access
+  useEffect(() => {
+    if (isStarter && user && !sessionStorage.getItem("starter_redirected")) {
+      sessionStorage.setItem("starter_redirected", "true");
+      // Small delay to ensure component mounts properly
+      const timer = setTimeout(() => {
+        navigate("/dashboard", { replace: true });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isStarter, user, navigate]);
+
+  // If Starter, show loading briefly then redirect
+  if (isStarter) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Redirecting to paper trading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 text-white">
@@ -424,13 +462,10 @@ export default function Activation() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-            {isStarter ? "Welcome to Trading Simulator" : "Trading Setup"}
+            Trading Setup
           </h1>
           <p className="text-gray-400">
-            {isStarter 
-              ? "Starter Plan • Start paper trading immediately — no setup required"
-              : `${getPlanName()} Plan • Complete the steps below to start live trading`
-            }
+            {getPlanName()} Plan • Complete the steps below to start live trading
           </p>
           
           {comingFromBilling && !status.billing && (
@@ -446,158 +481,133 @@ export default function Activation() {
           )}
         </div>
 
-        {/* Starter: Just show simulator info */}
-        {isStarter ? (
-          <div className="space-y-6">
-            <div className="rounded-2xl border-2 border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-purple-600/5 p-8 text-center">
-              <div className="text-6xl mb-4">🎮</div>
-              <h2 className="text-2xl font-bold text-white mb-3">Paper Trading Ready</h2>
-              <p className="text-gray-300 mb-6">
-                Your Starter plan gives you immediate access to our paper trading simulator.
-                No payment method, API keys, or wallet required.
-              </p>
-              <ActionButton onClick={handleSkipToDashboard} color="blue">
-                Go to Paper Trading Dashboard
+        {/* Info Box for Skipped Activation */}
+        {sessionStorage.getItem("activation_skipped") && !fullyActivated && (
+          <div className="mb-6 p-4 rounded-xl bg-yellow-500/20 border border-yellow-500/50 text-yellow-200">
+            <span>⚠️ You've skipped activation. Some trading features may be limited. Complete the steps below to enable full trading.</span>
+          </div>
+        )}
+
+        {/* Error/Success Messages */}
+        {error && (
+          <div className="mb-6 p-4 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200">
+            <span>⚠️ {error}</span>
+          </div>
+        )}
+        {success && !fullyActivated && (
+          <div className="mb-6 p-4 rounded-xl bg-green-500/20 border border-green-500/50 text-green-200">
+            <span>✓ {success}</span>
+          </div>
+        )}
+
+        {/* Step 1: Billing - only for non-Starter */}
+        <StepCard number="1" title="Payment Method" description="Add a payment method to continue" status={status.billing}>
+          {!status.billing ? (
+            <div className="space-y-4">
+              <InfoBox type="info">Your payment information is encrypted and securely stored.</InfoBox>
+              <ActionButton onClick={() => navigate("/billing", { state: { tier } })} color="blue">
+                Add Payment Method
               </ActionButton>
             </div>
-            
-            <div className="p-6 bg-white/5 border border-white/10 rounded-xl text-center">
-              <p className="text-gray-400 text-sm">
-                Want live trading? <button onClick={() => navigate("/pricing")} className="text-blue-400 hover:text-blue-300 underline">Upgrade to Pro</button>
-              </p>
-            </div>
+          ) : (
+            <div className="text-green-300 font-medium text-center py-2">✓ Payment method on file</div>
+          )}
+        </StepCard>
+
+        {/* Step 2: Connect Trading Accounts - renamed from "Connections" */}
+        <StepCard number="2" title="Connect Trading Accounts" description="Link your exchange accounts" status={connectionsDone}>
+          <div className="space-y-6">
+            {/* OKX */}
+            {needs.okx && !status.okx && (
+              <div className="border border-blue-500/30 rounded-xl p-4 bg-blue-500/5">
+                <h3 className="text-lg font-semibold text-blue-300 mb-3">OKX Exchange</h3>
+                <ScreenshotGuide
+                  imagePath="/oxksignup.jpg"
+                  alt="OKX API Setup"
+                  steps={[
+                    "Log into OKX",
+                    "Go to API section",
+                    "Create API key with trading permissions",
+                    "Copy API Key, Secret, and Passphrase",
+                    "Paste below to connect"
+                  ]}
+                  link="https://www.okx.com/account/login?forward=%2Faccount%2Fmy-api"
+                  linkText="Create OKX API Key →"
+                />
+                <form onSubmit={connectOKX} className="space-y-4 mt-4">
+                  <ModeToggle isLive={okx.isLive} onChange={(isLive) => setOkx({ ...okx, isLive })} disabled={busy === "okx"} />
+                  <SimpleInput label="API Key" value={okx.apiKey} onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })} placeholder="Enter API key" disabled={busy === "okx"} />
+                  <SimpleInput label="Secret Key" type="password" value={okx.apiSecret} onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })} placeholder="Enter secret key" disabled={busy === "okx"} />
+                  <SimpleInput label="Passphrase" type="password" value={okx.passphrase} onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })} placeholder="Enter passphrase" disabled={busy === "okx"} />
+                  <ActionButton type="submit" disabled={busy === "okx"} loading={busy === "okx"} color={okx.isLive ? "green" : "orange"}>Connect OKX</ActionButton>
+                </form>
+              </div>
+            )}
+
+            {/* Alpaca */}
+            {needs.alpaca && !status.alpaca && (
+              <div className="border border-green-500/30 rounded-xl p-4 bg-green-500/5">
+                <h3 className="text-lg font-semibold text-green-300 mb-3">Alpaca Trading</h3>
+                <ScreenshotGuide
+                  imagePath="/alpacasignup.jpg"
+                  alt="Alpaca API Setup"
+                  steps={[
+                    "Create Alpaca account",
+                    "Go to Dashboard → API Keys",
+                    "Generate API key pair",
+                    "Copy Key ID and Secret",
+                    "Paste below to connect"
+                  ]}
+                  link="https://app.alpaca.markets/signup"
+                  linkText="Sign up for Alpaca →"
+                />
+                <form onSubmit={connectAlpaca} className="space-y-4 mt-4">
+                  <ModeToggle isLive={alpaca.isLive} onChange={(isLive) => setAlpaca({ ...alpaca, isLive })} disabled={busy === "alpaca"} />
+                  <SimpleInput label="API Key ID" value={alpaca.apiKey} onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })} placeholder="PK..." disabled={busy === "alpaca"} />
+                  <SimpleInput label="Secret Key" type="password" value={alpaca.apiSecret} onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })} placeholder="Enter secret key" disabled={busy === "alpaca"} />
+                  <ActionButton type="submit" disabled={busy === "alpaca"} loading={busy === "alpaca"} color={alpaca.isLive ? "green" : "orange"}>Connect Alpaca</ActionButton>
+                </form>
+              </div>
+            )}
+
+            {/* Wallet */}
+            {needs.wallet && !status.wallet && (
+              <div className="border border-purple-500/30 rounded-xl p-4 bg-purple-500/5">
+                <h3 className="text-lg font-semibold text-purple-300 mb-3">DeFi Wallet</h3>
+                <InfoBox type="tip">Use MetaMask or Trust Wallet for decentralized trading</InfoBox>
+                <form onSubmit={connectWallet} className="space-y-4 mt-4">
+                  <SimpleInput label="Wallet Address" value={wallet} onChange={(e) => setWallet(e.target.value)} placeholder="0x..." helper="Must start with 0x (42 characters)" disabled={busy === "wallet"} />
+                  <ActionButton type="submit" disabled={busy === "wallet"} loading={busy === "wallet"} color="purple">Connect Wallet</ActionButton>
+                </form>
+              </div>
+            )}
+
+            {/* Completed status */}
+            {needs.okx && status.okx && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ OKX connected</div>}
+            {needs.alpaca && status.alpaca && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ Alpaca connected</div>}
+            {needs.wallet && status.wallet && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ Wallet connected</div>}
           </div>
-        ) : (
-          <>
-            {/* Info Box for Skipped Activation */}
-            {sessionStorage.getItem("activation_skipped") && !fullyActivated && (
-              <div className="mb-6 p-4 rounded-xl bg-yellow-500/20 border border-yellow-500/50 text-yellow-200">
-                <span>⚠️ You've skipped activation. Some trading features may be limited. Complete the steps below to enable full trading.</span>
-              </div>
-            )}
+        </StepCard>
 
-            {/* Error/Success Messages */}
-            {error && (
-              <div className="mb-6 p-4 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200">
-                <span>⚠️ {error}</span>
-              </div>
-            )}
-            {success && !fullyActivated && (
-              <div className="mb-6 p-4 rounded-xl bg-green-500/20 border border-green-500/50 text-green-200">
-                <span>✓ {success}</span>
-              </div>
-            )}
-
-            {/* Step 1: Billing - only for non-Starter */}
-            <StepCard number="1" title="Payment Method" description="Add a payment method to continue" status={status.billing}>
-              {!status.billing ? (
-                <div className="space-y-4">
-                  <InfoBox type="info">Your payment information is encrypted and securely stored.</InfoBox>
-                  <ActionButton onClick={() => navigate("/billing", { state: { tier } })} color="blue">
-                    Add Payment Method
-                  </ActionButton>
-                </div>
-              ) : (
-                <div className="text-green-300 font-medium text-center py-2">✓ Payment method on file</div>
-              )}
-            </StepCard>
-
-            {/* Step 2: Connect Trading Accounts - renamed from "Connections" */}
-            <StepCard number="2" title="Connect Trading Accounts" description="Link your exchange accounts" status={connectionsDone}>
-              <div className="space-y-6">
-                {/* OKX */}
-                {needs.okx && !status.okx && (
-                  <div className="border border-blue-500/30 rounded-xl p-4 bg-blue-500/5">
-                    <h3 className="text-lg font-semibold text-blue-300 mb-3">OKX Exchange</h3>
-                    <ScreenshotGuide
-                      imagePath="/oxksignup.jpg"
-                      alt="OKX API Setup"
-                      steps={[
-                        "Log into OKX",
-                        "Go to API section",
-                        "Create API key with trading permissions",
-                        "Copy API Key, Secret, and Passphrase",
-                        "Paste below to connect"
-                      ]}
-                      link="https://www.okx.com/account/login?forward=%2Faccount%2Fmy-api"
-                      linkText="Create OKX API Key →"
-                    />
-                    <form onSubmit={connectOKX} className="space-y-4 mt-4">
-                      <ModeToggle isLive={okx.isLive} onChange={(isLive) => setOkx({ ...okx, isLive })} disabled={busy === "okx"} />
-                      <SimpleInput label="API Key" value={okx.apiKey} onChange={(e) => setOkx({ ...okx, apiKey: e.target.value })} placeholder="Enter API key" disabled={busy === "okx"} />
-                      <SimpleInput label="Secret Key" type="password" value={okx.apiSecret} onChange={(e) => setOkx({ ...okx, apiSecret: e.target.value })} placeholder="Enter secret key" disabled={busy === "okx"} />
-                      <SimpleInput label="Passphrase" type="password" value={okx.passphrase} onChange={(e) => setOkx({ ...okx, passphrase: e.target.value })} placeholder="Enter passphrase" disabled={busy === "okx"} />
-                      <ActionButton type="submit" disabled={busy === "okx"} loading={busy === "okx"} color={okx.isLive ? "green" : "orange"}>Connect OKX</ActionButton>
-                    </form>
+        {/* Step 3: Enable Live Trading - renamed from "Activate Bot" */}
+        <StepCard number="3" title="Enable Live Trading" description="Turn on automated trading" status={status.trading}>
+          <div className="space-y-4">
+            {!canEnableTrading && !status.trading ? (
+              <InfoBox type="warning">Complete steps 1 and 2 first</InfoBox>
+            ) : (
+              <>
+                <InfoBox type="tip">The bot analyzes markets and executes trades based on your strategy</InfoBox>
+                {status.trading ? (
+                  <div className="p-4 bg-green-500/20 border border-green-500 rounded-xl text-center">
+                    <p className="text-green-300 font-semibold">✓ Trading bot is ACTIVE</p>
                   </div>
-                )}
-
-                {/* Alpaca */}
-                {needs.alpaca && !status.alpaca && (
-                  <div className="border border-green-500/30 rounded-xl p-4 bg-green-500/5">
-                    <h3 className="text-lg font-semibold text-green-300 mb-3">Alpaca Trading</h3>
-                    <ScreenshotGuide
-                      imagePath="/alpacasignup.jpg"
-                      alt="Alpaca API Setup"
-                      steps={[
-                        "Create Alpaca account",
-                        "Go to Dashboard → API Keys",
-                        "Generate API key pair",
-                        "Copy Key ID and Secret",
-                        "Paste below to connect"
-                      ]}
-                      link="https://app.alpaca.markets/signup"
-                      linkText="Sign up for Alpaca →"
-                    />
-                    <form onSubmit={connectAlpaca} className="space-y-4 mt-4">
-                      <ModeToggle isLive={alpaca.isLive} onChange={(isLive) => setAlpaca({ ...alpaca, isLive })} disabled={busy === "alpaca"} />
-                      <SimpleInput label="API Key ID" value={alpaca.apiKey} onChange={(e) => setAlpaca({ ...alpaca, apiKey: e.target.value })} placeholder="PK..." disabled={busy === "alpaca"} />
-                      <SimpleInput label="Secret Key" type="password" value={alpaca.apiSecret} onChange={(e) => setAlpaca({ ...alpaca, apiSecret: e.target.value })} placeholder="Enter secret key" disabled={busy === "alpaca"} />
-                      <ActionButton type="submit" disabled={busy === "alpaca"} loading={busy === "alpaca"} color={alpaca.isLive ? "green" : "orange"}>Connect Alpaca</ActionButton>
-                    </form>
-                  </div>
-                )}
-
-                {/* Wallet */}
-                {needs.wallet && !status.wallet && (
-                  <div className="border border-purple-500/30 rounded-xl p-4 bg-purple-500/5">
-                    <h3 className="text-lg font-semibold text-purple-300 mb-3">DeFi Wallet</h3>
-                    <InfoBox type="tip">Use MetaMask or Trust Wallet for decentralized trading</InfoBox>
-                    <form onSubmit={connectWallet} className="space-y-4 mt-4">
-                      <SimpleInput label="Wallet Address" value={wallet} onChange={(e) => setWallet(e.target.value)} placeholder="0x..." helper="Must start with 0x (42 characters)" disabled={busy === "wallet"} />
-                      <ActionButton type="submit" disabled={busy === "wallet"} loading={busy === "wallet"} color="purple">Connect Wallet</ActionButton>
-                    </form>
-                  </div>
-                )}
-
-                {/* Completed status */}
-                {needs.okx && status.okx && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ OKX connected</div>}
-                {needs.alpaca && status.alpaca && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ Alpaca connected</div>}
-                {needs.wallet && status.wallet && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ Wallet connected</div>}
-              </div>
-            </StepCard>
-
-            {/* Step 3: Enable Live Trading - renamed from "Activate Bot" */}
-            <StepCard number="3" title="Enable Live Trading" description="Turn on automated trading" status={status.trading}>
-              <div className="space-y-4">
-                {!canEnableTrading && !status.trading ? (
-                  <InfoBox type="warning">Complete steps 1 and 2 first</InfoBox>
                 ) : (
-                  <>
-                    <InfoBox type="tip">The bot analyzes markets and executes trades based on your strategy</InfoBox>
-                    {status.trading ? (
-                      <div className="p-4 bg-green-500/20 border border-green-500 rounded-xl text-center">
-                        <p className="text-green-300 font-semibold">✓ Trading bot is ACTIVE</p>
-                      </div>
-                    ) : (
-                      <ActionButton onClick={toggleTrading} disabled={busy === "trading"} loading={busy === "trading"} color="green">Enable Live Trading</ActionButton>
-                    )}
-                  </>
+                  <ActionButton onClick={toggleTrading} disabled={busy === "trading"} loading={busy === "trading"} color="green">Enable Live Trading</ActionButton>
                 )}
-              </div>
-            </StepCard>
-          </>
-        )}
+              </>
+            )}
+          </div>
+        </StepCard>
 
         {/* Help Section */}
         <div className="mt-8 p-6 bg-white/5 border border-white/10 rounded-xl">
