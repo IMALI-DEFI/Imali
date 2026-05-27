@@ -323,19 +323,27 @@ export function AuthProvider({ children }) {
   );
 
   const getRedirectPath = useCallback((userData) => {
-    // NEW: After signup, go to trade demo first
-    if (!userData?.trading_enabled && !userData?.has_card_on_file) {
-      return "/trade-demo";
+    // CRITICAL: For Starter users, go directly to dashboard (not activation/billing)
+    if (userData?.tier === "starter") {
+      return "/dashboard";
     }
     
+    // For enterprise users
     if (userData?.tier === "enterprise" || userData?.organization_id) {
-      return "/enterprise/dashboard";
+      return "/enterprise-dashboard";
     }
     
+    // For admin users
     if (userData?.is_admin === true || userData?.isAdmin === true) {
       return "/admin";
     }
     
+    // For Pro/Elite/Bundle users without billing, go to activation
+    if (!userData?.has_card_on_file && !userData?.billing_complete) {
+      return "/activation";
+    }
+    
+    // Default to dashboard
     return "/dashboard";
   }, []);
 
@@ -395,7 +403,6 @@ export function AuthProvider({ children }) {
     [user, loadCachedState, persistUser, refreshActivation, clearAuth]
   );
 
-  // SIMPLIFIED LOGIN - Redirect to dashboard or demo
   const login = useCallback(
     async (email, password, redirectPath = null) => {
       setError(null);
@@ -430,7 +437,7 @@ export function AuthProvider({ children }) {
         const normalizedUser = persistUser(userData);
         await refreshActivation(true);
         
-        // Determine redirect path
+        // Determine redirect path based on user type
         const finalRedirect = redirectPath || getRedirectPath(normalizedUser);
         
         setLoading(false);
@@ -451,7 +458,6 @@ export function AuthProvider({ children }) {
     [persistUser, refreshActivation, getRedirectPath]
   );
 
-  // SIMPLIFIED SIGNUP - No tier selection, no strategy, redirect to trade demo
   const signup = useCallback(
     async (userData) => {
       setError(null);
@@ -462,7 +468,6 @@ export function AuthProvider({ children }) {
         return { success: false, error: message };
       }
 
-      // Always require password for regular signup
       if (!userData?.password) {
         const message = "Password is required";
         setError(message);
@@ -482,7 +487,6 @@ export function AuthProvider({ children }) {
       }
 
       try {
-        // Simplified payload - always starter tier, ai_weighted strategy
         const payload = {
           email: userData.email,
           password: userData.password,
@@ -491,7 +495,7 @@ export function AuthProvider({ children }) {
           accepted_terms: true,
         };
 
-        console.log("[Auth] Signup payload (simplified):", { email: payload.email, tier: payload.tier });
+        console.log("[Auth] Signup payload:", { email: payload.email, tier: payload.tier });
 
         const data = await apiFetch("/api/auth/signup", {
           method: "POST",
@@ -512,8 +516,8 @@ export function AuthProvider({ children }) {
         const normalizedUser = persistUser(userFromResponse);
         await refreshActivation(true);
         
-        // CRITICAL: Redirect to trade demo first, not activation!
-        const redirectPath = "/trade-demo";
+        // CRITICAL: Starter users go directly to dashboard
+        const redirectPath = "/dashboard";
         
         setLoading(false);
         setIsInitialized(true);
@@ -552,7 +556,6 @@ export function AuthProvider({ children }) {
     [activation, persistActivation, refreshActivation]
   );
 
-  // Helper to check if user is on trial
   const isTrialActive = useMemo(() => {
     if (user?.subscription_status === 'active') return false;
     if (user?.trial_status === 'active' && user?.trial_ends_at) {
@@ -792,25 +795,40 @@ export function AuthProvider({ children }) {
   }, [isEnterpriseAdmin, user]);
 
   const activationComplete = useMemo(() => {
+    // CRITICAL: For Starter users, activation is always complete
+    if (user?.tier === "starter") {
+      return true;
+    }
+    
     if (isEnterpriseUser) {
       return activation?.enterprise_approved === true && activation?.trading_enabled === true;
     }
+    
     return activation?.trading_enabled === true && activation?.activation_complete === true;
-  }, [activation, isEnterpriseUser]);
+  }, [activation, user, isEnterpriseUser]);
 
   const hasCardOnFile = useMemo(() => {
+    // CRITICAL: For Starter users, always return true (no card needed)
+    if (user?.tier === "starter") {
+      return true;
+    }
+    
     if (isEnterpriseUser) return true;
     return activation?.has_card_on_file === true || activation?.billing_complete === true;
-  }, [activation, isEnterpriseUser]);
+  }, [activation, user, isEnterpriseUser]);
 
   const hasRequiredIntegrations = useMemo(() => {
-    if (!activation) return false;
+    // CRITICAL: For Starter users, no integrations needed
+    if (user?.tier === "starter") {
+      return true;
+    }
     
+    if (!activation) return false;
     if (isEnterpriseUser) return true;
 
     const tier = activation.tier || user?.tier || "starter";
 
-    if (tier === "starter") return activation.alpaca_connected && activation.okx_connected;
+    if (tier === "starter") return true; // Starter doesn't need integrations
     if (tier === "elite") return activation.wallet_connected;
 
     return activation.wallet_connected || activation.alpaca_connected || activation.okx_connected;
@@ -834,8 +852,12 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   const canTrade = useMemo(() => {
+    // CRITICAL: Starter users can always paper trade
+    if (user?.tier === "starter") {
+      return true;
+    }
     return isAuthenticated && activationComplete && hasRequiredIntegrations;
-  }, [isAuthenticated, activationComplete, hasRequiredIntegrations]);
+  }, [isAuthenticated, activationComplete, hasRequiredIntegrations, user]);
 
   const isLoading = loading || (!isInitialized && loadAttemptedRef.current);
 
