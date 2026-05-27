@@ -4,7 +4,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
-function safeInternalPath(path, fallback = "/activation") {
+function safeInternalPath(path, fallback = "/dashboard") {
   if (!path || typeof path !== "string") return fallback;
   if (!path.startsWith("/")) return fallback;
   if (path.startsWith("//")) return fallback;
@@ -165,16 +165,26 @@ export default function Login() {
 
   // Determine redirect destination based on user type
   const getRedirectDestination = useCallback((userData) => {
-    // Check if user is enterprise
+    // Priority 1: Enterprise users go to enterprise dashboard
     if (userData?.tier === "enterprise" || userData?.organization_id) {
       return "/enterprise-dashboard";
     }
-    // Check if user is admin
+    
+    // Priority 2: Admin users go to admin panel
     if (userData?.is_admin === true || userData?.isAdmin === true) {
       return "/admin";
     }
-    // Default to activation or dashboard
-    return "/activation";
+    
+    // Priority 3: Check if user needs activation (billing not set up)
+    // Only redirect to activation if user hasn't completed billing
+    const needsActivation = !userData?.billing_complete && !userData?.has_card_on_file;
+    
+    if (needsActivation) {
+      return "/activation";
+    }
+    
+    // Default: Regular users go to dashboard
+    return "/dashboard";
   }, []);
 
   const destination = useMemo(() => {
@@ -185,10 +195,10 @@ export default function Login() {
     
     // Otherwise use the requested destination or default
     const raw = nextFromQuery || fromState;
-    if (raw && raw !== "/activation") {
-      return safeInternalPath(raw, "/activation");
+    if (raw && raw !== "/activation" && raw !== "/dashboard") {
+      return safeInternalPath(raw, "/dashboard");
     }
-    return "/activation";
+    return "/dashboard";
   }, [nextFromQuery, fromState, user, getRedirectDestination]);
 
   const expiredMessage = useMemo(() => {
@@ -203,10 +213,10 @@ export default function Login() {
   // Clear form on mount to prevent autofill issues
   useEffect(() => {
     setEmail("");
-    setPassword("");
+    setPassword();
   }, []);
 
-  // If user is already logged in and is enterprise, redirect immediately
+  // If user is already logged in, redirect appropriately
   useEffect(() => {
     if (user && !loading) {
       if (isEnterpriseUser) {
@@ -215,6 +225,14 @@ export default function Login() {
       } else if (user.is_admin || user.isAdmin) {
         console.log("[Login] Admin user detected, redirecting to admin dashboard");
         navigate("/admin", { replace: true });
+      } else if (user.billing_complete || user.has_card_on_file) {
+        // User has completed billing, go to dashboard
+        console.log("[Login] User has billing complete, redirecting to dashboard");
+        navigate("/dashboard", { replace: true });
+      } else {
+        // User needs to complete activation (billing setup)
+        console.log("[Login] User needs activation, redirecting to activation");
+        navigate("/activation", { replace: true });
       }
     }
   }, [user, loading, isEnterpriseUser, navigate]);
@@ -249,19 +267,28 @@ export default function Login() {
         console.warn("[Login] Failed to store IMALI_EMAIL:", err);
       }
 
-      // Check if the logged in user is enterprise
+      // Get user data from result
       const userData = result.user;
+      
+      // Determine redirect based on user type and activation status
       const isEnterprise = userData?.tier === "enterprise" || userData?.organization_id;
+      const isAdmin = userData?.is_admin === true || userData?.isAdmin === true;
+      const hasBilling = userData?.billing_complete === true || userData?.has_card_on_file === true;
       
-      let redirectPath = destination;
+      let redirectPath = "/dashboard";
       
-      // Override redirect if enterprise
       if (isEnterprise) {
         redirectPath = "/enterprise-dashboard";
         console.log("[Login] Enterprise login, redirecting to enterprise dashboard");
-      } else if (userData?.is_admin || userData?.isAdmin) {
+      } else if (isAdmin) {
         redirectPath = "/admin";
         console.log("[Login] Admin login, redirecting to admin dashboard");
+      } else if (!hasBilling) {
+        redirectPath = "/activation";
+        console.log("[Login] User needs billing setup, redirecting to activation");
+      } else {
+        redirectPath = "/dashboard";
+        console.log("[Login] Regular user, redirecting to dashboard");
       }
       
       navigate(redirectPath, { replace: true });
