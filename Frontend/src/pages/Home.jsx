@@ -401,7 +401,6 @@ export default function Home() {
 
   const [isMuted, setIsMuted] = useState(true);
   const [email, setEmail] = useState("");
-  const [selectedTier, setSelectedTier] = useState("starter");
   const [showForm, setShowForm] = useState(false);
   const videoId = "x6Dvj1ALs-w";
 
@@ -463,14 +462,6 @@ export default function Home() {
     const interval = setInterval(fetchActivity, 30000);
     return () => clearInterval(interval);
   }, [fetchActivity]);
-
-  // Get the display text for selected tier
-  const getTierDisplayText = (tier) => {
-    const price = TIER_PRICES[tier];
-    if (!price) return "Starter - Free Trial";
-    if (tier === "starter") return "Starter - 7-Day Free Trial";
-    return `${price.name} - $${price.monthly}/mo`;
-  };
 
   // Get the signup link with tier
   const getSignupLink = (tier) => {
@@ -694,7 +685,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PROMO MESSAGE + FORM - CORRECT PRICES */}
+      {/* PROMO MESSAGE + FORM - FIXED */}
       <section className="mx-auto max-w-3xl px-4 pb-16 sm:px-6 lg:px-8">
         <Card className="p-6 shadow-xl sm:p-8">
           <div className="mb-4 flex items-start gap-3 sm:items-center">
@@ -730,7 +721,8 @@ export default function Home() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                const ok = await promoClaim.claim(email, selectedTier);
+                // FIXED: Only send email - backend generates its own promo code
+                const ok = await promoClaim.claim(email);
                 if (ok) setShowForm(false);
               }}
               className="mt-5 space-y-3"
@@ -745,18 +737,7 @@ export default function Home() {
                 autoFocus
               />
 
-              <select
-                value={selectedTier}
-                onChange={(e) => setSelectedTier(e.target.value)}
-                className="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-4 text-sm text-gray-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              >
-                <option value="starter">Starter - 7-Day Free Trial</option>
-                <option value="pro">Pro - $19/month</option>
-                <option value="elite">Elite - $49/month</option>
-                <option value="stock">DeFi - $99/month</option>
-                <option value="bundle">Bundle - $199/month</option>
-                <option value="enterprise">Enterprise - Contact Sales</option>
-              </select>
+              {/* REMOVED the tier select dropdown - always starter for free trial */}
 
               {promoClaim.state.error && (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
@@ -785,14 +766,9 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* Price breakdown helper text */}
+              {/* Price breakdown helper text - simplified */}
               <p className="text-xs text-center text-gray-400 mt-2">
-                {selectedTier === "starter" && "✓ 7-day free trial with $1,000 paper credits"}
-                {selectedTier === "pro" && "✓ $19/month after trial • Live trading + advanced features"}
-                {selectedTier === "elite" && "✓ $49/month after trial • Priority execution + DEX"}
-                {selectedTier === "stock" && "✓ $99/month after trial • DEX-focused automation"}
-                {selectedTier === "bundle" && "✓ $199/month after trial • Full platform access"}
-                {selectedTier === "enterprise" && "✓ Custom pricing • Contact our sales team"}
+                ✓ 7-day free trial with $1,000 paper credits
               </p>
             </form>
           )}
@@ -803,15 +779,13 @@ export default function Home() {
               <p className="text-lg font-bold text-emerald-700">Free Trial Activated!</p>
               <p className="mt-1 text-sm text-gray-600">
                 Check your email, then{" "}
-                <Link to={getSignupLink(selectedTier)} className="text-emerald-600 underline">
+                <Link to="/signup?tier=starter" className="text-emerald-600 underline">
                   create your account
                 </Link>{" "}
                 to start trading with $1,000 paper credits.
               </p>
               <div className="mt-3 text-xs text-gray-500">
-                {selectedTier === "starter" && "Your 7-day free trial starts now!"}
-                {selectedTier !== "starter" && selectedTier !== "enterprise" && 
-                  `Your 7-day free trial includes ${TIER_PRICES[selectedTier]?.name} features. Then $${TIER_PRICES[selectedTier]?.monthly}/month.`}
+                Your 7-day free trial starts now!
               </div>
             </div>
           )}
