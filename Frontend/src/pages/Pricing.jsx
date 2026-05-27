@@ -87,7 +87,7 @@ export default function Pricing() {
   const { spotsLeft, limit, active, loading } = promoData;
   const spotsLeftNum = spotsLeft;
 
-  // Simplified plans - removed Bundle for cleaner structure
+  // All plans - simplified
   const plans = [
     {
       name: "Free Trial",
@@ -107,7 +107,8 @@ export default function Pricing() {
         { text: "Email support", included: true },
       ],
       fee: `${PERFORMANCE_FEE.starter}% performance fee (none during trial)`,
-      cta: "Start Free Trial →",
+      cta: "Start Free Trial",
+      ctaLink: "/signup?tier=starter",
       highlight: false,
       enterprise: false,
     },
@@ -129,7 +130,8 @@ export default function Pricing() {
         { text: "API access", included: true },
       ],
       fee: `${PERFORMANCE_FEE.pro}% performance fee on profits > ${PROFIT_THRESHOLD}%`,
-      cta: "Start Pro →",
+      cta: "Start Pro",
+      ctaLink: "/signup?tier=pro",
       highlight: true,
       enterprise: false,
     },
@@ -151,7 +153,8 @@ export default function Pricing() {
         { text: "24/7 priority support", included: true },
       ],
       fee: `${PERFORMANCE_FEE.elite}% performance fee on profits > ${PROFIT_THRESHOLD}%`,
-      cta: "Start Elite →",
+      cta: "Start Elite",
+      ctaLink: "/signup?tier=elite",
       highlight: false,
       enterprise: false,
     },
@@ -174,7 +177,8 @@ export default function Pricing() {
         { text: "White-label options", included: true },
       ],
       fee: `${PERFORMANCE_FEE.enterprise}% performance fee on profits > ${PROFIT_THRESHOLD}%`,
-      cta: "Contact Sales →",
+      cta: "Contact Sales",
+      ctaLink: "mailto:sales@imali-defi.com?subject=Enterprise%20Plan%20Inquiry",
       highlight: false,
       enterprise: true,
     },
@@ -204,7 +208,7 @@ export default function Pricing() {
           </div>
         </div>
 
-        {/* Safe Learning Message - NEW */}
+        {/* Safe Learning Message */}
         <div className="mt-8 max-w-3xl mx-auto">
           <div className="bg-gradient-to-r from-emerald-50 to-sky-50 rounded-2xl px-6 py-4 text-center border border-emerald-200">
             <p className="text-sm text-gray-700">
@@ -233,7 +237,7 @@ export default function Pricing() {
           </div>
         )}
 
-        {/* Fee savings callout - simplified */}
+        {/* Fee savings callout */}
         <div className="mt-6 max-w-3xl mx-auto text-center">
           <div className="bg-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-700">
             💎 <span className="font-semibold">Upgrade to lower your performance fee:</span>{" "}
@@ -245,7 +249,7 @@ export default function Pricing() {
         </div>
       </div>
 
-      {/* Pricing Cards - Simplified Layout */}
+      {/* Pricing Cards */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
         <div className="grid md:grid-cols-4 gap-6 items-stretch">
           {plans.map((plan) => (
@@ -316,7 +320,7 @@ export default function Pricing() {
                   </div>
                 </div>
 
-                {/* Price - Prominent */}
+                {/* Price */}
                 <div className="mt-4 text-center">
                   <div className="flex items-baseline justify-center gap-1">
                     <span className="text-3xl font-extrabold text-gray-900">{plan.price}</span>
@@ -327,7 +331,7 @@ export default function Pricing() {
                   )}
                 </div>
 
-                {/* Performance Fee - Simplified */}
+                {/* Performance Fee */}
                 <div className={`mt-4 p-2.5 rounded-lg text-center ${
                   plan.enterprise 
                     ? "bg-indigo-50 border border-indigo-200" 
@@ -349,21 +353,21 @@ export default function Pricing() {
                 {/* CTA Button */}
                 {plan.enterprise ? (
                   <a
-                    href="mailto:sales@imali-defi.com?subject=Enterprise%20Plan%20Inquiry"
+                    href={plan.ctaLink}
                     className="mt-4 w-full py-2.5 rounded-xl font-semibold text-center transition-all block text-sm bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-md"
                   >
-                    {plan.cta}
+                    {plan.cta} →
                   </a>
                 ) : (
                   <Link
-                    to={`/signup?tier=${plan.slug}`}
+                    to={plan.ctaLink}
                     className={`mt-4 w-full py-2.5 rounded-xl font-semibold text-center transition-all block text-sm ${
                       plan.highlight
                         ? "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-md"
                         : "bg-gray-900 hover:bg-gray-800 text-white"
                     }`}
                   >
-                    {plan.cta}
+                    {plan.cta} →
                   </Link>
                 )}
 
@@ -449,7 +453,7 @@ export default function Pricing() {
           </div>
         </div>
 
-        {/* Bot Categories Explanation - Beginner Friendly */}
+        {/* Bot Categories Explanation */}
         <div className="mt-12">
           <h3 className="text-center text-lg font-bold text-gray-900 mb-6">What You Can Trade</h3>
           <div className="grid md:grid-cols-4 gap-4">
@@ -476,7 +480,7 @@ export default function Pricing() {
           </div>
         </div>
 
-        {/* Enterprise Section - Simplified */}
+        {/* Enterprise Section */}
         <div className="mt-12 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl overflow-hidden shadow-xl">
           <div className="px-6 py-8 md:px-8 md:py-10">
             <div className="text-center">
@@ -513,7 +517,7 @@ export default function Pricing() {
           </div>
         </div>
 
-        {/* Social Proof - Beginner Focused */}
+        {/* Social Proof */}
         <div className="mt-12 grid md:grid-cols-3 gap-6 text-center">
           <div>
             <div className="text-3xl mb-2">🚀</div>
@@ -535,7 +539,7 @@ export default function Pricing() {
         {/* Final CTA */}
         <div className="mt-12 text-center">
           <Link
-            to="/signup"
+            to="/login"
             className="inline-flex items-center gap-2 text-emerald-600 hover:text-emerald-700 font-semibold transition"
           >
             Already have an account? Sign in →
