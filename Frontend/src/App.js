@@ -18,27 +18,20 @@ import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
 // ==================== ENTERPRISE PAGES - BOTH VERSIONS ====================
-// Government / Educational Version (for counties, schools, workforce programs)
 import Enterprise from "./pages/Enterprise";
-
-// Aldo / Trading Infrastructure Version (for brokers, trading firms, fintech operators)
 import EnterpriseDemo from "./pages/EnterpriseDemo";
-
-// Onboarding Wizard Component
 import EnterpriseOnboardingWizard from './components/enterprise/EnterpriseOnboardingWizard';
-
-// Enterprise Dashboard (with demoMode support)
 import EnterpriseDashboard from "./pages/EnterpriseDashboard";
 
 // Lazy Loaded Auth / App Pages
-const Signup = lazy(() => import("./pages/SignupForm"));
+const Signup = lazy(() => import("./pages/Signup"));
 const Login = lazy(() => import("./pages/Login"));
 const Activation = lazy(() => import("./pages/Activation"));
 const Billing = lazy(() => import("./pages/Billing"));
 const BillingSuccess = lazy(() => import("./pages/BillingSuccess"));
 const BillingDashboard = lazy(() => import("./pages/BillingDashboard"));
 
-// Enterprise Dashboard Pages (authenticated - now use the same component)
+// Enterprise Dashboard Pages
 const TeamPage = lazy(() => import("./pages/TeamPage"));
 const StrategiesPage = lazy(() => import("./pages/StrategiesPage"));
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
@@ -89,13 +82,8 @@ class AppErrorBoundary extends React.Component {
         <div className="min-h-screen flex items-center justify-center px-6 bg-white">
           <div className="max-w-xl text-center">
             <h1 className="text-3xl font-bold mb-4">Something went wrong</h1>
-            <p className="text-gray-600 mb-6">
-              Please refresh the page or try again later.
-            </p>
-            <Link
-              to="/"
-              className="inline-block px-5 py-3 bg-emerald-600 text-white rounded-xl"
-            >
+            <p className="text-gray-600 mb-6">Please refresh the page or try again later.</p>
+            <Link to="/" className="inline-block px-5 py-3 bg-emerald-600 text-white rounded-xl">
               Go Home
             </Link>
           </div>
@@ -132,8 +120,7 @@ function RequireAuth({ children }) {
   const location = useLocation();
 
   if (loading) return <LoadingSpinner />;
-  if (!user)
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
   return children;
 }
@@ -152,7 +139,6 @@ function RequireAdmin({ children }) {
   return children;
 }
 
-// Enterprise route guard - requires enterprise tier
 function RequireEnterprise({ children }) {
   const { user, loading, isEnterpriseUser } = useAuth();
   const location = useLocation();
@@ -167,7 +153,6 @@ function RequireEnterprise({ children }) {
   return children;
 }
 
-// Enterprise admin route guard
 function RequireEnterpriseAdmin({ children }) {
   const { user, loading, isEnterpriseAdmin } = useAuth();
   const location = useLocation();
@@ -182,6 +167,7 @@ function RequireEnterpriseAdmin({ children }) {
   return children;
 }
 
+// FIXED: Starter users bypass billing requirement
 function RequireActivation({ children }) {
   const { user, activation, activationComplete, loading, isAdmin } = useAuth();
 
@@ -191,6 +177,13 @@ function RequireActivation({ children }) {
   // Admins bypass activation
   if (isAdmin) return children;
 
+  // FIXED: Starter users go directly to dashboard without billing
+  const tier = user?.tier || "starter";
+  if (tier === "starter") {
+    return children;
+  }
+
+  // Pro/Elite users need activation
   if (!activationComplete) {
     const hasCard = activation?.has_card_on_file || activation?.billing_complete;
     if (!hasCard) return <Navigate to="/billing" replace />;
@@ -207,6 +200,12 @@ function RedirectIfActivated({ children }) {
   if (!user) return <Navigate to="/login" replace />;
   
   if (isAdmin) return children;
+  
+  const tier = user?.tier || "starter";
+  // Starter users never have activationComplete, but they should go to dashboard
+  if (tier === "starter") {
+    return <Navigate to="/dashboard" replace />;
+  }
   
   if (activationComplete) return <Navigate to="/dashboard" replace />;
 
@@ -238,8 +237,19 @@ function PostLoginRedirect() {
       return;
     }
 
-    // Regular users go to dashboard
-    navigate("/dashboard", { replace: true });
+    // Starter vs Pro/Elite routing
+    const tier = user?.tier || "starter";
+    if (tier === "starter") {
+      navigate("/dashboard", { replace: true });
+    } else {
+      // Pro/Elite users may need billing setup
+      const hasCard = user?.has_card_on_file || user?.billing_complete;
+      if (!hasCard) {
+        navigate("/billing", { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
+    }
   }, [user, loading, navigate, isAdmin, isEnterpriseUser]);
 
   return <LoadingSpinner />;
@@ -251,29 +261,19 @@ function NotFound() {
     <div className="min-h-[60vh] flex items-center justify-center text-center px-6">
       <div>
         <h1 className="text-3xl font-bold mb-3">Page not found</h1>
-        <p className="text-gray-600 mb-4">
-          The page you're looking for doesn't exist.
-        </p>
-        <Link to="/" className="text-emerald-600 underline">
-          Go Home
-        </Link>
+        <p className="text-gray-600 mb-4">The page you're looking for doesn't exist.</p>
+        <Link to="/" className="text-emerald-600 underline">Go Home</Link>
       </div>
     </div>
   );
 }
 
-// ---------------- TEST ROUTES COMPONENT (NO AUTH, USING REAL COMPONENT WITH DEMO MODE) ----------------
+// ---------------- TEST ROUTES COMPONENT ----------------
 function TestRoutes() {
   return (
     <Suspense fallback={<PageFallback />}>
       <Routes>
-        {/* Original working wizard */}
         <Route path="/test/wizard" element={<EnterpriseOnboardingWizard />} />
-        
-        {/* 
-          TEST ROUTES - Using the REAL EnterpriseDashboard component with demoMode=true
-          These routes require NO authentication and use mock data
-        */}
         <Route path="/test/enterprise-dashboard" element={<EnterpriseDashboard demoMode={true} />} />
         <Route path="/test/enterprise-team" element={<EnterpriseDashboard demoMode={true} />} />
         <Route path="/test/enterprise-strategies" element={<EnterpriseDashboard demoMode={true} />} />
@@ -281,14 +281,13 @@ function TestRoutes() {
         <Route path="/test/enterprise-audit" element={<EnterpriseDashboard demoMode={true} />} />
         <Route path="/test/enterprise-branding" element={<EnterpriseDashboard demoMode={true} />} />
         <Route path="/test/enterprise-bot-controls" element={<EnterpriseDashboard demoMode={true} />} />
-        
         <Route path="/test/*" element={<NotFound />} />
       </Routes>
     </Suspense>
   );
 }
 
-// ---------------- MAIN APP ROUTES (WITH HEADER/FOOTER) ----------------
+// ---------------- MAIN APP ROUTES ----------------
 function MainAppRoutes() {
   const { loading, user } = useAuth();
   if (loading) return <LoadingSpinner />;
@@ -310,11 +309,11 @@ function MainAppRoutes() {
             <Route path="/funding-guide" element={<FundingGuide />} />
             <Route path="/referrals" element={<ReferralSystem />} />
             
-            {/* ENTERPRISE PAGES - BOTH VERSIONS */}
+            {/* ENTERPRISE PAGES */}
             <Route path="/Enterprise" element={<Enterprise />} />
             <Route path="/EnterpriseDemo" element={<EnterpriseDemo />} />
             
-            {/* Demo redirect */}
+            {/* Demo redirects */}
             <Route path="/demo" element={<Navigate to="/trade-demo" replace />} />
             <Route path="/trade-demo" element={<TradeDemo />} />
             <Route path="/live" element={<PublicDashboard />} />
@@ -340,9 +339,9 @@ function MainAppRoutes() {
             <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
             <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
 
-            {/* BILLING */}
-            <Route path="/billing/success" element={<BillingSuccess />} />
+            {/* BILLING - FIXED: No duplicate /billing/success inside /billing */}
             <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
+            <Route path="/billing/success" element={<BillingSuccess />} />
             <Route path="/billing-dashboard" element={<RequireAuth><BillingDashboard /></RequireAuth>} />
             <Route path="/settings/billing" element={<Navigate to="/billing-dashboard" replace />} />
 
@@ -353,14 +352,11 @@ function MainAppRoutes() {
             <Route path="/dashboard" element={<RequireActivation><MemberDashboard /></RequireActivation>} />
             <Route path="/members" element={<Navigate to="/dashboard" replace />} />
 
-            {/* 
-              AUTHENTICATED ENTERPRISE DASHBOARD ROUTES 
-              These require enterprise tier and use the SAME component with demoMode=false
-            */}
+            {/* AUTHENTICATED ENTERPRISE DASHBOARD ROUTES */}
             <Route path="/enterprise/dashboard" element={<RequireEnterprise><EnterpriseDashboard demoMode={false} /></RequireEnterprise>} />
             <Route path="/enterprise-dashboard" element={<Navigate to="/enterprise/dashboard" replace />} />
             
-            {/* Enterprise sub-pages still use their individual components */}
+            {/* Enterprise sub-pages */}
             <Route path="/enterprise/team" element={<RequireEnterpriseAdmin><TeamPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/strategies" element={<RequireEnterpriseAdmin><StrategiesPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/analytics" element={<RequireEnterprise><AnalyticsPage /></RequireEnterprise>} />
@@ -385,16 +381,12 @@ function MainAppRoutes() {
 // ---------------- ROOT APP ----------------
 function AppContent() {
   const location = useLocation();
-  
-  // Check if we're on a test route
   const isTestRoute = location.pathname.startsWith('/test');
   
   if (isTestRoute) {
-    // Render test routes WITHOUT Header/Footer - using REAL component with demoMode
     return <TestRoutes />;
   }
   
-  // Render main app WITH Header/Footer
   return <MainAppRoutes />;
 }
 
