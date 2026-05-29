@@ -1,5 +1,5 @@
 // src/pages/BillingDashboard.jsx
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
@@ -66,7 +66,7 @@ const TIERS = {
     icon: "👑",
   },
   stock: {
-    name: "Stocks",
+    name: "DeFi",
     price: 99,
     interval: "month",
     features: [
@@ -321,9 +321,30 @@ function PaymentMethodManager({ onSuccess }) {
 }
 
 // ============================================================================
-// SUBSCRIPTION PLANS COMPONENT
+// SUBSCRIPTION PLANS COMPONENT - FIXED WITH DIRECT NAVIGATION
 // ============================================================================
-function SubscriptionPlans({ currentTier, onUpgrade }) {
+function SubscriptionPlans({ currentTier }) {
+  const navigate = useNavigate();
+  const [upgrading, setUpgrading] = useState(null);
+
+  const handleUpgrade = (newTier) => {
+    if (upgrading) return;
+    
+    setUpgrading(newTier);
+    console.log(`[SubscriptionPlans] Navigating to billing with tier: ${newTier}`);
+    
+    // Direct navigation - no callback needed
+    navigate(`/billing?tier=${newTier}`, {
+      state: { 
+        tier: newTier, 
+        fromBillingDashboard: true 
+      }
+    });
+  };
+
+  const priceOrder = { starter: 0, pro: 19, elite: 49, stock: 99, bundle: 199 };
+  const isUpgrade = (tierKey) => priceOrder[tierKey] > priceOrder[currentTier];
+
   return (
     <div className="bg-white/5 rounded-xl p-6 border border-white/10">
       <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -331,57 +352,74 @@ function SubscriptionPlans({ currentTier, onUpgrade }) {
       </h3>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {Object.entries(TIERS).map(([key, tier]) => (
-          <div
-            key={key}
-            className={`relative rounded-xl border overflow-hidden ${
-              key === currentTier
-                ? "border-emerald-500/50 bg-gradient-to-br from-emerald-600/10 to-transparent"
-                : "border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
-            }`}
-          >
-            {key === currentTier && (
-              <div className="absolute top-2 right-2">
-                <span className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded-full">
-                  Current
-                </span>
-              </div>
-            )}
-
-            <div className={`p-4 bg-gradient-to-r ${tier.color} bg-opacity-20`}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-2xl">{tier.icon}</span>
-                <h4 className="text-lg font-bold">{tier.name}</h4>
-              </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-bold">${tier.price}</span>
-                <span className="text-sm text-white/50">/{tier.interval}</span>
-              </div>
-            </div>
-
-            <div className="p-4">
-              <ul className="space-y-2 text-sm">
-                {tier.features.map((feature, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="text-emerald-400">✓</span>
-                    <span className="text-white/70">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              {key !== currentTier && (
-                <button
-                  onClick={() => onUpgrade(key)}
-                  className="w-full mt-4 px-3 py-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg text-sm font-semibold hover:opacity-90"
-                >
-                  {parseInt(tier.price) > parseInt(TIERS[currentTier]?.price || 0)
-                    ? "Upgrade"
-                    : "Downgrade"}
-                </button>
+        {Object.entries(TIERS).map(([key, tier]) => {
+          const upgrade = isUpgrade(key);
+          const isCurrent = key === currentTier;
+          
+          return (
+            <div
+              key={key}
+              className={`relative rounded-xl border overflow-hidden ${
+                isCurrent
+                  ? "border-emerald-500/50 bg-gradient-to-br from-emerald-600/10 to-transparent"
+                  : "border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+              }`}
+            >
+              {isCurrent && (
+                <div className="absolute top-2 right-2">
+                  <span className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded-full">
+                    Current
+                  </span>
+                </div>
               )}
+
+              <div className={`p-4 bg-gradient-to-r ${tier.color} bg-opacity-20`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl">{tier.icon}</span>
+                  <h4 className="text-lg font-bold">{tier.name}</h4>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold">${tier.price}</span>
+                  <span className="text-sm text-white/50">/{tier.interval}</span>
+                </div>
+              </div>
+
+              <div className="p-4">
+                <ul className="space-y-2 text-sm">
+                  {tier.features.map((feature, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-emerald-400">✓</span>
+                      <span className="text-white/70">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {!isCurrent && (
+                  <button
+                    onClick={() => handleUpgrade(key)}
+                    disabled={upgrading === key}
+                    className={`w-full mt-4 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      upgrade
+                        ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white"
+                        : "bg-gray-700 hover:bg-gray-600 text-white"
+                    } disabled:opacity-50`}
+                  >
+                    {upgrading === key ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Processing...
+                      </span>
+                    ) : upgrade ? (
+                      "Upgrade →"
+                    ) : (
+                      "Downgrade →"
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -551,57 +589,24 @@ function NewsletterPreferences() {
 // ACCOUNT SECURITY
 // ============================================================================
 function AccountSecurity() {
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadSessions();
-  }, []);
-
-  const loadSessions = async () => {
-    try {
-      setSessions([
-        {
-          id: 1,
-          device: "Chrome on Windows",
-          location: "New York, US",
-          ip: "192.168.1.1",
-          current: true,
-          lastActive: new Date().toISOString(),
-        },
-        {
-          id: 2,
-          device: "Safari on iPhone",
-          location: "New York, US",
-          ip: "192.168.1.2",
-          current: false,
-          lastActive: new Date(Date.now() - 86400000).toISOString(),
-        },
-      ]);
-    } catch (err) {
-      console.error("Failed to load sessions:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRevokeSession = async (sessionId) => {
-    if (!window.confirm("Log out this device?")) return;
-    try {
-      await loadSessions();
-    } catch (err) {
-      console.error("Failed to revoke session:", err);
-    }
-  };
-
-  const handleRevokeAll = async () => {
-    if (!window.confirm("Log out all other devices?")) return;
-    try {
-      await loadSessions();
-    } catch (err) {
-      console.error("Failed to revoke sessions:", err);
-    }
-  };
+  const [sessions] = useState([
+    {
+      id: 1,
+      device: "Chrome on Windows",
+      location: "New York, US",
+      ip: "192.168.1.1",
+      current: true,
+      lastActive: new Date().toISOString(),
+    },
+    {
+      id: 2,
+      device: "Safari on iPhone",
+      location: "New York, US",
+      ip: "192.168.1.2",
+      current: false,
+      lastActive: new Date(Date.now() - 86400000).toISOString(),
+    },
+  ]);
 
   return (
     <div className="bg-white/5 rounded-xl p-6 border border-white/10">
@@ -614,61 +619,51 @@ function AccountSecurity() {
           <div className="flex items-center justify-between mb-2">
             <h4 className="font-medium text-sm">Active Sessions</h4>
             {sessions.length > 1 && (
-              <button
-                onClick={handleRevokeAll}
-                className="text-xs px-3 py-1 bg-red-600/20 text-red-300 rounded hover:bg-red-600/30"
-              >
+              <button className="text-xs px-3 py-1 bg-red-600/20 text-red-300 rounded hover:bg-red-600/30">
                 Log Out Others
               </button>
             )}
           </div>
 
-          {loading ? (
-            <div className="animate-pulse h-20 bg-white/5 rounded" />
-          ) : (
-            <div className="space-y-2">
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className={`p-3 rounded-lg flex items-center justify-between ${
-                    session.current
-                      ? "bg-emerald-500/10 border border-emerald-500/30"
-                      : "bg-black/30"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-xl">
-                      {session.device.includes("iPhone") ? "📱" : "💻"}
-                    </span>
-                    <div>
-                      <p className="text-sm font-medium">
-                        {session.device}
-                        {session.current && (
-                          <span className="ml-2 text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full">
-                            Current
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-white/40">
-                        {session.location} • {session.ip}
-                      </p>
-                      <p className="text-xs text-white/30">
-                        Last active: {new Date(session.lastActive).toLocaleString()}
-                      </p>
-                    </div>
+          <div className="space-y-2">
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                className={`p-3 rounded-lg flex items-center justify-between ${
+                  session.current
+                    ? "bg-emerald-500/10 border border-emerald-500/30"
+                    : "bg-black/30"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">
+                    {session.device.includes("iPhone") ? "📱" : "💻"}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">
+                      {session.device}
+                      {session.current && (
+                        <span className="ml-2 text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full">
+                          Current
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-white/40">
+                      {session.location} • {session.ip}
+                    </p>
+                    <p className="text-xs text-white/30">
+                      Last active: {new Date(session.lastActive).toLocaleString()}
+                    </p>
                   </div>
-                  {!session.current && (
-                    <button
-                      onClick={() => handleRevokeSession(session.id)}
-                      className="text-xs px-3 py-1 bg-red-600/20 text-red-300 rounded hover:bg-red-600/30"
-                    >
-                      Revoke
-                    </button>
-                  )}
                 </div>
-              ))}
-            </div>
-          )}
+                {!session.current && (
+                  <button className="text-xs px-3 py-1 bg-red-600/20 text-red-300 rounded hover:bg-red-600/30">
+                    Revoke
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="border-t border-white/10 pt-4">
@@ -838,16 +833,6 @@ export default function BillingDashboard() {
     setLoading(false);
   }, [user, navigate]);
 
-  // FIXED: Upgrade goes to /billing with tier parameter, NOT /checkout
-  const handleUpgrade = (newTier) => {
-    navigate(`/billing?tier=${newTier}`, {
-      state: { 
-        tier: newTier, 
-        fromBillingDashboard: true 
-      }
-    });
-  };
-
   const tier = user?.tier || "starter";
   const tierInfo = TIERS[tier];
 
@@ -938,7 +923,7 @@ export default function BillingDashboard() {
           )}
 
           {activeTab === "plans" && (
-            <SubscriptionPlans currentTier={tier} onUpgrade={handleUpgrade} />
+            <SubscriptionPlans currentTier={tier} />
           )}
 
           {activeTab === "payment" && (
