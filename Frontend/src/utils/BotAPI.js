@@ -284,3 +284,4 @@ export const togglePaperTradingEnhanced = async (enabled) => {
 
   return successResponse;
 };
+export default BotAPI; 
