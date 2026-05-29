@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx
+// src/components/Dashboard/MemberDashboard.jsx - UPDATED to go to billing page
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
@@ -394,7 +394,18 @@ export default function MemberDashboard() {
     window.__imaliToastTimer = window.setTimeout(() => setToast({ message: "", type: "info" }), 4500);
   }, []);
 
-  const handleUpgrade = useCallback(() => nav("/pricing"), [nav]);
+  // UPDATED: Redirect to billing page instead of pricing
+  const handleUpgrade = useCallback(() => {
+    // Navigate to billing dashboard with upgrade intent state
+    nav("/billing-dashboard", { 
+      state: { 
+        upgradeIntent: true,
+        currentTier: userTier,
+        returnTo: "/dashboard"
+      }
+    });
+  }, [nav, userTier]);
+
   const handleLogout = useCallback(() => { BotAPI.clearToken?.(); BotAPI.clearApiKey?.(); nav("/login"); }, [nav]);
 
   const loadDashboard = useCallback(async ({ silent = false, force = false } = {}) => {
@@ -603,7 +614,7 @@ export default function MemberDashboard() {
                   ) : !tradingEnabled && access.canLiveTrade ? (
                     <Button variant="warning" onClick={() => setShowLiveConfirm(true)}>Start Live Trading</Button>
                   ) : !access.canLiveTrade ? (
-                    <Button variant="warning" onClick={handleUpgrade}>Upgrade to Pro</Button>
+                    <Button variant="warning" onClick={handleUpgrade}>Upgrade to Pro →</Button>
                   ) : (
                     <StatusPill tone="green">✅ Ready to Trade</StatusPill>
                   )}
@@ -619,14 +630,14 @@ export default function MemberDashboard() {
                     <h3 className="text-lg font-extrabold text-emerald-900">🛡️ New here? Learn how to connect safely first</h3>
                     <p className="mt-1 text-sm font-semibold text-emerald-800">Before adding API keys, read the Funding Guide to learn how to create restricted OKX and Alpaca keys with trading permission only (no withdrawals).</p>
                   </div>
-                  <Link to="/guides/api-setup" target="_blank" className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-emerald-600 px-6 py-3 text-sm font-extrabold text-white shadow-sm hover:bg-emerald-700 transition">
+                  <Link to="/funding-guide" target="_blank" className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-emerald-600 px-6 py-3 text-sm font-extrabold text-white shadow-sm hover:bg-emerald-700 transition">
                     Read Funding Guide →
                   </Link>
                 </div>
               </Card>
             )}
 
-            {/* PLAN CARD */}
+            {/* PLAN CARD - UPDATED UPGRADE BUTTON */}
             <Card className="border-purple-200 bg-gradient-to-r from-purple-50/80 to-indigo-50/60">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -635,7 +646,11 @@ export default function MemberDashboard() {
                     {access.canLiveTrade ? "✅ Live trading ready. Connect your exchange accounts to start." : "📝 Free paper trading with virtual funds. Upgrade for live trading."}
                   </p>
                 </div>
-                {!access.canLiveTrade && <Button variant="warning" onClick={handleUpgrade}>Upgrade to Pro</Button>}
+                {!access.canLiveTrade && (
+                  <Button variant="warning" onClick={handleUpgrade}>
+                    Upgrade to Pro → 💳
+                  </Button>
+                )}
               </div>
             </Card>
 
@@ -701,16 +716,16 @@ export default function MemberDashboard() {
               <div className="h-[300px] w-full"><EquityCurveChart data={series} /></div>
             </Card>
 
-            {/* QUICK START GUIDE */}
+            {/* QUICK START GUIDE - UPDATED UPGRADE STEP */}
             {isNewUser && (
               <Card className="border-indigo-200 bg-indigo-50/50">
                 <div className="mb-4 flex items-center gap-3"><span className="text-3xl">🎓</span><div><h3 className="text-lg font-extrabold text-indigo-900">Quick Start Guide</h3><p className="text-sm font-semibold text-indigo-800">Follow these steps in order.</p></div></div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {[
-                    { step: 1, title: "Read Funding Guide", desc: "Learn how to create safe API keys.", action: "Read Guide", onClick: () => window.open("/guides/api-setup", "_blank"), disabled: false },
+                    { step: 1, title: "Read Funding Guide", desc: "Learn how to create safe API keys.", action: "Read Guide", onClick: () => window.open("/funding-guide", "_blank"), disabled: false },
                     { step: 2, title: "Connect API Keys", desc: "Add Alpaca and OKX with restricted permissions.", action: "Connect Keys", onClick: () => setShowApiModal(true), disabled: false },
                     { step: 3, title: "Start Paper Trading", desc: `Practice with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`, action: "Start", onClick: () => handleTogglePaperTrading(true), disabled: !bothConnected },
-                    { step: 4, title: "Upgrade to Pro", desc: "Ready for live trading? Upgrade when comfortable.", action: "Upgrade", onClick: handleUpgrade, disabled: false },
+                    { step: 4, title: "Upgrade to Pro", desc: "Ready for live trading? Upgrade when comfortable.", action: "Upgrade →", onClick: handleUpgrade, disabled: false },
                   ].map((item) => (
                     <div key={item.step} className="rounded-2xl border border-indigo-100 bg-white p-4">
                       <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-extrabold text-white">{item.step}</div>
@@ -728,9 +743,9 @@ export default function MemberDashboard() {
               <SectionTitle>📚 Helpful Resources</SectionTitle>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
-                  { title: "📚 Trading Guide", desc: "Learn how Imali trades", url: "/guides/trading" },
-                  { title: "🔧 API Setup", desc: "Connect OKX and Alpaca", url: "/guides/api-setup" },
-                  { title: "❓ FAQ", desc: "Common beginner questions", url: "/faq" },
+                  { title: "📚 Trading Guide", desc: "Learn how Imali trades", url: "/how-it-works" },
+                  { title: "🔧 API Setup", desc: "Connect OKX and Alpaca", url: "/funding-guide" },
+                  { title: "❓ FAQ", desc: "Common beginner questions", url: "/support" },
                   { title: "💬 Support", desc: "Get help", url: "/support" },
                 ].map((resource) => (
                   <Link key={resource.title} to={resource.url} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 transition hover:border-indigo-300 hover:bg-indigo-50">
@@ -868,11 +883,11 @@ export default function MemberDashboard() {
             <Card>
               <SectionTitle>📖 Video Tutorials</SectionTitle>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Link to="/guides/api-setup" className="block p-4 rounded-2xl border border-gray-200 hover:border-indigo-300">
+                <Link to="/funding-guide" className="block p-4 rounded-2xl border border-gray-200 hover:border-indigo-300">
                   <div className="font-bold text-gray-900">🔧 API Setup Walkthrough</div>
                   <div className="text-sm text-gray-500">Step-by-step video guide</div>
                 </Link>
-                <Link to="/guides/strategies" className="block p-4 rounded-2xl border border-gray-200 hover:border-indigo-300">
+                <Link to="/how-it-works" className="block p-4 rounded-2xl border border-gray-200 hover:border-indigo-300">
                   <div className="font-bold text-gray-900">🎯 Strategy Selection</div>
                   <div className="text-sm text-gray-500">Which strategy is right for you?</div>
                 </Link>
@@ -906,7 +921,7 @@ export default function MemberDashboard() {
         {/* BOTTOM ACTIONS */}
         <div className="flex flex-wrap gap-3 justify-center pt-4">
           <Button variant="secondary" onClick={() => nav("/activation")}>Account Settings</Button>
-          <Button variant="secondary" onClick={() => nav("/billing-dashboard")}>Billing</Button>
+          <Button variant="secondary" onClick={handleUpgrade}>Upgrade Plan 💳</Button>
           <Button variant="danger" onClick={handleLogout}>Logout</Button>
         </div>
       </div>
@@ -919,7 +934,7 @@ export default function MemberDashboard() {
             
             {/* Safety warning for new users */}
             <div className="mb-5 rounded-2xl border border-blue-300 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
-              🔒 New users should read the <Link to="/guides/api-setup" className="font-extrabold underline text-blue-700">Funding Guide</Link> before creating API keys.
+              🔒 New users should read the <Link to="/funding-guide" className="font-extrabold underline text-blue-700">Funding Guide</Link> before creating API keys.
             </div>
             
             <div className="space-y-4">
