@@ -23,8 +23,8 @@ import EnterpriseDemo from "./pages/EnterpriseDemo";
 import EnterpriseOnboardingWizard from './components/enterprise/EnterpriseOnboardingWizard';
 import EnterpriseDashboard from "./pages/EnterpriseDashboard";
 
-// Lazy Loaded Auth / App Pages
-const Signup = lazy(() => import("./pages/Signup"));
+// Lazy Loaded Auth / App Pages - FIXED: Changed Signup to SignupForm
+const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
 const Activation = lazy(() => import("./pages/Activation"));
 const Billing = lazy(() => import("./pages/Billing"));
