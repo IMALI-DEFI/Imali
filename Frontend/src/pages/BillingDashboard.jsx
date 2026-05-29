@@ -16,87 +16,68 @@ const stripePromise = loadStripe(
 );
 
 // ============================================================================
-// TIER CONFIGURATION
+// TIER CONFIGURATION - MATCHES PRICING PAGE EXACTLY
 // ============================================================================
 const TIERS = {
   starter: {
-    name: "Starter",
+    name: "Free Trial",
+    displayName: "Starter",
     price: 0,
-    interval: "month",
+    interval: "7 days",
     features: [
-      "Basic trading signals",
-      "Paper trading",
-      "Community support",
-      "Basic analytics",
+      "$1,000 paper trading credits",
+      "Test all bots risk-free",
+      "Stock & crypto trading demo",
+      "No performance fee",
+      "No credit card required",
+      "Email support",
     ],
-    color: "from-gray-600 to-gray-700",
-    border: "border-gray-500/30",
+    color: "from-emerald-600 to-emerald-700",
+    border: "border-emerald-500/30",
     icon: "🌱",
+    badge: "Safe Start",
+    badgeColor: "green",
   },
   pro: {
     name: "Pro",
+    displayName: "Pro",
     price: 19,
     interval: "month",
     features: [
-      "Advanced trading signals",
-      "CEX movers",
-      "Real-time alerts",
+      "Live trading enabled",
+      "All stocks & crypto bots",
+      "Advanced strategies",
+      "15% performance fee",
       "Priority support",
-      "Advanced analytics",
       "API access",
     ],
     color: "from-blue-600 to-blue-700",
     border: "border-blue-500/30",
     icon: "⭐",
+    badge: "Most Popular",
+    badgeColor: "orange",
   },
   elite: {
     name: "Elite",
+    displayName: "Elite",
     price: 49,
     interval: "month",
     features: [
-      "All Pro features",
-      "DEX integration",
-      "MEV protection",
-      "Multi-chain support",
-      "VIP support",
-      "Custom strategies",
+      "Everything in Pro",
+      "DEX trading (Uniswap, QuickSwap)",
+      "Custom indicators",
+      "10% performance fee",
+      "Priority execution",
+      "24/7 priority support",
     ],
     color: "from-purple-600 to-purple-700",
     border: "border-purple-500/30",
     icon: "👑",
+    badge: "Power User",
+    badgeColor: "purple",
   },
-  stock: {
-    name: "DeFi",
-    price: 99,
-    interval: "month",
-    features: [
-      "Stock market data",
-      "US equities",
-      "Options trading",
-      "Market analysis",
-      "Economic calendars",
-      "Earnings alerts",
-    ],
-    color: "from-emerald-600 to-emerald-700",
-    border: "border-emerald-500/30",
-    icon: "📈",
-  },
-  bundle: {
-    name: "Bundle",
-    price: 199,
-    interval: "month",
-    features: [
-      "Everything included",
-      "All strategies",
-      "All exchanges",
-      "Priority support",
-      "Early access features",
-      "Best value",
-    ],
-    color: "from-amber-600 to-amber-700",
-    border: "border-amber-500/30",
-    icon: "🧩",
-  },
+  // Note: Stock/DeFi plan removed - not in pricing page
+  // Note: Bundle plan removed - not in pricing page
 };
 
 // ============================================================================
@@ -321,7 +302,7 @@ function PaymentMethodManager({ onSuccess }) {
 }
 
 // ============================================================================
-// SUBSCRIPTION PLANS COMPONENT - FIXED WITH DIRECT NAVIGATION
+// SUBSCRIPTION PLANS COMPONENT - MATCHES PRICING PAGE
 // ============================================================================
 function SubscriptionPlans({ currentTier }) {
   const navigate = useNavigate();
@@ -331,9 +312,8 @@ function SubscriptionPlans({ currentTier }) {
     if (upgrading) return;
     
     setUpgrading(newTier);
-    console.log(`[SubscriptionPlans] Navigating to billing with tier: ${newTier}`);
     
-    // Direct navigation - no callback needed
+    // Direct navigation to billing with tier parameter
     navigate(`/billing?tier=${newTier}`, {
       state: { 
         tier: newTier, 
@@ -342,8 +322,8 @@ function SubscriptionPlans({ currentTier }) {
     });
   };
 
-  const priceOrder = { starter: 0, pro: 19, elite: 49, stock: 99, bundle: 199 };
-  const isUpgrade = (tierKey) => priceOrder[tierKey] > priceOrder[currentTier];
+  // Price order for determining upgrade vs downgrade
+  const priceOrder = { starter: 0, pro: 19, elite: 49 };
 
   return (
     <div className="bg-white/5 rounded-xl p-6 border border-white/10">
@@ -351,56 +331,82 @@ function SubscriptionPlans({ currentTier }) {
         <span>📋</span> Subscription Plans
       </h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {Object.entries(TIERS).map(([key, tier]) => {
-          const upgrade = isUpgrade(key);
           const isCurrent = key === currentTier;
+          const isUpgrade = !isCurrent && priceOrder[key] > priceOrder[currentTier];
           
           return (
             <div
               key={key}
-              className={`relative rounded-xl border overflow-hidden ${
+              className={`relative rounded-xl border overflow-hidden transition-all ${
                 isCurrent
-                  ? "border-emerald-500/50 bg-gradient-to-br from-emerald-600/10 to-transparent"
-                  : "border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+                  ? "border-emerald-500/50 bg-gradient-to-br from-emerald-600/10 to-transparent ring-1 ring-emerald-500/30"
+                  : "border-white/10 bg-white/5 hover:bg-white/10 hover:scale-[1.02] transition-transform"
               }`}
             >
-              {isCurrent && (
-                <div className="absolute top-2 right-2">
-                  <span className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded-full">
-                    Current
+              {/* Badge */}
+              {tier.badge && (
+                <div className="absolute top-3 right-3">
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    tier.badgeColor === "orange" 
+                      ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
+                      : tier.badgeColor === "purple"
+                      ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                      : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                  }`}>
+                    {tier.badge}
                   </span>
                 </div>
               )}
 
-              <div className={`p-4 bg-gradient-to-r ${tier.color} bg-opacity-20`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">{tier.icon}</span>
-                  <h4 className="text-lg font-bold">{tier.name}</h4>
+              {isCurrent && (
+                <div className="absolute top-3 left-3">
+                  <span className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded-full">
+                    Current Plan
+                  </span>
                 </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold">${tier.price}</span>
-                  <span className="text-sm text-white/50">/{tier.interval}</span>
-                </div>
-              </div>
+              )}
 
-              <div className="p-4">
-                <ul className="space-y-2 text-sm">
-                  {tier.features.map((feature, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <span className="text-emerald-400">✓</span>
+              <div className="p-5">
+                {/* Plan header */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-3xl">{tier.icon}</span>
+                  <div>
+                    <h3 className="text-xl font-bold">{tier.name}</h3>
+                    <p className="text-xs text-white/50">{tier.displayName}</p>
+                  </div>
+                </div>
+
+                {/* Price */}
+                <div className="mb-4">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-bold">${tier.price}</span>
+                    <span className="text-sm text-white/50">/{tier.interval}</span>
+                  </div>
+                  {key === "starter" && (
+                    <p className="text-xs text-emerald-400 mt-1">No credit card required</p>
+                  )}
+                </div>
+
+                {/* Features */}
+                <ul className="space-y-2 mb-6">
+                  {tier.features.slice(0, 5).map((feature, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className="text-emerald-400 mt-0.5">✓</span>
                       <span className="text-white/70">{feature}</span>
                     </li>
                   ))}
                 </ul>
 
+                {/* Action Button */}
                 {!isCurrent && (
                   <button
                     onClick={() => handleUpgrade(key)}
                     disabled={upgrading === key}
-                    className={`w-full mt-4 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
-                      upgrade
-                        ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white"
+                    className={`w-full py-2.5 rounded-lg font-semibold transition-all ${
+                      isUpgrade
+                        ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg"
                         : "bg-gray-700 hover:bg-gray-600 text-white"
                     } disabled:opacity-50`}
                   >
@@ -409,17 +415,33 @@ function SubscriptionPlans({ currentTier }) {
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         Processing...
                       </span>
-                    ) : upgrade ? (
-                      "Upgrade →"
+                    ) : isUpgrade ? (
+                      `Upgrade to ${tier.name} →`
                     ) : (
-                      "Downgrade →"
+                      `Switch to ${tier.name} →`
                     )}
                   </button>
+                )}
+
+                {isCurrent && (
+                  <div className="w-full py-2.5 text-center text-sm text-white/40 border border-white/10 rounded-lg">
+                    Your current plan
+                  </div>
                 )}
               </div>
             </div>
           );
         })}
+      </div>
+
+      {/* Enterprise Note */}
+      <div className="mt-6 pt-4 border-t border-white/10 text-center">
+        <p className="text-sm text-white/50">
+          Need a custom solution?{" "}
+          <a href="mailto:sales@imali-defi.com" className="text-blue-400 hover:text-blue-300">
+            Contact our enterprise team →
+          </a>
+        </p>
       </div>
     </div>
   );
@@ -598,14 +620,6 @@ function AccountSecurity() {
       current: true,
       lastActive: new Date().toISOString(),
     },
-    {
-      id: 2,
-      device: "Safari on iPhone",
-      location: "New York, US",
-      ip: "192.168.1.2",
-      current: false,
-      lastActive: new Date(Date.now() - 86400000).toISOString(),
-    },
   ]);
 
   return (
@@ -616,15 +630,7 @@ function AccountSecurity() {
 
       <div className="space-y-4">
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-medium text-sm">Active Sessions</h4>
-            {sessions.length > 1 && (
-              <button className="text-xs px-3 py-1 bg-red-600/20 text-red-300 rounded hover:bg-red-600/30">
-                Log Out Others
-              </button>
-            )}
-          </div>
-
+          <h4 className="font-medium text-sm mb-3">Active Sessions</h4>
           <div className="space-y-2">
             {sessions.map((session) => (
               <div
@@ -636,9 +642,7 @@ function AccountSecurity() {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <span className="text-xl">
-                    {session.device.includes("iPhone") ? "📱" : "💻"}
-                  </span>
+                  <span className="text-xl">💻</span>
                   <div>
                     <p className="text-sm font-medium">
                       {session.device}
@@ -656,11 +660,6 @@ function AccountSecurity() {
                     </p>
                   </div>
                 </div>
-                {!session.current && (
-                  <button className="text-xs px-3 py-1 bg-red-600/20 text-red-300 rounded hover:bg-red-600/30">
-                    Revoke
-                  </button>
-                )}
               </div>
             ))}
           </div>
@@ -694,47 +693,29 @@ function AccountSecurity() {
 // ============================================================================
 function UsageStatistics() {
   const [stats] = useState({
-    apiCalls: 1234,
-    trades: 56,
-    storage: 2.3,
+    trades: 0,
+    winRate: 0,
+    activeBots: 0,
   });
 
   return (
     <div className="bg-white/5 rounded-xl p-6 border border-white/10">
       <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-        <span>📊</span> Usage Statistics
+        <span>📊</span> Trading Statistics
       </h3>
 
       <div className="grid grid-cols-3 gap-3">
         <div className="text-center p-3 bg-black/30 rounded-lg">
-          <div className="text-2xl font-bold text-emerald-400">{stats.apiCalls}</div>
-          <div className="text-xs text-white/40">API Calls</div>
-          <div className="text-[10px] text-white/30">/ 10k monthly</div>
+          <div className="text-2xl font-bold text-emerald-400">{stats.trades}</div>
+          <div className="text-xs text-white/40">Total Trades</div>
         </div>
         <div className="text-center p-3 bg-black/30 rounded-lg">
-          <div className="text-2xl font-bold text-blue-400">{stats.trades}</div>
-          <div className="text-xs text-white/40">Trades</div>
-          <div className="text-[10px] text-white/30">this month</div>
+          <div className="text-2xl font-bold text-blue-400">{stats.winRate}%</div>
+          <div className="text-xs text-white/40">Win Rate</div>
         </div>
         <div className="text-center p-3 bg-black/30 rounded-lg">
-          <div className="text-2xl font-bold text-purple-400">{stats.storage}GB</div>
-          <div className="text-xs text-white/40">Storage</div>
-          <div className="text-[10px] text-white/30">/ 10GB</div>
-        </div>
-      </div>
-
-      <div className="mt-4 space-y-2">
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-white/60">API Usage</span>
-            <span className="text-white/40">{Math.round((stats.apiCalls/10000)*100)}%</span>
-          </div>
-          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 rounded-full"
-              style={{ width: `${Math.min((stats.apiCalls/10000)*100, 100)}%` }}
-            />
-          </div>
+          <div className="text-2xl font-bold text-purple-400">{stats.activeBots}</div>
+          <div className="text-xs text-white/40">Active Bots</div>
         </div>
       </div>
     </div>
@@ -834,7 +815,7 @@ export default function BillingDashboard() {
   }, [user, navigate]);
 
   const tier = user?.tier || "starter";
-  const tierInfo = TIERS[tier];
+  const tierInfo = TIERS[tier] || TIERS.starter;
 
   if (loading) {
     return (
@@ -890,7 +871,20 @@ export default function BillingDashboard() {
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-3xl">{tierInfo.icon}</span>
-                      <h2 className="text-2xl font-bold">{tierInfo.name} Plan</h2>
+                      <div>
+                        <h2 className="text-2xl font-bold">{tierInfo.name}</h2>
+                        {tierInfo.badge && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            tierInfo.badgeColor === "orange" 
+                              ? "bg-orange-500/20 text-orange-300"
+                              : tierInfo.badgeColor === "purple"
+                              ? "bg-purple-500/20 text-purple-300"
+                              : "bg-emerald-500/20 text-emerald-300"
+                          }`}>
+                            {tierInfo.badge}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <p className="text-white/80 mb-4">
                       ${tierInfo.price}/{tierInfo.interval}
@@ -899,7 +893,7 @@ export default function BillingDashboard() {
                       {tierInfo.features.slice(0, 4).map((feature, i) => (
                         <li key={i} className="flex items-center gap-2 text-sm">
                           <span className="text-emerald-300">✓</span>
-                          {feature}
+                          <span className="text-white/70">{feature}</span>
                         </li>
                       ))}
                     </ul>
@@ -914,10 +908,9 @@ export default function BillingDashboard() {
               </div>
 
               {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <UsageStatistics />
                 <PaymentMethodManager onSuccess={refreshUser} />
-                <NewsletterPreferences />
               </div>
             </>
           )}
