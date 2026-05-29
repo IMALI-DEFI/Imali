@@ -7,10 +7,6 @@ import { useAuth } from "../context/AuthContext";
 import StripeElements from "../components/StripeElements";
 import BotAPI from "../utils/BotAPI";
 
-// ==============================================
-// CONFIGURATION
-// ==============================================
-
 const TIER_COPY = {
   starter: { label: "Starter", price: "$0/mo", badge: "🌱", summary: "Paper trading and beginner tools" },
   pro: { label: "Pro", price: "$19/mo", badge: "⭐", summary: "Advanced trading signals and analytics" },
@@ -19,12 +15,7 @@ const TIER_COPY = {
   bundle: { label: "Bundle", price: "$199/mo", badge: "🧩", summary: "Everything included in one plan" },
 };
 
-// Initialize Stripe with publishable key
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || "pk_test_default");
-
-// ==============================================
-// HELPER FUNCTIONS
-// ==============================================
 
 function normalizeTier(value) {
   const tier = String(value || "starter").toLowerCase().trim();
@@ -37,33 +28,34 @@ function safeExtract(response, fallback = {}) {
   return response;
 }
 
-// ==============================================
-// MAIN BILLING COMPONENT
-// ==============================================
-
 export default function Billing() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAdmin, activation, refreshActivation } = useAuth();
 
-  // Derived state from props and user
+  // Get tier from URL params, then state, then user
   const tier = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const tierFromUrl = params.get("tier");
+    
     return normalizeTier(
-      location.state?.tier ||
+      tierFromUrl ||
+        location.state?.tier ||
         user?.tier ||
         localStorage.getItem("IMALI_TIER") ||
         localStorage.getItem("imali_selected_tier") ||
         "starter"
     );
-  }, [location.state?.tier, user?.tier]);
+  }, [location.search, location.state?.tier, user?.tier]);
 
   const tierInfo = TIER_COPY[tier];
 
   const email = useMemo(() => {
-    return location.state?.email || user?.email || localStorage.getItem("IMALI_EMAIL") || "";
-  }, [location.state?.email, user?.email]);
+    const params = new URLSearchParams(location.search);
+    const emailFromUrl = params.get("email");
+    return emailFromUrl || location.state?.email || user?.email || localStorage.getItem("IMALI_EMAIL") || "";
+  }, [location.search, location.state?.email, user?.email]);
 
-  // State management
   const [loading, setLoading] = useState(true);
   const [clientSecret, setClientSecret] = useState("");
   const [setupIntentId, setSetupIntentId] = useState("");
@@ -74,12 +66,7 @@ export default function Billing() {
   const [success, setSuccess] = useState("");
   const [retryCount, setRetryCount] = useState(0);
 
-  // ==============================================
-  // BILLING STATE MANAGEMENT
-  // ==============================================
-
   const loadBillingState = useCallback(async () => {
-    // Check if we have user email
     if (!email && !user?.email) {
       setLoading(false);
       setError("Please log in to set up billing");
@@ -100,12 +87,10 @@ export default function Billing() {
     setSuccess("");
 
     try {
-      // Optional: Probe billing routes to check availability
       if (BotAPI.probeBillingRoutes) {
         await BotAPI.probeBillingRoutes().catch(console.warn);
       }
       
-      // Check if user already has a card on file
       const cardStatusRes = await BotAPI.getCardStatus();
       const cardStatus = safeExtract(cardStatusRes, {});
 
@@ -117,7 +102,6 @@ export default function Billing() {
 
       setHasCard(alreadyHasCard);
 
-      // If user already has a card, no need to create SetupIntent
       if (alreadyHasCard) {
         setClientSecret("");
         setSetupIntentId("");
@@ -125,7 +109,6 @@ export default function Billing() {
         return;
       }
 
-      // Create SetupIntent for card collection
       const intentRes = await BotAPI.createSetupIntent({ email, tier });
       const intentData = safeExtract(intentRes, {});
       
@@ -158,14 +141,9 @@ export default function Billing() {
     }
   }, [activation?.billing_complete, activation?.has_card_on_file, email, isAdmin, tier, user?.email, user?.is_admin]);
 
-  // Load billing state on mount and when dependencies change
   useEffect(() => {
     loadBillingState();
   }, [loadBillingState]);
-
-  // ==============================================
-  // PAYMENT HANDLERS
-  // ==============================================
 
   const handlePaymentSuccess = useCallback(async (paymentResult) => {
     setBusy(true);
@@ -179,7 +157,6 @@ export default function Billing() {
         throw new Error("Payment confirmation failed. Please try again.");
       }
 
-      // Refresh activation status to update billing flags
       await refreshActivation?.();
       
       setHasCard(true);
@@ -187,7 +164,6 @@ export default function Billing() {
       setSetupIntentId("");
       setSuccess("✅ Card added successfully! Redirecting to activation...");
       
-      // Short delay before redirecting to activation
       setTimeout(() => {
         navigate("/activation", {
           replace: true,
@@ -239,11 +215,6 @@ export default function Billing() {
     });
   };
 
-  // ==============================================
-  // RENDER GUARDS
-  // ==============================================
-
-  // Check if user is logged in
   if (!user && !email) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
@@ -265,16 +236,11 @@ export default function Billing() {
     );
   }
 
-  // ==============================================
-  // MAIN RENDER
-  // ==============================================
-
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-5xl mx-auto px-4 py-8 md:py-12">
         <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-6">
           
-          {/* LEFT COLUMN - Billing Form */}
           <section className="rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
             <div className="flex items-center gap-3 mb-6">
               <span className="text-3xl">{tierInfo.badge}</span>
@@ -286,35 +252,28 @@ export default function Billing() {
               </div>
             </div>
 
-            {/* Plan Summary */}
             <div className="mb-6 rounded-xl border border-white/10 bg-black/30 p-4">
               <p className="text-sm text-white/70">{tierInfo.summary}</p>
             </div>
 
-            {/* Error Display */}
             {error && (
               <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
                 <p className="text-sm text-red-200 font-semibold">⚠️ Error</p>
                 <p className="text-sm text-red-200/80">{error}</p>
                 {!loading && !hasCard && !clientSecret && (
-                  <button
-                    onClick={handleRetry}
-                    className="mt-2 text-sm text-red-200 hover:text-red-100 underline"
-                  >
+                  <button onClick={handleRetry} className="mt-2 text-sm text-red-200 hover:text-red-100 underline">
                     Retry
                   </button>
                 )}
               </div>
             )}
 
-            {/* Success Display */}
             {success && (
               <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
                 <p className="text-sm text-emerald-200">{success}</p>
               </div>
             )}
 
-            {/* Loading State */}
             {loading && (
               <div className="mt-6 rounded-xl border border-white/10 bg-black/30 p-6 text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-3" />
@@ -322,7 +281,6 @@ export default function Billing() {
               </div>
             )}
 
-            {/* Card Already on File */}
             {!loading && hasCard && (
               <div className="mt-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5">
                 <div className="flex items-center gap-2 mb-3">
@@ -342,7 +300,6 @@ export default function Billing() {
               </div>
             )}
 
-            {/* Payment Form */}
             {!loading && !hasCard && clientSecret && (
               <div className="mt-6">
                 <StripeElements
@@ -356,7 +313,6 @@ export default function Billing() {
               </div>
             )}
 
-            {/* Fallback - No Billing Available */}
             {!loading && !hasCard && !clientSecret && !billingAvailable && (
               <div className="mt-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-5">
                 <div className="flex items-center gap-2 mb-3">
@@ -366,32 +322,23 @@ export default function Billing() {
                 <p className="text-sm text-white/70 mb-4">
                   We're having trouble setting up billing. Please try again in a few moments.
                 </p>
-                <button
-                  onClick={handleRetry}
-                  className="w-full px-6 py-3 rounded-xl bg-yellow-600 hover:bg-yellow-700 font-semibold transition-colors"
-                >
+                <button onClick={handleRetry} className="w-full px-6 py-3 rounded-xl bg-yellow-600 hover:bg-yellow-700 font-semibold transition-colors">
                   Retry Setup
                 </button>
               </div>
             )}
           </section>
 
-          {/* RIGHT COLUMN - Next Steps */}
           <aside className="rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
             <h2 className="text-xl font-bold mb-4">Setup Progress</h2>
             
             <div className="space-y-3">
-              {/* Step 1: Billing */}
               <div className={`rounded-xl border p-4 transition-colors ${
-                hasCard 
-                  ? "border-emerald-500/30 bg-emerald-500/10" 
-                  : "border-white/10 bg-black/30"
+                hasCard ? "border-emerald-500/30 bg-emerald-500/10" : "border-white/10 bg-black/30"
               }`}>
                 <div className="flex items-center gap-3">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                    hasCard 
-                      ? "bg-emerald-500 text-white" 
-                      : "bg-white/20 text-white/50"
+                    hasCard ? "bg-emerald-500 text-white" : "bg-white/20 text-white/50"
                   }`}>
                     {hasCard ? "✓" : "1"}
                   </div>
@@ -399,14 +346,11 @@ export default function Billing() {
                     <p className={`font-semibold ${hasCard ? "text-emerald-300" : "text-white"}`}>
                       Billing Setup
                     </p>
-                    {hasCard && (
-                      <p className="text-xs text-emerald-300/70">Complete</p>
-                    )}
+                    {hasCard && <p className="text-xs text-emerald-300/70">Complete</p>}
                   </div>
                 </div>
               </div>
 
-              {/* Step 2: Connect Accounts */}
               <div className="rounded-xl border border-white/10 bg-black/30 p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold text-white/50">
@@ -419,7 +363,6 @@ export default function Billing() {
                 </div>
               </div>
 
-              {/* Step 3: Enable Trading */}
               <div className="rounded-xl border border-white/10 bg-black/30 p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold text-white/50">
@@ -433,7 +376,6 @@ export default function Billing() {
               </div>
             </div>
 
-            {/* Security Notice */}
             <div className="mt-6 pt-6 border-t border-white/10">
               <div className="flex items-start gap-2 text-xs text-white/40">
                 <span className="text-lg">🔒</span>
