@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - COMPLETE REWRITE WITH FIXED WORKER HANDLING
+// src/components/Dashboard/MemberDashboard.jsx - FINAL VERSION
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
@@ -358,7 +358,6 @@ export default function MemberDashboard() {
   const [showLiveConfirm, setShowLiveConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [paperTradeExecuting, setPaperTradeExecuting] = useState(false);
-  const [lastTradeTime, setLastTradeTime] = useState(null);
 
   const userTier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user?.tier]);
   const access = useMemo(() => tierAccess[userTier] || tierAccess.starter, [userTier]);
@@ -367,19 +366,24 @@ export default function MemberDashboard() {
   const bothConnected = alpacaConnected && okxConnected;
   const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
   
-  const trialStatus = user?.trial_status || (userTier === "starter" ? "active" : null);
-  const trialSecondsLeft = user?.trial_seconds_left || (userTier === "starter" ? 7 * 86400 : 0);
+  // FIX #2: Use ?? instead of || to prevent 0 being treated as false
+  const trialStatus = user?.trial_status ?? (userTier === "starter" ? "active" : null);
+  const trialSecondsLeft = user?.trial_seconds_left ?? (userTier === "starter" ? 7 * 86400 : 0);
   const isTrialExpired = trialStatus === "expired" || trialSecondsLeft <= 0;
   
-  const isNewUser = !paperTradingEnabled && !tradingEnabled && (stats.total_trades || 0) < 5;
+  // FIX #1: Separate paper history from paper active status
+  const hasPaperHistory = (stats.total_trades || 0) > 0;
+  const hasActivePaperTrading = paperTradingEnabled;
+  
+  const isNewUser = !hasActivePaperTrading && !tradingEnabled && !hasPaperHistory;
 
   const displayStats = useMemo(() => ({
     total_pnl: Number(stats.total_pnl || 0),
     win_rate: Number(stats.win_rate || 0),
-    total_trades: Math.max(Number(stats.total_trades || 0), paperTradingEnabled ? 1 : 0),
+    total_trades: Math.max(Number(stats.total_trades || 0), hasActivePaperTrading ? 1 : 0),
     wins: Number(stats.wins || 0),
     losses: Number(stats.losses || 0),
-  }), [stats, paperTradingEnabled]);
+  }), [stats, hasActivePaperTrading]);
 
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type });
@@ -388,17 +392,13 @@ export default function MemberDashboard() {
   }, []);
 
   const handleUpgrade = useCallback(() => {
-    nav("/billing-dashboard", { 
-      state: { 
-        upgradeIntent: true,
-        currentTier: userTier,
-        returnTo: "/dashboard"
-      }
-    });
-  }, [nav, userTier]);
+    // FIX #4: Match your actual route - change to "/billing-dashboard" if that's your route
+    nav("/billing");
+  }, [nav]);
 
   const handleLogout = useCallback(() => { BotAPI.clearToken?.(); BotAPI.clearApiKey?.(); nav("/login"); }, [nav]);
 
+  // FIX #3: Paper trading toggle with refresh after test trade
   const handleTogglePaperTrading = async (enabled) => {
     if (togglingPaper || togglingTrading || !access.canPaperTrade) return;
     
@@ -413,15 +413,21 @@ export default function MemberDashboard() {
       setPaperTradingEnabled(enabled);
       
       if (enabled) {
-        notify("Paper trading enabled! Trades will start automatically.", "success");
+        notify("Paper trading enabled! The bot will trade automatically if the backend worker is running.", "success");
         
-        // Try to execute an immediate test trade
+        // FIX #3: Test trade with refresh after completion
         setTimeout(async () => {
           try {
-            await BotAPI.executePaperTrade?.();
-            setLastTradeTime(new Date());
+            const trade = await BotAPI.executePaperTrade?.();
+            console.log("Initial paper trade result:", trade);
+            // Refresh dashboard to show the new trade
+            await loadDashboard({ silent: true, force: true });
+            if (trade?.success !== false) {
+              notify("Test trade executed successfully!", "success");
+            }
           } catch (e) {
-            console.warn("Initial trade not available yet:", e);
+            console.warn("Initial trade test failed:", e);
+            notify("Note: Automatic trading requires backend worker. Manual trading available.", "info");
           }
         }, 2000);
       } else {
@@ -462,7 +468,6 @@ export default function MemberDashboard() {
       const result = await BotAPI.executePaperTrade?.();
       if (result?.success !== false) {
         notify("Trade executed! Check your equity curve.", "success");
-        setLastTradeTime(new Date());
         await loadDashboard({ force: true });
       } else {
         throw new Error(result?.error || "Trade failed");
@@ -559,9 +564,6 @@ export default function MemberDashboard() {
     );
   }
 
-  // Determine if paper trading appears active (has trades or enabled flag)
-  const hasActivePaperTrading = paperTradingEnabled || (stats.total_trades || 0) > 0;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 px-3 py-4 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
@@ -573,14 +575,14 @@ export default function MemberDashboard() {
             <div>
               <h1 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">Welcome back 👋</h1>
               <p className="mt-2 text-sm font-semibold text-gray-600">
-                {paperTradingEnabled ? "🎮 Paper trading active - learning with virtual funds" : 
+                {hasActivePaperTrading ? "🎮 Paper trading active - bot trades with virtual funds" : 
                  tradingEnabled ? "💰 Live trading active - real funds at work" :
-                 hasActivePaperTrading ? "📊 Paper trading history available" :
+                 hasPaperHistory ? "📊 View your paper trading history" :
                  "📝 Start paper trading to learn the platform safely"}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <StatusPill tone={paperTradingEnabled ? "green" : hasActivePaperTrading ? "blue" : "slate"}>
-                  Paper {paperTradingEnabled ? "Active" : hasActivePaperTrading ? "Has History" : "Off"}
+                <StatusPill tone={hasActivePaperTrading ? "green" : hasPaperHistory ? "blue" : "slate"}>
+                  Paper {hasActivePaperTrading ? "Active" : hasPaperHistory ? "History" : "Off"}
                 </StatusPill>
                 <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
                 <StatusPill tone={bothConnected ? "green" : "amber"}>API {bothConnected ? "Ready" : "Needed"}</StatusPill>
@@ -627,40 +629,101 @@ export default function MemberDashboard() {
         {activeTab === "overview" && (
           <div className="space-y-5">
             
-            {/* NEXT ACTION CARD */}
-            <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-blue-50/60">
+            {/* PAPER TRADING CONTROLS CARD - Always visible */}
+            <Card className="border-blue-200 bg-blue-50/50">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-lg font-extrabold text-indigo-900">
-                    {isTrialExpired && !access.canLiveTrade ? "⚠️ Trial Expired - Upgrade to Continue" :
-                     !paperTradingEnabled && !hasActivePaperTrading ? "Start Paper Trading (No API Keys Needed!)" :
-                     paperTradingEnabled ? "✅ Paper Trading Active - Bot is Trading" :
-                     hasActivePaperTrading ? "📊 View Your Paper Trading Performance" :
-                     !tradingEnabled && access.canLiveTrade ? "Ready for Live Trading" :
-                     "All Set! Monitor Your Performance"}
-                  </h3>
-                  <p className="mt-1 text-sm font-semibold text-indigo-800">
-                    {isTrialExpired && !access.canLiveTrade ? "Your free trial has ended. Upgrade to Pro to continue trading." :
-                     !paperTradingEnabled && !hasActivePaperTrading ? `Start with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. No API keys needed!` :
-                     paperTradingEnabled ? "Your paper trading bot is active and trading. Watch your equity grow!" :
-                     hasActivePaperTrading ? `You have ${displayStats.total_trades} paper trades with ${usd(displayStats.total_pnl)} profit.` :
-                     !tradingEnabled && access.canLiveTrade ? "Your keys are connected. Ready to trade with real funds?" :
-                     "Live trading is active. Monitor performance closely."}
+                  <h2 className="text-lg font-extrabold text-blue-900">🎮 Paper Trading Controls</h2>
+                  <p className="text-sm font-semibold text-blue-800">
+                    {hasActivePaperTrading
+                      ? "Paper trading is ON. The backend worker should trade automatically."
+                      : "Paper trading is OFF. Start it to enable trading."}
+                  </p>
+                  {hasPaperHistory && !hasActivePaperTrading && (
+                    <p className="text-xs text-blue-700 mt-1">📊 You have {stats.total_trades} historical paper trades.</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {!hasActivePaperTrading ? (
+                    <Button onClick={() => handleTogglePaperTrading(true)} disabled={togglingPaper}>
+                      {togglingPaper ? "Starting..." : "Start Paper"}
+                    </Button>
+                  ) : (
+                    <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={togglingPaper}>
+                      {togglingPaper ? "Stopping..." : "Stop Paper"}
+                    </Button>
+                  )}
+                  <Button
+                    variant="secondary"
+                    onClick={handleManualTrade}
+                    disabled={!hasActivePaperTrading || paperTradeExecuting}
+                  >
+                    {paperTradeExecuting ? "Trading..." : "Manual Trade"}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* LIVE TRADING CONTROLS CARD */}
+            <Card className="border-purple-200 bg-purple-50/50">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-extrabold text-purple-900">💰 Live Trading Controls</h2>
+                  <p className="text-sm font-semibold text-purple-800">
+                    {!access.canLiveTrade
+                      ? "Upgrade to Pro to unlock live trading."
+                      : tradingEnabled
+                      ? "Live trading is ON with real funds."
+                      : "Live trading is OFF."}
                   </p>
                 </div>
-                <div className="w-full sm:w-auto">
-                  {isTrialExpired && !access.canLiveTrade ? (
-                    <Button variant="warning" onClick={handleUpgrade}>Upgrade to Pro →</Button>
-                  ) : !paperTradingEnabled && !hasActivePaperTrading ? (
-                    <Button onClick={() => handleTogglePaperTrading(true)} disabled={togglingPaper}>
-                      {togglingPaper ? "Starting..." : "Start Paper Trading"}
+                <div className="flex gap-2">
+                  {!access.canLiveTrade ? (
+                    <Button variant="warning" onClick={handleUpgrade}>Upgrade to Pro</Button>
+                  ) : !tradingEnabled ? (
+                    <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={!bothConnected}>
+                      Start Live
                     </Button>
-                  ) : !tradingEnabled && access.canLiveTrade ? (
-                    <Button variant="warning" onClick={() => setShowLiveConfirm(true)}>Start Live Trading</Button>
-                  ) : !access.canLiveTrade && !paperTradingEnabled && hasActivePaperTrading ? (
-                    <Button variant="warning" onClick={handleUpgrade}>Upgrade to Pro →</Button>
-                  ) : null}
+                  ) : (
+                    <Button variant="danger" onClick={() => handleToggleTrading(false)} disabled={togglingTrading}>
+                      Stop Live
+                    </Button>
+                  )}
                 </div>
+              </div>
+            </Card>
+
+            {/* NEXT ACTION CARD - Simplified */}
+            {isNewUser && (
+              <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-blue-50/60">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-lg font-extrabold text-indigo-900">🚀 Get Started</h3>
+                    <p className="mt-1 text-sm font-semibold text-indigo-800">
+                      Click "Start Paper" above to begin trading with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.
+                      No API keys needed!
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* PLAN CARD */}
+            <Card className="border-purple-200 bg-gradient-to-r from-purple-50/80 to-indigo-50/60">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-extrabold text-purple-900">Your Plan: {access.label}</h2>
+                  <p className="mt-1 text-sm font-semibold text-purple-800">
+                    {isTrialExpired ? "⚠️ Your trial has expired. Upgrade to continue." :
+                     access.canLiveTrade ? "✅ Live trading ready. Connect your exchange accounts to start." : 
+                     "📝 Free paper trading with virtual funds. No API keys needed! Upgrade for live trading."}
+                  </p>
+                </div>
+                {(!access.canLiveTrade || isTrialExpired) && (
+                  <Button variant="warning" onClick={handleUpgrade}>
+                    Upgrade to Pro → 💳
+                  </Button>
+                )}
               </div>
             </Card>
 
@@ -679,71 +742,31 @@ export default function MemberDashboard() {
                 <div className="text-xs text-gray-500 font-medium">Total Trades</div>
               </div>
               <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
-                <div className="text-2xl font-extrabold text-gray-900">{paperTradingEnabled ? "Paper" : tradingEnabled ? "Live" : hasActivePaperTrading ? "Paper" : "Setup"}</div>
+                <div className="text-2xl font-extrabold text-gray-900">{hasActivePaperTrading ? "Paper" : tradingEnabled ? "Live" : hasPaperHistory ? "Paper" : "Setup"}</div>
                 <div className="text-xs text-gray-500 font-medium">Mode</div>
               </div>
             </div>
 
-            {/* PAPER TRADING CARD */}
+            {/* PAPER TRADING INFO CARD */}
             <Card className="border-blue-200 bg-blue-50/50">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3">
                 <div>
-                  <h2 className="text-lg font-extrabold text-blue-900 sm:text-xl">🎯 Paper Trading</h2>
+                  <h2 className="text-lg font-extrabold text-blue-900 sm:text-xl">📊 About Paper Trading</h2>
                   <p className="mt-1 text-sm font-bold text-blue-800">
-                    {paperTradingEnabled 
+                    {hasActivePaperTrading 
                       ? `Active with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.` 
-                      : hasActivePaperTrading
-                      ? `You have ${displayStats.total_trades} completed paper trades with ${usd(displayStats.total_pnl)} total profit/loss.`
+                      : hasPaperHistory
+                      ? `You have ${stats.total_trades} completed paper trades with ${usd(displayStats.total_pnl)} total profit/loss.`
                       : `Available with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. No real money. No API keys needed!`}
                   </p>
-                  {!paperTradingEnabled && !access.canLiveTrade && !hasActivePaperTrading && (
-                    <p className="mt-2 text-xs font-semibold text-blue-700">✨ Starter plan: Paper trading works immediately without any API connections</p>
-                  )}
-                  {hasActivePaperTrading && !paperTradingEnabled && (
-                    <p className="mt-2 text-xs font-semibold text-blue-700">📊 Click "Start Paper Trading" to resume automatic trading</p>
-                  )}
-                  {lastTradeTime && paperTradingEnabled && (
-                    <p className="mt-2 text-xs text-blue-600">Last trade: {lastTradeTime.toLocaleTimeString()}</p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <StatusPill tone={paperTradingEnabled ? "green" : hasActivePaperTrading ? "blue" : "blue"}>
-                    {paperTradingEnabled ? "Active" : hasActivePaperTrading ? "Has History" : "Ready"}
-                  </StatusPill>
-                  {paperTradingEnabled && (
-                    <Button variant="secondary" onClick={handleManualTrade} disabled={paperTradeExecuting} className="!py-2 !px-3 text-sm">
-                      {paperTradeExecuting ? "..." : "Manual Trade"}
-                    </Button>
-                  )}
-                  {paperTradingEnabled && (
-                    <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={togglingPaper} className="!py-2 !px-3 text-sm">
-                      Stop
-                    </Button>
+                  {hasActivePaperTrading && (
+                    <p className="mt-2 text-xs text-blue-700">
+                      ✨ The bot trades automatically via backend worker. Your selected strategy determines when to buy and sell.
+                    </p>
                   )}
                 </div>
               </div>
             </Card>
-
-            {/* LIVE TRADING CARD */}
-            {access.canLiveTrade && (
-              <Card className={tradingEnabled ? "border-green-300 bg-green-50/50" : "bg-white"}>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-lg font-extrabold text-gray-900 sm:text-xl">💰 Live Trading</h2>
-                    <p className="mt-1 text-sm font-semibold text-gray-600">
-                      {tradingEnabled ? "Active with real funds through your exchange accounts." : "Ready to trade with real money?"}
-                    </p>
-                  </div>
-                  <div>
-                    {!tradingEnabled ? (
-                      <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={!bothConnected}>Start Live</Button>
-                    ) : (
-                      <Button variant="danger" onClick={() => handleToggleTrading(false)} disabled={togglingTrading}>Stop Live</Button>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            )}
 
             {/* EQUITY CURVE CHART */}
             <Card>
@@ -757,8 +780,8 @@ export default function MemberDashboard() {
                 <div className="mb-4 flex items-center gap-3"><span className="text-3xl">🎓</span><div><h3 className="text-lg font-extrabold text-indigo-900">Quick Start Guide</h3><p className="text-sm font-semibold text-indigo-800">Get started in minutes.</p></div></div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {[
-                    { step: 1, title: "Start Paper Trading", desc: `Practice with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. No APIs needed!`, action: "Start Now", onClick: () => handleTogglePaperTrading(true), disabled: paperTradingEnabled },
-                    { step: 2, title: "Watch Auto-Trading", desc: "The bot trades continuously based on your strategy.", action: "View Trades", onClick: () => setActiveTab("trading"), disabled: !hasActivePaperTrading && !paperTradingEnabled },
+                    { step: 1, title: "Start Paper Trading", desc: `Practice with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.`, action: "Start Now", onClick: () => handleTogglePaperTrading(true), disabled: hasActivePaperTrading },
+                    { step: 2, title: "Watch Auto-Trading", desc: "The backend worker trades continuously.", action: "View Trades", onClick: () => setActiveTab("trading"), disabled: !hasActivePaperTrading && !hasPaperHistory },
                     { step: 3, title: "Choose Strategy", desc: "Pick a strategy that matches your risk tolerance.", action: "Pick Strategy", onClick: () => setActiveTab("strategies"), disabled: false },
                     { step: 4, title: "Upgrade to Pro", desc: "Ready for live trading? Upgrade when comfortable.", action: "Upgrade →", onClick: handleUpgrade, disabled: false },
                   ].map((item) => (
@@ -807,41 +830,24 @@ export default function MemberDashboard() {
               </Card>
             </div>
 
-            {/* Manual Trade Button */}
-            {(paperTradingEnabled || hasActivePaperTrading) && !tradingEnabled && (
-              <Card>
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="font-extrabold text-gray-900">Manual Trade</h3>
-                    <p className="text-sm text-gray-500">Execute a random paper trade to test the system</p>
-                  </div>
-                  <Button variant="primary" onClick={handleManualTrade} disabled={!paperTradingEnabled || paperTradeExecuting}>
-                    {paperTradeExecuting ? "Executing..." : "Execute Random Trade"}
-                  </Button>
-                </div>
-              </Card>
-            )}
-
             {/* Info when paper trading is off but has history */}
-            {!paperTradingEnabled && hasActivePaperTrading && (
+            {!hasActivePaperTrading && hasPaperHistory && (
               <Card>
                 <div className="text-center py-6">
                   <div className="text-5xl mb-3">📊</div>
                   <h3 className="font-extrabold text-gray-900">Paper Trading Paused</h3>
-                  <p className="text-sm text-gray-500 mt-1">Click "Start Paper Trading" to resume automatic trading</p>
-                  <Button variant="primary" onClick={() => handleTogglePaperTrading(true)} className="mt-4">Resume Paper Trading</Button>
+                  <p className="text-sm text-gray-500 mt-1">Click "Start Paper" in the Overview tab to resume automatic trading</p>
                 </div>
               </Card>
             )}
 
             {/* Info when no trading at all */}
-            {!paperTradingEnabled && !hasActivePaperTrading && !tradingEnabled && (
+            {!hasActivePaperTrading && !hasPaperHistory && !tradingEnabled && (
               <Card>
                 <div className="text-center py-6">
                   <div className="text-5xl mb-3">🎮</div>
                   <h3 className="font-extrabold text-gray-900">No Trading Active</h3>
-                  <p className="text-sm text-gray-500 mt-1">Start paper trading from the Overview tab to begin</p>
-                  <Button variant="primary" onClick={() => handleTogglePaperTrading(true)} className="mt-4">Start Paper Trading</Button>
+                  <p className="text-sm text-gray-500 mt-1">Click "Start Paper" in the Overview tab to begin</p>
                 </div>
               </Card>
             )}
@@ -937,9 +943,9 @@ export default function MemberDashboard() {
               <SectionTitle>📚 How Paper Trading Works</SectionTitle>
               <div className="prose prose-gray max-w-none">
                 <h3 className="text-gray-900">1. Start Paper Trading</h3>
-                <p className="text-gray-600">Click "Start Paper Trading" - no API keys needed. The bot immediately starts with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.</p>
-                <h3 className="text-gray-900">2. Bot Trades Automatically</h3>
-                <p className="text-gray-600">Once enabled, the bot executes trades automatically based on your selected strategy. Trades happen regularly while markets are active.</p>
+                <p className="text-gray-600">Click "Start Paper" - no API keys needed. The bot starts with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.</p>
+                <h3 className="text-gray-900">2. Backend Worker Runs Trades</h3>
+                <p className="text-gray-600">Once enabled, a backend worker executes trades automatically based on your selected strategy. Trades happen regularly while markets are active.</p>
                 <h3 className="text-gray-900">3. Monitor Performance</h3>
                 <p className="text-gray-600">Watch your equity curve grow in real-time. The win rate and trade volume charts update automatically.</p>
                 <h3 className="text-gray-900">4. Switch Strategies Anytime</h3>
@@ -953,7 +959,7 @@ export default function MemberDashboard() {
               <SectionTitle>🏆 Achievements</SectionTitle>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { id: "paper_active", label: "Paper Trader", icon: "🎮", unlocked: paperTradingEnabled || hasActivePaperTrading },
+                  { id: "paper_active", label: "Paper Trader", icon: "🎮", unlocked: hasActivePaperTrading || hasPaperHistory },
                   { id: "first_trade", label: "First Trade", icon: "🚀", unlocked: displayStats.total_trades > 0 },
                   { id: "trades_10", label: "10 Trades", icon: "⭐", unlocked: displayStats.total_trades >= 10 },
                   { id: "trades_50", label: "50 Trades", icon: "🏆", unlocked: displayStats.total_trades >= 50 },
@@ -983,7 +989,7 @@ export default function MemberDashboard() {
             <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-extrabold text-gray-900">Connect API Keys</h2><button onClick={() => setShowApiModal(false)} className="text-3xl text-gray-500 hover:text-gray-700">×</button></div>
             
             <div className="mb-5 rounded-2xl border border-blue-300 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
-              💡 <strong>Starter plan:</strong> You don't need API keys for paper trading. The bot trades automatically with virtual funds. Only connect when upgrading to Pro for live trading.
+              💡 <strong>Starter plan:</strong> You don't need API keys for paper trading. Only connect when upgrading to Pro for live trading.
             </div>
             
             <div className="space-y-4">
