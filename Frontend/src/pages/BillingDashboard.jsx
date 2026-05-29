@@ -100,7 +100,7 @@ const TIERS = {
 };
 
 // ============================================================================
-// PAYMENT METHOD COMPONENT (Inner - uses Stripe hooks)
+// PAYMENT METHOD COMPONENT
 // ============================================================================
 function PaymentMethodForm({ onSuccess, onCancel, clientSecret }) {
   const stripe = useStripe();
@@ -125,7 +125,6 @@ function PaymentMethodForm({ onSuccess, onCancel, clientSecret }) {
 
       if (stripeError) throw stripeError;
 
-      // Confirm with backend
       await BotAPI.confirmCard();
       onSuccess();
     } catch (err) {
@@ -163,7 +162,7 @@ function PaymentMethodForm({ onSuccess, onCancel, clientSecret }) {
 }
 
 // ============================================================================
-// PAYMENT METHOD MANAGER (Wrapper - provides Elements context)
+// PAYMENT METHOD MANAGER
 // ============================================================================
 function PaymentMethodManager({ onSuccess }) {
   const [showAddCard, setShowAddCard] = useState(false);
@@ -174,7 +173,6 @@ function PaymentMethodManager({ onSuccess }) {
   const [defaultMethod, setDefaultMethod] = useState(null);
   const { user } = useAuth();
 
-  // Load payment methods
   useEffect(() => {
     loadPaymentMethods();
   }, []);
@@ -215,9 +213,7 @@ function PaymentMethodManager({ onSuccess }) {
 
   const handleRemoveCard = async (methodId) => {
     if (!window.confirm("Are you sure you want to remove this card?")) return;
-    
     try {
-      // await BotAPI.removePaymentMethod(methodId);
       await loadPaymentMethods();
     } catch (err) {
       setError(err.message || "Failed to remove card");
@@ -248,7 +244,6 @@ function PaymentMethodManager({ onSuccess }) {
         </div>
       )}
 
-      {/* Existing cards */}
       {paymentMethods.length > 0 ? (
         <div className="space-y-3 mb-4">
           {paymentMethods.map((method) => (
@@ -304,7 +299,6 @@ function PaymentMethodManager({ onSuccess }) {
         </div>
       )}
 
-      {/* Add card form */}
       {showAddCard && clientSecret ? (
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <PaymentMethodForm
@@ -330,8 +324,6 @@ function PaymentMethodManager({ onSuccess }) {
 // SUBSCRIPTION PLANS COMPONENT
 // ============================================================================
 function SubscriptionPlans({ currentTier, onUpgrade }) {
-  const [selectedTier, setSelectedTier] = useState(currentTier);
-
   return (
     <div className="bg-white/5 rounded-xl p-6 border border-white/10">
       <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -705,20 +697,12 @@ function AccountSecurity() {
 // ============================================================================
 // USAGE STATISTICS
 // ============================================================================
-function UsageStatistics({ user, activation }) {
-  const [stats, setStats] = useState({
-    apiCalls: 0,
-    trades: 0,
-    storage: 0,
+function UsageStatistics() {
+  const [stats] = useState({
+    apiCalls: 1234,
+    trades: 56,
+    storage: 2.3,
   });
-
-  useEffect(() => {
-    setStats({
-      apiCalls: 1234,
-      trades: 56,
-      storage: 2.3,
-    });
-  }, []);
 
   return (
     <div className="bg-white/5 rounded-xl p-6 border border-white/10">
@@ -842,7 +826,7 @@ function CancelSubscription({ tier, onCancel }) {
 // ============================================================================
 export default function BillingDashboard() {
   const navigate = useNavigate();
-  const { user, activation, refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
 
@@ -854,8 +838,14 @@ export default function BillingDashboard() {
     setLoading(false);
   }, [user, navigate]);
 
-  const handleUpgrade = async (newTier) => {
-    navigate(`/checkout?tier=${newTier}`);
+  // FIXED: Upgrade goes to /billing with tier parameter, NOT /checkout
+  const handleUpgrade = (newTier) => {
+    navigate(`/billing?tier=${newTier}`, {
+      state: { 
+        tier: newTier, 
+        fromBillingDashboard: true 
+      }
+    });
   };
 
   const tier = user?.tier || "starter";
@@ -940,7 +930,7 @@ export default function BillingDashboard() {
 
               {/* Stats Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <UsageStatistics user={user} activation={activation} />
+                <UsageStatistics />
                 <PaymentMethodManager onSuccess={refreshUser} />
                 <NewsletterPreferences />
               </div>
