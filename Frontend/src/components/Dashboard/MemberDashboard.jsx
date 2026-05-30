@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - REWRITTEN FOR user-api.js
+// src/components/Dashboard/MemberDashboard.jsx - COMPLETE REWRITE
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
@@ -76,9 +76,14 @@ const STRATEGIES = [
   },
 ];
 
+// COMPLETE TIER ACCESS MAPPING - ALL DATABASE TIERS COVERED
 const tierAccess = {
+  // Free tier
   starter: {
     label: "Starter",
+    displayName: "Starter",
+    price: "$0",
+    period: "7-day trial",
     canPaperTrade: true,
     canLiveTrade: false,
     canUseStocks: false,
@@ -89,9 +94,15 @@ const tierAccess = {
     showAchievements: true,
     showStrategyRadar: true,
     upgradeMessage: "Upgrade to Pro for live trading with real funds.",
+    badge: "🌱",
+    badgeColor: "green",
   },
-  pro: {
+  // Paid tiers (database uses common, rare, epic, legendary, enterprise)
+  common: {
     label: "Pro",
+    displayName: "Pro",
+    price: "$19",
+    period: "/month",
     canPaperTrade: true,
     canLiveTrade: true,
     canUseStocks: true,
@@ -102,9 +113,105 @@ const tierAccess = {
     showAchievements: false,
     showStrategyRadar: false,
     upgradeMessage: null,
+    badge: "⭐",
+    badgeColor: "orange",
+  },
+  rare: {
+    label: "Elite",
+    displayName: "Elite",
+    price: "$49",
+    period: "/month",
+    canPaperTrade: true,
+    canLiveTrade: true,
+    canUseStocks: true,
+    canUseCrypto: true,
+    canUseDefi: true,
+    showCharts: true,
+    showCommunityTrades: true,
+    showAchievements: false,
+    showStrategyRadar: false,
+    upgradeMessage: null,
+    badge: "👑",
+    badgeColor: "purple",
+  },
+  epic: {
+    label: "Elite+",
+    displayName: "Elite Plus",
+    price: "$99",
+    period: "/month",
+    canPaperTrade: true,
+    canLiveTrade: true,
+    canUseStocks: true,
+    canUseCrypto: true,
+    canUseDefi: true,
+    showCharts: true,
+    showCommunityTrades: true,
+    showAchievements: false,
+    showStrategyRadar: false,
+    upgradeMessage: null,
+    badge: "💎",
+    badgeColor: "blue",
+  },
+  legendary: {
+    label: "Legendary",
+    displayName: "Legendary",
+    price: "$199",
+    period: "/month",
+    canPaperTrade: true,
+    canLiveTrade: true,
+    canUseStocks: true,
+    canUseCrypto: true,
+    canUseDefi: true,
+    showCharts: true,
+    showCommunityTrades: true,
+    showAchievements: false,
+    showStrategyRadar: false,
+    upgradeMessage: null,
+    badge: "🏆",
+    badgeColor: "amber",
+  },
+  enterprise: {
+    label: "Enterprise",
+    displayName: "Enterprise",
+    price: "Custom",
+    period: "",
+    canPaperTrade: true,
+    canLiveTrade: true,
+    canUseStocks: true,
+    canUseCrypto: true,
+    canUseDefi: true,
+    showCharts: true,
+    showCommunityTrades: true,
+    showAchievements: false,
+    showStrategyRadar: false,
+    upgradeMessage: null,
+    badge: "🏢",
+    badgeColor: "indigo",
+  },
+  // Legacy support
+  pro: {
+    label: "Pro",
+    displayName: "Pro",
+    price: "$19",
+    period: "/month",
+    canPaperTrade: true,
+    canLiveTrade: true,
+    canUseStocks: true,
+    canUseCrypto: true,
+    canUseDefi: false,
+    showCharts: true,
+    showCommunityTrades: true,
+    showAchievements: false,
+    showStrategyRadar: false,
+    upgradeMessage: null,
+    badge: "⭐",
+    badgeColor: "orange",
   },
   elite: {
     label: "Elite",
+    displayName: "Elite",
+    price: "$49",
+    period: "/month",
     canPaperTrade: true,
     canLiveTrade: true,
     canUseStocks: true,
@@ -115,9 +222,14 @@ const tierAccess = {
     showAchievements: false,
     showStrategyRadar: false,
     upgradeMessage: null,
+    badge: "👑",
+    badgeColor: "purple",
   },
   bundle: {
     label: "Bundle",
+    displayName: "Bundle",
+    price: "$199",
+    period: "/month",
     canPaperTrade: true,
     canLiveTrade: true,
     canUseStocks: true,
@@ -128,8 +240,17 @@ const tierAccess = {
     showAchievements: false,
     showStrategyRadar: false,
     upgradeMessage: null,
+    badge: "📦",
+    badgeColor: "blue",
   },
 };
+
+// Upgrade plans available to users
+const UPGRADE_PLANS = [
+  { dbTier: "common", displayName: "Pro", price: "$19", period: "/month", icon: "⭐", features: ["Live Trading", "Stocks", "Crypto", "Priority Support"] },
+  { dbTier: "rare", displayName: "Elite", price: "$49", period: "/month", icon: "👑", features: ["Everything in Pro", "DEX Trading", "Custom Indicators", "24/7 Support"] },
+  { dbTier: "enterprise", displayName: "Enterprise", price: "Custom", period: "", icon: "🏢", features: ["Everything in Elite", "Custom Branding", "Team Management", "Dedicated Support"] },
+];
 
 const usd = (n = 0) => `$${Number(n || 0).toFixed(2)}`;
 const pct = (n = 0) => `${Number(n || 0).toFixed(1)}%`;
@@ -329,6 +450,57 @@ const StrategyRadarChart = ({ data }) => {
   return <Radar data={chartData} options={options} />;
 };
 
+// Upgrade Modal Component
+function UpgradeModal({ open, onClose, onUpgrade, currentTier }) {
+  if (!open) return null;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+        <div className="flex justify-between items-center p-5 border-b">
+          <h2 className="text-2xl font-extrabold text-gray-900">Upgrade Your Plan</h2>
+          <button onClick={onClose} className="text-3xl text-gray-500 hover:text-gray-700">×</button>
+        </div>
+        
+        <div className="p-5">
+          <p className="text-gray-600 mb-4">Choose the plan that's right for you:</p>
+          
+          <div className="grid gap-4">
+            {UPGRADE_PLANS.map((plan) => (
+              <button
+                key={plan.dbTier}
+                onClick={() => onUpgrade(plan.dbTier)}
+                className="text-left p-4 rounded-xl border-2 hover:border-indigo-500 transition-all hover:shadow-lg"
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-3xl">{plan.icon}</span>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">{plan.displayName}</h3>
+                    <div className="text-sm text-gray-500">
+                      {plan.price}{plan.period}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {plan.features.map((feature, i) => (
+                    <span key={i} className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">✓ {feature}</span>
+                  ))}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        <div className="p-5 border-t bg-gray-50 rounded-b-2xl">
+          <p className="text-xs text-gray-500 text-center">
+            Upgrade anytime. Cancel within 30 days for a full refund.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ==============================================
 // MAIN DASHBOARD COMPONENT
 // ==============================================
@@ -359,6 +531,8 @@ export default function MemberDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [paperTradeExecuting, setPaperTradeExecuting] = useState(false);
   const [trialData, setTrialData] = useState(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
 
   const userTier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user?.tier]);
   const access = useMemo(() => tierAccess[userTier] || tierAccess.starter, [userTier]);
@@ -367,14 +541,13 @@ export default function MemberDashboard() {
   const bothConnected = alpacaConnected && okxConnected;
   const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
   
-  // FIX: Use seconds_remaining from trial-status endpoint (not trial_seconds_left)
   const trialSecondsLeft = trialData?.seconds_remaining ?? (userTier === "starter" ? 7 * 86400 : 0);
   const trialStatus = trialData?.trial_status ?? (userTier === "starter" ? "active" : null);
   const isTrialExpired = trialStatus === "expired" || trialSecondsLeft <= 0;
   
-  // Separate paper history from paper active status
   const hasPaperHistory = (stats.total_trades || 0) > 0;
   const hasActivePaperTrading = paperTradingEnabled;
+  const isPaidTier = !["starter", "free"].includes(userTier);
   
   const isNewUser = !hasActivePaperTrading && !tradingEnabled && !hasPaperHistory;
 
@@ -392,13 +565,26 @@ export default function MemberDashboard() {
     window.__imaliToastTimer = window.setTimeout(() => setToast({ message: "", type: "info" }), 4500);
   }, []);
 
-  const handleUpgrade = useCallback(() => {
-    nav("/billing");
-  }, [nav]);
+  const handleUpgrade = useCallback(async (targetTier) => {
+    setUpgrading(true);
+    try {
+      const result = await BotAPI.changePlan?.(targetTier);
+      if (result?.success || result?.redirecting) {
+        notify(`Upgrading to ${tierAccess[targetTier]?.label || targetTier} plan...`, "success");
+        setTimeout(() => window.location.reload(), 2000);
+      } else {
+        notify(result?.error || "Upgrade failed. Please try again.", "error");
+      }
+    } catch (err) {
+      notify(err?.message || "Upgrade failed. Please try again.", "error");
+    } finally {
+      setUpgrading(false);
+      setShowUpgradeModal(false);
+    }
+  }, [notify]);
 
   const handleLogout = useCallback(() => { BotAPI.clearToken?.(); BotAPI.clearApiKey?.(); nav("/login"); }, [nav]);
 
-  // Manual paper trade execution (uses your API's paper-trade endpoint)
   const handleManualTrade = async () => {
     if (paperTradeExecuting) return;
     if (!hasActivePaperTrading) {
@@ -408,13 +594,11 @@ export default function MemberDashboard() {
     
     setPaperTradeExecuting(true);
     try {
-      // Random trade parameters
       const symbols = ["BTC/USD", "ETH/USD", "SOL/USD"];
       const symbol = symbols[Math.floor(Math.random() * symbols.length)];
       const side = Math.random() > 0.5 ? "buy" : "sell";
       const qty = Number((Math.random() * 0.5 + 0.1).toFixed(4));
       
-      // Call your API's paper-trade endpoint
       const result = await BotAPI.request?.("/api/trading/paper-trade", {
         method: "POST",
         data: { exchange: "paper", symbol, side, qty, strategy: currentStrategy }
@@ -449,7 +633,6 @@ export default function MemberDashboard() {
       
       if (enabled) {
         notify("Paper trading enabled! You can now execute manual trades.", "success");
-        // Try a test trade automatically
         setTimeout(() => handleManualTrade(), 2000);
       } else {
         notify("Paper trading disabled.", "success");
@@ -550,7 +733,6 @@ export default function MemberDashboard() {
       setCurrentStrategy(normalizeStrategyId(strategiesPayload?.current_strategy || me?.strategy || "ai_weighted"));
       if (tradesPayload?.trades?.length) setCommunityTrades(tradesPayload.trades);
       
-      // Load trial status separately
       await loadTrialStatus();
     } catch (err) {
       console.error("[MemberDashboard] Failed to load:", err);
@@ -582,6 +764,13 @@ export default function MemberDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 px-3 py-4 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
+      <UpgradeModal 
+        open={showUpgradeModal} 
+        onClose={() => setShowUpgradeModal(false)} 
+        onUpgrade={handleUpgrade}
+        currentTier={userTier}
+      />
+      
       <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
         
         {/* HEADER */}
@@ -597,15 +786,15 @@ export default function MemberDashboard() {
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <StatusPill tone={hasActivePaperTrading ? "green" : hasPaperHistory ? "blue" : "slate"}>
-                  Paper {hasActivePaperTrading ? "Active" : hasPaperHistory ? "History" : "Off"}
+                  {access.badge || "📝"} Paper {hasActivePaperTrading ? "Active" : hasPaperHistory ? "History" : "Off"}
                 </StatusPill>
-                <StatusPill tone={tradingEnabled ? "purple" : "slate"}>Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
-                <StatusPill tone={bothConnected ? "green" : "amber"}>API {bothConnected ? "Ready" : "Needed"}</StatusPill>
-                <StatusPill tone="blue">Strategy: {activeStrategy.name}</StatusPill>
-                <StatusPill tone={access.canLiveTrade ? "green" : "amber"}>{access.label}</StatusPill>
-                {trialStatus && (
-                  <StatusPill tone={isTrialExpired ? "red" : trialStatus === "active" ? "green" : "amber"}>
-                    {isTrialExpired ? "Trial Expired" : `Trial: ${formatTimeLeft(trialSecondsLeft)} left`}
+                <StatusPill tone={tradingEnabled ? "purple" : "slate"}>💰 Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
+                <StatusPill tone={bothConnected ? "green" : "amber"}>🔌 API {bothConnected ? "Ready" : "Needed"}</StatusPill>
+                <StatusPill tone="blue">🎯 Strategy: {activeStrategy.name}</StatusPill>
+                <StatusPill tone={access.canLiveTrade ? "green" : "amber"}>{access.badge} {access.label}</StatusPill>
+                {trialStatus && !isPaidTier && (
+                  <StatusPill tone={isTrialExpired ? "red" : "green"}>
+                    ⏱️ {isTrialExpired ? "Trial Expired" : `Trial: ${formatTimeLeft(trialSecondsLeft)} left`}
                   </StatusPill>
                 )}
               </div>
@@ -685,16 +874,20 @@ export default function MemberDashboard() {
                 <div>
                   <h2 className="text-lg font-extrabold text-purple-900">💰 Live Trading Controls</h2>
                   <p className="text-sm font-semibold text-purple-800">
-                    {!access.canLiveTrade
-                      ? "Upgrade to Pro to unlock live trading."
-                      : tradingEnabled
-                      ? "Live trading is ON with real funds."
-                      : "Live trading is OFF."}
+                    {!access.canLiveTrade ? (
+                      <span>🔒 Live trading requires upgrade. <button onClick={() => setShowUpgradeModal(true)} className="text-purple-600 underline">Upgrade to {UPGRADE_PLANS[0]?.displayName} →</button></span>
+                    ) : tradingEnabled ? (
+                      "Live trading is ON with real funds."
+                    ) : (
+                      "Live trading is OFF. Click Start Live to begin."
+                    )}
                   </p>
                 </div>
                 <div className="flex gap-2">
                   {!access.canLiveTrade ? (
-                    <Button variant="warning" onClick={handleUpgrade}>Upgrade to Pro</Button>
+                    <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>
+                      Upgrade to {UPGRADE_PLANS[0]?.displayName} → 💳
+                    </Button>
                   ) : !tradingEnabled ? (
                     <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={!bothConnected}>
                       Start Live
@@ -708,34 +901,31 @@ export default function MemberDashboard() {
               </div>
             </Card>
 
-            {/* QUICK START CARD for new users */}
-            {isNewUser && (
-              <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-blue-50/60">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="text-lg font-extrabold text-indigo-900">🚀 Get Started</h3>
-                    <p className="mt-1 text-sm font-semibold text-indigo-800">
-                      Click "Start Paper" above to begin trading with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.
-                      No API keys needed!
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            )}
-
-            {/* PLAN CARD */}
+            {/* PLAN CARD - Shows current plan clearly */}
             <Card className="border-purple-200 bg-gradient-to-r from-purple-50/80 to-indigo-50/60">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-xl font-extrabold text-purple-900">Your Plan: {access.label}</h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xl">{access.badge || "🌱"}</span>
+                    <h2 className="text-xl font-extrabold text-purple-900">Your Plan: {access.displayName || access.label}</h2>
+                  </div>
                   <p className="mt-1 text-sm font-semibold text-purple-800">
-                    {isTrialExpired && userTier === "starter" ? "⚠️ Your trial has expired. Upgrade to continue." :
-                     access.canLiveTrade ? "✅ Live trading ready. Connect your exchange accounts to start." : 
-                     "📝 Free paper trading with virtual funds. No API keys needed! Upgrade for live trading."}
+                    {isPaidTier ? (
+                      `✅ Active ${access.label} plan - ${access.price}${access.period}`
+                    ) : isTrialExpired ? (
+                      "⚠️ Your trial has expired. Upgrade to continue trading."
+                    ) : (
+                      `📝 Free trial: ${formatTimeLeft(trialSecondsLeft)} remaining. ${access.price}${access.period} after trial.`
+                    )}
                   </p>
+                  {!access.canLiveTrade && (
+                    <p className="mt-1 text-xs text-purple-600">
+                      ✨ {UPGRADE_PLANS[0]?.displayName} includes: {UPGRADE_PLANS[0]?.features.join(", ")}
+                    </p>
+                  )}
                 </div>
-                {((!access.canLiveTrade && !hasActivePaperTrading) || (isTrialExpired && userTier === "starter")) && (
-                  <Button variant="warning" onClick={handleUpgrade}>
+                {!isPaidTier && (
+                  <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>
                     Upgrade to Pro → 💳
                   </Button>
                 )}
@@ -804,7 +994,7 @@ export default function MemberDashboard() {
           </div>
         )}
 
-        {/* TRADING TAB */}
+        {/* TRADING TAB - Same as before */}
         {activeTab === "trading" && (
           <div className="space-y-5">
             <div className="grid gap-6 xl:grid-cols-2">
@@ -818,7 +1008,6 @@ export default function MemberDashboard() {
               </Card>
             </div>
 
-            {/* Manual Trade Section */}
             {hasActivePaperTrading && (
               <Card>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -833,7 +1022,6 @@ export default function MemberDashboard() {
               </Card>
             )}
 
-            {/* Info when paper trading is off but has history */}
             {!hasActivePaperTrading && hasPaperHistory && (
               <Card>
                 <div className="text-center py-6">
@@ -844,7 +1032,6 @@ export default function MemberDashboard() {
               </Card>
             )}
 
-            {/* Info when no trading at all */}
             {!hasActivePaperTrading && !hasPaperHistory && !tradingEnabled && (
               <Card>
                 <div className="text-center py-6">
@@ -855,7 +1042,6 @@ export default function MemberDashboard() {
               </Card>
             )}
 
-            {/* Community Trades */}
             {access.showCommunityTrades && communityTrades.length > 0 && (
               <Card>
                 <SectionTitle>🌍 Community Activity</SectionTitle>
@@ -893,7 +1079,6 @@ export default function MemberDashboard() {
               </div>
             </Card>
 
-            {/* Strategy Radar */}
             {access.showStrategyRadar && (
               <Card>
                 <SectionTitle helper="Strategy behavior analysis">🧠 Strategy Analysis</SectionTitle>
@@ -910,12 +1095,12 @@ export default function MemberDashboard() {
             <Card>
               <SectionTitle>🔌 Exchange Connections</SectionTitle>
               <div className="mb-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800">
-                💡 <strong>Starter plan:</strong> Paper trading works without any API keys! Only connect keys when you upgrade to Pro for live trading.
+                💡 <strong>{access.label} plan:</strong> {!access.canLiveTrade ? "Paper trading works without API keys! Upgrade to Pro for live trading." : "You're on a paid plan. Connect your exchange accounts to start live trading."}
               </div>
               <div className="space-y-3">
                 {[
-                  { title: "Alpaca", desc: "Stock trading", connected: alpacaConnected, needed: "Required for Live Trading" },
-                  { title: "OKX", desc: "Crypto trading", connected: okxConnected, needed: "Required for Live Trading" },
+                  { title: "Alpaca", desc: "Stock trading", connected: alpacaConnected, needed: access.canLiveTrade ? "Required for Live Trading" : "Upgrade to Pro" },
+                  { title: "OKX", desc: "Crypto trading", connected: okxConnected, needed: access.canLiveTrade ? "Required for Live Trading" : "Upgrade to Pro" },
                   { title: "MetaMask", desc: "DeFi (Elite only)", connected: integrations.wallet_connected, needed: access.canUseDefi ? "Optional" : "Elite+" },
                 ].map((item) => (
                   <div key={item.title} className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -926,7 +1111,7 @@ export default function MemberDashboard() {
                         <Button variant="secondary" onClick={() => setShowApiModal(true)}>Connect</Button>
                       }
                       {!access.canLiveTrade && (item.title === "Alpaca" || item.title === "OKX") && 
-                        <StatusPill tone="blue">Upgrade to Pro</StatusPill>
+                        <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>Upgrade to Pro</Button>
                       }
                     </div>
                   </div>
@@ -977,7 +1162,7 @@ export default function MemberDashboard() {
         {/* BOTTOM ACTIONS */}
         <div className="flex flex-wrap gap-3 justify-center pt-4">
           <Button variant="secondary" onClick={() => nav("/activation")}>Account Settings</Button>
-          <Button variant="secondary" onClick={handleUpgrade}>Upgrade Plan 💳</Button>
+          <Button variant="secondary" onClick={() => setShowUpgradeModal(true)}>Upgrade Plan 💳</Button>
           <Button variant="danger" onClick={handleLogout}>Logout</Button>
         </div>
       </div>
@@ -989,7 +1174,7 @@ export default function MemberDashboard() {
             <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-extrabold text-gray-900">Connect API Keys</h2><button onClick={() => setShowApiModal(false)} className="text-3xl text-gray-500 hover:text-gray-700">×</button></div>
             
             <div className="mb-5 rounded-2xl border border-blue-300 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
-              💡 <strong>Starter plan:</strong> You don't need API keys for paper trading. Only connect when upgrading to Pro for live trading.
+              💡 <strong>{access.label} plan:</strong> {!access.canLiveTrade ? "You don't need API keys for paper trading. Upgrade to Pro to connect exchanges for live trading." : "Create API keys with trading permission only (no withdrawals)."}
             </div>
             
             <div className="space-y-4">
@@ -1003,6 +1188,12 @@ export default function MemberDashboard() {
                 <p className="text-sm text-gray-500 mb-2">Create API key with <strong>trade permission only</strong> - no withdrawals</p>
                 <Button variant="secondary" onClick={() => window.open("https://www.okx.com/account/my-api", "_blank")}>Create OKX Keys →</Button>
               </div>
+            </div>
+            
+            <div className="mt-5 text-center text-xs text-gray-400">
+              {!access.canLiveTrade && (
+                <button onClick={() => setShowUpgradeModal(true)} className="text-blue-500 underline">Upgrade to Pro</button>
+              )} to enable live trading.
             </div>
           </div>
         </div>
