@@ -1,5 +1,4 @@
-// App.js (with Landing + Newsletter pages + Enterprise Support - BOTH VERSIONS)
-
+// App.js - COMPLETE REWRITE with all fixes
 import React, { lazy, Suspense } from "react";
 import {
   Routes,
@@ -17,19 +16,20 @@ import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
-// ==================== ENTERPRISE PAGES - BOTH VERSIONS ====================
+// ==================== ENTERPRISE PAGES ====================
 import Enterprise from "./pages/Enterprise";
 import EnterpriseDemo from "./pages/EnterpriseDemo";
 import EnterpriseOnboardingWizard from './components/enterprise/EnterpriseOnboardingWizard';
 import EnterpriseDashboard from "./pages/EnterpriseDashboard";
 
-// Lazy Loaded Auth / App Pages - FIXED: Changed Signup to SignupForm
+// Lazy Loaded Auth / App Pages
 const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
 const Activation = lazy(() => import("./pages/Activation"));
 const Billing = lazy(() => import("./pages/Billing"));
 const BillingSuccess = lazy(() => import("./pages/BillingSuccess"));
 const BillingDashboard = lazy(() => import("./pages/BillingDashboard"));
+const Pricing = lazy(() => import("./pages/Pricing"));
 
 // Enterprise Dashboard Pages
 const TeamPage = lazy(() => import("./pages/TeamPage"));
@@ -43,7 +43,6 @@ const BotControlsPage = lazy(() => import("./pages/BotsControlsPage"));
 import Home from "./pages/Home";
 import AboutUs from "./pages/AboutUs";
 import HowItWorks from "./pages/HowItWorks";
-import Pricing from "./pages/Pricing";
 import Support from "./pages/Support";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
@@ -61,7 +60,11 @@ import NewsletterSuccess from "./pages/NewsletterSuccess";
 // Admin Enterprise Pages
 const EnterpriseRequestsPage = lazy(() => import("./pages/admin/EnterpriseRequestsPage"));
 
-// ---------------- ERROR BOUNDARY ----------------
+// ==================== CONSTANTS ====================
+const PAID_TIERS = ['pro', 'common', 'elite', 'rare', 'epic', 'legendary', 'enterprise', 'bundle'];
+const FREE_TIERS = ['starter', 'free', 'trial'];
+
+// ==================== ERROR BOUNDARY ====================
 class AppErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -94,7 +97,7 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
-// ---------------- LOADERS ----------------
+// ==================== LOADERS ====================
 function LoadingSpinner() {
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
@@ -114,7 +117,13 @@ function PageFallback() {
   );
 }
 
-// ---------------- ROUTE GUARDS ----------------
+// ==================== ROUTE GUARDS ====================
+
+// Check if user has a paid tier
+function isPaidTier(tier) {
+  return PAID_TIERS.includes(tier?.toLowerCase());
+}
+
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -167,7 +176,7 @@ function RequireEnterpriseAdmin({ children }) {
   return children;
 }
 
-// FIXED: Starter users bypass billing requirement
+// FIXED: Updated to handle all tier types correctly
 function RequireActivation({ children }) {
   const { user, activation, activationComplete, loading, isAdmin } = useAuth();
 
@@ -177,15 +186,19 @@ function RequireActivation({ children }) {
   // Admins bypass activation
   if (isAdmin) return children;
 
-  // FIXED: Starter users go directly to dashboard without billing
+  // FIXED: Check if user is on paid tier
   const tier = user?.tier || "starter";
-  if (tier === "starter") {
+  const isPaid = isPaidTier(tier);
+
+  // Free tier users (starter) go directly to dashboard without billing
+  if (!isPaid) {
     return children;
   }
 
-  // Pro/Elite users need activation
+  // Paid tier users need activation (card on file)
+  const hasCard = activation?.has_card_on_file || activation?.billing_complete || user?.has_card_on_file;
+  
   if (!activationComplete) {
-    const hasCard = activation?.has_card_on_file || activation?.billing_complete;
     if (!hasCard) return <Navigate to="/billing" replace />;
     return <Navigate to="/activation" replace />;
   }
@@ -193,6 +206,7 @@ function RequireActivation({ children }) {
   return children;
 }
 
+// FIXED: Updated to handle all tier types correctly
 function RedirectIfActivated({ children }) {
   const { user, activationComplete, loading, isAdmin } = useAuth();
 
@@ -202,17 +216,20 @@ function RedirectIfActivated({ children }) {
   if (isAdmin) return children;
   
   const tier = user?.tier || "starter";
-  // Starter users never have activationComplete, but they should go to dashboard
-  if (tier === "starter") {
+  const isPaid = isPaidTier(tier);
+  
+  // Free tier users go directly to dashboard
+  if (!isPaid) {
     return <Navigate to="/dashboard" replace />;
   }
   
+  // Paid tier users go to dashboard if activated
   if (activationComplete) return <Navigate to="/dashboard" replace />;
 
   return children;
 }
 
-// ---------------- POST LOGIN ----------------
+// ==================== POST LOGIN REDIRECT ====================
 function PostLoginRedirect() {
   const { user, loading, isAdmin, isEnterpriseUser } = useAuth();
   const navigate = useNavigate();
@@ -237,15 +254,18 @@ function PostLoginRedirect() {
       return;
     }
 
-    // Starter vs Pro/Elite routing
+    // Check tier for routing
     const tier = user?.tier || "starter";
-    if (tier === "starter") {
+    const isPaid = isPaidTier(tier);
+    
+    if (!isPaid) {
+      // Free tier - go directly to dashboard
       navigate("/dashboard", { replace: true });
     } else {
-      // Pro/Elite users may need billing setup
+      // Paid tier - check if they have a card on file
       const hasCard = user?.has_card_on_file || user?.billing_complete;
       if (!hasCard) {
-        navigate("/billing", { replace: true });
+        navigate("/billing", { replace: true, state: { tier } });
       } else {
         navigate("/dashboard", { replace: true });
       }
@@ -255,7 +275,7 @@ function PostLoginRedirect() {
   return <LoadingSpinner />;
 }
 
-// ---------------- 404 ----------------
+// ==================== 404 ====================
 function NotFound() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center text-center px-6">
@@ -268,7 +288,7 @@ function NotFound() {
   );
 }
 
-// ---------------- TEST ROUTES COMPONENT ----------------
+// ==================== TEST ROUTES COMPONENT ====================
 function TestRoutes() {
   return (
     <Suspense fallback={<PageFallback />}>
@@ -287,7 +307,7 @@ function TestRoutes() {
   );
 }
 
-// ---------------- MAIN APP ROUTES ----------------
+// ==================== MAIN APP ROUTES ====================
 function MainAppRoutes() {
   const { loading, user } = useAuth();
   if (loading) return <LoadingSpinner />;
@@ -336,14 +356,20 @@ function MainAppRoutes() {
 
             {/* AUTH ROUTES */}
             <Route path="/signup" element={<Signup />} />
+            <Route path="/signup/:tier" element={<Signup />} />
             <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
             <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
 
-            {/* BILLING - FIXED: No duplicate /billing/success inside /billing */}
+            {/* BILLING ROUTES - FIXED */}
             <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
+            <Route path="/billing/:tier" element={<RequireAuth><Billing /></RequireAuth>} />
             <Route path="/billing/success" element={<BillingSuccess />} />
             <Route path="/billing-dashboard" element={<RequireAuth><BillingDashboard /></RequireAuth>} />
             <Route path="/settings/billing" element={<Navigate to="/billing-dashboard" replace />} />
+
+            {/* UPGRADE ROUTES */}
+            <Route path="/upgrade" element={<RequireAuth><Billing /></RequireAuth>} />
+            <Route path="/upgrade/:tier" element={<RequireAuth><Billing /></RequireAuth>} />
 
             {/* ACTIVATION */}
             <Route path="/activation" element={<RedirectIfActivated><Activation /></RedirectIfActivated>} />
@@ -378,7 +404,7 @@ function MainAppRoutes() {
   );
 }
 
-// ---------------- ROOT APP ----------------
+// ==================== ROOT APP ====================
 function AppContent() {
   const location = useLocation();
   const isTestRoute = location.pathname.startsWith('/test');
@@ -390,7 +416,7 @@ function AppContent() {
   return <MainAppRoutes />;
 }
 
-// ---------------- ROOT ----------------
+// ==================== EXPORT ====================
 export default function App() {
   return (
     <AppErrorBoundary>
