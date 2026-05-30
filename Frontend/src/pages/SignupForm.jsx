@@ -1,21 +1,43 @@
-// src/pages/Signup.jsx - REWRITTEN (No social login options)
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+// src/pages/SignupForm.jsx
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-export default function Signup() {
+const TIERS = {
+  starter: { name: "Starter", price: "$0", period: "7 days", icon: "🌱" },
+  pro: { name: "Pro", price: "$19", period: "month", icon: "⭐" },
+  elite: { name: "Elite", price: "$49", period: "month", icon: "👑" },
+  enterprise: { name: "Enterprise", price: "Custom", period: "", icon: "🏢" },
+};
+
+export default function SignupForm() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signup } = useAuth();
+  
+  const params = new URLSearchParams(location.search);
+  const selectedTier = params.get("tier") || params.get("plan") || "starter";
   
   const [form, setForm] = useState({
     email: "",
     password: "",
     confirmPassword: "",
     acceptTerms: false,
+    tier: selectedTier,
   });
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setForm(f => ({ ...f, tier: selectedTier }));
+  }, [selectedTier]);
+
+  const handleTierChange = (tierId) => {
+    setForm(f => ({ ...f, tier: tierId }));
+    // Update URL without reload
+    navigate(`/signup?tier=${tierId}`, { replace: true });
+  };
 
   const validate = () => {
     if (!form.email.trim()) return "Email is required";
@@ -43,6 +65,7 @@ export default function Signup() {
       const result = await signup({
         email: form.email.trim().toLowerCase(),
         password: form.password,
+        tier: form.tier,
         accepted_terms: form.acceptTerms,
       });
       
@@ -52,29 +75,57 @@ export default function Signup() {
         return;
       }
       
-      // Redirect DIRECTLY to Trade Demo (not activation!)
-      navigate("/trade-demo", { 
-        replace: true,
-        state: { justSignedUp: true, email: form.email }
-      });
+      // Redirect based on tier
+      if (form.tier === "starter") {
+        navigate("/trade-demo", { replace: true });
+      } else {
+        // Paid tier - go to billing to add payment method
+        navigate("/billing", { 
+          state: { tier: form.tier, email: form.email },
+          replace: true 
+        });
+      }
     } catch (err) {
       setError(err?.message || "Signup failed. Please try again.");
       setLoading(false);
     }
   };
 
+  const currentTier = TIERS[form.tier] || TIERS.starter;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 to-black px-4 py-12">
       <div className="w-full max-w-md">
         
-        {/* Logo/Brand */}
         <div className="text-center mb-8">
-          <div className="text-5xl mb-3">🤖</div>
+          <div className="text-5xl mb-3">{currentTier.icon}</div>
           <h1 className="text-3xl font-bold text-white">Create your account</h1>
-          <p className="text-gray-400 mt-2">Start trading with $1,000 paper credits</p>
+          <p className="text-gray-400 mt-2">
+            {currentTier.name} Plan • {currentTier.price}/{currentTier.period}
+          </p>
         </div>
 
-        {/* Main Card */}
+        {/* Tier Selection */}
+        <div className="mb-6">
+          <p className="text-sm text-gray-400 mb-3">Select your plan:</p>
+          <div className="grid grid-cols-4 gap-2">
+            {Object.entries(TIERS).map(([id, tier]) => (
+              <button
+                key={id}
+                onClick={() => handleTierChange(id)}
+                className={`px-3 py-2 rounded-xl text-center transition-all ${
+                  form.tier === id
+                    ? "bg-gradient-to-r from-emerald-600 to-cyan-600 text-white"
+                    : "bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10"
+                }`}
+              >
+                <div className="text-xl">{tier.icon}</div>
+                <div className="text-xs font-semibold">{tier.name}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur">
           
           {error && (
@@ -138,17 +189,9 @@ export default function Signup() {
               disabled={loading}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-semibold disabled:opacity-50 transition hover:from-emerald-500 hover:to-cyan-500"
             >
-              {loading ? "Creating account..." : "Start Free Trial →"}
+              {loading ? "Creating account..." : form.tier === "starter" ? "Start Free Trial →" : `Start ${currentTier.name} →`}
             </button>
           </form>
-
-          {/* Simple divider without social buttons */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10"></div>
-            </div>
-          </div>
-
         </div>
 
         <p className="mt-6 text-center text-gray-400 text-sm">
@@ -156,18 +199,22 @@ export default function Signup() {
           <Link to="/login" className="text-emerald-400 underline">Log in</Link>
         </p>
 
-        {/* Trust Badge */}
         <div className="mt-6 text-center text-xs text-gray-500">
-          <span>✅ Cancel anytime</span>
-          <span className="mx-2">•</span>
-          <span>💰 $1,000 paper trading included</span>
-          <span className="mx-2">•</span>
-          <span>🔒 No credit card required</span>
-        </div>
-
-        {/* Trial Info */}
-        <div className="mt-4 text-center text-xs text-gray-600">
-          <span>🎁 7-day free trial • Paper trading only • No real money used</span>
+          {form.tier === "starter" ? (
+            <>
+              <span>✅ 7-day free trial</span>
+              <span className="mx-2">•</span>
+              <span>💰 $1,000 paper trading</span>
+              <span className="mx-2">•</span>
+              <span>🔒 No credit card required</span>
+            </>
+          ) : (
+            <>
+              <span>💳 Credit card required for paid plans</span>
+              <span className="mx-2">•</span>
+              <span>🔄 Cancel anytime</span>
+            </>
+          )}
         </div>
       </div>
     </div>
