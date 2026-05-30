@@ -1,4 +1,4 @@
-// src/utils/BotAPI.js - COMPLETE REWRITE
+// src/utils/BotAPI.js - COMPLETE REWRITE with Billing Methods
 import axios from "axios";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
@@ -731,6 +731,174 @@ export const confirmCard = async (payload = {}) => {
     };
   } catch (error) {
     return handleApiError(error, "Failed to confirm card");
+  }
+};
+
+/* ================= BILLING & SUBSCRIPTION METHODS ================= */
+
+/**
+ * Change user's subscription plan (upgrade/downgrade)
+ * @param {string} newTierId - The new tier ID (pro, elite, etc.)
+ * @returns {Promise<Object>} Response with checkout URL or direct result
+ */
+export const changePlan = async (newTierId) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/billing/change-plan",
+      data: { tier: newTierId },
+    });
+
+    const data = unwrap(response);
+    
+    // If checkout is required (first-time paid subscription)
+    if (data?.requires_checkout && data?.checkout_url) {
+      // Redirect to Stripe checkout
+      window.location.href = data.checkout_url;
+      return { success: true, redirecting: true, checkout_url: data.checkout_url };
+    }
+    
+    clearCache("user_me");
+    clearCache("activation_status");
+    
+    return {
+      success: true,
+      data: data?.data || data,
+      message: data?.message || `Successfully changed to ${newTierId} plan`,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to change plan");
+  }
+};
+
+/**
+ * Create Stripe checkout session for subscription
+ * @param {string} priceId - Stripe Price ID
+ * @param {string} successUrl - Redirect URL on success
+ * @param {string} cancelUrl - Redirect URL on cancel
+ * @returns {Promise<Object>} Checkout session URL
+ */
+export const createCheckoutSession = async (priceId, successUrl, cancelUrl) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/billing/create-checkout-session",
+      data: { 
+        price_id: priceId, 
+        success_url: successUrl, 
+        cancel_url: cancelUrl 
+      },
+    });
+
+    const data = unwrap(response);
+    
+    if (data?.data?.session_url) {
+      return {
+        success: true,
+        session_url: data.data.session_url,
+        session_id: data.data.session_id,
+      };
+    }
+    
+    return {
+      success: false,
+      error: "No checkout session created",
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to create checkout session");
+  }
+};
+
+/**
+ * Upgrade subscription (alias for changePlan)
+ * @param {string} newTierId - The new tier ID
+ */
+export const upgradeSubscription = async (newTierId) => {
+  return changePlan(newTierId);
+};
+
+/**
+ * Downgrade subscription (alias for changePlan)
+ * @param {string} newTierId - The new tier ID
+ */
+export const downgradeSubscription = async (newTierId) => {
+  return changePlan(newTierId);
+};
+
+/**
+ * Cancel current subscription
+ * @returns {Promise<Object>} Cancellation result
+ */
+export const cancelSubscription = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/billing/cancel-subscription",
+      data: {},
+    });
+
+    const data = unwrap(response);
+    clearCache("user_me");
+    clearCache("activation_status");
+    
+    return {
+      success: true,
+      message: data?.message || "Subscription cancelled successfully",
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to cancel subscription");
+  }
+};
+
+/**
+ * Get subscription status and available plans
+ * @returns {Promise<Object>} Subscription status
+ */
+export const getSubscriptionStatus = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/subscription/status",
+    });
+
+    const data = unwrap(response);
+    return {
+      success: true,
+      data: data?.data || data,
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to get subscription status");
+  }
+};
+
+/**
+ * Get available subscription plans with pricing
+ * @returns {Promise<Object>} List of available plans
+ */
+export const getAvailablePlans = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/subscription/plans",
+    });
+
+    const data = unwrap(response);
+    return {
+      success: true,
+      data: data?.data || data,
+    };
+  } catch (error) {
+    // Return default plans if API fails
+    return {
+      success: true,
+      data: {
+        plans: [
+          { id: "starter", name: "Starter", price: 0, interval: "month", features: [] },
+          { id: "pro", name: "Pro", price: 19, interval: "month", features: [] },
+          { id: "elite", name: "Elite", price: 49, interval: "month", features: [] },
+        ],
+      },
+    };
   }
 };
 
@@ -2030,6 +2198,15 @@ class BotAPIClass {
   getCardStatus(skipCache) { return getCardStatus(skipCache); }
   createSetupIntent(payload) { return createSetupIntent(payload); }
   confirmCard(payload) { return confirmCard(payload); }
+
+  // Billing & Subscription (NEW)
+  changePlan(newTierId) { return changePlan(newTierId); }
+  createCheckoutSession(priceId, successUrl, cancelUrl) { return createCheckoutSession(priceId, successUrl, cancelUrl); }
+  upgradeSubscription(newTierId) { return upgradeSubscription(newTierId); }
+  downgradeSubscription(newTierId) { return downgradeSubscription(newTierId); }
+  cancelSubscription() { return cancelSubscription(); }
+  getSubscriptionStatus() { return getSubscriptionStatus(); }
+  getAvailablePlans() { return getAvailablePlans(); }
 
   // Enterprise endpoints
   getOrganizationDetails(skipCache) { return getOrganizationDetails(skipCache); }
