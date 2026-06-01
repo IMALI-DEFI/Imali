@@ -1,4 +1,4 @@
-// src/utils/BotAPI.js - COMPLETE REWRITE with Live Trading & Billing Methods
+// src/utils/BotAPI.js - FIXED (removed duplicate exports)
 import axios from "axios";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
@@ -28,7 +28,6 @@ const cache = new Map();
 const inflight = new Map();
 const lastRequestAt = new Map();
 
-// VALID TIERS including enterprise
 const VALID_TIERS = ["starter", "pro", "elite", "rare", "epic", "legendary", "common", "stock", "bundle", "enterprise"];
 
 /* ================= CACHE HELPERS ================= */
@@ -355,60 +354,12 @@ const getDefaultTrialStatus = () => ({
 const getDefaultStrategies = () => ({
   success: true,
   strategies: [
-    {
-      id: "mean_reversion",
-      name: "Mean Reversion",
-      backend_name: "Mean Reversion",
-      description: "Looks for dips and safe rebounds. Lower risk, steady moves.",
-      risk_level: "low",
-      min_tier: "starter",
-      is_default: false,
-    },
-    {
-      id: "ai_weighted",
-      name: "AI Weighted",
-      backend_name: "AI Weighted",
-      description: "Smart mix of signals — balanced risk and reward.",
-      risk_level: "medium",
-      min_tier: "starter",
-      is_default: true,
-    },
-    {
-      id: "momentum",
-      name: "Momentum",
-      backend_name: "Momentum",
-      description: "Follows strong trends for bigger moves. Higher risk.",
-      risk_level: "high",
-      min_tier: "starter",
-      is_default: false,
-    },
-    {
-      id: "arbitrage",
-      name: "Arbitrage",
-      backend_name: "Arbitrage",
-      description: "Profits from price differences across venues. Low risk.",
-      risk_level: "low",
-      min_tier: "rare",
-      is_default: false,
-    },
-    {
-      id: "futures",
-      name: "Futures Engine",
-      backend_name: "Futures",
-      description: "Higher-speed crypto futures execution.",
-      risk_level: "high",
-      min_tier: "epic",
-      is_default: false,
-    },
-    {
-      id: "alpha",
-      name: "Alpha Sniper",
-      backend_name: "Alpha",
-      description: "Premium entries and signals.",
-      risk_level: "high",
-      min_tier: "legendary",
-      is_default: false,
-    },
+    { id: "mean_reversion", name: "Mean Reversion", description: "Looks for dips and safe rebounds", risk_level: "low", min_tier: "starter", is_default: false },
+    { id: "ai_weighted", name: "AI Weighted", description: "Smart mix of signals", risk_level: "medium", min_tier: "starter", is_default: true },
+    { id: "momentum", name: "Momentum", description: "Follows strong trends", risk_level: "high", min_tier: "starter", is_default: false },
+    { id: "arbitrage", name: "Arbitrage", description: "Profits from price differences", risk_level: "low", min_tier: "rare", is_default: false },
+    { id: "futures", name: "Futures Engine", description: "Higher-speed crypto futures execution", risk_level: "high", min_tier: "epic", is_default: false },
+    { id: "alpha", name: "Alpha Sniper", description: "Premium entries and signals", risk_level: "high", min_tier: "legendary", is_default: false },
   ],
   current_strategy: "ai_weighted",
   tier: "starter",
@@ -417,31 +368,132 @@ const getDefaultStrategies = () => ({
 });
 
 const getDefaultLiveStats = () => ({
-  summary: {
-    total_pnl: 0,
-    win_rate: 0,
-    total_trades: 0,
-    wins: 0,
-    losses: 0,
-    current_balance: 0,
-  },
+  summary: { total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0, current_balance: 0 },
   daily_performance: [],
   recent_trades: [],
 });
 
+/* ================= LIVE TRADING METHODS ================= */
+
+const getLiveTradingStats = async (skipCache = false) => {
+  const cacheKey = "live_trading_stats";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 20000);
+    if (cached) return cached;
+  }
+
+  if (!getToken()) return getDefaultLiveStats();
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/live-stats",
+    });
+
+    const data = unwrap(response);
+    const result = data?.data || data || getDefaultLiveStats();
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] Failed to load live trading stats:", error);
+    return getDefaultLiveStats();
+  }
+};
+
+const getExchangeBalance = async (skipCache = false) => {
+  const cacheKey = "exchange_balance";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 15000);
+    if (cached) return cached;
+  }
+
+  if (!getToken()) return { alpaca: 0, okx: 0, total: 0 };
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/exchanges/balance",
+    });
+
+    const data = unwrap(response);
+    const result = data?.data || data || { alpaca: 0, okx: 0, total: 0 };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.warn("[BotAPI] Failed to load exchange balance:", error);
+    return { alpaca: 0, okx: 0, total: 0 };
+  }
+};
+
+const getLivePositions = async (skipCache = false) => {
+  const cacheKey = "live_positions";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 10000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/live-positions",
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      positions: data?.data?.positions || data?.positions || [],
+      total_value: data?.data?.total_value || data?.total_value || 0,
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return { success: false, positions: [], total_value: 0, error: getErrorMessage(error, "Failed to load live positions") };
+  }
+};
+
+const getLiveTradeHistory = async (limit = 50, skipCache = false) => {
+  const cacheKey = `live_trade_history_${limit}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 20000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: `/api/trading/live-trades?limit=${limit}`,
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      trades: data?.data?.trades || data?.trades || [],
+      summary: data?.data?.summary || data?.summary || {},
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return { success: false, trades: [], summary: {}, error: getErrorMessage(error, "Failed to load live trade history") };
+  }
+};
+
 /* ================= AUTH ENDPOINTS ================= */
 
-export const signup = async (userData) => {
+const signup = async (userData) => {
   const isEnterprise = userData?.tier === "enterprise" || userData?.mode === "enterprise";
   
   try {
     const response = await requestWithDedupe(
       userApi,
-      {
-        method: "post",
-        url: "/api/auth/signup",
-        data: userData,
-      },
+      { method: "post", url: "/api/auth/signup", data: userData },
       { throttle: false }
     );
 
@@ -455,36 +507,22 @@ export const signup = async (userData) => {
 
     clearCache();
 
-    return {
-      success: true,
-      data,
-      token,
-      api_key: apiKey,
-      requiresApproval,
-    };
+    return { success: true, data, token, api_key: apiKey, requiresApproval };
   } catch (error) {
     if (isEnterprise && error?.response?.status === 202) {
-      return {
-        success: true,
-        requiresApproval: true,
-        message: "Enterprise signup request received. Our sales team will contact you shortly.",
-      };
+      return { success: true, requiresApproval: true, message: "Enterprise signup request received. Our sales team will contact you shortly." };
     }
     return handleApiError(error, "Signup failed");
   }
 };
 
-export const register = signup;
+const register = signup;
 
-export const login = async (email, password) => {
+const login = async (email, password) => {
   try {
     const response = await requestWithDedupe(
       userApi,
-      {
-        method: "post",
-        url: "/api/auth/login",
-        data: { email, password },
-      },
+      { method: "post", url: "/api/auth/login", data: { email, password } },
       { throttle: false }
     );
 
@@ -493,10 +531,7 @@ export const login = async (email, password) => {
     const apiKey = data?.data?.user?.api_key || data?.user?.api_key || null;
 
     if (!token) {
-      return {
-        success: false,
-        error: "No token received from server",
-      };
+      return { success: false, error: "No token received from server" };
     }
 
     setToken(token);
@@ -504,18 +539,13 @@ export const login = async (email, password) => {
 
     clearCache();
 
-    return {
-      success: true,
-      data,
-      token,
-      api_key: apiKey,
-    };
+    return { success: true, data, token, api_key: apiKey };
   } catch (error) {
     return handleApiError(error, "Login failed");
   }
 };
 
-export const logout = () => {
+const logout = () => {
   clearToken();
   clearApiKey();
   clearCache();
@@ -525,26 +555,17 @@ export const logout = () => {
   }
 };
 
-export const verifyAuth = async () => {
+const verifyAuth = async () => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/auth/verify",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/auth/verify" });
     const data = unwrap(response);
-
-    return {
-      success: true,
-      valid: !!data?.valid,
-      user: data?.user || data?.data?.user || null,
-    };
+    return { success: true, valid: !!data?.valid, user: data?.user || data?.data?.user || null };
   } catch (error) {
     return handleApiError(error, "Auth verification failed");
   }
 };
 
-export const getMe = async (skipCache = false) => {
+const getMe = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("user_me");
     if (cached) return cached;
@@ -553,11 +574,7 @@ export const getMe = async (skipCache = false) => {
   if (!getToken()) return null;
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/me",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/me" });
     const data = unwrap(response);
     const user = data?.data?.user || data?.user || data?.data || null;
 
@@ -595,7 +612,7 @@ export const getMe = async (skipCache = false) => {
 
 /* ================= ACTIVATION / BILLING / TRIAL ================= */
 
-export const getActivationStatus = async (skipCache = false) => {
+const getActivationStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("activation_status");
     if (cached) return cached;
@@ -604,11 +621,7 @@ export const getActivationStatus = async (skipCache = false) => {
   if (!getToken()) return getDefaultActivationStatus();
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/me/activation-status",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/me/activation-status" });
     const data = unwrap(response);
     const status = data?.data?.status || data?.status || data?.data || {};
 
@@ -636,9 +649,9 @@ export const getActivationStatus = async (skipCache = false) => {
   }
 };
 
-export const refreshActivation = () => getActivationStatus(true);
+const refreshActivation = () => getActivationStatus(true);
 
-export const getTrialStatus = async (skipCache = false) => {
+const getTrialStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("trial_status", 15000);
     if (cached) return cached;
@@ -647,11 +660,7 @@ export const getTrialStatus = async (skipCache = false) => {
   if (!getToken()) return getDefaultTrialStatus();
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/me/trial-status",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/me/trial-status" });
     const data = unwrap(response);
     const row = data?.data || data || {};
 
@@ -664,10 +673,7 @@ export const getTrialStatus = async (skipCache = false) => {
       trial_ends_at: row?.trial_ends_at || null,
       paper_trading_enabled: row?.paper_trading_enabled === true,
       seconds_remaining: secondsRemaining,
-      active:
-        row?.trial_status === "trial" &&
-        row?.paper_trading_enabled === true &&
-        secondsRemaining > 0,
+      active: row?.trial_status === "trial" && row?.paper_trading_enabled === true && secondsRemaining > 0,
     };
 
     setCached("trial_status", result);
@@ -678,87 +684,51 @@ export const getTrialStatus = async (skipCache = false) => {
   }
 };
 
-export const getCardStatus = async (skipCache = false) => {
+const getCardStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("card_status");
     if (cached) return cached;
   }
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/billing/card-status",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/billing/card-status" });
     const data = unwrap(response);
 
-    const result = {
-      success: true,
-      has_card: !!data?.data?.has_card,
-      billing_complete: !!data?.data?.billing_complete,
-    };
+    const result = { success: true, has_card: !!data?.data?.has_card, billing_complete: !!data?.data?.billing_complete };
 
     setCached("card_status", result);
     return result;
   } catch {
-    return {
-      success: false,
-      has_card: false,
-      billing_complete: false,
-    };
+    return { success: false, has_card: false, billing_complete: false };
   }
 };
 
-export const createSetupIntent = async (payload) => {
+const createSetupIntent = async (payload) => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/billing/setup-intent",
-      data: payload,
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/billing/setup-intent", data: payload });
     const data = unwrap(response);
-
-    return {
-      success: true,
-      client_secret: data?.data?.client_secret,
-      setup_intent_id: data?.data?.setup_intent_id,
-    };
+    return { success: true, client_secret: data?.data?.client_secret, setup_intent_id: data?.data?.setup_intent_id };
   } catch (error) {
     return handleApiError(error, "Failed to create setup intent");
   }
 };
 
-export const confirmCard = async (payload = {}) => {
+const confirmCard = async (payload = {}) => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/billing/confirm-card",
-      data: payload,
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/billing/confirm-card", data: payload });
     clearCache("activation_status");
     clearCache("card_status");
-
-    return {
-      success: true,
-      confirmed: unwrap(response)?.data?.confirmed || true,
-    };
+    return { success: true, confirmed: unwrap(response)?.data?.confirmed || true };
   } catch (error) {
     return handleApiError(error, "Failed to confirm card");
   }
 };
 
-/* ================= BILLING & SUBSCRIPTION METHODS ================= */
+/* ================= BILLING & SUBSCRIPTION ================= */
 
-export const changePlan = async (newTierId) => {
+const changePlan = async (newTierId) => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/billing/change-plan",
-      data: { tier: newTierId },
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/billing/change-plan", data: { tier: newTierId } });
     const data = unwrap(response);
     
     if (data?.requires_checkout && data?.checkout_url) {
@@ -769,105 +739,61 @@ export const changePlan = async (newTierId) => {
     clearCache("user_me");
     clearCache("activation_status");
     
-    return {
-      success: true,
-      data: data?.data || data,
-      message: data?.message || `Successfully changed to ${newTierId} plan`,
-    };
+    return { success: true, data: data?.data || data, message: data?.message || `Successfully changed to ${newTierId} plan` };
   } catch (error) {
     return handleApiError(error, "Failed to change plan");
   }
 };
 
-export const createCheckoutSession = async (priceId, successUrl, cancelUrl) => {
+const createCheckoutSession = async (priceId, successUrl, cancelUrl) => {
   try {
     const response = await requestWithDedupe(userApi, {
       method: "post",
       url: "/api/billing/create-checkout-session",
-      data: { 
-        price_id: priceId, 
-        success_url: successUrl, 
-        cancel_url: cancelUrl 
-      },
+      data: { price_id: priceId, success_url: successUrl, cancel_url: cancelUrl },
     });
-
     const data = unwrap(response);
     
     if (data?.data?.session_url) {
-      return {
-        success: true,
-        session_url: data.data.session_url,
-        session_id: data.data.session_id,
-      };
+      return { success: true, session_url: data.data.session_url, session_id: data.data.session_id };
     }
     
-    return {
-      success: false,
-      error: "No checkout session created",
-    };
+    return { success: false, error: "No checkout session created" };
   } catch (error) {
     return handleApiError(error, "Failed to create checkout session");
   }
 };
 
-export const upgradeSubscription = async (newTierId) => {
-  return changePlan(newTierId);
-};
+const upgradeSubscription = async (newTierId) => changePlan(newTierId);
+const downgradeSubscription = async (newTierId) => changePlan(newTierId);
 
-export const downgradeSubscription = async (newTierId) => {
-  return changePlan(newTierId);
-};
-
-export const cancelSubscription = async () => {
+const cancelSubscription = async () => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/billing/cancel-subscription",
-      data: {},
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/billing/cancel-subscription", data: {} });
     const data = unwrap(response);
     clearCache("user_me");
     clearCache("activation_status");
-    
-    return {
-      success: true,
-      message: data?.message || "Subscription cancelled successfully",
-    };
+    return { success: true, message: data?.message || "Subscription cancelled successfully" };
   } catch (error) {
     return handleApiError(error, "Failed to cancel subscription");
   }
 };
 
-export const getSubscriptionStatus = async () => {
+const getSubscriptionStatus = async () => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/subscription/status",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/subscription/status" });
     const data = unwrap(response);
-    return {
-      success: true,
-      data: data?.data || data,
-    };
+    return { success: true, data: data?.data || data };
   } catch (error) {
     return handleApiError(error, "Failed to get subscription status");
   }
 };
 
-export const getAvailablePlans = async () => {
+const getAvailablePlans = async () => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/subscription/plans",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/subscription/plans" });
     const data = unwrap(response);
-    return {
-      success: true,
-      data: data?.data || data,
-    };
+    return { success: true, data: data?.data || data };
   } catch (error) {
     return {
       success: true,
@@ -876,361 +802,120 @@ export const getAvailablePlans = async () => {
           { id: "starter", name: "Starter", price: 0, interval: "month", features: [] },
           { id: "pro", name: "Pro", price: 19, interval: "month", features: ["Live Trading", "Stocks", "Crypto"] },
           { id: "elite", name: "Elite", price: 49, interval: "month", features: ["Everything in Pro", "DEX Trading", "Custom Indicators"] },
-          { id: "enterprise", name: "Enterprise", price: "Custom", interval: "month", features: ["Everything in Elite", "Custom Branding", "Team Management"] },
         ],
       },
     };
   }
 };
 
-/* ================= LIVE TRADING METHODS (NEW) ================= */
+/* ================= PAPER TRADING ================= */
 
-/**
- * Get live trading statistics and performance
- * @param {boolean} skipCache - Whether to skip cache
- * @returns {Promise<Object>} Live trading stats
- */
-export const getLiveTradingStats = async (skipCache = false) => {
-  const cacheKey = "live_trading_stats";
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 20000);
-    if (cached) return cached;
-  }
-
-  if (!getToken()) return getDefaultLiveStats();
-
-  try {
-    // Try primary endpoint
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/trading/live-stats",
-    });
-
-    const data = unwrap(response);
-    const result = data?.data || data || getDefaultLiveStats();
-
-    setCached(cacheKey, result);
-    return result;
-  } catch (error) {
-    // Try alternative endpoints
-    const altEndpoints = [
-      "/api/user/live-trading-stats",
-      "/api/live-trading/stats",
-      "/api/trading/stats?type=live",
-    ];
-
-    for (const endpoint of altEndpoints) {
-      try {
-        const altResponse = await requestWithDedupe(userApi, {
-          method: "get",
-          url: endpoint,
-        });
-        const altData = unwrap(altResponse);
-        const result = altData?.data || altData || getDefaultLiveStats();
-        setCached(cacheKey, result);
-        return result;
-      } catch (altError) {
-        continue;
-      }
-    }
-
-    console.warn("[BotAPI] Failed to load live trading stats:", error);
-    return getDefaultLiveStats();
-  }
-};
-
-/**
- * Get exchange balances (OKX and Alpaca)
- * @param {boolean} skipCache - Whether to skip cache
- * @returns {Promise<Object>} Exchange balances
- */
-export const getExchangeBalance = async (skipCache = false) => {
-  const cacheKey = "exchange_balance";
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 15000);
-    if (cached) return cached;
-  }
-
-  if (!getToken()) return { alpaca: 0, okx: 0, total: 0 };
+const togglePaperTrading = async (enabled) => {
+  const nextEnabled = !!enabled;
 
   try {
     const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/exchanges/balance",
+      method: "patch",
+      url: "/api/user/paper-trading",
+      data: { enabled: nextEnabled },
     });
 
     const data = unwrap(response);
-    const balances = data?.data || data || {};
-    
-    const result = {
-      alpaca: Number(balances.alpaca || balances.alpaca_balance || 0),
-      okx: Number(balances.okx || balances.okx_balance || 0),
-      total: Number(balances.total || (balances.alpaca || 0) + (balances.okx || 0)),
-    };
+    clearTradingCache();
 
-    setCached(cacheKey, result);
-    return result;
-  } catch (error) {
-    // Try alternative endpoints
-    const altEndpoints = [
-      "/api/trading/balance",
-      "/api/user/balance",
-      "/api/integrations/balance",
-    ];
+    const paperTradingEnabled = normalizeBool(data?.data?.paper_trading_enabled ?? data?.data?.enabled, nextEnabled);
 
-    for (const endpoint of altEndpoints) {
-      try {
-        const altResponse = await requestWithDedupe(userApi, {
-          method: "get",
-          url: endpoint,
-        });
-        const altData = unwrap(altResponse);
-        const altBalances = altData?.data || altData || {};
-        
-        const result = {
-          alpaca: Number(altBalances.alpaca || altBalances.alpaca_balance || 0),
-          okx: Number(altBalances.okx || altBalances.okx_balance || 0),
-          total: Number(altBalances.total || (altBalances.alpaca || 0) + (altBalances.okx || 0)),
-        };
-        
-        setCached(cacheKey, result);
-        return result;
-      } catch (altError) {
-        continue;
-      }
-    }
-
-    console.warn("[BotAPI] Failed to load exchange balance:", error);
-    return { alpaca: 0, okx: 0, total: 0 };
-  }
-};
-
-/**
- * Get live trading positions
- * @param {boolean} skipCache - Whether to skip cache
- * @returns {Promise<Object>} Live positions
- */
-export const getLivePositions = async (skipCache = false) => {
-  const cacheKey = "live_positions";
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 10000);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/trading/live-positions",
-    });
-
-    const data = unwrap(response);
-    const result = {
-      success: true,
-      positions: data?.data?.positions || data?.positions || [],
-      total_value: data?.data?.total_value || data?.total_value || 0,
-    };
-
-    setCached(cacheKey, result);
-    return result;
-  } catch (error) {
     return {
-      success: false,
-      positions: [],
-      total_value: 0,
-      error: getErrorMessage(error, "Failed to load live positions"),
-    };
-  }
-};
-
-/**
- * Get live trading history
- * @param {number} limit - Number of trades to fetch
- * @param {boolean} skipCache - Whether to skip cache
- * @returns {Promise<Object>} Live trade history
- */
-export const getLiveTradeHistory = async (limit = 50, skipCache = false) => {
-  const cacheKey = `live_trade_history_${limit}`;
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 20000);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: `/api/trading/live-trades?limit=${limit}`,
-    });
-
-    const data = unwrap(response);
-    const result = {
       success: true,
-      trades: data?.data?.trades || data?.trades || [],
-      summary: data?.data?.summary || data?.summary || {},
+      enabled: paperTradingEnabled,
+      paper_trading_enabled: paperTradingEnabled,
+      message: data?.message || (paperTradingEnabled ? "Paper trading enabled" : "Paper trading disabled"),
     };
-
-    setCached(cacheKey, result);
-    return result;
   } catch (error) {
-    return {
-      success: false,
-      trades: [],
-      summary: {},
-      error: getErrorMessage(error, "Failed to load live trade history"),
-    };
+    return handleApiError(error, "Failed to toggle paper trading");
   }
 };
 
-/* ================= PAPER TRADING WORKER CONTROL ================= */
+const updatePaperTrading = togglePaperTrading;
 
-export const executePaperTrade = async () => {
+const toggleTrading = async (enabled) => {
+  const nextEnabled = !!enabled;
+
   try {
     const response = await requestWithDedupe(userApi, {
       method: "post",
-      url: "/api/trading/paper/execute",
-      data: {},
+      url: "/api/trading/enable",
+      data: { enabled: nextEnabled, confirmed: nextEnabled },
     });
 
     const data = unwrap(response);
+    clearTradingCache();
+
+    const tradingEnabled = normalizeBool(data?.data?.trading_enabled ?? data?.data?.enabled, nextEnabled);
+
     return {
       success: true,
-      trade: data?.data?.trade || data?.trade || null,
-      message: data?.message || "Paper trade executed",
+      enabled: tradingEnabled,
+      trading_enabled: tradingEnabled,
+      message: data?.message || (tradingEnabled ? "Live trading enabled" : "Live trading disabled"),
     };
   } catch (error) {
-    try {
-      const response2 = await requestWithDedupe(userApi, {
-        method: "post",
-        url: "/api/paper-trading/execute",
-        data: {},
-      });
-      const data2 = unwrap(response2);
-      return {
-        success: true,
-        trade: data2?.data?.trade || data2?.trade || null,
-        message: "Paper trade executed",
-      };
-    } catch (fallbackError) {
-      return handleApiError(error, "Failed to execute paper trade");
-    }
+    return handleApiError(error, "Failed to toggle live trading");
   }
 };
 
-export const getPaperTradingStatus = async () => {
+const executePaperTrade = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/trading/paper/status",
+      method: "post",
+      url: "/api/trading/paper-trade",
+      data: {},
     });
+    const data = unwrap(response);
+    return { success: true, trade: data?.data?.trade || data?.trade || null, message: data?.message || "Paper trade executed" };
+  } catch (error) {
+    return handleApiError(error, "Failed to execute paper trade");
+  }
+};
 
+const getPaperTradingStatus = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/trading/paper/status" });
     const data = unwrap(response);
     return {
       success: true,
       worker_running: data?.data?.worker_running === true,
       last_execution: data?.data?.last_execution || null,
       next_execution: data?.data?.next_execution || null,
-      active_users: data?.data?.active_users || 0,
-      queue_size: data?.data?.queue_size || 0,
-      last_error: data?.data?.last_error || null,
     };
   } catch (error) {
-    try {
-      const response2 = await requestWithDedupe(userApi, {
-        method: "get",
-        url: "/api/paper-trading/status",
-      });
-      const data2 = unwrap(response2);
-      return {
-        success: true,
-        worker_running: data2?.data?.worker_running === true,
-        last_execution: data2?.data?.last_execution || null,
-        next_execution: data2?.data?.next_execution || null,
-        active_users: data2?.data?.active_users || 0,
-        queue_size: data2?.data?.queue_size || 0,
-        last_error: data2?.data?.last_error || null,
-      };
-    } catch (fallbackError) {
-      return {
-        success: false,
-        worker_running: false,
-        error: getErrorMessage(error, "Status check failed"),
-      };
-    }
+    return { success: false, worker_running: false, error: getErrorMessage(error, "Status check failed") };
   }
 };
 
-export const startPaperWorker = async () => {
+const startPaperWorker = async () => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/trading/paper/start-worker",
-      data: {},
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/trading/paper/start-worker", data: {} });
     const data = unwrap(response);
-    return {
-      success: true,
-      message: data?.message || "Paper trading worker started",
-    };
+    return { success: true, message: data?.message || "Paper trading worker started" };
   } catch (error) {
-    try {
-      const response2 = await requestWithDedupe(userApi, {
-        method: "post",
-        url: "/api/paper-trading/start-worker",
-        data: {},
-      });
-      const data2 = unwrap(response2);
-      return {
-        success: true,
-        message: data2?.message || "Paper trading worker started",
-      };
-    } catch (fallbackError) {
-      return handleApiError(error, "Failed to start paper worker");
-    }
+    return handleApiError(error, "Failed to start paper worker");
   }
 };
 
-export const stopPaperWorker = async () => {
+const stopPaperWorker = async () => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/trading/paper/stop-worker",
-      data: {},
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/trading/paper/stop-worker", data: {} });
     const data = unwrap(response);
-    return {
-      success: true,
-      message: data?.message || "Paper trading worker stopped",
-    };
+    return { success: true, message: data?.message || "Paper trading worker stopped" };
   } catch (error) {
-    try {
-      const response2 = await requestWithDedupe(userApi, {
-        method: "post",
-        url: "/api/paper-trading/stop-worker",
-        data: {},
-      });
-      const data2 = unwrap(response2);
-      return {
-        success: true,
-        message: data2?.message || "Paper trading worker stopped",
-      };
-    } catch (fallbackError) {
-      return handleApiError(error, "Failed to stop paper worker");
-    }
+    return handleApiError(error, "Failed to stop paper worker");
   }
 };
 
-export const getPaperTradingRequirements = async () => {
+const getPaperTradingRequirements = async () => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/trading/paper/requirements",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/trading/paper/requirements" });
     const data = unwrap(response);
     return {
       success: true,
@@ -1258,7 +943,7 @@ export const getPaperTradingRequirements = async () => {
   }
 };
 
-export const getPaperTradingHistory = async (limit = 50, skipCache = false) => {
+const getPaperTradingHistory = async (limit = 50, skipCache = false) => {
   const cacheKey = `paper_trading_history_${limit}`;
 
   if (!skipCache) {
@@ -1267,361 +952,19 @@ export const getPaperTradingHistory = async (limit = 50, skipCache = false) => {
   }
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: `/api/trading/paper/history?limit=${limit}`,
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: `/api/trading/paper/history?limit=${limit}` });
     const data = unwrap(response);
-    const result = {
-      success: true,
-      trades: data?.data?.trades || data?.trades || [],
-      summary: data?.data?.summary || data?.summary || {},
-    };
-
+    const result = { success: true, trades: data?.data?.trades || data?.trades || [], summary: data?.data?.summary || data?.summary || {} };
     setCached(cacheKey, result);
     return result;
   } catch (error) {
-    return {
-      success: false,
-      trades: [],
-      summary: {},
-      error: getErrorMessage(error, "Failed to load paper trading history"),
-    };
+    return { success: false, trades: [], summary: {}, error: getErrorMessage(error, "Failed to load paper trading history") };
   }
 };
 
-export const togglePaperTradingEnhanced = async (enabled) => {
-  const nextEnabled = !!enabled;
+/* ================= USER TRADING ENDPOINTS ================= */
 
-  const endpoints = [
-    { method: "patch", url: "/api/user/paper-trading", data: { enabled: nextEnabled } },
-    { method: "post", url: "/api/user/paper-trading", data: { enabled: nextEnabled } },
-    { method: "post", url: "/api/trading/paper/enable", data: { enabled: nextEnabled } },
-    { method: "post", url: "/api/me/paper-trading", data: { enabled: nextEnabled } },
-  ];
-
-  let lastError = null;
-  let successResponse = null;
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await requestWithDedupe(userApi, endpoint);
-      const data = unwrap(response);
-      const row = data?.data || data || {};
-
-      clearTradingCache();
-
-      const paperTradingEnabled = normalizeBool(
-        row?.paper_trading_enabled ?? row?.enabled ?? row?.is_enabled,
-        nextEnabled
-      );
-
-      successResponse = {
-        success: true,
-        enabled: paperTradingEnabled,
-        paper_trading_enabled: paperTradingEnabled,
-        message: row?.message || (paperTradingEnabled ? "Paper trading enabled" : "Paper trading disabled"),
-        data,
-      };
-      break;
-    } catch (error) {
-      lastError = error;
-      const status = error?.response?.status;
-      if (status !== 404 && status !== 405) break;
-    }
-  }
-
-  if (!successResponse) {
-    return handleApiError(lastError, "Failed to toggle paper trading");
-  }
-
-  if (nextEnabled && successResponse.success) {
-    try {
-      await startPaperWorker();
-      console.log("[BotAPI] Paper worker started");
-      await executePaperTrade();
-      console.log("[BotAPI] First paper trade executed");
-      successResponse.message = "Paper trading enabled! Your first trade has been executed. The bot will continue trading automatically.";
-    } catch (workerError) {
-      console.warn("[BotAPI] Worker start failed:", workerError.message);
-      successResponse.message = "Paper trading enabled. The bot will start trading shortly.";
-    }
-  }
-
-  return successResponse;
-};
-
-export const togglePaperTrading = async (enabled) => {
-  return togglePaperTradingEnhanced(enabled);
-};
-
-export const updatePaperTrading = togglePaperTrading;
-
-/* ================= ENTERPRISE ENDPOINTS ================= */
-
-export const getOrganizationDetails = async (skipCache = false) => {
-  const cacheKey = "enterprise_org_details";
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/enterprise/organization",
-    });
-
-    const data = unwrap(response);
-    const result = data?.data || data || {};
-
-    setCached(cacheKey, result);
-    return result;
-  } catch (error) {
-    return {
-      success: false,
-      error: getErrorMessage(error, "Failed to load organization details"),
-    };
-  }
-};
-
-export const getOrganizationUsers = async (skipCache = false) => {
-  const cacheKey = "enterprise_org_users";
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/enterprise/organization/users",
-    });
-
-    const data = unwrap(response);
-    const result = {
-      success: true,
-      users: data?.data?.users || data?.users || [],
-    };
-
-    setCached(cacheKey, result);
-    return result;
-  } catch (error) {
-    return handleApiError(error, "Failed to load organization users");
-  }
-};
-
-export const inviteTeamMember = async (email, role) => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/enterprise/organization/invite",
-      data: { email, role },
-    });
-
-    clearCache("enterprise_org_users");
-
-    const data = unwrap(response);
-    return {
-      success: true,
-      invitation: data?.data || data,
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to invite team member");
-  }
-};
-
-export const removeTeamMember = async (userId) => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "delete",
-      url: `/api/enterprise/organization/users/${userId}`,
-    });
-
-    clearCache("enterprise_org_users");
-
-    return {
-      success: true,
-      message: "Team member removed successfully",
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to remove team member");
-  }
-};
-
-export const updateTeamMemberRole = async (userId, role) => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "put",
-      url: `/api/enterprise/organization/users/${userId}/role`,
-      data: { role },
-    });
-
-    clearCache("enterprise_org_users");
-
-    return {
-      success: true,
-      data: unwrap(response),
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to update team member role");
-  }
-};
-
-export const getEnterpriseStrategies = async (skipCache = false) => {
-  const cacheKey = "enterprise_strategies";
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/enterprise/strategies",
-    });
-
-    const data = unwrap(response);
-    const result = {
-      success: true,
-      strategies: data?.data?.strategies || data?.strategies || [],
-      custom_config: data?.data?.custom_config || data?.custom_config || null,
-    };
-
-    setCached(cacheKey, result);
-    return result;
-  } catch (error) {
-    return handleApiError(error, "Failed to load enterprise strategies");
-  }
-};
-
-export const updateCustomStrategy = async (strategyConfig) => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/enterprise/strategies/customize",
-      data: { strategy_config: strategyConfig },
-    });
-
-    clearCache("enterprise_strategies");
-    clearTradingCache();
-
-    const data = unwrap(response);
-    return {
-      success: true,
-      config: data?.data || data,
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to update custom strategy");
-  }
-};
-
-export const getEnterpriseAnalytics = async (options = {}) => {
-  const { days = 30, skipCache = false } = options;
-  const cacheKey = `enterprise_analytics_${days}`;
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 30000);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: `/api/enterprise/analytics?days=${days}`,
-    });
-
-    const data = unwrap(response);
-    const result = {
-      success: true,
-      analytics: data?.data || data || {},
-    };
-
-    setCached(cacheKey, result);
-    return result;
-  } catch (error) {
-    return handleApiError(error, "Failed to load enterprise analytics");
-  }
-};
-
-export const updateCustomBranding = async (brandingConfig) => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "put",
-      url: "/api/enterprise/branding",
-      data: { branding: brandingConfig },
-    });
-
-    clearCache("enterprise_org_details");
-
-    return {
-      success: true,
-      branding: unwrap(response)?.data,
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to update custom branding");
-  }
-};
-
-export const getAuditLogs = async (options = {}) => {
-  const { limit = 50, offset = 0, skipCache = false } = options;
-  const cacheKey = `enterprise_audit_logs_${limit}_${offset}`;
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey, 15000);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: `/api/enterprise/audit-logs?limit=${limit}&offset=${offset}`,
-    });
-
-    const data = unwrap(response);
-    const result = {
-      success: true,
-      logs: data?.data?.logs || data?.logs || [],
-      total: data?.data?.total || data?.total || 0,
-    };
-
-    setCached(cacheKey, result);
-    return result;
-  } catch (error) {
-    return handleApiError(error, "Failed to load audit logs");
-  }
-};
-
-export const requestEnterpriseApproval = async (payload) => {
-  try {
-    const response = await requestWithDedupe(
-      publicApi,
-      {
-        method: "post",
-        url: "/api/enterprise/request",
-        data: payload,
-      },
-      { throttle: false }
-    );
-
-    const data = unwrap(response);
-    return {
-      success: true,
-      request_id: data?.data?.request_id || data?.request_id,
-      message: data?.message || "Enterprise access request submitted",
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to submit enterprise request");
-  }
-};
-
-/* ================= TRADING ENDPOINTS ================= */
-
-export const getUserTrades = async (options = {}) => {
+const getUserTrades = async (options = {}) => {
   const { limit = 100, status, bot, skipCache = false } = options;
   const cacheKey = `user_trades_${limit}_${status || "all"}_${bot || "all"}`;
 
@@ -1635,139 +978,34 @@ export const getUserTrades = async (options = {}) => {
   if (bot) params.set("bot", bot);
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: `/api/user/trades?${params.toString()}`,
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: `/api/user/trades?${params.toString()}` });
     const data = unwrap(response);
-
-    const result = {
-      success: true,
-      trades: data?.data?.trades || data?.trades || [],
-      summary: data?.data?.summary || data?.summary || {},
-    };
-
+    const result = { success: true, trades: data?.data?.trades || data?.trades || [], summary: data?.data?.summary || data?.summary || {} };
     setCached(cacheKey, result);
     return result;
   } catch (error) {
-    return {
-      success: false,
-      trades: [],
-      summary: {},
-      error: getErrorMessage(error, "Failed to load trades"),
-      status: error?.response?.status,
-    };
+    return { success: false, trades: [], summary: {}, error: getErrorMessage(error, "Failed to load trades") };
   }
 };
 
-export const getUserPositions = async (skipCache = false) => {
+const getUserPositions = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("user_positions");
     if (cached) return cached;
   }
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/user/positions",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/user/positions" });
     const data = unwrap(response);
-
-    const result = {
-      success: true,
-      positions: data?.data?.positions || data?.positions || [],
-      count: data?.data?.count || data?.count || 0,
-    };
-
+    const result = { success: true, positions: data?.data?.positions || data?.positions || [], count: data?.data?.count || data?.count || 0 };
     setCached("user_positions", result);
     return result;
   } catch (error) {
-    return {
-      success: false,
-      positions: [],
-      count: 0,
-      error: getErrorMessage(error, "Failed to load positions"),
-      status: error?.response?.status,
-    };
+    return { success: false, positions: [], count: 0, error: getErrorMessage(error, "Failed to load positions") };
   }
 };
 
-export const cancelPosition = async (positionId) => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "delete",
-      url: `/api/trading/positions/${positionId}`,
-    });
-
-    const data = unwrap(response);
-    clearTradingCache();
-
-    return {
-      success: true,
-      message: data?.message || "Position cancelled successfully",
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to cancel position");
-  }
-};
-
-export const cancelAllPositions = async () => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/trading/positions/cancel-all",
-    });
-
-    const data = unwrap(response);
-    clearTradingCache();
-
-    return {
-      success: true,
-      message: data?.message || "All positions cancelled successfully",
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to cancel positions");
-  }
-};
-
-export const getUserBotExecutions = async (limit = 50, skipCache = false) => {
-  const cacheKey = `user_bot_executions_${limit}`;
-
-  if (!skipCache) {
-    const cached = getCached(cacheKey);
-    if (cached) return cached;
-  }
-
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: `/api/user/bot-executions?limit=${limit}`,
-    });
-
-    const data = unwrap(response);
-
-    const result = {
-      success: true,
-      executions: data?.data?.executions || data?.executions || [],
-      count: data?.data?.count || data?.count || 0,
-    };
-
-    setCached(cacheKey, result);
-    return result;
-  } catch (error) {
-    return {
-      success: false,
-      executions: [],
-      count: 0,
-      error: getErrorMessage(error, "Failed to load bot executions"),
-      status: error?.response?.status,
-    };
-  }
-};
-
-export const getUserTradingStats = async (days = 30, skipCache = false) => {
+const getUserTradingStats = async (days = 30, skipCache = false) => {
   const cacheKey = `user_trading_stats_${days}`;
 
   if (!skipCache) {
@@ -1776,25 +1014,17 @@ export const getUserTradingStats = async (days = 30, skipCache = false) => {
   }
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: `/api/user/trading-stats?days=${days}`,
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: `/api/user/trading-stats?days=${days}` });
     const data = unwrap(response);
     const result = data?.data || data || { summary: {}, daily_performance: [] };
-
     setCached(cacheKey, result);
     return result;
   } catch {
-    return {
-      summary: {},
-      daily_performance: [],
-    };
+    return { summary: {}, daily_performance: [] };
   }
 };
 
-export const getTradingStrategies = async (skipCache = false) => {
+const getTradingStrategies = async (skipCache = false) => {
   const cacheKey = "trading_strategies";
 
   if (!skipCache) {
@@ -1805,11 +1035,7 @@ export const getTradingStrategies = async (skipCache = false) => {
   if (!getToken()) return getDefaultStrategies();
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/trading/strategies",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/trading/strategies" });
     const data = unwrap(response);
     const strategies = data?.strategies || data?.data?.strategies || [];
 
@@ -1828,181 +1054,27 @@ export const getTradingStrategies = async (skipCache = false) => {
   }
 };
 
-export const updateUserStrategy = async (strategyId) => {
+const updateUserStrategy = async (strategyId) => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "put",
-      url: "/api/user/strategy",
-      data: { strategy: strategyId },
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "put", url: "/api/user/strategy", data: { strategy: strategyId } });
     const data = unwrap(response);
     clearTradingCache();
-
-    return {
-      success: true,
-      strategy: data?.data?.strategy || data?.strategy || strategyId,
-      strategy_name: data?.data?.strategy_name || data?.strategy_name || strategyId,
-      tier: data?.data?.tier || data?.tier || null,
-      allowed_strategies: data?.data?.allowed_strategies || data?.allowed_strategies || [],
-      message: data?.message || "Trading strategy updated",
-    };
-  } catch (firstError) {
-    try {
-      const response = await requestWithDedupe(userApi, {
-        method: "post",
-        url: "/api/trading/strategies/update",
-        data: { strategy_id: strategyId },
-      });
-
-      const data = unwrap(response);
-      clearTradingCache();
-
-      return {
-        success: true,
-        strategy: data?.strategy || data?.data?.strategy || strategyId,
-        message: data?.message || "Trading strategy updated",
-      };
-    } catch {
-      return handleApiError(firstError, "Failed to update strategy");
-    }
-  }
-};
-
-export const toggleTrading = async (enabled) => {
-  const nextEnabled = !!enabled;
-  const confirmed = nextEnabled === true;
-
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/trading/enable",
-      data: { enabled: nextEnabled, confirmed },
-    });
-
-    const data = unwrap(response);
-    const row = data?.data || data || {};
-
-    clearTradingCache();
-
-    const tradingEnabled = normalizeBool(
-      row?.trading_enabled ?? row?.enabled ?? row?.is_enabled,
-      nextEnabled
-    );
-
-    return {
-      success: true,
-      enabled: tradingEnabled,
-      trading_enabled: tradingEnabled,
-      message: row?.message || (tradingEnabled ? "Live trading enabled" : "Live trading disabled"),
-      data,
-    };
+    return { success: true, strategy: data?.data?.strategy || data?.strategy || strategyId, message: data?.message || "Trading strategy updated" };
   } catch (error) {
-    const endpoints = [
-      { method: "patch", url: "/api/user/trading", data: { enabled: nextEnabled } },
-      { method: "post", url: "/api/user/trading/toggle", data: { enabled: nextEnabled } },
-    ];
-
-    for (const endpoint of endpoints) {
-      try {
-        const response = await requestWithDedupe(userApi, endpoint);
-        const data = unwrap(response);
-        const row = data?.data || data || {};
-
-        clearTradingCache();
-
-        const tradingEnabled = normalizeBool(
-          row?.trading_enabled ?? row?.enabled ?? row?.is_enabled,
-          nextEnabled
-        );
-
-        return {
-          success: true,
-          enabled: tradingEnabled,
-          trading_enabled: tradingEnabled,
-          message: row?.message || (tradingEnabled ? "Live trading enabled" : "Live trading disabled"),
-          data,
-        };
-      } catch (err) {
-        continue;
-      }
-    }
-
-    return handleApiError(error, "Failed to toggle live trading");
+    return handleApiError(error, "Failed to update strategy");
   }
 };
 
 /* ================= INTEGRATIONS ================= */
 
-export const connectOKX = async (payload) => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/integrations/okx",
-      data: payload,
-    });
-
-    clearTradingCache();
-
-    return {
-      success: true,
-      data: unwrap(response),
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to connect OKX");
-  }
-};
-
-export const connectAlpaca = async (payload) => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/integrations/alpaca",
-      data: payload,
-    });
-
-    clearTradingCache();
-
-    return {
-      success: true,
-      data: unwrap(response),
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to connect Alpaca");
-  }
-};
-
-export const connectWallet = async (payload) => {
-  try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/integrations/wallet",
-      data: payload,
-    });
-
-    clearTradingCache();
-
-    return {
-      success: true,
-      data: unwrap(response),
-    };
-  } catch (error) {
-    return handleApiError(error, "Failed to connect wallet");
-  }
-};
-
-export const getIntegrationStatus = async (skipCache = false) => {
+const getIntegrationStatus = async (skipCache = false) => {
   if (!skipCache) {
     const cached = getCached("integration_status", 20000);
     if (cached) return cached;
   }
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/integrations/status",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/integrations/status" });
     const data = unwrap(response);
     const row = data?.data || data || {};
 
@@ -2018,62 +1090,60 @@ export const getIntegrationStatus = async (skipCache = false) => {
       alpaca_live_connected: !!row.alpaca_live_connected,
       okx_paper_connected: !!row.okx_paper_connected,
       okx_live_connected: !!row.okx_live_connected,
-      alpaca_key_updated_at: row.alpaca_key_updated_at || null,
-      okx_key_updated_at: row.okx_key_updated_at || null,
     };
 
     setCached("integration_status", result);
     return result;
   } catch {
-    return {
-      wallet_connected: false,
-      alpaca_connected: false,
-      okx_connected: false,
-      alpaca_api_key_masked: null,
-      alpaca_mode: "paper",
-      okx_api_key_masked: null,
-      okx_mode: "paper",
-      alpaca_paper_connected: false,
-      alpaca_live_connected: false,
-      okx_paper_connected: false,
-      okx_live_connected: false,
-      alpaca_key_updated_at: null,
-      okx_key_updated_at: null,
-    };
+    return { wallet_connected: false, alpaca_connected: false, okx_connected: false };
   }
 };
 
-export const disconnectOKX = async () => {
+const connectOKX = async (payload) => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "delete",
-      url: "/api/integrations/okx",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/integrations/okx", data: payload });
     clearTradingCache();
+    return { success: true, data: unwrap(response) };
+  } catch (error) {
+    return handleApiError(error, "Failed to connect OKX");
+  }
+};
 
-    return {
-      success: true,
-      data: unwrap(response),
-    };
+const connectAlpaca = async (payload) => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/integrations/alpaca", data: payload });
+    clearTradingCache();
+    return { success: true, data: unwrap(response) };
+  } catch (error) {
+    return handleApiError(error, "Failed to connect Alpaca");
+  }
+};
+
+const connectWallet = async (payload) => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/integrations/wallet", data: payload });
+    clearTradingCache();
+    return { success: true, data: unwrap(response) };
+  } catch (error) {
+    return handleApiError(error, "Failed to connect wallet");
+  }
+};
+
+const disconnectOKX = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "delete", url: "/api/integrations/okx" });
+    clearTradingCache();
+    return { success: true, data: unwrap(response) };
   } catch (error) {
     return handleApiError(error, "Failed to disconnect OKX");
   }
 };
 
-export const disconnectAlpaca = async () => {
+const disconnectAlpaca = async () => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "delete",
-      url: "/api/integrations/alpaca",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "delete", url: "/api/integrations/alpaca" });
     clearTradingCache();
-
-    return {
-      success: true,
-      data: unwrap(response),
-    };
+    return { success: true, data: unwrap(response) };
   } catch (error) {
     return handleApiError(error, "Failed to disconnect Alpaca");
   }
@@ -2081,7 +1151,7 @@ export const disconnectAlpaca = async () => {
 
 /* ================= GLOBAL / PUBLIC ================= */
 
-export const getGlobalTrades = async (options = {}) => {
+const getGlobalTrades = async (options = {}) => {
   const { limit = 20, skipCache = false } = options;
   const cacheKey = `global_trades_${limit}`;
 
@@ -2090,54 +1160,20 @@ export const getGlobalTrades = async (options = {}) => {
     if (cached) return cached;
   }
 
-  if (!getToken()) {
-    return {
-      success: false,
-      trades: [],
-      count: 0,
-      error: "Not authenticated",
-    };
-  }
-
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: `/api/trading/global-trades?limit=${limit}`,
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: `/api/trading/global-trades?limit=${limit}` });
     const data = unwrap(response);
-    const trades = data?.trades || data?.data?.trades || [];
-
-    const result = {
-      success: true,
-      trades,
-      count: trades.length,
-    };
-
+    const result = { success: true, trades: data?.trades || data?.data?.trades || [], count: (data?.trades || data?.data?.trades || []).length };
     setCached(cacheKey, result);
     return result;
   } catch (error) {
-    return {
-      success: false,
-      trades: [],
-      count: 0,
-      error: getErrorMessage(error, "Failed to load global trades"),
-      status: error?.response?.status,
-    };
+    return { success: false, trades: [], count: 0, error: getErrorMessage(error, "Failed to load global trades") };
   }
 };
 
-export const getPublicDashboardHistorical = async (days = 30) => {
+const getPublicDashboardHistorical = async (days = 30) => {
   try {
-    const response = await requestWithDedupe(
-      publicApi,
-      {
-        method: "get",
-        url: `/api/public/dashboard/historical?days=${days}`,
-      },
-      { throttle: false }
-    );
-
+    const response = await requestWithDedupe(publicApi, { method: "get", url: `/api/public/dashboard/historical?days=${days}` }, { throttle: false });
     return unwrap(response);
   } catch (error) {
     return handleApiError(error, "Failed to load public dashboard data");
@@ -2146,7 +1182,7 @@ export const getPublicDashboardHistorical = async (days = 30) => {
 
 /* ================= REFERRALS ================= */
 
-export const getReferralInfo = async (skipCache = false) => {
+const getReferralInfo = async (skipCache = false) => {
   const cacheKey = "referral_info";
 
   if (!skipCache) {
@@ -2155,17 +1191,9 @@ export const getReferralInfo = async (skipCache = false) => {
   }
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/referrals/info",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/referrals/info" });
     const data = unwrap(response);
-    const result = {
-      success: true,
-      data: data?.data || {},
-    };
-
+    const result = { success: true, data: data?.data || {} };
     setCached(cacheKey, result.data);
     return result;
   } catch (error) {
@@ -2173,27 +1201,18 @@ export const getReferralInfo = async (skipCache = false) => {
   }
 };
 
-export const applyReferralCode = async (code) => {
+const applyReferralCode = async (code) => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/referrals/apply",
-      data: { code },
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/referrals/apply", data: { code } });
     clearCache("referral_info");
     clearCache("user_me");
-
-    return {
-      success: true,
-      data: unwrap(response),
-    };
+    return { success: true, data: unwrap(response) };
   } catch (error) {
     return handleApiError(error, "Failed to apply referral code");
   }
 };
 
-export const getReferralStats = async (skipCache = false) => {
+const getReferralStats = async (skipCache = false) => {
   const cacheKey = "referral_stats";
 
   if (!skipCache) {
@@ -2202,17 +1221,9 @@ export const getReferralStats = async (skipCache = false) => {
   }
 
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "get",
-      url: "/api/referrals/stats",
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/referrals/stats" });
     const data = unwrap(response);
-    const result = {
-      success: true,
-      data: data?.data || {},
-    };
-
+    const result = { success: true, data: data?.data || {} };
     setCached(cacheKey, result.data);
     return result;
   } catch (error) {
@@ -2220,22 +1231,13 @@ export const getReferralStats = async (skipCache = false) => {
   }
 };
 
-export const claimReferralRewards = async (amount, walletAddress) => {
+const claimReferralRewards = async (amount, walletAddress) => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/referrals/claim",
-      data: { amount, wallet_address: walletAddress },
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/referrals/claim", data: { amount, wallet_address: walletAddress } });
     clearCache("referral_info");
     clearCache("referral_stats");
     clearCache("user_me");
-
-    return {
-      success: true,
-      data: unwrap(response),
-    };
+    return { success: true, data: unwrap(response) };
   } catch (error) {
     return handleApiError(error, "Failed to claim referral rewards");
   }
@@ -2243,18 +1245,9 @@ export const claimReferralRewards = async (amount, walletAddress) => {
 
 /* ================= NEWSLETTER ================= */
 
-export const subscribeNewsletter = async ({ email, first_name, interest }) => {
+const subscribeNewsletter = async ({ email, first_name, interest }) => {
   try {
-    const response = await requestWithDedupe(userApi, {
-      method: "post",
-      url: "/api/newsletter/subscribe",
-      data: {
-        email,
-        first_name,
-        interest,
-      },
-    });
-
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/newsletter/subscribe", data: { email, first_name, interest } });
     return unwrap(response);
   } catch (error) {
     return handleApiError(error, "Newsletter signup failed");
@@ -2263,7 +1256,7 @@ export const subscribeNewsletter = async ({ email, first_name, interest }) => {
 
 /* ================= PROMO ================= */
 
-export const getPromoStatus = async (skipCache = false) => {
+const getPromoStatus = async (skipCache = false) => {
   const cacheKey = "promo_status";
 
   if (!skipCache) {
@@ -2272,67 +1265,196 @@ export const getPromoStatus = async (skipCache = false) => {
   }
 
   try {
-    const response = await requestWithDedupe(publicApi, {
-      method: "get",
-      url: "/api/promo/status",
-    });
-
+    const response = await requestWithDedupe(publicApi, { method: "get", url: "/api/promo/status" });
     const data = unwrap(response);
     const result = data?.data || {};
-
     setCached(cacheKey, result);
     return result;
   } catch (error) {
-    return {
-      limit: 50,
-      claimed: 0,
-      spots_left: 50,
-      active: true,
-      fee_percent: 5,
-      duration_days: 90,
-      threshold_percent: 3,
-    };
+    return { limit: 50, claimed: 0, spots_left: 50, active: true, fee_percent: 5, duration_days: 90, threshold_percent: 3 };
   }
 };
 
-export const claimPromo = async (email, tier = "starter") => {
+const claimPromo = async (email, tier = "starter") => {
   try {
-    const response = await requestWithDedupe(publicApi, {
-      method: "post",
-      url: "/api/promo/claim",
-      data: { email, tier },
-    });
-
+    const response = await requestWithDedupe(publicApi, { method: "post", url: "/api/promo/claim", data: { email, tier } });
     clearCache("promo_status");
-
-    return {
-      success: true,
-      data: unwrap(response),
-    };
+    return { success: true, data: unwrap(response) };
   } catch (error) {
     return handleApiError(error, "Failed to claim promo");
   }
 };
 
-/* ================= HEALTH / DEBUG ================= */
+/* ================= HEALTH ================= */
 
-export const healthCheck = async () => {
+const healthCheck = async () => {
   try {
-    const response = await requestWithDedupe(
-      publicApi,
-      {
-        method: "get",
-        url: "/health",
-      },
-      { throttle: false }
-    );
-
-    return {
-      success: true,
-      data: unwrap(response),
-    };
+    const response = await requestWithDedupe(publicApi, { method: "get", url: "/health" }, { throttle: false });
+    return { success: true, data: unwrap(response) };
   } catch (error) {
     return handleApiError(error, "Health check failed");
+  }
+};
+
+/* ================= ENTERPRISE ================= */
+
+const getOrganizationDetails = async (skipCache = false) => {
+  const cacheKey = "enterprise_org_details";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/enterprise/organization" });
+    const data = unwrap(response);
+    const result = data?.data || data || {};
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return { success: false, error: getErrorMessage(error, "Failed to load organization details") };
+  }
+};
+
+const getOrganizationUsers = async (skipCache = false) => {
+  const cacheKey = "enterprise_org_users";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/enterprise/organization/users" });
+    const data = unwrap(response);
+    const result = { success: true, users: data?.data?.users || data?.users || [] };
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load organization users");
+  }
+};
+
+const inviteTeamMember = async (email, role) => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/enterprise/organization/invite", data: { email, role } });
+    clearCache("enterprise_org_users");
+    const data = unwrap(response);
+    return { success: true, invitation: data?.data || data };
+  } catch (error) {
+    return handleApiError(error, "Failed to invite team member");
+  }
+};
+
+const removeTeamMember = async (userId) => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "delete", url: `/api/enterprise/organization/users/${userId}` });
+    clearCache("enterprise_org_users");
+    return { success: true, message: "Team member removed successfully" };
+  } catch (error) {
+    return handleApiError(error, "Failed to remove team member");
+  }
+};
+
+const updateTeamMemberRole = async (userId, role) => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "put", url: `/api/enterprise/organization/users/${userId}/role`, data: { role } });
+    clearCache("enterprise_org_users");
+    return { success: true, data: unwrap(response) };
+  } catch (error) {
+    return handleApiError(error, "Failed to update team member role");
+  }
+};
+
+const getEnterpriseStrategies = async (skipCache = false) => {
+  const cacheKey = "enterprise_strategies";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/enterprise/strategies" });
+    const data = unwrap(response);
+    const result = { success: true, strategies: data?.data?.strategies || data?.strategies || [], custom_config: data?.data?.custom_config || data?.custom_config || null };
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load enterprise strategies");
+  }
+};
+
+const updateCustomStrategy = async (strategyConfig) => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/enterprise/strategies/customize", data: { strategy_config: strategyConfig } });
+    clearCache("enterprise_strategies");
+    clearTradingCache();
+    const data = unwrap(response);
+    return { success: true, config: data?.data || data };
+  } catch (error) {
+    return handleApiError(error, "Failed to update custom strategy");
+  }
+};
+
+const getEnterpriseAnalytics = async (options = {}) => {
+  const { days = 30, skipCache = false } = options;
+  const cacheKey = `enterprise_analytics_${days}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, { method: "get", url: `/api/enterprise/analytics?days=${days}` });
+    const data = unwrap(response);
+    const result = { success: true, analytics: data?.data || data || {} };
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load enterprise analytics");
+  }
+};
+
+const updateCustomBranding = async (brandingConfig) => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "put", url: "/api/enterprise/branding", data: { branding: brandingConfig } });
+    clearCache("enterprise_org_details");
+    return { success: true, branding: unwrap(response)?.data };
+  } catch (error) {
+    return handleApiError(error, "Failed to update custom branding");
+  }
+};
+
+const getAuditLogs = async (options = {}) => {
+  const { limit = 50, offset = 0, skipCache = false } = options;
+  const cacheKey = `enterprise_audit_logs_${limit}_${offset}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 15000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, { method: "get", url: `/api/enterprise/audit-logs?limit=${limit}&offset=${offset}` });
+    const data = unwrap(response);
+    const result = { success: true, logs: data?.data?.logs || data?.logs || [], total: data?.data?.total || data?.total || 0 };
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return handleApiError(error, "Failed to load audit logs");
+  }
+};
+
+const requestEnterpriseApproval = async (payload) => {
+  try {
+    const response = await requestWithDedupe(publicApi, { method: "post", url: "/api/enterprise/request", data: payload }, { throttle: false });
+    const data = unwrap(response);
+    return { success: true, request_id: data?.data?.request_id || data?.request_id, message: data?.message || "Enterprise access request submitted" };
+  } catch (error) {
+    return handleApiError(error, "Failed to submit enterprise request");
   }
 };
 
@@ -2382,31 +1504,15 @@ class BotAPIClass {
   getSubscriptionStatus() { return getSubscriptionStatus(); }
   getAvailablePlans() { return getAvailablePlans(); }
 
-  // Live Trading (NEW)
+  // Live Trading
   getLiveTradingStats(skipCache) { return getLiveTradingStats(skipCache); }
   getExchangeBalance(skipCache) { return getExchangeBalance(skipCache); }
   getLivePositions(skipCache) { return getLivePositions(skipCache); }
   getLiveTradeHistory(limit, skipCache) { return getLiveTradeHistory(limit, skipCache); }
 
-  // Enterprise endpoints
-  getOrganizationDetails(skipCache) { return getOrganizationDetails(skipCache); }
-  getOrganizationUsers(skipCache) { return getOrganizationUsers(skipCache); }
-  inviteTeamMember(email, role) { return inviteTeamMember(email, role); }
-  removeTeamMember(userId) { return removeTeamMember(userId); }
-  updateTeamMemberRole(userId, role) { return updateTeamMemberRole(userId, role); }
-  getEnterpriseStrategies(skipCache) { return getEnterpriseStrategies(skipCache); }
-  updateCustomStrategy(strategyConfig) { return updateCustomStrategy(strategyConfig); }
-  getEnterpriseAnalytics(options) { return getEnterpriseAnalytics(options); }
-  updateCustomBranding(brandingConfig) { return updateCustomBranding(brandingConfig); }
-  getAuditLogs(options) { return getAuditLogs(options); }
-  requestEnterpriseApproval(payload) { return requestEnterpriseApproval(payload); }
-
   // Trading
   getUserTrades(options) { return getUserTrades(options); }
   getUserPositions(skipCache) { return getUserPositions(skipCache); }
-  cancelPosition(positionId) { return cancelPosition(positionId); }
-  cancelAllPositions() { return cancelAllPositions(); }
-  getUserBotExecutions(limit, skipCache) { return getUserBotExecutions(limit, skipCache); }
   getUserTradingStats(days, skipCache) { return getUserTradingStats(days, skipCache); }
   getTradingStrategies(skipCache) { return getTradingStrategies(skipCache); }
   updateUserStrategy(strategy) { return updateUserStrategy(strategy); }
@@ -2447,6 +1553,19 @@ class BotAPIClass {
   getPromoStatus(skipCache) { return getPromoStatus(skipCache); }
   claimPromo(email, tier) { return claimPromo(email, tier); }
 
+  // Enterprise
+  getOrganizationDetails(skipCache) { return getOrganizationDetails(skipCache); }
+  getOrganizationUsers(skipCache) { return getOrganizationUsers(skipCache); }
+  inviteTeamMember(email, role) { return inviteTeamMember(email, role); }
+  removeTeamMember(userId) { return removeTeamMember(userId); }
+  updateTeamMemberRole(userId, role) { return updateTeamMemberRole(userId, role); }
+  getEnterpriseStrategies(skipCache) { return getEnterpriseStrategies(skipCache); }
+  updateCustomStrategy(strategyConfig) { return updateCustomStrategy(strategyConfig); }
+  getEnterpriseAnalytics(options) { return getEnterpriseAnalytics(options); }
+  updateCustomBranding(brandingConfig) { return updateCustomBranding(brandingConfig); }
+  getAuditLogs(options) { return getAuditLogs(options); }
+  requestEnterpriseApproval(payload) { return requestEnterpriseApproval(payload); }
+
   // Debug
   healthCheck() { return healthCheck(); }
 }
@@ -2454,21 +1573,5 @@ class BotAPIClass {
 // Create the BotAPI instance
 const BotAPI = new BotAPIClass();
 
-// Default export for the class instance
+// DEFAULT EXPORT ONLY - no named exports to avoid duplication
 export default BotAPI;
-
-// Named exports for individual functions
-export { 
-  BotAPI,
-  getLiveTradingStats,
-  getExchangeBalance,
-  getLivePositions,
-  getLiveTradeHistory,
-  changePlan,
-  upgradeSubscription,
-  downgradeSubscription,
-  cancelSubscription,
-  getSubscriptionStatus,
-  getAvailablePlans,
-  createCheckoutSession,
-};
