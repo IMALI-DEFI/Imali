@@ -1,4 +1,4 @@
-// src/pages/Billing.jsx
+// src/pages/Billing.jsx - REWRITTEN (Based on new pricing tiers)
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Elements } from "@stripe/react-stripe-js";
@@ -8,11 +8,61 @@ import StripeElements from "../components/StripeElements";
 import BotAPI from "../utils/BotAPI";
 
 const TIER_COPY = {
-  starter: { label: "Starter", price: "$0/mo", badge: "🌱", summary: "Paper trading and beginner tools" },
-  pro: { label: "Pro", price: "$19/mo", badge: "⭐", summary: "Advanced trading signals and analytics" },
-  elite: { label: "Elite", price: "$49/mo", badge: "👑", summary: "Full access to advanced trading features" },
-  stock: { label: "DeFi", price: "$99/mo", badge: "📈", summary: "DEX-focused trading and market intelligence" },
-  bundle: { label: "Bundle", price: "$199/mo", badge: "🧩", summary: "Everything included in one plan" },
+  starter: { 
+    label: "Starter", 
+    price: "$0", 
+    period: "7-day trial", 
+    badge: "🌱", 
+    summary: "Paper trading and beginner tools. No credit card required.",
+    requiresPayment: false,
+    redirectTo: "/dashboard"
+  },
+  common: { 
+    label: "Pro", 
+    price: "$19", 
+    period: "month", 
+    badge: "⭐", 
+    summary: "Live trading + advanced signals and analytics.",
+    requiresPayment: true,
+    redirectTo: "/activation"
+  },
+  rare: { 
+    label: "Elite", 
+    price: "$49", 
+    period: "month", 
+    badge: "👑", 
+    summary: "Full access + DEX trading + custom indicators.",
+    requiresPayment: true,
+    redirectTo: "/activation"
+  },
+  epic: { 
+    label: "Elite+", 
+    price: "$99", 
+    period: "month", 
+    badge: "💎", 
+    summary: "Everything in Elite + priority execution + futures trading.",
+    requiresPayment: true,
+    redirectTo: "/activation"
+  },
+  legendary: { 
+    label: "Legendary", 
+    price: "$199", 
+    period: "month", 
+    badge: "🏆", 
+    summary: "Everything in Elite+ + custom strategies + alpha signals.",
+    requiresPayment: true,
+    redirectTo: "/activation"
+  },
+  enterprise: { 
+    label: "Enterprise", 
+    price: "Custom", 
+    period: "", 
+    badge: "🏢", 
+    summary: "Custom pricing + team management + dedicated support.",
+    requiresPayment: false,
+    redirectTo: "/contact-sales",
+    isEnterprise: true
+  },
 };
 
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || "pk_test_default");
@@ -31,19 +81,18 @@ function safeExtract(response, fallback = {}) {
 export default function Billing() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAdmin, activation, refreshActivation } = useAuth();
+  const { user, isAdmin, activation, refreshActivation, refreshUser } = useAuth();
 
   // Get tier from URL params, then state, then user
   const tier = useMemo(() => {
     const params = new URLSearchParams(location.search);
-    const tierFromUrl = params.get("tier");
+    const tierFromUrl = params.get("tier") || params.get("plan");
     
     return normalizeTier(
       tierFromUrl ||
         location.state?.tier ||
         user?.tier ||
         localStorage.getItem("IMALI_TIER") ||
-        localStorage.getItem("imali_selected_tier") ||
         "starter"
     );
   }, [location.search, location.state?.tier, user?.tier]);
@@ -66,6 +115,7 @@ export default function Billing() {
   const [success, setSuccess] = useState("");
   const [retryCount, setRetryCount] = useState(0);
 
+  // Check if user already has a card on file
   const loadBillingState = useCallback(async () => {
     if (!email && !user?.email) {
       setLoading(false);
@@ -82,16 +132,31 @@ export default function Billing() {
       return;
     }
 
+    // Starter tier - no payment needed
+    if (tier === "starter") {
+      setHasCard(true);
+      setClientSecret("");
+      setBillingAvailable(true);
+      setLoading(false);
+      return;
+    }
+
+    // Enterprise tier - contact sales
+    if (tier === "enterprise") {
+      setHasCard(false);
+      setClientSecret("");
+      setBillingAvailable(true);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError("");
     setSuccess("");
 
     try {
-      if (BotAPI.probeBillingRoutes) {
-        await BotAPI.probeBillingRoutes().catch(console.warn);
-      }
-      
-      const cardStatusRes = await BotAPI.getCardStatus();
+      // Check if user already has a card
+      const cardStatusRes = await BotAPI.getCardStatus?.().catch(() => null);
       const cardStatus = safeExtract(cardStatusRes, {});
 
       const alreadyHasCard =
@@ -109,7 +174,8 @@ export default function Billing() {
         return;
       }
 
-      const intentRes = await BotAPI.createSetupIntent({ email, tier });
+      // Create setup intent for payment
+      const intentRes = await BotAPI.createSetupIntent?.({ email, tier });
       const intentData = safeExtract(intentRes, {});
       
       const secret = intentData?.client_secret || intentData?.clientSecret || "";
@@ -158,14 +224,18 @@ export default function Billing() {
       }
 
       await refreshActivation?.();
+      if (refreshUser) await refreshUser();
       
       setHasCard(true);
       setClientSecret("");
       setSetupIntentId("");
-      setSuccess("✅ Card added successfully! Redirecting to activation...");
+      setSuccess("✅ Card added successfully! Redirecting...");
+      
+      // Redirect based on tier
+      const redirectPath = tierInfo.redirectTo || "/activation";
       
       setTimeout(() => {
-        navigate("/activation", {
+        navigate(redirectPath, {
           replace: true,
           state: { 
             tier, 
@@ -180,7 +250,7 @@ export default function Billing() {
       setError(err?.message || "Failed to save payment method. Please try again.");
       setBusy(false);
     }
-  }, [navigate, refreshActivation, tier]);
+  }, [navigate, refreshActivation, refreshUser, tier, tierInfo.redirectTo]);
 
   const handlePaymentError = useCallback((err) => {
     console.error("[Billing] Payment error:", err);
@@ -209,12 +279,18 @@ export default function Billing() {
   };
 
   const handleContinue = () => {
-    navigate("/activation", {
+    const redirectPath = tierInfo.redirectTo || "/activation";
+    navigate(redirectPath, {
       replace: true,
       state: { tier, fromBilling: true },
     });
   };
 
+  const handleContactSales = () => {
+    window.location.href = "mailto:sales@imali-defi.com?subject=Enterprise%20Plan%20Inquiry&body=I'm%20interested%20in%20the%20Enterprise%20plan%20for%20IMALI.%20Please%20contact%20me.";
+  };
+
+  // If no user, show login prompt
   if (!user && !email) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
@@ -236,18 +312,104 @@ export default function Billing() {
     );
   }
 
+  // Enterprise tier - show contact sales page
+  if (tier === "enterprise") {
+    return (
+      <div className="min-h-screen bg-black text-white">
+        <div className="max-w-5xl mx-auto px-4 py-8 md:py-12">
+          <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-indigo-600/10 to-purple-600/10 p-8 text-center">
+            <div className="text-6xl mb-4">🏢</div>
+            <h1 className="text-3xl md:text-4xl font-bold mb-4">Enterprise Plan</h1>
+            <p className="text-xl text-white/70 mb-6">Custom pricing tailored to your organization</p>
+            
+            <div className="max-w-2xl mx-auto text-left space-y-4 mb-8">
+              <h2 className="text-xl font-semibold mb-3">Includes:</h2>
+              <ul className="space-y-2">
+                <li className="flex items-center gap-2">✅ Everything in Elite+</li>
+                <li className="flex items-center gap-2">✅ Custom branded dashboard</li>
+                <li className="flex items-center gap-2">✅ Dedicated account manager</li>
+                <li className="flex items-center gap-2">✅ Team management & roles</li>
+                <li className="flex items-center gap-2">✅ Custom bot development</li>
+                <li className="flex items-center gap-2">✅ White-label options</li>
+                <li className="flex items-center gap-2">✅ SLAs available</li>
+              </ul>
+            </div>
+            
+            <div className="flex flex-wrap gap-4 justify-center">
+              <button
+                onClick={handleContactSales}
+                className="px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 font-bold text-lg transition-colors"
+              >
+                Contact Sales →
+              </button>
+              <button
+                onClick={() => navigate("/pricing")}
+                className="px-8 py-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition-colors"
+              >
+                View Other Plans
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Starter tier - no payment needed
+  if (tier === "starter") {
+    return (
+      <div className="min-h-screen bg-black text-white">
+        <div className="max-w-5xl mx-auto px-4 py-8 md:py-12">
+          <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-600/10 to-teal-600/10 p-8 text-center">
+            <div className="text-6xl mb-4">🌱</div>
+            <h1 className="text-3xl md:text-4xl font-bold mb-4">Starter Plan</h1>
+            <p className="text-xl text-white/70 mb-6">Free 7-day trial • No credit card required</p>
+            
+            <div className="max-w-2xl mx-auto text-left space-y-4 mb-8">
+              <h2 className="text-xl font-semibold mb-3">Includes:</h2>
+              <ul className="space-y-2">
+                <li className="flex items-center gap-2">✅ $1,000 paper trading credits</li>
+                <li className="flex items-center gap-2">✅ Test all bots risk-free</li>
+                <li className="flex items-center gap-2">✅ Stock & crypto trading demo</li>
+                <li className="flex items-center gap-2">✅ No credit card required</li>
+                <li className="flex items-center gap-2">✅ Email support</li>
+              </ul>
+            </div>
+            
+            <div className="flex flex-wrap gap-4 justify-center">
+              <button
+                onClick={handleContinue}
+                className="px-8 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 font-bold text-lg transition-colors"
+              >
+                Continue to Dashboard →
+              </button>
+              <button
+                onClick={() => navigate("/pricing")}
+                className="px-8 py-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 font-bold transition-colors"
+              >
+                View Other Plans
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Paid tiers (Pro, Elite, Elite+, Legendary)
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-5xl mx-auto px-4 py-8 md:py-12">
         <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-6">
           
+          {/* Billing Form Section */}
           <section className="rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
             <div className="flex items-center gap-3 mb-6">
               <span className="text-3xl">{tierInfo.badge}</span>
               <div>
                 <h1 className="text-2xl md:text-3xl font-bold">Billing Setup</h1>
                 <p className="text-white/50 text-sm">
-                  {tierInfo.label} Plan • {tierInfo.price}
+                  {tierInfo.label} Plan • {tierInfo.price}/{tierInfo.period}
                 </p>
               </div>
             </div>
@@ -329,6 +491,7 @@ export default function Billing() {
             )}
           </section>
 
+          {/* Progress Sidebar */}
           <aside className="rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
             <h2 className="text-xl font-bold mb-4">Setup Progress</h2>
             
@@ -382,6 +545,15 @@ export default function Billing() {
                 <p>
                   Your payment information is processed securely through Stripe. 
                   We never store full card details on our servers.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <div className="flex items-start gap-2 text-xs text-white/40">
+                <span className="text-lg">🔄</span>
+                <p>
+                  Cancel anytime. Your subscription will remain active until the end of the billing period.
                 </p>
               </div>
             </div>
