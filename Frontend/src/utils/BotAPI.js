@@ -1,4 +1,4 @@
-// src/utils/BotAPI.js - FIXED (removed duplicate exports)
+// src/utils/BotAPI.js - COMPLETE REWRITE
 import axios from "axios";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
@@ -1086,16 +1086,22 @@ const getIntegrationStatus = async (skipCache = false) => {
       alpaca_mode: row.alpaca_mode || "paper",
       okx_api_key_masked: row.okx_api_key_masked || null,
       okx_mode: row.okx_mode || "paper",
-      alpaca_paper_connected: !!row.alpaca_paper_connected,
-      alpaca_live_connected: !!row.alpaca_live_connected,
-      okx_paper_connected: !!row.okx_paper_connected,
-      okx_live_connected: !!row.okx_live_connected,
+      wallet_address_masked: row.wallet_address_masked || null,
     };
 
     setCached("integration_status", result);
     return result;
   } catch {
-    return { wallet_connected: false, alpaca_connected: false, okx_connected: false };
+    return { 
+      wallet_connected: false, 
+      alpaca_connected: false, 
+      okx_connected: false,
+      alpaca_api_key_masked: null,
+      okx_api_key_masked: null,
+      alpaca_mode: "paper",
+      okx_mode: "paper",
+      wallet_address_masked: null,
+    };
   }
 };
 
@@ -1146,6 +1152,26 @@ const disconnectAlpaca = async () => {
     return { success: true, data: unwrap(response) };
   } catch (error) {
     return handleApiError(error, "Failed to disconnect Alpaca");
+  }
+};
+
+const switchAlpacaToLive = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/integrations/alpaca/live" });
+    clearTradingCache();
+    return { success: true, data: unwrap(response) };
+  } catch (error) {
+    return handleApiError(error, "Failed to switch Alpaca to live mode");
+  }
+};
+
+const switchOKXToLive = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/integrations/okx/live" });
+    clearTradingCache();
+    return { success: true, data: unwrap(response) };
+  } catch (error) {
+    return handleApiError(error, "Failed to switch OKX to live mode");
   }
 };
 
@@ -1534,6 +1560,8 @@ class BotAPIClass {
   connectWallet(payload) { return connectWallet(payload); }
   disconnectOKX() { return disconnectOKX(); }
   disconnectAlpaca() { return disconnectAlpaca(); }
+  switchAlpacaToLive() { return switchAlpacaToLive(); }
+  switchOKXToLive() { return switchOKXToLive(); }
   getIntegrationStatus(skipCache) { return getIntegrationStatus(skipCache); }
 
   // Public/global
@@ -1573,5 +1601,5 @@ class BotAPIClass {
 // Create the BotAPI instance
 const BotAPI = new BotAPIClass();
 
-// DEFAULT EXPORT ONLY - no named exports to avoid duplication
+// DEFAULT EXPORT ONLY
 export default BotAPI;
