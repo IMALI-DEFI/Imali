@@ -1,6 +1,6 @@
-// src/pages/BillingDashboard.jsx
+// src/pages/BillingDashboard.jsx - REWRITTEN (Fixed API calls & tier handling)
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
@@ -10,22 +10,22 @@ import BotAPI from "../utils/BotAPI";
 const TIERS = {
   starter: {
     id: "starter",
-    name: "Free Trial",
-    displayName: "Starter",
+    name: "Starter",
+    displayName: "Free Trial",
     price: 0,
-    interval: "7 days",
+    interval: "7-day trial",
     features: [
       "$1,000 paper trading credits",
       "Test all bots risk-free",
       "Stock & crypto trading demo",
-      "No performance fee",
       "No credit card required",
       "Email support",
     ],
     color: "from-emerald-600 to-emerald-700",
     icon: "🌱",
-    badge: "Safe Start",
+    badge: "Free Trial",
     badgeColor: "green",
+    requiresPayment: false,
   },
   pro: {
     id: "pro",
@@ -37,7 +37,6 @@ const TIERS = {
       "Live trading enabled",
       "All stocks & crypto bots",
       "Advanced strategies",
-      "15% performance fee",
       "Priority support",
       "API access",
     ],
@@ -45,6 +44,7 @@ const TIERS = {
     icon: "⭐",
     badge: "Most Popular",
     badgeColor: "orange",
+    requiresPayment: true,
   },
   elite: {
     id: "elite",
@@ -56,7 +56,6 @@ const TIERS = {
       "Everything in Pro",
       "DEX trading (Uniswap, QuickSwap)",
       "Custom indicators",
-      "10% performance fee",
       "Priority execution",
       "24/7 priority support",
     ],
@@ -64,6 +63,7 @@ const TIERS = {
     icon: "👑",
     badge: "Power User",
     badgeColor: "purple",
+    requiresPayment: true,
   },
   enterprise: {
     id: "enterprise",
@@ -77,7 +77,6 @@ const TIERS = {
       "Custom branded dashboard",
       "Dedicated account manager",
       "Team management & roles",
-      "5% performance fee",
       "Custom bot development",
       "White-label options",
       "SLAs available",
@@ -86,6 +85,7 @@ const TIERS = {
     icon: "🏢",
     badge: "Teams & Orgs",
     badgeColor: "indigo",
+    requiresPayment: false,
     isEnterprise: true,
   },
 };
@@ -98,37 +98,45 @@ const PRICE_ORDER = {
 };
 
 // ============================================================================
-// SAFE API WRAPPER - Prevents "t is not a function" error
+// SAFE API WRAPPER
 // ============================================================================
-const callBotAPI = async (methodName, ...args) => {
-  // Check if BotAPI exists and the method is a function
+const safeApiCall = async (method, ...args) => {
   if (!BotAPI) {
     console.warn(`BotAPI is not defined`);
-    return { success: false, error: "BotAPI not available" };
+    return { success: false, error: "BotAPI not available", demoMode: true };
   }
   
-  if (typeof BotAPI[methodName] !== "function") {
-    console.warn(`BotAPI.${methodName} is not a function - using demo mode`);
-    // Return a fake success for demo purposes
-    return { success: true, demoMode: true };
+  if (typeof BotAPI[method] !== "function") {
+    console.warn(`BotAPI.${method} is not a function`);
+    return { success: false, error: `Method ${method} not available`, demoMode: true };
   }
   
   try {
-    const result = await BotAPI[methodName](...args);
+    const result = await BotAPI[method](...args);
     return { success: true, data: result };
   } catch (error) {
-    console.error(`BotAPI.${methodName} failed:`, error);
+    console.error(`BotAPI.${method} failed:`, error);
     return { success: false, error: error.message };
   }
 };
 
 export default function BillingDashboard() {
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
+  const location = useLocation();
+  const { user, refreshUser, activationComplete, hasCardOnFile } = useAuth();
+  
   const [loading, setLoading] = useState(true);
   const [hasCard, setHasCard] = useState(false);
   const [upgrading, setUpgrading] = useState(null);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
+
+  const currentTierId = user?.tier || "starter";
+  const currentTier = TIERS[currentTierId] || TIERS.starter;
+
+  // Check if user came from upgrade flow
+  const fromCheckout = location.state?.fromCheckout || location.search.includes("checkout=success");
+  const pendingTier = location.state?.pendingTier || null;
 
   useEffect(() => {
     if (!user) {
@@ -136,21 +144,36 @@ export default function BillingDashboard() {
       return;
     }
     
+    // Show success message from checkout
+    if (fromCheckout) {
+      setSuccessMessage(`Successfully upgraded to ${pendingTier || "Pro"} plan! Your dashboard has been updated.`);
+      // Clear the state to prevent showing message again on refresh
+      window.history.replaceState({}, document.title);
+    }
+    
     const loadData = async () => {
       try {
-        // Safely check for payment method
-        let status = null;
+        // Try to get card status from multiple sources
+        let cardStatus = false;
         
-        if (BotAPI && typeof BotAPI.getCardStatus === "function") {
-          status = await BotAPI.getCardStatus();
-        } else if (BotAPI && typeof BotAPI.getPaymentMethod === "function") {
-          status = await BotAPI.getPaymentMethod();
-        } else {
-          // Demo mode - assume no card
-          console.log("Demo mode: No payment API available");
+        // First check AuthContext
+        if (hasCardOnFile !== undefined) {
+          cardStatus = hasCardOnFile;
         }
         
-        setHasCard(status?.has_card || status?.has_card_on_file || false);
+        // Then try BotAPI
+        if (BotAPI && typeof BotAPI.getCardStatus === "function") {
+          const status = await BotAPI.getCardStatus();
+          cardStatus = cardStatus || status?.has_card || status?.has_card_on_file || false;
+        }
+        
+        // Also check activation status
+        if (BotAPI && typeof BotAPI.getActivationStatus === "function") {
+          const activation = await BotAPI.getActivationStatus();
+          cardStatus = cardStatus || activation?.has_card_on_file || activation?.billing_complete || false;
+        }
+        
+        setHasCard(cardStatus);
         setError(null);
       } catch (err) {
         console.error("Failed to load billing data:", err);
@@ -161,11 +184,9 @@ export default function BillingDashboard() {
     };
     
     loadData();
-  }, [user, navigate]);
+  }, [user, navigate, hasCardOnFile, fromCheckout, pendingTier]);
 
-  // FIXED: The main function that was causing the "t is not a function" error
   const handleChangePlan = async (newTierId) => {
-    // Prevent multiple clicks
     if (upgrading) return;
     
     const newTier = TIERS[newTierId];
@@ -174,27 +195,49 @@ export default function BillingDashboard() {
       return;
     }
     
-    const currentPrice = PRICE_ORDER[user?.tier || "starter"] || 0;
+    const currentPrice = PRICE_ORDER[currentTierId] || 0;
     const newPrice = PRICE_ORDER[newTierId] || Infinity;
     const isUpgrade = newPrice > currentPrice;
     
     setUpgrading(newTierId);
     setError(null);
+    setSuccessMessage(null);
     
     try {
-      // Case 1: Enterprise - email sales
+      // Case 1: Enterprise - contact sales
       if (newTierId === "enterprise") {
-        window.location.href = "mailto:sales@imali-defi.com?subject=Enterprise%20Plan%20Inquiry";
+        window.location.href = "mailto:sales@imali-defi.com?subject=Enterprise%20Plan%20Inquiry&body=I'm%20interested%20in%20the%20Enterprise%20plan%20for%20IMALI.%20Please%20contact%20me.";
         setUpgrading(null);
         return;
       }
       
-      // Case 2: No payment method for paid plan - redirect to add card
-      if (!hasCard && newTier.price !== 0 && newTierId !== "starter") {
-        navigate("/billing", {
+      // Case 2: Starter (free trial) - no payment needed
+      if (newTierId === "starter") {
+        if (currentTierId === "starter") {
+          setError("You are already on the Starter plan");
+          setUpgrading(null);
+          return;
+        }
+        
+        const result = await safeApiCall("changePlan", newTierId);
+        
+        if (result.success) {
+          setSuccessMessage(`Successfully switched to ${newTier.name} plan.`);
+          if (refreshUser) await refreshUser();
+          setTimeout(() => window.location.reload(), 1500);
+        } else {
+          throw new Error(result.error || "Failed to change plan");
+        }
+        setUpgrading(null);
+        return;
+      }
+      
+      // Case 3: No payment method for paid plan - redirect to add card
+      if (!hasCard && newTier.requiresPayment) {
+        navigate("/billing/add-card", {
           state: { 
             tier: newTierId, 
-            fromBillingDashboard: true,
+            returnTo: "/billing",
             isUpgrade: true
           }
         });
@@ -202,52 +245,48 @@ export default function BillingDashboard() {
         return;
       }
       
-      // Case 3: Actually change the plan
+      // Case 4: Actually change the plan
       let result;
+      
+      // Try primary methods
       if (isUpgrade) {
-        // Try upgrade method
-        result = await callBotAPI("upgradeSubscription", newTierId);
-        
-        // If that fails, try changePlan
-        if (!result.success && typeof BotAPI?.changePlan === "function") {
-          result = await callBotAPI("changePlan", newTierId);
+        result = await safeApiCall("upgradeSubscription", newTierId);
+        if (!result.success) {
+          result = await safeApiCall("changePlan", newTierId);
         }
       } else {
-        // Try downgrade method
-        result = await callBotAPI("downgradeSubscription", newTierId);
-        
-        // If that fails, try changePlan
-        if (!result.success && typeof BotAPI?.changePlan === "function") {
-          result = await callBotAPI("changePlan", newTierId);
+        result = await safeApiCall("downgradeSubscription", newTierId);
+        if (!result.success) {
+          result = await safeApiCall("changePlan", newTierId);
         }
       }
       
-      // Refresh user data if possible
-      if (refreshUser && typeof refreshUser === "function") {
-        await refreshUser();
+      if (result.success) {
+        // Check if Stripe checkout is needed
+        if (result.data?.requires_checkout && result.data?.checkout_url) {
+          // Redirect to Stripe checkout
+          window.location.href = result.data.checkout_url;
+          return;
+        }
+        
+        setSuccessMessage(`Successfully ${isUpgrade ? "upgraded to" : "downgraded to"} ${newTier.name} plan!`);
+        
+        // Refresh user data
+        if (refreshUser) await refreshUser();
+        
+        // Reload after short delay to show success message
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        throw new Error(result.error || `Failed to change to ${newTier.name} plan`);
       }
-      
-      // Show success message
-      const message = result.demoMode 
-        ? `[DEMO] Successfully ${isUpgrade ? "upgraded to" : "downgraded to"} ${newTier.name} plan!`
-        : `Successfully ${isUpgrade ? "upgraded to" : "downgraded to"} ${newTier.name} plan!`;
-      
-      alert(message);
-      
-      // Reload the page to reflect changes
-      window.location.reload();
       
     } catch (err) {
       console.error("Plan change failed:", err);
       setError(err.message || `Failed to change to ${newTier.name} plan. Please try again.`);
-      alert(err.message || `Failed to change to ${newTier.name} plan. Please try again.`);
     } finally {
       setUpgrading(null);
     }
   };
-
-  const currentTierId = user?.tier || "starter";
-  const currentTier = TIERS[currentTierId] || TIERS.starter;
 
   if (loading) {
     return (
@@ -267,6 +306,14 @@ export default function BillingDashboard() {
             Manage your subscription, payment methods, and billing preferences
           </p>
         </div>
+
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-6 bg-emerald-500/20 border border-emerald-500/50 rounded-xl p-4 text-emerald-300">
+            <p className="font-semibold">✓ Success!</p>
+            <p className="text-sm">{successMessage}</p>
+          </div>
+        )}
 
         {/* Error Display */}
         {error && (
@@ -409,14 +456,9 @@ export default function BillingDashboard() {
                       )}
                     </ul>
 
-                    {/* FIXED: Button with proper onClick handler */}
                     {!isCurrent && !isEnterprise && (
                       <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleChangePlan(key);
-                        }}
+                        onClick={() => handleChangePlan(key)}
                         disabled={upgrading === key}
                         className={`w-full py-2 rounded-lg font-semibold transition-all ${
                           isUpgrade
@@ -474,7 +516,7 @@ export default function BillingDashboard() {
                 </div>
               </div>
               <button
-                onClick={() => navigate("/billing")}
+                onClick={() => navigate("/billing/add-card")}
                 className="text-sm text-blue-400 hover:text-blue-300"
               >
                 Update Payment Method →
@@ -484,7 +526,7 @@ export default function BillingDashboard() {
             <div className="text-center py-4">
               <p className="text-white/50 mb-3">No payment method on file</p>
               <button
-                onClick={() => navigate("/billing")}
+                onClick={() => navigate("/billing/add-card")}
                 className="px-4 py-2 bg-emerald-600 rounded-lg hover:bg-emerald-700 transition"
               >
                 Add Payment Method →
@@ -506,14 +548,14 @@ export default function BillingDashboard() {
             </p>
             <button
               onClick={async () => {
-                if (window.confirm("Are you sure you want to cancel your subscription?")) {
-                  const result = await callBotAPI("cancelSubscription");
+                if (window.confirm("Are you sure you want to cancel your subscription? You will lose access to premium features at the end of your billing period.")) {
+                  const result = await safeApiCall("cancelSubscription");
                   if (result.success) {
-                    alert("Cancellation request submitted. Your plan will end at the billing period.");
+                    setSuccessMessage("Cancellation request submitted. Your plan will end at the billing period.");
                     if (refreshUser) await refreshUser();
-                    window.location.reload();
+                    setTimeout(() => window.location.reload(), 1500);
                   } else {
-                    alert("Demo: Cancellation request received. (API not configured)");
+                    setError("Failed to cancel subscription. Please contact support.");
                   }
                 }
               }}
