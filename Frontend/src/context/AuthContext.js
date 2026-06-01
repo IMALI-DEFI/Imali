@@ -1,4 +1,4 @@
-// src/context/AuthContext.js
+// src/context/AuthContext.js - CORRECTED (Matches pricing page tiers)
 import React, {
   createContext,
   useContext,
@@ -68,20 +68,57 @@ const normalizeBoolean = (value) => {
   return !!value;
 };
 
-const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle", "enterprise"];
+// CORRECTED: Tiers matching pricing page
+const VALID_TIERS = ["starter", "pro", "elite", "enterprise"];
+
+// Tier display mapping matching pricing page
+const TIER_DISPLAY = {
+  starter: { name: "Starter", displayName: "Starter", price: "$0", period: "7-day trial", badge: "🌱", requiresPayment: false, tierLevel: 0 },
+  pro: { name: "Pro", displayName: "Pro", price: "$19", period: "month", badge: "⭐", requiresPayment: true, tierLevel: 1 },
+  elite: { name: "Elite", displayName: "Elite", price: "$49", period: "month", badge: "👑", requiresPayment: true, tierLevel: 2 },
+  enterprise: { name: "Enterprise", displayName: "Enterprise", price: "Custom", period: "", badge: "🏢", requiresPayment: false, tierLevel: 3 },
+};
+
+// Also support common/rare for database compatibility
+const DB_TIER_MAPPING = {
+  common: "pro",
+  rare: "elite",
+  epic: "elite",
+  legendary: "elite",
+  bundle: "elite",
+  stock: "elite",
+};
+
+const normalizeTier = (tier) => {
+  if (!tier) return "starter";
+  const lowerTier = tier.toLowerCase();
+  
+  // Map database tiers to frontend tiers
+  if (DB_TIER_MAPPING[lowerTier]) {
+    return DB_TIER_MAPPING[lowerTier];
+  }
+  
+  // Check if valid frontend tier
+  if (VALID_TIERS.includes(lowerTier)) {
+    return lowerTier;
+  }
+  
+  return "starter";
+};
 
 const normalizeUser = (userData) => {
   if (!userData || (!userData.id && !userData.email)) return null;
 
-  const tier = userData.tier && VALID_TIERS.includes(userData.tier.toLowerCase()) 
-    ? userData.tier.toLowerCase() 
-    : "starter";
+  const rawTier = userData.tier || "starter";
+  const tier = normalizeTier(rawTier);
+  const tierInfo = TIER_DISPLAY[tier] || TIER_DISPLAY.starter;
 
   return {
     id: userData.id || null,
     email: userData.email || null,
     role: userData.role || null,
     tier: tier,
+    rawTier: rawTier, // Keep original for database
     strategy: userData.strategy || "ai_weighted",
     trading_enabled: normalizeBoolean(userData.trading_enabled),
     paper_trading_enabled: normalizeBoolean(userData.paper_trading_enabled),
@@ -106,16 +143,23 @@ const normalizeUser = (userData) => {
     trial_status: userData.trial_status || "trial",
     trial_ends_at: userData.trial_ends_at || null,
     subscription_status: userData.subscription_status || "trial",
+    // Display fields
+    displayName: tierInfo.displayName,
+    tierBadge: tierInfo.badge,
+    requiresPayment: tierInfo.requiresPayment,
+    tierLevel: tierInfo.tierLevel,
   };
 };
 
 const normalizeActivation = (activationData) => {
   if (!activationData) return null;
 
+  const rawTier = activationData.tier || "starter";
+  const tier = normalizeTier(rawTier);
+
   return {
-    tier: activationData.tier && VALID_TIERS.includes(activationData.tier.toLowerCase()) 
-      ? activationData.tier.toLowerCase() 
-      : "starter",
+    tier: tier,
+    rawTier: rawTier,
     has_card_on_file: normalizeBoolean(activationData.has_card_on_file),
     billing_complete: normalizeBoolean(activationData.billing_complete),
     trading_enabled: normalizeBoolean(activationData.trading_enabled),
@@ -323,24 +367,28 @@ export function AuthProvider({ children }) {
   );
 
   const getRedirectPath = useCallback((userData) => {
-    // CRITICAL: For Starter users, go directly to dashboard (not activation/billing)
-    if (userData?.tier === "starter") {
+    const tier = userData?.tier || "starter";
+    
+    // CRITICAL: Starter users go directly to dashboard
+    if (tier === "starter") {
       return "/dashboard";
     }
     
-    // For enterprise users
-    if (userData?.tier === "enterprise" || userData?.organization_id) {
+    // Enterprise users go to enterprise dashboard
+    if (tier === "enterprise" || userData?.organization_id) {
       return "/enterprise-dashboard";
     }
     
-    // For admin users
+    // Admin users go to admin panel
     if (userData?.is_admin === true || userData?.isAdmin === true) {
       return "/admin";
     }
     
-    // For Pro/Elite/Bundle users without billing, go to activation
-    if (!userData?.has_card_on_file && !userData?.billing_complete) {
-      return "/activation";
+    // Pro/Elite users without billing go to activation
+    if (tier === "pro" || tier === "elite") {
+      if (!userData?.has_card_on_file && !userData?.billing_complete) {
+        return "/activation";
+      }
     }
     
     // Default to dashboard
@@ -486,13 +534,23 @@ export function AuthProvider({ children }) {
         return { success: false, error: message };
       }
 
+      // Get selected tier from userData (matches pricing page)
+      const selectedTier = userData.tier || userData.plan || "starter";
+      
+      // Validate against pricing page tiers
+      const pricingPageTiers = ["starter", "pro", "elite", "enterprise"];
+      const finalTier = pricingPageTiers.includes(selectedTier.toLowerCase()) 
+        ? selectedTier.toLowerCase() 
+        : "starter";
+
       try {
         const payload = {
           email: userData.email,
           password: userData.password,
-          tier: "starter",
-          strategy: "ai_weighted",
+          tier: finalTier,
+          strategy: userData.strategy || "ai_weighted",
           accepted_terms: true,
+          referral_code: userData.referral_code || null,
         };
 
         console.log("[Auth] Signup payload:", { email: payload.email, tier: payload.tier });
@@ -504,20 +562,31 @@ export function AuthProvider({ children }) {
 
         const token = data?.data?.token || data?.token;
         const userFromResponse = data?.data?.user || data?.user || null;
+        const requiresApproval = data?.requires_approval || data?.data?.requires_approval || false;
 
-        if (!token) {
+        if (!token && !requiresApproval) {
           const message = "Signup succeeded but no token was returned";
           setError(message);
           return { success: false, error: message };
         }
 
-        setToken(token);
+        if (token) setToken(token);
         
         const normalizedUser = persistUser(userFromResponse);
         await refreshActivation(true);
         
-        // CRITICAL: Starter users go directly to dashboard
-        const redirectPath = "/dashboard";
+        // Determine redirect path based on selected tier
+        let redirectPath;
+        
+        if (requiresApproval || finalTier === "enterprise") {
+          redirectPath = "/enterprise-pending";
+        } else if (finalTier === "starter") {
+          redirectPath = "/dashboard";
+        } else if (finalTier === "pro" || finalTier === "elite") {
+          redirectPath = "/activation";
+        } else {
+          redirectPath = "/dashboard";
+        }
         
         setLoading(false);
         setIsInitialized(true);
@@ -527,8 +596,9 @@ export function AuthProvider({ children }) {
           token, 
           user: normalizedUser,
           redirectTo: redirectPath,
-          isTrial: true,
-          trialDays: TRIAL_DAYS
+          isTrial: finalTier === "starter",
+          trialDays: finalTier === "starter" ? TRIAL_DAYS : 0,
+          requiresApproval
         };
       } catch (err) {
         const message = err.message || "Signup failed";
@@ -561,13 +631,18 @@ export function AuthProvider({ children }) {
     if (user?.trial_status === 'active' && user?.trial_ends_at) {
       return new Date(user.trial_ends_at) > new Date();
     }
-    return false;
+    return user?.tier === "starter" && !user?.has_card_on_file;
   }, [user]);
 
   const trialDaysRemaining = useMemo(() => {
-    if (!isTrialActive || !user?.trial_ends_at) return 0;
+    if (!isTrialActive || !user?.trial_ends_at) return TRIAL_DAYS;
     return getTrialDaysRemaining(user.trial_ends_at);
   }, [isTrialActive, user]);
+
+  // Check if user is on a paid tier (Pro or Elite)
+  const isPaidUser = useMemo(() => {
+    return user ? (user.tier === "pro" || user.tier === "elite") : false;
+  }, [user]);
 
   // Enterprise methods
   const getOrganizationDetails = useCallback(async () => {
@@ -795,7 +870,7 @@ export function AuthProvider({ children }) {
   }, [isEnterpriseAdmin, user]);
 
   const activationComplete = useMemo(() => {
-    // CRITICAL: For Starter users, activation is always complete
+    // CRITICAL: Starter users, activation is always complete
     if (user?.tier === "starter") {
       return true;
     }
@@ -808,7 +883,7 @@ export function AuthProvider({ children }) {
   }, [activation, user, isEnterpriseUser]);
 
   const hasCardOnFile = useMemo(() => {
-    // CRITICAL: For Starter users, always return true (no card needed)
+    // CRITICAL: Starter users, always return true (no card needed)
     if (user?.tier === "starter") {
       return true;
     }
@@ -818,7 +893,7 @@ export function AuthProvider({ children }) {
   }, [activation, user, isEnterpriseUser]);
 
   const hasRequiredIntegrations = useMemo(() => {
-    // CRITICAL: For Starter users, no integrations needed
+    // CRITICAL: Starter users, no integrations needed
     if (user?.tier === "starter") {
       return true;
     }
@@ -828,7 +903,7 @@ export function AuthProvider({ children }) {
 
     const tier = activation.tier || user?.tier || "starter";
 
-    if (tier === "starter") return true; // Starter doesn't need integrations
+    if (tier === "starter") return true;
     if (tier === "elite") return activation.wallet_connected;
 
     return activation.wallet_connected || activation.alpaca_connected || activation.okx_connected;
@@ -880,6 +955,7 @@ export function AuthProvider({ children }) {
       hasAdminPanelAccess,
       isTrialActive,
       trialDaysRemaining,
+      isPaidUser,
       signup,
       login,
       logout,
@@ -920,6 +996,7 @@ export function AuthProvider({ children }) {
       hasAdminPanelAccess,
       isTrialActive,
       trialDaysRemaining,
+      isPaidUser,
       signup,
       login,
       logout,
