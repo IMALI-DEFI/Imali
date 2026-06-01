@@ -1,4 +1,4 @@
-// src/pages/Login.jsx
+// src/pages/Login.jsx - REWRITTEN (Fixed redirect for Starter users)
 import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -47,7 +47,7 @@ const ForgotPasswordModal = ({ isOpen, onClose, initialEmail = "" }) => {
     setMessage("");
 
     try {
-      const result = await BotAPI.forgotPassword(normalizedEmail);
+      const result = await BotAPI.forgotPassword?.(normalizedEmail);
 
       if (!result?.success) {
         throw new Error(result?.error || "Failed to send reset email.");
@@ -141,7 +141,7 @@ const ForgotPasswordModal = ({ isOpen, onClose, initialEmail = "" }) => {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, user, isEnterpriseUser } = useAuth();
+  const { login, user } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -163,8 +163,24 @@ export default function Login() {
     return typeof raw === "string" ? raw : "";
   }, [location.state]);
 
-  // Determine redirect destination based on user type
+  const expiredMessage = useMemo(() => {
+    try {
+      const params = new URLSearchParams(location.search || "");
+      return params.get("expired") === "true";
+    } catch {
+      return false;
+    }
+  }, [location.search]);
+
+  // FIXED: Determine redirect destination based on user type and tier
   const getRedirectDestination = useCallback((userData) => {
+    console.log("[Login] Getting redirect for user:", { 
+      tier: userData?.tier, 
+      billing_complete: userData?.billing_complete,
+      has_card: userData?.has_card_on_file,
+      is_admin: userData?.is_admin
+    });
+    
     // Priority 1: Enterprise users go to enterprise dashboard
     if (userData?.tier === "enterprise" || userData?.organization_id) {
       return "/enterprise-dashboard";
@@ -175,67 +191,39 @@ export default function Login() {
       return "/admin";
     }
     
-    // Priority 3: Check if user needs activation (billing not set up)
-    // Only redirect to activation if user hasn't completed billing
+    // CRITICAL FIX: Starter users go directly to dashboard (no activation needed)
+    if (userData?.tier === "starter") {
+      console.log("[Login] Starter user, redirecting to dashboard");
+      return "/dashboard";
+    }
+    
+    // For Pro/Elite users: check if they need activation (billing not set up)
     const needsActivation = !userData?.billing_complete && !userData?.has_card_on_file;
     
     if (needsActivation) {
+      console.log("[Login] Pro/Elite user needs activation, redirecting to /activation");
       return "/activation";
     }
     
     // Default: Regular users go to dashboard
+    console.log("[Login] Default redirect to dashboard");
     return "/dashboard";
   }, []);
 
-  const destination = useMemo(() => {
-    // If we already have a user, determine their destination
-    if (user) {
-      return getRedirectDestination(user);
-    }
-    
-    // Otherwise use the requested destination or default
-    const raw = nextFromQuery || fromState;
-    if (raw && raw !== "/activation" && raw !== "/dashboard") {
-      return safeInternalPath(raw, "/dashboard");
-    }
-    return "/dashboard";
-  }, [nextFromQuery, fromState, user, getRedirectDestination]);
-
-  const expiredMessage = useMemo(() => {
-    try {
-      const params = new URLSearchParams(location.search || "");
-      return params.get("expired") === "true";
-    } catch {
-      return false;
-    }
-  }, [location.search]);
-
-  // Clear form on mount to prevent autofill issues
+  // Clear form on mount
   useEffect(() => {
     setEmail("");
-    setPassword();
+    setPassword("");
   }, []);
 
   // If user is already logged in, redirect appropriately
   useEffect(() => {
     if (user && !loading) {
-      if (isEnterpriseUser) {
-        console.log("[Login] Enterprise user detected, redirecting to enterprise dashboard");
-        navigate("/enterprise-dashboard", { replace: true });
-      } else if (user.is_admin || user.isAdmin) {
-        console.log("[Login] Admin user detected, redirecting to admin dashboard");
-        navigate("/admin", { replace: true });
-      } else if (user.billing_complete || user.has_card_on_file) {
-        // User has completed billing, go to dashboard
-        console.log("[Login] User has billing complete, redirecting to dashboard");
-        navigate("/dashboard", { replace: true });
-      } else {
-        // User needs to complete activation (billing setup)
-        console.log("[Login] User needs activation, redirecting to activation");
-        navigate("/activation", { replace: true });
-      }
+      const redirectPath = getRedirectDestination(user);
+      console.log("[Login] User already logged in, redirecting to:", redirectPath);
+      navigate(redirectPath, { replace: true });
     }
-  }, [user, loading, isEnterpriseUser, navigate]);
+  }, [user, loading, navigate, getRedirectDestination]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -270,27 +258,10 @@ export default function Login() {
       // Get user data from result
       const userData = result.user;
       
-      // Determine redirect based on user type and activation status
-      const isEnterprise = userData?.tier === "enterprise" || userData?.organization_id;
-      const isAdmin = userData?.is_admin === true || userData?.isAdmin === true;
-      const hasBilling = userData?.billing_complete === true || userData?.has_card_on_file === true;
+      // FIXED: Use the same redirect logic
+      const redirectPath = getRedirectDestination(userData);
       
-      let redirectPath = "/dashboard";
-      
-      if (isEnterprise) {
-        redirectPath = "/enterprise-dashboard";
-        console.log("[Login] Enterprise login, redirecting to enterprise dashboard");
-      } else if (isAdmin) {
-        redirectPath = "/admin";
-        console.log("[Login] Admin login, redirecting to admin dashboard");
-      } else if (!hasBilling) {
-        redirectPath = "/activation";
-        console.log("[Login] User needs billing setup, redirecting to activation");
-      } else {
-        redirectPath = "/dashboard";
-        console.log("[Login] Regular user, redirecting to dashboard");
-      }
-      
+      console.log("[Login] Successful login, redirecting to:", redirectPath);
       navigate(redirectPath, { replace: true });
     } catch (err) {
       console.error("[Login] Login error:", err);
