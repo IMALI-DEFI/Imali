@@ -1,13 +1,13 @@
-// src/pages/SignupForm.jsx
+// src/pages/SignupForm.jsx - FIXED (Proper tier handling & redirects)
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const TIERS = {
-  starter: { name: "Starter", price: "$0", period: "7 days", icon: "🌱" },
-  pro: { name: "Pro", price: "$19", period: "month", icon: "⭐" },
-  elite: { name: "Elite", price: "$49", period: "month", icon: "👑" },
-  enterprise: { name: "Enterprise", price: "Custom", period: "", icon: "🏢" },
+  starter: { name: "Starter", price: "$0", period: "7-day trial", icon: "🌱", requiresPayment: false, redirectTo: "/dashboard" },
+  pro: { name: "Pro", price: "$19", period: "month", icon: "⭐", requiresPayment: true, redirectTo: "/activation" },
+  elite: { name: "Elite", price: "$49", period: "month", icon: "👑", requiresPayment: true, redirectTo: "/activation" },
+  enterprise: { name: "Enterprise", price: "Custom", period: "", icon: "🏢", requiresPayment: false, redirectTo: "/enterprise-pending" },
 };
 
 export default function SignupForm() {
@@ -18,20 +18,24 @@ export default function SignupForm() {
   const params = new URLSearchParams(location.search);
   const selectedTier = params.get("tier") || params.get("plan") || "starter";
   
+  // Validate selected tier is valid
+  const validTiers = ["starter", "pro", "elite", "enterprise"];
+  const initialTier = validTiers.includes(selectedTier) ? selectedTier : "starter";
+  
   const [form, setForm] = useState({
     email: "",
     password: "",
     confirmPassword: "",
     acceptTerms: false,
-    tier: selectedTier,
+    tier: initialTier,
   });
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setForm(f => ({ ...f, tier: selectedTier }));
-  }, [selectedTier]);
+    setForm(f => ({ ...f, tier: initialTier }));
+  }, [initialTier]);
 
   const handleTierChange = (tierId) => {
     setForm(f => ({ ...f, tier: tierId }));
@@ -75,16 +79,23 @@ export default function SignupForm() {
         return;
       }
       
-      // Redirect based on tier
-      if (form.tier === "starter") {
-        navigate("/trade-demo", { replace: true });
-      } else {
-        // Paid tier - go to billing to add payment method
-        navigate("/billing", { 
-          state: { tier: form.tier, email: form.email },
-          replace: true 
-        });
+      // Get redirect path from result or use tier-based default
+      const tierConfig = TIERS[form.tier] || TIERS.starter;
+      let redirectPath = result.redirectTo || tierConfig.redirectTo;
+      
+      // Special handling for enterprise (pending approval)
+      if (result.requiresApproval || form.tier === "enterprise") {
+        redirectPath = "/enterprise-pending";
       }
+      
+      // CRITICAL: Starter users go to dashboard (not trade-demo)
+      if (form.tier === "starter") {
+        redirectPath = "/dashboard";
+      }
+      
+      // Redirect to the determined path
+      navigate(redirectPath, { replace: true });
+      
     } catch (err) {
       setError(err?.message || "Signup failed. Please try again.");
       setLoading(false);
@@ -112,6 +123,7 @@ export default function SignupForm() {
             {Object.entries(TIERS).map(([id, tier]) => (
               <button
                 key={id}
+                type="button"
                 onClick={() => handleTierChange(id)}
                 className={`px-3 py-2 rounded-xl text-center transition-all ${
                   form.tier === id
@@ -150,7 +162,7 @@ export default function SignupForm() {
               type="password"
               required
               autoComplete="new-password"
-              placeholder="Password"
+              placeholder="Password (minimum 8 characters)"
               value={form.password}
               onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -178,7 +190,7 @@ export default function SignupForm() {
               />
               <span>
                 I agree to the{" "}
-                <Link to="/terms" className="text-emerald-400 underline">Terms</Link>
+                <Link to="/terms" className="text-emerald-400 underline">Terms of Service</Link>
                 {" "}and{" "}
                 <Link to="/privacy" className="text-emerald-400 underline">Privacy Policy</Link>
               </span>
@@ -189,7 +201,10 @@ export default function SignupForm() {
               disabled={loading}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-semibold disabled:opacity-50 transition hover:from-emerald-500 hover:to-cyan-500"
             >
-              {loading ? "Creating account..." : form.tier === "starter" ? "Start Free Trial →" : `Start ${currentTier.name} →`}
+              {loading ? "Creating account..." : 
+                form.tier === "starter" ? "Start Free Trial →" : 
+                form.tier === "enterprise" ? "Request Enterprise Access →" :
+                `Start ${currentTier.name} →`}
             </button>
           </form>
         </div>
@@ -207,12 +222,26 @@ export default function SignupForm() {
               <span>💰 $1,000 paper trading</span>
               <span className="mx-2">•</span>
               <span>🔒 No credit card required</span>
+              <span className="mx-2">•</span>
+              <span>🎮 Practice trading immediately</span>
+            </>
+          ) : form.tier === "enterprise" ? (
+            <>
+              <span>🏢 Custom enterprise pricing</span>
+              <span className="mx-2">•</span>
+              <span>👥 Team management</span>
+              <span className="mx-2">•</span>
+              <span>🎨 Custom branding</span>
+              <span className="mx-2">•</span>
+              <span>📊 Advanced analytics</span>
             </>
           ) : (
             <>
-              <span>💳 Credit card required for paid plans</span>
+              <span>💳 Credit card required</span>
               <span className="mx-2">•</span>
               <span>🔄 Cancel anytime</span>
+              <span className="mx-2">•</span>
+              <span>🚀 Full live trading access</span>
             </>
           )}
         </div>
