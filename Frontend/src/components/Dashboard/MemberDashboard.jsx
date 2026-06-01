@@ -1,6 +1,6 @@
-// src/components/Dashboard/MemberDashboard.jsx - FIXED LIVE TRADING & BALANCE
+// src/components/Dashboard/MemberDashboard.jsx - FULLY CORRECTED
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
 import {
   Chart as ChartJS,
@@ -170,6 +170,16 @@ const WinRateMeter = ({ wins, losses, color = "#6366f1" }) => {
   );
 };
 
+const TradeVolumeChart = ({ data, color = "#6366f1" }) => {
+  const chartData = useMemo(() => ({
+    labels: data?.map((d, i) => d.date || `Day ${i + 1}`) || [],
+    datasets: [{ data: data?.map(d => d.trades || 0) || [], backgroundColor: color, borderRadius: 8 }],
+  }), [data, color]);
+  const options = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+  if (!data?.length) return <div className="flex h-full items-center justify-center text-center text-gray-500">No volume data yet</div>;
+  return <Bar data={chartData} options={options} />;
+};
+
 function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
   if (!open) return null;
   return (
@@ -254,12 +264,12 @@ export default function MemberDashboard() {
   const [paperStats, setPaperStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 });
   const [paperSeries, setPaperSeries] = useState([]);
   
-  // Live trading state - separate per exchange
+  // Live trading state
   const [liveStats, setLiveStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 });
   const [liveSeries, setLiveSeries] = useState([]);
   const [liveTrades, setLiveTrades] = useState([]);
   
-  // Exchange balances - CRITICAL for showing actual funds
+  // Exchange balances
   const [exchangeBalances, setExchangeBalances] = useState({ okx: 0, alpaca: 0, total: 0 });
   const [exchangeModes, setExchangeModes] = useState({ okx: "paper", alpaca: "paper" });
   const [exchangeConnected, setExchangeConnected] = useState({ okx: false, alpaca: false });
@@ -280,7 +290,6 @@ export default function MemberDashboard() {
   const [upgrading, setUpgrading] = useState(false);
   const [disconnecting, setDisconnecting] = useState(null);
   const [switchingMode, setSwitchingMode] = useState(null);
-  const [debugInfo, setDebugInfo] = useState(null);
 
   const userTier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user?.tier]);
   const tierConfig = useMemo(() => TIERS[userTier] || TIERS.starter, [userTier]);
@@ -290,8 +299,45 @@ export default function MemberDashboard() {
   }), [userTier]);
   
   const activeStrategy = accessibleStrategies.find(s => s.id === currentStrategy) || accessibleStrategies[0];
+  
+  // FIXED: Define activeStats properly
+  const activeStats = useMemo(() => {
+    if (liveTradingActive) {
+      return {
+        total_pnl: liveStats.total_pnl,
+        win_rate: liveStats.win_rate,
+        total_trades: liveStats.total_trades,
+        wins: liveStats.wins,
+        losses: liveStats.losses,
+        mode: "live",
+        modeIcon: "💰",
+        modeLabel: "Live Trading"
+      };
+    } else if (paperTradingEnabled || paperStats.total_trades > 0) {
+      return {
+        total_pnl: paperStats.total_pnl,
+        win_rate: paperStats.win_rate,
+        total_trades: paperStats.total_trades,
+        wins: paperStats.wins,
+        losses: paperStats.losses,
+        mode: "paper",
+        modeIcon: "🎮",
+        modeLabel: "Paper Trading"
+      };
+    }
+    return {
+      total_pnl: 0,
+      win_rate: 0,
+      total_trades: 0,
+      wins: 0,
+      losses: 0,
+      mode: "none",
+      modeIcon: "📝",
+      modeLabel: "Setup Required"
+    };
+  }, [liveTradingActive, liveStats, paperTradingEnabled, paperStats]);
+  
   const activeSeries = liveTradingActive ? liveSeries : paperSeries;
-  const activeWinLoss = liveTradingActive ? liveStats : paperStats;
   const activeBalance = liveTradingActive ? exchangeBalances.total : (PAPER_TRADING_BALANCE + paperStats.total_pnl);
   
   const trialSecondsLeft = trialData?.seconds_remaining ?? (userTier === "starter" ? 7 * 86400 : 0);
@@ -306,44 +352,34 @@ export default function MemberDashboard() {
     setTimeout(() => setToast({ message: "", type: "info" }), 4500);
   }, []);
 
-  const handleLogout = useCallback(() => { BotAPI.clearToken?.(); BotAPI.clearApiKey?.(); nav("/login"); }, [nav]);
+  const handleLogout = useCallback(() => { 
+    if (BotAPI.clearToken) BotAPI.clearToken(); 
+    if (BotAPI.clearApiKey) BotAPI.clearApiKey(); 
+    nav("/login"); 
+  }, [nav]);
 
-  // CRITICAL: Load actual exchange balances
   const loadExchangeBalances = useCallback(async () => {
     try {
-      console.log("🔄 Fetching exchange balances...");
-      const response = await BotAPI.getExchangeBalance?.();
-      console.log("📊 Balance response:", response);
-      
+      if (!BotAPI.getExchangeBalance) return;
+      const response = await BotAPI.getExchangeBalance();
       if (response) {
-        // Parse balance - handle different response formats
-        const okxBalance = Number(response.okx?.total) || Number(response.okx?.balance) || Number(response.okx) || Number(response.data?.okx) || 0;
-        const alpacaBalance = Number(response.alpaca?.total) || Number(response.alpaca?.balance) || Number(response.alpaca) || Number(response.data?.alpaca) || 0;
-        
+        const okxBalance = Number(response.okx?.total) || Number(response.okx?.balance) || Number(response.okx) || 0;
+        const alpacaBalance = Number(response.alpaca?.total) || Number(response.alpaca?.balance) || Number(response.alpaca) || 0;
         setExchangeBalances({
           okx: okxBalance,
           alpaca: alpacaBalance,
           total: okxBalance + alpacaBalance
         });
-        
-        console.log(`✅ Balances loaded: OKX: $${okxBalance}, Alpaca: $${alpacaBalance}, Total: $${okxBalance + alpacaBalance}`);
-      } else {
-        console.warn("⚠️ No balance data received");
       }
     } catch (err) {
-      console.error("❌ Failed to load exchange balances:", err);
-      setDebugInfo(prev => ({ ...prev, balanceError: err.message }));
+      console.error("Failed to load exchange balances:", err);
     }
   }, []);
 
-  // Load live trading statistics
   const loadLiveTradingStats = useCallback(async () => {
-    if (!tierConfig.canLiveTrade) return;
+    if (!tierConfig.canLiveTrade || !BotAPI.getLiveTradingStats) return;
     try {
-      console.log("🔄 Fetching live trading stats...");
-      const liveData = await BotAPI.getLiveTradingStats?.();
-      console.log("📊 Live stats response:", liveData);
-      
+      const liveData = await BotAPI.getLiveTradingStats();
       if (liveData) {
         const summary = liveData.summary || liveData;
         setLiveStats({
@@ -357,18 +393,14 @@ export default function MemberDashboard() {
         if (liveData.recent_trades) setLiveTrades(liveData.recent_trades);
       }
     } catch (err) {
-      console.error("❌ Failed to load live trading stats:", err);
-      setDebugInfo(prev => ({ ...prev, liveStatsError: err.message }));
+      console.error("Failed to load live trading stats:", err);
     }
   }, [tierConfig.canLiveTrade]);
 
-  // Load integration status (connections, modes, masked keys)
   const loadIntegrationStatus = useCallback(async () => {
     try {
-      console.log("🔄 Fetching integration status...");
-      const status = await BotAPI.getIntegrationStatus?.();
-      console.log("🔌 Integration status:", status);
-      
+      if (!BotAPI.getIntegrationStatus) return;
+      const status = await BotAPI.getIntegrationStatus();
       if (status) {
         setExchangeConnected({
           okx: status.okx_connected === true,
@@ -382,21 +414,16 @@ export default function MemberDashboard() {
           okx: status.okx_api_key_masked || null,
           alpaca: status.alpaca_api_key_masked || null,
         });
-        
-        // Also check if live trading is active from user status
-        if (user?.trading_enabled !== undefined) {
-          setLiveTradingActive(user.trading_enabled === true);
-        }
       }
     } catch (err) {
-      console.error("❌ Failed to load integration status:", err);
-      setDebugInfo(prev => ({ ...prev, integrationError: err.message }));
+      console.error("Failed to load integration status:", err);
     }
-  }, [user]);
+  }, []);
 
   const loadTrialStatus = useCallback(async () => {
     try { 
-      const trial = await BotAPI.getTrialStatus?.(true); 
+      if (!BotAPI.getTrialStatus) return;
+      const trial = await BotAPI.getTrialStatus(true); 
       setTrialData(trial);
     } catch (err) { console.warn("Failed to load trial status:", err); }
   }, []);
@@ -412,17 +439,17 @@ export default function MemberDashboard() {
     
     try {
       if (BotAPI.refreshActivation) await BotAPI.refreshActivation(true);
-      const me = await BotAPI.getMe?.(true);
-      if (!me?.id) { handleLogout(); return; }
+      const me = BotAPI.getMe ? await BotAPI.getMe(true) : null;
+      if (me && !me?.id) { handleLogout(); return; }
       if (!mountedRef.current) return;
-      setUser(me);
-      setLiveTradingActive(me?.trading_enabled === true);
-      setPaperTradingEnabled(me?.paper_trading_enabled === true);
+      if (me) {
+        setUser(me);
+        setLiveTradingActive(me?.trading_enabled === true);
+        setPaperTradingEnabled(me?.paper_trading_enabled === true);
+      }
 
-      const [paperStatsPayload, strategiesPayload] = await Promise.all([
-        BotAPI.getUserTradingStats?.(30, true).catch(() => null),
-        BotAPI.getTradingStrategies?.(true).catch(() => null),
-      ]);
+      const paperStatsPayload = BotAPI.getUserTradingStats ? await BotAPI.getUserTradingStats(30, true).catch(() => null) : null;
+      const strategiesPayload = BotAPI.getTradingStrategies ? await BotAPI.getTradingStrategies(true).catch(() => null) : null;
 
       if (!mountedRef.current) return;
 
@@ -435,9 +462,10 @@ export default function MemberDashboard() {
         losses: paperSummary.losses || 0,
       });
       setPaperSeries(paperStatsPayload?.daily_performance || []);
-      setCurrentStrategy(normalizeStrategyId(strategiesPayload?.current_strategy || me?.strategy));
+      if (strategiesPayload?.current_strategy || me?.strategy) {
+        setCurrentStrategy(normalizeStrategyId(strategiesPayload?.current_strategy || me?.strategy));
+      }
       
-      // Load all critical data in parallel
       await Promise.all([
         loadIntegrationStatus(),
         loadExchangeBalances(),
@@ -447,7 +475,6 @@ export default function MemberDashboard() {
       
     } catch (err) {
       console.error("Dashboard load error:", err);
-      if (isAuthError(err)) handleLogout();
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -582,7 +609,7 @@ export default function MemberDashboard() {
       
       <div className="mx-auto max-w-7xl space-y-5">
         
-        {/* Header with Debug Info Toggle */}
+        {/* Header */}
         <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap justify-between items-center gap-4">
             <div>
@@ -605,7 +632,7 @@ export default function MemberDashboard() {
             </div>
           </div>
           
-          {/* ACTUAL BALANCE DISPLAY - Always visible */}
+          {/* ACTUAL BALANCE DISPLAY */}
           <div className="mt-4 p-3 bg-indigo-50 rounded-lg">
             <div className="text-sm text-indigo-600 font-semibold">💰 ACTUAL EXCHANGE BALANCES</div>
             <div className="flex flex-wrap gap-4 mt-2">
@@ -637,8 +664,8 @@ export default function MemberDashboard() {
             <Card className={getModeCardStyles()}>
               <div className="flex flex-wrap justify-between items-center gap-4">
                 <div>
-                  <div className="flex items-center gap-2"><span className="text-2xl">{liveTradingActive ? "💰" : paperTradingEnabled ? "🎮" : "📝"}</span>
-                  <h2 className="text-lg font-bold">{liveTradingActive ? "Live Trading" : paperTradingEnabled ? "Paper Trading" : "No Active Trading"}</h2></div>
+                  <div className="flex items-center gap-2"><span className="text-2xl">{activeStats.modeIcon}</span>
+                  <h2 className="text-lg font-bold">Active Mode: {activeStats.modeLabel}</h2></div>
                   <p className="text-sm mt-1">{liveTradingActive ? `Real funds: ${usd(activeBalance)}` : paperTradingEnabled ? `Virtual balance: ${usd(activeBalance)}` : "Start trading to see performance"}</p>
                 </div>
                 <div className="flex gap-2">
@@ -655,11 +682,11 @@ export default function MemberDashboard() {
               <div className="bg-white rounded-xl p-4 text-center border"><div className="text-2xl font-bold">{usd(activeStats.total_pnl)}</div><div className="text-xs text-gray-500">Total P&L</div></div>
               <div className="bg-white rounded-xl p-4 text-center border"><div className="text-2xl font-bold">{pct(activeStats.win_rate)}</div><div className="text-xs text-gray-500">Win Rate</div></div>
               <div className="bg-white rounded-xl p-4 text-center border"><div className="text-2xl font-bold">{activeStats.total_trades}</div><div className="text-xs text-gray-500">Total Trades</div></div>
-              <div className="bg-white rounded-xl p-4 text-center border"><div className="text-2xl font-bold">{liveTradingActive ? "💰" : paperTradingEnabled ? "🎮" : "📝"}</div><div className="text-xs text-gray-500">{liveTradingActive ? "Live" : paperTradingEnabled ? "Paper" : "Setup"}</div></div>
+              <div className="bg-white rounded-xl p-4 text-center border"><div className="text-2xl font-bold">{activeStats.modeIcon}</div><div className="text-xs text-gray-500">{activeStats.modeLabel}</div></div>
             </div>
 
             <Card><SectionTitle>📈 Equity Curve</SectionTitle><div className="h-[300px]"><EquityCurveChart data={activeSeries} color={liveTradingActive ? "#22c55e" : "#6366f1"} /></div></Card>
-            <Card><SectionTitle>🎯 Win Rate</SectionTitle><div className="h-[300px]"><WinRateMeter wins={activeWinLoss.wins} losses={activeWinLoss.losses} color={liveTradingActive ? "#22c55e" : "#6366f1"} /></div></Card>
+            <Card><SectionTitle>🎯 Win Rate</SectionTitle><div className="h-[300px]"><WinRateMeter wins={activeStats.wins} losses={activeStats.losses} color={liveTradingActive ? "#22c55e" : "#6366f1"} /></div></Card>
           </div>
         )}
 
@@ -706,19 +733,16 @@ export default function MemberDashboard() {
                 {!anyExchangeLive && <div className="mt-3 p-3 bg-amber-50 rounded-lg text-amber-800 text-sm">⚠️ No exchanges in LIVE mode. Go to Exchanges tab and switch an exchange to LIVE mode.</div>}
               </Card>
 
-              {/* SHOW ACTUAL EXCHANGE BALANCES */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white rounded-xl p-4 border">
                   <div className="text-sm text-gray-500">OKX Balance</div>
                   <div className="text-2xl font-bold text-green-600">{usd(exchangeBalances.okx)}</div>
                   <div className="text-xs text-gray-400 mt-1">Mode: <span className={exchangeModes.okx === "live" ? "text-purple-600 font-bold" : "text-blue-600"}>{exchangeModes.okx === "live" ? "LIVE" : "Paper"}</span></div>
-                  {exchangeConnected.okx && maskedKeys.okx && <div className="text-xs text-gray-400 mt-1">Key: {maskedKeys.okx}</div>}
                 </div>
                 <div className="bg-white rounded-xl p-4 border">
                   <div className="text-sm text-gray-500">Alpaca Balance</div>
                   <div className="text-2xl font-bold text-green-600">{usd(exchangeBalances.alpaca)}</div>
                   <div className="text-xs text-gray-400 mt-1">Mode: <span className={exchangeModes.alpaca === "live" ? "text-purple-600 font-bold" : "text-blue-600"}>{exchangeModes.alpaca === "live" ? "LIVE" : "Paper"}</span></div>
-                  {exchangeConnected.alpaca && maskedKeys.alpaca && <div className="text-xs text-gray-400 mt-1">Key: {maskedKeys.alpaca}</div>}
                 </div>
               </div>
 
