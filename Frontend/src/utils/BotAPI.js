@@ -1,4 +1,4 @@
-// src/utils/BotAPI.js - COMPLETE VERSION (All methods needed by MemberDashboard)
+// src/utils/BotAPI.js - COMPLETE VERSION (All methods including missing ones)
 import axios from "axios";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
@@ -78,6 +78,7 @@ const clearTradingCache = () => {
   clearCache("enterprise_strategies");
   clearCache("live_trading_stats");
   clearCache("exchange_balance");
+  clearCache("card_status");
 };
 
 /* ================= STORAGE HELPERS ================= */
@@ -631,6 +632,45 @@ const getTrialStatus = async (skipCache = false) => {
 
 /* ================= BILLING & SUBSCRIPTION ================= */
 
+const getCardStatus = async (skipCache = false) => {
+  if (!skipCache) {
+    const cached = getCached("card_status");
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, { method: "get", url: "/api/billing/card-status" });
+    const data = unwrap(response);
+    const result = { 
+      success: true, 
+      has_card: !!data?.data?.has_card, 
+      billing_complete: !!data?.data?.billing_complete 
+    };
+    setCached("card_status", result);
+    return result;
+  } catch {
+    return { success: false, has_card: false, billing_complete: false };
+  }
+};
+
+const createSetupIntent = async (payload) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/billing/setup-intent",
+      data: payload,
+    });
+    const data = unwrap(response);
+    return { 
+      success: true, 
+      client_secret: data?.data?.client_secret, 
+      setup_intent_id: data?.data?.setup_intent_id 
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to create setup intent");
+  }
+};
+
 const changePlan = async (newTierId) => {
   try {
     const response = await requestWithDedupe(userApi, { method: "post", url: "/api/billing/change-plan", data: { tier: newTierId } });
@@ -647,6 +687,15 @@ const changePlan = async (newTierId) => {
     return { success: true, data: data?.data || data, message: data?.message || `Successfully changed to ${newTierId} plan` };
   } catch (error) {
     return handleApiError(error, "Failed to change plan");
+  }
+};
+
+const probeBillingRoutes = async () => {
+  try {
+    await requestWithDedupe(userApi, { method: "head", url: "/api/billing/card-status" });
+    return { success: true };
+  } catch {
+    return { success: false };
   }
 };
 
@@ -701,6 +750,24 @@ const toggleTrading = async (enabled) => {
     };
   } catch (error) {
     return handleApiError(error, "Failed to toggle live trading");
+  }
+};
+
+const executePaperTrade = async () => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/paper/execute",
+      data: {},
+    });
+    const data = unwrap(response);
+    return { 
+      success: true, 
+      trade: data?.data?.trade || data?.trade || null, 
+      message: data?.message || "Paper trade executed" 
+    };
+  } catch (error) {
+    return handleApiError(error, "Failed to execute paper trade");
   }
 };
 
@@ -806,6 +873,48 @@ const getIntegrationStatus = async (skipCache = false) => {
   }
 };
 
+const connectOKX = async (payload) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/integrations/okx",
+      data: payload,
+    });
+    clearTradingCache();
+    return { success: true, data: unwrap(response) };
+  } catch (error) {
+    return handleApiError(error, "Failed to connect OKX");
+  }
+};
+
+const connectAlpaca = async (payload) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/integrations/alpaca",
+      data: payload,
+    });
+    clearTradingCache();
+    return { success: true, data: unwrap(response) };
+  } catch (error) {
+    return handleApiError(error, "Failed to connect Alpaca");
+  }
+};
+
+const connectWallet = async (payload) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/integrations/wallet",
+      data: payload,
+    });
+    clearTradingCache();
+    return { success: true, data: unwrap(response) };
+  } catch (error) {
+    return handleApiError(error, "Failed to connect wallet");
+  }
+};
+
 const disconnectOKX = async () => {
   try {
     const response = await requestWithDedupe(userApi, { method: "delete", url: "/api/integrations/okx" });
@@ -843,6 +952,22 @@ const switchOKXToLive = async () => {
     return { success: true, data: unwrap(response) };
   } catch (error) {
     return handleApiError(error, "Failed to switch OKX to live mode");
+  }
+};
+
+/* ================= AUTH HELPERS ================= */
+
+const forgotPassword = async (email) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/auth/forgot-password",
+      data: { email },
+    });
+    const data = unwrap(response);
+    return { success: true, message: data?.message || "Reset link sent" };
+  } catch (error) {
+    return handleApiError(error, "Failed to send reset email");
   }
 };
 
@@ -903,7 +1028,10 @@ class BotAPIClass {
   getTrialStatus = getTrialStatus;
 
   // Billing & Subscription
+  getCardStatus = getCardStatus;
+  createSetupIntent = createSetupIntent;
   changePlan = changePlan;
+  probeBillingRoutes = probeBillingRoutes;
 
   // Live Trading
   getLiveTradingStats = getLiveTradingStats;
@@ -915,13 +1043,20 @@ class BotAPIClass {
   updateUserStrategy = updateUserStrategy;
   toggleTrading = toggleTrading;
   togglePaperTrading = togglePaperTrading;
+  executePaperTrade = executePaperTrade;
   
   // Integrations
+  connectOKX = connectOKX;
+  connectAlpaca = connectAlpaca;
+  connectWallet = connectWallet;
   disconnectOKX = disconnectOKX;
   disconnectAlpaca = disconnectAlpaca;
   switchAlpacaToLive = switchAlpacaToLive;
   switchOKXToLive = switchOKXToLive;
   getIntegrationStatus = getIntegrationStatus;
+
+  // Auth helpers
+  forgotPassword = forgotPassword;
 
   // Public/global
   getGlobalTrades = getGlobalTrades;
