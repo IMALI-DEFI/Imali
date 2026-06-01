@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - PRODUCTION READY
+// src/components/Dashboard/MemberDashboard.jsx - FULLY FIXED PRODUCTION VERSION
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -7,11 +7,12 @@ import {
   FaPlay, FaPause, FaRedo, FaRobot, FaChartLine, FaShieldAlt, FaBrain,
   FaWallet, FaExchangeAlt, FaLock, FaCheckCircle, FaCrown, FaPlug,
   FaUniversity, FaCoins, FaVoteYea, FaGift, FaWater, FaRocket, FaCircle,
-  FaInfoCircle, FaTimes, FaExternalLinkAlt,
+  FaInfoCircle, FaTimes, FaSpinner,
 } from "react-icons/fa";
 
 const START_BALANCE = 1000;
 const BALANCE_REFRESH_INTERVAL = 15000;
+const BOT_STATUS_INTERVAL = 5000;
 
 const TIER_ALIASES = {
   starter: 0, free: 0, trial: 0,
@@ -33,7 +34,6 @@ const STRATEGIES = [
   { id: "aggressive", name: "Aggressive", icon: "🔥", risk: "High", minTier: "pro", description: "High volatility with larger upside potential. For experienced traders." },
 ];
 
-// Features organized by category
 const FEATURE_CATEGORIES = {
   trading: [
     { id: "paper_trading", title: "Paper Trading", icon: <FaShieldAlt />, tier: "starter", description: "Practice with $1,000 virtual funds.", action: "switch_to_paper" },
@@ -120,12 +120,14 @@ export default function MemberDashboard() {
 
   const intervalRef = useRef(null);
   const balanceIntervalRef = useRef(null);
+  const botStatusIntervalRef = useRef(null);
 
   // UI State
   const [running, setRunning] = useState(false);
   const [mode, setMode] = useState("paper");
   const [currentStrategy, setCurrentStrategy] = useState(STRATEGIES[1]);
   const [showApiBox, setShowApiBox] = useState(false);
+  const [isBotStarting, setIsBotStarting] = useState(false);
   
   // Modal States
   const [infoModal, setInfoModal] = useState({ isOpen: false, title: "", message: "", actionLabel: null, onAction: null });
@@ -137,6 +139,9 @@ export default function MemberDashboard() {
     alpaca_connected: false, alpaca_mode: "paper", alpaca_api_key_masked: null, alpaca_balance: 0,
     wallet_connected: false, wallet_address_masked: null,
   });
+  
+  // Bot Status State
+  const [botStatus, setBotStatus] = useState(null);
   
   // Paper Trading State
   const [paperBalance, setPaperBalance] = useState(START_BALANCE);
@@ -158,7 +163,6 @@ export default function MemberDashboard() {
   const userTierLevel = tierValue(userTier);
   const canUseLiveMode = canAccess(userTier, "pro");
   
-  // Check if any exchange is in LIVE mode
   const hasLiveConnection = useMemo(() => {
     return (integrationStatus.okx_connected && integrationStatus.okx_mode === "live") ||
            (integrationStatus.alpaca_connected && integrationStatus.alpaca_mode === "live");
@@ -167,7 +171,8 @@ export default function MemberDashboard() {
   const displayTier = TIER_NAMES[userTierLevel] || "Starter";
   const liveTotalBalance = (integrationStatus.okx_balance || 0) + (integrationStatus.alpaca_balance || 0);
   
-  const winRate = (paperWins + paperLosses) > 0 ? ((paperWins / (paperWins + paperLosses)) * 100).toFixed(1) : "0.0";
+  const paperWinRate = (paperWins + paperLosses) > 0 ? ((paperWins / (paperWins + paperLosses)) * 100).toFixed(1) : "0.0";
+  const liveWinRate = (liveStats.wins + liveStats.losses) > 0 ? ((liveStats.wins / (liveStats.wins + liveStats.losses)) * 100).toFixed(1) : "0.0";
   
   const setupScore = useMemo(() => {
     let score = 25;
@@ -178,7 +183,6 @@ export default function MemberDashboard() {
     return Math.min(score, 100);
   }, [integrationStatus, canUseLiveMode]);
 
-  // Fetch Integration Status (includes modes and balances)
   const fetchIntegrationStatus = useCallback(async () => {
     try {
       const status = await BotAPI.getIntegrationStatus?.();
@@ -198,7 +202,6 @@ export default function MemberDashboard() {
     } catch (err) { console.error("Failed to fetch integration status:", err); }
   }, []);
 
-  // Fetch Exchange Balances
   const fetchExchangeBalances = useCallback(async () => {
     try {
       const balances = await BotAPI.getExchangeBalance?.();
@@ -212,7 +215,6 @@ export default function MemberDashboard() {
     } catch (err) { console.error("Failed to fetch exchange balances:", err); }
   }, []);
 
-  // Fetch Live Stats
   const fetchLiveStats = useCallback(async () => {
     if (!canUseLiveMode) return;
     try {
@@ -229,7 +231,6 @@ export default function MemberDashboard() {
     } catch (err) { console.error("Failed to fetch live stats:", err); }
   }, [canUseLiveMode]);
 
-  // Fetch Live Trades
   const fetchLiveTrades = useCallback(async () => {
     if (!canUseLiveMode || !hasLiveConnection) return;
     try {
@@ -244,7 +245,6 @@ export default function MemberDashboard() {
     } catch (err) { console.error("Failed to fetch live trades:", err); }
   }, [canUseLiveMode, hasLiveConnection]);
 
-  // Fetch IMALI Balance
   const fetchImaliBalance = useCallback(async () => {
     try {
       const balance = await BotAPI.getImaliBalance?.();
@@ -252,7 +252,25 @@ export default function MemberDashboard() {
     } catch (err) { console.error("Failed to fetch IMALI balance:", err); }
   }, []);
 
-  // Generate Paper Trade
+  const fetchBotStatus = useCallback(async () => {
+    try {
+      const status = await BotAPI.getTradingBotStatus?.();
+      if (status?.success && status.data) {
+        const activeBot = status.data.find(b => 
+          (b.exchange === 'okx' && integrationStatus.okx_mode === 'live') ||
+          (b.exchange === 'alpaca' && integrationStatus.alpaca_mode === 'live')
+        );
+        if (activeBot) {
+          setBotStatus(activeBot);
+          // Sync running state with bot status
+          if (activeBot.isRunning !== running) {
+            setRunning(activeBot.isRunning);
+          }
+        }
+      }
+    } catch (err) { console.error("Failed to fetch bot status:", err); }
+  }, [running, integrationStatus.okx_mode, integrationStatus.alpaca_mode]);
+
   const generatePaperTrade = useCallback(() => {
     const assets = ["BTC", "ETH", "SOL", "AAPL", "TSLA", "NVDA"];
     const symbol = assets[Math.floor(Math.random() * assets.length)];
@@ -282,11 +300,13 @@ export default function MemberDashboard() {
   useEffect(() => {
     if (mode === "live" && hasLiveConnection) {
       balanceIntervalRef.current = setInterval(fetchExchangeBalances, BALANCE_REFRESH_INTERVAL);
+      botStatusIntervalRef.current = setInterval(fetchBotStatus, BOT_STATUS_INTERVAL);
     }
     return () => {
       if (balanceIntervalRef.current) clearInterval(balanceIntervalRef.current);
+      if (botStatusIntervalRef.current) clearInterval(botStatusIntervalRef.current);
     };
-  }, [mode, hasLiveConnection, fetchExchangeBalances]);
+  }, [mode, hasLiveConnection, fetchExchangeBalances, fetchBotStatus]);
 
   // Initial data load
   useEffect(() => {
@@ -296,6 +316,7 @@ export default function MemberDashboard() {
       await fetchLiveStats();
       await fetchLiveTrades();
       await fetchImaliBalance();
+      await fetchBotStatus();
     };
     loadInitialData();
   }, []);
@@ -388,25 +409,96 @@ export default function MemberDashboard() {
     }
   };
 
+  // FIXED: Start/Stop bot using the new bot manager endpoints
+  const startLiveBot = async () => {
+    if (!hasLiveConnection) {
+      alert("❌ Cannot start live trading.\n\nNo exchange is in LIVE mode.\n\nGo to API Connections → Switch an exchange to LIVE mode first.");
+      return;
+    }
+    
+    let activeExchange = null;
+    if (integrationStatus.okx_connected && integrationStatus.okx_mode === "live") {
+      activeExchange = "okx";
+    } else if (integrationStatus.alpaca_connected && integrationStatus.alpaca_mode === "live") {
+      activeExchange = "alpaca";
+    }
+    
+    if (!activeExchange) {
+      alert("No exchange available for live trading");
+      return;
+    }
+    
+    const confirmed = window.confirm(
+      `⚠️ LIVE TRADING WARNING\n\n` +
+      `You are about to start an automated trading bot on ${activeExchange.toUpperCase()}.\n\n` +
+      `The bot will:\n` +
+      `• Analyze market conditions in real-time\n` +
+      `• Execute trades based on ${currentStrategy.name} strategy\n` +
+      `• Use STOP LOSS at ~2% and TAKE PROFIT at ~4%\n` +
+      `• Risk 1-2% of your balance per trade\n\n` +
+      `❗ Real money will be used. You can stop the bot anytime.\n\n` +
+      `Do you want to proceed?`
+    );
+    
+    if (!confirmed) return;
+    
+    setIsBotStarting(true);
+    try {
+      const result = await BotAPI.startTradingBot?.(activeExchange, currentStrategy.id, "live");
+      if (result?.success) {
+        setRunning(true);
+        alert(`✅ Live trading bot started on ${activeExchange.toUpperCase()} with ${currentStrategy.name} strategy!\n\nThe bot is now monitoring the market and will execute trades automatically.`);
+        await fetchBotStatus();
+        await fetchLiveStats();
+        await fetchLiveTrades();
+        await fetchExchangeBalances();
+      } else {
+        alert(result?.error || "Failed to start live trading bot");
+      }
+    } catch (err) {
+      alert("Failed to start bot: " + err.message);
+    } finally {
+      setIsBotStarting(false);
+    }
+  };
+
+  const stopLiveBot = async () => {
+    const activeExchange = integrationStatus.okx_mode === "live" ? "okx" : 
+                          (integrationStatus.alpaca_mode === "live" ? "alpaca" : null);
+    if (!activeExchange) {
+      alert("No active exchange found");
+      return;
+    }
+    
+    try {
+      const result = await BotAPI.stopTradingBot?.(activeExchange);
+      if (result?.success) {
+        setRunning(false);
+        alert(`✅ Trading bot stopped on ${activeExchange.toUpperCase()}`);
+        await fetchBotStatus();
+      } else {
+        alert(result?.error || "Failed to stop bot");
+      }
+    } catch (err) {
+      alert("Failed to stop bot: " + err.message);
+    }
+  };
+
   const startStopBot = async () => {
     if (mode === "live") {
-      if (!hasLiveConnection) {
-        alert("Cannot start live trading. No exchange is in LIVE mode.\n\nGo to API Connections → Switch an exchange to LIVE mode first.");
-        return;
-      }
-      const result = await BotAPI.toggleTrading?.(!running);
-      if (result?.success !== false) {
-        setRunning(!running);
-        alert(!running ? "Live trading started!" : "Live trading stopped.");
-        if (!running) {
-          await fetchLiveStats();
-          await fetchLiveTrades();
-        }
+      if (running) {
+        await stopLiveBot();
       } else {
-        alert(result?.error || "Failed to toggle live trading.");
+        await startLiveBot();
       }
     } else {
+      // Paper mode - local simulation
       setRunning(!running);
+      if (!running) {
+        alert("Paper trading started! The bot will simulate trades for practice.");
+      } else {
+        alert("Paper trading stopped.");
+      }
     }
   };
 
@@ -416,14 +508,16 @@ export default function MemberDashboard() {
       return;
     }
     if (running) {
-      if (mode === "live") BotAPI.toggleTrading?.(false);
+      if (mode === "live") {
+        stopLiveBot();
+      }
       setRunning(false);
       if (intervalRef.current) clearInterval(intervalRef.current);
     }
     setMode(newMode);
   };
 
-  const handleFeatureClick = (feature, category) => {
+  const handleFeatureClick = (feature) => {
     const unlocked = canAccess(userTier, feature.tier);
     
     if (!unlocked) {
@@ -460,11 +554,9 @@ export default function MemberDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
-      {/* Modals */}
       <InfoModal isOpen={infoModal.isOpen} onClose={() => setInfoModal({ isOpen: false, title: "", message: "", actionLabel: null, onAction: null })} title={infoModal.title} message={infoModal.message} actionLabel={infoModal.actionLabel} onAction={infoModal.onAction} />
       <UpgradeModal isOpen={upgradeModal.isOpen} onClose={() => setUpgradeModal({ isOpen: false, requiredTier: "" })} onUpgrade={() => navigate("/pricing")} requiredTier={upgradeModal.requiredTier} />
 
-      {/* Header */}
       <div className="sticky top-0 z-50 bg-gradient-to-r from-emerald-600 to-cyan-600">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-3 sm:flex-row">
           <div className="flex items-center gap-3">
@@ -489,10 +581,8 @@ export default function MemberDashboard() {
       </div>
 
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-        
         {/* TOP ROW: Paper Trading vs Live Trading Side by Side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Paper Trading Card */}
           <div className={`${card} ${mode === "paper" ? "border-emerald-500/50" : ""}`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold">📝 Paper Trading</h2>
@@ -500,10 +590,9 @@ export default function MemberDashboard() {
             </div>
             <div className="text-3xl font-bold text-emerald-400">{formatMoney(paperBalance)}</div>
             <div className="text-sm text-white/50 mt-1">P&L: <span className={paperProfit >= 0 ? "text-emerald-400" : "text-red-400"}>{paperProfit >= 0 ? "+" : ""}{formatMoney(paperProfit)}</span></div>
-            <div className="mt-3 text-xs text-white/40">Practice with virtual funds • No real money</div>
+            <div className="mt-3 text-xs text-white/40">Win Rate: {paperWinRate}% • Trades: {paperWins + paperLosses}</div>
           </div>
 
-          {/* Live Trading Card */}
           <div className={`${card} ${mode === "live" ? "border-emerald-500/50" : ""}`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold">💰 Live Trading</h2>
@@ -513,8 +602,26 @@ export default function MemberDashboard() {
             </div>
             <div className="text-3xl font-bold text-cyan-400">{formatMoney(liveTotalBalance)}</div>
             <div className="text-sm text-white/50 mt-1">P&L: <span className={liveStats.pnl >= 0 ? "text-emerald-400" : "text-red-400"}>{liveStats.pnl >= 0 ? "+" : ""}{formatMoney(liveStats.pnl)}</span></div>
-            <div className="mt-3 text-xs text-white/40">Real funds • Connected exchanges only</div>
+            <div className="mt-3 text-xs text-white/40">Win Rate: {liveWinRate}% • Trades: {liveStats.trades}</div>
           </div>
+        </div>
+
+        {/* Setup Progress */}
+        <div className={`${card} border-cyan-500/20 bg-gradient-to-r from-cyan-500/5 to-indigo-500/5`}>
+          <h2 className="mb-4 text-2xl font-bold">Your Setup Progress</h2>
+          <div className="grid gap-4 md:grid-cols-4">
+            <SetupStep done={true} icon={<FaShieldAlt size={24} />} title="1. Paper Trading" description="Start here. Virtual $1,000." />
+            <SetupStep done={integrationStatus.okx_connected || integrationStatus.alpaca_connected} icon={<FaPlug size={24} />} title="2. Connect API" description="Add OKX or Alpaca keys." action={
+              <button onClick={() => setShowApiBox(true)} className="mt-3 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold hover:bg-cyan-500">Connect API</button>
+            } />
+            <SetupStep done={integrationStatus.wallet_connected} icon={<FaWallet size={24} />} title="3. Connect Wallet" description="MetaMask for DeFi." action={
+              <button onClick={connectWallet} className="mt-3 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold hover:bg-purple-500">
+                {integrationStatus.wallet_connected ? "Wallet Connected" : "Connect MetaMask"}
+              </button>
+            } />
+            <SetupStep done={hasLiveConnection && canUseLiveMode} icon={<FaRocket size={24} />} title="4. Go Live" description="Switch to LIVE mode when ready." />
+          </div>
+          <div className="mt-5"><div className="mb-2 flex justify-between text-xs text-white/60"><span>Ready to Trade Live</span><span>{setupScore}%</span></div><div className="h-3 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500" style={{ width: `${setupScore}%` }} /></div></div>
         </div>
 
         {/* Step 1: Choose Strategy */}
@@ -543,7 +650,6 @@ export default function MemberDashboard() {
         <div className={card}>
           <div className="flex items-center gap-3 mb-4"><FaPlug className="text-cyan-300" /><h2 className="text-xl font-bold">Step 2: Connect Exchange</h2></div>
           <div className="grid gap-4 md:grid-cols-2">
-            {/* OKX */}
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2"><span className="text-2xl">🟡</span><span className="font-bold">OKX</span></div>
@@ -571,7 +677,6 @@ export default function MemberDashboard() {
               </div>
             </div>
 
-            {/* Alpaca */}
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2"><span className="text-2xl">🦙</span><span className="font-bold">Alpaca</span></div>
@@ -601,23 +706,7 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        {/* Step 3: Start Trading - Giant Button */}
-        <div className="text-center">
-          <button
-            onClick={startStopBot}
-            className={`text-2xl font-bold px-12 py-6 rounded-2xl transition transform hover:scale-105 ${
-              running ? "bg-red-600 hover:bg-red-500" : "bg-emerald-600 hover:bg-emerald-500"
-            }`}
-          >
-            {running ? <FaPause className="inline mr-3" /> : <FaPlay className="inline mr-3" />}
-            {running ? "Pause Trading" : mode === "live" ? "▶ Start Live Trading" : "▶ Start Paper Trading"}
-          </button>
-          {mode === "live" && !hasLiveConnection && (
-            <p className="mt-3 text-sm text-amber-400"><FaInfoCircle className="inline mr-1" /> Connect and switch an exchange to LIVE mode first</p>
-          )}
-        </div>
-
-        {/* API Connection Box (hidden until needed) */}
+        {/* API Connection Box */}
         {showApiBox && (
           <div className={`${card} grid gap-5 lg:grid-cols-2`}>
             <div id="okx-section">
@@ -636,6 +725,27 @@ export default function MemberDashboard() {
           </div>
         )}
 
+        {/* Step 3: Start Trading - Giant Button */}
+        <div className="text-center">
+          <button
+            onClick={startStopBot}
+            disabled={isBotStarting}
+            className={`text-2xl font-bold px-12 py-6 rounded-2xl transition transform hover:scale-105 ${
+              isBotStarting ? "bg-gray-600 cursor-not-allowed" :
+              running ? "bg-red-600 hover:bg-red-500" : "bg-emerald-600 hover:bg-emerald-500"
+            }`}
+          >
+            {isBotStarting ? <FaSpinner className="inline mr-3 animate-spin" /> : (running ? <FaPause className="inline mr-3" /> : <FaPlay className="inline mr-3" />)}
+            {isBotStarting ? "Starting Bot..." : (running ? "Pause Trading" : mode === "live" ? "▶ Start Live Trading" : "▶ Start Paper Trading")}
+          </button>
+          {mode === "live" && !hasLiveConnection && (
+            <p className="mt-3 text-sm text-amber-400"><FaInfoCircle className="inline mr-1" /> Connect and switch an exchange to LIVE mode first</p>
+          )}
+          {mode === "live" && botStatus && botStatus.isRunning && (
+            <p className="mt-2 text-xs text-green-400">Bot is actively monitoring the market</p>
+          )}
+        </div>
+
         {/* Trade Feed */}
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
@@ -644,11 +754,11 @@ export default function MemberDashboard() {
                 <h2 className="text-xl font-bold">Trade Feed</h2>
                 {running && <div className="flex items-center gap-2 text-sm text-emerald-400"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />Bot Running</div>}
               </div>
-              {!paperFeed.length ? (
+              {!paperFeed.length && !liveFeed.length ? (
                 <div className="py-16 text-center text-white/30"><div className="mb-3 text-5xl">🤖</div><p>Start trading to see activity here</p></div>
               ) : (
                 <div className="max-h-[400px] space-y-2 overflow-y-auto pr-2">
-                  {paperFeed.slice(0, 15).map((trade) => (
+                  {(mode === "live" ? liveFeed : paperFeed).slice(0, 15).map((trade) => (
                     <div key={trade.id} className="flex justify-between items-center p-3 rounded-xl border border-white/10 bg-black/20">
                       <div><span className="font-bold">{trade.symbol}</span><div className="text-xs text-white/40">{trade.type} • {trade.time}</div></div>
                       <div className={`font-bold ${trade.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{trade.pnl >= 0 ? "+" : ""}{formatMoney(trade.pnl)}</div>
@@ -672,23 +782,22 @@ export default function MemberDashboard() {
             <div className={card}>
               <h2 className="text-xl font-bold mb-3">IMALI Balance</h2>
               <div className="text-3xl font-bold text-yellow-400">{formatNumber(imaliBalance)} IMALI</div>
-              <button className="mt-3 w-full rounded-xl bg-purple-600 py-2 font-bold text-sm hover:bg-purple-500">Buy IMALI</button>
+              <button onClick={() => navigate("/buy-imali")} className="mt-3 w-full rounded-xl bg-purple-600 py-2 font-bold text-sm hover:bg-purple-500">Buy IMALI</button>
             </div>
           </div>
         </div>
 
-        {/* Step 4: Feature Hub - Organized by category */}
+        {/* Step 4: Feature Hub */}
         <div className={card}>
           <h2 className="text-2xl font-bold mb-6">Step 4: Explore Features</h2>
           
-          {/* Trading Features */}
           <div className="mb-8">
             <h3 className="text-lg font-bold text-emerald-400 mb-3">📊 Trading</h3>
             <div className="grid gap-3 md:grid-cols-3">
               {FEATURE_CATEGORIES.trading.map(feature => {
                 const unlocked = canAccess(userTier, feature.tier);
                 return (
-                  <button key={feature.id} onClick={() => handleFeatureClick(feature, "trading")}
+                  <button key={feature.id} onClick={() => handleFeatureClick(feature)}
                     className={`p-4 rounded-xl text-left transition ${unlocked ? "bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20" : "bg-black/20 border border-white/10 opacity-70"}`}>
                     <div className="flex items-center gap-2 mb-2"><div className="text-xl">{feature.icon}</div><div className="font-bold">{feature.title}</div>{!unlocked && <FaLock size={12} className="text-amber-400 ml-auto" />}</div>
                     <div className="text-xs text-slate-400">{feature.description}</div>
@@ -698,14 +807,13 @@ export default function MemberDashboard() {
             </div>
           </div>
 
-          {/* DeFi Features */}
           <div className="mb-8">
             <h3 className="text-lg font-bold text-purple-400 mb-3">🔗 DeFi</h3>
             <div className="grid gap-3 md:grid-cols-3">
               {FEATURE_CATEGORIES.defi.map(feature => {
                 const unlocked = canAccess(userTier, feature.tier);
                 return (
-                  <button key={feature.id} onClick={() => handleFeatureClick(feature, "defi")}
+                  <button key={feature.id} onClick={() => handleFeatureClick(feature)}
                     className={`p-4 rounded-xl text-left transition ${unlocked ? "bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20" : "bg-black/20 border border-white/10 opacity-70"}`}>
                     <div className="flex items-center gap-2 mb-2"><div className="text-xl">{feature.icon}</div><div className="font-bold">{feature.title}</div>{!unlocked && <FaLock size={12} className="text-amber-400 ml-auto" />}</div>
                     <div className="text-xs text-slate-400">{feature.description}</div>
@@ -715,14 +823,13 @@ export default function MemberDashboard() {
             </div>
           </div>
 
-          {/* Advanced Features */}
           <div className="mb-8">
             <h3 className="text-lg font-bold text-orange-400 mb-3">⚡ Advanced</h3>
             <div className="grid gap-3 md:grid-cols-3">
               {FEATURE_CATEGORIES.advanced.map(feature => {
                 const unlocked = canAccess(userTier, feature.tier);
                 return (
-                  <button key={feature.id} onClick={() => handleFeatureClick(feature, "advanced")}
+                  <button key={feature.id} onClick={() => handleFeatureClick(feature)}
                     className={`p-4 rounded-xl text-left transition ${unlocked ? "bg-orange-500/10 border border-orange-500/30 hover:bg-orange-500/20" : "bg-black/20 border border-white/10 opacity-70"}`}>
                     <div className="flex items-center gap-2 mb-2"><div className="text-xl">{feature.icon}</div><div className="font-bold">{feature.title}</div>{!unlocked && <FaLock size={12} className="text-amber-400 ml-auto" />}</div>
                     <div className="text-xs text-slate-400">{feature.description}</div>
@@ -732,14 +839,13 @@ export default function MemberDashboard() {
             </div>
           </div>
 
-          {/* Governance Features */}
           <div>
             <h3 className="text-lg font-bold text-blue-400 mb-3">🏛️ Governance</h3>
             <div className="grid gap-3 md:grid-cols-2">
               {FEATURE_CATEGORIES.governance.map(feature => {
                 const unlocked = canAccess(userTier, feature.tier);
                 return (
-                  <button key={feature.id} onClick={() => handleFeatureClick(feature, "governance")}
+                  <button key={feature.id} onClick={() => handleFeatureClick(feature)}
                     className={`p-4 rounded-xl text-left transition ${unlocked ? "bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20" : "bg-black/20 border border-white/10 opacity-70"}`}>
                     <div className="flex items-center gap-2 mb-2"><div className="text-xl">{feature.icon}</div><div className="font-bold">{feature.title}</div>{!unlocked && <FaLock size={12} className="text-amber-400 ml-auto" />}</div>
                     <div className="text-xs text-slate-400">{feature.description}</div>
@@ -750,10 +856,21 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="pb-4 text-center text-xs text-white/30">
           Paper trading uses simulated funds. Live trading requires connected accounts and carries risk.
         </div>
+      </div>
+    </div>
+  );
+}
+
+// SetupStep component
+function SetupStep({ done, icon, title, description, action }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
+      <div className="flex items-start gap-4">
+        <div className={done ? "text-emerald-400" : "text-cyan-300"}>{done ? <FaCheckCircle size={24} /> : icon}</div>
+        <div className="flex-1"><h3 className="font-bold text-white">{title}</h3><p className="mt-1 text-sm text-slate-300">{description}</p>{action}</div>
       </div>
     </div>
   );
