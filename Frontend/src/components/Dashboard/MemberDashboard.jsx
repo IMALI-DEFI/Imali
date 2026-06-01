@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - COMPLETE REWRITE WITH LIVE TRADING SUPPORT
+// src/components/Dashboard/MemberDashboard.jsx - COMPLETE REWRITE WITH MASKED KEYS & LIVE TRADING
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
@@ -76,7 +76,6 @@ const STRATEGIES = [
   },
 ];
 
-// COMPLETE TIER ACCESS MAPPING - ALL DATABASE TIERS COVERED
 const tierAccess = {
   starter: {
     label: "Starter",
@@ -284,10 +283,7 @@ const formatTimeLeft = (seconds) => {
 
 function Card({ children, className = "", id }) {
   return (
-    <div
-      id={id}
-      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${className}`}
-    >
+    <div id={id} className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${className}`}>
       {children}
     </div>
   );
@@ -318,7 +314,7 @@ function StatusPill({ children, tone = "slate", className = "" }) {
   );
 }
 
-function Button({ children, onClick, disabled, variant = "primary", className = "" }) {
+function Button({ children, onClick, disabled, variant = "primary", size = "md", className = "" }) {
   const variants = {
     primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm",
     secondary: "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 shadow-sm",
@@ -326,12 +322,17 @@ function Button({ children, onClick, disabled, variant = "primary", className = 
     danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
     purple: "bg-purple-600 text-white hover:bg-purple-700 shadow-sm",
   };
+  const sizes = {
+    sm: "px-3 py-2 text-xs",
+    md: "min-h-[44px] px-4 py-3 text-sm sm:px-5",
+    lg: "min-h-[52px] px-6 py-3 text-base",
+  };
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`min-h-[44px] rounded-xl px-4 py-3 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${variants[variant]} ${className}`}
+      className={`rounded-xl font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
     >
       {children}
     </button>
@@ -354,10 +355,6 @@ function Toast({ message, type = "info", onClose }) {
     </div>
   );
 }
-
-// ==============================================
-// CHARTS - Support both paper and live data
-// ==============================================
 
 const EquityCurveChart = ({ data, mode = "paper" }) => {
   const chartData = useMemo(() => {
@@ -491,9 +488,7 @@ function UpgradeModal({ open, onClose, onUpgrade, currentTier }) {
                   <span className="text-3xl">{plan.icon}</span>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900">{plan.displayName}</h3>
-                    <div className="text-sm text-gray-500">
-                      {plan.price}{plan.period}
-                    </div>
+                    <div className="text-sm text-gray-500">{plan.price}{plan.period}</div>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
@@ -507,18 +502,12 @@ function UpgradeModal({ open, onClose, onUpgrade, currentTier }) {
         </div>
         
         <div className="p-5 border-t bg-gray-50 rounded-b-2xl">
-          <p className="text-xs text-gray-500 text-center">
-            Upgrade anytime. Cancel within 30 days for a full refund.
-          </p>
+          <p className="text-xs text-gray-500 text-center">Upgrade anytime. Cancel within 30 days for a full refund.</p>
         </div>
       </div>
     </div>
   );
 }
-
-// ==============================================
-// MAIN DASHBOARD COMPONENT
-// ==============================================
 
 export default function MemberDashboard() {
   const nav = useNavigate();
@@ -532,17 +521,25 @@ export default function MemberDashboard() {
   const [toast, setToast] = useState({ message: "", type: "info" });
   const [user, setUser] = useState(null);
   
-  // Paper trading state
   const [paperStats, setPaperStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 });
   const [paperSeries, setPaperSeries] = useState([]);
   
-  // Live trading state
   const [liveStats, setLiveStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0, balance: 0 });
   const [liveSeries, setLiveSeries] = useState([]);
   const [liveTrades, setLiveTrades] = useState([]);
   const [liveExchangeBalance, setLiveExchangeBalance] = useState({ alpaca: 0, okx: 0, total: 0 });
   
-  const [integrations, setIntegrations] = useState({ wallet_connected: false, alpaca_connected: false, okx_connected: false });
+  const [integrations, setIntegrations] = useState({ 
+    wallet_connected: false, 
+    alpaca_connected: false, 
+    okx_connected: false,
+    alpaca_api_key_masked: null,
+    okx_api_key_masked: null,
+    alpaca_mode: "paper",
+    okx_mode: "paper",
+    wallet_address_masked: null,
+  });
+  
   const [currentStrategy, setCurrentStrategy] = useState("ai_weighted");
   const [savingStrategy, setSavingStrategy] = useState("");
   const [communityTrades, setCommunityTrades] = useState([]);
@@ -557,6 +554,8 @@ export default function MemberDashboard() {
   const [trialData, setTrialData] = useState(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(null);
+  const [switchingMode, setSwitchingMode] = useState(null);
 
   const userTier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user?.tier]);
   const access = useMemo(() => tierAccess[userTier] || tierAccess.starter, [userTier]);
@@ -570,11 +569,9 @@ export default function MemberDashboard() {
   const isTrialExpired = trialStatus === "expired" || trialSecondsLeft <= 0;
   
   const hasPaperHistory = (paperStats.total_trades || 0) > 0;
-  const hasLiveHistory = (liveStats.total_trades || 0) > 0;
   const hasActivePaperTrading = paperTradingEnabled;
   const isPaidTier = !["starter", "free"].includes(userTier);
   
-  // Determine which stats to show based on active trading mode
   const activeStats = useMemo(() => {
     if (tradingEnabled) {
       return {
@@ -643,6 +640,57 @@ export default function MemberDashboard() {
 
   const handleLogout = useCallback(() => { BotAPI.clearToken?.(); BotAPI.clearApiKey?.(); nav("/login"); }, [nav]);
 
+  const handleDisconnect = useCallback(async (exchange) => {
+    if (disconnecting) return;
+    if (!window.confirm(`Are you sure you want to disconnect ${exchange.toUpperCase()}? This will remove your API keys.`)) return;
+    
+    setDisconnecting(exchange);
+    try {
+      let result;
+      if (exchange === 'alpaca') {
+        result = await BotAPI.disconnectAlpaca?.();
+      } else if (exchange === 'okx') {
+        result = await BotAPI.disconnectOKX?.();
+      }
+      
+      if (result?.success !== false) {
+        notify(`${exchange.toUpperCase()} disconnected successfully`, "success");
+        await loadDashboard({ force: true });
+      } else {
+        throw new Error(result?.error || "Disconnect failed");
+      }
+    } catch (err) {
+      notify(err?.message || `Failed to disconnect ${exchange}`, "error");
+    } finally {
+      setDisconnecting(null);
+    }
+  }, [notify, loadDashboard, disconnecting]);
+
+  const handleSwitchToLive = useCallback(async (exchange) => {
+    if (switchingMode) return;
+    
+    setSwitchingMode(exchange);
+    try {
+      let result;
+      if (exchange === 'alpaca') {
+        result = await BotAPI.switchAlpacaToLive?.();
+      } else if (exchange === 'okx') {
+        result = await BotAPI.switchOKXToLive?.();
+      }
+      
+      if (result?.success !== false) {
+        notify(`${exchange.toUpperCase()} switched to LIVE mode. Real trading active.`, "success");
+        await loadDashboard({ force: true });
+      } else {
+        throw new Error(result?.error || "Switch failed");
+      }
+    } catch (err) {
+      notify(err?.message || `Failed to switch ${exchange} to live mode`, "error");
+    } finally {
+      setSwitchingMode(null);
+    }
+  }, [notify, loadDashboard, switchingMode]);
+
   const handleManualPaperTrade = async () => {
     if (paperTradeExecuting) return;
     if (!hasActivePaperTrading) {
@@ -680,21 +728,12 @@ export default function MemberDashboard() {
     if (togglingPaper || togglingTrading || !access.canPaperTrade) return;
     
     setTogglingPaper(true);
-    
     try {
       const result = await BotAPI.togglePaperTrading?.(enabled);
       const success = result?.success !== false;
-      
       if (!success) throw new Error(result?.error || "Failed");
-      
       setPaperTradingEnabled(enabled);
-      
-      if (enabled) {
-        notify("Paper trading enabled! You can now execute manual trades.", "success");
-      } else {
-        notify("Paper trading disabled.", "success");
-      }
-      
+      notify(enabled ? "Paper trading enabled! You can now execute manual trades." : "Paper trading disabled.", "success");
       await loadDashboard({ silent: true, force: true });
     } catch (err) {
       notify(err?.message || "Failed to update paper trading.", "error");
@@ -712,7 +751,6 @@ export default function MemberDashboard() {
       const result = await BotAPI.toggleTrading?.(enabled);
       const success = result?.success !== false;
       if (!success) throw new Error(result?.error || "Failed");
-      
       setTradingEnabled(enabled);
       notify(enabled ? "Live trading started!" : "Live trading stopped.", "success");
       setShowLiveConfirm(false);
@@ -749,7 +787,6 @@ export default function MemberDashboard() {
 
   const loadExchangeBalance = useCallback(async () => {
     try {
-      // Try to fetch live balance from OKX and Alpaca
       const balance = await BotAPI.getExchangeBalance?.().catch(() => null);
       if (balance) {
         setLiveExchangeBalance({
@@ -767,7 +804,6 @@ export default function MemberDashboard() {
     if (!access.canLiveTrade) return;
     
     try {
-      // Fetch live trading performance
       const liveData = await BotAPI.getLiveTradingStats?.().catch(() => null);
       if (liveData) {
         const summary = liveData.summary || liveData;
@@ -779,16 +815,9 @@ export default function MemberDashboard() {
           losses: summary.losses || 0,
           balance: summary.current_balance || summary.balance || 0,
         });
-        
-        if (liveData.daily_performance) {
-          setLiveSeries(liveData.daily_performance);
-        }
-        if (liveData.recent_trades) {
-          setLiveTrades(liveData.recent_trades);
-        }
+        if (liveData.daily_performance) setLiveSeries(liveData.daily_performance);
+        if (liveData.recent_trades) setLiveTrades(liveData.recent_trades);
       }
-      
-      // Also fetch current exchange balance
       await loadExchangeBalance();
     } catch (err) {
       console.warn("Failed to load live trading stats:", err);
@@ -815,7 +844,6 @@ export default function MemberDashboard() {
       setTradingEnabled(me?.trading_enabled === true);
       setPaperTradingEnabled(me?.paper_trading_enabled === true);
 
-      // Fetch all data in parallel
       const [paperStatsPayload, integrationsPayload, strategiesPayload, tradesPayload] = await Promise.all([
         BotAPI.getUserTradingStats?.(30, true).catch(() => null),
         BotAPI.getIntegrationStatus?.(true).catch(() => null),
@@ -825,7 +853,6 @@ export default function MemberDashboard() {
 
       if (!mountedRef.current) return;
 
-      // Process paper stats
       const paperSummary = paperStatsPayload?.summary || paperStatsPayload?.data?.summary || {};
       setPaperStats({
         total_pnl: paperSummary.total_pnl || 0,
@@ -838,11 +865,20 @@ export default function MemberDashboard() {
       const dailySeries = paperStatsPayload?.daily_performance || paperStatsPayload?.data?.daily_performance || [];
       if (dailySeries.length) setPaperSeries(dailySeries);
       
-      setIntegrations(integrationsPayload || {});
+      setIntegrations({
+        wallet_connected: integrationsPayload?.wallet_connected || false,
+        alpaca_connected: integrationsPayload?.alpaca_connected || false,
+        okx_connected: integrationsPayload?.okx_connected || false,
+        alpaca_api_key_masked: integrationsPayload?.alpaca_api_key_masked || null,
+        okx_api_key_masked: integrationsPayload?.okx_api_key_masked || null,
+        alpaca_mode: integrationsPayload?.alpaca_mode || "paper",
+        okx_mode: integrationsPayload?.okx_mode || "paper",
+        wallet_address_masked: integrationsPayload?.wallet_address_masked || null,
+      });
+      
       setCurrentStrategy(normalizeStrategyId(strategiesPayload?.current_strategy || me?.strategy || "ai_weighted"));
       if (tradesPayload?.trades?.length) setCommunityTrades(tradesPayload.trades);
       
-      // Load live trading stats if user has live trading enabled OR is on paid tier
       if (me?.trading_enabled === true || access.canLiveTrade) {
         await loadLiveTradingStats();
       }
@@ -875,19 +911,13 @@ export default function MemberDashboard() {
     );
   }
 
-  // Determine which series to show in charts
   const activeSeries = tradingEnabled ? liveSeries : paperSeries;
   const activeWinLoss = tradingEnabled ? liveStats : paperStats;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 px-3 py-4 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
-      <UpgradeModal 
-        open={showUpgradeModal} 
-        onClose={() => setShowUpgradeModal(false)} 
-        onUpgrade={handleUpgrade}
-        currentTier={userTier}
-      />
+      <UpgradeModal open={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} onUpgrade={handleUpgrade} currentTier={userTier} />
       
       <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
         
@@ -953,7 +983,6 @@ export default function MemberDashboard() {
         {activeTab === "overview" && (
           <div className="space-y-5">
             
-            {/* MODE SELECTOR / STATUS CARD */}
             <Card className={`border-${activeStats.modeColor === "green" ? "green" : activeStats.modeColor === "blue" ? "blue" : "slate"}-200 bg-${activeStats.modeColor === "green" ? "green" : activeStats.modeColor === "blue" ? "blue" : "gray"}-50/50`}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -973,12 +1002,10 @@ export default function MemberDashboard() {
                   {!tradingEnabled && !paperTradingEnabled && (
                     <>
                       {access.canLiveTrade && bothConnected && (
-                        <Button variant="warning" onClick={() => setShowLiveConfirm(true)}>
-                          Start Live Trading
-                        </Button>
+                        <Button variant="warning" onClick={() => setShowLiveConfirm(true)}>Start Live Trading</Button>
                       )}
                       <Button variant="primary" onClick={() => handleTogglePaperTrading(true)} disabled={togglingPaper}>
-                        Start Paper Trading
+                        {togglingPaper ? "Starting..." : "Start Paper"}
                       </Button>
                     </>
                   )}
@@ -996,37 +1023,25 @@ export default function MemberDashboard() {
               </div>
             </Card>
 
-            {/* LIVE TRADING DETAILS - Show when live trading is active */}
             {tradingEnabled && (
               <Card className="border-green-200 bg-green-50/50">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-lg font-extrabold text-green-900">💰 Live Trading Details</h2>
                     <div className="mt-2 space-y-1">
-                      <p className="text-sm font-semibold text-green-800">
-                        OKX Balance: {usd(liveExchangeBalance.okx)}
-                      </p>
-                      <p className="text-sm font-semibold text-green-800">
-                        Alpaca Balance: {usd(liveExchangeBalance.alpaca)}
-                      </p>
-                      <p className="text-sm font-bold text-green-900">
-                        Total Live Funds: {usd(liveExchangeBalance.total || liveStats.balance)}
-                      </p>
+                      <p className="text-sm font-semibold text-green-800">OKX Balance: {usd(liveExchangeBalance.okx)}</p>
+                      <p className="text-sm font-semibold text-green-800">Alpaca Balance: {usd(liveExchangeBalance.alpaca)}</p>
+                      <p className="text-sm font-bold text-green-900">Total Live Funds: {usd(liveExchangeBalance.total || liveStats.balance)}</p>
                       {liveStats.total_trades > 0 && (
-                        <p className="text-sm text-green-700">
-                          Live P&L: <span className={liveStats.total_pnl >= 0 ? "text-green-700" : "text-red-600"}>{usd(liveStats.total_pnl)}</span>
-                        </p>
+                        <p className="text-sm text-green-700">Live P&L: <span className={liveStats.total_pnl >= 0 ? "text-green-700" : "text-red-600"}>{usd(liveStats.total_pnl)}</span></p>
                       )}
                     </div>
                   </div>
-                  <Button variant="secondary" onClick={() => setShowApiModal(true)}>
-                    Manage Exchange Keys
-                  </Button>
+                  <Button variant="secondary" onClick={() => setShowApiModal(true)}>Manage Exchange Keys</Button>
                 </div>
               </Card>
             )}
 
-            {/* PAPER TRADING CONTROLS CARD - Only show when paper trading is active OR no live trading */}
             {!tradingEnabled && (
               <Card className="border-blue-200 bg-blue-50/50">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1043,16 +1058,10 @@ export default function MemberDashboard() {
                   <div className="flex gap-2">
                     {paperTradingEnabled ? (
                       <>
-                        <Button
-                          variant="secondary"
-                          onClick={handleManualPaperTrade}
-                          disabled={paperTradeExecuting}
-                        >
+                        <Button variant="secondary" onClick={handleManualPaperTrade} disabled={paperTradeExecuting}>
                           {paperTradeExecuting ? "Trading..." : "Manual Trade"}
                         </Button>
-                        <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={togglingPaper}>
-                          Stop Paper
-                        </Button>
+                        <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={togglingPaper}>Stop Paper</Button>
                       </>
                     ) : (
                       <Button onClick={() => handleTogglePaperTrading(true)} disabled={togglingPaper}>
@@ -1064,7 +1073,6 @@ export default function MemberDashboard() {
               </Card>
             )}
 
-            {/* UPGRADE CARD - For free tier users */}
             {!access.canLiveTrade && !tradingEnabled && (
               <Card className="border-purple-200 bg-gradient-to-r from-purple-50/80 to-indigo-50/60">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1074,24 +1082,15 @@ export default function MemberDashboard() {
                       <h2 className="text-xl font-extrabold text-purple-900">Your Plan: {access.displayName || access.label}</h2>
                     </div>
                     <p className="mt-1 text-sm font-semibold text-purple-800">
-                      {isTrialExpired ? (
-                        "⚠️ Your trial has expired. Upgrade to continue live trading."
-                      ) : (
-                        `📝 Free trial: ${formatTimeLeft(trialSecondsLeft)} remaining.`
-                      )}
+                      {isTrialExpired ? "⚠️ Your trial has expired. Upgrade to continue live trading." : `📝 Free trial: ${formatTimeLeft(trialSecondsLeft)} remaining.`}
                     </p>
-                    <p className="mt-1 text-xs text-purple-600">
-                      ✨ {UPGRADE_PLANS[0]?.displayName} includes: {UPGRADE_PLANS[0]?.features.join(", ")}
-                    </p>
+                    <p className="mt-1 text-xs text-purple-600">✨ {UPGRADE_PLANS[0]?.displayName} includes: {UPGRADE_PLANS[0]?.features.join(", ")}</p>
                   </div>
-                  <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>
-                    Upgrade to Pro → 💳
-                  </Button>
+                  <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>Upgrade to Pro → 💳</Button>
                 </div>
               </Card>
             )}
 
-            {/* STATS CARDS - Show current mode stats */}
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
                 <div className="text-2xl font-extrabold text-gray-900">{usd(activeStats.total_pnl)}</div>
@@ -1111,17 +1110,13 @@ export default function MemberDashboard() {
               </div>
             </div>
 
-            {/* EQUITY CURVE CHART */}
             <Card>
               <SectionTitle helper={tradingEnabled ? "Your live portfolio value over time" : "Your paper portfolio value over time"}>
                 {tradingEnabled ? "💰 Live Equity Curve" : "📈 Paper Equity Curve"}
               </SectionTitle>
-              <div className="h-[300px] w-full">
-                <EquityCurveChart data={activeSeries} mode={tradingEnabled ? "live" : "paper"} />
-              </div>
+              <div className="h-[300px] w-full"><EquityCurveChart data={activeSeries} mode={tradingEnabled ? "live" : "paper"} /></div>
             </Card>
 
-            {/* LIVE TRADES - Show recent live trades when active */}
             {tradingEnabled && liveTrades.length > 0 && (
               <Card>
                 <SectionTitle helper="Your recent live trades">🔄 Recent Live Trades</SectionTitle>
@@ -1134,16 +1129,13 @@ export default function MemberDashboard() {
                           {trade.side?.toUpperCase()}
                         </span>
                       </div>
-                      <div className={Number(trade.pnl) >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
-                        {usd(trade.pnl)}
-                      </div>
+                      <div className={Number(trade.pnl) >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>{usd(trade.pnl)}</div>
                     </div>
                   ))}
                 </div>
               </Card>
             )}
 
-            {/* HELPFUL RESOURCES */}
             <Card>
               <SectionTitle>📚 Helpful Resources</SectionTitle>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1171,21 +1163,13 @@ export default function MemberDashboard() {
                 <SectionTitle helper={`${tradingEnabled ? "Live" : "Paper"} Win/Loss breakdown`}>
                   🎯 Win Rate {tradingEnabled && "💰"}
                 </SectionTitle>
-                <div className="h-[300px]">
-                  <WinRateMeter 
-                    wins={activeWinLoss.wins} 
-                    losses={activeWinLoss.losses} 
-                    mode={tradingEnabled ? "live" : "paper"} 
-                  />
-                </div>
+                <div className="h-[300px]"><WinRateMeter wins={activeWinLoss.wins} losses={activeWinLoss.losses} mode={tradingEnabled ? "live" : "paper"} /></div>
               </Card>
               <Card>
                 <SectionTitle helper={`${tradingEnabled ? "Live" : "Paper"} daily trade volume`}>
                   📊 Trade Volume {tradingEnabled && "💰"}
                 </SectionTitle>
-                <div className="h-[300px]">
-                  <TradeVolumeChart data={activeSeries} mode={tradingEnabled ? "live" : "paper"} />
-                </div>
+                <div className="h-[300px]"><TradeVolumeChart data={activeSeries} mode={tradingEnabled ? "live" : "paper"} /></div>
               </Card>
             </div>
 
@@ -1270,7 +1254,7 @@ export default function MemberDashboard() {
           </div>
         )}
 
-        {/* CONNECTIONS TAB */}
+        {/* CONNECTIONS TAB - WITH MASKED KEYS */}
         {activeTab === "connections" && (
           <div className="space-y-5">
             <Card>
@@ -1278,25 +1262,132 @@ export default function MemberDashboard() {
               <div className="mb-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800">
                 💡 <strong>{access.label} plan:</strong> {!access.canLiveTrade ? "Paper trading works without API keys! Upgrade to Pro for live trading." : "You're on a paid plan. Connect your exchange accounts to start live trading."}
               </div>
-              <div className="space-y-3">
-                {[
-                  { title: "Alpaca", desc: "Stock trading", connected: alpacaConnected, needed: access.canLiveTrade ? "Required for Live Trading" : "Upgrade to Pro" },
-                  { title: "OKX", desc: "Crypto trading", connected: okxConnected, needed: access.canLiveTrade ? "Required for Live Trading" : "Upgrade to Pro" },
-                  { title: "MetaMask", desc: "DeFi (Elite only)", connected: integrations.wallet_connected, needed: access.canUseDefi ? "Optional" : "Elite+" },
-                ].map((item) => (
-                  <div key={item.title} className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div><div className="font-extrabold text-gray-900">{item.title}</div><div className="text-sm text-gray-500">{item.desc}</div></div>
-                    <div className="flex items-center gap-3">
-                      <StatusPill tone={item.connected ? "green" : "amber"}>{item.connected ? "Connected" : item.needed}</StatusPill>
-                      {!item.connected && access.canLiveTrade && (item.title === "Alpaca" || item.title === "OKX") && 
-                        <Button variant="secondary" onClick={() => setShowApiModal(true)}>Connect</Button>
-                      }
-                      {!access.canLiveTrade && (item.title === "Alpaca" || item.title === "OKX") && 
-                        <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>Upgrade to Pro</Button>
-                      }
+              <div className="space-y-4">
+                {/* Alpaca Connection */}
+                <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="font-extrabold text-gray-900">Alpaca</div>
+                        <StatusPill tone={alpacaConnected ? "green" : "amber"}>{alpacaConnected ? "Connected" : "Not Connected"}</StatusPill>
+                        {alpacaConnected && integrations.alpaca_mode && (
+                          <StatusPill tone={integrations.alpaca_mode === "live" ? "purple" : "blue"}>
+                            {integrations.alpaca_mode === "live" ? "🔴 LIVE Mode" : "📝 Paper Mode"}
+                          </StatusPill>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">Stock trading via Alpaca Markets</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!alpacaConnected && access.canLiveTrade && (
+                        <Button variant="secondary" size="sm" onClick={() => setShowApiModal(true)}>Connect Alpaca</Button>
+                      )}
+                      {!alpacaConnected && !access.canLiveTrade && (
+                        <Button variant="warning" size="sm" onClick={() => setShowUpgradeModal(true)}>Upgrade to Pro</Button>
+                      )}
+                      {alpacaConnected && (
+                        <>
+                          {integrations.alpaca_mode === "paper" && access.canLiveTrade && (
+                            <Button variant="purple" size="sm" onClick={() => handleSwitchToLive("alpaca")} disabled={switchingMode === "alpaca"}>
+                              {switchingMode === "alpaca" ? "Switching..." : "Switch to LIVE"}
+                            </Button>
+                          )}
+                          <Button variant="danger" size="sm" onClick={() => handleDisconnect("alpaca")} disabled={disconnecting === "alpaca"}>
+                            {disconnecting === "alpaca" ? "..." : "Disconnect"}
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
-                ))}
+                  {alpacaConnected && integrations.alpaca_api_key_masked && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-500">API Key:</span>
+                        <code className="bg-gray-100 px-2 py-1 rounded font-mono text-xs">{integrations.alpaca_api_key_masked}</code>
+                        <button onClick={() => { navigator.clipboard.writeText(integrations.alpaca_api_key_masked); notify("API key copied", "success"); }} className="text-gray-400 hover:text-gray-600 text-xs">📋</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* OKX Connection */}
+                <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="font-extrabold text-gray-900">OKX</div>
+                        <StatusPill tone={okxConnected ? "green" : "amber"}>{okxConnected ? "Connected" : "Not Connected"}</StatusPill>
+                        {okxConnected && integrations.okx_mode && (
+                          <StatusPill tone={integrations.okx_mode === "live" ? "purple" : "blue"}>
+                            {integrations.okx_mode === "live" ? "🔴 LIVE Mode" : "📝 Paper Mode"}
+                          </StatusPill>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">Crypto trading via OKX Exchange</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!okxConnected && access.canLiveTrade && (
+                        <Button variant="secondary" size="sm" onClick={() => setShowApiModal(true)}>Connect OKX</Button>
+                      )}
+                      {!okxConnected && !access.canLiveTrade && (
+                        <Button variant="warning" size="sm" onClick={() => setShowUpgradeModal(true)}>Upgrade to Pro</Button>
+                      )}
+                      {okxConnected && (
+                        <>
+                          {integrations.okx_mode === "paper" && access.canLiveTrade && (
+                            <Button variant="purple" size="sm" onClick={() => handleSwitchToLive("okx")} disabled={switchingMode === "okx"}>
+                              {switchingMode === "okx" ? "Switching..." : "Switch to LIVE"}
+                            </Button>
+                          )}
+                          <Button variant="danger" size="sm" onClick={() => handleDisconnect("okx")} disabled={disconnecting === "okx"}>
+                            {disconnecting === "okx" ? "..." : "Disconnect"}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {okxConnected && integrations.okx_api_key_masked && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-500">API Key:</span>
+                        <code className="bg-gray-100 px-2 py-1 rounded font-mono text-xs">{integrations.okx_api_key_masked}</code>
+                        <button onClick={() => { navigator.clipboard.writeText(integrations.okx_api_key_masked); notify("API key copied", "success"); }} className="text-gray-400 hover:text-gray-600 text-xs">📋</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* MetaMask Wallet */}
+                <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="font-extrabold text-gray-900">MetaMask</div>
+                        <StatusPill tone={integrations.wallet_connected ? "green" : "amber"}>
+                          {integrations.wallet_connected ? "Connected" : "Not Connected"}
+                        </StatusPill>
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">DeFi wallet connection (Elite+ required)</div>
+                    </div>
+                    <div>
+                      {!integrations.wallet_connected && access.canUseDefi && (
+                        <Button variant="secondary" size="sm" onClick={() => window.open("https://metamask.io/", "_blank")}>Connect Wallet</Button>
+                      )}
+                      {!access.canUseDefi && (
+                        <Button variant="warning" size="sm" onClick={() => setShowUpgradeModal(true)}>Upgrade to Elite+</Button>
+                      )}
+                    </div>
+                  </div>
+                  {integrations.wallet_connected && integrations.wallet_address_masked && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-500">Wallet:</span>
+                        <code className="bg-gray-100 px-2 py-1 rounded font-mono text-xs">{integrations.wallet_address_masked}</code>
+                        <button onClick={() => { navigator.clipboard.writeText(user?.wallet_addresses?.[0] || ""); notify("Wallet address copied", "success"); }} className="text-gray-400 hover:text-gray-600 text-xs">📋</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </Card>
           </div>
@@ -1378,12 +1469,12 @@ export default function MemberDashboard() {
               <div className="border rounded-xl p-4">
                 <h3 className="font-bold text-gray-900">Alpaca (Stocks)</h3>
                 <p className="text-sm text-gray-500 mb-2">Create API key with <strong>trading permission only</strong> - no withdrawals</p>
-                <Button variant="secondary" onClick={() => window.open("https://app.alpaca.markets/paper/dashboard/api-keys", "_blank")}>Create Alpaca Keys →</Button>
+                <Button variant="secondary" size="sm" onClick={() => window.open("https://app.alpaca.markets/paper/dashboard/api-keys", "_blank")}>Create Alpaca Keys →</Button>
               </div>
               <div className="border rounded-xl p-4">
                 <h3 className="font-bold text-gray-900">OKX (Crypto)</h3>
                 <p className="text-sm text-gray-500 mb-2">Create API key with <strong>trade permission only</strong> - no withdrawals</p>
-                <Button variant="secondary" onClick={() => window.open("https://www.okx.com/account/my-api", "_blank")}>Create OKX Keys →</Button>
+                <Button variant="secondary" size="sm" onClick={() => window.open("https://www.okx.com/account/my-api", "_blank")}>Create OKX Keys →</Button>
               </div>
             </div>
             
