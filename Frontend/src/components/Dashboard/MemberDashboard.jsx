@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - SIMPLIFIED OKX FOCUSED VERSION
+// src/components/Dashboard/MemberDashboard.jsx - CLEAN VERSION (OKX + Alpaca, no cross-requirements)
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
@@ -15,7 +15,7 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
-import { Line, Bar, Radar } from "react-chartjs-2";
+import { Line, Bar } from "react-chartjs-2";
 
 ChartJS.register(
   CategoryScale,
@@ -34,68 +34,24 @@ const PAPER_TRADING_BALANCE = 1000;
 const REFRESH_COOLDOWN_MS = 12000;
 
 const STRATEGIES = [
-  {
-    id: "mean_reversion",
-    name: "Conservative",
-    emoji: "🛡️",
-    risk: "Low",
-    description: "Looks for dips and safer rebounds.",
-    radarData: [95, 30, 40, 90, 20, 45],
-  },
-  {
-    id: "ai_weighted",
-    name: "Balanced",
-    emoji: "⚖️",
-    risk: "Medium",
-    description: "Uses a mix of multiple trading signals.",
-    radarData: [75, 65, 70, 80, 60, 85],
-  },
-  {
-    id: "momentum",
-    name: "Momentum",
-    emoji: "🔥",
-    risk: "High",
-    description: "Follows strong price moves.",
-    radarData: [50, 95, 90, 45, 95, 70],
-  },
+  { id: "mean_reversion", name: "Conservative", emoji: "🛡️", risk: "Low", description: "Looks for dips and safer rebounds." },
+  { id: "ai_weighted", name: "Balanced", emoji: "⚖️", risk: "Medium", description: "Uses a mix of multiple trading signals." },
+  { id: "momentum", name: "Momentum", emoji: "🔥", risk: "High", description: "Follows strong price moves." },
+  { id: "arbitrage", name: "Arbitrage", emoji: "🔄", risk: "Low", description: "Looks for price differences across venues." },
 ];
 
 const tierAccess = {
-  starter: {
-    label: "Starter",
-    displayName: "Starter",
-    price: "$0",
-    period: "7-day trial",
-    canPaperTrade: true,
-    canLiveTrade: false,
-    showCharts: true,
-    badge: "🌱",
-  },
-  common: {
-    label: "Pro",
-    displayName: "Pro",
-    price: "$19",
-    period: "/month",
-    canPaperTrade: true,
-    canLiveTrade: true,
-    showCharts: true,
-    badge: "⭐",
-  },
-  rare: {
-    label: "Elite",
-    displayName: "Elite",
-    price: "$49",
-    period: "/month",
-    canPaperTrade: true,
-    canLiveTrade: true,
-    showCharts: true,
-    badge: "👑",
-  },
+  starter: { label: "Starter", canPaperTrade: true, canLiveTrade: false, badge: "🌱" },
+  common: { label: "Pro", canPaperTrade: true, canLiveTrade: true, badge: "⭐" },
+  rare: { label: "Elite", canPaperTrade: true, canLiveTrade: true, badge: "👑" },
+  epic: { label: "Elite+", canPaperTrade: true, canLiveTrade: true, badge: "💎" },
+  legendary: { label: "Legendary", canPaperTrade: true, canLiveTrade: true, badge: "🏆" },
+  enterprise: { label: "Enterprise", canPaperTrade: true, canLiveTrade: true, badge: "🏢" },
 };
 
 const UPGRADE_PLANS = [
-  { dbTier: "common", displayName: "Pro", price: "$19", period: "/month", icon: "⭐", features: ["Live Trading", "Crypto", "Priority Support"] },
-  { dbTier: "rare", displayName: "Elite", price: "$49", period: "/month", icon: "👑", features: ["Everything in Pro", "Custom Indicators", "24/7 Support"] },
+  { dbTier: "common", displayName: "Pro", price: "$19", icon: "⭐", features: ["Live Trading", "Stocks", "Crypto"] },
+  { dbTier: "rare", displayName: "Elite", price: "$49", icon: "👑", features: ["Everything in Pro", "DEX Trading"] },
 ];
 
 const usd = (n = 0) => `$${Number(n || 0).toFixed(2)}`;
@@ -103,12 +59,7 @@ const pct = (n = 0) => `${Number(n || 0).toFixed(1)}%`;
 
 const normalizeStrategyId = (value) => {
   const v = String(value || "").trim().toLowerCase();
-  const aliases = {
-    conservative: "mean_reversion",
-    balanced: "ai_weighted",
-    ai: "ai_weighted",
-    momentum: "momentum",
-  };
+  const aliases = { conservative: "mean_reversion", balanced: "ai_weighted", ai: "ai_weighted" };
   return aliases[v] || v || "ai_weighted";
 };
 
@@ -123,18 +74,12 @@ const formatTimeLeft = (seconds) => {
   if (s <= 0) return "expired";
   const days = Math.floor(s / 86400);
   const hours = Math.floor((s % 86400) / 3600);
-  const minutes = Math.floor((s % 3600) / 60);
   if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  return `${hours}h`;
 };
 
-function Card({ children, className = "", id }) {
-  return (
-    <div id={id} className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${className}`}>
-      {children}
-    </div>
-  );
+function Card({ children, className = "" }) {
+  return <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${className}`}>{children}</div>;
 }
 
 function SectionTitle({ children, helper }) {
@@ -155,142 +100,88 @@ function StatusPill({ children, tone = "slate", className = "" }) {
     purple: "border-purple-300 bg-purple-100 text-purple-900",
     slate: "border-gray-300 bg-gray-100 text-gray-900",
   };
-  return (
-    <span className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-[11px] font-extrabold leading-none sm:text-xs ${classes[tone] || classes.slate} ${className}`}>
-      {children}
-    </span>
-  );
+  return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-extrabold ${classes[tone] || classes.slate} ${className}`}>{children}</span>;
 }
 
 function Button({ children, onClick, disabled, variant = "primary", size = "md", className = "" }) {
   const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm",
-    secondary: "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 shadow-sm",
-    warning: "bg-amber-500 text-white hover:bg-amber-600 shadow-sm",
-    danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
-    success: "bg-green-600 text-white hover:bg-green-700 shadow-sm",
+    primary: "bg-indigo-600 text-white hover:bg-indigo-700",
+    secondary: "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50",
+    warning: "bg-amber-500 text-white hover:bg-amber-600",
+    danger: "bg-red-600 text-white hover:bg-red-700",
+    success: "bg-green-600 text-white hover:bg-green-700",
   };
-  const sizes = {
-    sm: "px-3 py-2 text-xs",
-    md: "min-h-[44px] px-4 py-3 text-sm sm:px-5",
-    lg: "min-h-[52px] px-6 py-3 text-base",
-  };
+  const sizes = { sm: "px-3 py-2 text-xs", md: "px-4 py-2 text-sm", lg: "px-6 py-3 text-base" };
   return (
     <button
-      type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-xl font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`rounded-xl font-extrabold transition disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
     >
       {children}
     </button>
   );
 }
 
-function Toast({ message, type = "info", onClose }) {
+function Toast({ message, type, onClose }) {
   if (!message) return null;
-  const tone = type === "error"
-    ? "border-red-300 bg-red-50 text-red-900"
-    : type === "success"
-    ? "border-green-300 bg-green-50 text-green-900"
-    : "border-blue-300 bg-blue-50 text-blue-900";
+  const tone = type === "error" ? "border-red-300 bg-red-50 text-red-900" : "border-green-300 bg-green-50 text-green-900";
   return (
     <div className={`fixed left-3 right-3 top-3 z-[60] rounded-2xl border p-4 text-sm font-bold shadow-xl sm:left-auto sm:right-4 sm:max-w-md ${tone}`}>
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex justify-between gap-4">
         <span>{message}</span>
-        <button type="button" onClick={onClose} className="text-lg leading-none text-gray-700 hover:text-gray-900">×</button>
+        <button onClick={onClose} className="text-lg">×</button>
       </div>
     </div>
   );
 }
 
-const EquityCurveChart = ({ data, mode = "paper" }) => {
+const EquityCurveChart = ({ data }) => {
   const chartData = useMemo(() => {
     const labels = data?.map((d, i) => d.date || `Day ${i + 1}`) || [];
-    let runningBalance = mode === "live" ? 0 : PAPER_TRADING_BALANCE;
-    const equity = data?.map((d) => {
-      runningBalance += Number(d.pnl || 0);
-      return runningBalance;
-    }) || [];
-    
-    return {
-      labels,
-      datasets: [{
-        label: mode === "live" ? "Live Portfolio Value" : "Paper Portfolio Value",
-        data: equity,
-        borderColor: mode === "live" ? "#10b981" : "#6366f1",
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true,
-        backgroundColor: mode === "live" ? "rgba(16,185,129,0.1)" : "rgba(99,102,241,0.1)",
-        pointRadius: 0,
-        pointHoverRadius: 5,
-      }],
-    };
-  }, [data, mode]);
-  
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `$${ctx.parsed.y.toFixed(2)}` } } },
-    scales: { y: { ticks: { callback: (v) => `$${v}` } } },
-  };
-  
-  if (!data || data.length === 0) {
-    return <div className="flex h-full items-center justify-center text-center"><div><div className="text-5xl mb-3">📈</div><p className="text-sm font-semibold text-gray-600">No equity data yet</p><p className="text-xs text-gray-400 mt-1">Start trading to see growth</p></div></div>;
-  }
-  
+    let running = 1000;
+    const equity = data?.map(d => { running += Number(d.pnl || 0); return running; }) || [];
+    return { labels, datasets: [{ data: equity, borderColor: "#6366f1", borderWidth: 2, fill: true, backgroundColor: "rgba(99,102,241,0.1)" }] };
+  }, [data]);
+  const options = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+  if (!data?.length) return <div className="flex h-full items-center justify-center text-center text-gray-500">No equity data yet</div>;
   return <Line data={chartData} options={options} />;
 };
 
-const WinRateMeter = ({ wins, losses, mode = "paper" }) => {
+const WinRateMeter = ({ wins, losses }) => {
   const total = wins + losses;
   const winRate = total > 0 ? (wins / total) * 100 : 0;
-  const color = mode === "live" ? "#10b981" : "#6366f1";
-  
   return (
-    <div className="flex h-full flex-col items-center justify-center">
-      <div className="relative w-48 h-48">
+    <div className="flex flex-col items-center justify-center h-full">
+      <div className="relative w-40 h-40">
         <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
           <circle cx="50" cy="50" r="45" fill="none" stroke="#e2e8f0" strokeWidth="8" />
-          <circle cx="50" cy="50" r="45" fill="none" stroke={color} strokeWidth="8" strokeDasharray={`${winRate * 2.827} 283`} className="transition-all duration-1000" />
+          <circle cx="50" cy="50" r="45" fill="none" stroke="#10b981" strokeWidth="8" strokeDasharray={`${winRate * 2.827} 283`} />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-extrabold text-gray-900">{winRate.toFixed(0)}%</span>
+          <span className="text-3xl font-bold">{winRate.toFixed(0)}%</span>
           <span className="text-xs text-gray-500">Win Rate</span>
         </div>
       </div>
-      <div className="mt-4 flex gap-6">
-        <div className="text-center"><div className="text-xl font-extrabold text-emerald-600">{wins}</div><div className="text-xs text-gray-500">Wins</div></div>
-        <div className="text-center"><div className="text-xl font-extrabold text-red-600">{losses}</div><div className="text-xs text-gray-500">Losses</div></div>
+      <div className="mt-4 flex gap-6 text-center">
+        <div><div className="text-xl font-bold text-green-600">{wins}</div><div className="text-xs text-gray-500">Wins</div></div>
+        <div><div className="text-xl font-bold text-red-600">{losses}</div><div className="text-xs text-gray-500">Losses</div></div>
       </div>
     </div>
   );
 };
 
-const StrategyRadarChart = ({ data }) => {
-  const chartData = {
-    labels: ["Safety", "Speed", "Profitability", "Stability", "Aggression", "AI"],
-    datasets: [{ data: data, backgroundColor: "rgba(99,102,241,0.2)", borderColor: "#6366f1", borderWidth: 2, pointBackgroundColor: "#6366f1" }],
-  };
-  const options = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { r: { ticks: { display: false }, min: 0, max: 100 } } };
-  return <Radar data={chartData} options={options} />;
-};
-
-function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
+function LiveConfirmModal({ open, onCancel, onConfirm, busy, exchange }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
-      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
-        <h3 className="text-xl font-extrabold text-gray-900">⚠️ Confirm Live Trading</h3>
-        <p className="mt-2 text-sm text-gray-600">Live trading uses REAL money from your OKX account.</p>
-        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm">
-          <strong className="text-amber-900">Risk reminder:</strong>
-          <span className="text-amber-800 block mt-1">You can lose money. Start with small amounts. You can stop anytime.</span>
-        </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-5">
+        <h3 className="text-xl font-bold">⚠️ Confirm Live Trading</h3>
+        <p className="mt-2 text-sm text-gray-600">Live trading uses REAL money from your {exchange?.toUpperCase()} account.</p>
+        <div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">You can lose money. Start small.</div>
         <div className="mt-5 flex gap-3">
-          <Button variant="warning" onClick={onConfirm} disabled={busy} className="flex-1">{busy ? "Starting..." : "Yes, Start Live Trading"}</Button>
-          <Button variant="secondary" onClick={onCancel} className="flex-1">Cancel</Button>
+          <Button variant="warning" onClick={onConfirm} disabled={busy}>{busy ? "Starting..." : "Yes, Start Live"}</Button>
+          <Button variant="secondary" onClick={onCancel}>Cancel</Button>
         </div>
       </div>
     </div>
@@ -299,44 +190,26 @@ function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
 
 function UpgradeModal({ open, onClose, onUpgrade }) {
   if (!open) return null;
-  
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
-        <div className="flex justify-between items-center p-5 border-b">
-          <h2 className="text-2xl font-extrabold text-gray-900">Upgrade Your Plan</h2>
-          <button onClick={onClose} className="text-3xl text-gray-500 hover:text-gray-700">×</button>
+      <div className="w-full max-w-2xl rounded-2xl bg-white">
+        <div className="flex justify-between p-5 border-b">
+          <h2 className="text-2xl font-bold">Upgrade Your Plan</h2>
+          <button onClick={onClose} className="text-3xl">×</button>
         </div>
-        
-        <div className="p-5">
-          <p className="text-gray-600 mb-4">Choose the plan that's right for you:</p>
-          
-          <div className="grid gap-4">
-            {UPGRADE_PLANS.map((plan) => (
-              <button
-                key={plan.dbTier}
-                onClick={() => onUpgrade(plan.dbTier)}
-                className="text-left p-4 rounded-xl border-2 hover:border-indigo-500 transition-all hover:shadow-lg"
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-3xl">{plan.icon}</span>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900">{plan.displayName}</h3>
-                    <div className="text-sm text-gray-500">{plan.price}{plan.period}</div>
-                  </div>
+        <div className="p-5 grid gap-4">
+          {UPGRADE_PLANS.map(plan => (
+            <button key={plan.dbTier} onClick={() => onUpgrade(plan.dbTier)} className="text-left p-4 rounded-xl border-2 hover:border-indigo-500">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">{plan.icon}</span>
+                <div>
+                  <h3 className="text-xl font-bold">{plan.displayName}</h3>
+                  <div className="text-sm text-gray-500">{plan.price}/month</div>
+                  <div className="flex gap-1 mt-1">{plan.features.map(f => <span key={f} className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">✓ {f}</span>)}</div>
                 </div>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {plan.features.map((feature, i) => (
-                    <span key={i} className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">✓ {feature}</span>
-                  ))}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-        
-        <div className="p-5 border-t bg-gray-50 rounded-b-2xl">
-          <p className="text-xs text-gray-500 text-center">Upgrade anytime. Cancel within 30 days for a full refund.</p>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
     </div>
@@ -348,138 +221,76 @@ export default function MemberDashboard() {
   const mountedRef = useRef(true);
   const loadingRef = useRef(false);
   const lastRefreshRef = useRef(0);
-  const pollingIntervalRef = useRef(null);
+  const pollingRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "info" });
   const [user, setUser] = useState(null);
   
+  // Stats
   const [paperStats, setPaperStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 });
   const [paperSeries, setPaperSeries] = useState([]);
-  
   const [liveStats, setLiveStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 });
   const [liveSeries, setLiveSeries] = useState([]);
   
-  // OKX Balance - shown prominently
-  const [okxBalance, setOkxBalance] = useState(0);
-  const [okxConnected, setOkxConnected] = useState(false);
-  const [okxMode, setOkxMode] = useState("paper");
-  const [okxApiKeyMasked, setOkxApiKeyMasked] = useState(null);
+  // Exchange connections
+  const [okx, setOkx] = useState({ connected: false, mode: "paper", apiKeyMasked: null, balance: 0 });
+  const [alpaca, setAlpaca] = useState({ connected: false, mode: "paper", apiKeyMasked: null, balance: 0 });
   
   const [currentStrategy, setCurrentStrategy] = useState("ai_weighted");
-  const [savingStrategy, setSavingStrategy] = useState("");
-  const [tradingEnabled, setTradingEnabled] = useState(false);
+  const [savingStrategy, setSavingStrategy] = useState(false);
   const [paperTradingEnabled, setPaperTradingEnabled] = useState(false);
-  const [togglingTrading, setTogglingTrading] = useState(false);
-  const [togglingPaper, setTogglingPaper] = useState(false);
-  const [showApiModal, setShowApiModal] = useState(false);
-  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
   const [paperTradeExecuting, setPaperTradeExecuting] = useState(false);
+  const [toggling, setToggling] = useState({ paper: false, okx: false, alpaca: false });
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [showLiveConfirm, setShowLiveConfirm] = useState({ open: false, exchange: null });
+  const [activeTab, setActiveTab] = useState("overview");
   const [trialData, setTrialData] = useState(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [upgrading, setUpgrading] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
-  const [switchingMode, setSwitchingMode] = useState(false);
 
-  const userTier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user?.tier]);
-  const access = useMemo(() => tierAccess[userTier] || tierAccess.starter, [userTier]);
-  const activeStrategy = STRATEGIES.find((s) => s.id === currentStrategy) || STRATEGIES[0];
-  
+  const userTier = user?.tier?.toLowerCase() || "starter";
+  const access = tierAccess[userTier] || tierAccess.starter;
   const trialSecondsLeft = trialData?.seconds_remaining ?? (userTier === "starter" ? 7 * 86400 : 0);
-  const trialStatus = trialData?.trial_status ?? (userTier === "starter" ? "active" : null);
-  const isTrialExpired = trialStatus === "expired" || trialSecondsLeft <= 0;
+  const isTrialExpired = trialSecondsLeft <= 0;
+  const hasPaperHistory = paperStats.total_trades > 0;
   
-  const hasPaperHistory = (paperStats.total_trades || 0) > 0;
-  const hasActivePaperTrading = paperTradingEnabled;
-  const isPaidTier = !["starter", "free"].includes(userTier);
-  
-  // Can start live trading: OKX connected AND in live mode AND paid tier
-  const canStartLiveTrading = access.canLiveTrade && okxConnected && okxMode === "live";
+  const activeStats = { total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 };
+  const activeSeries = [];
 
-  const activeSeries = tradingEnabled ? liveSeries : paperSeries;
-  const activeWinLoss = tradingEnabled ? liveStats : paperStats;
-
-  const notify = useCallback((message, type = "info") => {
+  const notify = (message, type = "info") => {
     setToast({ message, type });
-    window.clearTimeout(window.__imaliToastTimer);
-    window.__imaliToastTimer = window.setTimeout(() => setToast({ message: "", type: "info" }), 4500);
-  }, []);
+    setTimeout(() => setToast({ message: "", type: "info" }), 4500);
+  };
 
-  const handleLogout = useCallback(() => { 
-    BotAPI.clearToken?.(); 
-    BotAPI.clearApiKey?.(); 
-    nav("/login"); 
-  }, [nav]);
+  const handleLogout = () => { BotAPI.clearToken?.(); BotAPI.clearApiKey?.(); nav("/login"); };
 
-  const loadOkxBalance = useCallback(async () => {
-    try {
-      const balance = await BotAPI.getExchangeBalance?.().catch(() => null);
-      if (balance) {
-        // Parse balance safely - handle different response formats
-        const okxBal = Number(balance?.okx?.total) || 
-                       Number(balance?.okx?.balance) || 
-                       Number(balance?.okx) || 
-                       Number(balance?.data?.okx) || 0;
-        setOkxBalance(okxBal);
-      }
-    } catch (err) {
-      console.warn("Failed to load OKX balance:", err);
-    }
-  }, []);
-
-  const loadLiveTradingStats = useCallback(async () => {
-    if (!access.canLiveTrade) return;
-    
-    try {
-      const liveData = await BotAPI.getLiveTradingStats?.().catch(() => null);
-      if (liveData) {
-        const summary = liveData.summary || liveData;
-        setLiveStats({
-          total_pnl: summary.total_pnl || 0,
-          win_rate: summary.win_rate || 0,
-          total_trades: summary.total_trades || 0,
-          wins: summary.wins || 0,
-          losses: summary.losses || 0,
-        });
-        if (liveData.daily_performance) setLiveSeries(liveData.daily_performance);
-      }
-      await loadOkxBalance();
-    } catch (err) {
-      console.warn("Failed to load live trading stats:", err);
-    }
-  }, [access.canLiveTrade, loadOkxBalance]);
-
-  const loadDashboard = useCallback(async ({ silent = false, force = false } = {}) => {
+  const loadDashboard = useCallback(async (force = false) => {
     if (loadingRef.current) return;
     const now = Date.now();
     if (!force && now - lastRefreshRef.current < REFRESH_COOLDOWN_MS) return;
-
     loadingRef.current = true;
     lastRefreshRef.current = now;
-    if (!silent) setLoading(true);
+    setLoading(true);
     setRefreshing(true);
-
     try {
       if (BotAPI.refreshActivation) await BotAPI.refreshActivation(true);
       const me = await BotAPI.getMe?.(true);
-      if (!me?.id && !me?.email) { handleLogout(); return; }
+      if (!me?.id) { handleLogout(); return; }
       if (!mountedRef.current) return;
-
       setUser(me);
-      setTradingEnabled(me?.trading_enabled === true);
       setPaperTradingEnabled(me?.paper_trading_enabled === true);
 
-      const [paperStatsPayload, integrationStatus, strategiesPayload] = await Promise.all([
+      const [paperStatsPayload, integrationStatus, strategiesPayload, balanceData] = await Promise.all([
         BotAPI.getUserTradingStats?.(30, true).catch(() => null),
         BotAPI.getIntegrationStatus?.(true).catch(() => null),
         BotAPI.getTradingStrategies?.(true).catch(() => null),
+        BotAPI.getExchangeBalance?.().catch(() => null),
       ]);
 
       if (!mountedRef.current) return;
 
-      const paperSummary = paperStatsPayload?.summary || paperStatsPayload?.data?.summary || {};
+      const paperSummary = paperStatsPayload?.summary || {};
       setPaperStats({
         total_pnl: paperSummary.total_pnl || 0,
         win_rate: paperSummary.win_rate || 0,
@@ -487,476 +298,368 @@ export default function MemberDashboard() {
         wins: paperSummary.wins || 0,
         losses: paperSummary.losses || 0,
       });
+      setPaperSeries(paperStatsPayload?.daily_performance || []);
       
-      const dailySeries = paperStatsPayload?.daily_performance || paperStatsPayload?.data?.daily_performance || [];
-      if (dailySeries.length) setPaperSeries(dailySeries);
+      // Update OKX
+      setOkx({
+        connected: integrationStatus?.okx_connected === true,
+        mode: integrationStatus?.okx_mode || "paper",
+        apiKeyMasked: integrationStatus?.okx_api_key_masked || null,
+        balance: Number(balanceData?.okx?.total) || Number(balanceData?.okx) || 0,
+      });
       
-      // Set OKX connection status
-      setOkxConnected(integrationStatus?.okx_connected === true);
-      setOkxMode(integrationStatus?.okx_mode || "paper");
-      setOkxApiKeyMasked(integrationStatus?.okx_api_key_masked || null);
+      // Update Alpaca
+      setAlpaca({
+        connected: integrationStatus?.alpaca_connected === true,
+        mode: integrationStatus?.alpaca_mode || "paper",
+        apiKeyMasked: integrationStatus?.alpaca_api_key_masked || null,
+        balance: Number(balanceData?.alpaca?.total) || Number(balanceData?.alpaca) || 0,
+      });
       
-      setCurrentStrategy(normalizeStrategyId(strategiesPayload?.current_strategy || me?.strategy || "ai_weighted"));
+      setCurrentStrategy(normalizeStrategyId(strategiesPayload?.current_strategy || me?.strategy));
       
-      if (me?.trading_enabled === true || access.canLiveTrade) {
-        await loadLiveTradingStats();
-      } else {
-        await loadOkxBalance();
-      }
-      
-      // Load trial status
       const trial = await BotAPI.getTrialStatus?.(true);
       setTrialData(trial);
     } catch (err) {
-      console.error("[MemberDashboard] Failed to load:", err);
+      console.error(err);
       if (isAuthError(err)) handleLogout();
     } finally {
       loadingRef.current = false;
-      if (mountedRef.current) { setRefreshing(false); setLoading(false); }
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [handleLogout, loadLiveTradingStats, loadOkxBalance, access.canLiveTrade]);
+  }, []);
 
-  const handleDisconnectOKX = useCallback(async () => {
-    if (disconnecting) return;
-    if (!window.confirm("Are you sure you want to disconnect OKX? This will remove your API keys.")) return;
-    
-    setDisconnecting(true);
+  const handleDisconnect = async (exchange) => {
+    if (!confirm(`Disconnect ${exchange.toUpperCase()}? This removes your API keys.`)) return;
+    setToggling(prev => ({ ...prev, [exchange]: true }));
     try {
-      const result = await BotAPI.disconnectOKX?.();
+      const result = exchange === 'okx' ? await BotAPI.disconnectOKX?.() : await BotAPI.disconnectAlpaca?.();
       if (result?.success !== false) {
-        notify("OKX disconnected successfully", "success");
-        await loadDashboard({ force: true });
-      } else {
-        throw new Error(result?.error || "Disconnect failed");
+        notify(`${exchange.toUpperCase()} disconnected`, "success");
+        await loadDashboard(true);
       }
     } catch (err) {
-      notify(err?.message || "Failed to disconnect OKX", "error");
+      notify(`Failed to disconnect ${exchange}`, "error");
     } finally {
-      setDisconnecting(false);
+      setToggling(prev => ({ ...prev, [exchange]: false }));
     }
-  }, [notify, loadDashboard, disconnecting]);
+  };
 
-  const handleSwitchToLive = useCallback(async () => {
-    if (switchingMode) return;
-    
-    setSwitchingMode(true);
+  const handleSwitchToLive = async (exchange) => {
+    setToggling(prev => ({ ...prev, [exchange]: true }));
     try {
-      const result = await BotAPI.switchOKXToLive?.();
+      const result = exchange === 'okx' ? await BotAPI.switchOKXToLive?.() : await BotAPI.switchAlpacaToLive?.();
       if (result?.success !== false) {
-        notify("OKX switched to LIVE mode. Real trading active.", "success");
-        await loadDashboard({ force: true });
-      } else {
-        throw new Error(result?.error || "Switch failed");
+        notify(`${exchange.toUpperCase()} switched to LIVE mode`, "success");
+        await loadDashboard(true);
       }
     } catch (err) {
-      notify(err?.message || "Failed to switch to live mode", "error");
+      notify(`Failed to switch ${exchange} to live`, "error");
     } finally {
-      setSwitchingMode(false);
+      setToggling(prev => ({ ...prev, [exchange]: false }));
     }
-  }, [notify, loadDashboard, switchingMode]);
+  };
 
-  const handleUpgrade = useCallback(async (targetTier) => {
-    setUpgrading(true);
-    try {
-      const result = await BotAPI.changePlan?.(targetTier);
-      if (result?.success || result?.redirecting) {
-        notify(`Upgrading to ${targetTier} plan...`, "success");
-        setTimeout(() => window.location.reload(), 2000);
-      } else {
-        notify(result?.error || "Upgrade failed. Please try again.", "error");
-      }
-    } catch (err) {
-      notify(err?.message || "Upgrade failed. Please try again.", "error");
-    } finally {
-      setUpgrading(false);
-      setShowUpgradeModal(false);
-    }
-  }, [notify]);
-
-  const handleManualPaperTrade = async () => {
-    if (paperTradeExecuting) return;
-    if (!hasActivePaperTrading) {
-      notify("Please enable paper trading first", "error");
+  const handleToggleLiveTrading = async (exchange, enabled) => {
+    if (!access.canLiveTrade) { setShowUpgradeModal(true); return; }
+    const exchangeData = exchange === 'okx' ? okx : alpaca;
+    if (enabled && (!exchangeData.connected || exchangeData.mode !== 'live')) {
+      notify(`Connect ${exchange.toUpperCase()} and switch to LIVE mode first`, "error");
       return;
     }
-    
+    setToggling(prev => ({ ...prev, [exchange]: true }));
+    try {
+      const result = await BotAPI.toggleTrading?.(enabled);
+      if (result?.success !== false) {
+        notify(enabled ? `${exchange.toUpperCase()} live trading started!` : "Live trading stopped", "success");
+        await loadDashboard(true);
+      }
+    } catch (err) {
+      notify("Failed to toggle live trading", "error");
+    } finally {
+      setToggling(prev => ({ ...prev, [exchange]: false }));
+      setShowLiveConfirm({ open: false, exchange: null });
+    }
+  };
+
+  const handleTogglePaperTrading = async (enabled) => {
+    if (!access.canPaperTrade) return;
+    setToggling(prev => ({ ...prev, paper: true }));
+    try {
+      const result = await BotAPI.togglePaperTrading?.(enabled);
+      if (result?.success !== false) {
+        setPaperTradingEnabled(enabled);
+        notify(enabled ? "Paper trading enabled" : "Paper trading disabled", "success");
+        await loadDashboard(true);
+      }
+    } catch (err) {
+      notify("Failed to update paper trading", "error");
+    } finally {
+      setToggling(prev => ({ ...prev, paper: false }));
+    }
+  };
+
+  const handleManualPaperTrade = async () => {
+    if (paperTradeExecuting || !paperTradingEnabled) return;
     setPaperTradeExecuting(true);
     try {
       const symbols = ["BTC/USD", "ETH/USD", "SOL/USD"];
       const symbol = symbols[Math.floor(Math.random() * symbols.length)];
       const side = Math.random() > 0.5 ? "buy" : "sell";
       const qty = Number((Math.random() * 0.5 + 0.1).toFixed(4));
-      
       const result = await BotAPI.request?.("/api/trading/paper-trade", {
         method: "POST",
         data: { exchange: "paper", symbol, side, qty, strategy: currentStrategy }
       });
-      
       if (result?.success !== false) {
         notify(`Paper trade executed on ${symbol}!`, "success");
-        await loadDashboard({ force: true });
-      } else {
-        throw new Error(result?.error || "Trade failed");
+        await loadDashboard(true);
       }
     } catch (err) {
-      console.error("Manual trade error:", err);
-      notify(err?.message || "Trade failed. Make sure paper trading is enabled.", "error");
+      notify("Trade failed", "error");
     } finally {
       setPaperTradeExecuting(false);
     }
   };
 
-  const handleTogglePaperTrading = async (enabled) => {
-    if (togglingPaper || togglingTrading || !access.canPaperTrade) return;
-    
-    setTogglingPaper(true);
-    try {
-      const result = await BotAPI.togglePaperTrading?.(enabled);
-      const success = result?.success !== false;
-      if (!success) throw new Error(result?.error || "Failed");
-      setPaperTradingEnabled(enabled);
-      notify(enabled ? "Paper trading enabled!" : "Paper trading disabled.", "success");
-      await loadDashboard({ silent: true, force: true });
-    } catch (err) {
-      notify(err?.message || "Failed to update paper trading.", "error");
-    } finally {
-      setTogglingPaper(false);
-    }
-  };
-
-  const handleToggleTrading = async (enabled) => {
-    if (togglingTrading || togglingPaper || !access.canLiveTrade) return;
-    
-    // Check if OKX is connected and in live mode
-    if (enabled && !canStartLiveTrading) {
-      if (!okxConnected) {
-        setShowApiModal(true);
-        notify("Connect OKX first.", "error");
-      } else if (okxMode !== "live") {
-        notify("Switch OKX to LIVE mode first.", "error");
-      }
-      return;
-    }
-
-    setTogglingTrading(true);
-    try {
-      const result = await BotAPI.toggleTrading?.(enabled);
-      const success = result?.success !== false;
-      if (!success) throw new Error(result?.error || "Failed");
-      setTradingEnabled(enabled);
-      notify(enabled ? "Live trading started!" : "Live trading stopped.", "success");
-      setShowLiveConfirm(false);
-      await loadDashboard({ silent: true, force: true });
-    } catch (err) {
-      notify(err?.message || "Failed to update.", "error");
-    } finally { 
-      setTogglingTrading(false);
-    }
-  };
-
   const handleStrategyChange = async (strategy) => {
     if (strategy.id === currentStrategy || savingStrategy) return;
-    setSavingStrategy(strategy.id);
-    setCurrentStrategy(strategy.id);
+    setSavingStrategy(true);
     try {
       await BotAPI.updateUserStrategy(strategy.id);
-      notify(`${strategy.name} strategy activated.`, "success");
-      await loadDashboard({ silent: true });
+      setCurrentStrategy(strategy.id);
+      notify(`${strategy.name} strategy activated`, "success");
     } catch (err) {
-      setCurrentStrategy(currentStrategy);
-      notify(err?.message || "Failed to update strategy.", "error");
-    } finally { setSavingStrategy(""); }
+      notify("Failed to update strategy", "error");
+    } finally {
+      setSavingStrategy(false);
+    }
+  };
+
+  const handleUpgrade = async (tier) => {
+    const result = await BotAPI.changePlan?.(tier);
+    if (result?.redirecting) notify("Redirecting to checkout...", "success");
+    else if (result?.success) { notify("Plan upgraded!", "success"); setTimeout(() => window.location.reload(), 1500); }
+    else notify(result?.error || "Upgrade failed", "error");
+    setShowUpgradeModal(false);
   };
 
   useEffect(() => {
     mountedRef.current = true;
     loadDashboard();
-    pollingIntervalRef.current = setInterval(() => loadDashboard({ silent: true }), 30000);
-    return () => {
-      mountedRef.current = false;
-      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-    };
-  }, [loadDashboard]);
+    pollingRef.current = setInterval(() => loadDashboard(), 30000);
+    return () => { mountedRef.current = false; if (pollingRef.current) clearInterval(pollingRef.current); };
+  }, []);
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
-        <div className="text-center">
-          <div className="text-xl font-extrabold text-gray-900">Loading your dashboard…</div>
-          <div className="mt-2 text-sm text-gray-600">Getting your trading status...</div>
-        </div>
-      </div>
-    );
+    return <div className="flex min-h-screen items-center justify-center"><div className="text-center"><div className="text-xl font-bold">Loading dashboard…</div></div></div>;
   }
 
+  const ExchangeCard = ({ name, icon, data, onConnect, onDisconnect, onSwitchToLive, onStartLive, isLiveTradingActive }) => (
+    <Card className="border-gray-200">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-2xl">{icon}</span>
+        <h3 className="text-lg font-bold text-gray-900">{name}</h3>
+        <StatusPill tone={data.connected ? "green" : "amber"}>{data.connected ? "Connected" : "Not Connected"}</StatusPill>
+        {data.connected && <StatusPill tone={data.mode === "live" ? "purple" : "blue"}>{data.mode === "live" ? "🔴 LIVE" : "📝 Paper"}</StatusPill>}
+      </div>
+      
+      {data.connected && (
+        <div className="mb-3 p-2 bg-gray-50 rounded-lg">
+          <div className="text-sm text-gray-500">Balance</div>
+          <div className="text-xl font-bold text-gray-900">{usd(data.balance)}</div>
+          {data.apiKeyMasked && <div className="text-xs text-gray-400 mt-1">Key: {data.apiKeyMasked}</div>}
+        </div>
+      )}
+      
+      <div className="flex flex-wrap gap-2">
+        {!data.connected ? (
+          <Button variant="secondary" size="sm" onClick={onConnect}>Connect {name}</Button>
+        ) : (
+          <>
+            {data.mode === "paper" && access.canLiveTrade && (
+              <Button variant="warning" size="sm" onClick={onSwitchToLive} disabled={toggling[name.toLowerCase()]}>
+                Switch to LIVE
+              </Button>
+            )}
+            {data.mode === "live" && !isLiveTradingActive && (
+              <Button variant="success" size="sm" onClick={onStartLive} disabled={toggling[name.toLowerCase()]}>
+                Start Live Trading
+              </Button>
+            )}
+            {isLiveTradingActive && (
+              <Button variant="danger" size="sm" onClick={() => handleToggleLiveTrading(name.toLowerCase(), false)} disabled={toggling[name.toLowerCase()]}>
+                Stop Live
+              </Button>
+            )}
+            <Button variant="danger" size="sm" onClick={onDisconnect} disabled={toggling[name.toLowerCase()]}>
+              Disconnect
+            </Button>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 px-3 py-4 sm:p-6">
+    <div className="min-h-screen bg-gray-50 px-3 py-4 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
       <UpgradeModal open={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} onUpgrade={handleUpgrade} />
+      <LiveConfirmModal 
+        open={showLiveConfirm.open} 
+        exchange={showLiveConfirm.exchange}
+        onCancel={() => setShowLiveConfirm({ open: false, exchange: null })} 
+        onConfirm={() => handleToggleLiveTrading(showLiveConfirm.exchange, true)} 
+        busy={toggling[showLiveConfirm.exchange || '']} 
+      />
       
-      <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
+      <div className="mx-auto max-w-7xl space-y-5">
         
-        {/* HEADER */}
-        <div className="rounded-3xl border border-gray-200 bg-white/80 backdrop-blur-sm p-4 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        {/* Header */}
+        <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-wrap justify-between items-center gap-4">
             <div>
-              <h1 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">Welcome back 👋</h1>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <StatusPill tone={tradingEnabled ? "success" : paperTradingEnabled ? "blue" : "slate"}>
-                  {tradingEnabled ? "💰 Live Active" : paperTradingEnabled ? "🎮 Paper Active" : "📝 Inactive"}
-                </StatusPill>
-                <StatusPill tone={okxConnected ? "green" : "amber"}>
-                  🔌 OKX {okxConnected ? `Connected (${okxMode === "live" ? "LIVE" : "Paper"})` : "Not Connected"}
-                </StatusPill>
-                <StatusPill tone="blue">🎯 Strategy: {activeStrategy.name}</StatusPill>
-                <StatusPill tone={access.canLiveTrade ? "success" : "amber"}>{access.badge} {access.label}</StatusPill>
+              <h1 className="text-2xl font-bold">Welcome back 👋</h1>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <StatusPill tone={paperTradingEnabled ? "green" : "slate"}>🎮 Paper {paperTradingEnabled ? "Active" : "Off"}</StatusPill>
+                <StatusPill tone={okx.mode === "live" ? "purple" : "slate"}>💰 OKX {okx.mode === "live" ? "Live" : "Paper"}</StatusPill>
+                <StatusPill tone={alpaca.mode === "live" ? "purple" : "slate"}>📈 Alpaca {alpaca.mode === "live" ? "Live" : "Paper"}</StatusPill>
+                <StatusPill tone={access.canLiveTrade ? "green" : "amber"}>{access.badge} {access.label}</StatusPill>
+                {userTier === "starter" && !isTrialExpired && <StatusPill tone="green">⏱️ {formatTimeLeft(trialSecondsLeft)} left</StatusPill>}
               </div>
-            </div>
-            <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => loadDashboard({ force: true })} disabled={refreshing} className="w-full sm:w-auto">{refreshing ? "..." : "Refresh"}</Button>
-              <Button variant="secondary" onClick={() => setShowApiModal(true)} className="w-full sm:w-auto">Keys</Button>
-            </div>
-          </div>
-        </div>
-
-        {/* OKX LIVE TRADING SECTION - Prominent and clear */}
-        <Card className="border-purple-200 bg-gradient-to-r from-purple-50/50 to-indigo-50/50">
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-2">
-              <span className="text-3xl">💎</span>
-              <h2 className="text-xl font-extrabold text-gray-900">OKX Live Trading</h2>
-            </div>
-            
-            {/* OKX Balance - Always visible */}
-            <div className="bg-white rounded-xl p-4 border border-gray-200">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Available Balance</p>
-                  <p className="text-3xl font-bold text-gray-900">{usd(okxBalance)}</p>
-                  <p className="text-xs text-gray-400 mt-1">Connected: {okxConnected ? "✅ Yes" : "❌ No"}</p>
-                </div>
-                <div>
-                  <StatusPill tone={okxMode === "live" ? "purple" : "blue"} className="text-sm">
-                    {okxMode === "live" ? "🔴 LIVE MODE" : "📝 PAPER MODE"}
-                  </StatusPill>
-                </div>
-              </div>
-            </div>
-            
-            {/* Connection Status & Actions */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="font-bold text-gray-900 mb-2">🔑 API Connection</p>
-                {okxConnected ? (
-                  <div className="space-y-2">
-                    <p className="text-sm text-green-600">✓ Connected</p>
-                    {okxApiKeyMasked && (
-                      <code className="block bg-gray-100 px-2 py-1 rounded text-xs">{okxApiKeyMasked}</code>
-                    )}
-                    <Button variant="danger" size="sm" onClick={handleDisconnectOKX} disabled={disconnecting} className="mt-2">
-                      {disconnecting ? "Disconnecting..." : "Disconnect OKX"}
-                    </Button>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-sm text-amber-600 mb-2">⚠️ Not connected</p>
-                    <Button variant="secondary" size="sm" onClick={() => setShowApiModal(true)}>
-                      Connect OKX API Keys
-                    </Button>
-                  </div>
-                )}
-              </div>
-              
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="font-bold text-gray-900 mb-2">🎮 Trading Mode</p>
-                {okxConnected && okxMode === "paper" && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-blue-600">Currently in PAPER trading mode</p>
-                    <p className="text-xs text-gray-500">Paper trades use virtual funds for testing</p>
-                    <Button variant="warning" size="sm" onClick={handleSwitchToLive} disabled={switchingMode}>
-                      {switchingMode ? "Switching..." : "Switch to LIVE Mode →"}
-                    </Button>
-                  </div>
-                )}
-                {okxConnected && okxMode === "live" && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-purple-600 font-bold">🔴 LIVE MODE ACTIVE</p>
-                    <p className="text-xs text-gray-500">Real funds from your OKX account will be used</p>
-                    {!tradingEnabled && canStartLiveTrading && (
-                      <Button variant="success" size="sm" onClick={() => setShowLiveConfirm(true)}>
-                        Start Live Trading
-                      </Button>
-                    )}
-                    {tradingEnabled && (
-                      <Button variant="danger" size="sm" onClick={() => handleToggleTrading(false)} disabled={togglingTrading}>
-                        Stop Live Trading
-                      </Button>
-                    )}
-                  </div>
-                )}
-                {!access.canLiveTrade && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-amber-600">Upgrade required for live trading</p>
-                    <Button variant="warning" size="sm" onClick={() => setShowUpgradeModal(true)}>
-                      Upgrade to Pro
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* PAPER TRADING SECTION */}
-        <Card className="border-blue-200 bg-blue-50/30">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🎮</span>
-                <h2 className="text-lg font-extrabold text-blue-900">Paper Trading</h2>
-              </div>
-              <p className="text-sm text-blue-800 mt-1">
-                {paperTradingEnabled
-                  ? `Active. Virtual balance: ${usd(PAPER_TRADING_BALANCE + paperStats.total_pnl)}`
-                  : hasPaperHistory
-                  ? `${paperStats.total_trades} historical trades | P&L: ${usd(paperStats.total_pnl)}`
-                  : "Practice with $1,000 virtual funds. No API keys needed."}
-              </p>
             </div>
             <div className="flex gap-2">
-              {paperTradingEnabled ? (
-                <>
-                  <Button variant="secondary" onClick={handleManualPaperTrade} disabled={paperTradeExecuting}>
-                    {paperTradeExecuting ? "Trading..." : "Manual Trade"}
-                  </Button>
-                  <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={togglingPaper}>
-                    Stop Paper
-                  </Button>
-                </>
-              ) : (
-                <Button variant="primary" onClick={() => handleTogglePaperTrading(true)} disabled={togglingPaper}>
-                  {togglingPaper ? "Starting..." : "Start Paper Trading"}
-                </Button>
-              )}
+              <Button variant="secondary" onClick={() => loadDashboard(true)} disabled={refreshing}>Refresh</Button>
+              <Button variant="secondary" onClick={() => setShowApiModal(true)}>Add Keys</Button>
             </div>
-          </div>
-        </Card>
-
-        {/* STATS CARDS */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
-            <div className="text-2xl font-extrabold text-gray-900">
-              {tradingEnabled ? usd(liveStats.total_pnl) : usd(paperStats.total_pnl)}
-            </div>
-            <div className="text-xs text-gray-500 font-medium">Total P&L</div>
-          </div>
-          <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
-            <div className="text-2xl font-extrabold text-gray-900">
-              {pct(tradingEnabled ? liveStats.win_rate : paperStats.win_rate)}
-            </div>
-            <div className="text-xs text-gray-500 font-medium">Win Rate</div>
-          </div>
-          <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
-            <div className="text-2xl font-extrabold text-gray-900">
-              {tradingEnabled ? liveStats.total_trades : paperStats.total_trades}
-            </div>
-            <div className="text-xs text-gray-500 font-medium">Total Trades</div>
-          </div>
-          <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
-            <div className="text-2xl font-extrabold text-gray-900">
-              {tradingEnabled ? "💰 Live" : paperTradingEnabled ? "🎮 Paper" : "📝 Setup"}
-            </div>
-            <div className="text-xs text-gray-500 font-medium">Mode</div>
           </div>
         </div>
 
-        {/* EQUITY CURVE */}
-        <Card>
-          <SectionTitle helper={tradingEnabled ? "Live portfolio value over time" : "Paper portfolio value over time"}>
-            {tradingEnabled ? "💰 Live Equity Curve" : "📈 Paper Equity Curve"}
-          </SectionTitle>
-          <div className="h-[300px] w-full">
-            <EquityCurveChart data={activeSeries} mode={tradingEnabled ? "live" : "paper"} />
-          </div>
-        </Card>
+        {/* Tabs */}
+        <div className="flex gap-2 border-b pb-2">
+          {["overview", "exchanges", "strategies"].map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-xl font-bold ${activeTab === tab ? "bg-indigo-600 text-white" : "bg-white text-gray-600 border"}`}>
+              {tab === "overview" && "📊 Overview"}
+              {tab === "exchanges" && "🔌 Exchanges"}
+              {tab === "strategies" && "🎯 Strategies"}
+            </button>
+          ))}
+        </div>
 
-        {/* CHARTS SECTION */}
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <SectionTitle helper="Win/Loss breakdown">🎯 Win Rate</SectionTitle>
-            <div className="h-[280px]">
-              <WinRateMeter 
-                wins={activeWinLoss.wins} 
-                losses={activeWinLoss.losses} 
-                mode={tradingEnabled ? "live" : "paper"} 
-              />
+        {/* Overview Tab */}
+        {activeTab === "overview" && (
+          <div className="space-y-5">
+            {/* Paper Trading Card */}
+            <Card className="border-blue-200 bg-blue-50/30">
+              <div className="flex flex-wrap justify-between items-center gap-4">
+                <div>
+                  <div className="flex items-center gap-2"><span className="text-2xl">🎮</span><h2 className="text-lg font-bold text-blue-900">Paper Trading</h2></div>
+                  <p className="text-sm text-blue-800 mt-1">{paperTradingEnabled ? `Active | Balance: ${usd(PAPER_TRADING_BALANCE + paperStats.total_pnl)}` : hasPaperHistory ? `${paperStats.total_trades} trades | P&L: ${usd(paperStats.total_pnl)}` : "Practice with $1,000 virtual funds"}</p>
+                </div>
+                <div className="flex gap-2">
+                  {paperTradingEnabled ? (
+                    <>
+                      <Button variant="secondary" size="sm" onClick={handleManualPaperTrade} disabled={paperTradeExecuting}>Manual Trade</Button>
+                      <Button variant="danger" size="sm" onClick={() => handleTogglePaperTrading(false)} disabled={toggling.paper}>Stop</Button>
+                    </>
+                  ) : (
+                    <Button variant="primary" size="sm" onClick={() => handleTogglePaperTrading(true)} disabled={toggling.paper}>Start Paper Trading</Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl p-4 text-center border"><div className="text-2xl font-bold">{usd(paperStats.total_pnl)}</div><div className="text-xs text-gray-500">Paper P&L</div></div>
+              <div className="bg-white rounded-xl p-4 text-center border"><div className="text-2xl font-bold">{pct(paperStats.win_rate)}</div><div className="text-xs text-gray-500">Paper Win Rate</div></div>
+              <div className="bg-white rounded-xl p-4 text-center border"><div className="text-2xl font-bold">{paperStats.total_trades}</div><div className="text-xs text-gray-500">Paper Trades</div></div>
+              <div className="bg-white rounded-xl p-4 text-center border"><div className="text-2xl font-bold">🎮</div><div className="text-xs text-gray-500">Paper Mode</div></div>
             </div>
-          </Card>
-          
+
+            {/* Equity Chart */}
+            <Card><SectionTitle>📈 Equity Curve</SectionTitle><div className="h-[300px]"><EquityCurveChart data={paperSeries} /></div></Card>
+
+            {/* Win Rate Chart */}
+            <Card><SectionTitle>🎯 Win Rate</SectionTitle><div className="h-[300px]"><WinRateMeter wins={paperStats.wins} losses={paperStats.losses} /></div></Card>
+          </div>
+        )}
+
+        {/* Exchanges Tab - Where you add API keys */}
+        {activeTab === "exchanges" && (
+          <div className="grid gap-5 md:grid-cols-2">
+            <ExchangeCard 
+              name="OKX" icon="💎" data={okx}
+              onConnect={() => setShowApiModal(true)}
+              onDisconnect={() => handleDisconnect("okx")}
+              onSwitchToLive={() => handleSwitchToLive("okx")}
+              onStartLive={() => setShowLiveConfirm({ open: true, exchange: "okx" })}
+              isLiveTradingActive={false}
+            />
+            <ExchangeCard 
+              name="Alpaca" icon="📈" data={alpaca}
+              onConnect={() => setShowApiModal(true)}
+              onDisconnect={() => handleDisconnect("alpaca")}
+              onSwitchToLive={() => handleSwitchToLive("alpaca")}
+              onStartLive={() => setShowLiveConfirm({ open: true, exchange: "alpaca" })}
+              isLiveTradingActive={false}
+            />
+          </div>
+        )}
+
+        {/* Strategies Tab */}
+        {activeTab === "strategies" && (
           <Card>
-            <SectionTitle helper="Pick your strategy">🎯 Active Strategy</SectionTitle>
-            <div className="space-y-3">
-              {STRATEGIES.map((strategy) => (
-                <button
-                  key={strategy.id}
-                  onClick={() => handleStrategyChange(strategy)}
-                  disabled={!!savingStrategy}
-                  className={`w-full rounded-xl border p-3 text-left transition ${currentStrategy === strategy.id ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white hover:border-indigo-300"}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{strategy.emoji}</span>
-                      <span className="font-extrabold text-gray-900">{strategy.name}</span>
-                      <StatusPill tone={strategy.risk === "Low" ? "green" : "amber"}>{strategy.risk}</StatusPill>
-                    </div>
-                    {currentStrategy === strategy.id && <span className="text-indigo-600 text-sm font-bold">✓ Active</span>}
-                  </div>
-                  <p className="text-sm text-gray-500 mt-1">{strategy.description}</p>
+            <SectionTitle>Choose Your Trading Strategy</SectionTitle>
+            <div className="grid gap-3 md:grid-cols-2">
+              {STRATEGIES.map(s => (
+                <button key={s.id} onClick={() => handleStrategyChange(s)} disabled={savingStrategy} className={`rounded-xl border p-4 text-left transition ${currentStrategy === s.id ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-indigo-300"}`}>
+                  <div className="flex items-center gap-2"><span className="text-2xl">{s.emoji}</span><span className="font-bold">{s.name}</span><StatusPill tone={s.risk === "Low" ? "green" : "amber"}>{s.risk}</StatusPill></div>
+                  <p className="text-sm text-gray-600 mt-1">{s.description}</p>
+                  {currentStrategy === s.id && <div className="mt-2 text-xs font-bold text-indigo-600">✓ Active</div>}
                 </button>
               ))}
             </div>
           </Card>
-        </div>
+        )}
 
-        {/* BOTTOM ACTIONS */}
-        <div className="flex flex-wrap gap-3 justify-center pt-4">
-          <Button variant="secondary" onClick={() => setShowApiModal(true)}>Manage API Keys</Button>
-          {!access.canLiveTrade && (
-            <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>Upgrade Plan 💳</Button>
-          )}
+        {/* Bottom Actions */}
+        <div className="flex justify-center gap-3 pt-4">
+          {!access.canLiveTrade && <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>Upgrade to Pro 💳</Button>}
           <Button variant="danger" onClick={handleLogout}>Logout</Button>
         </div>
       </div>
 
-      {/* API Modal */}
+      {/* API Modal - Add your keys here */}
       {showApiModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[94vh] w-full max-w-2xl overflow-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-extrabold text-gray-900">Connect OKX API Keys</h2>
-              <button onClick={() => setShowApiModal(false)} className="text-3xl text-gray-500 hover:text-gray-700">×</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-5 max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">Connect API Keys</h2><button onClick={() => setShowApiModal(false)} className="text-3xl">×</button></div>
+            <div className="mb-4 p-3 bg-blue-50 rounded-xl text-sm text-blue-800">💡 Create API keys with <strong>trade permission only</strong> (no withdrawals). Start with Paper mode first.</div>
+            
+            <div className="space-y-4">
+              <div className="border rounded-xl p-4">
+                <h3 className="font-bold text-gray-900">📈 Alpaca (Stocks)</h3>
+                <p className="text-sm text-gray-500 mb-2">Get API keys from Alpaca dashboard</p>
+                <Button variant="secondary" size="sm" onClick={() => window.open("https://app.alpaca.markets/paper/dashboard/api-keys", "_blank")}>Create Alpaca Keys →</Button>
+                <div className="mt-2 text-xs text-gray-400">After getting keys, contact support to add them securely.</div>
+              </div>
+              
+              <div className="border rounded-xl p-4">
+                <h3 className="font-bold text-gray-900">💎 OKX (Crypto)</h3>
+                <p className="text-sm text-gray-500 mb-2">Create API key with trade permission only</p>
+                <Button variant="secondary" size="sm" onClick={() => window.open("https://www.okx.com/account/my-api", "_blank")}>Create OKX Keys →</Button>
+                <div className="mt-2 text-xs text-gray-400">After getting keys, contact support to add them securely.</div>
+              </div>
             </div>
             
-            <div className="mb-5 rounded-2xl border border-blue-300 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
-              💡 Create API keys with <strong>trade permission only</strong> - no withdrawals. Start with Paper mode first.
-            </div>
-            
-            <div className="border rounded-xl p-4">
-              <h3 className="font-bold text-gray-900">OKX (Crypto)</h3>
-              <p className="text-sm text-gray-500 mb-2">Create API key with trade permission only - no withdrawals</p>
-              <Button variant="secondary" size="sm" onClick={() => window.open("https://www.okx.com/account/my-api", "_blank")}>
-                Create OKX Keys →
-              </Button>
-            </div>
-            
-            <div className="mt-5 text-center text-xs text-gray-400">
-              After connecting, switch from Paper to Live mode when ready.
+            <div className="mt-5 text-center text-xs text-gray-500">
+              For security, API keys are added by admin. Contact support@imali-defi.com to add your keys.
             </div>
           </div>
         </div>
       )}
-
-      <LiveConfirmModal open={showLiveConfirm} onCancel={() => setShowLiveConfirm(false)} onConfirm={() => handleToggleTrading(true)} busy={togglingTrading} />
     </div>
   );
 }
