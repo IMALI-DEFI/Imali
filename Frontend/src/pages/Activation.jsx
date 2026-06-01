@@ -1,4 +1,4 @@
-// src/pages/Activation.jsx
+// src/pages/Activation.jsx - REWRITTEN (Fixed tier logic for pricing page)
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -189,7 +189,7 @@ const InfoBox = ({ type = "info", children, icon }) => {
 export default function Activation() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, activation, refreshActivation } = useAuth();
+  const { user, activation, refreshActivation, refreshUser } = useAuth();
   
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -209,18 +209,26 @@ export default function Activation() {
   const [wallet, setWallet] = useState("");
 
   // ==============================================
-  // FIXED: Updated activation requirements
-  // - Starter: NO billing, NO APIs, NO wallet (simulator only)
-  // - Pro: billing + OKX + Alpaca (no wallet)
-  // - Elite: billing + OKX + wallet (no Alpaca) 
-  // - Bundle: billing + OKX + Alpaca + wallet
+  // CORRECTED: Activation requirements based on pricing page
+  // - Starter: NO billing, NO APIs, NO wallet (paper trading only)
+  // - Pro: billing + OKX + Alpaca (stocks + crypto)
+  // - Elite: billing + OKX + wallet (crypto + DeFi)
+  // - Enterprise: contact sales (separate flow)
   // ==============================================
-  const needs = useMemo(() => ({
-    billing: tier !== "starter",  // Only Starter skips billing
-    okx: ["pro", "elite", "bundle"].includes(tier),  // Starter removed
-    alpaca: ["pro", "bundle"].includes(tier),        // Starter removed, Elite removed
-    wallet: ["elite", "bundle"].includes(tier),      // Starter removed, Pro removed
-  }), [tier]);
+  const needs = useMemo(() => {
+    switch(tier) {
+      case "starter":
+        return { billing: false, okx: false, alpaca: false, wallet: false };
+      case "pro":
+        return { billing: true, okx: true, alpaca: true, wallet: false };
+      case "elite":
+        return { billing: true, okx: true, alpaca: false, wallet: true };
+      case "enterprise":
+        return { billing: false, okx: false, alpaca: false, wallet: false };
+      default:
+        return { billing: true, okx: true, alpaca: true, wallet: false };
+    }
+  }, [tier]);
 
   const status = useMemo(() => ({
     billing: !!activation?.has_card_on_file || !!activation?.billing_complete,
@@ -282,7 +290,7 @@ export default function Activation() {
     loadData();
   }, [refreshActivation]);
 
-  // Auto-redirect when fully activated - ONLY if not skipped
+  // Auto-redirect when fully activated
   useEffect(() => {
     if (fullyActivated && !hasRedirected.current && !sessionStorage.getItem("activation_skipped")) {
       hasRedirected.current = true;
@@ -292,7 +300,8 @@ export default function Activation() {
 
   const refreshAfterAction = useCallback(async () => {
     await refreshActivation?.();
-  }, [refreshActivation]);
+    if (refreshUser) await refreshUser();
+  }, [refreshActivation, refreshUser]);
 
   const connectOKX = async (e) => {
     e.preventDefault();
@@ -404,11 +413,9 @@ export default function Activation() {
     }
   };
 
-  // Skip to dashboard - always works, bypasses activation
+  // Skip to dashboard - bypasses activation
   const handleSkipToDashboard = () => {
-    // Clear any activation skip flag
     sessionStorage.removeItem("activation_skipped");
-    // Direct navigation to dashboard
     navigate("/dashboard", { replace: true });
   };
 
@@ -423,26 +430,55 @@ export default function Activation() {
       case "starter": return "Starter";
       case "pro": return "Pro";
       case "elite": return "Elite";
-      case "stock": return "DeFi";
-      case "bundle": return "Bundle";
+      case "enterprise": return "Enterprise";
       default: return "Starter";
     }
   };
 
-  // For Starter tier, show minimal activation UI and redirect immediately
+  // For Starter tier, show minimal UI and redirect
   const isStarter = tier === "starter";
 
-  // Immediate redirect for Starter users who already have dashboard access
+  // Immediate redirect for Starter users
   useEffect(() => {
     if (isStarter && user && !sessionStorage.getItem("starter_redirected")) {
       sessionStorage.setItem("starter_redirected", "true");
-      // Small delay to ensure component mounts properly
       const timer = setTimeout(() => {
         navigate("/dashboard", { replace: true });
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [isStarter, user, navigate]);
+
+  // For Enterprise tier, show contact sales message
+  const isEnterprise = tier === "enterprise";
+
+  if (isEnterprise) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 text-white flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center">
+          <div className="text-6xl mb-6">🏢</div>
+          <h1 className="text-3xl font-bold mb-4">Enterprise Plan</h1>
+          <p className="text-gray-400 mb-6">
+            Enterprise accounts require manual approval. Our sales team will contact you shortly.
+          </p>
+          <div className="space-y-4">
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 font-semibold transition-colors"
+            >
+              Return to Dashboard
+            </button>
+            <a
+              href="mailto:sales@imali-defi.com"
+              className="inline-block text-blue-400 hover:text-blue-300 underline"
+            >
+              Contact Sales →
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // If Starter, show loading briefly then redirect
   if (isStarter) {
@@ -462,7 +498,7 @@ export default function Activation() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-            Trading Setup
+            Complete Your Setup
           </h1>
           <p className="text-gray-400">
             {getPlanName()} Plan • Complete the steps below to start live trading
@@ -481,13 +517,6 @@ export default function Activation() {
           )}
         </div>
 
-        {/* Info Box for Skipped Activation */}
-        {sessionStorage.getItem("activation_skipped") && !fullyActivated && (
-          <div className="mb-6 p-4 rounded-xl bg-yellow-500/20 border border-yellow-500/50 text-yellow-200">
-            <span>⚠️ You've skipped activation. Some trading features may be limited. Complete the steps below to enable full trading.</span>
-          </div>
-        )}
-
         {/* Error/Success Messages */}
         {error && (
           <div className="mb-6 p-4 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200">
@@ -500,27 +529,34 @@ export default function Activation() {
           </div>
         )}
 
-        {/* Step 1: Billing - only for non-Starter */}
-        <StepCard number="1" title="Payment Method" description="Add a payment method to continue" status={status.billing}>
-          {!status.billing ? (
-            <div className="space-y-4">
-              <InfoBox type="info">Your payment information is encrypted and securely stored.</InfoBox>
-              <ActionButton onClick={() => navigate("/billing", { state: { tier } })} color="blue">
-                Add Payment Method
-              </ActionButton>
-            </div>
-          ) : (
-            <div className="text-green-300 font-medium text-center py-2">✓ Payment method on file</div>
-          )}
-        </StepCard>
+        {/* Step 1: Billing - for Pro and Elite only */}
+        {needs.billing && (
+          <StepCard number="1" title="Payment Method" description="Add a payment method to continue" status={status.billing}>
+            {!status.billing ? (
+              <div className="space-y-4">
+                <InfoBox type="info">Your payment information is encrypted and securely stored.</InfoBox>
+                <ActionButton onClick={() => navigate("/billing", { state: { tier } })} color="blue">
+                  Add Payment Method
+                </ActionButton>
+              </div>
+            ) : (
+              <div className="text-green-300 font-medium text-center py-2">✓ Payment method on file</div>
+            )}
+          </StepCard>
+        )}
 
-        {/* Step 2: Connect Trading Accounts - renamed from "Connections" */}
-        <StepCard number="2" title="Connect Trading Accounts" description="Link your exchange accounts" status={connectionsDone}>
+        {/* Step 2: Connect Trading Accounts */}
+        <StepCard 
+          number={needs.billing ? "2" : "1"} 
+          title="Connect Trading Accounts" 
+          description="Link your exchange accounts" 
+          status={connectionsDone}
+        >
           <div className="space-y-6">
-            {/* OKX */}
+            {/* OKX - Required for Pro and Elite */}
             {needs.okx && !status.okx && (
               <div className="border border-blue-500/30 rounded-xl p-4 bg-blue-500/5">
-                <h3 className="text-lg font-semibold text-blue-300 mb-3">OKX Exchange</h3>
+                <h3 className="text-lg font-semibold text-blue-300 mb-3">OKX Exchange (Crypto)</h3>
                 <ScreenshotGuide
                   imagePath="/oxksignup.jpg"
                   alt="OKX API Setup"
@@ -544,10 +580,10 @@ export default function Activation() {
               </div>
             )}
 
-            {/* Alpaca */}
+            {/* Alpaca - Required for Pro only */}
             {needs.alpaca && !status.alpaca && (
               <div className="border border-green-500/30 rounded-xl p-4 bg-green-500/5">
-                <h3 className="text-lg font-semibold text-green-300 mb-3">Alpaca Trading</h3>
+                <h3 className="text-lg font-semibold text-green-300 mb-3">Alpaca Trading (Stocks)</h3>
                 <ScreenshotGuide
                   imagePath="/alpacasignup.jpg"
                   alt="Alpaca API Setup"
@@ -570,7 +606,7 @@ export default function Activation() {
               </div>
             )}
 
-            {/* Wallet */}
+            {/* Wallet - Required for Elite only */}
             {needs.wallet && !status.wallet && (
               <div className="border border-purple-500/30 rounded-xl p-4 bg-purple-500/5">
                 <h3 className="text-lg font-semibold text-purple-300 mb-3">DeFi Wallet</h3>
@@ -582,27 +618,41 @@ export default function Activation() {
               </div>
             )}
 
-            {/* Completed status */}
+            {/* Completed status indicators */}
             {needs.okx && status.okx && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ OKX connected</div>}
             {needs.alpaca && status.alpaca && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ Alpaca connected</div>}
             {needs.wallet && status.wallet && <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3 text-center">✓ Wallet connected</div>}
+            
+            {connectionsDone && (
+              <InfoBox type="success">All required connections complete! You can now enable live trading.</InfoBox>
+            )}
           </div>
         </StepCard>
 
-        {/* Step 3: Enable Live Trading - renamed from "Activate Bot" */}
-        <StepCard number="3" title="Enable Live Trading" description="Turn on automated trading" status={status.trading}>
+        {/* Step 3: Enable Live Trading */}
+        <StepCard 
+          number={needs.billing ? "3" : (needs.okx || needs.alpaca || needs.wallet ? "2" : "1")} 
+          title="Enable Live Trading" 
+          description="Turn on automated trading" 
+          status={status.trading}
+        >
           <div className="space-y-4">
             {!canEnableTrading && !status.trading ? (
-              <InfoBox type="warning">Complete steps 1 and 2 first</InfoBox>
+              <InfoBox type="warning">
+                {!status.billing && needs.billing ? "Complete billing setup first" : "Connect your trading accounts first"}
+              </InfoBox>
             ) : (
               <>
-                <InfoBox type="tip">The bot analyzes markets and executes trades based on your strategy</InfoBox>
+                <InfoBox type="tip">The bot analyzes markets and executes trades based on your selected strategy</InfoBox>
                 {status.trading ? (
                   <div className="p-4 bg-green-500/20 border border-green-500 rounded-xl text-center">
                     <p className="text-green-300 font-semibold">✓ Trading bot is ACTIVE</p>
+                    <p className="text-sm text-green-300/70 mt-2">Your bot is actively trading with your connected accounts</p>
                   </div>
                 ) : (
-                  <ActionButton onClick={toggleTrading} disabled={busy === "trading"} loading={busy === "trading"} color="green">Enable Live Trading</ActionButton>
+                  <ActionButton onClick={toggleTrading} disabled={busy === "trading"} loading={busy === "trading"} color="green">
+                    Enable Live Trading
+                  </ActionButton>
                 )}
               </>
             )}
@@ -613,8 +663,15 @@ export default function Activation() {
         <div className="mt-8 p-6 bg-white/5 border border-white/10 rounded-xl">
           <h3 className="text-lg font-semibold mb-3">Need Help?</h3>
           <div className="flex flex-wrap gap-4">
-            <a href="https://imali-defi.com/getting-started" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">Getting Started Guide</a>
-            <a href="mailto:support@imali-defi.com" className="text-blue-400 hover:text-blue-300">Email Support</a>
+            <a href="https://imali-defi.com/getting-started" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">
+              Getting Started Guide
+            </a>
+            <a href="mailto:support@imali-defi.com" className="text-blue-400 hover:text-blue-300">
+              Email Support
+            </a>
+            <button onClick={() => window.open("https://t.me/imali_support", "_blank")} className="text-blue-400 hover:text-blue-300">
+              Telegram Support
+            </button>
           </div>
         </div>
 
