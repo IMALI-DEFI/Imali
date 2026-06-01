@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - FIXED RENDERING ISSUES
+// src/components/Dashboard/MemberDashboard.jsx - CORRECTLY ORDERED (No initialization errors)
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
@@ -516,6 +516,7 @@ export default function MemberDashboard() {
   const lastRefreshRef = useRef(0);
   const pollingIntervalRef = useRef(null);
 
+  // ========== STATE DECLARATIONS ==========
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "info" });
@@ -557,6 +558,7 @@ export default function MemberDashboard() {
   const [disconnecting, setDisconnecting] = useState(null);
   const [switchingMode, setSwitchingMode] = useState(null);
 
+  // ========== MEMOIZED VALUES ==========
   const userTier = useMemo(() => user?.tier?.toLowerCase() || "starter", [user?.tier]);
   const access = useMemo(() => tierAccess[userTier] || tierAccess.starter, [userTier]);
   const alpacaConnected = !!integrations.alpaca_connected;
@@ -614,32 +616,142 @@ export default function MemberDashboard() {
     };
   }, [tradingEnabled, paperTradingEnabled, hasPaperHistory, liveStats, paperStats, liveExchangeBalance]);
 
+  // ========== HELPER FUNCTIONS (NO DEPENDENCIES) ==========
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type });
     window.clearTimeout(window.__imaliToastTimer);
     window.__imaliToastTimer = window.setTimeout(() => setToast({ message: "", type: "info" }), 4500);
   }, []);
 
-  const handleUpgrade = useCallback(async (targetTier) => {
-    setUpgrading(true);
+  // ========== API CALL FUNCTIONS (ORDER MATTERS!) ==========
+  
+  // 1. Basic auth/logout first
+  const handleLogout = useCallback(() => { 
+    BotAPI.clearToken?.(); 
+    BotAPI.clearApiKey?.(); 
+    nav("/login"); 
+  }, [nav]);
+
+  // 2. Simple data fetchers that don't depend on other callbacks
+  const loadTrialStatus = useCallback(async () => {
     try {
-      const result = await BotAPI.changePlan?.(targetTier);
-      if (result?.success || result?.redirecting) {
-        notify(`Upgrading to ${tierAccess[targetTier]?.label || targetTier} plan...`, "success");
-        setTimeout(() => window.location.reload(), 2000);
-      } else {
-        notify(result?.error || "Upgrade failed. Please try again.", "error");
+      const trial = await BotAPI.getTrialStatus?.(true);
+      setTrialData(trial);
+    } catch (err) {
+      console.warn("Failed to load trial status:", err);
+    }
+  }, []);
+
+  const loadExchangeBalance = useCallback(async () => {
+    try {
+      const balance = await BotAPI.getExchangeBalance?.().catch(() => null);
+      if (balance) {
+        setLiveExchangeBalance({
+          alpaca: balance.alpaca || 0,
+          okx: balance.okx || 0,
+          total: (balance.alpaca || 0) + (balance.okx || 0)
+        });
       }
     } catch (err) {
-      notify(err?.message || "Upgrade failed. Please try again.", "error");
-    } finally {
-      setUpgrading(false);
-      setShowUpgradeModal(false);
+      console.warn("Failed to load exchange balance:", err);
     }
-  }, [notify]);
+  }, []);
 
-  const handleLogout = useCallback(() => { BotAPI.clearToken?.(); BotAPI.clearApiKey?.(); nav("/login"); }, [nav]);
+  const loadLiveTradingStats = useCallback(async () => {
+    if (!access.canLiveTrade) return;
+    
+    try {
+      const liveData = await BotAPI.getLiveTradingStats?.().catch(() => null);
+      if (liveData) {
+        const summary = liveData.summary || liveData;
+        setLiveStats({
+          total_pnl: summary.total_pnl || 0,
+          win_rate: summary.win_rate || 0,
+          total_trades: summary.total_trades || 0,
+          wins: summary.wins || 0,
+          losses: summary.losses || 0,
+          balance: summary.current_balance || summary.balance || 0,
+        });
+        if (liveData.daily_performance) setLiveSeries(liveData.daily_performance);
+        if (liveData.recent_trades) setLiveTrades(liveData.recent_trades);
+      }
+      await loadExchangeBalance();
+    } catch (err) {
+      console.warn("Failed to load live trading stats:", err);
+    }
+  }, [access.canLiveTrade, loadExchangeBalance]);
 
+  // 3. MAIN loadDashboard function (depends on above)
+  const loadDashboard = useCallback(async ({ silent = false, force = false } = {}) => {
+    if (loadingRef.current) return;
+    const now = Date.now();
+    if (!force && now - lastRefreshRef.current < REFRESH_COOLDOWN_MS) return;
+
+    loadingRef.current = true;
+    lastRefreshRef.current = now;
+    if (!silent) setLoading(true);
+    setRefreshing(true);
+
+    try {
+      if (BotAPI.refreshActivation) await BotAPI.refreshActivation(true);
+      const me = await BotAPI.getMe?.(true);
+      if (!me?.id && !me?.email) { handleLogout(); return; }
+      if (!mountedRef.current) return;
+
+      setUser(me);
+      setTradingEnabled(me?.trading_enabled === true);
+      setPaperTradingEnabled(me?.paper_trading_enabled === true);
+
+      const [paperStatsPayload, integrationsPayload, strategiesPayload, tradesPayload] = await Promise.all([
+        BotAPI.getUserTradingStats?.(30, true).catch(() => null),
+        BotAPI.getIntegrationStatus?.(true).catch(() => null),
+        BotAPI.getTradingStrategies?.(true).catch(() => null),
+        BotAPI.getGlobalTrades?.({ limit: 10, skipCache: false }).catch(() => null),
+      ]);
+
+      if (!mountedRef.current) return;
+
+      const paperSummary = paperStatsPayload?.summary || paperStatsPayload?.data?.summary || {};
+      setPaperStats({
+        total_pnl: paperSummary.total_pnl || 0,
+        win_rate: paperSummary.win_rate || 0,
+        total_trades: paperSummary.total_trades || 0,
+        wins: paperSummary.wins || 0,
+        losses: paperSummary.losses || 0,
+      });
+      
+      const dailySeries = paperStatsPayload?.daily_performance || paperStatsPayload?.data?.daily_performance || [];
+      if (dailySeries.length) setPaperSeries(dailySeries);
+      
+      setIntegrations({
+        wallet_connected: integrationsPayload?.wallet_connected || false,
+        alpaca_connected: integrationsPayload?.alpaca_connected || false,
+        okx_connected: integrationsPayload?.okx_connected || false,
+        alpaca_api_key_masked: integrationsPayload?.alpaca_api_key_masked || null,
+        okx_api_key_masked: integrationsPayload?.okx_api_key_masked || null,
+        alpaca_mode: integrationsPayload?.alpaca_mode || "paper",
+        okx_mode: integrationsPayload?.okx_mode || "paper",
+        wallet_address_masked: integrationsPayload?.wallet_address_masked || null,
+      });
+      
+      setCurrentStrategy(normalizeStrategyId(strategiesPayload?.current_strategy || me?.strategy || "ai_weighted"));
+      if (tradesPayload?.trades?.length) setCommunityTrades(tradesPayload.trades);
+      
+      if (me?.trading_enabled === true || access.canLiveTrade) {
+        await loadLiveTradingStats();
+      }
+      
+      await loadTrialStatus();
+    } catch (err) {
+      console.error("[MemberDashboard] Failed to load:", err);
+      if (isAuthError(err)) handleLogout();
+    } finally {
+      loadingRef.current = false;
+      if (mountedRef.current) { setRefreshing(false); setLoading(false); }
+    }
+  }, [handleLogout, loadTrialStatus, loadLiveTradingStats, access.canLiveTrade]);
+
+  // 4. Action handlers that depend on loadDashboard
   const handleDisconnect = useCallback(async (exchange) => {
     if (disconnecting) return;
     if (!window.confirm(`Are you sure you want to disconnect ${exchange.toUpperCase()}? This will remove your API keys.`)) return;
@@ -690,6 +802,24 @@ export default function MemberDashboard() {
       setSwitchingMode(null);
     }
   }, [notify, loadDashboard, switchingMode]);
+
+  const handleUpgrade = useCallback(async (targetTier) => {
+    setUpgrading(true);
+    try {
+      const result = await BotAPI.changePlan?.(targetTier);
+      if (result?.success || result?.redirecting) {
+        notify(`Upgrading to ${tierAccess[targetTier]?.label || targetTier} plan...`, "success");
+        setTimeout(() => window.location.reload(), 2000);
+      } else {
+        notify(result?.error || "Upgrade failed. Please try again.", "error");
+      }
+    } catch (err) {
+      notify(err?.message || "Upgrade failed. Please try again.", "error");
+    } finally {
+      setUpgrading(false);
+      setShowUpgradeModal(false);
+    }
+  }, [notify]);
 
   const handleManualPaperTrade = async () => {
     if (paperTradeExecuting) return;
@@ -776,123 +906,7 @@ export default function MemberDashboard() {
     } finally { setSavingStrategy(""); }
   };
 
-  const loadTrialStatus = useCallback(async () => {
-    try {
-      const trial = await BotAPI.getTrialStatus?.(true);
-      setTrialData(trial);
-    } catch (err) {
-      console.warn("Failed to load trial status:", err);
-    }
-  }, []);
-
-  const loadExchangeBalance = useCallback(async () => {
-    try {
-      const balance = await BotAPI.getExchangeBalance?.().catch(() => null);
-      if (balance) {
-        setLiveExchangeBalance({
-          alpaca: balance.alpaca || 0,
-          okx: balance.okx || 0,
-          total: (balance.alpaca || 0) + (balance.okx || 0)
-        });
-      }
-    } catch (err) {
-      console.warn("Failed to load exchange balance:", err);
-    }
-  }, []);
-
-  const loadLiveTradingStats = useCallback(async () => {
-    if (!access.canLiveTrade) return;
-    
-    try {
-      const liveData = await BotAPI.getLiveTradingStats?.().catch(() => null);
-      if (liveData) {
-        const summary = liveData.summary || liveData;
-        setLiveStats({
-          total_pnl: summary.total_pnl || 0,
-          win_rate: summary.win_rate || 0,
-          total_trades: summary.total_trades || 0,
-          wins: summary.wins || 0,
-          losses: summary.losses || 0,
-          balance: summary.current_balance || summary.balance || 0,
-        });
-        if (liveData.daily_performance) setLiveSeries(liveData.daily_performance);
-        if (liveData.recent_trades) setLiveTrades(liveData.recent_trades);
-      }
-      await loadExchangeBalance();
-    } catch (err) {
-      console.warn("Failed to load live trading stats:", err);
-    }
-  }, [access.canLiveTrade, loadExchangeBalance]);
-
-  const loadDashboard = useCallback(async ({ silent = false, force = false } = {}) => {
-    if (loadingRef.current) return;
-    const now = Date.now();
-    if (!force && now - lastRefreshRef.current < REFRESH_COOLDOWN_MS) return;
-
-    loadingRef.current = true;
-    lastRefreshRef.current = now;
-    if (!silent) setLoading(true);
-    setRefreshing(true);
-
-    try {
-      if (BotAPI.refreshActivation) await BotAPI.refreshActivation(true);
-      const me = await BotAPI.getMe?.(true);
-      if (!me?.id && !me?.email) { handleLogout(); return; }
-      if (!mountedRef.current) return;
-
-      setUser(me);
-      setTradingEnabled(me?.trading_enabled === true);
-      setPaperTradingEnabled(me?.paper_trading_enabled === true);
-
-      const [paperStatsPayload, integrationsPayload, strategiesPayload, tradesPayload] = await Promise.all([
-        BotAPI.getUserTradingStats?.(30, true).catch(() => null),
-        BotAPI.getIntegrationStatus?.(true).catch(() => null),
-        BotAPI.getTradingStrategies?.(true).catch(() => null),
-        BotAPI.getGlobalTrades?.({ limit: 10, skipCache: false }).catch(() => null),
-      ]);
-
-      if (!mountedRef.current) return;
-
-      const paperSummary = paperStatsPayload?.summary || paperStatsPayload?.data?.summary || {};
-      setPaperStats({
-        total_pnl: paperSummary.total_pnl || 0,
-        win_rate: paperSummary.win_rate || 0,
-        total_trades: paperSummary.total_trades || 0,
-        wins: paperSummary.wins || 0,
-        losses: paperSummary.losses || 0,
-      });
-      
-      const dailySeries = paperStatsPayload?.daily_performance || paperStatsPayload?.data?.daily_performance || [];
-      if (dailySeries.length) setPaperSeries(dailySeries);
-      
-      setIntegrations({
-        wallet_connected: integrationsPayload?.wallet_connected || false,
-        alpaca_connected: integrationsPayload?.alpaca_connected || false,
-        okx_connected: integrationsPayload?.okx_connected || false,
-        alpaca_api_key_masked: integrationsPayload?.alpaca_api_key_masked || null,
-        okx_api_key_masked: integrationsPayload?.okx_api_key_masked || null,
-        alpaca_mode: integrationsPayload?.alpaca_mode || "paper",
-        okx_mode: integrationsPayload?.okx_mode || "paper",
-        wallet_address_masked: integrationsPayload?.wallet_address_masked || null,
-      });
-      
-      setCurrentStrategy(normalizeStrategyId(strategiesPayload?.current_strategy || me?.strategy || "ai_weighted"));
-      if (tradesPayload?.trades?.length) setCommunityTrades(tradesPayload.trades);
-      
-      if (me?.trading_enabled === true || access.canLiveTrade) {
-        await loadLiveTradingStats();
-      }
-      
-      await loadTrialStatus();
-    } catch (err) {
-      console.error("[MemberDashboard] Failed to load:", err);
-      if (isAuthError(err)) handleLogout();
-    } finally {
-      loadingRef.current = false;
-      if (mountedRef.current) { setRefreshing(false); setLoading(false); }
-    }
-  }, [handleLogout, loadTrialStatus, loadLiveTradingStats, access.canLiveTrade]);
-
+  // ========== EFFECTS ==========
   useEffect(() => {
     mountedRef.current = true;
     loadDashboard();
@@ -903,6 +917,7 @@ export default function MemberDashboard() {
     };
   }, [loadDashboard]);
 
+  // ========== LOADING STATE ==========
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
@@ -911,10 +926,10 @@ export default function MemberDashboard() {
     );
   }
 
+  // ========== RENDER HELPERS ==========
   const activeSeries = tradingEnabled ? liveSeries : paperSeries;
   const activeWinLoss = tradingEnabled ? liveStats : paperStats;
 
-  // Helper function to get mode card styles (fix dynamic Tailwind classes)
   const getModeCardStyles = () => {
     if (activeStats.modeColor === "green") {
       return "border-green-200 bg-green-50/50";
@@ -924,6 +939,7 @@ export default function MemberDashboard() {
     return "border-slate-200 bg-gray-50/50";
   };
 
+  // ========== MAIN RENDER ==========
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 px-3 py-4 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
@@ -992,8 +1008,6 @@ export default function MemberDashboard() {
         {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
           <div className="space-y-5">
-            
-            {/* MODE SELECTOR / STATUS CARD - Fixed dynamic classes */}
             <Card className={getModeCardStyles()}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -1132,7 +1146,6 @@ export default function MemberDashboard() {
               </div>
             </Card>
 
-            {/* LIVE TRADES - Show recent live trades when active */}
             {tradingEnabled && liveTrades.length > 0 && (
               <Card>
                 <SectionTitle helper="Your recent live trades">🔄 Recent Live Trades</SectionTitle>
