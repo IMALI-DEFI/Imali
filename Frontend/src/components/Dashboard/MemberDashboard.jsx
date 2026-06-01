@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - COMPLETE REWRITE
+// src/components/Dashboard/MemberDashboard.jsx - COMPLETE REWRITE WITH LIVE TRADING SUPPORT
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
@@ -78,7 +78,6 @@ const STRATEGIES = [
 
 // COMPLETE TIER ACCESS MAPPING - ALL DATABASE TIERS COVERED
 const tierAccess = {
-  // Free tier
   starter: {
     label: "Starter",
     displayName: "Starter",
@@ -97,7 +96,6 @@ const tierAccess = {
     badge: "🌱",
     badgeColor: "green",
   },
-  // Paid tiers (database uses common, rare, epic, legendary, enterprise)
   common: {
     label: "Pro",
     displayName: "Pro",
@@ -188,7 +186,6 @@ const tierAccess = {
     badge: "🏢",
     badgeColor: "indigo",
   },
-  // Legacy support
   pro: {
     label: "Pro",
     displayName: "Pro",
@@ -245,7 +242,6 @@ const tierAccess = {
   },
 };
 
-// Upgrade plans available to users
 const UPGRADE_PLANS = [
   { dbTier: "common", displayName: "Pro", price: "$19", period: "/month", icon: "⭐", features: ["Live Trading", "Stocks", "Crypto", "Priority Support"] },
   { dbTier: "rare", displayName: "Elite", price: "$49", period: "/month", icon: "👑", features: ["Everything in Pro", "DEX Trading", "Custom Indicators", "24/7 Support"] },
@@ -360,13 +356,13 @@ function Toast({ message, type = "info", onClose }) {
 }
 
 // ==============================================
-// SIMPLE CHARTS
+// CHARTS - Support both paper and live data
 // ==============================================
 
-const EquityCurveChart = ({ data }) => {
+const EquityCurveChart = ({ data, mode = "paper" }) => {
   const chartData = useMemo(() => {
     const labels = data?.map((d, i) => d.date || `Day ${i + 1}`) || [];
-    let runningBalance = PAPER_TRADING_BALANCE;
+    let runningBalance = mode === "live" ? 0 : PAPER_TRADING_BALANCE;
     const equity = data?.map((d) => {
       runningBalance += Number(d.pnl || 0);
       return runningBalance;
@@ -375,18 +371,18 @@ const EquityCurveChart = ({ data }) => {
     return {
       labels,
       datasets: [{
-        label: "Portfolio Value",
+        label: mode === "live" ? "Live Portfolio Value" : "Paper Portfolio Value",
         data: equity,
-        borderColor: "#6366f1",
+        borderColor: mode === "live" ? "#10b981" : "#6366f1",
         borderWidth: 2,
         tension: 0.4,
         fill: true,
-        backgroundColor: "rgba(99,102,241,0.1)",
+        backgroundColor: mode === "live" ? "rgba(16,185,129,0.1)" : "rgba(99,102,241,0.1)",
         pointRadius: 0,
         pointHoverRadius: 5,
       }],
     };
-  }, [data]);
+  }, [data, mode]);
   
   const options = {
     responsive: true,
@@ -402,11 +398,16 @@ const EquityCurveChart = ({ data }) => {
   return <Line data={chartData} options={options} />;
 };
 
-const TradeVolumeChart = ({ data }) => {
+const TradeVolumeChart = ({ data, mode = "paper" }) => {
   const chartData = useMemo(() => ({
     labels: data?.map((d, i) => d.date || `Day ${i + 1}`) || [],
-    datasets: [{ label: "Trades", data: data?.map((d) => d.trades || 0) || [], backgroundColor: "#6366f1", borderRadius: 8 }],
-  }), [data]);
+    datasets: [{ 
+      label: mode === "live" ? "Live Trades" : "Paper Trades", 
+      data: data?.map((d) => d.trades || d.volume || 0) || [], 
+      backgroundColor: mode === "live" ? "#10b981" : "#6366f1", 
+      borderRadius: 8 
+    }],
+  }), [data, mode]);
   
   const options = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
   
@@ -417,16 +418,17 @@ const TradeVolumeChart = ({ data }) => {
   return <Bar data={chartData} options={options} />;
 };
 
-const WinRateMeter = ({ wins, losses }) => {
+const WinRateMeter = ({ wins, losses, mode = "paper" }) => {
   const total = wins + losses;
   const winRate = total > 0 ? (wins / total) * 100 : 0;
+  const color = mode === "live" ? "#10b981" : "#6366f1";
   
   return (
     <div className="flex h-full flex-col items-center justify-center">
       <div className="relative w-48 h-48">
         <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
           <circle cx="50" cy="50" r="45" fill="none" stroke="#e2e8f0" strokeWidth="8" />
-          <circle cx="50" cy="50" r="45" fill="none" stroke="#10b981" strokeWidth="8" strokeDasharray={`${winRate * 2.827} 283`} className="transition-all duration-1000" />
+          <circle cx="50" cy="50" r="45" fill="none" stroke={color} strokeWidth="8" strokeDasharray={`${winRate * 2.827} 283`} className="transition-all duration-1000" />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-3xl font-extrabold text-gray-900">{winRate.toFixed(0)}%</span>
@@ -450,7 +452,20 @@ const StrategyRadarChart = ({ data }) => {
   return <Radar data={chartData} options={options} />;
 };
 
-// Upgrade Modal Component
+function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
+      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
+        <h3 className="text-xl font-extrabold text-gray-900">Confirm Live Trading</h3>
+        <p className="mt-2 text-sm text-gray-600">Live trading uses real money through your connected exchange accounts.</p>
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm"><strong className="text-amber-900">⚠️ Risk reminder:</strong> <span className="text-amber-800">You can lose money. Start small. You can stop anytime.</span></div>
+        <div className="mt-5 flex gap-3"><Button variant="warning" onClick={onConfirm} disabled={busy} className="flex-1">{busy ? "Starting..." : "Enable Live"}</Button><Button variant="secondary" onClick={onCancel} className="flex-1">Cancel</Button></div>
+      </div>
+    </div>
+  );
+}
+
 function UpgradeModal({ open, onClose, onUpgrade, currentTier }) {
   if (!open) return null;
   
@@ -516,8 +531,17 @@ export default function MemberDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "info" });
   const [user, setUser] = useState(null);
-  const [stats, setStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 });
-  const [series, setSeries] = useState([]);
+  
+  // Paper trading state
+  const [paperStats, setPaperStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0 });
+  const [paperSeries, setPaperSeries] = useState([]);
+  
+  // Live trading state
+  const [liveStats, setLiveStats] = useState({ total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0, balance: 0 });
+  const [liveSeries, setLiveSeries] = useState([]);
+  const [liveTrades, setLiveTrades] = useState([]);
+  const [liveExchangeBalance, setLiveExchangeBalance] = useState({ alpaca: 0, okx: 0, total: 0 });
+  
   const [integrations, setIntegrations] = useState({ wallet_connected: false, alpaca_connected: false, okx_connected: false });
   const [currentStrategy, setCurrentStrategy] = useState("ai_weighted");
   const [savingStrategy, setSavingStrategy] = useState("");
@@ -545,19 +569,53 @@ export default function MemberDashboard() {
   const trialStatus = trialData?.trial_status ?? (userTier === "starter" ? "active" : null);
   const isTrialExpired = trialStatus === "expired" || trialSecondsLeft <= 0;
   
-  const hasPaperHistory = (stats.total_trades || 0) > 0;
+  const hasPaperHistory = (paperStats.total_trades || 0) > 0;
+  const hasLiveHistory = (liveStats.total_trades || 0) > 0;
   const hasActivePaperTrading = paperTradingEnabled;
   const isPaidTier = !["starter", "free"].includes(userTier);
   
-  const isNewUser = !hasActivePaperTrading && !tradingEnabled && !hasPaperHistory;
-
-  const displayStats = useMemo(() => ({
-    total_pnl: Number(stats.total_pnl || 0),
-    win_rate: Number(stats.win_rate || 0),
-    total_trades: Math.max(Number(stats.total_trades || 0), hasActivePaperTrading ? 1 : 0),
-    wins: Number(stats.wins || 0),
-    losses: Number(stats.losses || 0),
-  }), [stats, hasActivePaperTrading]);
+  // Determine which stats to show based on active trading mode
+  const activeStats = useMemo(() => {
+    if (tradingEnabled) {
+      return {
+        total_pnl: liveStats.total_pnl,
+        win_rate: liveStats.win_rate,
+        total_trades: liveStats.total_trades,
+        wins: liveStats.wins,
+        losses: liveStats.losses,
+        balance: liveStats.balance || liveExchangeBalance.total,
+        mode: "live",
+        modeLabel: "Live Trading",
+        modeIcon: "💰",
+        modeColor: "green"
+      };
+    } else if (paperTradingEnabled || hasPaperHistory) {
+      return {
+        total_pnl: paperStats.total_pnl,
+        win_rate: paperStats.win_rate,
+        total_trades: paperStats.total_trades,
+        wins: paperStats.wins,
+        losses: paperStats.losses,
+        balance: PAPER_TRADING_BALANCE + paperStats.total_pnl,
+        mode: "paper",
+        modeLabel: "Paper Trading",
+        modeIcon: "🎮",
+        modeColor: "blue"
+      };
+    }
+    return {
+      total_pnl: 0,
+      win_rate: 0,
+      total_trades: 0,
+      wins: 0,
+      losses: 0,
+      balance: 0,
+      mode: "none",
+      modeLabel: "No Active Trading",
+      modeIcon: "📝",
+      modeColor: "slate"
+    };
+  }, [tradingEnabled, paperTradingEnabled, hasPaperHistory, liveStats, paperStats, liveExchangeBalance]);
 
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type });
@@ -585,7 +643,7 @@ export default function MemberDashboard() {
 
   const handleLogout = useCallback(() => { BotAPI.clearToken?.(); BotAPI.clearApiKey?.(); nav("/login"); }, [nav]);
 
-  const handleManualTrade = async () => {
+  const handleManualPaperTrade = async () => {
     if (paperTradeExecuting) return;
     if (!hasActivePaperTrading) {
       notify("Please enable paper trading first", "error");
@@ -605,7 +663,7 @@ export default function MemberDashboard() {
       });
       
       if (result?.success !== false) {
-        notify(`Trade executed on ${symbol}!`, "success");
+        notify(`Paper trade executed on ${symbol}!`, "success");
         await loadDashboard({ force: true });
       } else {
         throw new Error(result?.error || "Trade failed");
@@ -633,7 +691,6 @@ export default function MemberDashboard() {
       
       if (enabled) {
         notify("Paper trading enabled! You can now execute manual trades.", "success");
-        setTimeout(() => handleManualTrade(), 2000);
       } else {
         notify("Paper trading disabled.", "success");
       }
@@ -651,18 +708,20 @@ export default function MemberDashboard() {
     if (enabled && !bothConnected) { setShowApiModal(true); notify("Connect Alpaca and OKX first.", "error"); return; }
 
     setTogglingTrading(true);
-    setTradingEnabled(enabled);
     try {
       const result = await BotAPI.toggleTrading?.(enabled);
       const success = result?.success !== false;
       if (!success) throw new Error(result?.error || "Failed");
+      
+      setTradingEnabled(enabled);
       notify(enabled ? "Live trading started!" : "Live trading stopped.", "success");
       setShowLiveConfirm(false);
       await loadDashboard({ silent: true, force: true });
     } catch (err) {
-      setTradingEnabled(!enabled);
       notify(err?.message || "Failed to update.", "error");
-    } finally { setTogglingTrading(false); }
+    } finally { 
+      setTogglingTrading(false);
+    }
   };
 
   const handleStrategyChange = async (strategy) => {
@@ -688,6 +747,54 @@ export default function MemberDashboard() {
     }
   }, []);
 
+  const loadExchangeBalance = useCallback(async () => {
+    try {
+      // Try to fetch live balance from OKX and Alpaca
+      const balance = await BotAPI.getExchangeBalance?.().catch(() => null);
+      if (balance) {
+        setLiveExchangeBalance({
+          alpaca: balance.alpaca || 0,
+          okx: balance.okx || 0,
+          total: (balance.alpaca || 0) + (balance.okx || 0)
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to load exchange balance:", err);
+    }
+  }, []);
+
+  const loadLiveTradingStats = useCallback(async () => {
+    if (!access.canLiveTrade) return;
+    
+    try {
+      // Fetch live trading performance
+      const liveData = await BotAPI.getLiveTradingStats?.().catch(() => null);
+      if (liveData) {
+        const summary = liveData.summary || liveData;
+        setLiveStats({
+          total_pnl: summary.total_pnl || 0,
+          win_rate: summary.win_rate || 0,
+          total_trades: summary.total_trades || 0,
+          wins: summary.wins || 0,
+          losses: summary.losses || 0,
+          balance: summary.current_balance || summary.balance || 0,
+        });
+        
+        if (liveData.daily_performance) {
+          setLiveSeries(liveData.daily_performance);
+        }
+        if (liveData.recent_trades) {
+          setLiveTrades(liveData.recent_trades);
+        }
+      }
+      
+      // Also fetch current exchange balance
+      await loadExchangeBalance();
+    } catch (err) {
+      console.warn("Failed to load live trading stats:", err);
+    }
+  }, [access.canLiveTrade, loadExchangeBalance]);
+
   const loadDashboard = useCallback(async ({ silent = false, force = false } = {}) => {
     if (loadingRef.current) return;
     const now = Date.now();
@@ -708,7 +815,8 @@ export default function MemberDashboard() {
       setTradingEnabled(me?.trading_enabled === true);
       setPaperTradingEnabled(me?.paper_trading_enabled === true);
 
-      const [statsPayload, integrationsPayload, strategiesPayload, tradesPayload] = await Promise.all([
+      // Fetch all data in parallel
+      const [paperStatsPayload, integrationsPayload, strategiesPayload, tradesPayload] = await Promise.all([
         BotAPI.getUserTradingStats?.(30, true).catch(() => null),
         BotAPI.getIntegrationStatus?.(true).catch(() => null),
         BotAPI.getTradingStrategies?.(true).catch(() => null),
@@ -717,21 +825,27 @@ export default function MemberDashboard() {
 
       if (!mountedRef.current) return;
 
-      const summary = statsPayload?.summary || statsPayload?.data?.summary || {};
-      setStats({
-        total_pnl: summary.total_pnl || 0,
-        win_rate: summary.win_rate || 0,
-        total_trades: summary.total_trades || 0,
-        wins: summary.wins || 0,
-        losses: summary.losses || 0,
+      // Process paper stats
+      const paperSummary = paperStatsPayload?.summary || paperStatsPayload?.data?.summary || {};
+      setPaperStats({
+        total_pnl: paperSummary.total_pnl || 0,
+        win_rate: paperSummary.win_rate || 0,
+        total_trades: paperSummary.total_trades || 0,
+        wins: paperSummary.wins || 0,
+        losses: paperSummary.losses || 0,
       });
       
-      const dailySeries = statsPayload?.daily_performance || statsPayload?.data?.daily_performance || [];
-      if (dailySeries.length) setSeries(dailySeries);
+      const dailySeries = paperStatsPayload?.daily_performance || paperStatsPayload?.data?.daily_performance || [];
+      if (dailySeries.length) setPaperSeries(dailySeries);
       
       setIntegrations(integrationsPayload || {});
       setCurrentStrategy(normalizeStrategyId(strategiesPayload?.current_strategy || me?.strategy || "ai_weighted"));
       if (tradesPayload?.trades?.length) setCommunityTrades(tradesPayload.trades);
+      
+      // Load live trading stats if user has live trading enabled OR is on paid tier
+      if (me?.trading_enabled === true || access.canLiveTrade) {
+        await loadLiveTradingStats();
+      }
       
       await loadTrialStatus();
     } catch (err) {
@@ -741,7 +855,7 @@ export default function MemberDashboard() {
       loadingRef.current = false;
       if (mountedRef.current) { setRefreshing(false); setLoading(false); }
     }
-  }, [handleLogout, loadTrialStatus]);
+  }, [handleLogout, loadTrialStatus, loadLiveTradingStats, access.canLiveTrade]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -761,6 +875,10 @@ export default function MemberDashboard() {
     );
   }
 
+  // Determine which series to show in charts
+  const activeSeries = tradingEnabled ? liveSeries : paperSeries;
+  const activeWinLoss = tradingEnabled ? liveStats : paperStats;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 px-3 py-4 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
@@ -779,16 +897,18 @@ export default function MemberDashboard() {
             <div>
               <h1 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">Welcome back 👋</h1>
               <p className="mt-2 text-sm font-semibold text-gray-600">
-                {hasActivePaperTrading ? "🎮 Paper trading active - practice with virtual funds" : 
-                 tradingEnabled ? "💰 Live trading active - real funds at work" :
-                 hasPaperHistory ? "📊 View your paper trading history" :
-                 "📝 Start paper trading to learn the platform safely"}
+                {tradingEnabled 
+                  ? `💰 Live trading active - Real funds through OKX/Alpaca | Balance: ${usd(liveExchangeBalance.total || liveStats.balance)}` 
+                  : paperTradingEnabled 
+                  ? "🎮 Paper trading active - practice with virtual funds" 
+                  : hasPaperHistory 
+                  ? "📊 View your paper trading history"
+                  : "📝 Start paper trading to learn the platform safely"}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <StatusPill tone={hasActivePaperTrading ? "green" : hasPaperHistory ? "blue" : "slate"}>
-                  {access.badge || "📝"} Paper {hasActivePaperTrading ? "Active" : hasPaperHistory ? "History" : "Off"}
+                <StatusPill tone={tradingEnabled ? "purple" : paperTradingEnabled ? "green" : "slate"}>
+                  {tradingEnabled ? "💰 Live Active" : paperTradingEnabled ? "🎮 Paper Active" : "📝 Inactive"}
                 </StatusPill>
-                <StatusPill tone={tradingEnabled ? "purple" : "slate"}>💰 Live {tradingEnabled ? "Active" : "Off"}</StatusPill>
                 <StatusPill tone={bothConnected ? "green" : "amber"}>🔌 API {bothConnected ? "Ready" : "Needed"}</StatusPill>
                 <StatusPill tone="blue">🎯 Strategy: {activeStrategy.name}</StatusPill>
                 <StatusPill tone={access.canLiveTrade ? "green" : "amber"}>{access.badge} {access.label}</StatusPill>
@@ -833,146 +953,195 @@ export default function MemberDashboard() {
         {activeTab === "overview" && (
           <div className="space-y-5">
             
-            {/* PAPER TRADING CONTROLS CARD */}
-            <Card className="border-blue-200 bg-blue-50/50">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-extrabold text-blue-900">🎮 Paper Trading Controls</h2>
-                  <p className="text-sm font-semibold text-blue-800">
-                    {hasActivePaperTrading
-                      ? "Paper trading is ON. Execute manual trades below."
-                      : "Paper trading is OFF. Start it to practice trading with virtual funds."}
-                  </p>
-                  {hasPaperHistory && !hasActivePaperTrading && (
-                    <p className="text-xs text-blue-700 mt-1">📊 You have {stats.total_trades} historical paper trades.</p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  {!hasActivePaperTrading ? (
-                    <Button onClick={() => handleTogglePaperTrading(true)} disabled={togglingPaper}>
-                      {togglingPaper ? "Starting..." : "Start Paper"}
-                    </Button>
-                  ) : (
-                    <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={togglingPaper}>
-                      {togglingPaper ? "Stopping..." : "Stop Paper"}
-                    </Button>
-                  )}
-                  <Button
-                    variant="secondary"
-                    onClick={handleManualTrade}
-                    disabled={!hasActivePaperTrading || paperTradeExecuting}
-                  >
-                    {paperTradeExecuting ? "Trading..." : "Manual Trade"}
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
-            {/* LIVE TRADING CONTROLS CARD */}
-            <Card className="border-purple-200 bg-purple-50/50">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-extrabold text-purple-900">💰 Live Trading Controls</h2>
-                  <p className="text-sm font-semibold text-purple-800">
-                    {!access.canLiveTrade ? (
-                      <span>🔒 Live trading requires upgrade. <button onClick={() => setShowUpgradeModal(true)} className="text-purple-600 underline">Upgrade to {UPGRADE_PLANS[0]?.displayName} →</button></span>
-                    ) : tradingEnabled ? (
-                      "Live trading is ON with real funds."
-                    ) : (
-                      "Live trading is OFF. Click Start Live to begin."
-                    )}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  {!access.canLiveTrade ? (
-                    <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>
-                      Upgrade to {UPGRADE_PLANS[0]?.displayName} → 💳
-                    </Button>
-                  ) : !tradingEnabled ? (
-                    <Button variant="warning" onClick={() => setShowLiveConfirm(true)} disabled={!bothConnected}>
-                      Start Live
-                    </Button>
-                  ) : (
-                    <Button variant="danger" onClick={() => handleToggleTrading(false)} disabled={togglingTrading}>
-                      Stop Live
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </Card>
-
-            {/* PLAN CARD - Shows current plan clearly */}
-            <Card className="border-purple-200 bg-gradient-to-r from-purple-50/80 to-indigo-50/60">
+            {/* MODE SELECTOR / STATUS CARD */}
+            <Card className={`border-${activeStats.modeColor === "green" ? "green" : activeStats.modeColor === "blue" ? "blue" : "slate"}-200 bg-${activeStats.modeColor === "green" ? "green" : activeStats.modeColor === "blue" ? "blue" : "gray"}-50/50`}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-3xl">{access.badge || "🌱"}</span>
-                    <h2 className="text-xl font-extrabold text-purple-900">Your Plan: {access.displayName || access.label}</h2>
+                    <span className="text-2xl">{activeStats.modeIcon}</span>
+                    <h2 className="text-lg font-extrabold text-gray-900">Active Mode: {activeStats.modeLabel}</h2>
                   </div>
-                  <p className="mt-1 text-sm font-semibold text-purple-800">
-                    {isPaidTier ? (
-                      `✅ Active ${access.label} plan - ${access.price}${access.period}`
-                    ) : isTrialExpired ? (
-                      "⚠️ Your trial has expired. Upgrade to continue trading."
-                    ) : (
-                      `📝 Free trial: ${formatTimeLeft(trialSecondsLeft)} remaining. ${access.price}${access.period} after trial.`
-                    )}
+                  <p className="text-sm font-semibold text-gray-700 mt-1">
+                    {tradingEnabled 
+                      ? `💰 Live trading with real funds. Current balance: ${usd(liveExchangeBalance.total || liveStats.balance)}`
+                      : paperTradingEnabled 
+                      ? `🎮 Paper trading with virtual funds: ${usd(PAPER_TRADING_BALANCE + paperStats.total_pnl)}`
+                      : "No trading mode active. Select one below to begin."}
                   </p>
-                  {!access.canLiveTrade && (
+                </div>
+                <div className="flex gap-2">
+                  {!tradingEnabled && !paperTradingEnabled && (
+                    <>
+                      {access.canLiveTrade && bothConnected && (
+                        <Button variant="warning" onClick={() => setShowLiveConfirm(true)}>
+                          Start Live Trading
+                        </Button>
+                      )}
+                      <Button variant="primary" onClick={() => handleTogglePaperTrading(true)} disabled={togglingPaper}>
+                        Start Paper Trading
+                      </Button>
+                    </>
+                  )}
+                  {tradingEnabled && (
+                    <Button variant="danger" onClick={() => handleToggleTrading(false)} disabled={togglingTrading}>
+                      Stop Live Trading
+                    </Button>
+                  )}
+                  {paperTradingEnabled && (
+                    <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={togglingPaper}>
+                      Stop Paper Trading
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+
+            {/* LIVE TRADING DETAILS - Show when live trading is active */}
+            {tradingEnabled && (
+              <Card className="border-green-200 bg-green-50/50">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-extrabold text-green-900">💰 Live Trading Details</h2>
+                    <div className="mt-2 space-y-1">
+                      <p className="text-sm font-semibold text-green-800">
+                        OKX Balance: {usd(liveExchangeBalance.okx)}
+                      </p>
+                      <p className="text-sm font-semibold text-green-800">
+                        Alpaca Balance: {usd(liveExchangeBalance.alpaca)}
+                      </p>
+                      <p className="text-sm font-bold text-green-900">
+                        Total Live Funds: {usd(liveExchangeBalance.total || liveStats.balance)}
+                      </p>
+                      {liveStats.total_trades > 0 && (
+                        <p className="text-sm text-green-700">
+                          Live P&L: <span className={liveStats.total_pnl >= 0 ? "text-green-700" : "text-red-600"}>{usd(liveStats.total_pnl)}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <Button variant="secondary" onClick={() => setShowApiModal(true)}>
+                    Manage Exchange Keys
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {/* PAPER TRADING CONTROLS CARD - Only show when paper trading is active OR no live trading */}
+            {!tradingEnabled && (
+              <Card className="border-blue-200 bg-blue-50/50">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-extrabold text-blue-900">🎮 Paper Trading Controls</h2>
+                    <p className="text-sm font-semibold text-blue-800">
+                      {paperTradingEnabled
+                        ? `Paper trading is ON. Virtual balance: ${usd(PAPER_TRADING_BALANCE + paperStats.total_pnl)}`
+                        : hasPaperHistory
+                        ? `You have ${paperStats.total_trades} historical paper trades with ${usd(paperStats.total_pnl)} total P&L.`
+                        : "Paper trading is OFF. Start it to practice with virtual funds."}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {paperTradingEnabled ? (
+                      <>
+                        <Button
+                          variant="secondary"
+                          onClick={handleManualPaperTrade}
+                          disabled={paperTradeExecuting}
+                        >
+                          {paperTradeExecuting ? "Trading..." : "Manual Trade"}
+                        </Button>
+                        <Button variant="danger" onClick={() => handleTogglePaperTrading(false)} disabled={togglingPaper}>
+                          Stop Paper
+                        </Button>
+                      </>
+                    ) : (
+                      <Button onClick={() => handleTogglePaperTrading(true)} disabled={togglingPaper}>
+                        {togglingPaper ? "Starting..." : "Start Paper"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* UPGRADE CARD - For free tier users */}
+            {!access.canLiveTrade && !tradingEnabled && (
+              <Card className="border-purple-200 bg-gradient-to-r from-purple-50/80 to-indigo-50/60">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-3xl">{access.badge || "🌱"}</span>
+                      <h2 className="text-xl font-extrabold text-purple-900">Your Plan: {access.displayName || access.label}</h2>
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-purple-800">
+                      {isTrialExpired ? (
+                        "⚠️ Your trial has expired. Upgrade to continue live trading."
+                      ) : (
+                        `📝 Free trial: ${formatTimeLeft(trialSecondsLeft)} remaining.`
+                      )}
+                    </p>
                     <p className="mt-1 text-xs text-purple-600">
                       ✨ {UPGRADE_PLANS[0]?.displayName} includes: {UPGRADE_PLANS[0]?.features.join(", ")}
                     </p>
-                  )}
-                </div>
-                {!isPaidTier && (
+                  </div>
                   <Button variant="warning" onClick={() => setShowUpgradeModal(true)}>
                     Upgrade to Pro → 💳
                   </Button>
-                )}
-              </div>
-            </Card>
+                </div>
+              </Card>
+            )}
 
-            {/* STATS CARDS */}
+            {/* STATS CARDS - Show current mode stats */}
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
-                <div className="text-2xl font-extrabold text-gray-900">{usd(displayStats.total_pnl)}</div>
+                <div className="text-2xl font-extrabold text-gray-900">{usd(activeStats.total_pnl)}</div>
                 <div className="text-xs text-gray-500 font-medium">Total P&L</div>
               </div>
               <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
-                <div className="text-2xl font-extrabold text-gray-900">{pct(displayStats.win_rate)}</div>
+                <div className="text-2xl font-extrabold text-gray-900">{pct(activeStats.win_rate)}</div>
                 <div className="text-xs text-gray-500 font-medium">Win Rate</div>
               </div>
               <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
-                <div className="text-2xl font-extrabold text-gray-900">{displayStats.total_trades}</div>
+                <div className="text-2xl font-extrabold text-gray-900">{activeStats.total_trades}</div>
                 <div className="text-xs text-gray-500 font-medium">Total Trades</div>
               </div>
               <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
-                <div className="text-2xl font-extrabold text-gray-900">{hasActivePaperTrading ? "Paper" : tradingEnabled ? "Live" : hasPaperHistory ? "Paper" : "Setup"}</div>
-                <div className="text-xs text-gray-500 font-medium">Mode</div>
+                <div className="text-2xl font-extrabold text-gray-900">{activeStats.modeIcon}</div>
+                <div className="text-xs text-gray-500 font-medium">{activeStats.modeLabel}</div>
               </div>
             </div>
 
-            {/* PAPER TRADING INFO CARD */}
-            <Card className="border-blue-200 bg-blue-50/50">
-              <div className="flex flex-col gap-3">
-                <div>
-                  <h2 className="text-lg font-extrabold text-blue-900 sm:text-xl">📊 About Paper Trading</h2>
-                  <p className="mt-1 text-sm font-bold text-blue-800">
-                    {hasActivePaperTrading 
-                      ? `Active with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. Click "Manual Trade" to execute trades.` 
-                      : hasPaperHistory
-                      ? `You have ${stats.total_trades} completed paper trades with ${usd(displayStats.total_pnl)} total profit/loss.`
-                      : `Available with $${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds. No real money. No API keys needed!`}
-                  </p>
-                </div>
+            {/* EQUITY CURVE CHART */}
+            <Card>
+              <SectionTitle helper={tradingEnabled ? "Your live portfolio value over time" : "Your paper portfolio value over time"}>
+                {tradingEnabled ? "💰 Live Equity Curve" : "📈 Paper Equity Curve"}
+              </SectionTitle>
+              <div className="h-[300px] w-full">
+                <EquityCurveChart data={activeSeries} mode={tradingEnabled ? "live" : "paper"} />
               </div>
             </Card>
 
-            {/* EQUITY CURVE CHART */}
-            <Card>
-              <SectionTitle helper="Your portfolio value over time">📈 Equity Curve</SectionTitle>
-              <div className="h-[300px] w-full"><EquityCurveChart data={series} /></div>
-            </Card>
+            {/* LIVE TRADES - Show recent live trades when active */}
+            {tradingEnabled && liveTrades.length > 0 && (
+              <Card>
+                <SectionTitle helper="Your recent live trades">🔄 Recent Live Trades</SectionTitle>
+                <div className="space-y-2 max-h-80 overflow-auto">
+                  {liveTrades.slice(0, 10).map((trade, i) => (
+                    <div key={trade.id || i} className="flex justify-between items-center p-3 border-b border-gray-100">
+                      <div>
+                        <span className="font-bold text-gray-900">{trade.symbol}</span>
+                        <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded ${trade.side === 'buy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {trade.side?.toUpperCase()}
+                        </span>
+                      </div>
+                      <div className={Number(trade.pnl) >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                        {usd(trade.pnl)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
 
             {/* HELPFUL RESOURCES */}
             <Card>
@@ -994,35 +1163,47 @@ export default function MemberDashboard() {
           </div>
         )}
 
-        {/* TRADING TAB - Same as before */}
+        {/* TRADING TAB */}
         {activeTab === "trading" && (
           <div className="space-y-5">
             <div className="grid gap-6 xl:grid-cols-2">
               <Card>
-                <SectionTitle helper="Win/Loss breakdown">🎯 Win Rate</SectionTitle>
-                <div className="h-[300px]"><WinRateMeter wins={displayStats.wins} losses={displayStats.losses} /></div>
+                <SectionTitle helper={`${tradingEnabled ? "Live" : "Paper"} Win/Loss breakdown`}>
+                  🎯 Win Rate {tradingEnabled && "💰"}
+                </SectionTitle>
+                <div className="h-[300px]">
+                  <WinRateMeter 
+                    wins={activeWinLoss.wins} 
+                    losses={activeWinLoss.losses} 
+                    mode={tradingEnabled ? "live" : "paper"} 
+                  />
+                </div>
               </Card>
               <Card>
-                <SectionTitle helper="Daily trade volume">📊 Trade Volume</SectionTitle>
-                <div className="h-[300px]"><TradeVolumeChart data={series} /></div>
+                <SectionTitle helper={`${tradingEnabled ? "Live" : "Paper"} daily trade volume`}>
+                  📊 Trade Volume {tradingEnabled && "💰"}
+                </SectionTitle>
+                <div className="h-[300px]">
+                  <TradeVolumeChart data={activeSeries} mode={tradingEnabled ? "live" : "paper"} />
+                </div>
               </Card>
             </div>
 
-            {hasActivePaperTrading && (
+            {paperTradingEnabled && !tradingEnabled && (
               <Card>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="font-extrabold text-gray-900">Execute Manual Paper Trade</h3>
                     <p className="text-sm text-gray-500">Test the system with a random paper trade</p>
                   </div>
-                  <Button variant="primary" onClick={handleManualTrade} disabled={paperTradeExecuting}>
+                  <Button variant="primary" onClick={handleManualPaperTrade} disabled={paperTradeExecuting}>
                     {paperTradeExecuting ? "Executing..." : "Execute Random Trade"}
                   </Button>
                 </div>
               </Card>
             )}
 
-            {!hasActivePaperTrading && hasPaperHistory && (
+            {!paperTradingEnabled && !tradingEnabled && hasPaperHistory && (
               <Card>
                 <div className="text-center py-6">
                   <div className="text-5xl mb-3">📊</div>
@@ -1032,12 +1213,12 @@ export default function MemberDashboard() {
               </Card>
             )}
 
-            {!hasActivePaperTrading && !hasPaperHistory && !tradingEnabled && (
+            {!paperTradingEnabled && !tradingEnabled && !hasPaperHistory && (
               <Card>
                 <div className="text-center py-6">
                   <div className="text-5xl mb-3">🎮</div>
                   <h3 className="font-extrabold text-gray-900">No Trading Active</h3>
-                  <p className="text-sm text-gray-500 mt-1">Click "Start Paper" in the Overview tab to begin</p>
+                  <p className="text-sm text-gray-500 mt-1">Click "Start Paper" or "Start Live" in the Overview tab to begin</p>
                 </div>
               </Card>
             )}
@@ -1125,18 +1306,33 @@ export default function MemberDashboard() {
         {activeTab === "learn" && (
           <div className="space-y-5">
             <Card>
-              <SectionTitle>📚 How Paper Trading Works</SectionTitle>
+              <SectionTitle>📚 How {tradingEnabled ? "Live" : "Paper"} Trading Works</SectionTitle>
               <div className="prose prose-gray max-w-none">
-                <h3 className="text-gray-900">1. Start Paper Trading</h3>
-                <p className="text-gray-600">Click "Start Paper" - no API keys needed. The bot starts with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.</p>
-                <h3 className="text-gray-900">2. Execute Manual Trades</h3>
-                <p className="text-gray-600">Click "Manual Trade" to practice trading. Each trade is recorded with realistic P&L.</p>
-                <h3 className="text-gray-900">3. Monitor Performance</h3>
-                <p className="text-gray-600">Watch your equity curve grow. The win rate and trade volume charts update automatically.</p>
-                <h3 className="text-gray-900">4. Switch Strategies Anytime</h3>
-                <p className="text-gray-600">Not happy with performance? Change your strategy - future trades will use it.</p>
-                <h3 className="text-gray-900">5. Upgrade When Ready</h3>
-                <p className="text-gray-600">Once confident, upgrade to Pro for live trading with real funds through your exchange accounts.</p>
+                {tradingEnabled ? (
+                  <>
+                    <h3 className="text-gray-900">1. Live Trading Active</h3>
+                    <p className="text-gray-600">Your connected exchange accounts (OKX and Alpaca) are being used for real trading.</p>
+                    <h3 className="text-gray-900">2. Real Funds at Work</h3>
+                    <p className="text-gray-600">The bot executes trades using your actual exchange balance. Your ${liveExchangeBalance.okx} on OKX and ${liveExchangeBalance.alpaca} on Alpaca are active.</p>
+                    <h3 className="text-gray-900">3. Monitor Performance</h3>
+                    <p className="text-gray-600">Watch your live equity curve and P&L update in real-time.</p>
+                    <h3 className="text-gray-900">4. Risk Management</h3>
+                    <p className="text-gray-600">You can stop live trading anytime. Start small and monitor closely.</p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-gray-900">1. Start Paper Trading</h3>
+                    <p className="text-gray-600">Click "Start Paper" - no API keys needed. The bot starts with ${PAPER_TRADING_BALANCE.toLocaleString()} virtual funds.</p>
+                    <h3 className="text-gray-900">2. Execute Manual Trades</h3>
+                    <p className="text-gray-600">Click "Manual Trade" to practice trading. Each trade is recorded with realistic P&L.</p>
+                    <h3 className="text-gray-900">3. Monitor Performance</h3>
+                    <p className="text-gray-600">Watch your equity curve grow. The win rate and trade volume charts update automatically.</p>
+                    <h3 className="text-gray-900">4. Switch Strategies Anytime</h3>
+                    <p className="text-gray-600">Not happy with performance? Change your strategy - future trades will use it.</p>
+                    <h3 className="text-gray-900">5. Upgrade When Ready</h3>
+                    <p className="text-gray-600">Once confident, upgrade to Pro for live trading with real funds through your exchange accounts.</p>
+                  </>
+                )}
               </div>
             </Card>
 
@@ -1144,11 +1340,12 @@ export default function MemberDashboard() {
               <SectionTitle>🏆 Achievements</SectionTitle>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { id: "paper_active", label: "Paper Trader", icon: "🎮", unlocked: hasActivePaperTrading || hasPaperHistory },
-                  { id: "first_trade", label: "First Trade", icon: "🚀", unlocked: displayStats.total_trades > 0 },
-                  { id: "trades_10", label: "10 Trades", icon: "⭐", unlocked: displayStats.total_trades >= 10 },
-                  { id: "trades_50", label: "50 Trades", icon: "🏆", unlocked: displayStats.total_trades >= 50 },
-                  { id: "profitable", label: "Profitable", icon: "💰", unlocked: displayStats.total_pnl > 0 },
+                  { id: "live_active", label: "Live Trader", icon: "💰", unlocked: tradingEnabled },
+                  { id: "paper_active", label: "Paper Trader", icon: "🎮", unlocked: paperTradingEnabled || hasPaperHistory },
+                  { id: "first_trade", label: "First Trade", icon: "🚀", unlocked: activeStats.total_trades > 0 },
+                  { id: "trades_10", label: "10 Trades", icon: "⭐", unlocked: activeStats.total_trades >= 10 },
+                  { id: "trades_50", label: "50 Trades", icon: "🏆", unlocked: activeStats.total_trades >= 50 },
+                  { id: "profitable", label: "Profitable", icon: "💰", unlocked: activeStats.total_pnl > 0 },
                 ].map((achievement) => (
                   <div key={achievement.id} className={`rounded-2xl border px-4 py-2 text-sm font-extrabold ${achievement.unlocked ? "border-green-300 bg-green-50 text-green-800" : "border-gray-200 bg-gray-50 text-gray-400"}`}>
                     {achievement.icon} {achievement.label}
@@ -1200,20 +1397,6 @@ export default function MemberDashboard() {
       )}
 
       <LiveConfirmModal open={showLiveConfirm} onCancel={() => setShowLiveConfirm(false)} onConfirm={() => handleToggleTrading(true)} busy={togglingTrading} />
-    </div>
-  );
-}
-
-function LiveConfirmModal({ open, onCancel, onConfirm, busy }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
-      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
-        <h3 className="text-xl font-extrabold text-gray-900">Confirm Live Trading</h3>
-        <p className="mt-2 text-sm text-gray-600">Live trading uses real money through your connected exchange accounts.</p>
-        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm"><strong className="text-amber-900">⚠️ Risk reminder:</strong> <span className="text-amber-800">You can lose money. Start small. You can stop anytime.</span></div>
-        <div className="mt-5 flex gap-3"><Button variant="warning" onClick={onConfirm} disabled={busy} className="flex-1">{busy ? "Starting..." : "Enable Live"}</Button><Button variant="secondary" onClick={onCancel} className="flex-1">Cancel</Button></div>
-      </div>
     </div>
   );
 }
