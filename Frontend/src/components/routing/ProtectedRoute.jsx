@@ -1,4 +1,4 @@
-// src/components/routing/ProtectedRoute.jsx
+// src/components/routing/ProtectedRoute.jsx - REWRITTEN (Matches pricing page tiers)
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
@@ -9,30 +9,64 @@ const ACTIVATION_EXEMPT = [
   "/billing-dashboard",
   "/settings",
   "/profile",
-  "/api-keys"
+  "/api-keys",
+  "/support",
+  "/pricing"
 ];
 
-// Pages that require specific tier access
+// Pages that require specific tier access (matching pricing page)
 const TIER_REQUIREMENTS = {
-  "/elite-dashboard": ["elite", "pro"],
-  "/pro-features": ["pro", "elite"],
-  "/starter-only": ["starter"],
+  "/elite-dashboard": ["elite"],
+  "/pro-dashboard": ["pro", "elite"],
+  "/defi-dashboard": ["elite"],
+  "/starter-dashboard": ["starter"],
 };
 
 // Loading spinner component for reuse
 const LoadingSpinner = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50">
+  <div className="min-h-screen flex items-center justify-center bg-gray-950">
     <div className="text-center">
-      <div className="animate-spin h-10 w-10 border-4 border-emerald-600 border-t-transparent rounded-full mx-auto mb-4" />
-      <p className="text-gray-500 text-sm">Loading...</p>
+      <div className="animate-spin h-10 w-10 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
+      <p className="text-gray-400 text-sm">Loading...</p>
     </div>
   </div>
 );
 
-// Check if user has required tier
+// Check if user has required tier (matches pricing page tiers: starter, pro, elite, enterprise)
 const hasRequiredTier = (userTier, requiredTiers) => {
   if (!requiredTiers || requiredTiers.length === 0) return true;
-  return requiredTiers.includes(userTier);
+  if (!userTier) return false;
+  
+  const tierRank = {
+    "starter": 0,
+    "pro": 1,
+    "elite": 2,
+    "enterprise": 3
+  };
+  
+  const userRank = tierRank[userTier.toLowerCase()] ?? 0;
+  
+  // Check if user's tier meets any of the required tiers
+  return requiredTiers.some(required => {
+    const requiredRank = tierRank[required.toLowerCase()] ?? -1;
+    return userRank >= requiredRank;
+  });
+};
+
+// Get the appropriate dashboard for user's tier
+const getDashboardForTier = (tier) => {
+  switch (tier?.toLowerCase()) {
+    case "starter":
+      return "/dashboard";
+    case "pro":
+      return "/dashboard";
+    case "elite":
+      return "/dashboard";
+    case "enterprise":
+      return "/enterprise-dashboard";
+    default:
+      return "/dashboard";
+  }
 };
 
 export default function ProtectedRoute({ 
@@ -57,13 +91,7 @@ export default function ProtectedRoute({
     return <LoadingSpinner />;
   }
 
-  // DEBUG: Log admin status
-  console.log("[ProtectedRoute] User:", user?.email);
-  console.log("[ProtectedRoute] isAdmin from hook:", isAdmin);
-  console.log("[ProtectedRoute] user.is_admin:", user?.is_admin);
-  console.log("[ProtectedRoute] isAuthenticated:", isAuthenticated);
-
-  // Check if user is admin - FIXED: Check both isAdmin flag AND user.is_admin
+  // Check if user is admin (both flags)
   const isUserAdmin = isAdmin === true || user?.is_admin === true;
 
   // NOT LOGGED IN - redirect to login
@@ -72,22 +100,23 @@ export default function ProtectedRoute({
     return <Navigate to={redirectTo} replace state={{ from: location.pathname }} />;
   }
 
-  // ADMIN RULE: Admins can access everything, skip all checks
+  // ADMIN RULE: Admins can access everything
   if (isUserAdmin) {
     console.log("[ProtectedRoute] Admin access granted to:", location.pathname);
-    // Admin trying to access activation/billing? Send to dashboard
     if (location.pathname === "/activation" || location.pathname === "/billing") {
       return <Navigate to="/dashboard" replace />;
     }
     return <Outlet />;
   }
 
-  // REGULAR USER RULES
+  // ==============================================
+  // REGULAR USER RULES (matches pricing page)
+  // ==============================================
   
   // Check tier requirements for specific routes
   const requiredTiersForRoute = requiredTier || TIER_REQUIREMENTS[location.pathname];
   if (requiredTiersForRoute && !hasRequiredTier(user?.tier, requiredTiersForRoute)) {
-    return <Navigate to="/upgrade" replace state={{ 
+    return <Navigate to="/pricing" replace state={{ 
       from: location.pathname,
       requiredTier: requiredTiersForRoute,
       message: `This feature requires ${requiredTiersForRoute.join(" or ")} tier`
@@ -97,6 +126,29 @@ export default function ProtectedRoute({
   // Check if current page is exempt from activation
   const isExempt = ACTIVATION_EXEMPT.some(path => location.pathname.startsWith(path));
 
+  // ==============================================
+  // STARTER USER HANDLING
+  // - No activation required
+  // - Direct access to dashboard for paper trading
+  // ==============================================
+  if (user?.tier === "starter") {
+    // Starter users trying to access activation/billing? Redirect to dashboard
+    if (location.pathname === "/activation" || location.pathname === "/billing") {
+      return <Navigate to="/dashboard" replace />;
+    }
+    // Starter users can access everything else (except paid features)
+    if (!isExempt) {
+      // Already checked tier requirements above
+      return <Outlet />;
+    }
+    return <Outlet />;
+  }
+
+  // ==============================================
+  // PRO & ELITE USER HANDLING
+  // - Require activation (billing + connections)
+  // ==============================================
+  
   // If activation is required but not complete
   if (requireActivation && !activationComplete && !isExempt) {
     // Check if user has the required integrations
@@ -117,17 +169,18 @@ export default function ProtectedRoute({
 
   // If activation is complete, prevent going back to activation/billing pages
   if (activationComplete && (location.pathname === "/activation" || location.pathname === "/billing")) {
-    return <Navigate to="/dashboard" replace />;
+    const dashboard = getDashboardForTier(user?.tier);
+    return <Navigate to={dashboard} replace />;
   }
 
   // Check trading permissions for trading routes
   if (location.pathname.startsWith("/trade") && !canTrade) {
-    // Redirect to appropriate page based on what's missing
+    // Pro/Elite users need activation first
     if (!activationComplete) {
       return <Navigate to="/activation" replace state={{ from: location.pathname }} />;
     }
     if (!hasRequiredIntegrations) {
-      return <Navigate to="/integrations" replace state={{ from: location.pathname }} />;
+      return <Navigate to="/activation" replace state={{ from: location.pathname }} />;
     }
     if (!hasCardOnFile) {
       return <Navigate to="/billing" replace state={{ from: location.pathname }} />;
@@ -177,8 +230,15 @@ export function RedirectIfActivated({ children, redirectTo = "/dashboard" }) {
     return children;
   }
 
+  // Starter users never go to activation
+  if (user?.tier === "starter") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Pro/Elite users: redirect if activation complete
   if (activationComplete) {
-    return <Navigate to={redirectTo} replace />;
+    const dashboard = getDashboardForTier(user?.tier);
+    return <Navigate to={dashboard} replace />;
   }
 
   return children;
@@ -187,7 +247,7 @@ export function RedirectIfActivated({ children, redirectTo = "/dashboard" }) {
 // =============================================================================
 // Tier-based route protection
 // =============================================================================
-export function RequireTier({ children, requiredTier, fallbackPath = "/upgrade" }) {
+export function RequireTier({ children, requiredTier, fallbackPath = "/pricing" }) {
   const { user, loading, isAdmin } = useAuth();
   const location = useLocation();
   const isUserAdmin = isAdmin === true || user?.is_admin === true;
@@ -219,23 +279,138 @@ export function RequireTier({ children, requiredTier, fallbackPath = "/upgrade" 
 }
 
 // =============================================================================
+// Starter-only route protection (paper trading only)
+// =============================================================================
+export function RequireStarterOrGuest({ children, redirectTo = "/pricing" }) {
+  const { user, loading, isAdmin } = useAuth();
+  const location = useLocation();
+  const isUserAdmin = isAdmin === true || user?.is_admin === true;
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  // Admins can access
+  if (isUserAdmin) {
+    return children;
+  }
+
+  // Only starter users can access this route
+  if (user?.tier !== "starter") {
+    return <Navigate to={redirectTo} replace state={{ 
+      from: location.pathname,
+      message: "This feature is only available for Starter plan users"
+    }} />;
+  }
+
+  return children;
+}
+
+// =============================================================================
+// Pro/Elite route protection (requires activation)
+// =============================================================================
+export function RequirePaidTier({ children, redirectTo = "/pricing" }) {
+  const { user, activationComplete, loading, isAdmin } = useAuth();
+  const location = useLocation();
+  const isUserAdmin = isAdmin === true || user?.is_admin === true;
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  // Admins can access
+  if (isUserAdmin) {
+    return children;
+  }
+
+  // Check if user is on paid tier (pro or elite)
+  const isPaidTier = user?.tier === "pro" || user?.tier === "elite";
+  
+  if (!isPaidTier) {
+    return <Navigate to={redirectTo} replace state={{ 
+      from: location.pathname,
+      message: "This feature requires a Pro or Elite subscription"
+    }} />;
+  }
+
+  // Paid tier users must complete activation
+  if (!activationComplete) {
+    return <Navigate to="/activation" replace state={{ from: location.pathname }} />;
+  }
+
+  return children;
+}
+
+// =============================================================================
+// Enterprise-only route protection
+// =============================================================================
+export function RequireEnterprise({ children, redirectTo = "/pricing" }) {
+  const { user, loading, isAdmin } = useAuth();
+  const location = useLocation();
+  const isUserAdmin = isAdmin === true || user?.is_admin === true;
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  // Admins can access
+  if (isUserAdmin) {
+    return children;
+  }
+
+  if (user?.tier !== "enterprise") {
+    return <Navigate to={redirectTo} replace state={{ 
+      from: location.pathname,
+      message: "This feature requires an Enterprise subscription"
+    }} />;
+  }
+
+  return children;
+}
+
+// =============================================================================
 // Trading-specific route protection
 // =============================================================================
 export function RequireTradingEnabled({ children, redirectTo = "/activation" }) {
-  const { canTrade, loading, activationComplete, hasCardOnFile, hasRequiredIntegrations } = useAuth();
+  const { user, canTrade, loading, activationComplete, hasCardOnFile, hasRequiredIntegrations } = useAuth();
   const location = useLocation();
 
   if (loading) {
     return <LoadingSpinner />;
   }
 
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Starter users can only paper trade
+  if (user?.tier === "starter") {
+    if (location.pathname.includes("live")) {
+      return <Navigate to="/dashboard" replace />;
+    }
+    return children;
+  }
+
+  // Pro/Elite users need trading enabled
   if (!canTrade) {
     // Determine the appropriate redirect
     if (!hasCardOnFile) {
       return <Navigate to="/billing" replace state={{ from: location.pathname }} />;
     }
     if (!hasRequiredIntegrations) {
-      return <Navigate to="/integrations" replace state={{ from: location.pathname }} />;
+      return <Navigate to="/activation" replace state={{ from: location.pathname }} />;
     }
     if (!activationComplete) {
       return <Navigate to={redirectTo} replace state={{ from: location.pathname }} />;
@@ -249,7 +424,7 @@ export function RequireTradingEnabled({ children, redirectTo = "/activation" }) 
 // =============================================================================
 // Integration check protection
 // =============================================================================
-export function RequireIntegration({ children, requiredIntegrations = [], redirectTo = "/integrations" }) {
+export function RequireIntegration({ children, requiredIntegrations = [], redirectTo = "/activation" }) {
   const { user, activation, loading, isAdmin } = useAuth();
   const location = useLocation();
   const isUserAdmin = isAdmin === true || user?.is_admin === true;
@@ -264,6 +439,11 @@ export function RequireIntegration({ children, requiredIntegrations = [], redire
 
   // Admins bypass integration checks
   if (isUserAdmin) {
+    return children;
+  }
+
+  // Starter users don't need integrations
+  if (user?.tier === "starter") {
     return children;
   }
 
@@ -303,8 +483,13 @@ export const useRouteProtection = () => {
     const { requireActivation = false, requiredTier = null } = options;
     
     if (!auth.isAuthenticated) return false;
-    // Check both isAdmin flags
     if (auth.isAdmin === true || auth.user?.is_admin === true) return true;
+    
+    // Starter users have special rules
+    if (auth.user?.tier === "starter") {
+      if (requiredTier && !hasRequiredTier("starter", requiredTier)) return false;
+      return true;
+    }
     
     if (requiredTier && !hasRequiredTier(auth.user?.tier, requiredTier)) return false;
     if (requireActivation && !auth.activationComplete) return false;
@@ -313,8 +498,11 @@ export const useRouteProtection = () => {
   }, [auth]);
 
   const getRedirectPath = useCallback(() => {
+    // Starter users go directly to dashboard
+    if (auth.user?.tier === "starter") return "/dashboard";
+    
     if (!auth.hasCardOnFile) return "/billing";
-    if (!auth.hasRequiredIntegrations) return "/integrations";
+    if (!auth.hasRequiredIntegrations) return "/activation";
     if (!auth.activationComplete) return "/activation";
     return "/dashboard";
   }, [auth]);
@@ -322,6 +510,7 @@ export const useRouteProtection = () => {
   return {
     canAccessRoute,
     getRedirectPath,
+    getDashboardForTier: () => getDashboardForTier(auth.user?.tier),
     isExemptRoute: (path) => ACTIVATION_EXEMPT.some(exempt => path.startsWith(exempt))
   };
 };
