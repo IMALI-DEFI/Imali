@@ -1,4 +1,4 @@
-// src/utils/BotAPI.js - COMPLETE REWRITE with Billing Methods
+// src/utils/BotAPI.js - COMPLETE REWRITE with Live Trading & Billing Methods
 import axios from "axios";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com";
@@ -29,7 +29,7 @@ const inflight = new Map();
 const lastRequestAt = new Map();
 
 // VALID TIERS including enterprise
-const VALID_TIERS = ["starter", "pro", "elite", "stock", "bundle", "enterprise"];
+const VALID_TIERS = ["starter", "pro", "elite", "rare", "epic", "legendary", "common", "stock", "bundle", "enterprise"];
 
 /* ================= CACHE HELPERS ================= */
 
@@ -77,6 +77,8 @@ const clearTradingCache = () => {
   clearCache("trading_strategies");
   clearCache("enterprise_org_users");
   clearCache("enterprise_strategies");
+  clearCache("live_trading_stats");
+  clearCache("exchange_balance");
 };
 
 /* ================= STORAGE HELPERS ================= */
@@ -414,6 +416,19 @@ const getDefaultStrategies = () => ({
   _fallback: true,
 });
 
+const getDefaultLiveStats = () => ({
+  summary: {
+    total_pnl: 0,
+    win_rate: 0,
+    total_trades: 0,
+    wins: 0,
+    losses: 0,
+    current_balance: 0,
+  },
+  daily_performance: [],
+  recent_trades: [],
+});
+
 /* ================= AUTH ENDPOINTS ================= */
 
 export const signup = async (userData) => {
@@ -736,11 +751,6 @@ export const confirmCard = async (payload = {}) => {
 
 /* ================= BILLING & SUBSCRIPTION METHODS ================= */
 
-/**
- * Change user's subscription plan (upgrade/downgrade)
- * @param {string} newTierId - The new tier ID (pro, elite, etc.)
- * @returns {Promise<Object>} Response with checkout URL or direct result
- */
 export const changePlan = async (newTierId) => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -751,9 +761,7 @@ export const changePlan = async (newTierId) => {
 
     const data = unwrap(response);
     
-    // If checkout is required (first-time paid subscription)
     if (data?.requires_checkout && data?.checkout_url) {
-      // Redirect to Stripe checkout
       window.location.href = data.checkout_url;
       return { success: true, redirecting: true, checkout_url: data.checkout_url };
     }
@@ -771,13 +779,6 @@ export const changePlan = async (newTierId) => {
   }
 };
 
-/**
- * Create Stripe checkout session for subscription
- * @param {string} priceId - Stripe Price ID
- * @param {string} successUrl - Redirect URL on success
- * @param {string} cancelUrl - Redirect URL on cancel
- * @returns {Promise<Object>} Checkout session URL
- */
 export const createCheckoutSession = async (priceId, successUrl, cancelUrl) => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -809,26 +810,14 @@ export const createCheckoutSession = async (priceId, successUrl, cancelUrl) => {
   }
 };
 
-/**
- * Upgrade subscription (alias for changePlan)
- * @param {string} newTierId - The new tier ID
- */
 export const upgradeSubscription = async (newTierId) => {
   return changePlan(newTierId);
 };
 
-/**
- * Downgrade subscription (alias for changePlan)
- * @param {string} newTierId - The new tier ID
- */
 export const downgradeSubscription = async (newTierId) => {
   return changePlan(newTierId);
 };
 
-/**
- * Cancel current subscription
- * @returns {Promise<Object>} Cancellation result
- */
 export const cancelSubscription = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -850,10 +839,6 @@ export const cancelSubscription = async () => {
   }
 };
 
-/**
- * Get subscription status and available plans
- * @returns {Promise<Object>} Subscription status
- */
 export const getSubscriptionStatus = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -871,10 +856,6 @@ export const getSubscriptionStatus = async () => {
   }
 };
 
-/**
- * Get available subscription plans with pricing
- * @returns {Promise<Object>} List of available plans
- */
 export const getAvailablePlans = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -888,23 +869,223 @@ export const getAvailablePlans = async () => {
       data: data?.data || data,
     };
   } catch (error) {
-    // Return default plans if API fails
     return {
       success: true,
       data: {
         plans: [
           { id: "starter", name: "Starter", price: 0, interval: "month", features: [] },
-          { id: "pro", name: "Pro", price: 19, interval: "month", features: [] },
-          { id: "elite", name: "Elite", price: 49, interval: "month", features: [] },
+          { id: "pro", name: "Pro", price: 19, interval: "month", features: ["Live Trading", "Stocks", "Crypto"] },
+          { id: "elite", name: "Elite", price: 49, interval: "month", features: ["Everything in Pro", "DEX Trading", "Custom Indicators"] },
+          { id: "enterprise", name: "Enterprise", price: "Custom", interval: "month", features: ["Everything in Elite", "Custom Branding", "Team Management"] },
         ],
       },
     };
   }
 };
 
+/* ================= LIVE TRADING METHODS (NEW) ================= */
+
+/**
+ * Get live trading statistics and performance
+ * @param {boolean} skipCache - Whether to skip cache
+ * @returns {Promise<Object>} Live trading stats
+ */
+export const getLiveTradingStats = async (skipCache = false) => {
+  const cacheKey = "live_trading_stats";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 20000);
+    if (cached) return cached;
+  }
+
+  if (!getToken()) return getDefaultLiveStats();
+
+  try {
+    // Try primary endpoint
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/live-stats",
+    });
+
+    const data = unwrap(response);
+    const result = data?.data || data || getDefaultLiveStats();
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    // Try alternative endpoints
+    const altEndpoints = [
+      "/api/user/live-trading-stats",
+      "/api/live-trading/stats",
+      "/api/trading/stats?type=live",
+    ];
+
+    for (const endpoint of altEndpoints) {
+      try {
+        const altResponse = await requestWithDedupe(userApi, {
+          method: "get",
+          url: endpoint,
+        });
+        const altData = unwrap(altResponse);
+        const result = altData?.data || altData || getDefaultLiveStats();
+        setCached(cacheKey, result);
+        return result;
+      } catch (altError) {
+        continue;
+      }
+    }
+
+    console.warn("[BotAPI] Failed to load live trading stats:", error);
+    return getDefaultLiveStats();
+  }
+};
+
+/**
+ * Get exchange balances (OKX and Alpaca)
+ * @param {boolean} skipCache - Whether to skip cache
+ * @returns {Promise<Object>} Exchange balances
+ */
+export const getExchangeBalance = async (skipCache = false) => {
+  const cacheKey = "exchange_balance";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 15000);
+    if (cached) return cached;
+  }
+
+  if (!getToken()) return { alpaca: 0, okx: 0, total: 0 };
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/exchanges/balance",
+    });
+
+    const data = unwrap(response);
+    const balances = data?.data || data || {};
+    
+    const result = {
+      alpaca: Number(balances.alpaca || balances.alpaca_balance || 0),
+      okx: Number(balances.okx || balances.okx_balance || 0),
+      total: Number(balances.total || (balances.alpaca || 0) + (balances.okx || 0)),
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    // Try alternative endpoints
+    const altEndpoints = [
+      "/api/trading/balance",
+      "/api/user/balance",
+      "/api/integrations/balance",
+    ];
+
+    for (const endpoint of altEndpoints) {
+      try {
+        const altResponse = await requestWithDedupe(userApi, {
+          method: "get",
+          url: endpoint,
+        });
+        const altData = unwrap(altResponse);
+        const altBalances = altData?.data || altData || {};
+        
+        const result = {
+          alpaca: Number(altBalances.alpaca || altBalances.alpaca_balance || 0),
+          okx: Number(altBalances.okx || altBalances.okx_balance || 0),
+          total: Number(altBalances.total || (altBalances.alpaca || 0) + (altBalances.okx || 0)),
+        };
+        
+        setCached(cacheKey, result);
+        return result;
+      } catch (altError) {
+        continue;
+      }
+    }
+
+    console.warn("[BotAPI] Failed to load exchange balance:", error);
+    return { alpaca: 0, okx: 0, total: 0 };
+  }
+};
+
+/**
+ * Get live trading positions
+ * @param {boolean} skipCache - Whether to skip cache
+ * @returns {Promise<Object>} Live positions
+ */
+export const getLivePositions = async (skipCache = false) => {
+  const cacheKey = "live_positions";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 10000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/live-positions",
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      positions: data?.data?.positions || data?.positions || [],
+      total_value: data?.data?.total_value || data?.total_value || 0,
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      positions: [],
+      total_value: 0,
+      error: getErrorMessage(error, "Failed to load live positions"),
+    };
+  }
+};
+
+/**
+ * Get live trading history
+ * @param {number} limit - Number of trades to fetch
+ * @param {boolean} skipCache - Whether to skip cache
+ * @returns {Promise<Object>} Live trade history
+ */
+export const getLiveTradeHistory = async (limit = 50, skipCache = false) => {
+  const cacheKey = `live_trade_history_${limit}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 20000);
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: `/api/trading/live-trades?limit=${limit}`,
+    });
+
+    const data = unwrap(response);
+    const result = {
+      success: true,
+      trades: data?.data?.trades || data?.trades || [],
+      summary: data?.data?.summary || data?.summary || {},
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      trades: [],
+      summary: {},
+      error: getErrorMessage(error, "Failed to load live trade history"),
+    };
+  }
+};
+
 /* ================= PAPER TRADING WORKER CONTROL ================= */
 
-// Force trigger a paper trade execution
 export const executePaperTrade = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -938,7 +1119,6 @@ export const executePaperTrade = async () => {
   }
 };
 
-// Check if paper trading worker is running
 export const getPaperTradingStatus = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -982,7 +1162,6 @@ export const getPaperTradingStatus = async () => {
   }
 };
 
-// Manually start the paper trading worker
 export const startPaperWorker = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -1014,7 +1193,6 @@ export const startPaperWorker = async () => {
   }
 };
 
-// Manually stop the paper trading worker
 export const stopPaperWorker = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -1046,7 +1224,6 @@ export const stopPaperWorker = async () => {
   }
 };
 
-// Check paper trading requirements
 export const getPaperTradingRequirements = async () => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -1081,7 +1258,6 @@ export const getPaperTradingRequirements = async () => {
   }
 };
 
-// Get paper trading trade history
 export const getPaperTradingHistory = async (limit = 50, skipCache = false) => {
   const cacheKey = `paper_trading_history_${limit}`;
 
@@ -1115,7 +1291,6 @@ export const getPaperTradingHistory = async (limit = 50, skipCache = false) => {
   }
 };
 
-// Enhanced togglePaperTrading that ensures worker starts
 export const togglePaperTradingEnhanced = async (enabled) => {
   const nextEnabled = !!enabled;
 
@@ -1177,7 +1352,6 @@ export const togglePaperTradingEnhanced = async (enabled) => {
   return successResponse;
 };
 
-// Original togglePaperTrading (now calls enhanced version)
 export const togglePaperTrading = async (enabled) => {
   return togglePaperTradingEnhanced(enabled);
 };
@@ -2199,7 +2373,7 @@ class BotAPIClass {
   createSetupIntent(payload) { return createSetupIntent(payload); }
   confirmCard(payload) { return confirmCard(payload); }
 
-  // Billing & Subscription (NEW)
+  // Billing & Subscription
   changePlan(newTierId) { return changePlan(newTierId); }
   createCheckoutSession(priceId, successUrl, cancelUrl) { return createCheckoutSession(priceId, successUrl, cancelUrl); }
   upgradeSubscription(newTierId) { return upgradeSubscription(newTierId); }
@@ -2207,6 +2381,12 @@ class BotAPIClass {
   cancelSubscription() { return cancelSubscription(); }
   getSubscriptionStatus() { return getSubscriptionStatus(); }
   getAvailablePlans() { return getAvailablePlans(); }
+
+  // Live Trading (NEW)
+  getLiveTradingStats(skipCache) { return getLiveTradingStats(skipCache); }
+  getExchangeBalance(skipCache) { return getExchangeBalance(skipCache); }
+  getLivePositions(skipCache) { return getLivePositions(skipCache); }
+  getLiveTradeHistory(limit, skipCache) { return getLiveTradeHistory(limit, skipCache); }
 
   // Enterprise endpoints
   getOrganizationDetails(skipCache) { return getOrganizationDetails(skipCache); }
@@ -2277,5 +2457,18 @@ const BotAPI = new BotAPIClass();
 // Default export for the class instance
 export default BotAPI;
 
-// Named exports for individual functions (for flexibility)
-export { BotAPI };
+// Named exports for individual functions
+export { 
+  BotAPI,
+  getLiveTradingStats,
+  getExchangeBalance,
+  getLivePositions,
+  getLiveTradeHistory,
+  changePlan,
+  upgradeSubscription,
+  downgradeSubscription,
+  cancelSubscription,
+  getSubscriptionStatus,
+  getAvailablePlans,
+  createCheckoutSession,
+};
