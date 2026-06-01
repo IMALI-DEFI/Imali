@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - COMPLETE REWRITE WITH MASKED KEYS & LIVE TRADING
+// src/components/Dashboard/MemberDashboard.jsx - FIXED RENDERING ISSUES
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import BotAPI from "../../utils/BotAPI";
@@ -914,6 +914,16 @@ export default function MemberDashboard() {
   const activeSeries = tradingEnabled ? liveSeries : paperSeries;
   const activeWinLoss = tradingEnabled ? liveStats : paperStats;
 
+  // Helper function to get mode card styles (fix dynamic Tailwind classes)
+  const getModeCardStyles = () => {
+    if (activeStats.modeColor === "green") {
+      return "border-green-200 bg-green-50/50";
+    } else if (activeStats.modeColor === "blue") {
+      return "border-blue-200 bg-blue-50/50";
+    }
+    return "border-slate-200 bg-gray-50/50";
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 px-3 py-4 sm:p-6">
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: "", type: "info" })} />
@@ -983,7 +993,8 @@ export default function MemberDashboard() {
         {activeTab === "overview" && (
           <div className="space-y-5">
             
-            <Card className={`border-${activeStats.modeColor === "green" ? "green" : activeStats.modeColor === "blue" ? "blue" : "slate"}-200 bg-${activeStats.modeColor === "green" ? "green" : activeStats.modeColor === "blue" ? "blue" : "gray"}-50/50`}>
+            {/* MODE SELECTOR / STATUS CARD - Fixed dynamic classes */}
+            <Card className={getModeCardStyles()}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="flex items-center gap-2">
@@ -1091,6 +1102,7 @@ export default function MemberDashboard() {
               </Card>
             )}
 
+            {/* STATS CARDS */}
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <div className="rounded-2xl bg-white p-4 border border-gray-200 text-center">
                 <div className="text-2xl font-extrabold text-gray-900">{usd(activeStats.total_pnl)}</div>
@@ -1110,13 +1122,17 @@ export default function MemberDashboard() {
               </div>
             </div>
 
+            {/* EQUITY CURVE CHART */}
             <Card>
               <SectionTitle helper={tradingEnabled ? "Your live portfolio value over time" : "Your paper portfolio value over time"}>
                 {tradingEnabled ? "💰 Live Equity Curve" : "📈 Paper Equity Curve"}
               </SectionTitle>
-              <div className="h-[300px] w-full"><EquityCurveChart data={activeSeries} mode={tradingEnabled ? "live" : "paper"} /></div>
+              <div className="h-[300px] w-full">
+                <EquityCurveChart data={activeSeries} mode={tradingEnabled ? "live" : "paper"} />
+              </div>
             </Card>
 
+            {/* LIVE TRADES - Show recent live trades when active */}
             {tradingEnabled && liveTrades.length > 0 && (
               <Card>
                 <SectionTitle helper="Your recent live trades">🔄 Recent Live Trades</SectionTitle>
@@ -1129,13 +1145,16 @@ export default function MemberDashboard() {
                           {trade.side?.toUpperCase()}
                         </span>
                       </div>
-                      <div className={Number(trade.pnl) >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>{usd(trade.pnl)}</div>
+                      <div className={Number(trade.pnl) >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                        {usd(trade.pnl)}
+                      </div>
                     </div>
                   ))}
                 </div>
               </Card>
             )}
 
+            {/* HELPFUL RESOURCES */}
             <Card>
               <SectionTitle>📚 Helpful Resources</SectionTitle>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1254,7 +1273,7 @@ export default function MemberDashboard() {
           </div>
         )}
 
-        {/* CONNECTIONS TAB - WITH MASKED KEYS */}
+        {/* CONNECTIONS TAB */}
         {activeTab === "connections" && (
           <div className="space-y-5">
             <Card>
@@ -1404,7 +1423,7 @@ export default function MemberDashboard() {
                     <h3 className="text-gray-900">1. Live Trading Active</h3>
                     <p className="text-gray-600">Your connected exchange accounts (OKX and Alpaca) are being used for real trading.</p>
                     <h3 className="text-gray-900">2. Real Funds at Work</h3>
-                    <p className="text-gray-600">The bot executes trades using your actual exchange balance. Your ${liveExchangeBalance.okx} on OKX and ${liveExchangeBalance.alpaca} on Alpaca are active.</p>
+                    <p className="text-gray-600">The bot executes trades using your actual exchange balance.</p>
                     <h3 className="text-gray-900">3. Monitor Performance</h3>
                     <p className="text-gray-600">Watch your live equity curve and P&L update in real-time.</p>
                     <h3 className="text-gray-900">4. Risk Management</h3>
