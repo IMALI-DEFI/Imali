@@ -1,4 +1,4 @@
-// src/utils/BotAPI.js - IMALI PRODUCTION VERSION
+// src/utils/BotAPI.js - IMALI PRODUCTION VERSION (with bot management methods)
 import axios from "axios";
 
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
@@ -76,6 +76,7 @@ const clearTradingCache = () => {
     "exchange_balance",
     "live_trade_history",
     "card_status",
+    "trading_bot_status",
   ].forEach(clearCache);
 };
 
@@ -365,6 +366,106 @@ const getExchangeBalance = async (skipCache = false) => {
     return { success: false, alpaca: 0, okx: 0, total: 0, error: getErrorMessage(error, "Failed to load exchange balance") };
   }
 };
+
+// ==================== BOT MANAGEMENT METHODS ====================
+
+/**
+ * Start automated trading bot
+ * @param {string} exchange - "okx" or "alpaca"
+ * @param {string} strategy - Strategy ID (mean_reversion, ai_weighted, momentum, aggressive)
+ * @param {string} mode - "paper" or "live"
+ * @returns {Promise<Object>} Bot start response
+ */
+const startTradingBot = async (exchange, strategy, mode) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/bot/start",
+      data: { exchange, strategy, mode: normalizeMode(mode) }
+    });
+    const data = unwrap(response);
+    clearTradingCache();
+    return { success: true, ...data };
+  } catch (error) {
+    return handleApiError(error, "Failed to start trading bot");
+  }
+};
+
+/**
+ * Stop automated trading bot
+ * @param {string} exchange - "okx" or "alpaca"
+ * @returns {Promise<Object>} Bot stop response
+ */
+const stopTradingBot = async (exchange) => {
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/bot/stop",
+      data: { exchange }
+    });
+    const data = unwrap(response);
+    clearTradingCache();
+    return { success: true, ...data };
+  } catch (error) {
+    return handleApiError(error, "Failed to stop trading bot");
+  }
+};
+
+/**
+ * Get trading bot status for the authenticated user
+ * @returns {Promise<Object>} Bot status response
+ */
+const getTradingBotStatus = async (skipCache = false) => {
+  const cacheKey = "trading_bot_status";
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 5000);
+    if (cached) return cached;
+  }
+  try {
+    const response = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/bot/status"
+    });
+    const data = unwrap(response);
+    const result = { success: true, data: data?.data || data || [] };
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return { success: false, data: [], error: getErrorMessage(error, "Failed to get bot status") };
+  }
+};
+
+/**
+ * Get bot status for a specific exchange
+ * @param {string} exchange - "okx" or "alpaca" 
+ * @returns {Promise<Object>} Bot status for specific exchange
+ */
+const getExchangeBotStatus = async (exchange) => {
+  try {
+    const status = await getTradingBotStatus(true);
+    if (!status.success) return { success: false, isRunning: false, bot: null };
+    const bot = status.data?.find(b => b.exchange === exchange);
+    return { success: true, isRunning: bot?.isRunning || false, bot: bot || null };
+  } catch (error) {
+    return { success: false, isRunning: false, bot: null, error: error.message };
+  }
+};
+
+/**
+ * Check if any bot is running
+ * @returns {Promise<Object>} Whether any bot is active
+ */
+const isAnyBotRunning = async () => {
+  try {
+    const status = await getTradingBotStatus(true);
+    if (!status.success) return false;
+    return status.data?.some(bot => bot.isRunning) || false;
+  } catch {
+    return false;
+  }
+};
+
+// ==================== END BOT MANAGEMENT METHODS ====================
 
 const signup = async (userData) => {
   const isEnterprise = userData?.tier === "enterprise" || userData?.mode === "enterprise";
@@ -705,6 +806,8 @@ class BotAPIClass {
   getUserTradingStats = getUserTradingStats; getTradingStrategies = getTradingStrategies; updateUserStrategy = updateUserStrategy; toggleTrading = toggleTrading; togglePaperTrading = togglePaperTrading; executePaperTrade = executePaperTrade;
   connectOKX = connectOKX; connectAlpaca = connectAlpaca; connectWallet = connectWallet; disconnectOKX = disconnectOKX; disconnectAlpaca = disconnectAlpaca; switchAlpacaToLive = switchAlpacaToLive; switchOKXToLive = switchOKXToLive; switchAlpacaToPaper = switchAlpacaToPaper; switchOKXToPaper = switchOKXToPaper; switchExchangeMode = switchExchangeMode; getIntegrationStatus = getIntegrationStatus;
   getImaliBalance = getImaliBalance; getGlobalTrades = getGlobalTrades;
+  // Bot Management Methods
+  startTradingBot = startTradingBot; stopTradingBot = stopTradingBot; getTradingBotStatus = getTradingBotStatus; getExchangeBotStatus = getExchangeBotStatus; isAnyBotRunning = isAnyBotRunning;
 }
 
 const BotAPI = new BotAPIClass();
