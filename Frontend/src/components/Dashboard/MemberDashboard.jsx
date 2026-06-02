@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - FULLY FIXED PRODUCTION VERSION
+// src/components/Dashboard/MemberDashboard.jsx - ADDED OKX REGION SELECTOR
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -155,8 +155,8 @@ export default function MemberDashboard() {
   const [liveFeed, setLiveFeed] = useState([]);
   const [imaliBalance, setImaliBalance] = useState(0);
   
-  // API Form State
-  const [okxForm, setOkxForm] = useState({ api_key: "", api_secret: "", passphrase: "", mode: "paper" });
+  // API Form State - ADDED okx_region field
+  const [okxForm, setOkxForm] = useState({ api_key: "", api_secret: "", passphrase: "", mode: "paper", region: "us" });
   const [alpacaForm, setAlpacaForm] = useState({ api_key: "", api_secret: "", mode: "paper" });
 
   const userTier = user?.tier || "starter";
@@ -262,7 +262,6 @@ export default function MemberDashboard() {
         );
         if (activeBot) {
           setBotStatus(activeBot);
-          // Sync running state with bot status
           if (activeBot.isRunning !== running) {
             setRunning(activeBot.isRunning);
           }
@@ -357,18 +356,25 @@ export default function MemberDashboard() {
     }
   };
 
+  // UPDATED: saveOKX with region parameter
   const saveOKX = async () => {
     if (!okxForm.api_key || !okxForm.api_secret || !okxForm.passphrase) {
       alert("Please enter all OKX credentials.");
       return;
     }
+    
+    // Region selection reminder for US users
+    if (okxForm.region === "us") {
+      alert("ℹ️ US region selected. Make sure your OKX API key was created on us.okx.com");
+    }
+    
     const result = await BotAPI.connectOKX?.(okxForm);
     if (result?.success) {
       alert("OKX connected successfully!");
       await refreshActivation?.(true);
       await fetchIntegrationStatus();
       await fetchExchangeBalances();
-      setOkxForm({ api_key: "", api_secret: "", passphrase: "", mode: "paper" });
+      setOkxForm({ api_key: "", api_secret: "", passphrase: "", mode: "paper", region: "us" });
     } else {
       alert(result?.error || "Failed to connect OKX.");
     }
@@ -409,7 +415,6 @@ export default function MemberDashboard() {
     }
   };
 
-  // FIXED: Start/Stop bot using the new bot manager endpoints
   const startLiveBot = async () => {
     if (!hasLiveConnection) {
       alert("❌ Cannot start live trading.\n\nNo exchange is in LIVE mode.\n\nGo to API Connections → Switch an exchange to LIVE mode first.");
@@ -492,7 +497,6 @@ export default function MemberDashboard() {
         await startLiveBot();
       }
     } else {
-      // Paper mode - local simulation
       setRunning(!running);
       if (!running) {
         alert("Paper trading started! The bot will simulate trades for practice.");
@@ -706,26 +710,78 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        {/* API Connection Box */}
+        {/* Step 3: API Connection Box - UPDATED with Region Selector */}
         {showApiBox && (
           <div className={`${card} grid gap-5 lg:grid-cols-2`}>
             <div id="okx-section">
               <h3 className="mb-3 text-lg font-bold flex items-center gap-2"><FaExchangeAlt /> Connect OKX</h3>
-              <input placeholder="API Key" value={okxForm.api_key} onChange={(e) => setOkxForm({ ...okxForm, api_key: e.target.value })} className="mb-2 w-full rounded-xl bg-black/40 p-3 text-white" />
-              <input placeholder="Secret" type="password" value={okxForm.api_secret} onChange={(e) => setOkxForm({ ...okxForm, api_secret: e.target.value })} className="mb-2 w-full rounded-xl bg-black/40 p-3 text-white" />
-              <input placeholder="Passphrase" type="password" value={okxForm.passphrase} onChange={(e) => setOkxForm({ ...okxForm, passphrase: e.target.value })} className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white" />
+              
+              {/* Region Selector - ADD THIS */}
+              <div className="mb-3">
+                <label className="block text-xs text-white/50 mb-1">Trading Region *</label>
+                <select 
+                  value={okxForm.region} 
+                  onChange={(e) => setOkxForm({ ...okxForm, region: e.target.value })}
+                  className="w-full rounded-xl bg-black/40 p-3 text-white border border-white/10"
+                >
+                  <option value="us">🇺🇸 United States (us.okx.com)</option>
+                  <option value="international">🌍 International (www.okx.com)</option>
+                  <option value="eea">🇪🇺 European Economic Area (eea.okx.com)</option>
+                </select>
+                <p className="text-xs text-amber-400/70 mt-1">
+                  ⚠️ US users MUST select "United States" for API to work
+                </p>
+              </div>
+              
+              <input 
+                placeholder="API Key" 
+                value={okxForm.api_key} 
+                onChange={(e) => setOkxForm({ ...okxForm, api_key: e.target.value })} 
+                className="mb-2 w-full rounded-xl bg-black/40 p-3 text-white" 
+              />
+              <input 
+                placeholder="Secret Key" 
+                type="password" 
+                value={okxForm.api_secret} 
+                onChange={(e) => setOkxForm({ ...okxForm, api_secret: e.target.value })} 
+                className="mb-2 w-full rounded-xl bg-black/40 p-3 text-white" 
+              />
+              <input 
+                placeholder="Passphrase" 
+                type="password" 
+                value={okxForm.passphrase} 
+                onChange={(e) => setOkxForm({ ...okxForm, passphrase: e.target.value })} 
+                className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white" 
+              />
+              <select 
+                value={okxForm.mode} 
+                onChange={(e) => setOkxForm({ ...okxForm, mode: e.target.value })}
+                className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white"
+              >
+                <option value="paper">Paper Trading (Test Mode)</option>
+                <option value="live">Live Trading (Real Money)</option>
+              </select>
               <button onClick={saveOKX} className="rounded-xl bg-emerald-600 px-4 py-2 font-bold">Save OKX Keys</button>
             </div>
+            
             <div id="alpaca-section">
               <h3 className="mb-3 text-lg font-bold flex items-center gap-2"><FaChartLine /> Connect Alpaca</h3>
               <input placeholder="API Key" value={alpacaForm.api_key} onChange={(e) => setAlpacaForm({ ...alpacaForm, api_key: e.target.value })} className="mb-2 w-full rounded-xl bg-black/40 p-3 text-white" />
-              <input placeholder="Secret" type="password" value={alpacaForm.api_secret} onChange={(e) => setAlpacaForm({ ...alpacaForm, api_secret: e.target.value })} className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white" />
+              <input placeholder="Secret Key" type="password" value={alpacaForm.api_secret} onChange={(e) => setAlpacaForm({ ...alpacaForm, api_secret: e.target.value })} className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white" />
+              <select 
+                value={alpacaForm.mode} 
+                onChange={(e) => setAlpacaForm({ ...alpacaForm, mode: e.target.value })}
+                className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white"
+              >
+                <option value="paper">Paper Trading (Test Mode)</option>
+                <option value="live">Live Trading (Real Money)</option>
+              </select>
               <button onClick={saveAlpaca} className="rounded-xl bg-blue-600 px-4 py-2 font-bold">Save Alpaca Keys</button>
             </div>
           </div>
         )}
 
-        {/* Step 3: Start Trading - Giant Button */}
+        {/* Step 4: Start Trading - Giant Button */}
         <div className="text-center">
           <button
             onClick={startStopBot}
@@ -787,7 +843,7 @@ export default function MemberDashboard() {
           </div>
         </div>
 
-        {/* Step 4: Feature Hub */}
+        {/* Step 5: Feature Hub */}
         <div className={card}>
           <h2 className="text-2xl font-bold mb-6">Step 4: Explore Features</h2>
           
