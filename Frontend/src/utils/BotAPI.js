@@ -1,4 +1,4 @@
-// src/utils/BotAPI.js - IMALI PRODUCTION VERSION (with bot management methods)
+// src/utils/BotAPI.js - IMALI PRODUCTION VERSION (with OKX region support)
 import axios from "axios";
 
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
@@ -303,6 +303,7 @@ const normalizeIntegrationStatus = (row = {}) => ({
   okx_api_key_masked: row.okx_api_key_masked || row.okx_key_masked || null,
   alpaca_mode: normalizeMode(row.alpaca_mode || row.alpaca_account_mode || row.alpaca_environment, "paper"),
   okx_mode: normalizeMode(row.okx_mode || row.okx_account_mode || row.okx_environment, "paper"),
+  okx_region: row.okx_region || "us",
   wallet_address_masked: row.wallet_address_masked || row.wallet_masked || null,
 });
 
@@ -711,12 +712,26 @@ const getIntegrationStatus = async (skipCache = false) => {
   } catch { return normalizeIntegrationStatus({}); }
 };
 
+// UPDATED: connectOKX with region parameter
 const connectOKX = async (payload) => {
   try {
-    const response = await requestWithDedupe(userApi, { method: "post", url: "/api/integrations/okx", data: { ...payload, mode: normalizeMode(payload?.mode) } });
+    const requestPayload = {
+      api_key: payload.api_key,
+      secret_key: payload.api_secret || payload.secret_key,
+      passphrase: payload.passphrase,
+      mode: normalizeMode(payload?.mode),
+      region: payload.region || "us"  // ADDED: region parameter (us, international, eea)
+    };
+    const response = await requestWithDedupe(userApi, { 
+      method: "post", 
+      url: "/api/integrations/okx", 
+      data: requestPayload 
+    });
     clearTradingCache();
     return { success: true, data: unwrap(response) };
-  } catch (error) { return handleApiError(error, "Failed to connect OKX"); }
+  } catch (error) { 
+    return handleApiError(error, "Failed to connect OKX"); 
+  }
 };
 
 const connectAlpaca = async (payload) => {
