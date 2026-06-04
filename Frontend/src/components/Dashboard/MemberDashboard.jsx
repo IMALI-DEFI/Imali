@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - WITH LIVE TRADE FIXES
+// src/components/Dashboard/MemberDashboard.jsx - WITH REFRESH STATE FIXES
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -131,9 +131,9 @@ export default function MemberDashboard() {
   const balanceIntervalRef = useRef(null);
   const botStatusIntervalRef = useRef(null);
 
-  // UI State
+  // UI State - FIX: Initialize from localStorage to avoid flashing
   const [running, setRunning] = useState(false);
-  const [mode, setMode] = useState("paper");
+  const [mode, setMode] = useState(() => localStorage.getItem("IMALI_MODE") || "paper");
   const [currentStrategy, setCurrentStrategy] = useState(STRATEGIES[1]);
   const [showApiBox, setShowApiBox] = useState(false);
   const [isBotStarting, setIsBotStarting] = useState(false);
@@ -177,6 +177,11 @@ export default function MemberDashboard() {
            (integrationStatus.alpaca_connected && integrationStatus.alpaca_mode === "live");
   }, [integrationStatus]);
   
+  // FIX: Persist mode to localStorage
+  useEffect(() => {
+    localStorage.setItem("IMALI_MODE", mode);
+  }, [mode]);
+  
   // Main button label logic
   const getMainActionLabel = () => {
     if (running) return "Pause Trading";
@@ -213,6 +218,7 @@ export default function MemberDashboard() {
       localStorage.removeItem("IMALI_EMAIL");
       localStorage.removeItem("token");
       localStorage.removeItem("authToken");
+      localStorage.removeItem("IMALI_MODE");
       sessionStorage.clear();
       navigate("/login", { replace: true });
     } catch (err) {
@@ -271,9 +277,9 @@ export default function MemberDashboard() {
     } catch (err) { console.error("Failed to fetch live stats:", err); }
   }, [canUseLiveMode]);
 
-  // FIX 1: Updated fetchLiveTrades to handle open positions correctly
+  // FIX: fetchLiveTrades no longer depends on hasLiveConnection
   const fetchLiveTrades = useCallback(async () => {
-    if (!canUseLiveMode || !hasLiveConnection) return;
+    if (!canUseLiveMode) return;
     try {
       const response = await BotAPI.getLiveTradeHistory?.(20);
       const trades = response?.trades || response?.data?.trades || [];
@@ -295,7 +301,7 @@ export default function MemberDashboard() {
     } catch (err) {
       console.error("Failed to fetch live trades:", err);
     }
-  }, [canUseLiveMode, hasLiveConnection]);
+  }, [canUseLiveMode]);
 
   const fetchImaliBalance = useCallback(async () => {
     try {
@@ -304,23 +310,35 @@ export default function MemberDashboard() {
     } catch (err) { console.error("Failed to fetch IMALI balance:", err); }
   }, []);
 
+  // FIX: fetchBotStatus that properly sets mode from active bot
   const fetchBotStatus = useCallback(async () => {
     try {
       const status = await BotAPI.getTradingBotStatus?.();
-      if (status?.success && status.data) {
-        const activeBot = status.data.find(b => 
-          (b.exchange === 'okx' && integrationStatus.okx_mode === 'live') ||
-          (b.exchange === 'alpaca' && integrationStatus.alpaca_mode === 'live')
-        );
-        if (activeBot) {
-          setBotStatus(activeBot);
-          if (activeBot.isRunning !== running) {
-            setRunning(activeBot.isRunning);
-          }
-        }
+      const bots = Array.isArray(status?.data)
+        ? status.data
+        : Array.isArray(status?.data?.bots)
+          ? status.data.bots
+          : [];
+      const activeBot = bots.find(
+        b => b.exchange === "okx" && (b.isRunning || b.status === "running")
+      ) || bots.find(
+        b => b.exchange === "alpaca" && (b.isRunning || b.status === "running")
+      );
+      if (activeBot) {
+        setBotStatus(activeBot);
+        setRunning(true);
+        // FIX: Set mode from active bot and persist
+        const botMode = activeBot.mode || "live";
+        setMode(botMode);
+        localStorage.setItem("IMALI_MODE", botMode);
+      } else {
+        setBotStatus(null);
+        setRunning(false);
       }
-    } catch (err) { console.error("Failed to fetch bot status:", err); }
-  }, [running, integrationStatus.okx_mode, integrationStatus.alpaca_mode]);
+    } catch (err) {
+      console.error("Failed to fetch bot status:", err);
+    }
+  }, []);
 
   const generatePaperTrade = useCallback(() => {
     const assets = ["BTC", "ETH", "SOL", "AAPL", "TSLA", "NVDA"];
@@ -347,9 +365,9 @@ export default function MemberDashboard() {
     return () => clearInterval(intervalRef.current);
   }, [running, mode, generatePaperTrade]);
 
-  // FIX 2: Updated live refresh useEffect with proper polling
+  // Live refresh useEffect with proper polling
   useEffect(() => {
-    if (mode === "live" && hasLiveConnection) {
+    if (mode === "live" && canUseLiveMode) {
       fetchExchangeBalances();
       fetchBotStatus();
       fetchLiveStats();
@@ -367,33 +385,36 @@ export default function MemberDashboard() {
     };
   }, [
     mode,
-    hasLiveConnection,
+    canUseLiveMode,
     fetchExchangeBalances,
     fetchBotStatus,
     fetchLiveStats,
     fetchLiveTrades,
   ]);
 
-  // Initial data load
+  // FIX: Updated initial load order - fetch everything in parallel
   useEffect(() => {
     const loadInitialData = async () => {
-      await fetchIntegrationStatus();
-      await fetchExchangeBalances();
-      await fetchLiveStats();
-      await fetchLiveTrades();
-      await fetchImaliBalance();
-      await fetchBotStatus();
+      await Promise.all([
+        fetchIntegrationStatus(),
+        fetchExchangeBalances(),
+        fetchBotStatus(),
+        fetchLiveStats(),
+        fetchLiveTrades(),
+        fetchImaliBalance(),
+      ]);
     };
     loadInitialData();
-  }, []);
+  }, [fetchIntegrationStatus, fetchExchangeBalances, fetchBotStatus, fetchLiveStats, fetchLiveTrades, fetchImaliBalance]);
 
   // Refresh when activation changes
   useEffect(() => {
     if (activation) {
       fetchIntegrationStatus();
       fetchExchangeBalances();
+      fetchBotStatus();
     }
-  }, [activation, fetchIntegrationStatus, fetchExchangeBalances]);
+  }, [activation, fetchIntegrationStatus, fetchExchangeBalances, fetchBotStatus]);
 
   const connectWallet = async () => {
     if (!window.ethereum) {
@@ -518,6 +539,9 @@ export default function MemberDashboard() {
       const result = await BotAPI.startTradingBot?.(activeExchange, currentStrategy.id, "live");
       if (result?.success) {
         setRunning(true);
+        // FIX: Persist mode when starting live bot
+        setMode("live");
+        localStorage.setItem("IMALI_MODE", "live");
         alert(`✅ Live trading bot started on ${activeExchange.toUpperCase()} with ${currentStrategy.name} strategy!\n\nThe bot is now monitoring the market and will execute trades automatically.`);
         await fetchBotStatus();
         await fetchLiveStats();
@@ -601,6 +625,8 @@ export default function MemberDashboard() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     }
     setMode(newMode);
+    // FIX: Persist mode change
+    localStorage.setItem("IMALI_MODE", newMode);
   };
 
   const handleFeatureClick = (feature) => {
@@ -914,7 +940,6 @@ export default function MemberDashboard() {
                   {(mode === "live" ? liveFeed : paperFeed).slice(0, 15).map((trade) => (
                     <div key={trade.id} className="flex justify-between items-center p-3 rounded-xl border border-white/10 bg-black/20">
                       <div><span className="font-bold">{trade.symbol}</span><div className="text-xs text-white/40">{trade.type} • {trade.time}</div></div>
-                      {/* FIX 3: Updated trade display for open positions */}
                       <div className={`font-bold ${
                         trade.status === "open"
                           ? "text-cyan-400"
