@@ -1,4 +1,4 @@
-// src/context/AuthContext.js - CORRECTED (Matches pricing page tiers)
+// src/context/AuthContext.js - CORRECTED (With JWT Expiration Fix)
 import React, {
   createContext,
   useContext,
@@ -59,7 +59,16 @@ const setToken = (token) => {
   if (token) safeStorageSet(TOKEN_KEY, token);
   else safeStorageRemove(TOKEN_KEY);
 };
-const clearToken = () => safeStorageRemove(TOKEN_KEY);
+
+// FIX: Clear all possible token names to彻底 clean up old tokens
+const clearToken = () => {
+  safeStorageRemove(TOKEN_KEY);
+  safeStorageRemove("imali_token");
+  safeStorageRemove("token");
+  safeStorageRemove("authToken");
+  safeStorageRemove("IMALI_EMAIL");
+  safeStorageRemove("IMALI_MODE");
+};
 
 const normalizeBoolean = (value) => {
   if (typeof value === "boolean") return value;
@@ -227,7 +236,36 @@ const apiFetch = async (path, options = {}) => {
     }
   }
 
+  // FIX: Handle expired tokens properly
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      const code = data?.code || "";
+      const message = String(data?.error || data?.message || rawText || "").toLowerCase();
+      const expired =
+        code === "TOKEN_EXPIRED" ||
+        message.includes("jwt expired") ||
+        message.includes("session expired") ||
+        message.includes("invalid token");
+      
+      if (expired && isBrowser) {
+        console.warn("[Auth] Token expired, clearing auth state...");
+        clearToken();
+        safeStorageRemove(USER_KEY);
+        safeStorageRemove(ACTIVATION_KEY);
+        safeStorageRemove(REDIRECT_KEY);
+        sessionStorage.clear();
+        
+        if (!window.location.pathname.includes("/login")) {
+          window.location.href = "/login?expired=true";
+        }
+        
+        const error = new Error("Session expired. Please log in again.");
+        error.status = response.status;
+        error.data = data;
+        throw error;
+      }
+    }
+
     const message =
       data?.error ||
       data?.message ||
@@ -296,6 +334,7 @@ export function AuthProvider({ children }) {
     safeStorageRemove(USER_KEY);
     safeStorageRemove(ACTIVATION_KEY);
     safeStorageRemove(REDIRECT_KEY);
+    safeStorageRemove("IMALI_MODE");
     refreshPromiseRef.current = null;
   }, []);
 
