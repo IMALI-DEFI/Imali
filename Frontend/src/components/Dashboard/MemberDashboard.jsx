@@ -1,13 +1,13 @@
-// src/components/Dashboard/MemberDashboard.jsx - ADDED OKX REGION SELECTOR
+// src/components/Dashboard/MemberDashboard.jsx - WITH VISUAL API CONNECTION STATUS
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
 import {
-  FaPlay, FaPause, FaRedo, FaRobot, FaChartLine, FaShieldAlt, FaBrain,
+  FaPlay, FaPause, FaRobot, FaChartLine, FaShieldAlt, FaBrain,
   FaWallet, FaExchangeAlt, FaLock, FaCheckCircle, FaCrown, FaPlug,
   FaUniversity, FaCoins, FaVoteYea, FaGift, FaWater, FaRocket, FaCircle,
-  FaInfoCircle, FaTimes, FaSpinner,
+  FaInfoCircle, FaTimes, FaSpinner, FaSignOutAlt,
 } from "react-icons/fa";
 
 const START_BALANCE = 1000;
@@ -36,9 +36,9 @@ const STRATEGIES = [
 
 const FEATURE_CATEGORIES = {
   trading: [
-    { id: "paper_trading", title: "Paper Trading", icon: <FaShieldAlt />, tier: "starter", description: "Practice with $1,000 virtual funds.", action: "switch_to_paper" },
-    { id: "live_crypto", title: "Live Crypto", icon: <FaExchangeAlt />, tier: "pro", description: "Trade real crypto via OKX.", action: "connect_okx" },
-    { id: "live_stocks", title: "Live Stocks", icon: <FaChartLine />, tier: "pro", description: "Trade real stocks via Alpaca.", action: "connect_alpaca" },
+    { id: "paper_trading", title: "Demo Mode", icon: <FaShieldAlt />, tier: "starter", description: "Practice with $1,000 virtual funds.", action: "switch_to_paper" },
+    { id: "live_crypto", title: "Live Crypto", icon: <FaExchangeAlt />, tier: "pro", description: "Real money crypto trading via OKX.", action: "connect_okx" },
+    { id: "live_stocks", title: "Live Stocks", icon: <FaChartLine />, tier: "pro", description: "Real money stock trading via Alpaca.", action: "connect_alpaca" },
   ],
   defi: [
     { id: "staking", title: "Staking", icon: <FaCoins />, tier: "elite", description: "Earn up to 12% APY on IMALI.", route: "/staking" },
@@ -63,7 +63,6 @@ function canAccess(userTier, requiredTier) { return tierValue(userTier) >= tierV
 function formatMoney(n) { return `$${Number(n || 0).toFixed(2)}`; }
 function formatNumber(n) { return Number(n || 0).toLocaleString(); }
 
-// Info Modal Component
 function InfoModal({ isOpen, onClose, title, message, actionLabel, onAction }) {
   if (!isOpen) return null;
   return (
@@ -85,7 +84,6 @@ function InfoModal({ isOpen, onClose, title, message, actionLabel, onAction }) {
   );
 }
 
-// Upgrade Modal
 function UpgradeModal({ isOpen, onClose, onUpgrade, requiredTier }) {
   if (!isOpen) return null;
   const plans = {
@@ -114,9 +112,20 @@ function UpgradeModal({ isOpen, onClose, onUpgrade, requiredTier }) {
   );
 }
 
+function SetupStep({ done, icon, title, description, action }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
+      <div className="flex items-start gap-4">
+        <div className={done ? "text-emerald-400" : "text-cyan-300"}>{done ? <FaCheckCircle size={24} /> : icon}</div>
+        <div className="flex-1"><h3 className="font-bold text-white">{title}</h3><p className="mt-1 text-sm text-slate-300">{description}</p>{action}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function MemberDashboard() {
   const navigate = useNavigate();
-  const { user, activation, refreshActivation } = useAuth();
+  const { user, activation, refreshActivation, logout } = useAuth();
 
   const intervalRef = useRef(null);
   const balanceIntervalRef = useRef(null);
@@ -155,9 +164,9 @@ export default function MemberDashboard() {
   const [liveFeed, setLiveFeed] = useState([]);
   const [imaliBalance, setImaliBalance] = useState(0);
   
-  // API Form State - ADDED okx_region field
-  const [okxForm, setOkxForm] = useState({ api_key: "", api_secret: "", passphrase: "", mode: "paper", region: "us" });
-  const [alpacaForm, setAlpacaForm] = useState({ api_key: "", api_secret: "", mode: "paper" });
+  // API Form State - Simplified (no mode dropdown, always connects as paper)
+  const [okxForm, setOkxForm] = useState({ api_key: "", api_secret: "", passphrase: "", region: "us" });
+  const [alpacaForm, setAlpacaForm] = useState({ api_key: "", api_secret: "" });
 
   const userTier = user?.tier || "starter";
   const userTierLevel = tierValue(userTier);
@@ -167,6 +176,20 @@ export default function MemberDashboard() {
     return (integrationStatus.okx_connected && integrationStatus.okx_mode === "live") ||
            (integrationStatus.alpaca_connected && integrationStatus.alpaca_mode === "live");
   }, [integrationStatus]);
+  
+  // Main button label logic
+  const getMainActionLabel = () => {
+    if (running) return "Pause Trading";
+    if (mode === "paper") return "Start Demo Trading";
+    if (!canUseLiveMode) return "Upgrade to Live Trading";
+    if (!integrationStatus.okx_connected && !integrationStatus.alpaca_connected) {
+      return "Connect Exchange First";
+    }
+    if (mode === "live" && !hasLiveConnection) {
+      return "Enable Live Trading";
+    }
+    return "Start Live Trading";
+  };
   
   const displayTier = TIER_NAMES[userTierLevel] || "Starter";
   const liveTotalBalance = (integrationStatus.okx_balance || 0) + (integrationStatus.alpaca_balance || 0);
@@ -182,6 +205,23 @@ export default function MemberDashboard() {
     if (canUseLiveMode) score += 5;
     return Math.min(score, 100);
   }, [integrationStatus, canUseLiveMode]);
+
+  // Logout handler
+  const handleLogout = async () => {
+    try {
+      await logout?.();
+      localStorage.removeItem("IMALI_EMAIL");
+      localStorage.removeItem("token");
+      localStorage.removeItem("authToken");
+      sessionStorage.clear();
+      navigate("/login", { replace: true });
+    } catch (err) {
+      console.error("Logout error:", err);
+      localStorage.clear();
+      sessionStorage.clear();
+      navigate("/login", { replace: true });
+    }
+  };
 
   const fetchIntegrationStatus = useCallback(async () => {
     try {
@@ -328,16 +368,6 @@ export default function MemberDashboard() {
     }
   }, [activation, fetchIntegrationStatus, fetchExchangeBalances]);
 
-  const resetPaperDashboard = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setRunning(false);
-    setPaperBalance(START_BALANCE);
-    setPaperProfit(0);
-    setPaperWins(0);
-    setPaperLosses(0);
-    setPaperFeed([]);
-  };
-
   const connectWallet = async () => {
     if (!window.ethereum) {
       alert("MetaMask not detected. Please install MetaMask first.");
@@ -356,25 +386,28 @@ export default function MemberDashboard() {
     }
   };
 
-  // UPDATED: saveOKX with region parameter
+  // Connect OKX (always as paper first)
   const saveOKX = async () => {
     if (!okxForm.api_key || !okxForm.api_secret || !okxForm.passphrase) {
       alert("Please enter all OKX credentials.");
       return;
     }
     
-    // Region selection reminder for US users
-    if (okxForm.region === "us") {
-      alert("ℹ️ US region selected. Make sure your OKX API key was created on us.okx.com");
-    }
+    const result = await BotAPI.connectOKX?.({ 
+      api_key: okxForm.api_key, 
+      secret_key: okxForm.api_secret, 
+      passphrase: okxForm.passphrase,
+      mode: "paper",
+      region: okxForm.region 
+    });
     
-    const result = await BotAPI.connectOKX?.(okxForm);
     if (result?.success) {
-      alert("OKX connected successfully!");
+      alert("OKX connected successfully! Your API keys are now in PAPER (demo) mode.");
       await refreshActivation?.(true);
       await fetchIntegrationStatus();
       await fetchExchangeBalances();
-      setOkxForm({ api_key: "", api_secret: "", passphrase: "", mode: "paper", region: "us" });
+      setOkxForm({ api_key: "", api_secret: "", passphrase: "", region: "us" });
+      setShowApiBox(false);
     } else {
       alert(result?.error || "Failed to connect OKX.");
     }
@@ -385,19 +418,25 @@ export default function MemberDashboard() {
       alert("Please enter all Alpaca credentials.");
       return;
     }
-    const result = await BotAPI.connectAlpaca?.(alpacaForm);
+    const result = await BotAPI.connectAlpaca?.({ 
+      api_key: alpacaForm.api_key, 
+      secret_key: alpacaForm.api_secret, 
+      mode: "paper" 
+    });
     if (result?.success) {
       alert("Alpaca connected successfully!");
       await refreshActivation?.(true);
       await fetchIntegrationStatus();
       await fetchExchangeBalances();
-      setAlpacaForm({ api_key: "", api_secret: "", mode: "paper" });
+      setAlpacaForm({ api_key: "", api_secret: "" });
+      setShowApiBox(false);
     } else {
       alert(result?.error || "Failed to connect Alpaca.");
     }
   };
 
-  const switchToLiveMode = async (exchange) => {
+  // Enable live mode for an exchange
+  const enableLiveMode = async (exchange) => {
     if (!canUseLiveMode) {
       setUpgradeModal({ isOpen: true, requiredTier: "pro" });
       return;
@@ -406,7 +445,7 @@ export default function MemberDashboard() {
       const result = exchange === 'okx' ? await BotAPI.switchOKXToLive?.() : await BotAPI.switchAlpacaToLive?.();
       if (result?.success) {
         await fetchIntegrationStatus();
-        alert(`${exchange.toUpperCase()} switched to LIVE mode!`);
+        alert(`${exchange.toUpperCase()} is now in LIVE mode. Click "Start Live Trading" to begin.`);
       } else {
         alert(result?.error || `Failed to switch ${exchange} to live mode.`);
       }
@@ -417,7 +456,7 @@ export default function MemberDashboard() {
 
   const startLiveBot = async () => {
     if (!hasLiveConnection) {
-      alert("❌ Cannot start live trading.\n\nNo exchange is in LIVE mode.\n\nGo to API Connections → Switch an exchange to LIVE mode first.");
+      alert("❌ Cannot start live trading.\n\nNo exchange is in LIVE mode.\n\nEnable LIVE mode on an exchange first.");
       return;
     }
     
@@ -439,8 +478,8 @@ export default function MemberDashboard() {
       `The bot will:\n` +
       `• Analyze market conditions in real-time\n` +
       `• Execute trades based on ${currentStrategy.name} strategy\n` +
-      `• Use STOP LOSS at ~2% and TAKE PROFIT at ~4%\n` +
-      `• Risk 1-2% of your balance per trade\n\n` +
+      `• Use STOP LOSS at ~1.5% and TAKE PROFIT at ~1%\n` +
+      `• Trade with a percentage of your balance per trade\n\n` +
       `❗ Real money will be used. You can stop the bot anytime.\n\n` +
       `Do you want to proceed?`
     );
@@ -489,21 +528,37 @@ export default function MemberDashboard() {
     }
   };
 
+  // One main button handler
   const startStopBot = async () => {
-    if (mode === "live") {
-      if (running) {
+    if (running) {
+      if (mode === "live") {
         await stopLiveBot();
       } else {
-        await startLiveBot();
+        setRunning(false);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        alert("Demo trading stopped.");
       }
-    } else {
-      setRunning(!running);
-      if (!running) {
-        alert("Paper trading started! The bot will simulate trades for practice.");
-      } else {
-        alert("Paper trading stopped.");
-      }
+      return;
     }
+    
+    if (mode === "paper") {
+      setRunning(true);
+      alert("Demo trading started! The bot will simulate trades for practice.");
+      return;
+    }
+    
+    if (!canUseLiveMode) {
+      setUpgradeModal({ isOpen: true, requiredTier: "pro" });
+      return;
+    }
+    
+    if (!hasLiveConnection) {
+      setShowApiBox(true);
+      alert("Connect OKX or Alpaca and enable LIVE mode first.\n\nClick 'Enable Live Trading' on your connected exchange.");
+      return;
+    }
+    
+    await startLiveBot();
   };
 
   const handleModeChange = (newMode) => {
@@ -577,19 +632,33 @@ export default function MemberDashboard() {
               {mode === "live" && hasLiveConnection && running ? "LIVE ACTIVE" : 
                mode === "live" && hasLiveConnection ? "LIVE READY" : 
                mode === "live" ? "LIVE (NO EXCHANGE)" : 
-               running ? "PAPER ACTIVE" : "PAUSED"}
+               running ? "DEMO ACTIVE" : "PAUSED"}
             </div>
-            <button onClick={() => navigate("/pricing")} className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold hover:bg-white/30">Upgrade</button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate("/pricing")}
+                className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold hover:bg-white/30"
+              >
+                Upgrade
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1 rounded-full bg-red-600 px-3 py-1 text-xs font-bold hover:bg-red-500"
+              >
+                <FaSignOutAlt size={12} />
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-        {/* TOP ROW: Paper Trading vs Live Trading Side by Side */}
+        {/* TOP ROW: Demo Trading vs Live Trading Side by Side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className={`${card} ${mode === "paper" ? "border-emerald-500/50" : ""}`}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">📝 Paper Trading</h2>
+              <h2 className="text-xl font-bold">📝 Demo Trading</h2>
               <button onClick={() => handleModeChange("paper")} className={`text-xs px-3 py-1 rounded-full ${mode === "paper" ? "bg-emerald-600" : "bg-white/10"}`}>Select</button>
             </div>
             <div className="text-3xl font-bold text-emerald-400">{formatMoney(paperBalance)}</div>
@@ -614,7 +683,7 @@ export default function MemberDashboard() {
         <div className={`${card} border-cyan-500/20 bg-gradient-to-r from-cyan-500/5 to-indigo-500/5`}>
           <h2 className="mb-4 text-2xl font-bold">Your Setup Progress</h2>
           <div className="grid gap-4 md:grid-cols-4">
-            <SetupStep done={true} icon={<FaShieldAlt size={24} />} title="1. Paper Trading" description="Start here. Virtual $1,000." />
+            <SetupStep done={true} icon={<FaShieldAlt size={24} />} title="1. Demo Trading" description="Start here. Virtual $1,000." />
             <SetupStep done={integrationStatus.okx_connected || integrationStatus.alpaca_connected} icon={<FaPlug size={24} />} title="2. Connect API" description="Add OKX or Alpaca keys." action={
               <button onClick={() => setShowApiBox(true)} className="mt-3 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold hover:bg-cyan-500">Connect API</button>
             } />
@@ -623,7 +692,7 @@ export default function MemberDashboard() {
                 {integrationStatus.wallet_connected ? "Wallet Connected" : "Connect MetaMask"}
               </button>
             } />
-            <SetupStep done={hasLiveConnection && canUseLiveMode} icon={<FaRocket size={24} />} title="4. Go Live" description="Switch to LIVE mode when ready." />
+            <SetupStep done={hasLiveConnection && canUseLiveMode} icon={<FaRocket size={24} />} title="4. Go Live" description="Enable LIVE mode when ready." />
           </div>
           <div className="mt-5"><div className="mb-2 flex justify-between text-xs text-white/60"><span>Ready to Trade Live</span><span>{setupScore}%</span></div><div className="h-3 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500" style={{ width: `${setupScore}%` }} /></div></div>
         </div>
@@ -660,7 +729,7 @@ export default function MemberDashboard() {
                 <div className="flex items-center gap-2">
                   {integrationStatus.okx_connected && (
                     <span className={`text-xs px-2 py-1 rounded-full ${integrationStatus.okx_mode === "live" ? "bg-red-500/20 text-red-400" : "bg-blue-500/20 text-blue-400"}`}>
-                      {integrationStatus.okx_mode === "live" ? "LIVE" : "Paper"}
+                      {integrationStatus.okx_mode === "live" ? "LIVE" : "Demo"}
                     </span>
                   )}
                   <span className={`text-sm ${integrationStatus.okx_connected ? "text-emerald-400" : "text-white/50"}`}>
@@ -671,12 +740,23 @@ export default function MemberDashboard() {
               {integrationStatus.okx_connected && (
                 <div className="text-2xl font-bold text-cyan-400">{formatMoney(integrationStatus.okx_balance)}</div>
               )}
+              {/* ADDED: OKX Connection Status Display */}
+              {integrationStatus.okx_connected && (
+                <div className="mt-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+                  ✅ OKX API connected
+                  {integrationStatus.okx_api_key_masked && (
+                    <div className="mt-1 text-white/50">
+                      Key: {integrationStatus.okx_api_key_masked}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mt-3 flex gap-2">
                 {!integrationStatus.okx_connected && (
                   <button onClick={() => setShowApiBox(true)} className="text-sm bg-cyan-600 px-3 py-1 rounded-lg hover:bg-cyan-500">Connect</button>
                 )}
                 {integrationStatus.okx_connected && integrationStatus.okx_mode === "paper" && canUseLiveMode && (
-                  <button onClick={() => switchToLiveMode("okx")} className="text-sm bg-amber-600 px-3 py-1 rounded-lg hover:bg-amber-500">Switch to LIVE</button>
+                  <button onClick={() => enableLiveMode("okx")} className="text-sm bg-amber-600 px-3 py-1 rounded-lg hover:bg-amber-500">Enable Live Trading</button>
                 )}
               </div>
             </div>
@@ -687,7 +767,7 @@ export default function MemberDashboard() {
                 <div className="flex items-center gap-2">
                   {integrationStatus.alpaca_connected && (
                     <span className={`text-xs px-2 py-1 rounded-full ${integrationStatus.alpaca_mode === "live" ? "bg-red-500/20 text-red-400" : "bg-blue-500/20 text-blue-400"}`}>
-                      {integrationStatus.alpaca_mode === "live" ? "LIVE" : "Paper"}
+                      {integrationStatus.alpaca_mode === "live" ? "LIVE" : "Demo"}
                     </span>
                   )}
                   <span className={`text-sm ${integrationStatus.alpaca_connected ? "text-emerald-400" : "text-white/50"}`}>
@@ -698,41 +778,44 @@ export default function MemberDashboard() {
               {integrationStatus.alpaca_connected && (
                 <div className="text-2xl font-bold text-blue-400">{formatMoney(integrationStatus.alpaca_balance)}</div>
               )}
+              {/* ADDED: Alpaca Connection Status Display */}
+              {integrationStatus.alpaca_connected && (
+                <div className="mt-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+                  ✅ Alpaca API connected
+                  {integrationStatus.alpaca_api_key_masked && (
+                    <div className="mt-1 text-white/50">
+                      Key: {integrationStatus.alpaca_api_key_masked}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mt-3 flex gap-2">
                 {!integrationStatus.alpaca_connected && (
                   <button onClick={() => setShowApiBox(true)} className="text-sm bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-500">Connect</button>
                 )}
                 {integrationStatus.alpaca_connected && integrationStatus.alpaca_mode === "paper" && canUseLiveMode && (
-                  <button onClick={() => switchToLiveMode("alpaca")} className="text-sm bg-amber-600 px-3 py-1 rounded-lg hover:bg-amber-500">Switch to LIVE</button>
+                  <button onClick={() => enableLiveMode("alpaca")} className="text-sm bg-amber-600 px-3 py-1 rounded-lg hover:bg-amber-500">Enable Live Trading</button>
                 )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Step 3: API Connection Box - UPDATED with Region Selector */}
+        {/* API Connection Box - Simplified (no mode dropdown) */}
         {showApiBox && (
           <div className={`${card} grid gap-5 lg:grid-cols-2`}>
             <div id="okx-section">
               <h3 className="mb-3 text-lg font-bold flex items-center gap-2"><FaExchangeAlt /> Connect OKX</h3>
-              
-              {/* Region Selector - ADD THIS */}
-              <div className="mb-3">
-                <label className="block text-xs text-white/50 mb-1">Trading Region *</label>
-                <select 
-                  value={okxForm.region} 
-                  onChange={(e) => setOkxForm({ ...okxForm, region: e.target.value })}
-                  className="w-full rounded-xl bg-black/40 p-3 text-white border border-white/10"
-                >
-                  <option value="us">🇺🇸 United States (us.okx.com)</option>
-                  <option value="international">🌍 International (www.okx.com)</option>
-                  <option value="eea">🇪🇺 European Economic Area (eea.okx.com)</option>
-                </select>
-                <p className="text-xs text-amber-400/70 mt-1">
-                  ⚠️ US users MUST select "United States" for API to work
-                </p>
-              </div>
-              
+              <p className="text-xs text-white/50 mb-2">⚠️ US users must select United States region</p>
+              <select 
+                value={okxForm.region} 
+                onChange={(e) => setOkxForm({ ...okxForm, region: e.target.value })}
+                className="w-full rounded-xl bg-black/40 p-3 text-white border border-white/10 mb-2"
+              >
+                <option value="us">🇺🇸 United States</option>
+                <option value="international">🌍 International</option>
+                <option value="eea">🇪🇺 European Economic Area</option>
+              </select>
               <input 
                 placeholder="API Key" 
                 value={okxForm.api_key} 
@@ -753,30 +836,17 @@ export default function MemberDashboard() {
                 onChange={(e) => setOkxForm({ ...okxForm, passphrase: e.target.value })} 
                 className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white" 
               />
-              <select 
-                value={okxForm.mode} 
-                onChange={(e) => setOkxForm({ ...okxForm, mode: e.target.value })}
-                className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white"
-              >
-                <option value="paper">Paper Trading (Test Mode)</option>
-                <option value="live">Live Trading (Real Money)</option>
-              </select>
-              <button onClick={saveOKX} className="rounded-xl bg-emerald-600 px-4 py-2 font-bold">Save OKX Keys</button>
+              <button onClick={saveOKX} className="rounded-xl bg-emerald-600 px-4 py-2 font-bold">Connect OKX (Demo Mode)</button>
+              <p className="text-xs text-white/40 mt-2">Your API keys will start in DEMO mode. You can enable LIVE mode later.</p>
             </div>
             
             <div id="alpaca-section">
               <h3 className="mb-3 text-lg font-bold flex items-center gap-2"><FaChartLine /> Connect Alpaca</h3>
+              <p className="text-xs text-white/50 mb-2">Alpaca paper trading account recommended first</p>
               <input placeholder="API Key" value={alpacaForm.api_key} onChange={(e) => setAlpacaForm({ ...alpacaForm, api_key: e.target.value })} className="mb-2 w-full rounded-xl bg-black/40 p-3 text-white" />
               <input placeholder="Secret Key" type="password" value={alpacaForm.api_secret} onChange={(e) => setAlpacaForm({ ...alpacaForm, api_secret: e.target.value })} className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white" />
-              <select 
-                value={alpacaForm.mode} 
-                onChange={(e) => setAlpacaForm({ ...alpacaForm, mode: e.target.value })}
-                className="mb-3 w-full rounded-xl bg-black/40 p-3 text-white"
-              >
-                <option value="paper">Paper Trading (Test Mode)</option>
-                <option value="live">Live Trading (Real Money)</option>
-              </select>
-              <button onClick={saveAlpaca} className="rounded-xl bg-blue-600 px-4 py-2 font-bold">Save Alpaca Keys</button>
+              <button onClick={saveAlpaca} className="rounded-xl bg-blue-600 px-4 py-2 font-bold">Connect Alpaca (Demo Mode)</button>
+              <p className="text-xs text-white/40 mt-2">Your API keys will start in DEMO mode. You can enable LIVE mode later.</p>
             </div>
           </div>
         )}
@@ -792,10 +862,10 @@ export default function MemberDashboard() {
             }`}
           >
             {isBotStarting ? <FaSpinner className="inline mr-3 animate-spin" /> : (running ? <FaPause className="inline mr-3" /> : <FaPlay className="inline mr-3" />)}
-            {isBotStarting ? "Starting Bot..." : (running ? "Pause Trading" : mode === "live" ? "▶ Start Live Trading" : "▶ Start Paper Trading")}
+            {getMainActionLabel()}
           </button>
           {mode === "live" && !hasLiveConnection && (
-            <p className="mt-3 text-sm text-amber-400"><FaInfoCircle className="inline mr-1" /> Connect and switch an exchange to LIVE mode first</p>
+            <p className="mt-3 text-sm text-amber-400"><FaInfoCircle className="inline mr-1" /> Connect and enable LIVE mode on an exchange first</p>
           )}
           {mode === "live" && botStatus && botStatus.isRunning && (
             <p className="mt-2 text-xs text-green-400">Bot is actively monitoring the market</p>
@@ -829,8 +899,8 @@ export default function MemberDashboard() {
             <div className={card}>
               <h2 className="text-xl font-bold mb-3">Connection Status</h2>
               <div className="space-y-2">
-                <div className="flex justify-between p-3 bg-black/20 rounded-xl"><span>🟡 OKX</span><span className={integrationStatus.okx_connected ? "text-emerald-400" : "text-white/50"}>{integrationStatus.okx_connected ? `Connected (${integrationStatus.okx_mode})` : "Not Connected"}</span></div>
-                <div className="flex justify-between p-3 bg-black/20 rounded-xl"><span>🦙 Alpaca</span><span className={integrationStatus.alpaca_connected ? "text-emerald-400" : "text-white/50"}>{integrationStatus.alpaca_connected ? `Connected (${integrationStatus.alpaca_mode})` : "Not Connected"}</span></div>
+                <div className="flex justify-between p-3 bg-black/20 rounded-xl"><span>🟡 OKX</span><span className={integrationStatus.okx_connected ? "text-emerald-400" : "text-white/50"}>{integrationStatus.okx_connected ? `Connected (${integrationStatus.okx_mode === "live" ? "LIVE" : "Demo"})` : "Not Connected"}</span></div>
+                <div className="flex justify-between p-3 bg-black/20 rounded-xl"><span>🦙 Alpaca</span><span className={integrationStatus.alpaca_connected ? "text-emerald-400" : "text-white/50"}>{integrationStatus.alpaca_connected ? `Connected (${integrationStatus.alpaca_mode === "live" ? "LIVE" : "Demo"})` : "Not Connected"}</span></div>
                 <div className="flex justify-between p-3 bg-black/20 rounded-xl"><span>🦊 MetaMask</span><span className={integrationStatus.wallet_connected ? "text-emerald-400" : "text-white/50"}>{integrationStatus.wallet_connected ? "Connected" : "Not Connected"}</span></div>
               </div>
               <button onClick={() => setShowApiBox(true)} className="mt-4 w-full rounded-xl bg-cyan-600 py-2 font-bold hover:bg-cyan-500">Manage Connections</button>
@@ -913,20 +983,8 @@ export default function MemberDashboard() {
         </div>
 
         <div className="pb-4 text-center text-xs text-white/30">
-          Paper trading uses simulated funds. Live trading requires connected accounts and carries risk.
+          Demo trading uses simulated funds. Live trading requires connected accounts and carries risk.
         </div>
-      </div>
-    </div>
-  );
-}
-
-// SetupStep component
-function SetupStep({ done, icon, title, description, action }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-      <div className="flex items-start gap-4">
-        <div className={done ? "text-emerald-400" : "text-cyan-300"}>{done ? <FaCheckCircle size={24} /> : icon}</div>
-        <div className="flex-1"><h3 className="font-bold text-white">{title}</h3><p className="mt-1 text-sm text-slate-300">{description}</p>{action}</div>
       </div>
     </div>
   );
