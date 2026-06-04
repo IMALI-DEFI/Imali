@@ -1,4 +1,4 @@
-// src/utils/BotAPI.js - IMALI PRODUCTION VERSION (with OKX region support)
+// src/utils/BotAPI.js - IMALI PRODUCTION VERSION (with JWT handling fix)
 import axios from "axios";
 
 const API_BASE = (process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com").replace(/\/+$/, "");
@@ -128,12 +128,34 @@ const getErrorMessage = (error, fallbackMessage = "Request failed") =>
   error?.message ||
   fallbackMessage;
 
-const handleApiError = (error, fallbackMessage) => ({
-  success: false,
-  error: getErrorMessage(error, fallbackMessage),
-  status: error?.response?.status,
-  rate_limited: error?.response?.status === 429,
-});
+const handleApiError = (error, fallbackMessage) => {
+  const status = error?.response?.status;
+  const errorCode = error?.response?.data?.code;
+  
+  // Check for token expiration - force logout
+  if (status === 401 && (errorCode === "TOKEN_EXPIRED" || error?.response?.data?.error === "jwt expired")) {
+    if (isBrowser && !window.location.pathname.includes("/login")) {
+      console.warn("[BotAPI] Token expired, logging out...");
+      clearToken();
+      clearApiKey();
+      clearCache();
+      window.location.href = "/login?expired=true";
+    }
+    return { 
+      success: false, 
+      error: "Session expired. Please log in again.",
+      code: "TOKEN_EXPIRED",
+      requiresLogin: true 
+    };
+  }
+  
+  return {
+    success: false,
+    error: getErrorMessage(error, fallbackMessage),
+    status: error?.response?.status,
+    rate_limited: error?.response?.status === 429,
+  };
+};
 
 const shouldForceLogout = (url = "") => SESSION_CHECK_ENDPOINTS.some((endpoint) => String(url).includes(endpoint));
 
@@ -145,6 +167,8 @@ const redirectToLogin = () => {
 
 const shouldRetry = (error) => {
   const status = error?.response?.status;
+  // Don't retry auth errors
+  if (status === 401 || status === 403) return false;
   if (!error?.response) return true;
   if (status === 408 || status === 425 || status === 429) return true;
   if (status >= 500) return true;
@@ -226,12 +250,17 @@ const addAuthInterceptor = (apiClient) => {
       const config = error?.config || {};
       const status = error?.response?.status;
       const url = config?.url || "";
+      const errorCode = error?.response?.data?.code;
+      const errorMessage = error?.response?.data?.error;
 
-      if ((status === 401 || status === 403) && shouldForceLogout(url)) {
+      // Handle expired token - force logout
+      if (status === 401 && (errorCode === "TOKEN_EXPIRED" || errorMessage === "jwt expired")) {
         clearToken();
         clearApiKey();
         clearCache();
-        redirectToLogin();
+        if (shouldForceLogout(url)) {
+          redirectToLogin();
+        }
         return Promise.reject(error);
       }
 
@@ -293,7 +322,22 @@ const getDefaultStrategies = () => ({
   _fallback: true,
 });
 
-const getDefaultLiveStats = () => ({ summary: { total_pnl: 0, win_rate: 0, total_trades: 0, wins: 0, losses: 0, current_balance: 0 }, daily_performance: [], recent_trades: [] });
+const getDefaultLiveStats = () => ({ 
+  summary: { 
+    total_pnl: 0, 
+    win_rate: 0, 
+    total_trades: 0, 
+    wins: 0, 
+    losses: 0, 
+    current_balance: 0,
+    open_positions: 0,
+    daily_pnl: 0,
+    daily_trades: 0
+  }, 
+  daily_performance: [], 
+  recent_trades: [],
+  open_positions: []
+});
 
 const normalizeIntegrationStatus = (row = {}) => ({
   wallet_connected: normalizeBool(row.wallet_connected, false),
@@ -307,17 +351,37 @@ const normalizeIntegrationStatus = (row = {}) => ({
   wallet_address_masked: row.wallet_address_masked || row.wallet_masked || null,
 });
 
+// UPDATED: getLiveTradingStats with better open positions data
 const getLiveTradingStats = async (skipCache = false) => {
   const cacheKey = "live_trading_stats";
   if (!skipCache) {
-    const cached = getCached(cacheKey, 20000);
+    const cached = getCached(cacheKey, 10000); // 10 second cache for live stats
     if (cached) return cached;
   }
   if (!getToken()) return getDefaultLiveStats();
   try {
     const response = await requestWithDedupe(userApi, { method: "get", url: "/api/trading/live-stats" });
     const data = unwrap(response);
-    const result = data?.data || data || getDefaultLiveStats();
+    const stats = data?.data || data || getDefaultLiveStats();
+    
+    // Normalize the stats to ensure consistent structure
+    const result = {
+      summary: {
+        total_pnl: parseMoney(stats.summary?.total_pnl ?? stats.total_pnl ?? 0),
+        win_rate: Number(stats.summary?.win_rate ?? stats.win_rate ?? 0),
+        total_trades: Number(stats.summary?.total_trades ?? stats.total_trades ?? 0),
+        wins: Number(stats.summary?.wins ?? stats.wins ?? 0),
+        losses: Number(stats.summary?.losses ?? stats.losses ?? 0),
+        current_balance: parseMoney(stats.summary?.current_balance ?? stats.current_balance ?? 0),
+        open_positions: Number(stats.summary?.open_positions ?? stats.open_positions ?? 0),
+        daily_pnl: parseMoney(stats.summary?.daily_pnl ?? stats.daily_pnl ?? 0),
+        daily_trades: Number(stats.summary?.daily_trades ?? stats.daily_trades ?? 0),
+      },
+      daily_performance: stats.daily_performance || [],
+      recent_trades: stats.recent_trades || [],
+      open_positions: stats.open_positions || []
+    };
+    
     setCached(cacheKey, result);
     return result;
   } catch (error) {
@@ -326,10 +390,11 @@ const getLiveTradingStats = async (skipCache = false) => {
   }
 };
 
+// UPDATED: getLiveTradeHistory with better error handling
 const getLiveTradeHistory = async (limit = 20, skipCache = false) => {
   const cacheKey = `live_trade_history_${limit}`;
   if (!skipCache) {
-    const cached = getCached(cacheKey, 15000);
+    const cached = getCached(cacheKey, 10000); // 10 second cache
     if (cached) return cached;
   }
   if (!getToken()) return { success: true, trades: [] };
@@ -337,10 +402,25 @@ const getLiveTradeHistory = async (limit = 20, skipCache = false) => {
     const response = await requestWithDedupe(userApi, { method: "get", url: `/api/trading/live-trades?limit=${limit}` });
     const data = unwrap(response);
     const trades = data?.data?.trades || data?.trades || data?.data || [];
-    const result = { success: true, trades: Array.isArray(trades) ? trades : [] };
+    // Normalize trade data
+    const normalizedTrades = (Array.isArray(trades) ? trades : []).map(t => ({
+      id: t.id || t.trade_id,
+      symbol: t.symbol || t.asset,
+      status: t.status || (t.closed_at ? "closed" : "open"),
+      pnl: parseMoney(t.pnl ?? t.pnl_usd ?? t.profit_loss ?? 0),
+      pnl_usd: parseMoney(t.pnl_usd ?? t.pnl ?? 0),
+      entry_price: parseMoney(t.entry_price),
+      exit_price: parseMoney(t.exit_price),
+      quantity: parseMoney(t.quantity),
+      created_at: t.created_at || t.open_time,
+      closed_at: t.closed_at || t.close_time,
+      label: t.label || t.type,
+    }));
+    const result = { success: true, trades: normalizedTrades };
     setCached(cacheKey, result);
     return result;
   } catch (error) {
+    console.warn("[BotAPI] Failed to load live trades:", error);
     return { success: false, trades: [], error: getErrorMessage(error, "Failed to load live trades") };
   }
 };
@@ -348,7 +428,7 @@ const getLiveTradeHistory = async (limit = 20, skipCache = false) => {
 const getExchangeBalance = async (skipCache = false) => {
   const cacheKey = "exchange_balance";
   if (!skipCache) {
-    const cached = getCached(cacheKey, 15000);
+    const cached = getCached(cacheKey, 10000); // 10 second cache
     if (cached) return cached;
   }
   if (!getToken()) return { alpaca: 0, okx: 0, total: 0 };
@@ -370,13 +450,6 @@ const getExchangeBalance = async (skipCache = false) => {
 
 // ==================== BOT MANAGEMENT METHODS ====================
 
-/**
- * Start automated trading bot
- * @param {string} exchange - "okx" or "alpaca"
- * @param {string} strategy - Strategy ID (mean_reversion, ai_weighted, momentum, aggressive)
- * @param {string} mode - "paper" or "live"
- * @returns {Promise<Object>} Bot start response
- */
 const startTradingBot = async (exchange, strategy, mode) => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -392,11 +465,6 @@ const startTradingBot = async (exchange, strategy, mode) => {
   }
 };
 
-/**
- * Stop automated trading bot
- * @param {string} exchange - "okx" or "alpaca"
- * @returns {Promise<Object>} Bot stop response
- */
 const stopTradingBot = async (exchange) => {
   try {
     const response = await requestWithDedupe(userApi, {
@@ -412,10 +480,6 @@ const stopTradingBot = async (exchange) => {
   }
 };
 
-/**
- * Get trading bot status for the authenticated user
- * @returns {Promise<Object>} Bot status response
- */
 const getTradingBotStatus = async (skipCache = false) => {
   const cacheKey = "trading_bot_status";
   if (!skipCache) {
@@ -428,19 +492,24 @@ const getTradingBotStatus = async (skipCache = false) => {
       url: "/api/trading/bot/status"
     });
     const data = unwrap(response);
-    const result = { success: true, data: data?.data || data || [] };
+    // Normalize bot status data
+    const bots = (data?.data || data || []).map(b => ({
+      ...b,
+      isRunning: normalizeBool(b.isRunning ?? b.status === "running"),
+      mode: normalizeMode(b.mode),
+      exchange: String(b.exchange || "").toLowerCase(),
+      strategy: b.strategy || "ai_weighted",
+      started_at: b.started_at || b.start_time,
+    }));
+    const result = { success: true, data: bots };
     setCached(cacheKey, result);
     return result;
   } catch (error) {
+    console.warn("[BotAPI] Failed to get bot status:", error);
     return { success: false, data: [], error: getErrorMessage(error, "Failed to get bot status") };
   }
 };
 
-/**
- * Get bot status for a specific exchange
- * @param {string} exchange - "okx" or "alpaca" 
- * @returns {Promise<Object>} Bot status for specific exchange
- */
 const getExchangeBotStatus = async (exchange) => {
   try {
     const status = await getTradingBotStatus(true);
@@ -452,10 +521,6 @@ const getExchangeBotStatus = async (exchange) => {
   }
 };
 
-/**
- * Check if any bot is running
- * @returns {Promise<Object>} Whether any bot is active
- */
 const isAnyBotRunning = async () => {
   try {
     const status = await getTradingBotStatus(true);
@@ -504,14 +569,21 @@ const login = async (email, password) => {
   }
 };
 
-const logout = () => { clearToken(); clearApiKey(); clearCache(); if (isBrowser) window.location.href = "/login"; };
+const logout = () => { 
+  clearToken(); 
+  clearApiKey(); 
+  clearCache(); 
+  if (isBrowser) window.location.href = "/login"; 
+};
 
 const verifyAuth = async () => {
   try {
     const response = await requestWithDedupe(userApi, { method: "post", url: "/api/auth/verify" });
     const data = unwrap(response);
     return { success: true, valid: !!data?.valid, user: data?.user || data?.data?.user || null };
-  } catch (error) { return handleApiError(error, "Auth verification failed"); }
+  } catch (error) { 
+    return handleApiError(error, "Auth verification failed"); 
+  }
 };
 
 const getMe = async (skipCache = false) => {
@@ -530,7 +602,12 @@ const getMe = async (skipCache = false) => {
     }
     return user;
   } catch (error) {
-    if (error?.response?.status === 401 || error?.response?.status === 403) { clearToken(); clearApiKey(); clearCache(); redirectToLogin(); }
+    if (error?.response?.status === 401 || error?.response?.status === 403) { 
+      clearToken(); 
+      clearApiKey(); 
+      clearCache(); 
+      redirectToLogin(); 
+    }
     return null;
   }
 };
@@ -712,7 +789,6 @@ const getIntegrationStatus = async (skipCache = false) => {
   } catch { return normalizeIntegrationStatus({}); }
 };
 
-// UPDATED: connectOKX with region parameter
 const connectOKX = async (payload) => {
   try {
     const requestPayload = {
@@ -720,7 +796,7 @@ const connectOKX = async (payload) => {
       secret_key: payload.api_secret || payload.secret_key,
       passphrase: payload.passphrase,
       mode: normalizeMode(payload?.mode),
-      region: payload.region || "us"  // ADDED: region parameter (us, international, eea)
+      region: payload.region || "us"
     };
     const response = await requestWithDedupe(userApi, { 
       method: "post", 
@@ -821,7 +897,6 @@ class BotAPIClass {
   getUserTradingStats = getUserTradingStats; getTradingStrategies = getTradingStrategies; updateUserStrategy = updateUserStrategy; toggleTrading = toggleTrading; togglePaperTrading = togglePaperTrading; executePaperTrade = executePaperTrade;
   connectOKX = connectOKX; connectAlpaca = connectAlpaca; connectWallet = connectWallet; disconnectOKX = disconnectOKX; disconnectAlpaca = disconnectAlpaca; switchAlpacaToLive = switchAlpacaToLive; switchOKXToLive = switchOKXToLive; switchAlpacaToPaper = switchAlpacaToPaper; switchOKXToPaper = switchOKXToPaper; switchExchangeMode = switchExchangeMode; getIntegrationStatus = getIntegrationStatus;
   getImaliBalance = getImaliBalance; getGlobalTrades = getGlobalTrades;
-  // Bot Management Methods
   startTradingBot = startTradingBot; stopTradingBot = stopTradingBot; getTradingBotStatus = getTradingBotStatus; getExchangeBotStatus = getExchangeBotStatus; isAnyBotRunning = isAnyBotRunning;
 }
 
