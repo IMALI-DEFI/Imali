@@ -1,4 +1,4 @@
-// src/components/Dashboard/MemberDashboard.jsx - WITH VISUAL API CONNECTION STATUS
+// src/components/Dashboard/MemberDashboard.jsx - WITH LIVE TRADE FIXES
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -271,18 +271,30 @@ export default function MemberDashboard() {
     } catch (err) { console.error("Failed to fetch live stats:", err); }
   }, [canUseLiveMode]);
 
+  // FIX 1: Updated fetchLiveTrades to handle open positions correctly
   const fetchLiveTrades = useCallback(async () => {
     if (!canUseLiveMode || !hasLiveConnection) return;
     try {
-      const trades = await BotAPI.getLiveTradeHistory?.(20);
-      if (trades?.trades) {
-        setLiveFeed(trades.trades.slice(0, 25).map(t => ({
-          id: t.id, symbol: t.symbol, pnl: t.pnl || t.pnl_usd || 0,
-          type: (t.pnl || t.pnl_usd || 0) >= 0 ? "Take Profit" : "Stop Loss",
-          mode: "live", time: new Date(t.created_at).toLocaleTimeString(),
-        })));
-      }
-    } catch (err) { console.error("Failed to fetch live trades:", err); }
+      const response = await BotAPI.getLiveTradeHistory?.(20);
+      const trades = response?.trades || response?.data?.trades || [];
+      setLiveFeed(
+        trades.slice(0, 25).map((t) => {
+          const isOpen = t.status === "open";
+          const pnl = Number(t.pnl ?? t.pnl_usd ?? 0);
+          return {
+            id: t.id,
+            symbol: t.symbol,
+            pnl,
+            status: t.status,
+            type: isOpen ? "Live Position" : t.label || (pnl >= 0 ? "Take Profit" : "Stop Loss"),
+            mode: "live",
+            time: new Date(t.closed_at || t.created_at).toLocaleTimeString(),
+          };
+        })
+      );
+    } catch (err) {
+      console.error("Failed to fetch live trades:", err);
+    }
   }, [canUseLiveMode, hasLiveConnection]);
 
   const fetchImaliBalance = useCallback(async () => {
@@ -335,17 +347,32 @@ export default function MemberDashboard() {
     return () => clearInterval(intervalRef.current);
   }, [running, mode, generatePaperTrade]);
 
-  // Auto-refresh for live mode
+  // FIX 2: Updated live refresh useEffect with proper polling
   useEffect(() => {
     if (mode === "live" && hasLiveConnection) {
-      balanceIntervalRef.current = setInterval(fetchExchangeBalances, BALANCE_REFRESH_INTERVAL);
+      fetchExchangeBalances();
+      fetchBotStatus();
+      fetchLiveStats();
+      fetchLiveTrades();
+      balanceIntervalRef.current = setInterval(() => {
+        fetchExchangeBalances();
+        fetchLiveStats();
+        fetchLiveTrades();
+      }, BALANCE_REFRESH_INTERVAL);
       botStatusIntervalRef.current = setInterval(fetchBotStatus, BOT_STATUS_INTERVAL);
     }
     return () => {
       if (balanceIntervalRef.current) clearInterval(balanceIntervalRef.current);
       if (botStatusIntervalRef.current) clearInterval(botStatusIntervalRef.current);
     };
-  }, [mode, hasLiveConnection, fetchExchangeBalances, fetchBotStatus]);
+  }, [
+    mode,
+    hasLiveConnection,
+    fetchExchangeBalances,
+    fetchBotStatus,
+    fetchLiveStats,
+    fetchLiveTrades,
+  ]);
 
   // Initial data load
   useEffect(() => {
@@ -740,7 +767,7 @@ export default function MemberDashboard() {
               {integrationStatus.okx_connected && (
                 <div className="text-2xl font-bold text-cyan-400">{formatMoney(integrationStatus.okx_balance)}</div>
               )}
-              {/* ADDED: OKX Connection Status Display */}
+              {/* OKX Connection Status Display */}
               {integrationStatus.okx_connected && (
                 <div className="mt-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-300">
                   ✅ OKX API connected
@@ -778,7 +805,7 @@ export default function MemberDashboard() {
               {integrationStatus.alpaca_connected && (
                 <div className="text-2xl font-bold text-blue-400">{formatMoney(integrationStatus.alpaca_balance)}</div>
               )}
-              {/* ADDED: Alpaca Connection Status Display */}
+              {/* Alpaca Connection Status Display */}
               {integrationStatus.alpaca_connected && (
                 <div className="mt-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-300">
                   ✅ Alpaca API connected
@@ -887,7 +914,18 @@ export default function MemberDashboard() {
                   {(mode === "live" ? liveFeed : paperFeed).slice(0, 15).map((trade) => (
                     <div key={trade.id} className="flex justify-between items-center p-3 rounded-xl border border-white/10 bg-black/20">
                       <div><span className="font-bold">{trade.symbol}</span><div className="text-xs text-white/40">{trade.type} • {trade.time}</div></div>
-                      <div className={`font-bold ${trade.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{trade.pnl >= 0 ? "+" : ""}{formatMoney(trade.pnl)}</div>
+                      {/* FIX 3: Updated trade display for open positions */}
+                      <div className={`font-bold ${
+                        trade.status === "open"
+                          ? "text-cyan-400"
+                          : trade.pnl >= 0
+                            ? "text-emerald-400"
+                            : "text-red-400"
+                      }`}>
+                        {trade.status === "open"
+                          ? "OPEN"
+                          : `${trade.pnl >= 0 ? "+" : ""}${formatMoney(trade.pnl)}`}
+                      </div>
                     </div>
                   ))}
                 </div>
