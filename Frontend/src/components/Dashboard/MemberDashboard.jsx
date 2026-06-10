@@ -1,863 +1,989 @@
 // src/components/Dashboard/MemberDashboard.jsx
-import React, { useEffect, useRef, useState, useCallback } from "react";
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
 import {
-  FaPlay, FaPause, FaSpinner, FaSignOutAlt, FaCircle,
-  FaExchangeAlt, FaCheckCircle, FaChartLine, FaInfoCircle,
-  FaShieldAlt, FaClock, FaWallet, FaRobot, FaBug,
-  FaTimesCircle, FaArrowUp, FaArrowDown, FaKey, FaPlug,
-  FaStop, FaDollarSign, FaPercentage
+  FaPlay,
+  FaStop,
+  FaSpinner,
+  FaSignOutAlt,
+  FaCircle,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaWallet,
+  FaRobot,
+  FaExchangeAlt,
+  FaChartLine,
+  FaKey,
+  FaPlug,
+  FaSyncAlt,
 } from "react-icons/fa";
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend } from 'chart.js';
-import { Line, Doughnut } from 'react-chartjs-2';
-
-ChartJS.register(
+import {
+  Chart as ChartJS,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
-  ArcElement,
   Tooltip,
-  Legend
-);
+  Legend,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 
-// ── helpers ──────────────────────────────────────────────────
-const formatMoney = (n) => `$${Number(n || 0).toFixed(2)}`;
-const formatNumber = (n) => Number(n || 0).toLocaleString();
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
-const parseMoney = (value) => {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value === "string") {
-    const parsed = Number(value.replace(/[$,]/g, ""));
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-};
+const POLL_INTERVAL_MS = 8000;
+
+const formatMoney = (value) => `$${Number(value || 0).toFixed(2)}`;
+const formatPercent = (value) => `${Number(value || 0).toFixed(1)}%`;
 
 const STRATEGIES = [
-  { id: "mean_reversion", name: "Conservative", icon: "🛡️", risk: "Low", color: "emerald", description: "Slow, steady trades focused on consistency.", takeProfit: 1.5, stopLoss: 1.5 },
-  { id: "ai_weighted", name: "Balanced AI", icon: "🤖", risk: "Medium", color: "blue", description: "AI‑assisted balance between growth and protection.", takeProfit: 2.0, stopLoss: 2.0 },
-  { id: "momentum", name: "Growth", icon: "📈", risk: "Higher", color: "orange", description: "Faster opportunities with larger swings.", takeProfit: 2.5, stopLoss: 2.5 },
-  { id: "aggressive", name: "Aggressive", icon: "🔥", risk: "High", color: "red", description: "High volatility with larger upside potential.", takeProfit: 3.0, stopLoss: 3.0 },
+  {
+    id: "mean_reversion",
+    name: "Conservative",
+    icon: "🛡️",
+    risk: "Low",
+    description: "Waits for stronger dips before entering trades.",
+  },
+  {
+    id: "ai_weighted",
+    name: "Balanced AI",
+    icon: "🤖",
+    risk: "Medium",
+    description: "Balanced AI-assisted signal selection.",
+  },
+  {
+    id: "momentum",
+    name: "Growth",
+    icon: "📈",
+    risk: "Higher",
+    description: "Follows stronger market movement.",
+  },
+  {
+    id: "aggressive",
+    name: "Aggressive",
+    icon: "🔥",
+    risk: "High",
+    description: "Higher-frequency, higher-volatility trading.",
+  },
 ];
 
 const EXCHANGES = [
-  { id: "okx", name: "OKX", icon: "🟡", route: "/connect-okx", color: "yellow" },
-  { id: "alpaca", name: "Alpaca", icon: "🦙", route: "/connect-alpaca", color: "blue" },
+  {
+    id: "okx",
+    name: "OKX",
+    assetLabel: "Available USDT",
+    connectRoute: "/connect-okx",
+  },
+  {
+    id: "alpaca",
+    name: "Alpaca",
+    assetLabel: "Available USD",
+    connectRoute: "/connect-alpaca",
+  },
 ];
 
-// ── subcomponents ────────────────────────────────────────────
+function normalizeMode(value) {
+  const mode = String(value || "").toLowerCase();
+  return mode === "live" ? "live" : "paper";
+}
 
-// 1. API Key Management Card
-const ApiKeyCard = ({ exchange, connection, onConnect, onDisconnect, onTest }) => {
-  const [testing, setTesting] = useState(false);
+function getStrategyById(id) {
+  return STRATEGIES.find((strategy) => strategy.id === id) || STRATEGIES[1];
+}
 
-  const handleTest = async () => {
-    setTesting(true);
-    await onTest?.();
-    setTesting(false);
-  };
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">{exchange.icon}</span>
-          <h3 className="font-bold">{exchange.name}</h3>
-          {connection.connected && (
-            <span className="flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
-              <FaCheckCircle size={10} /> Connected
-            </span>
-          )}
-        </div>
-        <div className={`text-xs px-2 py-1 rounded-full ${connection.mode === 'live' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-          {connection.mode === 'live' ? 'LIVE' : 'PAPER'}
-        </div>
-      </div>
-
-      <div className="space-y-3 text-sm">
-        <div className="flex justify-between">
-          <span className="text-white/40">API Key:</span>
-          <span className="font-mono">{connection.apiKeyMasked || 'Not connected'}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-white/40">Trading Permission:</span>
-          <span className={connection.tradingPermission !== false ? "text-emerald-400" : "text-red-400"}>
-            {connection.tradingPermission !== false ? '✅ Enabled' : '❌ Disabled'}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-white/40">Withdrawal:</span>
-          <span className="text-red-400">❌ Disabled (recommended)</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-white/40">Balance:</span>
-          <span className="font-bold">{formatMoney(connection.balance)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-white/40">Last Verified:</span>
-          <span>{connection.lastVerified || 'Not yet'}</span>
-        </div>
-      </div>
-
-      <div className="flex gap-2 mt-5">
-        <button
-          onClick={() => onConnect?.()}
-          className="flex-1 bg-cyan-600 hover:bg-cyan-500 rounded-xl py-2 text-sm font-bold transition flex items-center justify-center gap-1"
-        >
-          <FaKey size={12} /> Update Keys
-        </button>
-        <button
-          onClick={handleTest}
-          disabled={testing}
-          className="flex-1 bg-white/10 hover:bg-white/20 rounded-xl py-2 text-sm font-bold transition flex items-center justify-center gap-1"
-        >
-          {testing ? <FaSpinner className="animate-spin" /> : <FaPlug size={12} />} Test
-        </button>
-        {connection.connected && (
-          <button
-            onClick={() => onDisconnect?.()}
-            className="px-4 bg-red-600/20 hover:bg-red-600/30 rounded-xl py-2 text-sm font-bold transition text-red-400"
-          >
-            <FaTimesCircle size={12} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// 2. Open Positions Card
-const OpenPositionsCard = ({ positions, onClosePosition }) => {
-  if (!positions?.length) {
-    return (
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-6 text-center text-white/40">
-        <FaRobot className="text-4xl mx-auto mb-2 opacity-30" />
-        <p>No open positions</p>
-        <p className="text-xs mt-1">Start the bot to begin trading</p>
-      </div>
-    );
-  }
-
-  const totalPnl = positions.reduce((sum, p) => sum + (p.pnl_usd || 0), 0);
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-bold">📂 Open Positions</h3>
-        <span className="text-xs text-white/40">{positions.length} positions</span>
-      </div>
-      <div className="space-y-3 max-h-64 overflow-y-auto">
-        {positions.map((pos) => (
-          <div key={pos.id} className="border-b border-white/10 pb-2 last:border-0">
-            <div className="flex justify-between items-center">
-              <span className="font-bold">{pos.symbol}</span>
-              <span className={`text-sm ${(pos.pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {(pos.pnl_usd || 0) >= 0 ? '+' : ''}{formatMoney(pos.pnl_usd)}
-              </span>
-            </div>
-            <div className="flex justify-between text-xs text-white/40 mt-1">
-              <span>Entry: {formatMoney(pos.price)}</span>
-              <span>Current: {formatMoney(pos.current_price || pos.price)}</span>
-              <span>PnL: {((pos.pnl_percent || 0) || 0).toFixed(2)}%</span>
-            </div>
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => onClosePosition?.(pos.id)}
-                className="text-xs bg-red-600/20 hover:bg-red-600/30 px-3 py-1 rounded-full transition"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 pt-3 border-t border-white/10 flex justify-between font-bold">
-        <span>Total Open PnL:</span>
-        <span className={totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-          {totalPnl >= 0 ? '+' : ''}{formatMoney(totalPnl)}
-        </span>
-      </div>
-    </div>
-  );
-};
-
-// 3. Bot Status Card
-const BotStatusCard = ({ bot, onStart, onStop, isStarting }) => {
-  const statusConfig = {
-    running: { color: 'emerald', text: 'RUNNING', icon: '🟢' },
-    stopped: { color: 'gray', text: 'STOPPED', icon: '⚫' },
-    error: { color: 'red', text: 'ERROR', icon: '🔴' },
-  };
-  const status = bot?.isRunning ? 'running' : bot?.error ? 'error' : 'stopped';
-  const config = statusConfig[status];
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-bold">🤖 Bot Status</h3>
-        <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-${config.color}-500/20 text-${config.color}-400`}>
-          <span>{config.icon}</span>
-          {config.text}
-        </div>
-      </div>
-
-      <div className="space-y-3 text-sm">
-        <div className="flex justify-between">
-          <span className="text-white/40">Strategy:</span>
-          <span className="font-bold">{bot?.strategy || 'Not selected'}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-white/40">Mode:</span>
-          <span className={bot?.mode === 'live' ? 'text-red-400' : 'text-yellow-400'}>
-            {bot?.mode?.toUpperCase() || 'PAPER'}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-white/40">Exchange:</span>
-          <span>{bot?.exchange?.toUpperCase() || 'OKX'}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-white/40">Scanning:</span>
-          <span>{bot?.scanningCount || 14} Symbols</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-white/40">Open Positions:</span>
-          <span>{bot?.openPositions || 0} / {bot?.maxPositions || 3}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-white/40">Next Scan:</span>
-          <span>{bot?.nextScan || '12 sec'}</span>
-        </div>
-      </div>
-
-      <div className="flex gap-2 mt-5">
-        {!bot?.isRunning ? (
-          <button
-            onClick={onStart}
-            disabled={isStarting}
-            className="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded-xl py-2 font-bold transition flex items-center justify-center gap-2"
-          >
-            {isStarting ? <FaSpinner className="animate-spin" /> : <FaPlay />} Start Bot
-          </button>
-        ) : (
-          <button
-            onClick={onStop}
-            className="flex-1 bg-red-600 hover:bg-red-500 rounded-xl py-2 font-bold transition flex items-center justify-center gap-2"
-          >
-            <FaStop /> Stop Bot
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// 4. Account Allocation Card
-const AllocationCard = ({ usdtAvailable, openValue, holdings }) => {
-  const total = usdtAvailable + openValue;
-  const usdtPct = total ? (usdtAvailable / total) * 100 : 100;
-  const openPct = total ? (openValue / total) * 100 : 0;
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-      <h3 className="font-bold mb-4">💰 Portfolio Allocation</h3>
-
-      <div className="flex justify-between text-sm mb-2">
-        <span>USDT Available</span>
-        <span className="font-bold">{formatMoney(usdtAvailable)} ({usdtPct.toFixed(1)}%)</span>
-      </div>
-      <div className="flex justify-between text-sm mb-4">
-        <span>Open Positions</span>
-        <span className="font-bold">{formatMoney(openValue)} ({openPct.toFixed(1)}%)</span>
-      </div>
-
-      <div className="h-2 rounded-full overflow-hidden bg-white/10 mb-4">
-        <div className="h-full bg-emerald-500" style={{ width: `${usdtPct}%` }} />
-      </div>
-
-      {holdings?.length > 0 && (
-        <div className="space-y-1 mt-4 pt-3 border-t border-white/10">
-          <div className="text-xs text-white/40 mb-2">Holdings Breakdown:</div>
-          {holdings.slice(0, 5).map((h) => (
-            <div key={h.symbol} className="flex justify-between text-xs">
-              <span>{h.symbol}</span>
-              <span>{formatMoney(h.value)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// 5. Activity Feed
-const ActivityFeed = ({ activities }) => {
-  if (!activities?.length) {
-    return (
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-        <h3 className="font-bold mb-4">📋 Activity Feed</h3>
-        <div className="text-center text-white/40 py-8">
-          <FaRobot className="text-3xl mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No recent activity</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-      <h3 className="font-bold mb-4">📋 Activity Feed</h3>
-      <div className="space-y-3 max-h-64 overflow-y-auto">
-        {activities.map((act, i) => (
-          <div key={act.id || i} className="flex items-start gap-3 text-sm">
-            <div className="w-16 text-xs text-white/30 flex-shrink-0">{act.time}</div>
-            <div className="flex-1">
-              <span className="font-bold">{act.action}</span>
-              {act.details && (
-                <div className="text-xs text-white/50">{act.details}</div>
-              )}
-            </div>
-            {act.pnl && (
-              <div className={`font-bold text-xs flex-shrink-0 ${act.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {act.pnl >= 0 ? '+' : ''}{formatMoney(act.pnl)}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// 6. Risk Settings Card
-const RiskSettingsCard = ({ settings, onUpdate }) => {
-  const [localSettings, setLocalSettings] = useState(settings);
-
-  useEffect(() => {
-    setLocalSettings(settings);
-  }, [settings]);
-
-  const handleChange = (key, value) => {
-    const updated = { ...localSettings, [key]: value };
-    setLocalSettings(updated);
-    onUpdate?.(updated);
-  };
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-      <h3 className="font-bold mb-4">⚙️ Risk Settings</h3>
-      <div className="space-y-3">
-        <div>
-          <div className="flex justify-between text-sm mb-1">
-            <span className="text-white/40">Trade Size (% of balance)</span>
-            <span className="font-bold">{Math.round((localSettings.tradePct || 0.15) * 100)}%</span>
-          </div>
-          <input
-            type="range"
-            min="5"
-            max="30"
-            step="5"
-            value={(localSettings.tradePct || 0.15) * 100}
-            onChange={(e) => handleChange('tradePct', e.target.value / 100)}
-            className="w-full"
-          />
-        </div>
-
-        <div className="flex justify-between">
-          <span className="text-white/40">Max Positions:</span>
-          <span className="font-bold">{localSettings.maxPositions || 3}</span>
-        </div>
-
-        <div className="flex justify-between">
-          <span className="text-white/40">Min Trade:</span>
-          <span className="font-bold">{formatMoney(localSettings.minTradeUsd || 5)}</span>
-        </div>
-
-        <div className="flex justify-between">
-          <span className="text-white/40">Take Profit:</span>
-          <span className="text-emerald-400 font-bold">{(localSettings.takeProfitPct || 0.025) * 100}%</span>
-        </div>
-
-        <div className="flex justify-between">
-          <span className="text-white/40">Stop Loss:</span>
-          <span className="text-red-400 font-bold">{(localSettings.stopLossPct || 0.025) * 100}%</span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// 7. Emergency Controls
-const EmergencyControls = ({ onStopBot, onCloseAll, onSellToUsdt, isProcessing }) => {
-  const [confirming, setConfirming] = useState(null);
-
-  const handleAction = async (action, handler) => {
-    if (confirming === action) {
-      await handler?.();
-      setConfirming(null);
-    } else {
-      setConfirming(action);
-      setTimeout(() => setConfirming(null), 5000);
-    }
-  };
-
-  return (
-    <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-5">
-      <h3 className="font-bold mb-4 text-red-400 flex items-center gap-2">
-        <FaShieldAlt /> Emergency Controls
-      </h3>
-      <div className="flex flex-col gap-2">
-        <button
-          onClick={() => handleAction('stop', onStopBot)}
-          disabled={isProcessing}
-          className={`px-4 py-2 rounded-xl font-bold transition flex items-center justify-center gap-2 ${
-            confirming === 'stop'
-              ? 'bg-red-600 text-white'
-              : 'bg-red-600/20 hover:bg-red-600/30 text-red-400'
-          }`}
-        >
-          {confirming === 'stop' ? 'Click again to confirm' : <FaStop />} Stop Bot
-        </button>
-        <button
-          onClick={() => handleAction('close', onCloseAll)}
-          disabled={isProcessing}
-          className={`px-4 py-2 rounded-xl font-bold transition flex items-center justify-center gap-2 ${
-            confirming === 'close'
-              ? 'bg-orange-600 text-white'
-              : 'bg-orange-600/20 hover:bg-orange-600/30 text-orange-400'
-          }`}
-        >
-          {confirming === 'close' ? 'Click again to confirm' : <FaTimesCircle />} Close All Positions
-        </button>
-        <button
-          onClick={() => handleAction('sell', onSellToUsdt)}
-          disabled={isProcessing}
-          className={`px-4 py-2 rounded-xl font-bold transition flex items-center justify-center gap-2 ${
-            confirming === 'sell'
-              ? 'bg-yellow-600 text-white'
-              : 'bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-400'
-          }`}
-        >
-          {confirming === 'sell' ? 'Click again to confirm' : <FaDollarSign />} Sell Everything to USDT
-        </button>
-      </div>
-      <p className="text-xs text-white/30 mt-3">⚠️ Emergency actions require double-confirmation</p>
-    </div>
-  );
-};
-
-// 8. Setup Progress Card
-const SetupProgressCard = ({ steps }) => {
-  const completed = steps.filter(s => s.completed).length;
-  const percent = (completed / steps.length) * 100;
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="font-bold">Setup Progress</h3>
-        <span className="text-xs text-white/40">{completed} / {steps.length} Complete</span>
-      </div>
-      <div className="h-2 rounded-full overflow-hidden bg-white/10 mb-4">
-        <div className="h-full bg-cyan-500" style={{ width: `${percent}%` }} />
-      </div>
-      <div className="space-y-2">
-        {steps.map((step, i) => (
-          <div key={i} className="flex items-center gap-2 text-sm">
-            {step.completed ? (
-              <FaCheckCircle className="text-emerald-400" size={14} />
-            ) : (
-              <FaCircle className="text-white/20" size={14} />
-            )}
-            <span className={step.completed ? 'text-white/80' : 'text-white/40'}>{step.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// 9. Performance Card (Real)
-const PerformanceCard = ({ stats }) => {
-  const winRate = stats.wins + stats.losses > 0
-    ? (stats.wins / (stats.wins + stats.losses)) * 100
-    : 0;
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-      <h3 className="font-bold mb-4">📈 Real Performance</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <div className="text-xs text-white/40">Realized PnL</div>
-          <div className={`text-xl font-bold ${stats.realizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {formatMoney(stats.realizedPnl)}
-          </div>
-        </div>
-        <div>
-          <div className="text-xs text-white/40">Unrealized PnL</div>
-          <div className={`text-xl font-bold ${stats.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {formatMoney(stats.unrealizedPnl)}
-          </div>
-        </div>
-        <div>
-          <div className="text-xs text-white/40">Total PnL</div>
-          <div className={`text-xl font-bold ${stats.totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {formatMoney(stats.totalPnl)}
-          </div>
-        </div>
-        <div>
-          <div className="text-xs text-white/40">Win Rate</div>
-          <div className="text-xl font-bold text-white">{winRate.toFixed(1)}%</div>
-        </div>
-        <div>
-          <div className="text-xs text-white/40">Trades</div>
-          <div className="text-xl font-bold text-white">{formatNumber(stats.totalTrades)}</div>
-        </div>
-        <div>
-          <div className="text-xs text-white/40">Wins / Losses</div>
-          <div className="text-sm font-bold">
-            <span className="text-emerald-400">{stats.wins}</span>
-            <span className="text-white/40"> / </span>
-            <span className="text-red-400">{stats.losses}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// 10. Exchange Asset Breakdown
-const AssetBreakdownCard = ({ assets }) => {
-  if (!assets?.length) {
-    return (
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-        <h3 className="font-bold mb-4">💰 Assets</h3>
-        <div className="text-center text-white/40 py-6">No assets loaded</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-      <h3 className="font-bold mb-4">💰 Assets</h3>
-      <div className="space-y-2">
-        {assets.map((asset) => (
-          <div key={asset.ccy} className="flex justify-between text-sm">
-            <span className="font-mono">{asset.ccy}</span>
-            <span className="font-bold">{formatMoney(asset.usdValue)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// ── Main Component ───────────────────────────────────────────
 export default function MemberDashboard() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
 
-  // State
+  const mountedRef = useRef(true);
+  const pollingRef = useRef(null);
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
   const [activeExchange, setActiveExchange] = useState("okx");
-  const [running, setRunning] = useState(false);
+  const [botRunning, setBotRunning] = useState(false);
+  const [botMode, setBotMode] = useState("paper");
+  const [botError, setBotError] = useState("");
+
   const [currentStrategy, setCurrentStrategy] = useState(STRATEGIES[1]);
-  const [connections, setConnections] = useState({});
-  const [positions, setPositions] = useState([]);
-  const [botStatus, setBotStatus] = useState({});
-  const [stats, setStats] = useState({ realizedPnl: 0, unrealizedPnl: 0, totalPnl: 0, wins: 0, losses: 0, totalTrades: 0 });
-  const [activities, setActivities] = useState([]);
+
+  const [exchangeConnected, setExchangeConnected] = useState(false);
+  const [apiKeyMasked, setApiKeyMasked] = useState("");
+  const [availableCash, setAvailableCash] = useState(0);
+  const [accountBalance, setAccountBalance] = useState(0);
   const [assets, setAssets] = useState([]);
-  const [riskSettings, setRiskSettings] = useState({ tradePct: 0.15, maxPositions: 3, minTradeUsd: 8, takeProfitPct: 0.025, stopLossPct: 0.025 });
+
+  const [positions, setPositions] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [equityHistory, setEquityHistory] = useState([]);
-  const [currentBalance, setCurrentBalance] = useState(0);
-  const [openValue, setOpenValue] = useState(0);
 
-  const fetchAllData = useCallback(async () => {
-    try {
-      const [balances, positionsData, botData, statsData, tradesData, assetsData] = await Promise.all([
-        BotAPI.getExchangeBalance?.(),
-        BotAPI.getOpenPositions?.(),
-        BotAPI.getTradingBotStatus?.(),
-        BotAPI.getLiveTradingStats?.(),
-        BotAPI.getLiveTradeHistory?.(20),
-        BotAPI.getExchangeBalance?.(),
-      ]);
+  const [stats, setStats] = useState({
+    realizedPnl: 0,
+    unrealizedPnl: 0,
+    totalPnl: 0,
+    wins: 0,
+    losses: 0,
+    totalTrades: 0,
+  });
 
-      // Update balances
-      const okxBalance = balances?.data?.okx_available_usdt || 0;
-      setCurrentBalance(okxBalance);
+  const [riskSettings, setRiskSettings] = useState({
+    tradePct: 0.15,
+    maxPositions: 3,
+    minTradeUsd: 8,
+    takeProfitPct: 0.025,
+    stopLossPct: 0.025,
+  });
 
-      // Update positions
-      const posList = positionsData?.data?.positions || positionsData?.positions || [];
-      setPositions(posList);
-      const posValue = posList.reduce((sum, p) => sum + (p.qty * p.price), 0);
-      setOpenValue(posValue);
+  const activeExchangeConfig = useMemo(
+    () => EXCHANGES.find((exchange) => exchange.id === activeExchange) || EXCHANGES[0],
+    [activeExchange]
+  );
 
-      // Update bot status
-      const bots = botData?.data?.bots || botData?.data || [];
-      const activeBot = bots.find(b => b.exchange === activeExchange && b.isRunning);
-      setRunning(!!activeBot);
-      setBotStatus(activeBot || {});
+  const winRate = useMemo(() => {
+    const total = Number(stats.wins || 0) + Number(stats.losses || 0);
+    if (!total) return 0;
+    return (Number(stats.wins || 0) / total) * 100;
+  }, [stats.wins, stats.losses]);
 
-      // Update stats
-      const summary = statsData?.data?.summary || statsData?.summary || {};
-      setStats({
-        realizedPnl: parseMoney(summary.realized_pnl || summary.total_pnl || 0),
-        unrealizedPnl: parseMoney(summary.unrealized_pnl || 0),
-        totalPnl: parseMoney(summary.total_pnl || 0),
-        wins: Number(summary.wins || 0),
-        losses: Number(summary.losses || 0),
-        totalTrades: Number(summary.total_trades || 0),
-      });
+  const openPositionsValue = useMemo(() => {
+    return positions.reduce((sum, position) => {
+      const qty = Number(position.qty ?? position.quantity ?? position.size ?? 0);
+      const price = Number(position.price ?? position.current_price ?? position.mark_price ?? position.entry_price ?? 0);
+      return sum + qty * price;
+    }, 0);
+  }, [positions]);
 
-      // Update activities feed
-      const trades = tradesData?.trades || tradesData?.data?.trades || [];
-      setActivities(trades.slice(0, 20).map(t => ({
-        id: t.id,
-        time: new Date(t.created_at).toLocaleTimeString(),
-        action: `${t.side?.toUpperCase()} ${t.symbol}`,
-        details: t.strategy ? `${t.strategy} strategy` : '',
-        pnl: t.pnl_usd,
-      })));
+  const totalEquity = Number(availableCash || 0) + Number(openPositionsValue || 0);
 
-      // Update assets breakdown
-      const okxAssets = balances?.data?.okx_assets || [];
-      setAssets(okxAssets.filter(a => a.usdValue > 0.01 && a.ccy !== 'USDT').slice(0, 10));
+  const chartData = useMemo(
+    () => ({
+      labels: equityHistory.map((item) => item.time),
+      datasets: [
+        {
+          label: "Account Equity",
+          data: equityHistory.map((item) => item.equity),
+          borderColor: "#10b981",
+          backgroundColor: "rgba(16, 185, 129, 0.12)",
+          tension: 0.3,
+          fill: true,
+        },
+      ],
+    }),
+    [equityHistory]
+  );
 
-      // Update equity history
-      setEquityHistory(prev => {
-        const now = new Date().toLocaleTimeString();
-        const newPoint = { time: now, equity: currentBalance + posValue };
-        const updated = [...prev, newPoint];
-        return updated.slice(-30);
-      });
+  const chartOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: {
+            color: "#ffffff",
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: "rgba(255,255,255,0.55)" },
+          grid: { color: "rgba(255,255,255,0.08)" },
+        },
+        y: {
+          ticks: { color: "rgba(255,255,255,0.55)" },
+          grid: { color: "rgba(255,255,255,0.08)" },
+        },
+      },
+    }),
+    []
+  );
 
-    } catch (err) {
-      console.error("fetchAllData:", err);
+  const safeSetState = useCallback((setter, value) => {
+    if (mountedRef.current) setter(value);
+  }, []);
+
+  const fetchBotStatus = useCallback(async () => {
+    const response = await BotAPI.getTradingBotStatus?.();
+    const data = response?.data || response || {};
+
+    const isRunning = Boolean(data.isRunning ?? data.running ?? data.botRunning ?? false);
+    const mode = normalizeMode(data.mode || data.bot_mode || data.trading_mode || botMode);
+    const strategyId = data.strategy || data.currentStrategy || data.strategy_id;
+
+    setBotRunning(isRunning);
+    setBotMode(mode);
+
+    if (strategyId) {
+      setCurrentStrategy(getStrategyById(strategyId));
     }
-  }, [activeExchange, currentBalance]);
 
-  // Setup progress steps
-  const setupSteps = [
-    { label: "Account Created", completed: !!user },
-    { label: "API Connected", completed: connections[activeExchange]?.connected },
-    { label: "Balance Verified", completed: currentBalance > 0 },
-    { label: "Strategy Selected", completed: !!currentStrategy },
-    { label: "Live Trading Started", completed: running },
-  ];
+    setRiskSettings((prev) => ({
+      ...prev,
+      tradePct: Number(data.tradePct ?? data.trade_pct ?? prev.tradePct),
+      maxPositions: Number(data.maxPositions ?? data.max_positions ?? prev.maxPositions),
+      minTradeUsd: Number(data.minTradeUsd ?? data.min_trade_usd ?? prev.minTradeUsd),
+      takeProfitPct: Number(data.takeProfitPct ?? data.take_profit_pct ?? prev.takeProfitPct),
+      stopLossPct: Number(data.stopLossPct ?? data.stop_loss_pct ?? prev.stopLossPct),
+    }));
 
-  // Handlers
-  const handleStartBot = async () => {
-    setIsProcessing(true);
-    try {
-      const result = await BotAPI.startTradingBot?.(activeExchange, currentStrategy.id, "live");
-      if (result?.success) {
-        await fetchAllData();
-      } else {
-        alert(result?.error || "Failed to start bot");
+    setBotError("");
+  }, [botMode]);
+
+  const fetchIntegrationStatus = useCallback(async () => {
+    const response = await BotAPI.getIntegrationStatus?.();
+    const data = response?.data || response || {};
+
+    if (activeExchange === "okx") {
+      setExchangeConnected(Boolean(data.okx_connected || data.okxConnected));
+      setApiKeyMasked(data.okx_api_key_masked || data.okxApiKeyMasked || "");
+      if (data.okx_mode) setBotMode(normalizeMode(data.okx_mode));
+      return;
+    }
+
+    if (activeExchange === "alpaca") {
+      setExchangeConnected(Boolean(data.alpaca_connected || data.alpacaConnected));
+      setApiKeyMasked(data.alpaca_api_key_masked || data.alpacaApiKeyMasked || "");
+      if (data.alpaca_mode) setBotMode(normalizeMode(data.alpaca_mode));
+    }
+  }, [activeExchange]);
+
+  const fetchBalanceAndAssets = useCallback(async () => {
+    const response = await BotAPI.getExchangeBalance?.();
+    const data = response?.data || response || {};
+
+    if (activeExchange === "okx") {
+      const available = Number(
+        data.okx_available_usdt ??
+          data.okxAvailableUsdt ??
+          data.available_usdt ??
+          data.availableUSDT ??
+          0
+      );
+
+      const total = Number(
+        data.okx_total_usd ??
+          data.okxTotalUsd ??
+          data.okx_balance ??
+          data.okx ??
+          data.total ??
+          available
+      );
+
+      const okxAssets = Array.isArray(data.okx_assets)
+        ? data.okx_assets
+        : Array.isArray(data.assets)
+          ? data.assets
+          : [];
+
+      setAvailableCash(available);
+      setAccountBalance(total);
+      setAssets(
+        okxAssets.filter((asset) => {
+          const value = Number(asset.usdValue ?? asset.usd_value ?? asset.value ?? 0);
+          const currency = asset.ccy || asset.symbol || asset.asset;
+          return value > 0.01 && currency !== "USDT";
+        })
+      );
+
+      return { available, total };
+    }
+
+    if (activeExchange === "alpaca") {
+      const available = Number(
+        data.alpaca_available_usd ??
+          data.alpacaAvailableUsd ??
+          data.alpaca_cash ??
+          data.cash ??
+          0
+      );
+
+      const total = Number(
+        data.alpaca_equity ??
+          data.alpacaEquity ??
+          data.alpaca_balance ??
+          data.alpaca ??
+          available
+      );
+
+      setAvailableCash(available);
+      setAccountBalance(total);
+      setAssets([]);
+
+      return { available, total };
+    }
+
+    return { available: 0, total: 0 };
+  }, [activeExchange]);
+
+  const fetchOpenPositions = useCallback(async () => {
+    const response = await BotAPI.getOpenPositions?.(activeExchange);
+    const data = response?.data || response || {};
+    const nextPositions = data.positions || data.open_positions || data || [];
+
+    setPositions(Array.isArray(nextPositions) ? nextPositions : []);
+    return Array.isArray(nextPositions) ? nextPositions : [];
+  }, [activeExchange]);
+
+  const fetchTradingStats = useCallback(async () => {
+    const response = await BotAPI.getLiveTradingStats?.(activeExchange);
+    const data = response?.data || response || {};
+    const summary = data.summary || data;
+
+    setStats({
+      realizedPnl: Number(summary.realized_pnl ?? summary.realizedPnl ?? summary.total_pnl ?? 0),
+      unrealizedPnl: Number(summary.unrealized_pnl ?? summary.unrealizedPnl ?? 0),
+      totalPnl: Number(summary.total_pnl ?? summary.totalPnl ?? 0),
+      wins: Number(summary.wins ?? 0),
+      losses: Number(summary.losses ?? 0),
+      totalTrades: Number(summary.total_trades ?? summary.totalTrades ?? 0),
+    });
+  }, [activeExchange]);
+
+  const fetchRecentTrades = useCallback(async () => {
+    const response = await BotAPI.getLiveTradeHistory?.(20, activeExchange);
+    const data = response?.data || response || {};
+    const trades = data.trades || data.history || [];
+
+    const formatted = Array.isArray(trades)
+      ? trades.slice(0, 20).map((trade, index) => ({
+          id: trade.id || `${trade.symbol || "trade"}-${index}`,
+          time: trade.created_at
+            ? new Date(trade.created_at).toLocaleTimeString()
+            : trade.time || new Date().toLocaleTimeString(),
+          action: `${String(trade.side || trade.action || "").toUpperCase()} ${trade.symbol || ""}`.trim(),
+          details: trade.strategy || trade.mode || "",
+          pnl: Number(trade.pnl_usd ?? trade.pnl ?? 0),
+        }))
+      : [];
+
+    setActivities(formatted);
+  }, [activeExchange]);
+
+  const refreshDashboard = useCallback(
+    async ({ showSpinner = false } = {}) => {
+      if (showSpinner) setRefreshing(true);
+
+      try {
+        await Promise.all([
+          fetchBotStatus(),
+          fetchIntegrationStatus(),
+          fetchTradingStats(),
+          fetchRecentTrades(),
+        ]);
+
+        const [balanceResult, latestPositions] = await Promise.all([
+          fetchBalanceAndAssets(),
+          fetchOpenPositions(),
+        ]);
+
+        const positionsValue = latestPositions.reduce((sum, position) => {
+          const qty = Number(position.qty ?? position.quantity ?? position.size ?? 0);
+          const price = Number(
+            position.price ?? position.current_price ?? position.mark_price ?? position.entry_price ?? 0
+          );
+          return sum + qty * price;
+        }, 0);
+
+        const nextEquity = Number(balanceResult?.available || 0) + Number(positionsValue || 0);
+
+        setEquityHistory((prev) => {
+          const next = [
+            ...prev,
+            {
+              time: new Date().toLocaleTimeString(),
+              equity: nextEquity,
+            },
+          ];
+          return next.slice(-30);
+        });
+
+        setLastUpdated(new Date());
+      } catch (error) {
+        console.error("refreshDashboard error:", error);
+        setBotError(error?.message || "Unable to refresh dashboard.");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch (err) {
-      alert("Start error: " + err.message);
+    },
+    [
+      fetchBotStatus,
+      fetchIntegrationStatus,
+      fetchTradingStats,
+      fetchRecentTrades,
+      fetchBalanceAndAssets,
+      fetchOpenPositions,
+    ]
+  );
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    refreshDashboard({ showSpinner: false });
+
+    pollingRef.current = setInterval(() => {
+      refreshDashboard({ showSpinner: false });
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      mountedRef.current = false;
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [refreshDashboard]);
+
+  useEffect(() => {
+    setLoading(true);
+    refreshDashboard({ showSpinner: false });
+  }, [activeExchange, refreshDashboard]);
+
+  const handleStartBot = async () => {
+    if (!exchangeConnected) {
+      alert(`Connect ${activeExchangeConfig.name} API keys first.`);
+      return;
+    }
+
+    setProcessing(true);
+
+    try {
+      const response = await BotAPI.startTradingBot?.(
+        activeExchange,
+        currentStrategy.id,
+        botMode
+      );
+
+      const success = response?.success !== false;
+
+      if (!success) {
+        alert(response?.error || response?.message || "Failed to start bot.");
+        return;
+      }
+
+      await refreshDashboard({ showSpinner: true });
+    } catch (error) {
+      alert(error?.message || "Failed to start bot.");
     } finally {
-      setIsProcessing(false);
+      setProcessing(false);
     }
   };
 
   const handleStopBot = async () => {
-    setIsProcessing(true);
+    setProcessing(true);
+
     try {
-      await BotAPI.stopTradingBot?.(activeExchange);
-      await fetchAllData();
-    } catch (err) {
-      alert("Stop error: " + err.message);
+      const response = await BotAPI.stopTradingBot?.(activeExchange);
+      const success = response?.success !== false;
+
+      if (!success) {
+        alert(response?.error || response?.message || "Failed to stop bot.");
+        return;
+      }
+
+      await refreshDashboard({ showSpinner: true });
+    } catch (error) {
+      alert(error?.message || "Failed to stop bot.");
     } finally {
-      setIsProcessing(false);
+      setProcessing(false);
     }
   };
 
   const handleCloseAllPositions = async () => {
-    setIsProcessing(true);
+    const confirmed = window.confirm(
+      `Close all open ${activeExchangeConfig.name} positions?`
+    );
+
+    if (!confirmed) return;
+
+    setProcessing(true);
+
     try {
-      await BotAPI.closeAllPositions?.();
-      await fetchAllData();
-    } catch (err) {
-      alert("Error closing positions: " + err.message);
+      const response = await BotAPI.closeAllPositions?.(activeExchange);
+      const success = response?.success !== false;
+
+      if (!success) {
+        alert(response?.error || response?.message || "Failed to close positions.");
+        return;
+      }
+
+      await refreshDashboard({ showSpinner: true });
+    } catch (error) {
+      alert(error?.message || "Failed to close positions.");
     } finally {
-      setIsProcessing(false);
+      setProcessing(false);
     }
   };
 
-  const handleSellToUsdt = async () => {
-    setIsProcessing(true);
-    try {
-      alert("This feature requires manual action on OKX for security");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleUpdateRiskSettings = async (newSettings) => {
-    setRiskSettings(newSettings);
-    // Optionally save to backend
-  };
-
-  useEffect(() => {
-    fetchAllData();
-    const interval = setInterval(fetchAllData, 10000);
-    return () => clearInterval(interval);
-  }, [fetchAllData]);
-
-  // Equity chart data
-  const chartData = {
-    labels: equityHistory.map(h => h.time),
-    datasets: [{
-      label: 'Account Equity',
-      data: equityHistory.map(h => h.equity),
-      borderColor: '#10b981',
-      backgroundColor: 'rgba(16, 185, 129, 0.1)',
-      tension: 0.3,
-      fill: true,
-    }],
-  };
-
-  if (isInitialLoad && !user) {
+  if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-        <FaSpinner className="animate-spin text-4xl text-emerald-400" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <FaSpinner className="animate-spin text-4xl text-emerald-400" />
+          <p className="text-sm text-white/60">Loading trading dashboard...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white pb-8">
-      {/* Header */}
-      <div className="sticky top-0 z-50 bg-gradient-to-r from-emerald-600 to-cyan-600 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">🚀</span>
-          <div>
-            <p className="font-bold">IMALI Trading Dashboard</p>
-            <p className="text-xs text-white/80">{user?.email}</p>
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white pb-10">
+      <div className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/20 text-xl">
+              🚀
+            </div>
+            <div>
+              <h1 className="text-base font-bold">IMALI Trading Dashboard</h1>
+              <p className="text-xs text-white/50">{user?.email || "Member"}</p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-black/30 rounded-full px-3 py-1 text-xs font-bold">
-            <FaCircle className={`h-2 w-2 ${running ? 'text-emerald-400 animate-pulse' : 'text-gray-400'}`} />
-            {running ? 'BOT RUNNING' : 'BOT OFF'}
+
+          <div className="flex items-center gap-2">
+            <div
+              className={`flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
+                botRunning
+                  ? "bg-emerald-500/15 text-emerald-300"
+                  : "bg-gray-500/15 text-gray-300"
+              }`}
+            >
+              <FaCircle
+                className={`h-2 w-2 ${
+                  botRunning ? "animate-pulse text-emerald-400" : "text-gray-400"
+                }`}
+              />
+              {botRunning ? "BOT RUNNING" : "BOT OFF"}
+            </div>
+
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-bold hover:bg-red-500"
+            >
+              <FaSignOutAlt size={12} />
+              Logout
+            </button>
           </div>
-          <button onClick={logout} className="flex items-center gap-1 rounded-full bg-red-600 px-3 py-1 text-xs font-bold hover:bg-red-500">
-            <FaSignOutAlt size={12} /> Logout
-          </button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-        {/* Exchange Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {EXCHANGES.map((ex) => (
-            <button
-              key={ex.id}
-              onClick={() => setActiveExchange(ex.id)}
-              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
-                activeExchange === ex.id
-                  ? "bg-cyan-600 text-white"
-                  : "bg-white/10 text-white/60 hover:bg-white/20"
-              }`}
-            >
-              <span>{ex.icon}</span> {ex.name}
-            </button>
-          ))}
-        </div>
-
-        {/* Top Row - Key Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ApiKeyCard
-            exchange={EXCHANGES.find(e => e.id === activeExchange)}
-            connection={connections[activeExchange] || {}}
-            onConnect={() => navigate(`/connect-${activeExchange}`)}
-            onDisconnect={() => {}}
-            onTest={() => fetchAllData()}
-          />
-          <BotStatusCard
-            bot={{ ...botStatus, isRunning: running, strategy: currentStrategy.name }}
-            onStart={handleStartBot}
-            onStop={handleStopBot}
-            isStarting={isProcessing}
-          />
-        </div>
-
-        {/* Second Row - Positions and Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <OpenPositionsCard positions={positions} onClosePosition={() => {}} />
-          <ActivityFeed activities={activities} />
-        </div>
-
-        {/* Performance Cards Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <PerformanceCard stats={stats} />
-          <AllocationCard usdtAvailable={currentBalance} openValue={openValue} holdings={assets} />
-        </div>
-
-        {/* Equity Chart */}
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-          <h3 className="font-bold mb-4">📈 Equity History</h3>
-          <div className="h-64">
-            <Line data={chartData} options={{ responsive: true, maintainAspectRatio: false }} />
+      <main className="mx-auto max-w-7xl space-y-6 px-4 py-6">
+        {botError && (
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+            {botError}
           </div>
-        </div>
+        )}
 
-        {/* Settings and Emergency Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <RiskSettingsCard settings={riskSettings} onUpdate={handleUpdateRiskSettings} />
-          <EmergencyControls
-            onStopBot={handleStopBot}
-            onCloseAll={handleCloseAllPositions}
-            onSellToUsdt={handleSellToUsdt}
-            isProcessing={isProcessing}
-          />
-        </div>
+        <section className="grid gap-4 md:grid-cols-4">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-white/50">Bot Status</p>
+              <FaRobot className={botRunning ? "text-emerald-400" : "text-white/30"} />
+            </div>
+            <p className={`mt-2 text-2xl font-black ${botRunning ? "text-emerald-400" : "text-white"}`}>
+              {botRunning ? "Running" : "Off"}
+            </p>
+          </div>
 
-        {/* Bottom Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <AssetBreakdownCard assets={assets} />
-          <SetupProgressCard steps={setupSteps} />
-        </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-white/50">Mode</p>
+              <FaExchangeAlt className={botMode === "live" ? "text-red-400" : "text-yellow-400"} />
+            </div>
+            <p className={`mt-2 text-2xl font-black ${botMode === "live" ? "text-red-400" : "text-yellow-400"}`}>
+              {botMode.toUpperCase()}
+            </p>
+          </div>
 
-        {/* Strategy Selector */}
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-          <h3 className="font-bold mb-4">🎯 Trading Strategies</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {STRATEGIES.map((strat) => (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-white/50">{activeExchangeConfig.assetLabel}</p>
+              <FaWallet className="text-cyan-400" />
+            </div>
+            <p className="mt-2 text-2xl font-black">{formatMoney(availableCash)}</p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-white/50">Total Equity</p>
+              <FaChartLine className="text-emerald-400" />
+            </div>
+            <p className="mt-2 text-2xl font-black">{formatMoney(totalEquity || accountBalance)}</p>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-black/30 p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold">Exchange Connection</h2>
+              <p className="text-sm text-white/50">
+                API status, mode, and balance are refreshed every 8 seconds.
+              </p>
+            </div>
+
+            <button
+              onClick={() => refreshDashboard({ showSpinner: true })}
+              disabled={refreshing}
+              className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold hover:bg-white/15 disabled:opacity-50"
+            >
+              {refreshing ? <FaSpinner className="animate-spin" /> : <FaSyncAlt />}
+              Refresh
+            </button>
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            {EXCHANGES.map((exchange) => (
               <button
-                key={strat.id}
-                onClick={() => !running && setCurrentStrategy(strat)}
-                disabled={running}
-                className={`p-4 rounded-xl border text-left transition ${
-                  currentStrategy.id === strat.id
-                    ? `border-${strat.color}-400 bg-${strat.color}-500/10`
-                    : 'border-white/10 hover:bg-white/5'
-                } ${running ? 'opacity-50 cursor-not-allowed' : ''}`}
+                key={exchange.id}
+                onClick={() => setActiveExchange(exchange.id)}
+                className={`rounded-full px-4 py-2 text-sm font-bold ${
+                  activeExchange === exchange.id
+                    ? "bg-cyan-600 text-white"
+                    : "bg-white/10 text-white/60 hover:bg-white/15"
+                }`}
               >
-                <div className="text-2xl mb-1">{strat.icon}</div>
-                <div className="font-bold">{strat.name}</div>
-                <div className="text-xs text-white/50">{strat.risk} Risk</div>
-                <p className="text-xs mt-2 text-white/40">{strat.description}</p>
+                {exchange.name}
               </button>
             ))}
           </div>
-          {running && <p className="mt-3 text-xs text-yellow-400">Stop the bot to change strategy</p>}
-        </div>
 
-        {/* Footer */}
-        <div className="text-center text-xs text-white/30 pt-4">
-          Live trading involves real risk. Only trade what you can afford to lose.
-          <br />
-          Bot version 2.0 | Take Profit: {Math.round(riskSettings.takeProfitPct * 100)}% | Stop Loss: {Math.round(riskSettings.stopLossPct * 100)}%
-        </div>
-      </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl bg-white/[0.04] p-4">
+              <p className="text-xs text-white/40">Connection</p>
+              <div className="mt-2 flex items-center gap-2 font-bold">
+                {exchangeConnected ? (
+                  <>
+                    <FaCheckCircle className="text-emerald-400" />
+                    Connected
+                  </>
+                ) : (
+                  <>
+                    <FaTimesCircle className="text-red-400" />
+                    Not Connected
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-white/[0.04] p-4">
+              <p className="text-xs text-white/40">API Key</p>
+              <div className="mt-2 flex items-center gap-2 font-bold">
+                <FaKey className="text-white/40" />
+                {apiKeyMasked || "None"}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-white/[0.04] p-4">
+              <p className="text-xs text-white/40">Account Balance</p>
+              <p className="mt-2 font-bold">{formatMoney(accountBalance)}</p>
+            </div>
+
+            <div className="rounded-xl bg-white/[0.04] p-4">
+              <p className="text-xs text-white/40">Last Updated</p>
+              <p className="mt-2 font-bold">
+                {lastUpdated ? lastUpdated.toLocaleTimeString() : "Never"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => navigate(activeExchangeConfig.connectRoute)}
+              className="flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold hover:bg-cyan-500"
+            >
+              <FaPlug />
+              Connect / Update Keys
+            </button>
+          </div>
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold">Bot Controls</h2>
+                <p className="text-sm text-white/50">
+                  Starts using the selected exchange, strategy, and mode.
+                </p>
+              </div>
+
+              <div
+                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  botRunning
+                    ? "bg-emerald-500/15 text-emerald-300"
+                    : "bg-gray-500/15 text-gray-300"
+                }`}
+              >
+                {botRunning ? "RUNNING" : "STOPPED"}
+              </div>
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setBotMode("paper")}
+                className={`rounded-xl px-4 py-3 text-sm font-bold ${
+                  botMode === "paper"
+                    ? "bg-yellow-500 text-black"
+                    : "bg-white/10 text-white/70 hover:bg-white/15"
+                }`}
+              >
+                Paper Mode
+              </button>
+
+              <button
+                onClick={() => setBotMode("live")}
+                className={`rounded-xl px-4 py-3 text-sm font-bold ${
+                  botMode === "live"
+                    ? "bg-red-500 text-white"
+                    : "bg-white/10 text-white/70 hover:bg-white/15"
+                }`}
+              >
+                Live Mode
+              </button>
+            </div>
+
+            <div className="mb-5 grid gap-3">
+              {STRATEGIES.map((strategy) => (
+                <button
+                  key={strategy.id}
+                  onClick={() => setCurrentStrategy(strategy)}
+                  className={`rounded-xl border p-4 text-left transition ${
+                    currentStrategy.id === strategy.id
+                      ? "border-emerald-400 bg-emerald-500/10"
+                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="font-bold">
+                      {strategy.icon} {strategy.name}
+                    </div>
+                    <div className="text-xs text-white/50">{strategy.risk}</div>
+                  </div>
+                  <p className="mt-1 text-xs text-white/50">{strategy.description}</p>
+                </button>
+              ))}
+            </div>
+
+            {!botRunning ? (
+              <button
+                onClick={handleStartBot}
+                disabled={processing || !exchangeConnected}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 font-black hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {processing ? <FaSpinner className="animate-spin" /> : <FaPlay />}
+                Start Bot
+              </button>
+            ) : (
+              <button
+                onClick={handleStopBot}
+                disabled={processing}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 py-3 font-black hover:bg-red-500 disabled:opacity-50"
+              >
+                {processing ? <FaSpinner className="animate-spin" /> : <FaStop />}
+                Stop Bot
+              </button>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
+            <h2 className="text-lg font-bold">Risk Settings</h2>
+            <p className="mb-4 text-sm text-white/50">Read from bot status/config when available.</p>
+
+            <div className="grid gap-3">
+              <div className="flex justify-between rounded-xl bg-white/[0.04] p-4">
+                <span className="text-white/50">Trade Size</span>
+                <strong>{formatPercent(Number(riskSettings.tradePct) * 100)}</strong>
+              </div>
+
+              <div className="flex justify-between rounded-xl bg-white/[0.04] p-4">
+                <span className="text-white/50">Max Positions</span>
+                <strong>{riskSettings.maxPositions}</strong>
+              </div>
+
+              <div className="flex justify-between rounded-xl bg-white/[0.04] p-4">
+                <span className="text-white/50">Minimum Trade</span>
+                <strong>{formatMoney(riskSettings.minTradeUsd)}</strong>
+              </div>
+
+              <div className="flex justify-between rounded-xl bg-white/[0.04] p-4">
+                <span className="text-white/50">Take Profit</span>
+                <strong>{formatPercent(Number(riskSettings.takeProfitPct) * 100)}</strong>
+              </div>
+
+              <div className="flex justify-between rounded-xl bg-white/[0.04] p-4">
+                <span className="text-white/50">Stop Loss</span>
+                <strong>{formatPercent(Number(riskSettings.stopLossPct) * 100)}</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-black/30 p-5">
+          <h2 className="mb-4 text-lg font-bold">Open Positions</h2>
+
+          {positions.length === 0 ? (
+            <div className="rounded-xl bg-white/[0.03] py-10 text-center text-white/40">
+              No open positions
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {positions.map((position, index) => {
+                const symbol = position.symbol || position.instId || position.asset || "Position";
+                const entry = Number(position.entry_price ?? position.entryPrice ?? position.price ?? 0);
+                const qty = Number(position.qty ?? position.quantity ?? position.size ?? 0);
+                const pnl = Number(position.pnl_usd ?? position.pnlUsd ?? position.pnl ?? 0);
+
+                return (
+                  <div
+                    key={position.id || `${symbol}-${index}`}
+                    className="flex items-center justify-between rounded-xl bg-white/[0.04] p-4"
+                  >
+                    <div>
+                      <p className="font-bold">{symbol}</p>
+                      <p className="text-xs text-white/40">
+                        Qty: {qty} · Entry: {formatMoney(entry)}
+                      </p>
+                    </div>
+
+                    <p className={`font-black ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {formatMoney(pnl)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
+            <h2 className="mb-4 text-lg font-bold">Performance</h2>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-white/[0.04] p-4">
+                <p className="text-xs text-white/40">Realized PnL</p>
+                <p className={`mt-1 text-xl font-black ${stats.realizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {formatMoney(stats.realizedPnl)}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white/[0.04] p-4">
+                <p className="text-xs text-white/40">Unrealized PnL</p>
+                <p className={`mt-1 text-xl font-black ${stats.unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {formatMoney(stats.unrealizedPnl)}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white/[0.04] p-4">
+                <p className="text-xs text-white/40">Total PnL</p>
+                <p className={`mt-1 text-xl font-black ${stats.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {formatMoney(stats.totalPnl)}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white/[0.04] p-4">
+                <p className="text-xs text-white/40">Win Rate</p>
+                <p className="mt-1 text-xl font-black">{formatPercent(winRate)}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl bg-white/[0.04] p-4">
+              <p className="text-xs text-white/40">Total Trades</p>
+              <p className="mt-1 text-xl font-black">{Number(stats.totalTrades || 0).toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
+            <h2 className="mb-4 text-lg font-bold">Equity History</h2>
+
+            <div className="h-72">
+              <Line data={chartData} options={chartOptions} />
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-black/30 p-5">
+          <h2 className="mb-4 text-lg font-bold">Recent Activity</h2>
+
+          {activities.length === 0 ? (
+            <div className="rounded-xl bg-white/[0.03] py-8 text-center text-white/40">
+              No recent trades yet
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {activities.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-center justify-between rounded-xl bg-white/[0.04] p-3"
+                >
+                  <div>
+                    <p className="font-bold">{activity.action || "Trade"}</p>
+                    <p className="text-xs text-white/40">
+                      {activity.time} {activity.details ? `· ${activity.details}` : ""}
+                    </p>
+                  </div>
+
+                  <p className={`font-bold ${Number(activity.pnl || 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {formatMoney(activity.pnl)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-black/30 p-5">
+          <h2 className="mb-4 text-lg font-bold">Assets</h2>
+
+          {assets.length === 0 ? (
+            <div className="rounded-xl bg-white/[0.03] py-8 text-center text-white/40">
+              No non-cash assets detected
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {assets.map((asset, index) => {
+                const currency = asset.ccy || asset.symbol || asset.asset || "Asset";
+                const balance = asset.bal || asset.balance || asset.qty || 0;
+                const value = Number(asset.usdValue ?? asset.usd_value ?? asset.value ?? 0);
+
+                return (
+                  <div
+                    key={`${currency}-${index}`}
+                    className="flex items-center justify-between rounded-xl bg-white/[0.04] p-3"
+                  >
+                    <div>
+                      <p className="font-bold">{currency}</p>
+                      <p className="text-xs text-white/40">Balance: {balance}</p>
+                    </div>
+
+                    <p className="font-bold">{formatMoney(value)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
+          <h2 className="mb-2 text-lg font-bold text-red-300">Emergency Controls</h2>
+          <p className="mb-4 text-sm text-red-100/70">
+            Use this only when you want to exit all open positions for the selected exchange.
+          </p>
+
+          <button
+            onClick={handleCloseAllPositions}
+            disabled={processing || positions.length === 0}
+            className="w-full rounded-xl bg-red-600 py-3 font-black hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Close All Positions
+          </button>
+        </section>
+
+        <p className="text-center text-xs text-white/30">
+          Live trading involves real risk. Only trade with funds you can afford to lose.
+        </p>
+      </main>
     </div>
   );
 }
