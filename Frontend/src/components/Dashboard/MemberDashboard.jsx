@@ -1,752 +1,1572 @@
-// src/components/Dashboard/MemberDashboard.jsx
+// src/utils/BotAPI.js - Unified IMALI API layer
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import BotAPI from "../../utils/BotAPI";
-import {
-  FaPlay,
-  FaStop,
-  FaSpinner,
-  FaSignOutAlt,
-  FaCircle,
-  FaCheckCircle,
-  FaTimesCircle,
-  FaWallet,
-  FaRobot,
-  FaExchangeAlt,
-  FaChartLine,
-  FaKey,
-  FaPlug,
-  FaSyncAlt,
-} from "react-icons/fa";
+import axios from "axios";
 
-const POLL_INTERVAL_MS = 7000;
+const API_BASE = (
+  process.env.REACT_APP_API_BASE_URL || "https://api.imali-defi.com"
+).replace(/\/+$/, "");
 
-const STRATEGIES = [
-  { id: "mean_reversion", name: "Conservative", icon: "🛡️", risk: "Low" },
-  { id: "ai_weighted", name: "Balanced AI", icon: "🤖", risk: "Medium" },
-  { id: "momentum", name: "Growth", icon: "📈", risk: "Higher" },
-  { id: "aggressive", name: "Aggressive", icon: "🔥", risk: "High" },
-];
+const USER_API_BASE = (
+  process.env.REACT_APP_USER_API_BASE_URL || API_BASE
+).replace(/\/+$/, "");
 
-const EXCHANGES = [
-  { id: "okx", name: "OKX", connectRoute: "/connect-okx", cashLabel: "Available USDT" },
-  { id: "alpaca", name: "Alpaca", connectRoute: "/connect-alpaca", cashLabel: "Available USD" },
-];
+const SNIPER_API_BASE = (
+  process.env.REACT_APP_SNIPER_API_BASE_URL || API_BASE
+).replace(/\/+$/, "");
 
-const formatMoney = (n) => `$${Number(n || 0).toFixed(2)}`;
-const formatPercent = (n) => `${Number(n || 0).toFixed(1)}%`;
+const TOKEN_KEY = "imali_token";
+const API_KEY_KEY = "imali_api_key";
+const isBrowser = typeof window !== "undefined";
 
-const normalizeMode = (mode) => {
-  const value = String(mode || "").toLowerCase();
-  return value === "live" ? "live" : "paper";
+const API_CONFIG = {
+  timeout: 30000,
+  retryAttempts: 2,
+  retryDelay: 900,
+  cacheTTL: 60000,
+  rateLimitCooldown: 500,
 };
 
-const getStrategy = (id) => {
-  return STRATEGIES.find((s) => s.id === id) || STRATEGIES[1];
+const cache = new Map();
+const inflight = new Map();
+const lastRequestAt = new Map();
+
+// ─────────────────────────────────────────────
+// Storage
+// ─────────────────────────────────────────────
+
+export const getToken = () => {
+  try {
+    return isBrowser ? localStorage.getItem(TOKEN_KEY) : null;
+  } catch {
+    return null;
+  }
 };
 
-const unwrap = (res) => {
-  return res?.data?.data || res?.data || res || {};
+export const setToken = (token) => {
+  if (!isBrowser) return;
+  try {
+    token ? localStorage.setItem(TOKEN_KEY, token) : localStorage.removeItem(TOKEN_KEY);
+  } catch {}
 };
 
-export default function MemberDashboard() {
-  const navigate = useNavigate();
-  const { user, logout } = useAuth();
-  const mountedRef = useRef(true);
+export const clearToken = () => {
+  if (!isBrowser) return;
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+};
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [processing, setProcessing] = useState(false);
+export const getApiKey = () => {
+  try {
+    return isBrowser ? localStorage.getItem(API_KEY_KEY) : null;
+  } catch {
+    return null;
+  }
+};
 
-  const [activeExchange, setActiveExchange] = useState("okx");
-  const [botRunning, setBotRunning] = useState(false);
-  const [botMode, setBotMode] = useState("paper");
-  const [currentStrategy, setCurrentStrategy] = useState(STRATEGIES[1]);
+export const setApiKey = (key) => {
+  if (!isBrowser) return;
+  try {
+    key ? localStorage.setItem(API_KEY_KEY, key) : localStorage.removeItem(API_KEY_KEY);
+  } catch {}
+};
 
-  const [exchangeConnected, setExchangeConnected] = useState(false);
-  const [apiKeyMasked, setApiKeyMasked] = useState("");
-  const [availableCash, setAvailableCash] = useState(0);
-  const [totalBalance, setTotalBalance] = useState(0);
+export const clearApiKey = () => {
+  if (!isBrowser) return;
+  try {
+    localStorage.removeItem(API_KEY_KEY);
+  } catch {}
+};
 
-  const [positions, setPositions] = useState([]);
-  const [assets, setAssets] = useState([]);
-  const [trades, setTrades] = useState([]);
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [error, setError] = useState("");
+export const isAuthenticated = () => Boolean(getToken());
 
-  const [stats, setStats] = useState({
-    realizedPnl: 0,
-    unrealizedPnl: 0,
-    totalPnl: 0,
-    wins: 0,
-    losses: 0,
-    totalTrades: 0,
-  });
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
 
-  const exchangeConfig = useMemo(() => {
-    return EXCHANGES.find((e) => e.id === activeExchange) || EXCHANGES[0];
-  }, [activeExchange]);
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const winRate = useMemo(() => {
-    const wins = Number(stats.wins || 0);
-    const losses = Number(stats.losses || 0);
-    const total = wins + losses;
-    if (!total) return 0;
-    return (wins / total) * 100;
-  }, [stats]);
+const unwrapAxios = (res) => res?.data ?? res;
 
-  const openPositionsValue = useMemo(() => {
-    return positions.reduce((sum, p) => {
-      const qty = Number(p.qty ?? p.quantity ?? p.size ?? 0);
-      const price = Number(
-        p.current_price ??
-          p.mark_price ??
-          p.price ??
-          p.entry_price ??
-          p.entryPrice ??
-          0
-      );
-      return sum + qty * price;
-    }, 0);
-  }, [positions]);
+const unwrapPayload = (res) => {
+  const data = unwrapAxios(res);
+  return data?.data ?? data ?? {};
+};
 
-  const totalEquity = Number(availableCash || 0) + Number(openPositionsValue || 0);
-
-  const fetchBotStatus = useCallback(async () => {
-    const res = await BotAPI.getTradingBotStatus?.();
-    const data = unwrap(res);
-
-    console.log("BOT STATUS PAYLOAD:", data);
-
-    const isRunning =
-      data.isRunning === true ||
-      data.running === true ||
-      data.botRunning === true ||
-      String(data.status || "").toLowerCase() === "running" ||
-      String(data.bot_status || "").toLowerCase() === "running" ||
-      String(data.botStatus || "").toLowerCase() === "running";
-
-    setBotRunning(isRunning);
-
-    if (data.mode || data.bot_mode || data.trading_mode) {
-      setBotMode(normalizeMode(data.mode || data.bot_mode || data.trading_mode));
-    }
-
-    if (data.strategy || data.strategy_id || data.currentStrategy) {
-      setCurrentStrategy(
-        getStrategy(data.strategy || data.strategy_id || data.currentStrategy)
-      );
-    }
-  }, []);
-
-  const fetchIntegrationStatus = useCallback(async () => {
-    const res = await BotAPI.getIntegrationStatus?.();
-    const data = unwrap(res);
-
-    if (activeExchange === "okx") {
-      setExchangeConnected(Boolean(data.okx_connected || data.okxConnected));
-      setApiKeyMasked(data.okx_api_key_masked || data.okxApiKeyMasked || "");
-      if (data.okx_mode) setBotMode(normalizeMode(data.okx_mode));
-      return;
-    }
-
-    if (activeExchange === "alpaca") {
-      setExchangeConnected(Boolean(data.alpaca_connected || data.alpacaConnected));
-      setApiKeyMasked(data.alpaca_api_key_masked || data.alpacaApiKeyMasked || "");
-      if (data.alpaca_mode) setBotMode(normalizeMode(data.alpaca_mode));
-    }
-  }, [activeExchange]);
-
-  const fetchBalance = useCallback(async () => {
-    const res = await BotAPI.getExchangeBalance?.();
-    const data = unwrap(res);
-
-    if (activeExchange === "okx") {
-      const available = Number(
-        data.okx_available_usdt ??
-          data.okxAvailableUsdt ??
-          data.available_usdt ??
-          data.availableUSDT ??
-          0
-      );
-
-      const total = Number(
-        data.okx_total_usd ??
-          data.okxTotalUsd ??
-          data.okx_balance ??
-          data.okx ??
-          data.total ??
-          available
-      );
-
-      const okxAssets = Array.isArray(data.okx_assets)
-        ? data.okx_assets
-        : Array.isArray(data.assets)
-        ? data.assets
-        : [];
-
-      setAvailableCash(available);
-      setTotalBalance(total);
-      setAssets(okxAssets);
-
-      return;
-    }
-
-    if (activeExchange === "alpaca") {
-      const available = Number(
-        data.alpaca_available_usd ??
-          data.alpacaAvailableUsd ??
-          data.alpaca_cash ??
-          data.cash ??
-          0
-      );
-
-      const total = Number(
-        data.alpaca_equity ??
-          data.alpacaEquity ??
-          data.alpaca_balance ??
-          data.alpaca ??
-          available
-      );
-
-      setAvailableCash(available);
-      setTotalBalance(total);
-      setAssets([]);
-    }
-  }, [activeExchange]);
-
-  const fetchPositions = useCallback(async () => {
-    const res = await BotAPI.getOpenPositions?.(activeExchange);
-    const data = unwrap(res);
-    const list = data.positions || data.open_positions || data.openPositions || [];
-
-    setPositions(Array.isArray(list) ? list : []);
-  }, [activeExchange]);
-
-  const fetchStats = useCallback(async () => {
-    const res = await BotAPI.getLiveTradingStats?.(activeExchange);
-    const data = unwrap(res);
-    const summary = data.summary || data;
-
-    setStats({
-      realizedPnl: Number(summary.realized_pnl ?? summary.realizedPnl ?? 0),
-      unrealizedPnl: Number(summary.unrealized_pnl ?? summary.unrealizedPnl ?? 0),
-      totalPnl: Number(summary.total_pnl ?? summary.totalPnl ?? 0),
-      wins: Number(summary.wins ?? 0),
-      losses: Number(summary.losses ?? 0),
-      totalTrades: Number(summary.total_trades ?? summary.totalTrades ?? 0),
-    });
-  }, [activeExchange]);
-
-  const fetchTrades = useCallback(async () => {
-    const res = await BotAPI.getLiveTradeHistory?.(20, activeExchange);
-    const data = unwrap(res);
-    const list = data.trades || data.history || [];
-
-    setTrades(Array.isArray(list) ? list.slice(0, 20) : []);
-  }, [activeExchange]);
-
-  const refreshDashboard = useCallback(
-    async (manual = false) => {
-      try {
-        if (manual) setRefreshing(true);
-
-        await Promise.all([
-          fetchBotStatus(),
-          fetchIntegrationStatus(),
-          fetchBalance(),
-          fetchPositions(),
-          fetchStats(),
-          fetchTrades(),
-        ]);
-
-        setLastUpdated(new Date());
-        setError("");
-      } catch (err) {
-        console.error("Dashboard refresh error:", err);
-        setError(err?.message || "Unable to refresh dashboard.");
-      } finally {
-        if (mountedRef.current) {
-          setLoading(false);
-          setRefreshing(false);
-        }
-      }
-    },
-    [
-      fetchBotStatus,
-      fetchIntegrationStatus,
-      fetchBalance,
-      fetchPositions,
-      fetchStats,
-      fetchTrades,
-    ]
+const getErrorMessage = (err, fallback = "Request failed") => {
+  return (
+    err?.response?.data?.message ||
+    err?.response?.data?.error ||
+    err?.response?.data?.details ||
+    err?.message ||
+    fallback
   );
+};
 
-  useEffect(() => {
-    mountedRef.current = true;
+const normalizeBool = (value, fallback = false) => {
+  if (value === true || value === false) return value;
+  if (value === 1 || value === "1") return true;
+  if (value === 0 || value === "0") return false;
 
-    refreshDashboard(false);
+  const text = String(value || "").toLowerCase();
 
-    const interval = setInterval(() => {
-      refreshDashboard(false);
-    }, POLL_INTERVAL_MS);
+  if (["true", "running", "active", "started", "on", "enabled"].includes(text)) return true;
+  if (["false", "stopped", "inactive", "off", "disabled"].includes(text)) return false;
 
-    return () => {
-      mountedRef.current = false;
-      clearInterval(interval);
-    };
-  }, [refreshDashboard]);
+  return fallback;
+};
 
-  useEffect(() => {
-    refreshDashboard(false);
-  }, [activeExchange, refreshDashboard]);
+const normalizeMode = (value, fallback = "paper") => {
+  const mode = String(value || fallback || "paper").toLowerCase();
+  return mode === "live" ? "live" : "paper";
+};
 
-  const handleStartBot = async () => {
-    if (!exchangeConnected) {
-      alert(`Connect ${exchangeConfig.name} API keys first.`);
-      return;
-    }
+const parseMoney = (value) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
 
-    setProcessing(true);
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/[$,]/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
 
-    try {
-      const res = await BotAPI.startTradingBot?.(
-        activeExchange,
-        currentStrategy.id,
-        botMode
-      );
-
-      const data = unwrap(res);
-
-      if (res?.success === false || data?.success === false) {
-        alert(data?.error || data?.message || "Failed to start bot.");
-        return;
-      }
-
-      await refreshDashboard(true);
-    } catch (err) {
-      alert(err?.message || "Failed to start bot.");
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleStopBot = async () => {
-    setProcessing(true);
-
-    try {
-      const res = await BotAPI.stopTradingBot?.(activeExchange);
-      const data = unwrap(res);
-
-      if (res?.success === false || data?.success === false) {
-        alert(data?.error || data?.message || "Failed to stop bot.");
-        return;
-      }
-
-      await refreshDashboard(true);
-    } catch (err) {
-      alert(err?.message || "Failed to stop bot.");
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleCloseAllPositions = async () => {
-    if (!window.confirm(`Close all ${exchangeConfig.name} positions?`)) return;
-
-    setProcessing(true);
-
-    try {
-      await BotAPI.closeAllPositions?.(activeExchange);
-      await refreshDashboard(true);
-    } catch (err) {
-      alert(err?.message || "Failed to close positions.");
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-        <FaSpinner className="animate-spin text-4xl text-emerald-400" />
-      </div>
+  if (value && typeof value === "object") {
+    return parseMoney(
+      value.total ??
+        value.balance ??
+        value.equity ??
+        value.available ??
+        value.cash ??
+        value.usd ??
+        0
     );
   }
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-white pb-10">
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-black">
-        <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-2xl bg-emerald-500/15 grid place-items-center text-2xl">
-              🚀
-            </div>
+  return 0;
+};
 
-            <div>
-              <h1 className="text-xl font-black">IMALI Trading Dashboard</h1>
-              <p className="text-sm text-white/50">{user?.email || "Member"}</p>
-            </div>
-          </div>
+const getCached = (key, ttl = API_CONFIG.cacheTTL) => {
+  const cached = cache.get(key);
+  if (!cached) return null;
 
-          <div className="flex items-center gap-2">
-            <div
-              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black ${
-                botRunning
-                  ? "bg-emerald-500/20 text-emerald-300"
-                  : "bg-gray-500/20 text-gray-300"
-              }`}
-            >
-              <FaCircle
-                className={`h-2 w-2 ${
-                  botRunning ? "animate-pulse text-emerald-400" : "text-gray-400"
-                }`}
-              />
-              {botRunning ? "BOT RUNNING" : "BOT OFF"}
-            </div>
+  if (Date.now() - cached.timestamp < ttl) {
+    return cached.data;
+  }
 
-            <button
-              onClick={logout}
-              className="rounded-full bg-red-600 px-4 py-2 font-bold hover:bg-red-500"
-            >
-              <FaSignOutAlt className="inline mr-2" />
-              Logout
-            </button>
-          </div>
-        </div>
-      </header>
+  cache.delete(key);
+  return null;
+};
 
-      <main className="mx-auto max-w-7xl px-4 py-6 space-y-6">
-        {error && (
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
-            {error}
-          </div>
-        )}
+const setCached = (key, data) => {
+  cache.set(key, {
+    data,
+    timestamp: Date.now(),
+  });
+};
 
-        <section className="grid gap-4 md:grid-cols-4">
-          <DashboardCard
-            title="Bot Status"
-            value={botRunning ? "Running" : "Off"}
-            icon={<FaRobot />}
-            color={botRunning ? "text-emerald-400" : "text-white"}
-          />
+const clearCache = (pattern) => {
+  if (!pattern) {
+    cache.clear();
+    return;
+  }
 
-          <DashboardCard
-            title="Mode"
-            value={botMode.toUpperCase()}
-            icon={<FaExchangeAlt />}
-            color={botMode === "live" ? "text-red-400" : "text-yellow-400"}
-          />
+  for (const key of cache.keys()) {
+    if (String(key).includes(pattern)) cache.delete(key);
+  }
+};
 
-          <DashboardCard
-            title={exchangeConfig.cashLabel}
-            value={formatMoney(availableCash)}
-            icon={<FaWallet />}
-            color="text-white"
-          />
+const clearTradingCache = () => {
+  [
+    "integration_status",
+    "exchange_balance",
+    "live_trading_stats",
+    "live_trade_history",
+    "trading_bot_status",
+    "open_positions",
+    "user_trading_stats",
+    "user_trades",
+    "trading_strategies",
+    "activation_status",
+    "trial_status",
+    "card_status",
+  ].forEach(clearCache);
+};
 
-          <DashboardCard
-            title="Total Equity"
-            value={formatMoney(totalEquity || totalBalance)}
-            icon={<FaChartLine />}
-            color="text-white"
-          />
-        </section>
+const shouldRetry = (error) => {
+  const status = error?.response?.status;
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <div className="flex items-center justify-between gap-3 mb-5">
-            <div>
-              <h2 className="text-xl font-black">Exchange</h2>
-              <p className="text-sm text-white/50">
-                Status refreshes every {POLL_INTERVAL_MS / 1000} seconds.
-              </p>
-            </div>
+  if (status === 401 || status === 403) return false;
+  if (!error?.response) return true;
 
-            <button
-              onClick={() => refreshDashboard(true)}
-              disabled={refreshing}
-              className="rounded-xl bg-white/10 px-4 py-2 font-bold hover:bg-white/15 disabled:opacity-50"
-            >
-              {refreshing ? (
-                <FaSpinner className="animate-spin inline mr-2" />
-              ) : (
-                <FaSyncAlt className="inline mr-2" />
-              )}
-              Refresh
-            </button>
-          </div>
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+};
 
-          <div className="flex gap-2 mb-5">
-            {EXCHANGES.map((exchange) => (
-              <button
-                key={exchange.id}
-                onClick={() => setActiveExchange(exchange.id)}
-                className={`rounded-full px-4 py-2 font-bold ${
-                  activeExchange === exchange.id
-                    ? "bg-cyan-600"
-                    : "bg-white/10 text-white/60"
-                }`}
-              >
-                {exchange.name}
-              </button>
-            ))}
-          </div>
+const makeRequestKey = (method, url, data, params) => {
+  return `${String(method).toUpperCase()} ${url} ${
+    data ? JSON.stringify(data) : ""
+  } ${params ? JSON.stringify(params) : ""}`;
+};
 
-          <div className="grid gap-4 md:grid-cols-4">
-            <InfoBox
-              title="Connection"
-              value={exchangeConnected ? "Connected" : "Not Connected"}
-              icon={
-                exchangeConnected ? (
-                  <FaCheckCircle className="text-emerald-400" />
-                ) : (
-                  <FaTimesCircle className="text-red-400" />
-                )
-              }
-            />
+const throttleRequest = async (key) => {
+  const last = lastRequestAt.get(key) || 0;
+  const elapsed = Date.now() - last;
 
-            <InfoBox title="API Key" value={apiKeyMasked || "None"} icon={<FaKey />} />
-            <InfoBox title="Balance" value={formatMoney(totalBalance)} icon={<FaWallet />} />
-            <InfoBox
-              title="Last Updated"
-              value={lastUpdated ? lastUpdated.toLocaleTimeString() : "Never"}
-              icon={<FaSyncAlt />}
-            />
-          </div>
+  if (elapsed < API_CONFIG.rateLimitCooldown) {
+    await wait(API_CONFIG.rateLimitCooldown - elapsed);
+  }
 
-          <button
-            onClick={() => navigate(exchangeConfig.connectRoute)}
-            className="mt-5 rounded-xl bg-cyan-600 px-5 py-3 font-black hover:bg-cyan-500"
-          >
-            <FaPlug className="inline mr-2" />
-            Connect / Update Keys
-          </button>
-        </section>
+  lastRequestAt.set(key, Date.now());
+};
 
-        <section className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-            <h2 className="text-xl font-black mb-4">Bot Controls</h2>
+const createApiClient = (baseURL) => {
+  return axios.create({
+    baseURL,
+    timeout: API_CONFIG.timeout,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+  });
+};
 
-            <div className="grid grid-cols-2 gap-2 mb-5">
-              <button
-                onClick={() => setBotMode("paper")}
-                className={`rounded-xl py-3 font-black ${
-                  botMode === "paper"
-                    ? "bg-yellow-500 text-black"
-                    : "bg-white/10 text-white/60"
-                }`}
-              >
-                Paper
-              </button>
+const publicApi = createApiClient(API_BASE);
+const userApi = createApiClient(USER_API_BASE);
+const sniperApi = createApiClient(SNIPER_API_BASE);
 
-              <button
-                onClick={() => setBotMode("live")}
-                className={`rounded-xl py-3 font-black ${
-                  botMode === "live"
-                    ? "bg-red-500 text-white"
-                    : "bg-white/10 text-white/60"
-                }`}
-              >
-                Live
-              </button>
-            </div>
+const addAuthInterceptor = (apiClient) => {
+  apiClient.interceptors.request.use((config) => {
+    config.headers = config.headers || {};
 
-            <div className="space-y-3 mb-5">
-              {STRATEGIES.map((strategy) => (
-                <button
-                  key={strategy.id}
-                  onClick={() => setCurrentStrategy(strategy)}
-                  className={`w-full rounded-xl border p-4 text-left ${
-                    currentStrategy.id === strategy.id
-                      ? "border-emerald-400 bg-emerald-500/10"
-                      : "border-white/10 bg-white/[0.03]"
-                  }`}
-                >
-                  <div className="flex justify-between">
-                    <strong>
-                      {strategy.icon} {strategy.name}
-                    </strong>
-                    <span className="text-sm text-white/50">{strategy.risk}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
+    const token = getToken();
+    const apiKey = getApiKey();
 
-            {!botRunning ? (
-              <button
-                onClick={handleStartBot}
-                disabled={processing || !exchangeConnected}
-                className="w-full rounded-xl bg-emerald-600 py-3 font-black hover:bg-emerald-500 disabled:opacity-50"
-              >
-                {processing ? (
-                  <FaSpinner className="animate-spin inline mr-2" />
-                ) : (
-                  <FaPlay className="inline mr-2" />
-                )}
-                Start Bot
-              </button>
-            ) : (
-              <button
-                onClick={handleStopBot}
-                disabled={processing}
-                className="w-full rounded-xl bg-red-600 py-3 font-black hover:bg-red-500 disabled:opacity-50"
-              >
-                {processing ? (
-                  <FaSpinner className="animate-spin inline mr-2" />
-                ) : (
-                  <FaStop className="inline mr-2" />
-                )}
-                Stop Bot
-              </button>
-            )}
-          </div>
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (apiKey) config.headers["X-API-Key"] = apiKey;
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-            <h2 className="text-xl font-black mb-4">Performance</h2>
+    return config;
+  });
 
-            <div className="grid grid-cols-2 gap-3">
-              <StatBox title="Realized PnL" value={formatMoney(stats.realizedPnl)} />
-              <StatBox title="Unrealized PnL" value={formatMoney(stats.unrealizedPnl)} />
-              <StatBox title="Total PnL" value={formatMoney(stats.totalPnl)} />
-              <StatBox title="Win Rate" value={formatPercent(winRate)} />
-              <StatBox title="Trades" value={Number(stats.totalTrades || 0).toLocaleString()} />
-              <StatBox title="Open Positions" value={positions.length} />
-            </div>
-          </div>
-        </section>
+  apiClient.interceptors.response.use(
+    (res) => res,
+    async (error) => {
+      const config = error?.config || {};
+      const status = error?.response?.status;
+      const errorCode = error?.response?.data?.code;
+      const errorMessage = error?.response?.data?.error;
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <h2 className="text-xl font-black mb-4">Open Positions</h2>
+      if (
+        status === 401 &&
+        (errorCode === "TOKEN_EXPIRED" ||
+          errorMessage === "jwt expired" ||
+          errorMessage === "invalid token")
+      ) {
+        clearToken();
+        clearApiKey();
+        clearCache();
 
-          {positions.length === 0 ? (
-            <div className="text-center text-white/40 py-8">No open positions</div>
-          ) : (
-            <div className="space-y-3">
-              {positions.map((p, i) => {
-                const symbol = p.symbol || p.instId || p.asset || "Position";
-                const qty = p.qty ?? p.quantity ?? p.size ?? 0;
-                const entry = p.entry_price ?? p.entryPrice ?? p.price ?? 0;
-                const pnl = Number(p.pnl_usd ?? p.pnlUsd ?? p.pnl ?? 0);
+        if (isBrowser && !window.location.pathname.includes("/login")) {
+          window.location.href = "/login?expired=true";
+        }
 
-                return (
-                  <div
-                    key={p.id || `${symbol}-${i}`}
-                    className="rounded-xl bg-white/[0.04] p-4 flex justify-between"
-                  >
-                    <div>
-                      <strong>{symbol}</strong>
-                      <p className="text-xs text-white/40">
-                        Qty: {qty} · Entry: {formatMoney(entry)}
-                      </p>
-                    </div>
+        return Promise.reject(error);
+      }
 
-                    <strong className={pnl >= 0 ? "text-emerald-400" : "text-red-400"}>
-                      {formatMoney(pnl)}
-                    </strong>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+      if (
+        shouldRetry(error) &&
+        config &&
+        (config.__retryCount || 0) < API_CONFIG.retryAttempts
+      ) {
+        config.__retryCount = (config.__retryCount || 0) + 1;
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <h2 className="text-xl font-black mb-4">Recent Trades</h2>
+        const retryAfter = Number(error?.response?.headers?.["retry-after"] || 0);
+        const delay =
+          retryAfter > 0
+            ? retryAfter * 1000
+            : API_CONFIG.retryDelay * config.__retryCount;
 
-          {trades.length === 0 ? (
-            <div className="text-center text-white/40 py-8">No recent trades</div>
-          ) : (
-            <div className="space-y-3">
-              {trades.map((trade, i) => (
-                <div
-                  key={trade.id || i}
-                  className="rounded-xl bg-white/[0.04] p-4 flex justify-between"
-                >
-                  <div>
-                    <strong>
-                      {String(trade.side || trade.action || "").toUpperCase()}{" "}
-                      {trade.symbol || ""}
-                    </strong>
-                    <p className="text-xs text-white/40">
-                      {trade.strategy || trade.created_at || ""}
-                    </p>
-                  </div>
+        await wait(delay);
+        return apiClient(config);
+      }
 
-                  <strong
-                    className={
-                      Number(trade.pnl_usd ?? trade.pnl ?? 0) >= 0
-                        ? "text-emerald-400"
-                        : "text-red-400"
-                    }
-                  >
-                    {formatMoney(trade.pnl_usd ?? trade.pnl ?? 0)}
-                  </strong>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
-          <h2 className="text-xl font-black text-red-300 mb-3">Emergency Controls</h2>
-
-          <button
-            onClick={handleCloseAllPositions}
-            disabled={processing || positions.length === 0}
-            className="w-full rounded-xl bg-red-600 py-3 font-black hover:bg-red-500 disabled:opacity-50"
-          >
-            Close All Positions
-          </button>
-        </section>
-
-        <p className="text-center text-xs text-white/30">
-          Live trading involves real risk. Only trade what you can afford to lose.
-        </p>
-      </main>
-    </div>
+      return Promise.reject(error);
+    }
   );
+};
+
+addAuthInterceptor(userApi);
+addAuthInterceptor(sniperApi);
+
+const requestWithDedupe = async (client, config, options = {}) => {
+  const method = String(config.method || "get").toLowerCase();
+  const url = config.url || "";
+  const data = config.data || null;
+  const params = config.params || null;
+  const key = makeRequestKey(method, url, data, params);
+
+  if (options.throttle !== false) await throttleRequest(key);
+
+  if (method === "get" && inflight.has(key)) {
+    return inflight.get(key);
+  }
+
+  const promise = client(config).finally(() => inflight.delete(key));
+
+  if (method === "get") {
+    inflight.set(key, promise);
+  }
+
+  return promise;
+};
+
+export const request = async (url, options = {}) => {
+  const method = String(options.method || "GET").toLowerCase();
+
+  let body = options.data;
+
+  if (options.body) {
+    try {
+      body = JSON.parse(options.body);
+    } catch {
+      body = options.body;
+    }
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      url,
+      method,
+      data: body,
+      params: options.params,
+    });
+
+    return unwrapAxios(res);
+  } catch (error) {
+    throw {
+      ...error,
+      message: getErrorMessage(error),
+      status: error?.response?.status,
+    };
+  }
+};
+
+// ─────────────────────────────────────────────
+// Defaults
+// ─────────────────────────────────────────────
+
+const getDefaultIntegrationStatus = () => ({
+  wallet_connected: false,
+  okx_connected: false,
+  okx_mode: "paper",
+  okx_api_key_masked: null,
+  okx_region: "us",
+  alpaca_connected: false,
+  alpaca_mode: "paper",
+  alpaca_api_key_masked: null,
+});
+
+const getDefaultLiveStats = () => ({
+  success: true,
+  summary: {
+    total_pnl: 0,
+    realized_pnl: 0,
+    unrealized_pnl: 0,
+    win_rate: 0,
+    total_trades: 0,
+    wins: 0,
+    losses: 0,
+    current_balance: 0,
+    open_positions: 0,
+    daily_pnl: 0,
+    daily_trades: 0,
+  },
+  daily_performance: [],
+  recent_trades: [],
+  open_positions: [],
+});
+
+const getDefaultStrategies = () => ({
+  success: true,
+  strategies: [
+    {
+      id: "mean_reversion",
+      name: "Mean Reversion",
+      risk_level: "low",
+      min_tier: "starter",
+    },
+    {
+      id: "ai_weighted",
+      name: "AI Weighted",
+      risk_level: "medium",
+      min_tier: "starter",
+    },
+    {
+      id: "momentum",
+      name: "Momentum",
+      risk_level: "medium",
+      min_tier: "starter",
+    },
+    {
+      id: "aggressive",
+      name: "Aggressive",
+      risk_level: "high",
+      min_tier: "pro",
+    },
+  ],
+  current_strategy: "ai_weighted",
+  tier: "starter",
+  _fallback: true,
+});
+
+// ─────────────────────────────────────────────
+// Auth / User
+// ─────────────────────────────────────────────
+
+const login = async (email, password) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/auth/login",
+      data: { email, password },
+    });
+
+    const data = unwrapPayload(res);
+    const token = data.token || data.access_token || data.jwt;
+
+    if (token) setToken(token);
+
+    return {
+      success: true,
+      ...data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Login failed"),
+    };
+  }
+};
+
+const register = async (payload) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/auth/register",
+      data: payload,
+    });
+
+    const data = unwrapPayload(res);
+    const token = data.token || data.access_token || data.jwt;
+
+    if (token) setToken(token);
+
+    return {
+      success: true,
+      ...data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Registration failed"),
+    };
+  }
+};
+
+const logout = () => {
+  clearToken();
+  clearApiKey();
+  clearCache();
+
+  if (isBrowser) {
+    window.location.href = "/login";
+  }
+};
+
+const getMe = async (skipCache = false) => {
+  const cacheKey = "user_me";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/user/me",
+    });
+
+    const data = unwrapPayload(res);
+    setCached(cacheKey, data);
+
+    return data;
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to load user"),
+    };
+  }
+};
+
+// ─────────────────────────────────────────────
+// Integration / Exchange Status
+// ─────────────────────────────────────────────
+
+const getIntegrationStatus = async (skipCache = false) => {
+  const cacheKey = "integration_status";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 10000);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/integrations/status",
+    });
+
+    const row = unwrapPayload(res);
+
+    const result = {
+      success: true,
+
+      wallet_connected: normalizeBool(row.wallet_connected),
+      wallet_address_masked: row.wallet_address_masked || row.wallet_masked || null,
+
+      okx_connected: normalizeBool(row.okx_connected || row.okxConnected),
+      okx_mode: normalizeMode(
+        row.okx_mode || row.okx_account_mode || row.okx_environment
+      ),
+      okx_api_key_masked:
+        row.okx_api_key_masked || row.okx_key_masked || row.okxApiKeyMasked || null,
+      okx_region: row.okx_region || "us",
+
+      alpaca_connected: normalizeBool(row.alpaca_connected || row.alpacaConnected),
+      alpaca_mode: normalizeMode(
+        row.alpaca_mode || row.alpaca_account_mode || row.alpaca_environment
+      ),
+      alpaca_api_key_masked:
+        row.alpaca_api_key_masked ||
+        row.alpaca_key_masked ||
+        row.alpacaApiKeyMasked ||
+        null,
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      ...getDefaultIntegrationStatus(),
+      error: getErrorMessage(error, "Failed to load integration status"),
+    };
+  }
+};
+
+const getConnectionKey = (exchange) => {
+  return String(exchange || "okx").toLowerCase();
+};
+
+const getConnectionStatus = (exchange, integrationStatus) => {
+  const key = getConnectionKey(exchange);
+  const status = integrationStatus || {};
+
+  if (key === "okx") {
+    return {
+      connected: normalizeBool(status.okx_connected),
+      mode: normalizeMode(status.okx_mode),
+      keyMasked: status.okx_api_key_masked || null,
+      region: status.okx_region || "us",
+    };
+  }
+
+  if (key === "alpaca") {
+    return {
+      connected: normalizeBool(status.alpaca_connected),
+      mode: normalizeMode(status.alpaca_mode),
+      keyMasked: status.alpaca_api_key_masked || null,
+    };
+  }
+
+  return {
+    connected: false,
+    mode: "paper",
+    keyMasked: null,
+  };
+};
+
+const switchExchangeMode = async (exchange, mode) => {
+  try {
+    const normalizedExchange = getConnectionKey(exchange);
+    const normalizedMode = normalizeMode(mode);
+
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/integrations/mode",
+      data: {
+        exchange: normalizedExchange,
+        mode: normalizedMode,
+      },
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to switch exchange mode"),
+    };
+  }
+};
+
+const switchOKXToLive = () => switchExchangeMode("okx", "live");
+const switchOKXToPaper = () => switchExchangeMode("okx", "paper");
+const switchAlpacaToLive = () => switchExchangeMode("alpaca", "live");
+const switchAlpacaToPaper = () => switchExchangeMode("alpaca", "paper");
+
+const connectOKX = async (payload) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/integrations/okx/connect",
+      data: payload,
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to connect OKX"),
+    };
+  }
+};
+
+const connectAlpaca = async (payload) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/integrations/alpaca/connect",
+      data: payload,
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to connect Alpaca"),
+    };
+  }
+};
+
+const disconnectOKX = async () => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "delete",
+      url: "/api/integrations/okx",
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to disconnect OKX"),
+    };
+  }
+};
+
+const disconnectAlpaca = async () => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "delete",
+      url: "/api/integrations/alpaca",
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to disconnect Alpaca"),
+    };
+  }
+};
+
+const connectWallet = async (payload) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/integrations/wallet/connect",
+      data: payload,
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to connect wallet"),
+    };
+  }
+};
+
+// ─────────────────────────────────────────────
+// Balances
+// ─────────────────────────────────────────────
+
+const getExchangeBalance = async (skipCache = false) => {
+  const cacheKey = "exchange_balance";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 5000);
+    if (cached) return cached;
+  }
+
+  if (!getToken()) {
+    return {
+      success: true,
+      okx_total: 0,
+      okx_available_usdt: 0,
+      alpaca_total: 0,
+      alpaca_available_usd: 0,
+      total: 0,
+      okx_assets: [],
+      alpaca_assets: [],
+    };
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/exchanges/balance",
+    });
+
+    const row = unwrapPayload(res);
+
+    const okxAssets = Array.isArray(row.okx_assets) ? row.okx_assets : [];
+    const alpacaAssets = Array.isArray(row.alpaca_assets) ? row.alpaca_assets : [];
+
+    const okxAvailableFromAssets = okxAssets.find((a) => a.ccy === "USDT")?.available;
+
+    const result = {
+      success: true,
+
+      okx_total: parseMoney(row.okx_total ?? row.okx_total_usd ?? row.okx ?? row.total ?? 0),
+      okx_available_usdt: parseMoney(
+        row.okx_available_usdt ?? row.okxAvailableUsdt ?? okxAvailableFromAssets ?? 0
+      ),
+
+      alpaca_total: parseMoney(row.alpaca_total ?? row.alpaca_equity ?? row.alpaca ?? 0),
+      alpaca_available_usd: parseMoney(
+        row.alpaca_available_usd ??
+          row.alpaca_available_usdt ??
+          row.alpaca_cash ??
+          row.cash ??
+          0
+      ),
+
+      total: parseMoney(row.total),
+      okx_assets: okxAssets,
+      alpaca_assets: alpacaAssets,
+    };
+
+    if (!result.total) {
+      result.total = result.okx_total + result.alpaca_total;
+    }
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      okx_total: 0,
+      okx_available_usdt: 0,
+      alpaca_total: 0,
+      alpaca_available_usd: 0,
+      total: 0,
+      okx_assets: [],
+      alpaca_assets: [],
+      error: getErrorMessage(error, "Failed to load balance"),
+    };
+  }
+};
+
+const getConnectionBalance = (exchange, balances) => {
+  const key = getConnectionKey(exchange);
+  const balance = balances || {};
+
+  if (key === "okx") {
+    return {
+      total: parseMoney(balance.okx_total ?? balance.okx ?? balance.total ?? 0),
+      available: parseMoney(balance.okx_available_usdt ?? 0),
+    };
+  }
+
+  if (key === "alpaca") {
+    return {
+      total: parseMoney(balance.alpaca_total ?? balance.alpaca ?? 0),
+      available: parseMoney(balance.alpaca_available_usd ?? balance.alpaca_available_usdt ?? 0),
+    };
+  }
+
+  return {
+    total: 0,
+    available: 0,
+  };
+};
+
+// ─────────────────────────────────────────────
+// Bot Management
+// ─────────────────────────────────────────────
+
+const normalizeBot = (bot = {}) => {
+  return {
+    ...bot,
+    isRunning:
+      normalizeBool(bot.isRunning) ||
+      normalizeBool(bot.running) ||
+      normalizeBool(bot.botRunning) ||
+      String(bot.status || "").toLowerCase() === "running" ||
+      String(bot.bot_status || "").toLowerCase() === "running",
+    mode: normalizeMode(bot.mode || bot.bot_mode || bot.trading_mode),
+    exchange: String(bot.exchange || "okx").toLowerCase(),
+    strategy: bot.strategy || bot.strategy_id || bot.currentStrategy || "ai_weighted",
+    started_at: bot.started_at || bot.start_time || bot.startedAt || null,
+  };
+};
+
+const getTradingBotStatus = async (skipCache = false) => {
+  const cacheKey = "trading_bot_status";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 3000);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/bot/status",
+    });
+
+    const raw = unwrapPayload(res);
+
+    let rawBots = [];
+
+    if (Array.isArray(raw)) {
+      rawBots = raw;
+    } else if (Array.isArray(raw.bots)) {
+      rawBots = raw.bots;
+    } else if (Array.isArray(raw.data)) {
+      rawBots = raw.data;
+    } else if (raw && typeof raw === "object") {
+      rawBots = [raw];
+    }
+
+    const bots = rawBots.map(normalizeBot);
+    const activeBot = bots.find((b) => b.isRunning) || bots[0] || null;
+
+    const result = {
+      success: true,
+      data: bots,
+      bots,
+      activeBot,
+      isRunning: bots.some((b) => b.isRunning),
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      data: [],
+      bots: [],
+      activeBot: null,
+      isRunning: false,
+      error: getErrorMessage(error, "Failed to load bot status"),
+    };
+  }
+};
+
+const isAnyBotRunning = async () => {
+  const status = await getTradingBotStatus(true);
+  return Boolean(status?.isRunning || status?.data?.some?.((bot) => bot.isRunning));
+};
+
+const startTradingBot = async (exchange = "okx", strategy = "ai_weighted", mode = "paper") => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/bot/start",
+      data: {
+        exchange: getConnectionKey(exchange),
+        strategy,
+        mode: normalizeMode(mode),
+      },
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to start bot"),
+    };
+  }
+};
+
+const stopTradingBot = async (exchange = "okx") => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/bot/stop",
+      data: {
+        exchange: getConnectionKey(exchange),
+      },
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to stop bot"),
+    };
+  }
+};
+
+const closeAllPositions = async (exchange = "okx") => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/positions/close-all",
+      data: {
+        exchange: getConnectionKey(exchange),
+      },
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to close positions"),
+    };
+  }
+};
+
+// ─────────────────────────────────────────────
+// Trading Data
+// ─────────────────────────────────────────────
+
+const getOpenPositions = async (exchange = "okx", skipCache = false) => {
+  const key = getConnectionKey(exchange);
+  const cacheKey = `open_positions_${key}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 5000);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/positions/open",
+      params: { exchange: key },
+    });
+
+    const raw = unwrapPayload(res);
+    const positions = raw.positions || raw.open_positions || raw.openPositions || [];
+
+    const result = {
+      success: true,
+      positions: Array.isArray(positions) ? positions : [],
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      positions: [],
+      error: getErrorMessage(error, "Failed to load positions"),
+    };
+  }
+};
+
+const getLiveTradingStats = async (exchangeOrSkipCache = false, maybeSkipCache = false) => {
+  const exchange =
+    typeof exchangeOrSkipCache === "string" ? exchangeOrSkipCache : null;
+
+  const skipCache =
+    typeof exchangeOrSkipCache === "boolean" ? exchangeOrSkipCache : maybeSkipCache;
+
+  const key = exchange ? getConnectionKey(exchange) : "all";
+  const cacheKey = `live_trading_stats_${key}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 5000);
+    if (cached) return cached;
+  }
+
+  if (!getToken()) return getDefaultLiveStats();
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/live-stats",
+      params: exchange ? { exchange: key } : undefined,
+    });
+
+    const raw = unwrapPayload(res);
+    const summary = raw.summary || raw;
+
+    const result = {
+      success: true,
+      summary: {
+        total_pnl: parseMoney(summary.total_pnl ?? summary.totalPnl ?? 0),
+        realized_pnl: parseMoney(summary.realized_pnl ?? summary.realizedPnl ?? 0),
+        unrealized_pnl: parseMoney(summary.unrealized_pnl ?? summary.unrealizedPnl ?? 0),
+        win_rate: Number(summary.win_rate ?? summary.winRate ?? 0),
+        total_trades: Number(summary.total_trades ?? summary.totalTrades ?? 0),
+        wins: Number(summary.wins ?? 0),
+        losses: Number(summary.losses ?? 0),
+        current_balance: parseMoney(summary.current_balance ?? summary.currentBalance ?? 0),
+        open_positions: Number(summary.open_positions ?? summary.openPositions ?? 0),
+        daily_pnl: parseMoney(summary.daily_pnl ?? summary.dailyPnl ?? 0),
+        daily_trades: Number(summary.daily_trades ?? summary.dailyTrades ?? 0),
+      },
+      daily_performance: raw.daily_performance || raw.dailyPerformance || [],
+      recent_trades: raw.recent_trades || raw.recentTrades || [],
+      open_positions: raw.open_positions || raw.openPositions || [],
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      ...getDefaultLiveStats(),
+      success: false,
+      error: getErrorMessage(error, "Failed to load live stats"),
+    };
+  }
+};
+
+const getLiveTradeHistory = async (
+  limit = 20,
+  exchangeOrSkipCache = false,
+  maybeSkipCache = false
+) => {
+  const exchange =
+    typeof exchangeOrSkipCache === "string" ? exchangeOrSkipCache : null;
+
+  const skipCache =
+    typeof exchangeOrSkipCache === "boolean" ? exchangeOrSkipCache : maybeSkipCache;
+
+  const key = exchange ? getConnectionKey(exchange) : "all";
+  const cacheKey = `live_trade_history_${key}_${limit}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 5000);
+    if (cached) return cached;
+  }
+
+  if (!getToken()) {
+    return {
+      success: true,
+      trades: [],
+    };
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/live-trades",
+      params: {
+        limit,
+        ...(exchange ? { exchange: key } : {}),
+      },
+    });
+
+    const raw = unwrapPayload(res);
+    const trades = raw.trades || raw.history || raw.recent_trades || [];
+
+    const normalized = Array.isArray(trades)
+      ? trades.map((trade) => ({
+          id: trade.id || trade.trade_id,
+          exchange: trade.exchange || key,
+          symbol: trade.symbol || trade.asset || trade.instId,
+          side: trade.side || trade.action,
+          status: trade.status || (trade.closed_at ? "closed" : "open"),
+          strategy: trade.strategy || trade.label || trade.type,
+          pnl: parseMoney(trade.pnl ?? trade.pnl_usd ?? trade.profit_loss ?? 0),
+          pnl_usd: parseMoney(trade.pnl_usd ?? trade.pnl ?? 0),
+          entry_price: parseMoney(trade.entry_price ?? trade.entryPrice),
+          exit_price: parseMoney(trade.exit_price ?? trade.exitPrice),
+          quantity: parseMoney(trade.quantity ?? trade.qty ?? trade.size),
+          created_at: trade.created_at || trade.open_time || trade.createdAt,
+          closed_at: trade.closed_at || trade.close_time || trade.closedAt,
+        }))
+      : [];
+
+    const result = {
+      success: true,
+      trades: normalized,
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      trades: [],
+      error: getErrorMessage(error, "Failed to load trades"),
+    };
+  }
+};
+
+// ─────────────────────────────────────────────
+// Strategies / User Trading
+// ─────────────────────────────────────────────
+
+const getTradingStrategies = async (skipCache = false) => {
+  const cacheKey = "trading_strategies";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 60000);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/strategies",
+    });
+
+    const raw = unwrapPayload(res);
+
+    const result = {
+      success: true,
+      strategies: raw.strategies || raw.data || getDefaultStrategies().strategies,
+      current_strategy: raw.current_strategy || raw.currentStrategy || "ai_weighted",
+      tier: raw.tier || "starter",
+    };
+
+    setCached(cacheKey, result);
+    return result;
+  } catch {
+    return getDefaultStrategies();
+  }
+};
+
+const updateUserStrategy = async (strategyId) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/strategy",
+      data: {
+        strategy: strategyId,
+      },
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to update strategy"),
+    };
+  }
+};
+
+const getUserTradingStats = async (days = 30, skipCache = false) => {
+  const cacheKey = `user_trading_stats_${days}`;
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/user-stats",
+      params: { days },
+    });
+
+    const data = unwrapPayload(res);
+    setCached(cacheKey, data);
+
+    return data;
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to load user trading stats"),
+    };
+  }
+};
+
+const toggleTrading = async (enabled) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/toggle",
+      data: { enabled: Boolean(enabled) },
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to toggle trading"),
+    };
+  }
+};
+
+const togglePaperTrading = async (enabled) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/paper/toggle",
+      data: { enabled: Boolean(enabled) },
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to toggle paper trading"),
+    };
+  }
+};
+
+const executePaperTrade = async (payload = {}) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/trading/paper/execute",
+      data: payload,
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to execute paper trade"),
+    };
+  }
+};
+
+// ─────────────────────────────────────────────
+// Activation / Billing
+// ─────────────────────────────────────────────
+
+const getActivationStatus = async (skipCache = false) => {
+  const cacheKey = "activation_status";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/user/activation-status",
+    });
+
+    const data = unwrapPayload(res);
+    setCached(cacheKey, data);
+
+    return data;
+  } catch (error) {
+    return {
+      success: false,
+      has_card_on_file: false,
+      billing_complete: false,
+      trading_enabled: false,
+      paper_trading_enabled: false,
+      tier: "starter",
+      error: getErrorMessage(error, "Failed to load activation status"),
+    };
+  }
+};
+
+const refreshActivation = () => getActivationStatus(true);
+
+const getTrialStatus = async (skipCache = false) => {
+  const cacheKey = "trial_status";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/user/trial-status",
+    });
+
+    const data = unwrapPayload(res);
+    setCached(cacheKey, data);
+
+    return data;
+  } catch {
+    return {
+      trial_status: "inactive",
+      paper_trading_enabled: false,
+      seconds_remaining: 0,
+      active: false,
+    };
+  }
+};
+
+const getCardStatus = async (skipCache = false) => {
+  const cacheKey = "card_status";
+
+  if (!skipCache) {
+    const cached = getCached(cacheKey, 30000);
+    if (cached) return cached;
+  }
+
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/billing/card-status",
+    });
+
+    const data = unwrapPayload(res);
+    setCached(cacheKey, data);
+
+    return data;
+  } catch (error) {
+    return {
+      success: false,
+      has_card_on_file: false,
+      error: getErrorMessage(error, "Failed to load card status"),
+    };
+  }
+};
+
+const createSetupIntent = async (payload = {}) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/billing/setup-intent",
+      data: payload,
+    });
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to create setup intent"),
+    };
+  }
+};
+
+const changePlan = async (tier) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "post",
+      url: "/api/billing/change-plan",
+      data: { tier },
+    });
+
+    clearTradingCache();
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to change plan"),
+    };
+  }
+};
+
+// ─────────────────────────────────────────────
+// Misc
+// ─────────────────────────────────────────────
+
+const getImaliBalance = async () => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/wallet/imali-balance",
+    });
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      balance: 0,
+      error: getErrorMessage(error, "Failed to load IMALI balance"),
+    };
+  }
+};
+
+const getGlobalTrades = async (options = {}) => {
+  try {
+    const res = await requestWithDedupe(userApi, {
+      method: "get",
+      url: "/api/trading/global-trades",
+      params: options,
+    });
+
+    return {
+      success: true,
+      ...unwrapPayload(res),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      trades: [],
+      error: getErrorMessage(error, "Failed to load global trades"),
+    };
+  }
+};
+
+// ─────────────────────────────────────────────
+// Export
+// ─────────────────────────────────────────────
+
+class BotAPIClass {
+  constructor() {
+    this.api = userApi;
+    this.sniperApi = sniperApi;
+    this.publicApi = publicApi;
+    this.request = request;
+  }
+
+  setToken = setToken;
+  getToken = getToken;
+  clearToken = clearToken;
+
+  setApiKey = setApiKey;
+  getApiKey = getApiKey;
+  clearApiKey = clearApiKey;
+
+  isAuthenticated = isAuthenticated;
+  clearCache = clearCache;
+  clearTradingCache = clearTradingCache;
+
+  login = login;
+  register = register;
+  logout = logout;
+  getMe = getMe;
+
+  getActivationStatus = getActivationStatus;
+  refreshActivation = refreshActivation;
+  getTrialStatus = getTrialStatus;
+  getCardStatus = getCardStatus;
+  createSetupIntent = createSetupIntent;
+  changePlan = changePlan;
+
+  getIntegrationStatus = getIntegrationStatus;
+  getConnectionStatus = getConnectionStatus;
+  getConnectionBalance = getConnectionBalance;
+  getConnectionKey = getConnectionKey;
+
+  connectOKX = connectOKX;
+  connectAlpaca = connectAlpaca;
+  disconnectOKX = disconnectOKX;
+  disconnectAlpaca = disconnectAlpaca;
+  connectWallet = connectWallet;
+
+  switchExchangeMode = switchExchangeMode;
+  switchOKXToLive = switchOKXToLive;
+  switchOKXToPaper = switchOKXToPaper;
+  switchAlpacaToLive = switchAlpacaToLive;
+  switchAlpacaToPaper = switchAlpacaToPaper;
+
+  getExchangeBalance = getExchangeBalance;
+  getLiveTradingStats = getLiveTradingStats;
+  getLiveTradeHistory = getLiveTradeHistory;
+  getOpenPositions = getOpenPositions;
+
+  startTradingBot = startTradingBot;
+  stopTradingBot = stopTradingBot;
+  getTradingBotStatus = getTradingBotStatus;
+  isAnyBotRunning = isAnyBotRunning;
+  closeAllPositions = closeAllPositions;
+
+  getTradingStrategies = getTradingStrategies;
+  updateUserStrategy = updateUserStrategy;
+  getUserTradingStats = getUserTradingStats;
+  toggleTrading = toggleTrading;
+  togglePaperTrading = togglePaperTrading;
+  executePaperTrade = executePaperTrade;
+
+  getImaliBalance = getImaliBalance;
+  getGlobalTrades = getGlobalTrades;
 }
 
-function DashboardCard({ title, value, icon, color }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-      <div className="flex justify-between text-white/50">
-        <p className="font-bold">{title}</p>
-        {icon}
-      </div>
-      <p className={`mt-5 text-3xl font-black ${color || "text-white"}`}>{value}</p>
-    </div>
-  );
-}
+const BotAPI = new BotAPIClass();
 
-function InfoBox({ title, value, icon }) {
-  return (
-    <div className="rounded-xl bg-white/[0.04] p-4">
-      <div className="flex justify-between text-white/40">
-        <p className="text-xs font-bold">{title}</p>
-        {icon}
-      </div>
-      <p className="mt-3 font-black">{value}</p>
-    </div>
-  );
-}
-
-function StatBox({ title, value }) {
-  const numeric = Number(String(value).replace(/[$,%]/g, ""));
-  const isPnl = title.toLowerCase().includes("pnl");
-
-  return (
-    <div className="rounded-xl bg-white/[0.04] p-4">
-      <p className="text-xs text-white/40">{title}</p>
-      <p
-        className={`mt-2 text-xl font-black ${
-          isPnl ? (numeric >= 0 ? "text-emerald-400" : "text-red-400") : "text-white"
-        }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
+export default BotAPI;
