@@ -47,8 +47,9 @@ const BillingDashboard = lazy(() => import("./pages/BillingDashboard"));
 const Pricing = lazy(() => import("./pages/Pricing"));
 
 // ==================== CONNECTION PAGES ====================
+// NOTE: Your file is currently named ConnectAlpace.jsx, so this import matches it.
 const ConnectOKX = lazy(() => import("./pages/ConnectOKX"));
-const ConnectAlpaca = lazy(() => import("./pages/ConnectAlpaca"));
+const ConnectAlpaca = lazy(() => import("./pages/ConnectAlpace"));
 const ConnectWallet = lazy(() => import("./pages/ConnectWallet"));
 
 // ==================== ENTERPRISE DASHBOARD PAGES ====================
@@ -75,8 +76,6 @@ const PAID_TIERS = [
   "enterprise",
   "bundle",
 ];
-
-const FREE_TIERS = ["starter", "free", "trial"];
 
 function isPaidTier(tier) {
   return PAID_TIERS.includes(String(tier || "").toLowerCase());
@@ -282,13 +281,8 @@ function RedirectIfActivated({ children }) {
   const tier = user?.tier || "starter";
   const isPaid = isPaidTier(tier);
 
-  if (!isPaid) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  if (activationComplete) {
-    return <Navigate to="/dashboard" replace />;
-  }
+  if (!isPaid) return <Navigate to="/dashboard" replace />;
+  if (activationComplete) return <Navigate to="/dashboard" replace />;
 
   return children;
 }
@@ -369,7 +363,7 @@ function NotFound() {
   );
 }
 
-// ==================== TEST ROUTES COMPONENT ====================
+// ==================== TEST ROUTES ====================
 function TestRoutes() {
   return (
     <Suspense fallback={<PageFallback />}>
