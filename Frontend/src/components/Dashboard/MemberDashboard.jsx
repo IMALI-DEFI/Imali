@@ -5,24 +5,24 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
 import {
-  FaPlay,
-  FaStop,
-  FaSpinner,
-  FaSignOutAlt,
-  FaCircle,
-  FaChartLine,
-  FaRobot,
-  FaLock,
-  FaCrown,
-  FaArrowRight,
-  FaSyncAlt,
-  FaPlug,
-  FaBitcoin,
   FaApple,
-  FaWater,
+  FaArrowRight,
+  FaBitcoin,
+  FaChartLine,
   FaCheckCircle,
+  FaCircle,
+  FaCrown,
   FaExclamationTriangle,
+  FaLock,
+  FaPlay,
+  FaPlug,
   FaRedo,
+  FaRobot,
+  FaSignOutAlt,
+  FaSpinner,
+  FaStop,
+  FaSyncAlt,
+  FaWater,
 } from "react-icons/fa";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
@@ -33,6 +33,8 @@ const POLL_MS = 7000;
 
 const TIER_RANK = {
   starter: 0,
+  free: 0,
+  trial: 0,
   common: 0,
   pro: 1,
   rare: 1,
@@ -130,20 +132,35 @@ const ASSET_NAMES = {
   BTC: "Bitcoin",
   ETH: "Ethereum",
   SOL: "Solana",
+  DOGE: "Dogecoin",
+  MATIC: "Polygon",
+  POL: "Polygon",
 };
 
-const formatMoney = (n) => `$${Number(n || 0).toFixed(2)}`;
-const formatPercent = (n) => `${Number(n || 0).toFixed(1)}%`;
+const formatMoney = (value) => `$${Number(value || 0).toFixed(2)}`;
+const formatPercent = (value) => `${Number(value || 0).toFixed(1)}%`;
+
+const num = (value) => {
+  const parsed = Number(String(value ?? 0).replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const normalizeTier = (tier) => String(tier || "starter").toLowerCase();
+
 const normalizeMode = (mode) =>
   String(mode || "paper").toLowerCase() === "live" ? "live" : "paper";
+
 const tierRank = (tier) => TIER_RANK[normalizeTier(tier)] ?? 0;
+
 const hasTierAccess = (userTier, minTier) =>
   tierRank(userTier) >= tierRank(minTier);
-const getStrategy = (id) => STRATEGIES.find((s) => s.id === id) || STRATEGIES[1];
+
+const getStrategy = (id) =>
+  STRATEGIES.find((strategy) => strategy.id === id) || STRATEGIES[1];
 
 const getAssetIcon = (symbol) => {
   const s = String(symbol || "").toUpperCase();
+
   if (s === "USD") return "💵";
   if (s === "USDT") return "₮";
   if (s === "FIL") return "ƒ";
@@ -153,6 +170,9 @@ const getAssetIcon = (symbol) => {
   if (s === "NEAR") return "N";
   if (s === "INJ") return "◎";
   if (s === "BTC") return "₿";
+  if (s === "SOL") return "◎";
+  if (s === "DOGE") return "Ð";
+
   return s.slice(0, 2);
 };
 
@@ -173,13 +193,13 @@ export default function MemberDashboard() {
   const [currentStrategy, setCurrentStrategy] = useState(STRATEGIES[1]);
 
   const [connections, setConnections] = useState({
-    okx: { connected: false, mode: "paper", keyMasked: "", label: "OKX API" },
-    alpaca: { connected: false, mode: "paper", keyMasked: "", label: "Alpaca API" },
-    wallet: { connected: false, mode: "live", keyMasked: "", label: "Wallet / DEX Bot" },
+    okx: { connected: false, mode: "paper", keyMasked: "" },
+    alpaca: { connected: false, mode: "paper", keyMasked: "" },
+    wallet: { connected: false, mode: "live", keyMasked: "" },
   });
 
-  const [cashValue, setCashValue] = useState(0);
-  const [assetValue, setAssetValue] = useState(0);
+  const [totalAssetValue, setTotalAssetValue] = useState(0);
+  const [cashUsdValue, setCashUsdValue] = useState(0);
   const [assets, setAssets] = useState([]);
   const [positions, setPositions] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -205,39 +225,34 @@ export default function MemberDashboard() {
   const needsReconnect = !isConnected && !isLocked;
 
   const winRate = useMemo(() => {
-    const total = Number(stats.wins || 0) + Number(stats.losses || 0);
+    const total = num(stats.wins) + num(stats.losses);
     if (!total) return 0;
-    return (Number(stats.wins || 0) / total) * 100;
-  }, [stats]);
-
-  const totalAssetValue = Number(cashValue || 0) + Number(assetValue || 0);
+    return (num(stats.wins) / total) * 100;
+  }, [stats.wins, stats.losses]);
 
   const visibleAssets = useMemo(() => {
-    const cashSymbol = activeType === "stocks" ? "USD" : "USDT";
-
-    const cashAsset =
-      cashValue > 0
+    const cashRow =
+      cashUsdValue > 0
         ? [
             {
-              symbol: cashSymbol,
-              name: cashSymbol === "USD" ? "Cash" : "Tether",
-              quantity: cashValue,
-              value: cashValue,
+              symbol: "USD",
+              name: "Cash",
+              quantity: cashUsdValue,
+              value: cashUsdValue,
               changePct: null,
               isCash: true,
             },
           ]
         : [];
 
-    return [...cashAsset, ...assets]
-      .filter((asset) => Number(asset.value || 0) >= 0.5)
-      .sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
-  }, [assets, cashValue, activeType]);
+    return [...cashRow, ...assets]
+      .filter((asset) => num(asset.value) >= 0.5)
+      .sort((a, b) => num(b.value) - num(a.value));
+  }, [assets, cashUsdValue]);
 
   const smallBalancesCount = useMemo(() => {
-    return assets.filter(
-      (asset) => Number(asset.value || 0) > 0 && Number(asset.value || 0) < 0.5
-    ).length;
+    return assets.filter((asset) => num(asset.value) > 0 && num(asset.value) < 0.5)
+      .length;
   }, [assets]);
 
   const donutData = useMemo(
@@ -245,7 +260,7 @@ export default function MemberDashboard() {
       labels: ["Wins", "Losses"],
       datasets: [
         {
-          data: [Number(stats.wins || 0), Number(stats.losses || 0)],
+          data: [num(stats.wins), num(stats.losses)],
           backgroundColor: ["#4ade80", "#f43f5e"],
           borderWidth: 0,
           cutout: "72%",
@@ -255,13 +270,51 @@ export default function MemberDashboard() {
     [stats.wins, stats.losses]
   );
 
-  const donutOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: { enabled: true },
-    },
+  const donutOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: true },
+      },
+    }),
+    []
+  );
+
+  const normalizeAsset = (asset) => {
+    const symbol = String(asset.ccy || asset.symbol || asset.asset || "").toUpperCase();
+
+    const value = num(
+      asset.usdValue ??
+        asset.usd_value ??
+        asset.value ??
+        asset.totalUsd ??
+        asset.total_usd ??
+        asset.eqUsd
+    );
+
+    const quantity = num(
+      asset.available ??
+        asset.bal ??
+        asset.balance ??
+        asset.qty ??
+        asset.quantity
+    );
+
+    return {
+      symbol,
+      name: ASSET_NAMES[symbol] || symbol,
+      quantity,
+      value,
+      changePct:
+        asset.changePct ??
+        asset.change_pct ??
+        asset.pnl_pct ??
+        asset.pnlPercent ??
+        null,
+      isCash: symbol === "USD",
+    };
   };
 
   const fetchUser = useCallback(async () => {
@@ -275,7 +328,7 @@ export default function MemberDashboard() {
 
     const bot =
       res?.activeBot ||
-      res?.data?.find?.((b) => b.exchange === activeExchange) ||
+      res?.data?.find?.((item) => item.exchange === activeExchange) ||
       res?.data?.[0] ||
       null;
 
@@ -299,19 +352,16 @@ export default function MemberDashboard() {
         connected: Boolean(res?.okx_connected),
         mode: normalizeMode(res?.okx_mode),
         keyMasked: res?.okx_api_key_masked || "",
-        label: "OKX API",
       },
       alpaca: {
         connected: Boolean(res?.alpaca_connected),
         mode: normalizeMode(res?.alpaca_mode),
         keyMasked: res?.alpaca_api_key_masked || "",
-        label: "Alpaca API",
       },
       wallet: {
         connected: Boolean(res?.wallet_connected),
         mode: "live",
         keyMasked: res?.wallet_address_masked || "",
-        label: "Wallet / DEX Bot",
       },
     });
 
@@ -324,61 +374,68 @@ export default function MemberDashboard() {
     }
   }, [activeTab.connectionKey]);
 
-  const normalizeAsset = (asset) => {
-    const symbol = String(asset.ccy || asset.symbol || asset.asset || "").toUpperCase();
-
-    return {
-      symbol,
-      name: ASSET_NAMES[symbol] || symbol,
-      quantity: Number(asset.available ?? asset.bal ?? asset.balance ?? asset.qty ?? asset.quantity ?? 0),
-      value: Number(asset.usdValue ?? asset.usd_value ?? asset.value ?? asset.totalUsd ?? asset.total_usd ?? 0),
-      changePct: asset.changePct ?? asset.change_pct ?? asset.pnl_pct ?? asset.pnlPercent ?? null,
-      isCash: symbol === "USD" || symbol === "USDT",
-    };
-  };
-
   const fetchBalance = useCallback(async () => {
     const res = await BotAPI.getExchangeBalance?.(true);
 
     if (activeExchange === "okx") {
-      const okxAssets = Array.isArray(res?.okx_assets)
-        ? res.okx_assets.map(normalizeAsset)
-        : [];
-      const cash = Number(res?.okx_available_usdt || 0);
+      const okxAssetsRaw = Array.isArray(res?.okx_assets) ? res.okx_assets : [];
+      const okxAssets = okxAssetsRaw.map(normalizeAsset).filter((asset) => asset.symbol);
 
-      const nonCashAssets = okxAssets.filter(
-        (a) => a.symbol !== "USDT" && a.symbol !== "USD"
-      );
-      const holdingsValue = nonCashAssets.reduce(
-        (sum, a) => sum + Number(a.value || 0),
-        0
+      const assetsTotal = okxAssets.reduce((sum, asset) => sum + num(asset.value), 0);
+
+      const backendTotal = num(
+        res?.okx_total ??
+          res?.okx_total_usd ??
+          res?.okxTotalUsd ??
+          res?.okx ??
+          res?.total
       );
 
-      setCashValue(cash);
-      setAssetValue(holdingsValue);
-      setAssets(nonCashAssets);
+      const explicitCash = num(
+        res?.okx_cash_usd ??
+          res?.okx_available_usd ??
+          res?.usd_cash ??
+          res?.cash_usd
+      );
+
+      const inferredCash = backendTotal > assetsTotal ? backendTotal - assetsTotal : 0;
+      const cash = explicitCash || inferredCash;
+      const finalTotal = backendTotal || assetsTotal + cash;
+
+      setAssets(okxAssets);
+      setCashUsdValue(cash);
+      setTotalAssetValue(finalTotal);
       return;
     }
 
     if (activeExchange === "alpaca") {
-      const alpacaAssets = Array.isArray(res?.alpaca_assets)
-        ? res.alpaca_assets.map(normalizeAsset)
+      const alpacaAssetsRaw = Array.isArray(res?.alpaca_assets)
+        ? res.alpaca_assets
         : [];
-      const cash = Number(res?.alpaca_available_usd || 0);
-      const holdingsValue = alpacaAssets.reduce(
-        (sum, a) => sum + Number(a.value || 0),
+      const alpacaAssets = alpacaAssetsRaw
+        .map(normalizeAsset)
+        .filter((asset) => asset.symbol);
+
+      const assetsTotal = alpacaAssets.reduce(
+        (sum, asset) => sum + num(asset.value),
         0
       );
 
-      setCashValue(cash);
-      setAssetValue(holdingsValue);
+      const cash = num(res?.alpaca_available_usd ?? res?.alpaca_cash ?? res?.cash);
+
+      const backendTotal = num(
+        res?.alpaca_total ?? res?.alpaca_equity ?? res?.alpaca
+      );
+
       setAssets(alpacaAssets);
+      setCashUsdValue(cash);
+      setTotalAssetValue(backendTotal || assetsTotal + cash);
       return;
     }
 
-    setCashValue(0);
-    setAssetValue(0);
     setAssets([]);
+    setCashUsdValue(0);
+    setTotalAssetValue(0);
   }, [activeExchange]);
 
   const fetchPositions = useCallback(async () => {
@@ -391,11 +448,11 @@ export default function MemberDashboard() {
     const s = res?.summary || {};
 
     setStats({
-      realizedPnl: Number(s.realized_pnl ?? s.realizedPnl ?? s.total_pnl ?? 0),
-      totalPnl: Number(s.total_pnl ?? s.totalPnl ?? 0),
-      wins: Number(s.wins ?? 0),
-      losses: Number(s.losses ?? 0),
-      totalTrades: Number(s.total_trades ?? s.totalTrades ?? 0),
+      realizedPnl: num(s.realized_pnl ?? s.realizedPnl ?? s.total_pnl),
+      totalPnl: num(s.total_pnl ?? s.totalPnl),
+      wins: num(s.wins),
+      losses: num(s.losses),
+      totalTrades: num(s.total_trades ?? s.totalTrades),
     });
   }, [activeExchange]);
 
@@ -453,12 +510,8 @@ export default function MemberDashboard() {
   }, [activeType, refreshDashboard]);
 
   const handleConnect = () => {
-    if (isLocked) {
-      navigate("/billing-dashboard");
-      return;
-    }
-
-    navigate(activeTab.connectRoute);
+    if (isLocked) navigate("/billing-dashboard");
+    else navigate(activeTab.connectRoute);
   };
 
   const handleStartBot = async () => {
@@ -560,12 +613,15 @@ export default function MemberDashboard() {
         <section className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-white/50">Welcome back,</p>
+
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-2xl font-black">IMALI Trader</h2>
+
               <span className="rounded-lg bg-emerald-400/15 px-2 py-1 text-xs font-black text-emerald-300">
                 {normalizeTier(userTier).toUpperCase()} PLAN
               </span>
             </div>
+
             <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -573,14 +629,6 @@ export default function MemberDashboard() {
               <ModePill mode={botMode} />
             </div>
           </div>
-
-          <button
-            onClick={() => navigate("/billing-dashboard")}
-            className="hidden sm:flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-black text-black hover:bg-emerald-400"
-          >
-            <FaCrown />
-            Upgrade
-          </button>
         </section>
 
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] overflow-hidden">
@@ -594,14 +642,20 @@ export default function MemberDashboard() {
                   key={tab.id}
                   onClick={() => setActiveType(tab.id)}
                   className={`relative min-w-0 px-1 py-4 text-center font-black transition ${
-                    active ? "bg-cyan-400/10 text-white" : "text-white/50 hover:bg-white/[0.04]"
+                    active
+                      ? "bg-cyan-400/10 text-white"
+                      : "text-white/50 hover:bg-white/[0.04]"
                   }`}
                 >
                   <div className="flex flex-col items-center justify-center gap-1">
                     <span className={`text-xl ${active ? "text-cyan-300" : ""}`}>
                       {tab.icon}
                     </span>
-                    <span className="text-[11px] sm:text-base leading-none">{tab.label}</span>
+
+                    <span className="text-[11px] sm:text-base leading-none">
+                      {tab.label}
+                    </span>
+
                     {locked && <FaLock className="text-[10px] text-white/40" />}
                   </div>
 
@@ -629,21 +683,38 @@ export default function MemberDashboard() {
           <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr]">
             <div>
               <h3 className="text-xl font-black">Account Overview</h3>
-              <p className="mt-6 text-sm text-white/50">Total Assets Value</p>
-              <p className="mt-2 text-5xl font-black">{formatMoney(totalAssetValue)}</p>
 
-              <p className={`mt-3 font-black ${stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+              <p className="mt-6 text-sm text-white/50">Total Assets Value</p>
+
+              <p className="mt-2 text-5xl font-black">
+                {formatMoney(totalAssetValue)}
+              </p>
+
+              <p
+                className={`mt-3 font-black ${
+                  stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-300"
+                }`}
+              >
                 {stats.totalPnl >= 0 ? "+" : ""}
                 {formatMoney(stats.totalPnl)} realized
               </p>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <MiniBox label="Open Positions" value={positions.length} />
+                <MiniBox label="Cash" value={formatMoney(cashUsdValue)} />
+              </div>
             </div>
 
             <div className="grid grid-cols-[130px_1fr] sm:grid-cols-[140px_1fr] items-center gap-4">
               <div className="relative h-[130px] sm:h-[140px]">
                 <Doughnut data={donutData} options={donutOptions} />
+
                 <div className="absolute inset-0 grid place-items-center text-center">
                   <div>
-                    <p className="text-xl sm:text-2xl font-black">{formatPercent(winRate)}</p>
+                    <p className="text-xl sm:text-2xl font-black">
+                      {formatPercent(winRate)}
+                    </p>
+
                     <p className="text-xs text-white/60">Win Rate</p>
                   </div>
                 </div>
@@ -661,30 +732,44 @@ export default function MemberDashboard() {
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
           <div className="mb-5 flex items-center justify-between">
             <h3 className="text-xl font-black">Assets</h3>
+
             <button
               onClick={() => refreshDashboard(true)}
               disabled={refreshing}
               className="text-cyan-300 font-black disabled:opacity-50"
             >
-              {refreshing ? <FaSpinner className="animate-spin inline mr-2" /> : <FaSyncAlt className="inline mr-2" />}
+              {refreshing ? (
+                <FaSpinner className="animate-spin inline mr-2" />
+              ) : (
+                <FaSyncAlt className="inline mr-2" />
+              )}
               Refresh
             </button>
           </div>
 
           {visibleAssets.length === 0 ? (
-            <Empty text={isConnected ? "No assets detected yet" : "Connect account to load assets"} />
+            <Empty
+              text={isConnected ? "No assets detected yet" : "Connect account to load assets"}
+            />
           ) : (
             <div className="space-y-4">
               {visibleAssets.map((asset) => (
-                <AssetRow key={`${asset.symbol}-${asset.value}`} asset={asset} total={totalAssetValue} />
+                <AssetRow
+                  key={`${asset.symbol}-${asset.value}`}
+                  asset={asset}
+                  total={totalAssetValue}
+                />
               ))}
 
               {smallBalancesCount > 0 && (
                 <div className="mt-4 rounded-2xl bg-black/25 p-4 flex items-center justify-between">
                   <div>
                     <p className="font-black">Small balances</p>
-                    <p className="text-sm text-white/40">{smallBalancesCount} assets under $0.50</p>
+                    <p className="text-sm text-white/40">
+                      {smallBalancesCount} assets under $0.50
+                    </p>
                   </div>
+
                   <FaArrowRight className="text-white/40" />
                 </div>
               )}
@@ -696,13 +781,16 @@ export default function MemberDashboard() {
           <Panel title="Active Bot" icon={<FaRobot />}>
             <div className="flex items-start gap-4">
               <div className="text-4xl shrink-0">{currentStrategy.icon}</div>
+
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h4 className="text-2xl font-black">{currentStrategy.name}</h4>
+
                   <span className="rounded-lg bg-red-500/20 px-2 py-1 text-xs font-black text-red-300">
                     {currentStrategy.risk}
                   </span>
                 </div>
+
                 <p className="text-white/50">{currentStrategy.description}</p>
               </div>
             </div>
@@ -735,7 +823,12 @@ export default function MemberDashboard() {
                   ) : (
                     <FaPlay className="inline mr-2" />
                   )}
-                  {isLocked ? "Upgrade to Unlock" : !isConnected ? "Connect to Start" : "Start Bot"}
+
+                  {isLocked
+                    ? "Upgrade to Unlock"
+                    : !isConnected
+                    ? "Connect to Start"
+                    : "Start Bot"}
                 </button>
               ) : (
                 <button
@@ -743,7 +836,11 @@ export default function MemberDashboard() {
                   disabled={processing}
                   className="w-full rounded-2xl bg-red-500 py-4 font-black hover:bg-red-400 disabled:opacity-50"
                 >
-                  {processing ? <FaSpinner className="animate-spin inline mr-2" /> : <FaStop className="inline mr-2" />}
+                  {processing ? (
+                    <FaSpinner className="animate-spin inline mr-2" />
+                  ) : (
+                    <FaStop className="inline mr-2" />
+                  )}
                   Stop Bot
                 </button>
               )}
@@ -754,14 +851,19 @@ export default function MemberDashboard() {
             <div className="grid grid-cols-2 gap-3">
               <SmallStat title="Realized PnL" value={formatMoney(stats.realizedPnl)} pnl />
               <SmallStat title="Total PnL" value={formatMoney(stats.totalPnl)} pnl />
-              <SmallStat title="Total Trades" value={Number(stats.totalTrades || 0).toLocaleString()} />
+              <SmallStat
+                title="Total Trades"
+                value={Number(stats.totalTrades || 0).toLocaleString()}
+              />
               <SmallStat title="Win Rate" value={formatPercent(winRate)} />
             </div>
           </Panel>
         </section>
 
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-          <h3 className="mb-5 text-xl sm:text-2xl font-black">Available Bot Strategies</h3>
+          <h3 className="mb-5 text-xl sm:text-2xl font-black">
+            Available Bot Strategies
+          </h3>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {STRATEGIES.map((strategy) => (
@@ -778,8 +880,10 @@ export default function MemberDashboard() {
         <section className="rounded-[2rem] border border-purple-500/30 bg-purple-500/10 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="font-black text-2xl">Unlock More Power</h3>
+
             <p className="text-sm sm:text-base text-white/60 leading-relaxed">
-              Upgrade to Elite for Futures, DEX sniper bots, advanced AI strategies, and priority support.
+              Upgrade to Elite for Futures, DEX sniper bots, advanced AI strategies,
+              and priority support.
             </p>
           </div>
 
@@ -792,6 +896,15 @@ export default function MemberDashboard() {
           </button>
         </section>
       </main>
+    </div>
+  );
+}
+
+function MiniBox({ label, value }) {
+  return (
+    <div className="rounded-2xl bg-black/25 p-4">
+      <p className="text-sm text-white/40">{label}</p>
+      <p className="mt-2 font-black">{value}</p>
     </div>
   );
 }
@@ -809,7 +922,10 @@ function StrategyCard({ strategy, selected, onClick }) {
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-lg font-black leading-tight break-words">{strategy.name}</p>
+            <p className="text-lg font-black leading-tight break-words">
+              {strategy.name}
+            </p>
+
             <span className="w-fit rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-200 whitespace-nowrap">
               {strategy.risk}
             </span>
@@ -855,7 +971,13 @@ function ConnectionCard({
                 : "bg-emerald-400/20 text-emerald-300"
             }`}
           >
-            {isLocked ? <FaLock /> : needsReconnect ? <FaExclamationTriangle /> : <FaCheckCircle />}
+            {isLocked ? (
+              <FaLock />
+            ) : needsReconnect ? (
+              <FaExclamationTriangle />
+            ) : (
+              <FaCheckCircle />
+            )}
           </div>
 
           <div className="min-w-0">
@@ -863,12 +985,12 @@ function ConnectionCard({
 
             {isLocked ? (
               <p className="text-sm text-white/60">
-                {activeTab.label} trading requires {activeTab.minTier.toUpperCase()} plan or higher.
-                Current plan: {normalizeTier(userTier).toUpperCase()}.
+                {activeTab.label} trading requires {activeTab.minTier.toUpperCase()} plan
+                or higher. Current plan: {normalizeTier(userTier).toUpperCase()}.
               </p>
             ) : needsReconnect ? (
               <p className="text-sm text-yellow-100/80">
-                This connection was not completed or needs to be reconnected before trading can start.
+                This connection needs to be reconnected before trading can start.
               </p>
             ) : (
               <p className="text-sm text-emerald-100/80">
@@ -923,7 +1045,11 @@ function StatusPill({ running }) {
           : "border-white/10 bg-white/10 text-white/50"
       }`}
     >
-      <FaCircle className={`inline mr-2 h-2 w-2 ${running ? "text-emerald-300" : "text-white/40"}`} />
+      <FaCircle
+        className={`inline mr-2 h-2 w-2 ${
+          running ? "text-emerald-300" : "text-white/40"
+        }`}
+      />
       {running ? "BOT RUNNING" : "BOT OFF"}
     </div>
   );
@@ -950,41 +1076,37 @@ function LegendRow({ label, value, color }) {
         <span className={`h-3 w-3 rounded-full ${color}`} />
         {label}
       </div>
+
       <strong>{value}</strong>
     </div>
   );
 }
 
 function AssetRow({ asset, total }) {
-  const pct = total > 0 ? (Number(asset.value || 0) / total) * 100 : 0;
+  const pct = total > 0 ? (num(asset.value) / total) * 100 : 0;
 
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="h-12 w-12 shrink-0 rounded-full bg-cyan-400/20 grid place-items-center text-xl font-black text-cyan-200">
-          {getAssetIcon(asset.symbol)}
-        </div>
+    <div className="grid grid-cols-[48px_1fr_auto_auto] items-center gap-3">
+      <div className="h-12 w-12 shrink-0 rounded-full bg-cyan-400/20 grid place-items-center text-xl font-black text-cyan-200">
+        {getAssetIcon(asset.symbol)}
+      </div>
 
-        <div className="min-w-0">
-          <p className="font-black truncate">{asset.symbol}</p>
-          <p className="text-sm text-white/45 truncate">{asset.name}</p>
-        </div>
+      <div className="min-w-0">
+        <p className="font-black truncate">{asset.symbol}</p>
+        <p className="text-sm text-white/45 truncate">{asset.name}</p>
       </div>
 
       <div className="text-right">
         <p className="font-black">{formatMoney(asset.value)}</p>
-        <p className="text-sm text-white/40">{Number(asset.quantity || 0).toLocaleString()}</p>
+        <p className="text-sm text-white/40">
+          {num(asset.quantity).toLocaleString(undefined, {
+            maximumFractionDigits: 4,
+          })}
+        </p>
       </div>
 
-      <div className="w-16 text-right">
-        {asset.changePct === null || asset.changePct === undefined ? (
-          <p className="text-sm text-white/35">{formatPercent(pct)}</p>
-        ) : (
-          <p className={Number(asset.changePct) >= 0 ? "text-emerald-300" : "text-red-300"}>
-            {Number(asset.changePct) >= 0 ? "+" : ""}
-            {formatPercent(asset.changePct)}
-          </p>
-        )}
+      <div className="w-14 text-right">
+        <p className="text-sm text-white/35">{formatPercent(pct)}</p>
       </div>
     </div>
   );
@@ -997,6 +1119,7 @@ function Panel({ title, icon, children }) {
         <h3 className="text-xl font-black">{title}</h3>
         <span className="text-cyan-300 text-2xl">{icon}</span>
       </div>
+
       {children}
     </section>
   );
