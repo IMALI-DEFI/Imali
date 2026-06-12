@@ -51,7 +51,6 @@ const TRADING_TYPES = [
   {
     id: "crypto",
     categoryId: "spot",
-    marketType: "spot",
     label: "Crypto",
     icon: <FaBitcoin />,
     exchange: "okx",
@@ -63,7 +62,6 @@ const TRADING_TYPES = [
   {
     id: "futures",
     categoryId: "futures",
-    marketType: "futures",
     label: "Futures",
     icon: <FaChartLine />,
     exchange: "okx",
@@ -75,7 +73,6 @@ const TRADING_TYPES = [
   {
     id: "dex",
     categoryId: "dex",
-    marketType: "defi",
     label: "DEX",
     icon: <FaWater />,
     exchange: "wallet",
@@ -87,7 +84,6 @@ const TRADING_TYPES = [
   {
     id: "stocks",
     categoryId: "stocks",
-    marketType: "equity",
     label: "Stocks",
     icon: <FaApple />,
     exchange: "alpaca",
@@ -104,7 +100,11 @@ const FALLBACK_STRATEGIES = [
     name: "Conservative",
     icon: "🛡️",
     risk: "Low Risk",
-    description: "Slower trades focused on consistency.",
+    description: "Slow, steady trades focused on consistency.",
+    maxPositions: 3,
+    tradePct: 0.1,
+    takeProfitPct: 0.025,
+    stopLossPct: 0.025,
   },
   {
     id: "ai_weighted",
@@ -113,6 +113,10 @@ const FALLBACK_STRATEGIES = [
     risk: "Medium Risk",
     description: "AI-assisted balance between safety and opportunity.",
     recommended: true,
+    maxPositions: 5,
+    tradePct: 0.12,
+    takeProfitPct: 0.025,
+    stopLossPct: 0.025,
   },
   {
     id: "momentum",
@@ -120,6 +124,10 @@ const FALLBACK_STRATEGIES = [
     icon: "📈",
     risk: "Higher Risk",
     description: "Looks for stronger market movement.",
+    maxPositions: 6,
+    tradePct: 0.14,
+    takeProfitPct: 0.025,
+    stopLossPct: 0.025,
   },
   {
     id: "aggressive",
@@ -127,6 +135,10 @@ const FALLBACK_STRATEGIES = [
     icon: "🔥",
     risk: "High Risk",
     description: "Fast, high-volatility opportunities.",
+    maxPositions: 8,
+    tradePct: 0.15,
+    takeProfitPct: 0.025,
+    stopLossPct: 0.025,
   },
 ];
 
@@ -143,6 +155,11 @@ const ASSET_NAMES = {
   ETH: "Ethereum",
   SOL: "Solana",
   DOGE: "Dogecoin",
+  DOT: "Polkadot",
+  UNI: "Uniswap",
+  ATOM: "Cosmos",
+  AVAX: "Avalanche",
+  LINK: "Chainlink",
   MATIC: "Polygon",
   POL: "Polygon",
   AAPL: "Apple",
@@ -156,11 +173,11 @@ const num = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const unwrapData = (res) => res?.data || res || {};
+const normalizeTier = (tier) => String(tier || "starter").toLowerCase();
+const normalizeMode = (mode) => (String(mode || "paper").toLowerCase() === "live" ? "live" : "paper");
 const formatMoney = (value) => `$${num(value).toFixed(2)}`;
 const formatPercent = (value) => `${num(value).toFixed(1)}%`;
-const normalizeTier = (tier) => String(tier || "starter").toLowerCase();
-const normalizeMode = (mode) =>
-  String(mode || "paper").toLowerCase() === "live" ? "live" : "paper";
 const tierRank = (tier) => TIER_RANK[normalizeTier(tier)] ?? 0;
 const hasTierAccess = (userTier, minTier) => tierRank(userTier) >= tierRank(minTier);
 
@@ -173,7 +190,6 @@ const getAssetIcon = (symbol) => {
   if (s === "FIL") return "ƒ";
   if (s === "XRP") return "✕";
   if (s === "ICP") return "∞";
-  if (s === "NEAR") return "N";
   if (s === "DOGE") return "Ð";
   return s.slice(0, 2);
 };
@@ -219,7 +235,6 @@ export default function MemberDashboard() {
     wins: 0,
     losses: 0,
     totalTrades: 0,
-    openPositions: 0,
   });
 
   const [imali, setImali] = useState({
@@ -238,32 +253,25 @@ export default function MemberDashboard() {
   const isConnected = Boolean(activeConnection?.connected);
   const needsReconnect = !isConnected && !isLocked;
 
-  const getStrategy = useCallback(
-    (id) => strategies.find((s) => s.id === id) || strategies[1] || FALLBACK_STRATEGIES[1],
-    [strategies]
-  );
-
   const winRate = useMemo(() => {
     const total = num(stats.wins) + num(stats.losses);
-    if (!total) return 0;
-    return (num(stats.wins) / total) * 100;
+    return total ? (num(stats.wins) / total) * 100 : 0;
   }, [stats.wins, stats.losses]);
 
   const visibleAssets = useMemo(() => {
-    const rows = [];
+    const base = [];
 
     if (usdCashValue > 0) {
-      rows.push({
+      base.push({
         symbol: "USD",
         name: "Cash",
         quantity: usdCashValue,
         value: usdCashValue,
-        isCash: true,
       });
     }
 
     if (usdtValue > 0) {
-      rows.push({
+      base.push({
         symbol: "USDT",
         name: "Tether",
         quantity: usdtQty || usdtValue,
@@ -271,7 +279,7 @@ export default function MemberDashboard() {
       });
     }
 
-    return [...rows, ...assets]
+    return [...base, ...assets]
       .filter((asset) => num(asset.value) >= 0.5)
       .sort((a, b) => num(b.value) - num(a.value));
   }, [assets, usdCashValue, usdtValue, usdtQty]);
@@ -305,7 +313,7 @@ export default function MemberDashboard() {
     []
   );
 
-  const normalizeAsset = (asset) => {
+  const normalizeAsset = useCallback((asset) => {
     const symbol = String(asset.ccy || asset.currency || asset.symbol || asset.asset || "").toUpperCase();
 
     return {
@@ -313,35 +321,40 @@ export default function MemberDashboard() {
       name: ASSET_NAMES[symbol] || symbol,
       quantity: num(asset.available ?? asset.amount ?? asset.bal ?? asset.balance ?? asset.qty ?? asset.quantity),
       value: num(asset.usdValue ?? asset.usd_value ?? asset.value ?? asset.totalUsd ?? asset.total_usd ?? asset.eqUsd),
-      changePct: asset.changePct ?? asset.change_pct ?? asset.pnl_pct ?? asset.pnlPercent ?? null,
-      isCash: symbol === "USD",
     };
-  };
+  }, []);
+
+  const getStrategy = useCallback(
+    (id) => strategies.find((s) => s.id === id) || strategies[1] || FALLBACK_STRATEGIES[1],
+    [strategies]
+  );
 
   const fetchUser = useCallback(async () => {
-    const me = await BotAPI.getMe?.(true);
-    const tier = me?.tier || me?.user?.tier || me?.plan || user?.tier || "starter";
-    setUserTier(normalizeTier(tier));
+    const res = await BotAPI.getMe?.(true);
+    const d = unwrapData(res);
+    const u = d.user || d;
+    setUserTier(normalizeTier(u?.tier || user?.tier || "starter"));
   }, [user]);
 
   const fetchStrategies = useCallback(async () => {
-    const res = await BotAPI.getStrategyConfigs?.();
+    const res = await BotAPI.getStrategyConfigs?.(true);
+    const d = unwrapData(res);
+    const raw = d.data || d.strategies || d;
 
-    const raw = res?.data || res?.strategies || null;
-
-    if (!raw || typeof raw !== "object") return;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
 
     const mapped = Object.entries(raw).map(([id, cfg]) => ({
       id,
-      name: cfg.name || id,
-      icon:
-        id === "mean_reversion"
-          ? "🛡️"
+      name:
+        cfg.name ||
+        (id === "mean_reversion"
+          ? "Conservative"
           : id === "ai_weighted"
-          ? "🤖"
+          ? "Balanced AI"
           : id === "momentum"
-          ? "📈"
-          : "🔥",
+          ? "Growth"
+          : "Aggressive"),
+      icon: id === "mean_reversion" ? "🛡️" : id === "ai_weighted" ? "🤖" : id === "momentum" ? "📈" : "🔥",
       risk:
         cfg.riskLevel === "low"
           ? "Low Risk"
@@ -356,8 +369,6 @@ export default function MemberDashboard() {
       tradePct: cfg.tradePct,
       takeProfitPct: cfg.takeProfitPct,
       stopLossPct: cfg.stopLossPct,
-      riskScore: cfg.riskScore,
-      tags: cfg.tags || [],
     }));
 
     if (mapped.length) {
@@ -368,21 +379,17 @@ export default function MemberDashboard() {
 
   const fetchBotStatus = useCallback(async () => {
     const res = await BotAPI.getTradingBotStatus?.(true);
+    const d = unwrapData(res);
+    const list = d.bots || d.data || [];
 
     const bot =
-      res?.activeBot ||
-      res?.data?.find?.(
-        (item) =>
-          item.category === activeTab.categoryId ||
-          item.marketType === activeTab.marketType ||
-          item.market_type === activeTab.marketType ||
-          item.exchange === activeTab.exchange
-      ) ||
-      res?.data?.[0] ||
+      d.activeBot ||
+      list.find?.((item) => item.category === activeTab.categoryId || item.exchange === activeTab.exchange) ||
+      list[0] ||
       null;
 
     const running =
-      res?.isRunning === true ||
+      d.isRunning === true ||
       bot?.isRunning === true ||
       bot?.running === true ||
       String(bot?.status || "").toLowerCase() === "running";
@@ -391,94 +398,76 @@ export default function MemberDashboard() {
 
     if (bot?.mode) setBotMode(normalizeMode(bot.mode));
     if (bot?.strategy) setCurrentStrategy(getStrategy(bot.strategy));
-    if (bot?.openPositions || bot?.open_positions) {
-      setOpenPositionsCount(num(bot.openPositions ?? bot.open_positions));
-    }
+
+    const botPositions = num(bot?.openPositions ?? bot?.open_positions);
+    if (botPositions > 0) setOpenPositionsCount(botPositions);
   }, [activeTab, getStrategy]);
 
   const fetchIntegrationStatus = useCallback(async () => {
     const res = await BotAPI.getIntegrationStatus?.(true);
+    const d = unwrapData(res);
 
     setConnections({
       okx: {
-        connected: Boolean(res?.okx_connected),
-        mode: normalizeMode(res?.okx_mode),
-        keyMasked: res?.okx_api_key_masked || "",
+        connected: Boolean(d.okx_connected),
+        mode: normalizeMode(d.okx_mode),
+        keyMasked: d.okx_api_key_masked || "",
       },
       alpaca: {
-        connected: Boolean(res?.alpaca_connected),
-        mode: normalizeMode(res?.alpaca_mode),
-        keyMasked: res?.alpaca_api_key_masked || "",
+        connected: Boolean(d.alpaca_connected),
+        mode: normalizeMode(d.alpaca_mode),
+        keyMasked: d.alpaca_api_key_masked || "",
       },
       wallet: {
-        connected: Boolean(res?.wallet_connected),
+        connected: Boolean(d.wallet_connected),
         mode: "live",
-        keyMasked: res?.wallet_address_masked || "",
+        keyMasked: d.wallet_address_masked || "",
       },
     });
 
-    if (activeTab.connectionKey === "okx" && res?.okx_mode) setBotMode(normalizeMode(res.okx_mode));
-    if (activeTab.connectionKey === "alpaca" && res?.alpaca_mode) setBotMode(normalizeMode(res.alpaca_mode));
+    if (activeTab.connectionKey === "okx") setBotMode(normalizeMode(d.okx_mode));
+    if (activeTab.connectionKey === "alpaca") setBotMode(normalizeMode(d.alpaca_mode));
   }, [activeTab.connectionKey]);
 
   const fetchBalance = useCallback(async () => {
-    const portfolio = await BotAPI.getPortfolioSummary?.(activeTab.categoryId, true);
-
-    if (portfolio?.success && portfolio?.data) {
-      const data = portfolio.data;
-      const currencies = Array.isArray(data.currencies) ? data.currencies : [];
-
-      const normalized = currencies.map(normalizeAsset).filter((asset) => asset.symbol);
-      const usdt = normalized.find((asset) => asset.symbol === "USDT");
-      const usd = normalized.find((asset) => asset.symbol === "USD");
-
-      setTotalAssetValue(num(data.total));
-      setUsdCashValue(num(usd?.value));
-      setUsdtValue(num(usdt?.value));
-      setUsdtQty(num(usdt?.quantity));
-      setAssets(normalized.filter((asset) => !["USD", "USDT"].includes(asset.symbol)));
-      return;
-    }
-
     const res = await BotAPI.getExchangeBalance?.(true);
+    const d = unwrapData(res);
 
     if (activeTab.exchange === "okx") {
-      const rawAssets = Array.isArray(res?.okx_assets) ? res.okx_assets : [];
+      const rawAssets = Array.isArray(d.okx_assets) ? d.okx_assets : [];
       const normalized = rawAssets.map(normalizeAsset).filter((asset) => asset.symbol);
 
       const usdtAsset = normalized.find((asset) => asset.symbol === "USDT");
-      const otherAssets = normalized.filter((asset) => asset.symbol !== "USDT" && asset.symbol !== "USD");
+      const otherAssets = normalized.filter((asset) => !["USD", "USDT"].includes(asset.symbol));
 
-      const okxTotal = num(res?.okx_total ?? res?.okx_total_usd ?? res?.okxTotalUsd ?? res?.okx ?? res?.total);
-      const usdtAvailable = num(res?.okx_available_usdt ?? res?.available_usdt ?? usdtAsset?.value);
+      const okxTotal = num(d.okx_total ?? d.okx ?? d.total);
+      const usdtAvailable = num(d.okx_available_usdt ?? usdtAsset?.value);
       const usdtQuantity = num(usdtAsset?.quantity ?? usdtAvailable);
       const otherAssetsTotal = otherAssets.reduce((sum, asset) => sum + num(asset.value), 0);
-      const usdtFinalValue = usdtAvailable || num(usdtAsset?.value);
 
-      const explicitUsdCash = num(res?.okx_cash_usd ?? res?.okx_available_usd ?? res?.usd_cash ?? res?.cash_usd);
-      const inferredUsdCash =
-        okxTotal > otherAssetsTotal + usdtFinalValue
-          ? okxTotal - otherAssetsTotal - usdtFinalValue
+      const usdAsset = normalized.find((asset) => asset.symbol === "USD");
+      const inferredUsd =
+        okxTotal > otherAssetsTotal + usdtAvailable
+          ? okxTotal - otherAssetsTotal - usdtAvailable
           : 0;
 
-      const finalUsdCash = explicitUsdCash || inferredUsdCash;
-      const finalTotal = okxTotal || finalUsdCash + usdtFinalValue + otherAssetsTotal;
+      const usdCash = num(usdAsset?.value) || inferredUsd;
+      const total = okxTotal || usdCash + usdtAvailable + otherAssetsTotal;
 
-      setUsdCashValue(finalUsdCash);
-      setUsdtValue(usdtFinalValue);
+      setUsdCashValue(usdCash);
+      setUsdtValue(usdtAvailable);
       setUsdtQty(usdtQuantity);
       setAssets(otherAssets);
-      setTotalAssetValue(finalTotal);
+      setTotalAssetValue(total);
       return;
     }
 
     if (activeTab.exchange === "alpaca") {
-      const rawAssets = Array.isArray(res?.alpaca_assets) ? res.alpaca_assets : [];
+      const rawAssets = Array.isArray(d.alpaca_assets) ? d.alpaca_assets : [];
       const normalized = rawAssets.map(normalizeAsset).filter((asset) => asset.symbol);
-
+      const cash = num(d.alpaca_available_usd ?? d.alpaca_cash ?? d.cash);
       const stocksValue = normalized.reduce((sum, asset) => sum + num(asset.value), 0);
-      const cash = num(res?.alpaca_available_usd ?? res?.alpaca_cash ?? res?.cash);
-      const total = num(res?.alpaca_total ?? res?.alpaca_equity ?? res?.alpaca) || cash + stocksValue;
+      const total = num(d.alpaca_total ?? d.alpaca_equity ?? d.alpaca) || cash + stocksValue;
 
       setUsdCashValue(cash);
       setUsdtValue(0);
@@ -493,41 +482,41 @@ export default function MemberDashboard() {
     setUsdtQty(0);
     setAssets([]);
     setTotalAssetValue(0);
-  }, [activeTab]);
+  }, [activeTab.exchange, normalizeAsset]);
 
   const fetchPositions = useCallback(async () => {
-    const res = await BotAPI.getOpenPositions?.(activeTab.exchange, true, activeTab.categoryId);
-    const list = Array.isArray(res?.positions) ? res.positions : [];
+    const res = await BotAPI.getOpenPositions?.(activeTab.exchange, true);
+    const d = unwrapData(res);
+    const list = d.positions || [];
     setPositions(list);
     setOpenPositionsCount(list.length);
-  }, [activeTab]);
+  }, [activeTab.exchange]);
 
   const fetchStats = useCallback(async () => {
-    const res = await BotAPI.getLiveTradingStats?.(activeTab.exchange, true, activeTab.categoryId);
-    const s = res?.summary || {};
-
-    const openPositions = num(s.open_positions ?? s.openPositions ?? s.positions_open);
+    const res = await BotAPI.getLiveTradingStats?.(activeTab.exchange, true);
+    const d = unwrapData(res);
+    const s = d.summary || d;
 
     setStats({
       realizedPnl: num(s.realized_pnl ?? s.realizedPnl ?? s.total_pnl),
-      totalPnl: num(s.total_pnl ?? s.totalPnl),
+      totalPnl: num(s.total_pnl ?? s.totalPnl ?? s.realized_pnl),
       wins: num(s.wins),
       losses: num(s.losses),
       totalTrades: num(s.total_trades ?? s.totalTrades),
-      openPositions,
     });
 
-    if (openPositions > 0) setOpenPositionsCount(openPositions);
-  }, [activeTab]);
+    const open = num(s.open_positions ?? s.openPositions);
+    if (open > 0) setOpenPositionsCount(open);
+  }, [activeTab.exchange]);
 
   const fetchImali = useCallback(async () => {
-    const balance = await BotAPI.getImaliBalance?.();
-    const discount = await BotAPI.getImaliDiscountStatus?.();
+    const balance = unwrapData(await BotAPI.getImaliBalance?.());
+    const discount = unwrapData(await BotAPI.getImaliDiscountStatus?.());
 
     setImali({
-      balance: num(balance?.balance ?? balance?.imali_balance ?? balance?.data?.balance),
-      discountPct: num(discount?.discountPct ?? discount?.discount_pct ?? discount?.data?.discountPct),
-      discountActive: Boolean(discount?.active ?? discount?.discountActive ?? discount?.data?.active),
+      balance: num(balance.balance ?? balance.imali_balance),
+      discountPct: num(discount.discountPct ?? discount.discount_pct),
+      discountActive: Boolean(discount.active ?? discount.discountActive),
     });
   }, []);
 
@@ -547,11 +536,12 @@ export default function MemberDashboard() {
           fetchImali(),
         ]);
 
+        if (!mountedRef.current) return;
         setLastUpdated(new Date());
         setError("");
       } catch (err) {
         console.error("Dashboard refresh error:", err);
-        setError(err?.message || "Dashboard refresh failed.");
+        if (mountedRef.current) setError(err?.message || "Dashboard refresh failed.");
       } finally {
         if (mountedRef.current) {
           setLoading(false);
@@ -559,34 +549,30 @@ export default function MemberDashboard() {
         }
       }
     },
-    [
-      fetchUser,
-      fetchStrategies,
-      fetchBotStatus,
-      fetchIntegrationStatus,
-      fetchBalance,
-      fetchPositions,
-      fetchStats,
-      fetchImali,
-    ]
+    [fetchUser, fetchStrategies, fetchBotStatus, fetchIntegrationStatus, fetchBalance, fetchPositions, fetchStats, fetchImali]
   );
 
   useEffect(() => {
     mountedRef.current = true;
+
     refreshDashboard(false);
 
-    const interval = setInterval(() => refreshDashboard(false), POLL_MS);
+    const interval = setInterval(() => {
+      refreshDashboard(false);
+    }, POLL_MS);
 
     return () => {
       mountedRef.current = false;
       clearInterval(interval);
     };
-  }, [refreshDashboard]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    setLoading(true);
-    refreshDashboard(false);
-  }, [activeType, refreshDashboard]);
+    if (!lastUpdated) return;
+    refreshDashboard(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeType]);
 
   const handleConnect = () => {
     if (isLocked) navigate("/billing-dashboard");
@@ -600,18 +586,14 @@ export default function MemberDashboard() {
     setProcessing(true);
 
     try {
+      const config = {
+        takeProfitPct: currentStrategy.takeProfitPct,
+        stopLossPct: currentStrategy.stopLossPct,
+      };
+
       const res =
-        (await BotAPI.startTradingBotByCategory?.(
-          activeTab.categoryId,
-          currentStrategy.id,
-          botMode
-        )) ||
-        (await BotAPI.startTradingBot?.(
-          activeTab.exchange,
-          currentStrategy.id,
-          botMode,
-          activeTab.categoryId
-        ));
+        (await BotAPI.startTradingBotByCategory?.(activeTab.categoryId, currentStrategy.id, botMode, config)) ||
+        (await BotAPI.startTradingBot?.(activeTab.exchange, currentStrategy.id, botMode, activeTab.categoryId, config));
 
       if (res?.success === false) {
         alert(res?.error || "Failed to start bot.");
@@ -632,7 +614,7 @@ export default function MemberDashboard() {
     try {
       const res =
         (await BotAPI.stopTradingBotByCategory?.(activeTab.categoryId)) ||
-        (await BotAPI.stopTradingBot?.(activeTab.exchange, activeTab.categoryId));
+        (await BotAPI.stopTradingBot?.(activeTab.exchange));
 
       if (res?.success === false) {
         alert(res?.error || "Failed to stop bot.");
@@ -659,7 +641,7 @@ export default function MemberDashboard() {
     alert("IMALI discount applied.");
   };
 
-  if (loading) {
+  if (loading && !lastUpdated) {
     return (
       <div className="min-h-screen bg-[#050816] text-white flex items-center justify-center">
         <FaSpinner className="animate-spin text-5xl text-cyan-300" />
@@ -709,6 +691,12 @@ export default function MemberDashboard() {
             <span className="rounded-lg bg-emerald-400/15 px-2 py-1 text-xs font-black text-emerald-300">
               {normalizeTier(userTier).toUpperCase()} PLAN
             </span>
+            {refreshing && (
+              <span className="text-xs text-cyan-300">
+                <FaSpinner className="inline animate-spin mr-1" />
+                Updating
+              </span>
+            )}
           </div>
           <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
 
@@ -968,14 +956,12 @@ function StrategyCard({ strategy, selected, onClick }) {
 
           <p className="mt-3 text-sm leading-relaxed text-white/50">{strategy.description}</p>
 
-          {(strategy.maxPositions || strategy.tradePct || strategy.takeProfitPct) && (
-            <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/50">
-              <span>Max: {strategy.maxPositions || "-"} pos.</span>
-              <span>Trade: {formatPercent(num(strategy.tradePct) * 100)}</span>
-              <span>TP: {formatPercent(num(strategy.takeProfitPct) * 100)}</span>
-              <span>SL: {formatPercent(num(strategy.stopLossPct) * 100)}</span>
-            </div>
-          )}
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/50">
+            <span>Max: {strategy.maxPositions || "-"} pos.</span>
+            <span>Trade: {formatPercent(num(strategy.tradePct) * 100)}</span>
+            <span>TP: {formatPercent(num(strategy.takeProfitPct) * 100)}</span>
+            <span>SL: {formatPercent(num(strategy.stopLossPct) * 100)}</span>
+          </div>
         </div>
       </div>
     </button>
@@ -1016,7 +1002,7 @@ function ConnectionCard({ activeTab, connection, isLocked, needsReconnect, userT
               </p>
             ) : needsReconnect ? (
               <p className="text-sm text-yellow-100/80">
-                This connection needs to be reconnected before trading can start.
+                Reconnect before trading can start.
               </p>
             ) : (
               <p className="text-sm text-emerald-100/80">
