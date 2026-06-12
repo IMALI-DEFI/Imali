@@ -5,9 +5,25 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
 import {
-  FaApple, FaArrowRight, FaBitcoin, FaChartLine, FaCheckCircle, FaCircle,
-  FaCrown, FaExclamationTriangle, FaLock, FaPlay, FaPlug, FaRedo, FaRobot,
-  FaSignOutAlt, FaSpinner, FaStop, FaSyncAlt, FaWater,
+  FaApple,
+  FaArrowRight,
+  FaBitcoin,
+  FaChartLine,
+  FaCheckCircle,
+  FaCircle,
+  FaCoins,
+  FaCrown,
+  FaExclamationTriangle,
+  FaLock,
+  FaPlay,
+  FaPlug,
+  FaRedo,
+  FaRobot,
+  FaSignOutAlt,
+  FaSpinner,
+  FaStop,
+  FaSyncAlt,
+  FaWater,
 } from "react-icons/fa";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
@@ -17,30 +33,122 @@ ChartJS.register(ArcElement, Tooltip);
 const POLL_MS = 7000;
 
 const TIER_RANK = {
-  starter: 0, free: 0, trial: 0, common: 0,
-  pro: 1, rare: 1, stock: 1,
-  elite: 2, epic: 2,
-  legendary: 3, bundle: 3, enterprise: 4,
+  starter: 0,
+  free: 0,
+  trial: 0,
+  common: 0,
+  pro: 1,
+  rare: 1,
+  stock: 1,
+  elite: 2,
+  epic: 2,
+  legendary: 3,
+  bundle: 3,
+  enterprise: 4,
 };
 
 const TRADING_TYPES = [
-  { id: "crypto", label: "Crypto", icon: <FaBitcoin />, exchange: "okx", connectionKey: "okx", connectionLabel: "OKX API", minTier: "starter", connectRoute: "/connect-okx" },
-  { id: "stocks", label: "Stocks", icon: <FaApple />, exchange: "alpaca", connectionKey: "alpaca", connectionLabel: "Alpaca API", minTier: "pro", connectRoute: "/connect-alpaca" },
-  { id: "futures", label: "Futures", icon: <FaChartLine />, exchange: "okx", connectionKey: "okx", connectionLabel: "OKX Futures API", minTier: "elite", connectRoute: "/connect-okx" },
-  { id: "dex", label: "DEX", icon: <FaWater />, exchange: "sniper", connectionKey: "wallet", connectionLabel: "Wallet / DEX Bot", minTier: "elite", connectRoute: "/connect-wallet" },
+  {
+    id: "crypto",
+    categoryId: "spot",
+    marketType: "spot",
+    label: "Crypto",
+    icon: <FaBitcoin />,
+    exchange: "okx",
+    connectionKey: "okx",
+    connectionLabel: "OKX API",
+    minTier: "starter",
+    connectRoute: "/connect-okx",
+  },
+  {
+    id: "futures",
+    categoryId: "futures",
+    marketType: "futures",
+    label: "Futures",
+    icon: <FaChartLine />,
+    exchange: "okx",
+    connectionKey: "okx",
+    connectionLabel: "OKX Futures API",
+    minTier: "elite",
+    connectRoute: "/connect-okx",
+  },
+  {
+    id: "dex",
+    categoryId: "dex",
+    marketType: "defi",
+    label: "DEX",
+    icon: <FaWater />,
+    exchange: "wallet",
+    connectionKey: "wallet",
+    connectionLabel: "Wallet / DEX Bot",
+    minTier: "elite",
+    connectRoute: "/connect-wallet",
+  },
+  {
+    id: "stocks",
+    categoryId: "stocks",
+    marketType: "equity",
+    label: "Stocks",
+    icon: <FaApple />,
+    exchange: "alpaca",
+    connectionKey: "alpaca",
+    connectionLabel: "Alpaca API",
+    minTier: "pro",
+    connectRoute: "/connect-alpaca",
+  },
 ];
 
-const STRATEGIES = [
-  { id: "mean_reversion", name: "Conservative", icon: "🛡️", risk: "Low Risk", description: "Slower trades focused on consistency." },
-  { id: "ai_weighted", name: "Balanced AI", icon: "🤖", risk: "Medium Risk", description: "AI-assisted balance between safety and opportunity." },
-  { id: "momentum", name: "Growth", icon: "📈", risk: "Higher Risk", description: "Looks for stronger market movement." },
-  { id: "aggressive", name: "Aggressive", icon: "🔥", risk: "High Risk", description: "Fast, high-volatility opportunities." },
+const FALLBACK_STRATEGIES = [
+  {
+    id: "mean_reversion",
+    name: "Conservative",
+    icon: "🛡️",
+    risk: "Low Risk",
+    description: "Slower trades focused on consistency.",
+  },
+  {
+    id: "ai_weighted",
+    name: "Balanced AI",
+    icon: "🤖",
+    risk: "Medium Risk",
+    description: "AI-assisted balance between safety and opportunity.",
+    recommended: true,
+  },
+  {
+    id: "momentum",
+    name: "Growth",
+    icon: "📈",
+    risk: "Higher Risk",
+    description: "Looks for stronger market movement.",
+  },
+  {
+    id: "aggressive",
+    name: "Aggressive",
+    icon: "🔥",
+    risk: "High Risk",
+    description: "Fast, high-volatility opportunities.",
+  },
 ];
 
 const ASSET_NAMES = {
-  USD: "Cash", USDT: "Tether", FIL: "Filecoin", XRP: "XRP", ICP: "Internet Computer",
-  ETC: "Ethereum Classic", NEAR: "NEAR Protocol", INJ: "Injective", BTC: "Bitcoin",
-  ETH: "Ethereum", SOL: "Solana", DOGE: "Dogecoin", MATIC: "Polygon", POL: "Polygon",
+  USD: "Cash",
+  USDT: "Tether",
+  FIL: "Filecoin",
+  XRP: "XRP",
+  ICP: "Internet Computer",
+  ETC: "Ethereum Classic",
+  NEAR: "NEAR Protocol",
+  INJ: "Injective",
+  BTC: "Bitcoin",
+  ETH: "Ethereum",
+  SOL: "Solana",
+  DOGE: "Dogecoin",
+  MATIC: "Polygon",
+  POL: "Polygon",
+  AAPL: "Apple",
+  TSLA: "Tesla",
+  NVDA: "NVIDIA",
+  MSFT: "Microsoft",
 };
 
 const num = (value) => {
@@ -51,22 +159,21 @@ const num = (value) => {
 const formatMoney = (value) => `$${num(value).toFixed(2)}`;
 const formatPercent = (value) => `${num(value).toFixed(1)}%`;
 const normalizeTier = (tier) => String(tier || "starter").toLowerCase();
-const normalizeMode = (mode) => String(mode || "paper").toLowerCase() === "live" ? "live" : "paper";
+const normalizeMode = (mode) =>
+  String(mode || "paper").toLowerCase() === "live" ? "live" : "paper";
 const tierRank = (tier) => TIER_RANK[normalizeTier(tier)] ?? 0;
 const hasTierAccess = (userTier, minTier) => tierRank(userTier) >= tierRank(minTier);
-const getStrategy = (id) => STRATEGIES.find((s) => s.id === id) || STRATEGIES[1];
 
 const getAssetIcon = (symbol) => {
   const s = String(symbol || "").toUpperCase();
   if (s === "USD") return "💵";
   if (s === "USDT") return "₮";
+  if (s === "BTC") return "₿";
+  if (s === "ETH" || s === "ETC") return "◆";
   if (s === "FIL") return "ƒ";
   if (s === "XRP") return "✕";
   if (s === "ICP") return "∞";
-  if (s === "ETC" || s === "ETH") return "◆";
   if (s === "NEAR") return "N";
-  if (s === "INJ") return "◎";
-  if (s === "BTC") return "₿";
   if (s === "DOGE") return "Ð";
   return s.slice(0, 2);
 };
@@ -83,9 +190,11 @@ export default function MemberDashboard() {
   const [userTier, setUserTier] = useState("starter");
   const [activeType, setActiveType] = useState("crypto");
 
+  const [strategies, setStrategies] = useState(FALLBACK_STRATEGIES);
+  const [currentStrategy, setCurrentStrategy] = useState(FALLBACK_STRATEGIES[1]);
+
   const [botRunning, setBotRunning] = useState(false);
   const [botMode, setBotMode] = useState("paper");
-  const [currentStrategy, setCurrentStrategy] = useState(STRATEGIES[1]);
 
   const [connections, setConnections] = useState({
     okx: { connected: false, mode: "paper", keyMasked: "" },
@@ -98,6 +207,7 @@ export default function MemberDashboard() {
   const [usdtValue, setUsdtValue] = useState(0);
   const [usdtQty, setUsdtQty] = useState(0);
   const [assets, setAssets] = useState([]);
+
   const [positions, setPositions] = useState([]);
   const [openPositionsCount, setOpenPositionsCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -112,16 +222,26 @@ export default function MemberDashboard() {
     openPositions: 0,
   });
 
+  const [imali, setImali] = useState({
+    balance: 0,
+    discountPct: 0,
+    discountActive: false,
+  });
+
   const activeTab = useMemo(
     () => TRADING_TYPES.find((item) => item.id === activeType) || TRADING_TYPES[0],
     [activeType]
   );
 
   const activeConnection = connections[activeTab.connectionKey];
-  const activeExchange = activeTab.exchange;
   const isLocked = !hasTierAccess(userTier, activeTab.minTier);
   const isConnected = Boolean(activeConnection?.connected);
   const needsReconnect = !isConnected && !isLocked;
+
+  const getStrategy = useCallback(
+    (id) => strategies.find((s) => s.id === id) || strategies[1] || FALLBACK_STRATEGIES[1],
+    [strategies]
+  );
 
   const winRate = useMemo(() => {
     const total = num(stats.wins) + num(stats.losses);
@@ -148,7 +268,6 @@ export default function MemberDashboard() {
         name: "Tether",
         quantity: usdtQty || usdtValue,
         value: usdtValue,
-        isCash: false,
       });
     }
 
@@ -187,12 +306,12 @@ export default function MemberDashboard() {
   );
 
   const normalizeAsset = (asset) => {
-    const symbol = String(asset.ccy || asset.symbol || asset.asset || "").toUpperCase();
+    const symbol = String(asset.ccy || asset.currency || asset.symbol || asset.asset || "").toUpperCase();
 
     return {
       symbol,
       name: ASSET_NAMES[symbol] || symbol,
-      quantity: num(asset.available ?? asset.bal ?? asset.balance ?? asset.qty ?? asset.quantity),
+      quantity: num(asset.available ?? asset.amount ?? asset.bal ?? asset.balance ?? asset.qty ?? asset.quantity),
       value: num(asset.usdValue ?? asset.usd_value ?? asset.value ?? asset.totalUsd ?? asset.total_usd ?? asset.eqUsd),
       changePct: asset.changePct ?? asset.change_pct ?? asset.pnl_pct ?? asset.pnlPercent ?? null,
       isCash: symbol === "USD",
@@ -205,12 +324,60 @@ export default function MemberDashboard() {
     setUserTier(normalizeTier(tier));
   }, [user]);
 
+  const fetchStrategies = useCallback(async () => {
+    const res = await BotAPI.getStrategyConfigs?.();
+
+    const raw = res?.data || res?.strategies || null;
+
+    if (!raw || typeof raw !== "object") return;
+
+    const mapped = Object.entries(raw).map(([id, cfg]) => ({
+      id,
+      name: cfg.name || id,
+      icon:
+        id === "mean_reversion"
+          ? "🛡️"
+          : id === "ai_weighted"
+          ? "🤖"
+          : id === "momentum"
+          ? "📈"
+          : "🔥",
+      risk:
+        cfg.riskLevel === "low"
+          ? "Low Risk"
+          : cfg.riskLevel === "medium"
+          ? "Medium Risk"
+          : cfg.riskLevel === "higher"
+          ? "Higher Risk"
+          : "High Risk",
+      description: cfg.description || "",
+      recommended: Boolean(cfg.recommended),
+      maxPositions: cfg.maxPositions,
+      tradePct: cfg.tradePct,
+      takeProfitPct: cfg.takeProfitPct,
+      stopLossPct: cfg.stopLossPct,
+      riskScore: cfg.riskScore,
+      tags: cfg.tags || [],
+    }));
+
+    if (mapped.length) {
+      setStrategies(mapped);
+      setCurrentStrategy((prev) => mapped.find((s) => s.id === prev.id) || mapped[1] || mapped[0]);
+    }
+  }, []);
+
   const fetchBotStatus = useCallback(async () => {
     const res = await BotAPI.getTradingBotStatus?.(true);
 
     const bot =
       res?.activeBot ||
-      res?.data?.find?.((item) => item.marketType === activeType || item.exchange === activeExchange) ||
+      res?.data?.find?.(
+        (item) =>
+          item.category === activeTab.categoryId ||
+          item.marketType === activeTab.marketType ||
+          item.market_type === activeTab.marketType ||
+          item.exchange === activeTab.exchange
+      ) ||
       res?.data?.[0] ||
       null;
 
@@ -224,7 +391,10 @@ export default function MemberDashboard() {
 
     if (bot?.mode) setBotMode(normalizeMode(bot.mode));
     if (bot?.strategy) setCurrentStrategy(getStrategy(bot.strategy));
-  }, [activeExchange, activeType]);
+    if (bot?.openPositions || bot?.open_positions) {
+      setOpenPositionsCount(num(bot.openPositions ?? bot.open_positions));
+    }
+  }, [activeTab, getStrategy]);
 
   const fetchIntegrationStatus = useCallback(async () => {
     const res = await BotAPI.getIntegrationStatus?.(true);
@@ -252,9 +422,27 @@ export default function MemberDashboard() {
   }, [activeTab.connectionKey]);
 
   const fetchBalance = useCallback(async () => {
+    const portfolio = await BotAPI.getPortfolioSummary?.(activeTab.categoryId, true);
+
+    if (portfolio?.success && portfolio?.data) {
+      const data = portfolio.data;
+      const currencies = Array.isArray(data.currencies) ? data.currencies : [];
+
+      const normalized = currencies.map(normalizeAsset).filter((asset) => asset.symbol);
+      const usdt = normalized.find((asset) => asset.symbol === "USDT");
+      const usd = normalized.find((asset) => asset.symbol === "USD");
+
+      setTotalAssetValue(num(data.total));
+      setUsdCashValue(num(usd?.value));
+      setUsdtValue(num(usdt?.value));
+      setUsdtQty(num(usdt?.quantity));
+      setAssets(normalized.filter((asset) => !["USD", "USDT"].includes(asset.symbol)));
+      return;
+    }
+
     const res = await BotAPI.getExchangeBalance?.(true);
 
-    if (activeExchange === "okx") {
+    if (activeTab.exchange === "okx") {
       const rawAssets = Array.isArray(res?.okx_assets) ? res.okx_assets : [];
       const normalized = rawAssets.map(normalizeAsset).filter((asset) => asset.symbol);
 
@@ -264,12 +452,10 @@ export default function MemberDashboard() {
       const okxTotal = num(res?.okx_total ?? res?.okx_total_usd ?? res?.okxTotalUsd ?? res?.okx ?? res?.total);
       const usdtAvailable = num(res?.okx_available_usdt ?? res?.available_usdt ?? usdtAsset?.value);
       const usdtQuantity = num(usdtAsset?.quantity ?? usdtAvailable);
-
       const otherAssetsTotal = otherAssets.reduce((sum, asset) => sum + num(asset.value), 0);
       const usdtFinalValue = usdtAvailable || num(usdtAsset?.value);
 
       const explicitUsdCash = num(res?.okx_cash_usd ?? res?.okx_available_usd ?? res?.usd_cash ?? res?.cash_usd);
-
       const inferredUsdCash =
         okxTotal > otherAssetsTotal + usdtFinalValue
           ? okxTotal - otherAssetsTotal - usdtFinalValue
@@ -286,7 +472,7 @@ export default function MemberDashboard() {
       return;
     }
 
-    if (activeExchange === "alpaca") {
+    if (activeTab.exchange === "alpaca") {
       const rawAssets = Array.isArray(res?.alpaca_assets) ? res.alpaca_assets : [];
       const normalized = rawAssets.map(normalizeAsset).filter((asset) => asset.symbol);
 
@@ -307,17 +493,17 @@ export default function MemberDashboard() {
     setUsdtQty(0);
     setAssets([]);
     setTotalAssetValue(0);
-  }, [activeExchange]);
+  }, [activeTab]);
 
   const fetchPositions = useCallback(async () => {
-    const res = await BotAPI.getOpenPositions?.(activeExchange, true);
+    const res = await BotAPI.getOpenPositions?.(activeTab.exchange, true, activeTab.categoryId);
     const list = Array.isArray(res?.positions) ? res.positions : [];
     setPositions(list);
     setOpenPositionsCount(list.length);
-  }, [activeExchange]);
+  }, [activeTab]);
 
   const fetchStats = useCallback(async () => {
-    const res = await BotAPI.getLiveTradingStats?.(activeExchange, true);
+    const res = await BotAPI.getLiveTradingStats?.(activeTab.exchange, true, activeTab.categoryId);
     const s = res?.summary || {};
 
     const openPositions = num(s.open_positions ?? s.openPositions ?? s.positions_open);
@@ -332,7 +518,18 @@ export default function MemberDashboard() {
     });
 
     if (openPositions > 0) setOpenPositionsCount(openPositions);
-  }, [activeExchange]);
+  }, [activeTab]);
+
+  const fetchImali = useCallback(async () => {
+    const balance = await BotAPI.getImaliBalance?.();
+    const discount = await BotAPI.getImaliDiscountStatus?.();
+
+    setImali({
+      balance: num(balance?.balance ?? balance?.imali_balance ?? balance?.data?.balance),
+      discountPct: num(discount?.discountPct ?? discount?.discount_pct ?? discount?.data?.discountPct),
+      discountActive: Boolean(discount?.active ?? discount?.discountActive ?? discount?.data?.active),
+    });
+  }, []);
 
   const refreshDashboard = useCallback(
     async (manual = false) => {
@@ -341,11 +538,13 @@ export default function MemberDashboard() {
 
         await Promise.all([
           fetchUser(),
+          fetchStrategies(),
           fetchBotStatus(),
           fetchIntegrationStatus(),
           fetchBalance(),
           fetchPositions(),
           fetchStats(),
+          fetchImali(),
         ]);
 
         setLastUpdated(new Date());
@@ -360,13 +559,24 @@ export default function MemberDashboard() {
         }
       }
     },
-    [fetchUser, fetchBotStatus, fetchIntegrationStatus, fetchBalance, fetchPositions, fetchStats]
+    [
+      fetchUser,
+      fetchStrategies,
+      fetchBotStatus,
+      fetchIntegrationStatus,
+      fetchBalance,
+      fetchPositions,
+      fetchStats,
+      fetchImali,
+    ]
   );
 
   useEffect(() => {
     mountedRef.current = true;
     refreshDashboard(false);
+
     const interval = setInterval(() => refreshDashboard(false), POLL_MS);
+
     return () => {
       mountedRef.current = false;
       clearInterval(interval);
@@ -390,12 +600,18 @@ export default function MemberDashboard() {
     setProcessing(true);
 
     try {
-      const res = await BotAPI.startTradingBot?.(
-        activeExchange,
-        currentStrategy.id,
-        botMode,
-        activeType
-      );
+      const res =
+        (await BotAPI.startTradingBotByCategory?.(
+          activeTab.categoryId,
+          currentStrategy.id,
+          botMode
+        )) ||
+        (await BotAPI.startTradingBot?.(
+          activeTab.exchange,
+          currentStrategy.id,
+          botMode,
+          activeTab.categoryId
+        ));
 
       if (res?.success === false) {
         alert(res?.error || "Failed to start bot.");
@@ -414,7 +630,9 @@ export default function MemberDashboard() {
     setProcessing(true);
 
     try {
-      const res = await BotAPI.stopTradingBot?.(activeExchange, activeType);
+      const res =
+        (await BotAPI.stopTradingBotByCategory?.(activeTab.categoryId)) ||
+        (await BotAPI.stopTradingBot?.(activeTab.exchange, activeTab.categoryId));
 
       if (res?.success === false) {
         alert(res?.error || "Failed to stop bot.");
@@ -427,6 +645,18 @@ export default function MemberDashboard() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleApplyImaliDiscount = async () => {
+    const res = await BotAPI.applyImaliDiscount?.();
+
+    if (res?.success === false) {
+      alert(res?.error || "Unable to apply IMALI discount.");
+      return;
+    }
+
+    await refreshDashboard(true);
+    alert("IMALI discount applied.");
   };
 
   if (loading) {
@@ -444,7 +674,9 @@ export default function MemberDashboard() {
       <header className="relative border-b border-white/10 bg-black/70 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 py-5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="h-14 w-14 shrink-0 rounded-2xl bg-cyan-400/10 grid place-items-center text-3xl">🚀</div>
+            <div className="h-14 w-14 shrink-0 rounded-2xl bg-cyan-400/10 grid place-items-center text-3xl">
+              🚀
+            </div>
             <div className="min-w-0">
               <h1 className="text-3xl font-black leading-none">IMALI</h1>
               <p className="text-xs tracking-[0.24em] text-white/50 font-black mt-1 truncate">
@@ -453,7 +685,10 @@ export default function MemberDashboard() {
             </div>
           </div>
 
-          <button onClick={logout} className="shrink-0 rounded-2xl bg-red-500 px-4 py-3 font-black hover:bg-red-400">
+          <button
+            onClick={logout}
+            className="shrink-0 rounded-2xl bg-red-500 px-4 py-3 font-black hover:bg-red-400"
+          >
             <FaSignOutAlt className="inline mr-2" />
             Logout
           </button>
@@ -562,7 +797,11 @@ export default function MemberDashboard() {
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
           <div className="mb-5 flex items-center justify-between">
             <h3 className="text-xl font-black">Assets</h3>
-            <button onClick={() => refreshDashboard(true)} disabled={refreshing} className="text-cyan-300 font-black disabled:opacity-50">
+            <button
+              onClick={() => refreshDashboard(true)}
+              disabled={refreshing}
+              className="text-cyan-300 font-black disabled:opacity-50"
+            >
               {refreshing ? <FaSpinner className="animate-spin inline mr-2" /> : <FaSyncAlt className="inline mr-2" />}
               Refresh
             </button>
@@ -609,7 +848,7 @@ export default function MemberDashboard() {
             <div className="grid grid-cols-3 gap-3 text-center text-sm">
               <BotInfo label="Market" value={activeTab.label} />
               <BotInfo label="Mode" value={botMode.toUpperCase()} />
-              <BotInfo label="Positions" value={`${openPositionsCount} / 5`} />
+              <BotInfo label="Positions" value={`${openPositionsCount} / ${currentStrategy.maxPositions || 5}`} />
             </div>
 
             <div className="mt-5">
@@ -618,14 +857,28 @@ export default function MemberDashboard() {
                   onClick={handleStartBot}
                   disabled={processing}
                   className={`w-full rounded-2xl py-4 font-black disabled:opacity-50 ${
-                    isLocked || !isConnected ? "bg-cyan-500 text-black hover:bg-cyan-400" : "bg-emerald-500 text-black hover:bg-emerald-400"
+                    isLocked || !isConnected
+                      ? "bg-cyan-500 text-black hover:bg-cyan-400"
+                      : "bg-emerald-500 text-black hover:bg-emerald-400"
                   }`}
                 >
-                  {processing ? <FaSpinner className="animate-spin inline mr-2" /> : isLocked ? <FaLock className="inline mr-2" /> : !isConnected ? <FaPlug className="inline mr-2" /> : <FaPlay className="inline mr-2" />}
+                  {processing ? (
+                    <FaSpinner className="animate-spin inline mr-2" />
+                  ) : isLocked ? (
+                    <FaLock className="inline mr-2" />
+                  ) : !isConnected ? (
+                    <FaPlug className="inline mr-2" />
+                  ) : (
+                    <FaPlay className="inline mr-2" />
+                  )}
                   {isLocked ? "Upgrade to Unlock" : !isConnected ? "Connect to Start" : "Start Bot"}
                 </button>
               ) : (
-                <button onClick={handleStopBot} disabled={processing} className="w-full rounded-2xl bg-red-500 py-4 font-black hover:bg-red-400 disabled:opacity-50">
+                <button
+                  onClick={handleStopBot}
+                  disabled={processing}
+                  className="w-full rounded-2xl bg-red-500 py-4 font-black hover:bg-red-400 disabled:opacity-50"
+                >
                   {processing ? <FaSpinner className="animate-spin inline mr-2" /> : <FaStop className="inline mr-2" />}
                   Stop Bot
                 </button>
@@ -646,7 +899,7 @@ export default function MemberDashboard() {
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
           <h3 className="mb-5 text-xl sm:text-2xl font-black">Available Bot Strategies</h3>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {STRATEGIES.map((strategy) => (
+            {strategies.map((strategy) => (
               <StrategyCard
                 key={strategy.id}
                 strategy={strategy}
@@ -657,18 +910,29 @@ export default function MemberDashboard() {
           </div>
         </section>
 
-        <section className="rounded-[2rem] border border-purple-500/30 bg-purple-500/10 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h3 className="font-black text-2xl">Unlock More Power</h3>
-            <p className="text-sm sm:text-base text-white/60 leading-relaxed">
-              Upgrade to Elite for Futures, DEX sniper bots, advanced AI strategies, and priority support.
-            </p>
-          </div>
+        <section className="grid gap-5 lg:grid-cols-2">
+          <ImaliCard
+            imali={imali}
+            onBuy={() => navigate("/buy-imali")}
+            onApply={handleApplyImaliDiscount}
+          />
 
-          <button onClick={() => navigate("/billing-dashboard")} className="rounded-2xl bg-purple-500 px-5 py-3 font-black hover:bg-purple-400">
-            <FaCrown className="inline mr-2" />
-            Upgrade Now
-          </button>
+          <section className="rounded-[2rem] border border-purple-500/30 bg-purple-500/10 p-5 flex flex-col justify-between gap-4">
+            <div>
+              <h3 className="font-black text-2xl">Unlock More Power</h3>
+              <p className="text-sm sm:text-base text-white/60 leading-relaxed">
+                Upgrade to Elite for Futures, DEX sniper bots, advanced AI strategies, and priority support.
+              </p>
+            </div>
+
+            <button
+              onClick={() => navigate("/billing-dashboard")}
+              className="rounded-2xl bg-purple-500 px-5 py-3 font-black hover:bg-purple-400"
+            >
+              <FaCrown className="inline mr-2" />
+              Upgrade Now
+            </button>
+          </section>
         </section>
       </main>
     </div>
@@ -701,7 +965,17 @@ function StrategyCard({ strategy, selected, onClick }) {
               {strategy.risk}
             </span>
           </div>
+
           <p className="mt-3 text-sm leading-relaxed text-white/50">{strategy.description}</p>
+
+          {(strategy.maxPositions || strategy.tradePct || strategy.takeProfitPct) && (
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/50">
+              <span>Max: {strategy.maxPositions || "-"} pos.</span>
+              <span>Trade: {formatPercent(num(strategy.tradePct) * 100)}</span>
+              <span>TP: {formatPercent(num(strategy.takeProfitPct) * 100)}</span>
+              <span>SL: {formatPercent(num(strategy.stopLossPct) * 100)}</span>
+            </div>
+          )}
         </div>
       </div>
     </button>
@@ -712,14 +986,22 @@ function ConnectionCard({ activeTab, connection, isLocked, needsReconnect, userT
   return (
     <section
       className={`rounded-[2rem] border p-5 ${
-        isLocked ? "border-purple-500/30 bg-purple-500/10" : needsReconnect ? "border-yellow-400/30 bg-yellow-400/10" : "border-emerald-400/30 bg-emerald-400/10"
+        isLocked
+          ? "border-purple-500/30 bg-purple-500/10"
+          : needsReconnect
+          ? "border-yellow-400/30 bg-yellow-400/10"
+          : "border-emerald-400/30 bg-emerald-400/10"
       }`}
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
           <div
             className={`h-12 w-12 shrink-0 rounded-2xl grid place-items-center ${
-              isLocked ? "bg-purple-500/20 text-purple-300" : needsReconnect ? "bg-yellow-400/20 text-yellow-300" : "bg-emerald-400/20 text-emerald-300"
+              isLocked
+                ? "bg-purple-500/20 text-purple-300"
+                : needsReconnect
+                ? "bg-yellow-400/20 text-yellow-300"
+                : "bg-emerald-400/20 text-emerald-300"
             }`}
           >
             {isLocked ? <FaLock /> : needsReconnect ? <FaExclamationTriangle /> : <FaCheckCircle />}
@@ -729,24 +1011,50 @@ function ConnectionCard({ activeTab, connection, isLocked, needsReconnect, userT
             <h3 className="text-xl font-black">{activeTab.connectionLabel}</h3>
             {isLocked ? (
               <p className="text-sm text-white/60">
-                {activeTab.label} trading requires {activeTab.minTier.toUpperCase()} plan or higher. Current plan: {normalizeTier(userTier).toUpperCase()}.
+                {activeTab.label} trading requires {activeTab.minTier.toUpperCase()} plan or higher.
+                Current plan: {normalizeTier(userTier).toUpperCase()}.
               </p>
             ) : needsReconnect ? (
-              <p className="text-sm text-yellow-100/80">This connection needs to be reconnected before trading can start.</p>
+              <p className="text-sm text-yellow-100/80">
+                This connection needs to be reconnected before trading can start.
+              </p>
             ) : (
-              <p className="text-sm text-emerald-100/80">Connected {connection?.keyMasked ? `(${connection.keyMasked})` : ""}.</p>
+              <p className="text-sm text-emerald-100/80">
+                Connected {connection?.keyMasked ? `(${connection.keyMasked})` : ""}.
+              </p>
             )}
-            <p className="mt-1 text-xs text-white/40">Last checked: {lastUpdated ? lastUpdated.toLocaleTimeString() : "Not checked yet"}</p>
+            <p className="mt-1 text-xs text-white/40">
+              Last checked: {lastUpdated ? lastUpdated.toLocaleTimeString() : "Not checked yet"}
+            </p>
           </div>
         </div>
 
         <button
           onClick={isLocked ? onUpgrade : onConnect}
           className={`rounded-2xl px-5 py-3 font-black ${
-            isLocked ? "bg-purple-500 hover:bg-purple-400" : needsReconnect ? "bg-yellow-400 text-black hover:bg-yellow-300" : "bg-white/10 hover:bg-white/15"
+            isLocked
+              ? "bg-purple-500 hover:bg-purple-400"
+              : needsReconnect
+              ? "bg-yellow-400 text-black hover:bg-yellow-300"
+              : "bg-white/10 hover:bg-white/15"
           }`}
         >
-          {isLocked ? <><FaCrown className="inline mr-2" />Upgrade</> : needsReconnect ? <><FaRedo className="inline mr-2" />Reconnect</> : <><FaPlug className="inline mr-2" />Manage</>}
+          {isLocked ? (
+            <>
+              <FaCrown className="inline mr-2" />
+              Upgrade
+            </>
+          ) : needsReconnect ? (
+            <>
+              <FaRedo className="inline mr-2" />
+              Reconnect
+            </>
+          ) : (
+            <>
+              <FaPlug className="inline mr-2" />
+              Manage
+            </>
+          )}
         </button>
       </div>
     </section>
@@ -755,7 +1063,13 @@ function ConnectionCard({ activeTab, connection, isLocked, needsReconnect, userT
 
 function StatusPill({ running }) {
   return (
-    <div className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${running ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300" : "border-white/10 bg-white/10 text-white/50"}`}>
+    <div
+      className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
+        running
+          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+          : "border-white/10 bg-white/10 text-white/50"
+      }`}
+    >
       <FaCircle className={`inline mr-2 h-2 w-2 ${running ? "text-emerald-300" : "text-white/40"}`} />
       {running ? "BOT RUNNING" : "BOT OFF"}
     </div>
@@ -764,7 +1078,13 @@ function StatusPill({ running }) {
 
 function ModePill({ mode }) {
   return (
-    <div className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${mode === "live" ? "border-red-400/40 bg-red-400/10 text-red-300" : "border-yellow-400/40 bg-yellow-400/10 text-yellow-300"}`}>
+    <div
+      className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
+        mode === "live"
+          ? "border-red-400/40 bg-red-400/10 text-red-300"
+          : "border-yellow-400/40 bg-yellow-400/10 text-yellow-300"
+      }`}
+    >
       {mode.toUpperCase()} MODE
     </div>
   );
@@ -840,6 +1160,36 @@ function SmallStat({ title, value, pnl }) {
       <p className="text-sm text-white/40">{title}</p>
       <p className={`mt-2 text-2xl font-black ${color}`}>{value}</p>
     </div>
+  );
+}
+
+function ImaliCard({ imali, onBuy, onApply }) {
+  return (
+    <section className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-2xl font-black">IMALI Utility</h3>
+        <FaCoins className="text-2xl text-emerald-300" />
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <MiniBox label="Balance" value={`${num(imali.balance).toLocaleString()} IMALI`} />
+        <MiniBox label="Discount" value={formatPercent(imali.discountPct)} />
+        <MiniBox label="Status" value={imali.discountActive ? "Active" : "Inactive"} />
+      </div>
+
+      <p className="mt-4 text-sm text-white/60">
+        Hold IMALI for platform discounts, lower fees, early access, and future ecosystem benefits.
+      </p>
+
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <button onClick={onBuy} className="rounded-2xl bg-emerald-500 py-3 font-black text-black hover:bg-emerald-400">
+          Buy IMALI
+        </button>
+        <button onClick={onApply} className="rounded-2xl bg-white/10 py-3 font-black hover:bg-white/15">
+          Apply Discount
+        </button>
+      </div>
+    </section>
   );
 }
 
