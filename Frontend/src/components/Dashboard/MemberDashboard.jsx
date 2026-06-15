@@ -729,26 +729,38 @@ export default function MemberDashboard() {
     lastFetchTimeRef.current.strategies = Date.now();
   }, []);
 
+  // FIXED: fetchBotStatus - correctly parses API response
   const fetchBotStatus = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getTradingBotStatus?.(true));
     const d = unwrapData(res);
-    const list = d.bots || d.data || [];
-
-    const bot = d.activeBot || list.find((item) => item.category === activeTab.categoryId || item.exchange === activeTab.exchange) || list[0] || null;
-
-    const running = d.isRunning === true || bot?.isRunning === true || bot?.running === true || String(bot?.status || "").toLowerCase() === "running";
-
-    dispatch({ type: ACTIONS.SET_BOT_RUNNING, payload: Boolean(running) });
-
-    if (bot?.mode) dispatch({ type: ACTIONS.SET_BOT_MODE, payload: bot.mode });
-    if (bot?.strategy) {
-      const strategy = getStrategy(bot.strategy);
-      if (strategy) dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
+    
+    // Handle the API response structure correctly
+    // API returns { success: true, data: [...] }
+    const list = Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : []);
+    
+    const running = list.some(bot => bot.isRunning === true);
+    
+    dispatch({ type: ACTIONS.SET_BOT_RUNNING, payload: running });
+    
+    // Get the first running bot for additional info
+    const runningBot = list.find(bot => bot.isRunning === true);
+    
+    if (runningBot) {
+      if (runningBot.mode) dispatch({ type: ACTIONS.SET_BOT_MODE, payload: runningBot.mode });
+      if (runningBot.strategy) {
+        const strategy = getStrategy(runningBot.strategy);
+        if (strategy) dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
+      }
+      const botPositions = num(runningBot.openPositions ?? runningBot.open_positions);
+      if (botPositions > 0) dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: botPositions });
     }
-
-    const botPositions = num(bot?.openPositions ?? bot?.open_positions);
-    if (botPositions > 0) dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: botPositions });
-  }, [activeTab.categoryId, activeTab.exchange, getStrategy]);
+    
+    // Also update from the summary if available
+    if (d.summary) {
+      const open = num(d.summary.open_positions ?? d.summary.openPositions);
+      if (open > 0) dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: open });
+    }
+  }, [getStrategy]);
 
   const fetchIntegrationStatus = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getIntegrationStatus?.(true));
@@ -843,7 +855,7 @@ export default function MemberDashboard() {
   }, [activeTab.exchange]);
 
   const fetchTradeFeed = useCallback(async () => {
-    const res = await fetchWithRetry(() => BotAPI.getRecentTrades?.(activeTab.exchange, 20, true));
+    const res = await fetchWithRetry(() => BotAPI.getLiveTradeHistory?.(20, activeTab.exchange, true));
     const d = unwrapData(res);
     const trades = d.trades || d.data || [];
 
@@ -997,7 +1009,7 @@ export default function MemberDashboard() {
   }, [saveStrategyPreference]);
 
   // ============================================================================
-  // FIXED BOT CONTROL HANDLERS
+  // BOT CONTROL HANDLERS
   // ============================================================================
 
   const handleConnect = useCallback(() => {
