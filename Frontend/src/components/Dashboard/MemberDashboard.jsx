@@ -24,6 +24,7 @@ import {
   FaStop,
   FaSyncAlt,
   FaWater,
+  FaBug,
 } from "react-icons/fa";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
@@ -43,7 +44,7 @@ const POLL_MS = 7000;
 const CRITICAL_POLL_MS = 3000;
 const API_RETRY_COUNT = 2;
 const API_RETRY_DELAY_MS = 1000;
-const STALE_TIME_MS = 60000; // 1 minute for background data
+const STALE_TIME_MS = 60000;
 
 const TIER_RANK = {
   starter: 0,
@@ -60,7 +61,6 @@ const TIER_RANK = {
   enterprise: 4,
 };
 
-// Tier display configuration with images
 const TIER_CONFIG = {
   starter: {
     name: "Starter",
@@ -308,6 +308,11 @@ const initialState = {
     discountPct: 0,
     discountActive: false,
   },
+  debug: {
+    lastStartAttempt: null,
+    lastStartResult: null,
+    lastStartError: null,
+  },
 };
 
 const ACTIONS = {
@@ -329,6 +334,7 @@ const ACTIONS = {
   SET_TRADE_FEED: "SET_TRADE_FEED",
   SET_STATS: "SET_STATS",
   SET_IMALI: "SET_IMALI",
+  SET_DEBUG: "SET_DEBUG",
   UPDATE_STRATEGY_PREF: "UPDATE_STRATEGY_PREF",
   RESET_STATE: "RESET_STATE",
 };
@@ -378,6 +384,8 @@ function dashboardReducer(state, action) {
       return { ...state, stats: { ...state.stats, ...action.payload } };
     case ACTIONS.SET_IMALI:
       return { ...state, imali: { ...state.imali, ...action.payload } };
+    case ACTIONS.SET_DEBUG:
+      return { ...state, debug: { ...state.debug, ...action.payload } };
     case ACTIONS.UPDATE_STRATEGY_PREF:
       localStorage.setItem("imali_selected_strategy", action.payload.id);
       return { ...state, currentStrategy: action.payload };
@@ -445,21 +453,18 @@ class DashboardErrorBoundary extends React.Component {
 // ============================================================================
 
 function TierUpgradeCard({ currentTier, onUpgrade }) {
-  const tier = TIER_CONFIG[currentTier] || TIER_CONFIG.starter;
   const nextTiers = [
-    { id: "pro", config: TIER_CONFIG.pro, price: "$19/mo" },
-    { id: "elite", config: TIER_CONFIG.elite, price: "$49/mo" },
+    { id: "pro", config: TIER_CONFIG.pro, price: "$19/mo", description: "Live crypto & stock trading, AI strategies" },
+    { id: "elite", config: TIER_CONFIG.elite, price: "$49/mo", description: "Futures, DEX sniper, staking, lending" },
   ];
 
-  // Don't show if already on Elite
   if (currentTier === "elite" || currentTier === "enterprise") return null;
 
-  const nextTier = nextTiers.find(t => t.id === currentTier ? t.id === "pro" : t.id === "elite") || nextTiers[0];
+  const nextTier = nextTiers.find(t => t.id === (currentTier === "starter" ? "pro" : "elite")) || nextTiers[0];
 
   return (
     <section className={`rounded-[2rem] border ${nextTier.config.borderColor} bg-gradient-to-br ${nextTier.config.color} p-5`}>
       <div className="flex flex-col sm:flex-row items-center gap-5">
-        {/* NFT Image */}
         <div className="shrink-0">
           <img
             src={nextTier.config.image}
@@ -468,7 +473,6 @@ function TierUpgradeCard({ currentTier, onUpgrade }) {
             loading="lazy"
           />
         </div>
-
         <div className="flex-1 text-center sm:text-left">
           <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
             <h3 className="text-2xl font-black">{nextTier.config.name} Plan</h3>
@@ -476,13 +480,8 @@ function TierUpgradeCard({ currentTier, onUpgrade }) {
               {nextTier.price}
             </span>
           </div>
-          <p className="mt-2 text-sm text-white/70">
-            {currentTier === "starter" 
-              ? "Upgrade to Pro for live crypto & stock trading, AI strategies, and advanced analytics."
-              : "Upgrade to Elite for futures trading, DEX sniper, staking, lending, and NFT membership benefits."}
-          </p>
+          <p className="mt-2 text-sm text-white/70">{nextTier.description}</p>
         </div>
-
         <button
           onClick={onUpgrade}
           className="shrink-0 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 font-black text-white transition hover:from-amber-600 hover:to-orange-600"
@@ -492,6 +491,74 @@ function TierUpgradeCard({ currentTier, onUpgrade }) {
         </button>
       </div>
     </section>
+  );
+}
+
+// ============================================================================
+// DEBUG PANEL (only in development)
+// ============================================================================
+
+function DebugPanel({ state, onTestStartBot }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (process.env.NODE_ENV !== "development") return null;
+
+  return (
+    <>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="fixed bottom-4 right-4 z-50 rounded-full bg-yellow-500/80 backdrop-blur px-3 py-2 text-xs font-black text-black hover:bg-yellow-400 transition"
+      >
+        <FaBug className="inline mr-1" /> Debug
+      </button>
+      
+      {isOpen && (
+        <div className="fixed bottom-16 right-4 z-50 w-96 rounded-2xl border border-yellow-500/30 bg-black/95 backdrop-blur-lg p-4 shadow-2xl">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-black text-yellow-400">Debug Panel</h3>
+            <button onClick={() => setIsOpen(false)} className="text-white/50 hover:text-white">✕</button>
+          </div>
+          
+          <div className="space-y-2 text-xs font-mono">
+            <p><span className="text-white/50">Bot Running:</span> {state.botRunning ? "✅ Yes" : "❌ No"}</p>
+            <p><span className="text-white/50">Bot Mode:</span> {state.botMode}</p>
+            <p><span className="text-white/50">Open Positions:</span> {state.openPositionsCount}</p>
+            <p><span className="text-white/50">Active Tab:</span> {state.activeType}</p>
+            <p><span className="text-white/50">Connected:</span> {state.connections[state.activeType === "stocks" ? "alpaca" : "okx"]?.connected ? "Yes" : "No"}</p>
+            <p><span className="text-white/50">Current Strategy:</span> {state.currentStrategy?.name}</p>
+            <p><span className="text-white/50">Last Start Attempt:</span> {state.debug.lastStartAttempt ? new Date(state.debug.lastStartAttempt).toLocaleTimeString() : "Never"}</p>
+            {state.debug.lastStartResult && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-cyan-400">Last Start Result</summary>
+                <pre className="mt-1 max-h-32 overflow-auto rounded bg-black/50 p-2 text-[10px]">
+                  {JSON.stringify(state.debug.lastStartResult, null, 2)}
+                </pre>
+              </details>
+            )}
+            {state.debug.lastStartError && (
+              <div className="mt-2 rounded bg-red-500/20 p-2 text-red-300">
+                Error: {state.debug.lastStartError}
+              </div>
+            )}
+          </div>
+          
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={onTestStartBot}
+              className="flex-1 rounded-lg bg-yellow-500/20 px-3 py-2 text-xs font-bold text-yellow-400 hover:bg-yellow-500/30"
+            >
+              Test Start Bot
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="flex-1 rounded-lg bg-white/10 px-3 py-2 text-xs font-bold hover:bg-white/20"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -507,7 +574,6 @@ export default function MemberDashboard() {
   const criticalIntervalRef = useRef(null);
   const backgroundPromisesRef = useRef([]);
   
-  // Track last fetch times for throttling background APIs
   const lastFetchTimeRef = useRef({
     user: 0,
     strategies: 0,
@@ -517,10 +583,8 @@ export default function MemberDashboard() {
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const previousActiveType = usePrevious(state.activeType);
 
-  // Get current tier config for display
   const currentTierConfig = TIER_CONFIG[normalizeTier(state.userTier)] || TIER_CONFIG.starter;
 
-  // Memoized derived values for performance
   const activeTab = useMemo(
     () => TRADING_TYPES.find((item) => item.id === state.activeType) || TRADING_TYPES[0],
     [state.activeType]
@@ -753,7 +817,7 @@ export default function MemberDashboard() {
   const fetchPositions = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getOpenPositions?.(activeTab.exchange, true));
     const d = unwrapData(res);
-    const list = d.positions || [];
+    const list = d.positions || d.openPositions || d.data || [];
     dispatch({ type: ACTIONS.SET_POSITIONS, payload: list });
     dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: list.length });
   }, [activeTab.exchange]);
@@ -828,7 +892,7 @@ export default function MemberDashboard() {
   }, []);
 
   // ============================================================================
-  // STABLE REF FOR FETCH FUNCTIONS (BREAKS CIRCULAR DEPENDENCIES)
+  // STABLE REF FOR FETCH FUNCTIONS
   // ============================================================================
 
   const fetchFunctionsRef = useRef({
@@ -845,7 +909,7 @@ export default function MemberDashboard() {
       fetchBalance, fetchPositions, fetchStats, fetchTradeFeed, fetchImali]);
 
   // ============================================================================
-  // REFRESH LOGIC WITH RESILIENT PROMISE HANDLING
+  // REFRESH LOGIC
   // ============================================================================
 
   const refreshDashboard = useCallback(async (manual = false) => {
@@ -856,19 +920,12 @@ export default function MemberDashboard() {
     const fns = fetchFunctionsRef.current;
     const now = Date.now();
 
-    // Determine which background APIs need refresh based on staleness
     const shouldRefreshUser = manual || (now - lastFetchTimeRef.current.user > STALE_TIME_MS);
     const shouldRefreshStrategies = manual || (now - lastFetchTimeRef.current.strategies > STALE_TIME_MS);
     const shouldRefreshIntegrations = manual || (now - lastFetchTimeRef.current.integrations > STALE_TIME_MS);
 
-    // Critical APIs - must succeed for dashboard to be functional
-    const criticalApis = [
-      fns.fetchBotStatus,
-      fns.fetchBalance,
-      fns.fetchTradeFeed,
-    ];
+    const criticalApis = [fns.fetchBotStatus, fns.fetchBalance, fns.fetchTradeFeed];
 
-    // Background APIs - throttled, don't block rendering
     const backgroundApis = [];
     if (shouldRefreshUser) backgroundApis.push(fns.fetchUser);
     if (shouldRefreshStrategies) backgroundApis.push(fns.fetchStrategies);
@@ -876,7 +933,6 @@ export default function MemberDashboard() {
     backgroundApis.push(fns.fetchStats, fns.fetchImali, fns.fetchPositions);
 
     try {
-      // Critical APIs - wait for these
       const criticalResults = await Promise.allSettled(criticalApis.map(fn => fn().catch(err => {
         console.warn(`Critical API failed: ${fn.name}`, err);
         return null;
@@ -887,7 +943,6 @@ export default function MemberDashboard() {
         console.warn(`${criticalFailures.length} critical API(s) failed`);
       }
 
-      // Background APIs - fire and forget with mount check
       if (backgroundApis.length > 0) {
         const backgroundPromise = Promise.allSettled(backgroundApis.map(fn => fn().catch(err => {
           console.warn(`Background API failed: ${fn.name}`, err);
@@ -902,9 +957,7 @@ export default function MemberDashboard() {
           if (mountedRef.current) console.error("Background API error:", err);
         });
         
-        // Track for cleanup
         backgroundPromisesRef.current.push(backgroundPromise);
-        // Clean up old promises to prevent memory leak
         if (backgroundPromisesRef.current.length > 10) {
           backgroundPromisesRef.current.shift();
         }
@@ -927,7 +980,6 @@ export default function MemberDashboard() {
         dispatch({ type: ACTIONS.SET_LOADING, payload: false });
       }
       
-      // Performance monitoring
       const duration = performance.now() - startTime;
       if (duration > 2000) {
         console.warn(`⚠️ Dashboard refresh slow: ${duration.toFixed(0)}ms`);
@@ -945,7 +997,7 @@ export default function MemberDashboard() {
   }, [saveStrategyPreference]);
 
   // ============================================================================
-  // BOT CONTROL HANDLERS
+  // FIXED BOT CONTROL HANDLERS
   // ============================================================================
 
   const handleConnect = useCallback(() => {
@@ -953,35 +1005,145 @@ export default function MemberDashboard() {
     else navigate(activeTab.connectRoute);
   }, [isLocked, navigate, activeTab.connectRoute]);
 
+  const testStartBot = useCallback(async () => {
+    console.log("🐛 TEST: Starting bot with debug...");
+    
+    dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartAttempt: Date.now(), lastStartResult: null, lastStartError: null } });
+
+    try {
+      const testConfig = {
+        takeProfitPct: state.currentStrategy.takeProfitPct,
+        stopLossPct: state.currentStrategy.stopLossPct,
+        maxPositions: state.currentStrategy.maxPositions,
+      };
+
+      let result = null;
+      
+      if (BotAPI.startTradingBotByCategory) {
+        console.log("Testing startTradingBotByCategory...");
+        result = await BotAPI.startTradingBotByCategory(
+          activeTab.categoryId,
+          state.currentStrategy.id,
+          state.botMode,
+          testConfig
+        );
+      } else if (BotAPI.startTradingBot) {
+        console.log("Testing startTradingBot...");
+        result = await BotAPI.startTradingBot(
+          activeTab.exchange,
+          state.currentStrategy.id,
+          state.botMode,
+          activeTab.categoryId,
+          testConfig
+        );
+      } else {
+        throw new Error("No BotAPI methods available");
+      }
+
+      dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartResult: result, lastStartError: null } });
+      console.log("Test result:", result);
+      alert(JSON.stringify(result, null, 2));
+      
+      await refreshDashboard(true);
+    } catch (err) {
+      console.error("Test error:", err);
+      dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartError: err.message } });
+      alert(`Error: ${err.message}`);
+    }
+  }, [activeTab, state.currentStrategy, state.botMode, refreshDashboard]);
+
   const handleStartBot = useCallback(async () => {
-    if (isLocked) return navigate("/billing-dashboard");
-    if (!isConnected) return navigate(activeTab.connectRoute);
+    console.log("🚀 Starting bot...", {
+      isLocked,
+      isConnected,
+      currentStrategy: state.currentStrategy,
+      botMode: state.botMode,
+      activeTab: activeTab
+    });
+
+    dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartAttempt: Date.now(), lastStartResult: null, lastStartError: null } });
+
+    if (isLocked) {
+      const msg = "Please upgrade your plan to access this trading type.";
+      alert(msg);
+      return navigate("/billing-dashboard");
+    }
+    
+    if (!isConnected) {
+      const msg = `Please connect your ${activeTab.connectionLabel} first.`;
+      alert(msg);
+      return navigate(activeTab.connectRoute);
+    }
 
     dispatch({ type: ACTIONS.SET_PROCESSING, payload: true });
 
     try {
+      console.log("💾 Saving strategy preference:", state.currentStrategy.id);
       await saveStrategyPreference(state.currentStrategy.id);
 
       const config = {
         takeProfitPct: state.currentStrategy.takeProfitPct,
         stopLossPct: state.currentStrategy.stopLossPct,
+        maxPositions: state.currentStrategy.maxPositions,
+        tradePct: state.currentStrategy.tradePct,
       };
 
-      const res = await fetchWithRetry(async () =>
-        (await BotAPI.startTradingBotByCategory?.(activeTab.categoryId, state.currentStrategy.id, state.botMode, config)) ||
-        (await BotAPI.startTradingBot?.(activeTab.exchange, state.currentStrategy.id, state.botMode, activeTab.categoryId, config))
-      );
+      console.log("📡 Calling startTradingBot API with:", {
+        categoryId: activeTab.categoryId,
+        strategyId: state.currentStrategy.id,
+        mode: state.botMode,
+        exchange: activeTab.exchange,
+        config
+      });
 
-      if (res?.success === false) {
-        alert(res?.error || "Failed to start bot.");
-        return;
+      let res = null;
+      
+      if (BotAPI.startTradingBotByCategory) {
+        console.log("➡️ Attempting startTradingBotByCategory...");
+        res = await BotAPI.startTradingBotByCategory(
+          activeTab.categoryId, 
+          state.currentStrategy.id, 
+          state.botMode, 
+          config
+        );
+        console.log("📥 startTradingBotByCategory response:", res);
+      }
+      
+      if ((!res || res?.success === false) && BotAPI.startTradingBot) {
+        console.log("➡️ Attempting startTradingBot...");
+        res = await BotAPI.startTradingBot(
+          activeTab.exchange, 
+          state.currentStrategy.id, 
+          state.botMode, 
+          activeTab.categoryId, 
+          config
+        );
+        console.log("📥 startTradingBot response:", res);
       }
 
+      if (!res) {
+        throw new Error("No API method available to start bot");
+      }
+
+      if (res?.success === false) {
+        throw new Error(res?.error || res?.message || "Failed to start bot.");
+      }
+
+      dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartResult: res } });
+      console.log("✅ Bot started successfully!");
+      alert("Bot started successfully! Check the Live Trade Feed for activity.");
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
       await refreshDashboard(true);
+      
     } catch (err) {
-      alert(err?.message || "Failed to start bot.");
+      console.error("🔥 Bot start error:", err);
+      dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartError: err.message } });
+      alert(`Failed to start bot: ${err?.message || "Unknown error"}`);
     } finally {
-      if (mountedRef.current) dispatch({ type: ACTIONS.SET_PROCESSING, payload: false });
+      if (mountedRef.current) {
+        dispatch({ type: ACTIONS.SET_PROCESSING, payload: false });
+      }
     }
   }, [isLocked, isConnected, navigate, activeTab, state.currentStrategy, state.botMode, saveStrategyPreference, refreshDashboard]);
 
@@ -989,10 +1151,15 @@ export default function MemberDashboard() {
     dispatch({ type: ACTIONS.SET_PROCESSING, payload: true });
 
     try {
-      const res = await fetchWithRetry(async () =>
-        (await BotAPI.stopTradingBotByCategory?.(activeTab.categoryId)) ||
-        (await BotAPI.stopTradingBot?.(activeTab.exchange))
-      );
+      let res = null;
+      
+      if (BotAPI.stopTradingBotByCategory) {
+        res = await BotAPI.stopTradingBotByCategory?.(activeTab.categoryId);
+      }
+      
+      if ((!res || res?.success === false) && BotAPI.stopTradingBot) {
+        res = await BotAPI.stopTradingBot?.(activeTab.exchange);
+      }
 
       if (res?.success === false) {
         alert(res?.error || "Failed to stop bot.");
@@ -1044,17 +1211,14 @@ export default function MemberDashboard() {
   // EFFECTS & INTERVALS
   // ============================================================================
 
-  // Initial load
   useEffect(() => {
     mountedRef.current = true;
     refreshDashboard(false);
 
-    // Regular poll for all data
     intervalRef.current = setInterval(() => {
       if (mountedRef.current) refreshDashboard(false);
     }, POLL_MS);
 
-    // Faster poll for critical data when bot is running
     criticalIntervalRef.current = setInterval(() => {
       if (mountedRef.current && state.botRunning) {
         const fns = fetchFunctionsRef.current;
@@ -1071,7 +1235,6 @@ export default function MemberDashboard() {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (criticalIntervalRef.current) clearInterval(criticalIntervalRef.current);
       
-      // Clean up any pending background promises
       backgroundPromisesRef.current.forEach(promise => {
         promise?.catch?.(() => {});
       });
@@ -1079,7 +1242,6 @@ export default function MemberDashboard() {
     };
   }, [refreshDashboard, state.botRunning]);
 
-  // Handle active type change - prevents race condition with setTimeout
   useEffect(() => {
     if (previousActiveType === undefined) return;
     if (state.activeType === previousActiveType) return;
@@ -1149,10 +1311,9 @@ export default function MemberDashboard() {
             </div>
           )}
 
-          {/* Welcome Section with Tier Image */}
+          {/* Welcome Section */}
           <section>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              {/* Current Tier NFT Image */}
               {currentTierConfig.image && (
                 <div className="shrink-0">
                   <img
@@ -1229,7 +1390,7 @@ export default function MemberDashboard() {
             lastUpdated={state.lastUpdated}
           />
 
-          {/* Tier Upgrade Card - Shows upgrade path with NFT image */}
+          {/* Tier Upgrade Card */}
           <TierUpgradeCard 
             currentTier={normalizeTier(state.userTier)}
             onUpgrade={() => navigate("/billing-dashboard")}
@@ -1275,7 +1436,7 @@ export default function MemberDashboard() {
             </div>
           </section>
 
-          {/* Assets Section with Loading State */}
+          {/* Assets Section */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
             <div className="mb-5 flex items-center justify-between">
               <h3 className="text-xl font-black">Assets</h3>
@@ -1335,6 +1496,9 @@ export default function MemberDashboard() {
               <div className="py-16 text-center text-white/30">
                 <div className="text-6xl mb-4">🤖</div>
                 <p>Start the bot to see live trades appear here.</p>
+                {!state.botRunning && (
+                  <p className="text-xs text-white/40 mt-2">Bot status: {state.botRunning ? "Running" : "Stopped"}</p>
+                )}
               </div>
             ) : state.tradeFeed.length === 0 && state.loading ? (
               <div className="py-16 text-center">
@@ -1478,6 +1642,9 @@ export default function MemberDashboard() {
             </section>
           </section>
         </main>
+
+        {/* Debug Panel - Development Only */}
+        <DebugPanel state={state} onTestStartBot={testStartBot} />
       </div>
     </DashboardErrorBoundary>
   );
