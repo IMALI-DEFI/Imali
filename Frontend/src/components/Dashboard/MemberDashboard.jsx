@@ -28,6 +28,11 @@ import {
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
 
+// Import NFT images for tier cards
+import nftStarter from "../../assets/images/nfts/nft-starter.png";
+import nftPro from "../../assets/images/nfts/nft-pro.png";
+import nftElite from "../../assets/images/nfts/nft-elite.png";
+
 ChartJS.register(ArcElement, Tooltip);
 
 // ============================================================================
@@ -53,6 +58,38 @@ const TIER_RANK = {
   legendary: 3,
   bundle: 3,
   enterprise: 4,
+};
+
+// Tier display configuration with images
+const TIER_CONFIG = {
+  starter: {
+    name: "Starter",
+    image: nftStarter,
+    alt: "Starter NFT - Free tier access",
+    color: "from-emerald-500/20 to-teal-500/10",
+    borderColor: "border-emerald-500/30",
+  },
+  pro: {
+    name: "Pro",
+    image: nftPro,
+    alt: "Pro NFT - Professional trading tier",
+    color: "from-blue-600/20 to-indigo-500/10",
+    borderColor: "border-blue-500/30",
+  },
+  elite: {
+    name: "Elite",
+    image: nftElite,
+    alt: "Elite NFT - Advanced trading tier",
+    color: "from-purple-600/20 to-pink-500/10",
+    borderColor: "border-purple-500/30",
+  },
+  enterprise: {
+    name: "Enterprise",
+    image: null,
+    alt: "Enterprise - Custom solutions",
+    color: "from-indigo-600/20 to-purple-500/10",
+    borderColor: "border-indigo-500/30",
+  },
 };
 
 const TRADING_TYPES = [
@@ -404,6 +441,61 @@ class DashboardErrorBoundary extends React.Component {
 }
 
 // ============================================================================
+// TIER UPGRADE CARD COMPONENT WITH IMAGE
+// ============================================================================
+
+function TierUpgradeCard({ currentTier, onUpgrade }) {
+  const tier = TIER_CONFIG[currentTier] || TIER_CONFIG.starter;
+  const nextTiers = [
+    { id: "pro", config: TIER_CONFIG.pro, price: "$19/mo" },
+    { id: "elite", config: TIER_CONFIG.elite, price: "$49/mo" },
+  ];
+
+  // Don't show if already on Elite
+  if (currentTier === "elite" || currentTier === "enterprise") return null;
+
+  const nextTier = nextTiers.find(t => t.id === currentTier ? t.id === "pro" : t.id === "elite") || nextTiers[0];
+
+  return (
+    <section className={`rounded-[2rem] border ${nextTier.config.borderColor} bg-gradient-to-br ${nextTier.config.color} p-5`}>
+      <div className="flex flex-col sm:flex-row items-center gap-5">
+        {/* NFT Image */}
+        <div className="shrink-0">
+          <img
+            src={nextTier.config.image}
+            alt={nextTier.config.alt}
+            className="h-24 w-24 rounded-2xl object-cover shadow-lg ring-2 ring-white/20"
+            loading="lazy"
+          />
+        </div>
+
+        <div className="flex-1 text-center sm:text-left">
+          <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+            <h3 className="text-2xl font-black">{nextTier.config.name} Plan</h3>
+            <span className="rounded-full bg-amber-400/20 px-3 py-1 text-xs font-bold text-amber-300">
+              {nextTier.price}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-white/70">
+            {currentTier === "starter" 
+              ? "Upgrade to Pro for live crypto & stock trading, AI strategies, and advanced analytics."
+              : "Upgrade to Elite for futures trading, DEX sniper, staking, lending, and NFT membership benefits."}
+          </p>
+        </div>
+
+        <button
+          onClick={onUpgrade}
+          className="shrink-0 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 font-black text-white transition hover:from-amber-600 hover:to-orange-600"
+        >
+          <FaCrown className="inline mr-2" />
+          Upgrade to {nextTier.config.name}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
@@ -424,6 +516,9 @@ export default function MemberDashboard() {
 
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const previousActiveType = usePrevious(state.activeType);
+
+  // Get current tier config for display
+  const currentTierConfig = TIER_CONFIG[normalizeTier(state.userTier)] || TIER_CONFIG.starter;
 
   // Memoized derived values for performance
   const activeTab = useMemo(
@@ -1054,26 +1149,42 @@ export default function MemberDashboard() {
             </div>
           )}
 
-          {/* Welcome Section */}
+          {/* Welcome Section with Tier Image */}
           <section>
-            <p className="text-white/50">Welcome back,</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-2xl font-black">IMALI Trader</h2>
-              <span className="rounded-lg bg-emerald-400/15 px-2 py-1 text-xs font-black text-emerald-300">
-                {normalizeTier(state.userTier).toUpperCase()} PLAN
-              </span>
-              {state.refreshing && (
-                <span className="text-xs text-cyan-300" aria-label="Refreshing data">
-                  <FaSpinner className="inline animate-spin mr-1" />
-                  Updating
-                </span>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/* Current Tier NFT Image */}
+              {currentTierConfig.image && (
+                <div className="shrink-0">
+                  <img
+                    src={currentTierConfig.image}
+                    alt={currentTierConfig.alt}
+                    className="h-16 w-16 rounded-xl object-cover shadow-lg ring-2 ring-cyan-400/30"
+                    loading="lazy"
+                  />
+                </div>
               )}
-            </div>
-            <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
+              
+              <div className="flex-1">
+                <p className="text-white/50">Welcome back,</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-black">IMALI Trader</h2>
+                  <span className={`rounded-lg px-2 py-1 text-xs font-black ${currentTierConfig.borderColor} bg-opacity-15`}>
+                    {normalizeTier(state.userTier).toUpperCase()} PLAN
+                  </span>
+                  {state.refreshing && (
+                    <span className="text-xs text-cyan-300" aria-label="Refreshing data">
+                      <FaSpinner className="inline animate-spin mr-1" />
+                      Updating
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              <StatusPill running={state.botRunning} />
-              <ModePill mode={state.botMode} />
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <StatusPill running={state.botRunning} />
+                  <ModePill mode={state.botMode} />
+                </div>
+              </div>
             </div>
           </section>
 
@@ -1116,6 +1227,12 @@ export default function MemberDashboard() {
             onConnect={handleConnect}
             onUpgrade={() => navigate("/billing-dashboard")}
             lastUpdated={state.lastUpdated}
+          />
+
+          {/* Tier Upgrade Card - Shows upgrade path with NFT image */}
+          <TierUpgradeCard 
+            currentTier={normalizeTier(state.userTier)}
+            onUpgrade={() => navigate("/billing-dashboard")}
           />
 
           {/* Account Overview */}
