@@ -729,20 +729,15 @@ export default function MemberDashboard() {
     lastFetchTimeRef.current.strategies = Date.now();
   }, []);
 
-  // FIXED: fetchBotStatus - correctly parses API response
   const fetchBotStatus = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getTradingBotStatus?.(true));
     const d = unwrapData(res);
     
-    // Handle the API response structure correctly
-    // API returns { success: true, data: [...] }
     const list = Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : []);
-    
     const running = list.some(bot => bot.isRunning === true);
     
     dispatch({ type: ACTIONS.SET_BOT_RUNNING, payload: running });
     
-    // Get the first running bot for additional info
     const runningBot = list.find(bot => bot.isRunning === true);
     
     if (runningBot) {
@@ -755,7 +750,6 @@ export default function MemberDashboard() {
       if (botPositions > 0) dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: botPositions });
     }
     
-    // Also update from the summary if available
     if (d.summary) {
       const open = num(d.summary.open_positions ?? d.summary.openPositions);
       if (open > 0) dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: open });
@@ -854,24 +848,50 @@ export default function MemberDashboard() {
     if (open > 0) dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: open });
   }, [activeTab.exchange]);
 
+  // FIXED: fetchTradeFeed - shows REAL live trades, not paper trades
   const fetchTradeFeed = useCallback(async () => {
-    const res = await fetchWithRetry(() => BotAPI.getLiveTradeHistory?.(20, activeTab.exchange, true));
-    const d = unwrapData(res);
-    const trades = d.trades || d.data || [];
-
-    const formattedTrades = trades.slice(0, 20).map((trade) => ({
-      id: trade.id || Date.now() + Math.random(),
-      symbol: trade.symbol || trade.asset || "Unknown",
-      side: trade.side || (trade.pnl && trade.pnl > 0 ? "take_profit" : "stop_loss"),
-      pnl: num(trade.pnl || trade.profit_loss || 0),
-      quantity: num(trade.quantity || trade.qty || 0),
-      price: num(trade.price || 0),
-      time: trade.time ? new Date(trade.time).toLocaleTimeString() : new Date().toLocaleTimeString(),
-      type: trade.type || (trade.pnl > 0 ? "Take Profit" : "Stop Loss"),
-    }));
-
-    if (formattedTrades.length) {
-      dispatch({ type: ACTIONS.SET_TRADE_FEED, payload: formattedTrades });
+    try {
+      const res = await fetchWithRetry(() => BotAPI.getLiveTradeHistory?.(20, activeTab.exchange, true));
+      const d = unwrapData(res);
+      const trades = d.trades || d.data || [];
+      
+      const formattedTrades = trades.slice(0, 20).map((trade) => {
+        // Determine trade type based on exit reason or PnL
+        let tradeType = "Trade";
+        if (trade.exit_reason === 'take_profit') tradeType = 'Take Profit';
+        else if (trade.exit_reason === 'stop_loss') tradeType = 'Stop Loss';
+        else if (trade.pnl_usd > 0) tradeType = 'Take Profit';
+        else if (trade.pnl_usd < 0) tradeType = 'Stop Loss';
+        
+        // Clean symbol name for display
+        let displaySymbol = trade.symbol || "Unknown";
+        displaySymbol = displaySymbol.replace('-USDT', '').replace('/USDT', '');
+        
+        return {
+          id: trade.id || Date.now() + Math.random(),
+          symbol: displaySymbol,
+          fullSymbol: trade.symbol,
+          side: trade.side,
+          pnl: num(trade.pnl_usd || 0),
+          pnlPercent: num(trade.pnl_percent || 0),
+          quantity: num(trade.qty || 0),
+          price: num(trade.price || 0),
+          exitPrice: num(trade.exit_price || 0),
+          time: trade.closed_at ? new Date(trade.closed_at).toLocaleTimeString() : 
+                 trade.created_at ? new Date(trade.created_at).toLocaleTimeString() : 
+                 new Date().toLocaleTimeString(),
+          type: tradeType,
+          status: trade.status,
+          mode: trade.mode || 'live',
+          simulated: trade.simulated === false ? false : true,
+        };
+      });
+      
+      if (formattedTrades.length) {
+        dispatch({ type: ACTIONS.SET_TRADE_FEED, payload: formattedTrades });
+      }
+    } catch (err) {
+      console.warn("Failed to fetch live trades:", err);
     }
   }, [activeTab.exchange]);
 
@@ -1489,7 +1509,7 @@ export default function MemberDashboard() {
             )}
           </section>
 
-          {/* Trade Feed Section */}
+          {/* Trade Feed Section - NOW SHOWING REAL LIVE TRADES */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
             <div className="flex items-center justify-between gap-3 mb-5">
               <div className="flex items-center gap-2">
@@ -1499,7 +1519,7 @@ export default function MemberDashboard() {
               {state.botRunning && (
                 <div className="flex items-center gap-2 text-emerald-400 text-sm">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Bot Running
+                  Bot Running • LIVE MODE
                 </div>
               )}
             </div>
@@ -1515,7 +1535,7 @@ export default function MemberDashboard() {
             ) : state.tradeFeed.length === 0 && state.loading ? (
               <div className="py-16 text-center">
                 <FaSpinner className="animate-spin text-3xl text-cyan-300 mx-auto" />
-                <p className="mt-4 text-white/40">Loading trades...</p>
+                <p className="mt-4 text-white/40">Loading live trades...</p>
               </div>
             ) : (
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
@@ -1525,14 +1545,22 @@ export default function MemberDashboard() {
                       <div className="text-3xl">{getStockIcon(trade.symbol)}</div>
                       <div className="min-w-0">
                         <div className="font-bold">{trade.symbol}</div>
-                        <div className="text-xs text-white/40">{trade.type} • {trade.time}</div>
+                        <div className="text-xs text-white/40">
+                          {trade.type} • {trade.time}
+                          {trade.mode === 'live' && <span className="ml-1 text-emerald-400">● LIVE</span>}
+                        </div>
                         {trade.price > 0 && (
-                          <div className="text-xs text-white/30 mt-1">@{formatMoney(trade.price)}</div>
+                          <div className="text-xs text-white/30 mt-1">@ {formatMoney(trade.price)}</div>
                         )}
                       </div>
                     </div>
                     <div className={`font-bold text-lg ${trade.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {trade.pnl >= 0 ? "+" : ""}{formatMoney(trade.pnl)}
+                      {trade.pnlPercent !== 0 && (
+                        <span className={`text-xs ml-1 ${trade.pnl >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
+                          ({trade.pnl >= 0 ? "+" : ""}{trade.pnlPercent.toFixed(2)}%)
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
