@@ -756,21 +756,67 @@ export default function MemberDashboard() {
     }
   }, [getStrategy]);
 
+  // ============================================================================
+  // FIXED: fetchIntegrationStatus with resilient parsing
+  // ============================================================================
   const fetchIntegrationStatus = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getIntegrationStatus?.(true));
     const d = unwrapData(res);
-
+    
+    // Helper to safely convert to boolean
+    const toBool = (val) => val === true || val === "true" || val === 1 || val === "1";
+    
+    // Try multiple possible field names (backward compatible)
+    const okxConnected = toBool(
+      d.okx_connected ??
+      d.okxConnected ??
+      d.okx?.connected ??
+      (d.okx_api_key_masked || d.okx_key_masked || d.okxKeyMasked ? true : false)
+    );
+    
+    const alpacaConnected = toBool(
+      d.alpaca_connected ??
+      d.alpacaConnected ??
+      d.alpaca?.connected ??
+      (d.alpaca_api_key_masked || d.alpaca_key_masked || d.alpacaKeyMasked ? true : false)
+    );
+    
+    const walletConnected = toBool(
+      d.wallet_connected ??
+      d.walletConnected ??
+      d.wallet?.connected
+    );
+    
+    const okxMode = normalizeMode(d.okx_mode ?? d.okxMode ?? d.okx?.mode ?? "paper");
+    const alpacaMode = normalizeMode(d.alpaca_mode ?? d.alpacaMode ?? d.alpaca?.mode ?? "paper");
+    
     dispatch({
       type: ACTIONS.SET_CONNECTIONS,
       payload: {
-        okx: { connected: Boolean(d.okx_connected), mode: normalizeMode(d.okx_mode), keyMasked: d.okx_api_key_masked || "" },
-        alpaca: { connected: Boolean(d.alpaca_connected), mode: normalizeMode(d.alpaca_mode), keyMasked: d.alpaca_api_key_masked || "" },
-        wallet: { connected: Boolean(d.wallet_connected), mode: "live", keyMasked: d.wallet_address_masked || "" },
+        okx: {
+          connected: okxConnected,
+          mode: okxMode,
+          keyMasked: d.okx_api_key_masked ?? d.okx_key_masked ?? d.okxKeyMasked ?? d.okx?.keyMasked ?? "",
+        },
+        alpaca: {
+          connected: alpacaConnected,
+          mode: alpacaMode,
+          keyMasked: d.alpaca_api_key_masked ?? d.alpaca_key_masked ?? d.alpacaKeyMasked ?? d.alpaca?.keyMasked ?? "",
+        },
+        wallet: {
+          connected: walletConnected,
+          mode: "live",
+          keyMasked: d.wallet_address_masked ?? d.walletAddressMasked ?? d.wallet?.address_masked ?? "",
+        },
       },
     });
 
-    if (activeTab.connectionKey === "okx") dispatch({ type: ACTIONS.SET_BOT_MODE, payload: d.okx_mode });
-    if (activeTab.connectionKey === "alpaca") dispatch({ type: ACTIONS.SET_BOT_MODE, payload: d.alpaca_mode });
+    if (activeTab.connectionKey === "okx") {
+      dispatch({ type: ACTIONS.SET_BOT_MODE, payload: okxMode });
+    }
+    if (activeTab.connectionKey === "alpaca") {
+      dispatch({ type: ACTIONS.SET_BOT_MODE, payload: alpacaMode });
+    }
     
     lastFetchTimeRef.current.integrations = Date.now();
   }, [activeTab.connectionKey]);
@@ -856,14 +902,12 @@ export default function MemberDashboard() {
       const trades = d.trades || d.data || [];
       
       const formattedTrades = trades.slice(0, 20).map((trade) => {
-        // Determine trade type based on exit reason or PnL
         let tradeType = "Trade";
         if (trade.exit_reason === 'take_profit') tradeType = 'Take Profit';
         else if (trade.exit_reason === 'stop_loss') tradeType = 'Stop Loss';
         else if (trade.pnl_usd > 0) tradeType = 'Take Profit';
         else if (trade.pnl_usd < 0) tradeType = 'Stop Loss';
         
-        // Clean symbol name for display
         let displaySymbol = trade.symbol || "Unknown";
         displaySymbol = displaySymbol.replace('-USDT', '').replace('/USDT', '');
         
