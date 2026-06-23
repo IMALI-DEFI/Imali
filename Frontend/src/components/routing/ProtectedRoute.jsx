@@ -11,35 +11,42 @@ function Spinner() {
   );
 }
 
-/**
- * ProtectedRoute — single source of truth for billing & activation.
- *
- * Logic:
- *  1. Not logged in → /login
- *  2. Admin → always allowed
- *  3. Free tier (starter, enterprise) → allowed
- *  4. Paid tier (pro, elite) → MUST have billing_complete
- *  5. If requireActivation is true → MUST have exchange connected
- */
 export default function ProtectedRoute({
   children,
   requirePaid = true,
   requireActivation = false,
+  fallbackPath = "/billing",
 }) {
   const { user, isAdmin, activation, loading, isAuthenticated } = useAuth();
   const location = useLocation();
 
+  // 1. Loading
   if (loading) return <Spinner />;
+
+  // 2. Not logged in
   if (!isAuthenticated || !user)
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+
+  // 3. Admin bypass
   if (isAdmin || user?.is_admin || user?.email === "wayne@imali-defi.com")
     return children;
 
   const tier = (user?.tier || "starter").toLowerCase();
-  const freeTiers = ["starter", "enterprise"];
 
-  // ---------- PAID TIER CHECK ----------
-  if (requirePaid && !freeTiers.includes(tier)) {
+  // 4. Enterprise — must be approved
+  if (tier === "enterprise") {
+    if (!activation?.enterprise_approved && !user?.enterprise_approved) {
+      return <Navigate to="/enterprise-pending" state={{ from: location.pathname }} replace />;
+    }
+    // Approved enterprise users skip billing entirely
+    return children;
+  }
+
+  // 5. Starter — no payment needed
+  if (tier === "starter") return children;
+
+  // 6. Paid tier (pro, elite) — MUST have billing_complete
+  if (requirePaid) {
     const hasPaid =
       user?.subscription_status === "active" ||
       user?.subscription_status === "trialing" ||
@@ -51,7 +58,7 @@ export default function ProtectedRoute({
     if (!hasPaid) {
       return (
         <Navigate
-          to={`/billing?tier=${tier}&email=${encodeURIComponent(user?.email || "")}`}
+          to={`${fallbackPath}?tier=${tier}&email=${encodeURIComponent(user?.email || "")}`}
           state={{ from: location.pathname, blocked: true }}
           replace
         />
@@ -59,8 +66,8 @@ export default function ProtectedRoute({
     }
   }
 
-  // ---------- ACTIVATION CHECK ----------
-  if (requireActivation && !freeTiers.includes(tier)) {
+  // 7. Activation check
+  if (requireActivation) {
     const isActivated =
       activation?.activation_complete ||
       activation?.trading_enabled ||
