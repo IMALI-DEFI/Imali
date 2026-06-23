@@ -1,46 +1,101 @@
-// src/pages/SignupForm.jsx - FIXED (Proper tier handling & redirects)
+// src/pages/SignupForm.jsx - REWRITTEN (Simplified: Starter/Pro/Elite + profit share + token context)
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const TIERS = {
-  starter: { name: "Starter", price: "$0", period: "7-day trial", icon: "🌱", requiresPayment: false, redirectTo: "/dashboard" },
-  pro: { name: "Pro", price: "$19", period: "month", icon: "⭐", requiresPayment: true, redirectTo: "/activation" },
-  elite: { name: "Elite", price: "$49", period: "month", icon: "👑", requiresPayment: true, redirectTo: "/activation" },
-  enterprise: { name: "Enterprise", price: "Custom", period: "", icon: "🏢", requiresPayment: false, redirectTo: "/enterprise-pending" },
+  starter: {
+    name: "Starter",
+    price: "$0",
+    period: "7‑day trial",
+    icon: "🌱",
+    requiresPayment: false,
+    redirectTo: "/dashboard",
+    profitShare: null,
+  },
+  pro: {
+    name: "Pro",
+    price: "$19",
+    period: "/month",
+    icon: "⭐",
+    requiresPayment: true,
+    redirectTo: "/billing",
+    profitShare: 10,
+  },
+  elite: {
+    name: "Elite",
+    price: "$49",
+    period: "/month",
+    icon: "👑",
+    requiresPayment: true,
+    redirectTo: "/billing",
+    profitShare: 8,
+  },
+  enterprise: {
+    name: "Enterprise",
+    price: "Custom",
+    period: "",
+    icon: "🏢",
+    requiresPayment: false,
+    redirectTo: "/enterprise-pending",
+  },
 };
 
 export default function SignupForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const { signup } = useAuth();
-  
+
+  // Read tier from URL params → route state → default
   const params = new URLSearchParams(location.search);
-  const selectedTier = params.get("tier") || params.get("plan") || "starter";
-  
-  // Validate selected tier is valid
-  const validTiers = ["starter", "pro", "elite", "enterprise"];
+  const routeTier = location.pathname.split("/").pop(); // handles /signup/:tier
+  const stateTier = location.state?.tier;
+  const selectedTier =
+    params.get("tier") || params.get("plan") ||
+    (routeTier && routeTier !== "signup" ? routeTier : null) ||
+    stateTier ||
+    "starter";
+
+  const validTiers = Object.keys(TIERS);
   const initialTier = validTiers.includes(selectedTier) ? selectedTier : "starter";
-  
+
+  // Billing model & token tier from pricing page state
+  const initialBillingModel = location.state?.billingModel || "fixed";
+  const initialProfitSharePct = location.state?.profitSharePct || null;
+  const initialTokenTier = location.state?.tokenTier || "none";
+
   const [form, setForm] = useState({
     email: "",
     password: "",
     confirmPassword: "",
     acceptTerms: false,
     tier: initialTier,
+    billingModel: initialBillingModel,
+    profitSharePct: initialProfitSharePct,
+    tokenTier: initialTokenTier,
   });
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Sync tier from URL changes
   useEffect(() => {
     setForm(f => ({ ...f, tier: initialTier }));
   }, [initialTier]);
 
+  // Sync billing context from location state (e.g., after pricing page selection)
+  useEffect(() => {
+    setForm(f => ({
+      ...f,
+      billingModel: initialBillingModel,
+      profitSharePct: initialProfitSharePct,
+      tokenTier: initialTokenTier,
+    }));
+  }, [initialBillingModel, initialProfitSharePct, initialTokenTier]);
+
   const handleTierChange = (tierId) => {
     setForm(f => ({ ...f, tier: tierId }));
-    // Update URL without reload
-    navigate(`/signup?tier=${tierId}`, { replace: true });
+    navigate(`/signup?tier=${tierId}`, { replace: true, state: location.state });
   };
 
   const validate = () => {
@@ -55,47 +110,56 @@ export default function SignupForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
-    
+
     const validationError = validate();
     if (validationError) {
       setError(validationError);
       return;
     }
-    
+
     setLoading(true);
     setError("");
-    
+
     try {
       const result = await signup({
         email: form.email.trim().toLowerCase(),
         password: form.password,
         tier: form.tier,
         accepted_terms: form.acceptTerms,
+        billingModel: form.billingModel,
+        profitSharePct: form.profitSharePct,
+        tokenTier: form.tokenTier,
       });
-      
+
       if (!result?.success) {
         setError(result?.error || "Signup failed. Please try again.");
         setLoading(false);
         return;
       }
-      
-      // Get redirect path from result or use tier-based default
-      const tierConfig = TIERS[form.tier] || TIERS.starter;
-      let redirectPath = result.redirectTo || tierConfig.redirectTo;
-      
-      // Special handling for enterprise (pending approval)
+
+      // Determine redirect path
+      let redirectPath;
+
       if (result.requiresApproval || form.tier === "enterprise") {
         redirectPath = "/enterprise-pending";
-      }
-      
-      // CRITICAL: Starter users go to dashboard (not trade-demo)
-      if (form.tier === "starter") {
+      } else if (form.tier === "starter") {
         redirectPath = "/dashboard";
+      } else if (TIERS[form.tier]?.requiresPayment) {
+        // Paid tiers → go to billing with full context
+        redirectPath = `/billing?tier=${form.tier}&email=${encodeURIComponent(form.email.trim().toLowerCase())}`;
+      } else {
+        redirectPath = result.redirectTo || TIERS[form.tier]?.redirectTo || "/dashboard";
       }
-      
-      // Redirect to the determined path
-      navigate(redirectPath, { replace: true });
-      
+
+      navigate(redirectPath, {
+        replace: true,
+        state: {
+          tier: form.tier,
+          billingModel: form.billingModel,
+          profitSharePct: form.profitSharePct,
+          tokenTier: form.tokenTier,
+        },
+      });
     } catch (err) {
       setError(err?.message || "Signup failed. Please try again.");
       setLoading(false);
@@ -107,12 +171,14 @@ export default function SignupForm() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 to-black px-4 py-12">
       <div className="w-full max-w-md">
-        
         <div className="text-center mb-8">
           <div className="text-5xl mb-3">{currentTier.icon}</div>
           <h1 className="text-3xl font-bold text-white">Create your account</h1>
           <p className="text-gray-400 mt-2">
-            {currentTier.name} Plan • {currentTier.price}/{currentTier.period}
+            {currentTier.name} Plan
+            {form.billingModel === "profit_share" && form.profitSharePct
+              ? ` · ${form.profitSharePct}% profit share`
+              : ` · ${currentTier.price}${currentTier.period}`}
           </p>
         </div>
 
@@ -138,8 +204,17 @@ export default function SignupForm() {
           </div>
         </div>
 
+        {/* Token discount hint if applicable */}
+        {form.tokenTier && form.tokenTier !== "none" && (
+          <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
+            🎉 IMALI token discount active –{" "}
+            {form.billingModel === "profit_share"
+              ? `profit share reduced accordingly`
+              : `${form.tokenTier === "bronze" ? "5%" : form.tokenTier === "silver" ? "10%" : form.tokenTier === "gold" ? "15%" : "20%"} off monthly price`}
+          </div>
+        )}
+
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur">
-          
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
               {error}
@@ -157,7 +232,6 @@ export default function SignupForm() {
               className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               disabled={loading}
             />
-
             <input
               type="password"
               required
@@ -168,7 +242,6 @@ export default function SignupForm() {
               className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               disabled={loading}
             />
-
             <input
               type="password"
               required
@@ -190,8 +263,8 @@ export default function SignupForm() {
               />
               <span>
                 I agree to the{" "}
-                <Link to="/terms" className="text-emerald-400 underline">Terms of Service</Link>
-                {" "}and{" "}
+                <Link to="/terms" className="text-emerald-400 underline">Terms of Service</Link>{" "}
+                and{" "}
                 <Link to="/privacy" className="text-emerald-400 underline">Privacy Policy</Link>
               </span>
             </label>
@@ -201,10 +274,13 @@ export default function SignupForm() {
               disabled={loading}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-semibold disabled:opacity-50 transition hover:from-emerald-500 hover:to-cyan-500"
             >
-              {loading ? "Creating account..." : 
-                form.tier === "starter" ? "Start Free Trial →" : 
-                form.tier === "enterprise" ? "Request Enterprise Access →" :
-                `Start ${currentTier.name} →`}
+              {loading
+                ? "Creating account..."
+                : form.tier === "starter"
+                ? "Start Free Trial →"
+                : form.tier === "enterprise"
+                ? "Request Enterprise Access →"
+                : `Start ${currentTier.name} (${currentTier.price}/mo) →`}
             </button>
           </form>
         </div>
@@ -217,7 +293,7 @@ export default function SignupForm() {
         <div className="mt-6 text-center text-xs text-gray-500">
           {form.tier === "starter" ? (
             <>
-              <span>✅ 7-day free trial</span>
+              <span>✅ 7‑day free trial</span>
               <span className="mx-2">•</span>
               <span>💰 $1,000 paper trading</span>
               <span className="mx-2">•</span>
@@ -242,6 +318,12 @@ export default function SignupForm() {
               <span>🔄 Cancel anytime</span>
               <span className="mx-2">•</span>
               <span>🚀 Full live trading access</span>
+              {form.billingModel === "profit_share" && (
+                <>
+                  <span className="mx-2">•</span>
+                  <span>💡 Profit share billing</span>
+                </>
+              )}
             </>
           )}
         </div>
