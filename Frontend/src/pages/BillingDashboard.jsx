@@ -1,5 +1,5 @@
-// src/pages/BillingDashboard.jsx - REWRITTEN (Fixed API calls & tier handling)
-import React, { useState, useEffect } from "react";
+// src/pages/BillingDashboard.jsx - REWRITTEN (Fixed routing, tier handling, validation)
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
@@ -90,11 +90,13 @@ const TIERS = {
   },
 };
 
-const PRICE_ORDER = {
-  starter: 0,
-  pro: 19,
-  elite: 49,
-  enterprise: Infinity,
+// Price ordering for upgrade/downgrade detection
+const getPrice = (tierId) => {
+  if (tierId === "starter") return 0;
+  if (tierId === "pro") return 19;
+  if (tierId === "elite") return 49;
+  if (tierId === "enterprise") return Infinity;
+  return 0;
 };
 
 // ============================================================================
@@ -102,15 +104,19 @@ const PRICE_ORDER = {
 // ============================================================================
 const safeApiCall = async (method, ...args) => {
   if (!BotAPI) {
-    console.warn(`BotAPI is not defined`);
+    console.warn("BotAPI is not defined");
     return { success: false, error: "BotAPI not available", demoMode: true };
   }
-  
+
   if (typeof BotAPI[method] !== "function") {
     console.warn(`BotAPI.${method} is not a function`);
-    return { success: false, error: `Method ${method} not available`, demoMode: true };
+    return {
+      success: false,
+      error: `Method ${method} not available`,
+      demoMode: true,
+    };
   }
-  
+
   try {
     const result = await BotAPI[method](...args);
     return { success: true, data: result };
@@ -123,56 +129,186 @@ const safeApiCall = async (method, ...args) => {
 export default function BillingDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, refreshUser, activationComplete, hasCardOnFile } = useAuth();
-  
+  const { user, refreshUser, hasCardOnFile } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [hasCard, setHasCard] = useState(false);
   const [upgrading, setUpgrading] = useState(null);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [autoUpgradeHandled, setAutoUpgradeHandled] = useState(false);
 
   const currentTierId = user?.tier || "starter";
   const currentTier = TIERS[currentTierId] || TIERS.starter;
 
   // Check if user came from upgrade flow
-  const fromCheckout = location.state?.fromCheckout || location.search.includes("checkout=success");
+  const fromCheckout =
+    location.state?.fromCheckout || location.search.includes("checkout=success");
   const pendingTier = location.state?.pendingTier || null;
+  const preselectedTier = location.state?.selectedTier || null;
 
+  // ==========================================================================
+  // HANDLE PLAN CHANGE LOGIC (wrapped in useCallback for the auto-trigger)
+  // ==========================================================================
+  const handleChangePlan = useCallback(
+    async (newTierId) => {
+      if (upgrading) return;
+
+      // Validate tier exists
+      if (!TIERS[newTierId]) {
+        setError(
+          `Invalid plan selected: "${newTierId}". Please choose a valid plan.`
+        );
+        return;
+      }
+
+      // Prevent selecting current tier
+      if (newTierId === currentTierId) {
+        setError(`You are already on the ${TIERS[newTierId].name} plan.`);
+        return;
+      }
+
+      const newTier = TIERS[newTierId];
+      const currentPrice = getPrice(currentTierId);
+      const newPrice = getPrice(newTierId);
+      const isUpgrade = newPrice > currentPrice;
+
+      setUpgrading(newTierId);
+      setError(null);
+      setSuccessMessage(null);
+
+      try {
+        // Case 1: Enterprise - contact sales
+        if (newTierId === "enterprise") {
+          window.location.href =
+            "mailto:sales@imali-defi.com?subject=Enterprise%20Plan%20Inquiry&body=I'm%20interested%20in%20the%20Enterprise%20plan%20for%20IMALI.%20Please%20contact%20me.";
+          setUpgrading(null);
+          return;
+        }
+
+        // Case 2: Starter (free trial) - no payment needed
+        if (newTierId === "starter") {
+          const result = await safeApiCall("changePlan", newTierId);
+
+          if (result.success) {
+            setSuccessMessage(
+              `Successfully switched to ${newTier.name} plan.`
+            );
+            if (refreshUser) await refreshUser();
+            setTimeout(() => window.location.reload(), 1500);
+          } else {
+            throw new Error(result.error || "Failed to change plan");
+          }
+          setUpgrading(null);
+          return;
+        }
+
+        // Case 3: No payment method for paid plan - redirect to add card
+        if (!hasCard && newTier.requiresPayment) {
+          navigate("/billing/add-card", {
+            state: {
+              tier: newTierId,
+              returnTo: "/billing",
+              isUpgrade: true,
+            },
+          });
+          setUpgrading(null);
+          return;
+        }
+
+        // Case 4: Actually change the plan
+        let result;
+
+        if (isUpgrade) {
+          result = await safeApiCall("upgradeSubscription", newTierId);
+          if (!result.success) {
+            result = await safeApiCall("changePlan", newTierId);
+          }
+        } else {
+          result = await safeApiCall("downgradeSubscription", newTierId);
+          if (!result.success) {
+            result = await safeApiCall("changePlan", newTierId);
+          }
+        }
+
+        if (result.success) {
+          // Check if Stripe checkout is needed
+          if (result.data?.requires_checkout && result.data?.checkout_url) {
+            window.location.href = result.data.checkout_url;
+            return;
+          }
+
+          setSuccessMessage(
+            `Successfully ${isUpgrade ? "upgraded to" : "downgraded to"} ${
+              newTier.name
+            } plan!`
+          );
+
+          if (refreshUser) await refreshUser();
+          setTimeout(() => window.location.reload(), 1500);
+        } else {
+          throw new Error(
+            result.error || `Failed to change to ${newTier.name} plan`
+          );
+        }
+      } catch (err) {
+        console.error("Plan change failed:", err);
+        setError(
+          err.message ||
+            `Failed to change to ${newTier.name} plan. Please try again.`
+        );
+      } finally {
+        setUpgrading(null);
+      }
+    },
+    [upgrading, currentTierId, hasCard, navigate, refreshUser]
+  );
+
+  // ==========================================================================
+  // INITIAL DATA LOAD
+  // ==========================================================================
   useEffect(() => {
     if (!user) {
       navigate("/login");
       return;
     }
-    
+
     // Show success message from checkout
-    if (fromCheckout) {
-      setSuccessMessage(`Successfully upgraded to ${pendingTier || "Pro"} plan! Your dashboard has been updated.`);
-      // Clear the state to prevent showing message again on refresh
+    if (fromCheckout && pendingTier) {
+      setSuccessMessage(
+        `Successfully upgraded to ${
+          TIERS[pendingTier]?.name || pendingTier
+        } plan! Your dashboard has been updated.`
+      );
       window.history.replaceState({}, document.title);
     }
-    
+
     const loadData = async () => {
       try {
-        // Try to get card status from multiple sources
         let cardStatus = false;
-        
-        // First check AuthContext
+
         if (hasCardOnFile !== undefined) {
           cardStatus = hasCardOnFile;
         }
-        
-        // Then try BotAPI
+
         if (BotAPI && typeof BotAPI.getCardStatus === "function") {
           const status = await BotAPI.getCardStatus();
-          cardStatus = cardStatus || status?.has_card || status?.has_card_on_file || false;
+          cardStatus =
+            cardStatus ||
+            status?.has_card ||
+            status?.has_card_on_file ||
+            false;
         }
-        
-        // Also check activation status
+
         if (BotAPI && typeof BotAPI.getActivationStatus === "function") {
           const activation = await BotAPI.getActivationStatus();
-          cardStatus = cardStatus || activation?.has_card_on_file || activation?.billing_complete || false;
+          cardStatus =
+            cardStatus ||
+            activation?.has_card_on_file ||
+            activation?.billing_complete ||
+            false;
         }
-        
+
         setHasCard(cardStatus);
         setError(null);
       } catch (err) {
@@ -182,112 +318,41 @@ export default function BillingDashboard() {
         setLoading(false);
       }
     };
-    
+
     loadData();
   }, [user, navigate, hasCardOnFile, fromCheckout, pendingTier]);
 
-  const handleChangePlan = async (newTierId) => {
-    if (upgrading) return;
-    
-    const newTier = TIERS[newTierId];
-    if (!newTier) {
-      setError("Invalid plan selected");
-      return;
+  // ==========================================================================
+  // AUTO-TRIGGER UPGRADE IF TIER WAS PRESELECTED FROM PRICING PAGE
+  // ==========================================================================
+  useEffect(() => {
+    if (
+      preselectedTier &&
+      !loading &&
+      user &&
+      !autoUpgradeHandled &&
+      preselectedTier !== currentTierId
+    ) {
+      setAutoUpgradeHandled(true);
+      // Clear the state so refresh doesn't re-trigger
+      window.history.replaceState({}, document.title);
+      // Small delay to ensure component is fully rendered
+      setTimeout(() => {
+        handleChangePlan(preselectedTier);
+      }, 300);
     }
-    
-    const currentPrice = PRICE_ORDER[currentTierId] || 0;
-    const newPrice = PRICE_ORDER[newTierId] || Infinity;
-    const isUpgrade = newPrice > currentPrice;
-    
-    setUpgrading(newTierId);
-    setError(null);
-    setSuccessMessage(null);
-    
-    try {
-      // Case 1: Enterprise - contact sales
-      if (newTierId === "enterprise") {
-        window.location.href = "mailto:sales@imali-defi.com?subject=Enterprise%20Plan%20Inquiry&body=I'm%20interested%20in%20the%20Enterprise%20plan%20for%20IMALI.%20Please%20contact%20me.";
-        setUpgrading(null);
-        return;
-      }
-      
-      // Case 2: Starter (free trial) - no payment needed
-      if (newTierId === "starter") {
-        if (currentTierId === "starter") {
-          setError("You are already on the Starter plan");
-          setUpgrading(null);
-          return;
-        }
-        
-        const result = await safeApiCall("changePlan", newTierId);
-        
-        if (result.success) {
-          setSuccessMessage(`Successfully switched to ${newTier.name} plan.`);
-          if (refreshUser) await refreshUser();
-          setTimeout(() => window.location.reload(), 1500);
-        } else {
-          throw new Error(result.error || "Failed to change plan");
-        }
-        setUpgrading(null);
-        return;
-      }
-      
-      // Case 3: No payment method for paid plan - redirect to add card
-      if (!hasCard && newTier.requiresPayment) {
-        navigate("/billing/add-card", {
-          state: { 
-            tier: newTierId, 
-            returnTo: "/billing",
-            isUpgrade: true
-          }
-        });
-        setUpgrading(null);
-        return;
-      }
-      
-      // Case 4: Actually change the plan
-      let result;
-      
-      // Try primary methods
-      if (isUpgrade) {
-        result = await safeApiCall("upgradeSubscription", newTierId);
-        if (!result.success) {
-          result = await safeApiCall("changePlan", newTierId);
-        }
-      } else {
-        result = await safeApiCall("downgradeSubscription", newTierId);
-        if (!result.success) {
-          result = await safeApiCall("changePlan", newTierId);
-        }
-      }
-      
-      if (result.success) {
-        // Check if Stripe checkout is needed
-        if (result.data?.requires_checkout && result.data?.checkout_url) {
-          // Redirect to Stripe checkout
-          window.location.href = result.data.checkout_url;
-          return;
-        }
-        
-        setSuccessMessage(`Successfully ${isUpgrade ? "upgraded to" : "downgraded to"} ${newTier.name} plan!`);
-        
-        // Refresh user data
-        if (refreshUser) await refreshUser();
-        
-        // Reload after short delay to show success message
-        setTimeout(() => window.location.reload(), 1500);
-      } else {
-        throw new Error(result.error || `Failed to change to ${newTier.name} plan`);
-      }
-      
-    } catch (err) {
-      console.error("Plan change failed:", err);
-      setError(err.message || `Failed to change to ${newTier.name} plan. Please try again.`);
-    } finally {
-      setUpgrading(null);
-    }
-  };
+  }, [
+    preselectedTier,
+    loading,
+    user,
+    autoUpgradeHandled,
+    currentTierId,
+    handleChangePlan,
+  ]);
 
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -318,13 +383,25 @@ export default function BillingDashboard() {
         {/* Error Display */}
         {error && (
           <div className="mb-6 bg-red-500/20 border border-red-500/50 rounded-xl p-4 text-red-300">
-            <p className="font-semibold">Error:</p>
-            <p className="text-sm">{error}</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold">Error:</p>
+                <p className="text-sm">{error}</p>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-300 hover:text-red-200 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
           </div>
         )}
 
         {/* Current Plan Card */}
-        <div className={`bg-gradient-to-r ${currentTier.color} rounded-2xl p-6 mb-8 shadow-xl`}>
+        <div
+          className={`bg-gradient-to-r ${currentTier.color} rounded-2xl p-6 mb-8 shadow-xl`}
+        >
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
               <span className="text-5xl">{currentTier.icon}</span>
@@ -332,30 +409,34 @@ export default function BillingDashboard() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-2xl font-bold">{currentTier.name}</h2>
                   {currentTier.badge && (
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      currentTier.badgeColor === "orange" 
-                        ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
-                        : currentTier.badgeColor === "purple"
-                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
-                        : currentTier.badgeColor === "indigo"
-                        ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
-                        : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                    }`}>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        currentTier.badgeColor === "orange"
+                          ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
+                          : currentTier.badgeColor === "purple"
+                          ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                          : currentTier.badgeColor === "indigo"
+                          ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                          : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      }`}
+                    >
                       {currentTier.badge}
                     </span>
                   )}
                 </div>
                 <p className="text-white/80 text-lg font-semibold">
-                  {typeof currentTier.price === "number" 
+                  {typeof currentTier.price === "number"
                     ? `$${currentTier.price}/${currentTier.interval}`
                     : currentTier.price}
                 </p>
                 {currentTier.priceDetail && (
-                  <p className="text-sm text-white/50">{currentTier.priceDetail}</p>
+                  <p className="text-sm text-white/50">
+                    {currentTier.priceDetail}
+                  </p>
                 )}
               </div>
             </div>
-            
+
             {/* Payment Method Status */}
             <div className="bg-black/30 rounded-xl p-3">
               {hasCard ? (
@@ -379,11 +460,11 @@ export default function BillingDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {Object.entries(TIERS).map(([key, tier]) => {
               const isCurrent = key === currentTierId;
-              const currentPrice = PRICE_ORDER[currentTierId] || 0;
-              const tierPrice = PRICE_ORDER[key] || Infinity;
+              const currentPrice = getPrice(currentTierId);
+              const tierPrice = getPrice(key);
               const isUpgrade = !isCurrent && tierPrice > currentPrice;
               const isEnterprise = key === "enterprise";
-              
+
               return (
                 <div
                   key={key}
@@ -395,15 +476,17 @@ export default function BillingDashboard() {
                 >
                   {tier.badge && !isCurrent && (
                     <div className="absolute top-3 right-3">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        tier.badgeColor === "orange" 
-                          ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
-                          : tier.badgeColor === "purple"
-                          ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
-                          : tier.badgeColor === "indigo"
-                          ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
-                          : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                      }`}>
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full ${
+                          tier.badgeColor === "orange"
+                            ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
+                            : tier.badgeColor === "purple"
+                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                            : tier.badgeColor === "indigo"
+                            ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                            : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        }`}
+                      >
                         {tier.badge}
                       </span>
                     </div>
@@ -422,7 +505,9 @@ export default function BillingDashboard() {
                       <span className="text-3xl">{tier.icon}</span>
                       <div>
                         <h4 className="text-lg font-bold">{tier.name}</h4>
-                        <p className="text-xs text-white/50">{tier.displayName}</p>
+                        <p className="text-xs text-white/50">
+                          {tier.displayName}
+                        </p>
                       </div>
                     </div>
 
@@ -430,21 +515,32 @@ export default function BillingDashboard() {
                       <div className="flex items-baseline gap-1">
                         {typeof tier.price === "number" ? (
                           <>
-                            <span className="text-2xl font-bold">${tier.price}</span>
-                            <span className="text-sm text-white/50">/{tier.interval}</span>
+                            <span className="text-2xl font-bold">
+                              ${tier.price}
+                            </span>
+                            <span className="text-sm text-white/50">
+                              /{tier.interval}
+                            </span>
                           </>
                         ) : (
-                          <span className="text-xl font-bold">{tier.price}</span>
+                          <span className="text-xl font-bold">
+                            {tier.price}
+                          </span>
                         )}
                       </div>
                       {key === "starter" && (
-                        <p className="text-xs text-emerald-400 mt-1">No credit card required</p>
+                        <p className="text-xs text-emerald-400 mt-1">
+                          No credit card required
+                        </p>
                       )}
                     </div>
 
                     <ul className="space-y-2 mb-6">
                       {tier.features.slice(0, 3).map((feature, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm">
+                        <li
+                          key={i}
+                          className="flex items-start gap-2 text-sm"
+                        >
                           <span className="text-emerald-400 mt-0.5">✓</span>
                           <span className="text-white/70">{feature}</span>
                         </li>
@@ -505,14 +601,16 @@ export default function BillingDashboard() {
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <span>💳</span> Payment Method
           </h3>
-          
+
           {hasCard ? (
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-2xl">💳</span>
                 <div>
                   <p className="font-medium">Card on file</p>
-                  <p className="text-sm text-white/50">Your payment method is ready for billing</p>
+                  <p className="text-sm text-white/50">
+                    Your payment method is ready for billing
+                  </p>
                 </div>
               </div>
               <button
@@ -541,21 +639,31 @@ export default function BillingDashboard() {
         {/* Cancel Subscription */}
         {currentTierId !== "starter" && currentTierId !== "enterprise" && (
           <div className="mt-6 bg-red-500/5 rounded-xl p-6 border border-red-500/20">
-            <h3 className="text-lg font-semibold mb-2 text-red-400">Cancel Subscription</h3>
+            <h3 className="text-lg font-semibold mb-2 text-red-400">
+              Cancel Subscription
+            </h3>
             <p className="text-sm text-white/50 mb-4">
-              Your subscription will remain active until the end of the billing period.
-              You can reactivate anytime.
+              Your subscription will remain active until the end of the billing
+              period. You can reactivate anytime.
             </p>
             <button
               onClick={async () => {
-                if (window.confirm("Are you sure you want to cancel your subscription? You will lose access to premium features at the end of your billing period.")) {
+                if (
+                  window.confirm(
+                    "Are you sure you want to cancel your subscription? You will lose access to premium features at the end of your billing period."
+                  )
+                ) {
                   const result = await safeApiCall("cancelSubscription");
                   if (result.success) {
-                    setSuccessMessage("Cancellation request submitted. Your plan will end at the billing period.");
+                    setSuccessMessage(
+                      "Cancellation request submitted. Your plan will end at the billing period."
+                    );
                     if (refreshUser) await refreshUser();
                     setTimeout(() => window.location.reload(), 1500);
                   } else {
-                    setError("Failed to cancel subscription. Please contact support.");
+                    setError(
+                      "Failed to cancel subscription. Please contact support."
+                    );
                   }
                 }
               }}
