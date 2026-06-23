@@ -1,6 +1,7 @@
-// src/pages/Pricing.jsx - COMPLETE IMALI PLATFORM PRICING PAGE
+// src/pages/Pricing.jsx - COMPLETE IMALI PLATFORM PRICING PAGE (FIXED)
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   FaCheck,
   FaLock,
@@ -38,6 +39,7 @@ const plans = [
     period: "",
     subtitle: "Best for learning before using real money.",
     cta: "Start Free Trial",
+    ctaLoggedIn: "Switch to Starter",
     route: "/signup?plan=starter",
     color: "from-emerald-500/20 to-teal-500/10",
     buttonColor: "from-emerald-600 to-teal-600",
@@ -67,6 +69,7 @@ const plans = [
     period: "/month",
     subtitle: "Best for users ready to connect real trading accounts.",
     cta: "Start Pro",
+    ctaLoggedIn: "Upgrade to Pro",
     route: "/signup?plan=pro",
     color: "from-blue-600/20 to-indigo-500/10",
     buttonColor: "from-blue-600 to-indigo-600",
@@ -98,6 +101,7 @@ const plans = [
     period: "/month",
     subtitle: "Best for advanced trading and DeFi access.",
     cta: "Start Elite",
+    ctaLoggedIn: "Upgrade to Elite",
     route: "/signup?plan=elite",
     color: "from-purple-600/20 to-pink-500/10",
     buttonColor: "from-purple-600 to-pink-600",
@@ -131,6 +135,7 @@ const plans = [
     period: "",
     subtitle: "Best for teams, funds, and institutions.",
     cta: "Contact Sales",
+    ctaLoggedIn: "Contact Sales",
     route: "mailto:imalidefi@gmail.com",
     color: "from-indigo-600/20 to-purple-500/10",
     buttonColor: "from-indigo-600 to-purple-600",
@@ -178,6 +183,28 @@ const faqs = [
 ];
 
 function PlanCard({ plan }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const isLoggedIn = !!user;
+  const isCurrentPlan = user?.tier === plan.id;
+
+  const handleClick = (e) => {
+    e.preventDefault();
+    
+    if (plan.isEnterprise) {
+      window.location.href = plan.route;
+      return;
+    }
+
+    if (!isLoggedIn) {
+      navigate(plan.route);
+      return;
+    }
+
+    // Logged-in user: go to billing with tier pre-selected
+    navigate("/billing", { state: { selectedTier: plan.id } });
+  };
+
   return (
     <div
       className={`relative rounded-3xl border border-white/10 bg-gradient-to-br ${plan.color} p-6 backdrop-blur transition-all hover:scale-[1.02] hover:border-white/20`}
@@ -185,6 +212,12 @@ function PlanCard({ plan }) {
       {plan.popular && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1 text-xs font-extrabold text-black shadow-lg">
           🔥 Most Popular
+        </div>
+      )}
+
+      {isCurrentPlan && (
+        <div className="absolute -top-3 right-4 rounded-full bg-emerald-500 px-4 py-1 text-xs font-extrabold text-white shadow-lg">
+          ✓ Current Plan
         </div>
       )}
 
@@ -219,20 +252,18 @@ function PlanCard({ plan }) {
         {plan.subtitle}
       </p>
 
-      {plan.isEnterprise ? (
-        <a
-          href={plan.route}
-          className={`mt-6 block rounded-2xl bg-gradient-to-r ${plan.buttonColor} px-5 py-3 text-center font-bold text-white transition hover:opacity-90`}
-        >
-          {plan.cta} →
-        </a>
+      {/* CTA Button */}
+      {isCurrentPlan ? (
+        <div className="mt-6 block rounded-2xl bg-white/10 px-5 py-3 text-center font-bold text-white/60 cursor-default">
+          Your Current Plan
+        </div>
       ) : (
-        <Link
-          to={plan.route}
-          className={`mt-6 block rounded-2xl bg-gradient-to-r ${plan.buttonColor} px-5 py-3 text-center font-bold text-white transition hover:opacity-90`}
+        <button
+          onClick={handleClick}
+          className={`mt-6 block w-full rounded-2xl bg-gradient-to-r ${plan.buttonColor} px-5 py-3 text-center font-bold text-white transition hover:opacity-90`}
         >
-          {plan.cta} →
-        </Link>
+          {isLoggedIn && plan.ctaLoggedIn ? plan.ctaLoggedIn : plan.cta} →
+        </button>
       )}
 
       <div className="mt-6">
