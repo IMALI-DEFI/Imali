@@ -1,6 +1,14 @@
 // src/components/Dashboard/MemberDashboard.jsx
+// Production-ready IMALI Member Dashboard
 
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
@@ -29,16 +37,11 @@ import {
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip } from "chart.js";
 
-// Import NFT images for tier cards
 import nftStarter from "../../assets/images/nfts/nft-starter.png";
 import nftPro from "../../assets/images/nfts/nft-pro.png";
 import nftElite from "../../assets/images/nfts/nft-elite.png";
 
 ChartJS.register(ArcElement, Tooltip);
-
-// ============================================================================
-// CONSTANTS & CONFIGURATION
-// ============================================================================
 
 const POLL_MS = 7000;
 const CRITICAL_POLL_MS = 3000;
@@ -48,17 +51,9 @@ const STALE_TIME_MS = 60000;
 
 const TIER_RANK = {
   starter: 0,
-  free: 0,
-  trial: 0,
-  common: 0,
   pro: 1,
-  rare: 1,
-  stock: 1,
   elite: 2,
-  epic: 2,
-  legendary: 3,
-  bundle: 3,
-  enterprise: 4,
+  enterprise: 3,
 };
 
 const TIER_CONFIG = {
@@ -102,6 +97,7 @@ const TRADING_TYPES = [
     connectionKey: "okx",
     connectionLabel: "OKX API",
     minTier: "starter",
+    paperOnlyStarter: true,
     connectRoute: "/connect-okx",
   },
   {
@@ -213,10 +209,6 @@ const ASSET_NAMES = {
   MSFT: "Microsoft",
 };
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
 const num = (value) => {
   const parsed = Number(String(value ?? 0).replace(/[$,]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -224,11 +216,31 @@ const num = (value) => {
 
 const unwrapData = (res) => res?.data || res || {};
 const normalizeTier = (tier) => String(tier || "starter").toLowerCase();
-const normalizeMode = (mode) => (String(mode || "paper").toLowerCase() === "live" ? "live" : "paper");
+const normalizeMode = (mode) =>
+  String(mode || "paper").toLowerCase() === "live" ? "live" : "paper";
 const formatMoney = (value) => `$${num(value).toFixed(2)}`;
 const formatPercent = (value) => `${num(value).toFixed(1)}%`;
-const tierRank = (tier) => TIER_RANK[normalizeTier(tier)] ?? 0;
-const hasTierAccess = (userTier, minTier) => tierRank(userTier) >= tierRank(minTier);
+
+const hasTierAccess = (userTier, minTier) =>
+  (TIER_RANK[normalizeTier(userTier)] ?? 0) >=
+  (TIER_RANK[normalizeTier(minTier)] ?? 999);
+
+const fetchWithRetry = async (
+  fn,
+  retries = API_RETRY_COUNT,
+  delay = API_RETRY_DELAY_MS
+) => {
+  for (let i = 0; i <= retries; i += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i === retries) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay * (i + 1)));
+    }
+  }
+
+  throw new Error("Max retries exceeded");
+};
 
 const getAssetIcon = (symbol) => {
   const s = String(symbol || "").toUpperCase();
@@ -255,22 +267,6 @@ const getStockIcon = (symbol) => {
   return s.slice(0, 2);
 };
 
-const fetchWithRetry = async (fn, retries = API_RETRY_COUNT, delay = API_RETRY_DELAY_MS) => {
-  for (let i = 0; i <= retries; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (i === retries) throw err;
-      await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
-    }
-  }
-  throw new Error("Max retries exceeded");
-};
-
-// ============================================================================
-// REDUCER FOR STATE MANAGEMENT
-// ============================================================================
-
 const initialState = {
   loading: true,
   refreshing: false,
@@ -295,6 +291,7 @@ const initialState = {
   openPositionsCount: 0,
   lastUpdated: null,
   error: "",
+  notice: "",
   tradeFeed: [],
   stats: {
     realizedPnl: 0,
@@ -331,6 +328,7 @@ const ACTIONS = {
   SET_OPEN_POSITIONS_COUNT: "SET_OPEN_POSITIONS_COUNT",
   SET_LAST_UPDATED: "SET_LAST_UPDATED",
   SET_ERROR: "SET_ERROR",
+  SET_NOTICE: "SET_NOTICE",
   SET_TRADE_FEED: "SET_TRADE_FEED",
   SET_STATS: "SET_STATS",
   SET_IMALI: "SET_IMALI",
@@ -356,11 +354,14 @@ function dashboardReducer(state, action) {
     case ACTIONS.SET_CURRENT_STRATEGY:
       return { ...state, currentStrategy: action.payload };
     case ACTIONS.SET_BOT_RUNNING:
-      return { ...state, botRunning: action.payload };
+      return { ...state, botRunning: Boolean(action.payload) };
     case ACTIONS.SET_BOT_MODE:
       return { ...state, botMode: normalizeMode(action.payload) };
     case ACTIONS.SET_CONNECTIONS:
-      return { ...state, connections: { ...state.connections, ...action.payload } };
+      return {
+        ...state,
+        connections: { ...state.connections, ...action.payload },
+      };
     case ACTIONS.SET_BALANCE_DATA:
       return {
         ...state,
@@ -373,11 +374,13 @@ function dashboardReducer(state, action) {
     case ACTIONS.SET_POSITIONS:
       return { ...state, positions: action.payload };
     case ACTIONS.SET_OPEN_POSITIONS_COUNT:
-      return { ...state, openPositionsCount: action.payload };
+      return { ...state, openPositionsCount: num(action.payload) };
     case ACTIONS.SET_LAST_UPDATED:
       return { ...state, lastUpdated: action.payload };
     case ACTIONS.SET_ERROR:
       return { ...state, error: action.payload };
+    case ACTIONS.SET_NOTICE:
+      return { ...state, notice: action.payload };
     case ACTIONS.SET_TRADE_FEED:
       return { ...state, tradeFeed: action.payload };
     case ACTIONS.SET_STATS:
@@ -396,30 +399,24 @@ function dashboardReducer(state, action) {
   }
 }
 
-// ============================================================================
-// CUSTOM HOOKS
-// ============================================================================
-
 function usePrevious(value) {
   const ref = useRef();
+
   useEffect(() => {
     ref.current = value;
   }, [value]);
+
   return ref.current;
 }
-
-// ============================================================================
-// ERROR BOUNDARY
-// ============================================================================
 
 class DashboardErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
 
   componentDidCatch(error, errorInfo) {
@@ -433,7 +430,9 @@ class DashboardErrorBoundary extends React.Component {
           <div className="rounded-3xl border border-red-500/40 bg-red-500/10 p-8 max-w-md text-center">
             <div className="text-6xl mb-4">⚠️</div>
             <h2 className="text-2xl font-black mb-2">Dashboard Error</h2>
-            <p className="text-white/60 mb-4">Something went wrong loading your dashboard.</p>
+            <p className="text-white/60 mb-4">
+              Something went wrong loading your dashboard.
+            </p>
             <button
               onClick={() => window.location.reload()}
               className="rounded-2xl bg-cyan-500 px-6 py-3 font-black hover:bg-cyan-400 transition"
@@ -444,44 +443,60 @@ class DashboardErrorBoundary extends React.Component {
         </div>
       );
     }
+
     return this.props.children;
   }
 }
 
-// ============================================================================
-// TIER UPGRADE CARD COMPONENT WITH IMAGE
-// ============================================================================
-
 function TierUpgradeCard({ currentTier, onUpgrade }) {
   const nextTiers = [
-    { id: "pro", config: TIER_CONFIG.pro, price: "$19/mo", description: "Live crypto & stock trading, AI strategies" },
-    { id: "elite", config: TIER_CONFIG.elite, price: "$49/mo", description: "Futures, DEX sniper, staking, lending" },
+    {
+      id: "pro",
+      config: TIER_CONFIG.pro,
+      price: "$19/mo",
+      description: "Live crypto & stock trading, AI strategies",
+    },
+    {
+      id: "elite",
+      config: TIER_CONFIG.elite,
+      price: "$49/mo",
+      description: "Futures, DEX sniper, staking, lending",
+    },
   ];
 
   if (currentTier === "elite" || currentTier === "enterprise") return null;
 
-  const nextTier = nextTiers.find(t => t.id === (currentTier === "starter" ? "pro" : "elite")) || nextTiers[0];
+  const nextTier =
+    nextTiers.find((tier) =>
+      currentTier === "starter" ? tier.id === "pro" : tier.id === "elite"
+    ) || nextTiers[0];
 
   return (
-    <section className={`rounded-[2rem] border ${nextTier.config.borderColor} bg-gradient-to-br ${nextTier.config.color} p-5`}>
+    <section
+      className={`rounded-[2rem] border ${nextTier.config.borderColor} bg-gradient-to-br ${nextTier.config.color} p-5`}
+    >
       <div className="flex flex-col sm:flex-row items-center gap-5">
-        <div className="shrink-0">
-          <img
-            src={nextTier.config.image}
-            alt={nextTier.config.alt}
-            className="h-24 w-24 rounded-2xl object-cover shadow-lg ring-2 ring-white/20"
-            loading="lazy"
-          />
-        </div>
+        <img
+          src={nextTier.config.image}
+          alt={nextTier.config.alt}
+          className="h-24 w-24 rounded-2xl object-cover shadow-lg ring-2 ring-white/20"
+          loading="lazy"
+        />
+
         <div className="flex-1 text-center sm:text-left">
           <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-            <h3 className="text-2xl font-black">{nextTier.config.name} Plan</h3>
+            <h3 className="text-2xl font-black">
+              {nextTier.config.name} Plan
+            </h3>
             <span className="rounded-full bg-amber-400/20 px-3 py-1 text-xs font-bold text-amber-300">
               {nextTier.price}
             </span>
           </div>
-          <p className="mt-2 text-sm text-white/70">{nextTier.description}</p>
+          <p className="mt-2 text-sm text-white/70">
+            {nextTier.description}
+          </p>
         </div>
+
         <button
           onClick={onUpgrade}
           className="shrink-0 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 font-black text-white transition hover:from-amber-600 hover:to-orange-600"
@@ -493,10 +508,6 @@ function TierUpgradeCard({ currentTier, onUpgrade }) {
     </section>
   );
 }
-
-// ============================================================================
-// DEBUG PANEL (only in development)
-// ============================================================================
 
 function DebugPanel({ state, onTestStartBot }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -511,37 +522,50 @@ function DebugPanel({ state, onTestStartBot }) {
       >
         <FaBug className="inline mr-1" /> Debug
       </button>
-      
+
       {isOpen && (
         <div className="fixed bottom-16 right-4 z-50 w-96 rounded-2xl border border-yellow-500/30 bg-black/95 backdrop-blur-lg p-4 shadow-2xl">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-black text-yellow-400">Debug Panel</h3>
-            <button onClick={() => setIsOpen(false)} className="text-white/50 hover:text-white">✕</button>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="text-white/50 hover:text-white"
+            >
+              ✕
+            </button>
           </div>
-          
+
           <div className="space-y-2 text-xs font-mono">
-            <p><span className="text-white/50">Bot Running:</span> {state.botRunning ? "✅ Yes" : "❌ No"}</p>
-            <p><span className="text-white/50">Bot Mode:</span> {state.botMode}</p>
-            <p><span className="text-white/50">Open Positions:</span> {state.openPositionsCount}</p>
-            <p><span className="text-white/50">Active Tab:</span> {state.activeType}</p>
-            <p><span className="text-white/50">Connected:</span> {state.connections[state.activeType === "stocks" ? "alpaca" : "okx"]?.connected ? "Yes" : "No"}</p>
-            <p><span className="text-white/50">Current Strategy:</span> {state.currentStrategy?.name}</p>
-            <p><span className="text-white/50">Last Start Attempt:</span> {state.debug.lastStartAttempt ? new Date(state.debug.lastStartAttempt).toLocaleTimeString() : "Never"}</p>
+            <p>Bot Running: {state.botRunning ? "✅ Yes" : "❌ No"}</p>
+            <p>Bot Mode: {state.botMode}</p>
+            <p>Open Positions: {state.openPositionsCount}</p>
+            <p>Active Tab: {state.activeType}</p>
+            <p>Current Strategy: {state.currentStrategy?.name}</p>
+            <p>
+              Last Start Attempt:{" "}
+              {state.debug.lastStartAttempt
+                ? new Date(state.debug.lastStartAttempt).toLocaleTimeString()
+                : "Never"}
+            </p>
+
             {state.debug.lastStartResult && (
               <details className="mt-2">
-                <summary className="cursor-pointer text-cyan-400">Last Start Result</summary>
+                <summary className="cursor-pointer text-cyan-400">
+                  Last Start Result
+                </summary>
                 <pre className="mt-1 max-h-32 overflow-auto rounded bg-black/50 p-2 text-[10px]">
                   {JSON.stringify(state.debug.lastStartResult, null, 2)}
                 </pre>
               </details>
             )}
+
             {state.debug.lastStartError && (
               <div className="mt-2 rounded bg-red-500/20 p-2 text-red-300">
                 Error: {state.debug.lastStartError}
               </div>
             )}
           </div>
-          
+
           <div className="mt-3 flex gap-2">
             <button
               onClick={onTestStartBot}
@@ -562,18 +586,15 @@ function DebugPanel({ state, onTestStartBot }) {
   );
 }
 
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
-
 export default function MemberDashboard() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const mountedRef = useRef(true);
+
+  const mountedRef = useRef(false);
   const intervalRef = useRef(null);
   const criticalIntervalRef = useRef(null);
   const backgroundPromisesRef = useRef([]);
-  
+
   const lastFetchTimeRef = useRef({
     user: 0,
     strategies: 0,
@@ -583,10 +604,13 @@ export default function MemberDashboard() {
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const previousActiveType = usePrevious(state.activeType);
 
-  const currentTierConfig = TIER_CONFIG[normalizeTier(state.userTier)] || TIER_CONFIG.starter;
+  const currentTierConfig =
+    TIER_CONFIG[normalizeTier(state.userTier)] || TIER_CONFIG.starter;
 
   const activeTab = useMemo(
-    () => TRADING_TYPES.find((item) => item.id === state.activeType) || TRADING_TYPES[0],
+    () =>
+      TRADING_TYPES.find((item) => item.id === state.activeType) ||
+      TRADING_TYPES[0],
     [state.activeType]
   );
 
@@ -610,6 +634,9 @@ export default function MemberDashboard() {
     [isConnected, isLocked]
   );
 
+  const starterPaperOnly =
+    state.userTier === "starter" && activeTab?.paperOnlyStarter;
+
   const winRate = useMemo(() => {
     const total = num(state.stats.wins) + num(state.stats.losses);
     return total ? (num(state.stats.wins) / total) * 100 : 0;
@@ -617,31 +644,48 @@ export default function MemberDashboard() {
 
   const visibleAssets = useMemo(() => {
     const base = [];
+
     if (state.usdCashValue > 0) {
-      base.push({ symbol: "USD", name: "Cash", quantity: state.usdCashValue, value: state.usdCashValue });
+      base.push({
+        symbol: "USD",
+        name: "Cash",
+        quantity: state.usdCashValue,
+        value: state.usdCashValue,
+      });
     }
+
     if (state.usdtValue > 0) {
-      base.push({ symbol: "USDT", name: "Tether", quantity: state.usdtQty || state.usdtValue, value: state.usdtValue });
+      base.push({
+        symbol: "USDT",
+        name: "Tether",
+        quantity: state.usdtQty || state.usdtValue,
+        value: state.usdtValue,
+      });
     }
+
     return [...base, ...state.assets]
       .filter((asset) => num(asset.value) >= 0.5)
       .sort((a, b) => num(b.value) - num(a.value));
   }, [state.assets, state.usdCashValue, state.usdtValue, state.usdtQty]);
 
   const smallBalancesCount = useMemo(
-    () => state.assets.filter((asset) => num(asset.value) > 0 && num(asset.value) < 0.5).length,
+    () =>
+      state.assets.filter((asset) => num(asset.value) > 0 && num(asset.value) < 0.5)
+        .length,
     [state.assets]
   );
 
   const donutData = useMemo(
     () => ({
       labels: ["Wins", "Losses"],
-      datasets: [{
-        data: [num(state.stats.wins), num(state.stats.losses)],
-        backgroundColor: ["#4ade80", "#f43f5e"],
-        borderWidth: 0,
-        cutout: "72%",
-      }],
+      datasets: [
+        {
+          data: [num(state.stats.wins), num(state.stats.losses)],
+          backgroundColor: ["#4ade80", "#f43f5e"],
+          borderWidth: 0,
+          cutout: "72%",
+        },
+      ],
     }),
     [state.stats.wins, state.stats.losses]
   );
@@ -655,44 +699,106 @@ export default function MemberDashboard() {
     []
   );
 
-  // ============================================================================
-  // API CALLS WITH RETRY LOGIC
-  // ============================================================================
-
   const normalizeAsset = useCallback((asset) => {
-    const symbol = String(asset.ccy || asset.currency || asset.symbol || asset.asset || "").toUpperCase();
+    const symbol = String(
+      asset.ccy || asset.currency || asset.symbol || asset.asset || ""
+    ).toUpperCase();
+
     return {
       symbol,
       name: ASSET_NAMES[symbol] || symbol,
-      quantity: num(asset.available ?? asset.amount ?? asset.bal ?? asset.balance ?? asset.qty ?? asset.quantity),
-      value: num(asset.usdValue ?? asset.usd_value ?? asset.value ?? asset.totalUsd ?? asset.total_usd ?? asset.eqUsd),
+      quantity: num(
+        asset.available ??
+          asset.amount ??
+          asset.bal ??
+          asset.balance ??
+          asset.qty ??
+          asset.quantity
+      ),
+      value: num(
+        asset.usdValue ??
+          asset.usd_value ??
+          asset.value ??
+          asset.totalUsd ??
+          asset.total_usd ??
+          asset.eqUsd
+      ),
     };
   }, []);
 
-  const getStrategy = useCallback((id) => {
-    return state.strategies.find((s) => s.id === id) || state.strategies[1] || FALLBACK_STRATEGIES[1];
-  }, [state.strategies]);
+  const getStrategy = useCallback(
+    (id) =>
+      state.strategies.find((strategy) => strategy.id === id) ||
+      state.strategies[1] ||
+      FALLBACK_STRATEGIES[1],
+    [state.strategies]
+  );
+
+  const showNotice = useCallback((message) => {
+    dispatch({ type: ACTIONS.SET_NOTICE, payload: message });
+    window.setTimeout(() => {
+      if (mountedRef.current) {
+        dispatch({ type: ACTIONS.SET_NOTICE, payload: "" });
+      }
+    }, 4000);
+  }, []);
+
+  const showError = useCallback((message) => {
+    dispatch({ type: ACTIONS.SET_ERROR, payload: message });
+    window.setTimeout(() => {
+      if (mountedRef.current) {
+        dispatch({ type: ACTIONS.SET_ERROR, payload: "" });
+      }
+    }, 6000);
+  }, []);
 
   const fetchUser = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getMe?.(true));
-    const d = unwrapData(res);
-    const u = d.user || d;
-    dispatch({ type: ACTIONS.SET_USER_TIER, payload: u?.tier || user?.tier || "starter" });
+    const data = unwrapData(res);
+    const nextUser = data.user || data;
+
+    dispatch({
+      type: ACTIONS.SET_USER_TIER,
+      payload: nextUser?.tier || user?.tier || "starter",
+    });
+
     lastFetchTimeRef.current.user = Date.now();
-  }, [user]);
+  }, [user?.tier]);
 
   const fetchStrategies = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getStrategyConfigs?.(true));
-    const d = unwrapData(res);
-    const raw = d.data || d.strategies || d;
+    const data = unwrapData(res);
+    const raw = data.data || data.strategies || data;
 
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
 
     const mapped = Object.entries(raw).map(([id, cfg]) => ({
       id,
-      name: cfg.name || (id === "mean_reversion" ? "Conservative" : id === "ai_weighted" ? "Balanced AI" : id === "momentum" ? "Growth" : "Aggressive"),
-      icon: id === "mean_reversion" ? "🛡️" : id === "ai_weighted" ? "🤖" : id === "momentum" ? "📈" : "🔥",
-      risk: cfg.riskLevel === "low" ? "Low Risk" : cfg.riskLevel === "medium" ? "Medium Risk" : cfg.riskLevel === "higher" ? "Higher Risk" : "High Risk",
+      name:
+        cfg.name ||
+        (id === "mean_reversion"
+          ? "Conservative"
+          : id === "ai_weighted"
+          ? "Balanced AI"
+          : id === "momentum"
+          ? "Growth"
+          : "Aggressive"),
+      icon:
+        id === "mean_reversion"
+          ? "🛡️"
+          : id === "ai_weighted"
+          ? "🤖"
+          : id === "momentum"
+          ? "📈"
+          : "🔥",
+      risk:
+        cfg.riskLevel === "low"
+          ? "Low Risk"
+          : cfg.riskLevel === "medium"
+          ? "Medium Risk"
+          : cfg.riskLevel === "higher"
+          ? "Higher Risk"
+          : "High Risk",
       description: cfg.description || "",
       recommended: Boolean(cfg.recommended),
       maxPositions: cfg.maxPositions,
@@ -701,112 +807,163 @@ export default function MemberDashboard() {
       stopLossPct: cfg.stopLossPct,
     }));
 
-    if (mapped.length) {
-      dispatch({ type: ACTIONS.SET_STRATEGIES, payload: mapped });
+    if (!mapped.length) return;
 
-      const savedStrategyId = localStorage.getItem("imali_selected_strategy");
-      let selectedStrategy = null;
+    dispatch({ type: ACTIONS.SET_STRATEGIES, payload: mapped });
 
-      try {
-        const userPrefRes = await BotAPI.getUserStrategyPreference?.();
-        const userPrefData = unwrapData(userPrefRes);
-        const backendStrategyId = userPrefData.strategyId || userPrefData.strategy;
-        if (backendStrategyId) selectedStrategy = mapped.find((s) => s.id === backendStrategyId);
-      } catch (err) {
-        console.warn("Could not fetch user strategy preference", err);
+    const savedStrategyId = localStorage.getItem("imali_selected_strategy");
+    let selectedStrategy = null;
+
+    try {
+      const prefRes = await BotAPI.getUserStrategyPreference?.();
+      const prefData = unwrapData(prefRes);
+      const backendStrategyId = prefData.strategyId || prefData.strategy;
+
+      if (backendStrategyId) {
+        selectedStrategy = mapped.find((strategy) => strategy.id === backendStrategyId);
       }
-
-      if (!selectedStrategy && savedStrategyId) {
-        selectedStrategy = mapped.find((s) => s.id === savedStrategyId);
-      }
-
-      if (!selectedStrategy) {
-        selectedStrategy = mapped.find((s) => s.recommended) || mapped[1] || mapped[0];
-      }
-
-      dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: selectedStrategy });
+    } catch (err) {
+      console.warn("Could not fetch user strategy preference", err);
     }
+
+    if (!selectedStrategy && savedStrategyId) {
+      selectedStrategy = mapped.find((strategy) => strategy.id === savedStrategyId);
+    }
+
+    if (!selectedStrategy) {
+      selectedStrategy = mapped.find((strategy) => strategy.recommended) || mapped[1] || mapped[0];
+    }
+
+    dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: selectedStrategy });
     lastFetchTimeRef.current.strategies = Date.now();
   }, []);
 
   const fetchBotStatus = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getTradingBotStatus?.(true));
-    const d = unwrapData(res);
-    
-    const list = Array.isArray(d.data) ? d.data : (Array.isArray(d) ? d : []);
-    const running = list.some(bot => bot.isRunning === true);
-    
-    dispatch({ type: ACTIONS.SET_BOT_RUNNING, payload: running });
-    
-    const runningBot = list.find(bot => bot.isRunning === true);
-    
-    if (runningBot) {
-      if (runningBot.mode) dispatch({ type: ACTIONS.SET_BOT_MODE, payload: runningBot.mode });
-      if (runningBot.strategy) {
-        const strategy = getStrategy(runningBot.strategy);
-        if (strategy) dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
-      }
-      const botPositions = num(runningBot.openPositions ?? runningBot.open_positions);
-      if (botPositions > 0) dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: botPositions });
+    const responseData = res?.data || res || {};
+
+    const bots = Array.isArray(responseData?.data)
+      ? responseData.data
+      : Array.isArray(responseData)
+      ? responseData
+      : responseData?.isRunning !== undefined ||
+        responseData?.status !== undefined ||
+        responseData?.active !== undefined
+      ? [responseData]
+      : [];
+
+    const runningBots = bots.filter(
+      (bot) =>
+        bot?.isRunning === true ||
+        bot?.status === "running" ||
+        bot?.active === true
+    );
+
+    const isRunning = runningBots.length > 0;
+    const runningBot = runningBots[0] || bots[0];
+
+    dispatch({ type: ACTIONS.SET_BOT_RUNNING, payload: isRunning });
+
+    if (runningBot?.mode) {
+      dispatch({ type: ACTIONS.SET_BOT_MODE, payload: runningBot.mode });
     }
-    
-    if (d.summary) {
-      const open = num(d.summary.open_positions ?? d.summary.openPositions);
-      if (open > 0) dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: open });
+
+    if (runningBot?.strategy) {
+      const strategy = getStrategy(runningBot.strategy);
+      if (strategy) {
+        dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
+      }
+    }
+
+    const botPositions = num(
+      runningBot?.openPositions ?? runningBot?.open_positions ?? 0
+    );
+
+    dispatch({
+      type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
+      payload: botPositions,
+    });
+
+    if (responseData.summary) {
+      const open = num(
+        responseData.summary.open_positions ?? responseData.summary.openPositions ?? 0
+      );
+
+      dispatch({
+        type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
+        payload: open,
+      });
     }
   }, [getStrategy]);
 
-  // ============================================================================
-  // FIXED: fetchIntegrationStatus with resilient parsing
-  // ============================================================================
   const fetchIntegrationStatus = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getIntegrationStatus?.(true));
-    const d = unwrapData(res);
-    
-    // Helper to safely convert to boolean
-    const toBool = (val) => val === true || val === "true" || val === 1 || val === "1";
-    
-    // Try multiple possible field names (backward compatible)
+    const data = unwrapData(res);
+
+    const toBool = (value) =>
+      value === true || value === "true" || value === 1 || value === "1";
+
     const okxConnected = toBool(
-      d.okx_connected ??
-      d.okxConnected ??
-      d.okx?.connected ??
-      (d.okx_api_key_masked || d.okx_key_masked || d.okxKeyMasked ? true : false)
+      data.okx_connected ??
+        data.okxConnected ??
+        data.okx?.connected ??
+        Boolean(data.okx_api_key_masked || data.okx_key_masked || data.okxKeyMasked)
     );
-    
+
     const alpacaConnected = toBool(
-      d.alpaca_connected ??
-      d.alpacaConnected ??
-      d.alpaca?.connected ??
-      (d.alpaca_api_key_masked || d.alpaca_key_masked || d.alpacaKeyMasked ? true : false)
+      data.alpaca_connected ??
+        data.alpacaConnected ??
+        data.alpaca?.connected ??
+        Boolean(
+          data.alpaca_api_key_masked ||
+            data.alpaca_key_masked ||
+            data.alpacaKeyMasked
+        )
     );
-    
+
     const walletConnected = toBool(
-      d.wallet_connected ??
-      d.walletConnected ??
-      d.wallet?.connected
+      data.wallet_connected ?? data.walletConnected ?? data.wallet?.connected
     );
-    
-    const okxMode = normalizeMode(d.okx_mode ?? d.okxMode ?? d.okx?.mode ?? "paper");
-    const alpacaMode = normalizeMode(d.alpaca_mode ?? d.alpacaMode ?? d.alpaca?.mode ?? "paper");
-    
+
+    const okxMode = normalizeMode(
+      data.okx_mode ?? data.okxMode ?? data.okx?.mode ?? "paper"
+    );
+
+    const alpacaMode = normalizeMode(
+      data.alpaca_mode ?? data.alpacaMode ?? data.alpaca?.mode ?? "paper"
+    );
+
     dispatch({
       type: ACTIONS.SET_CONNECTIONS,
       payload: {
         okx: {
           connected: okxConnected,
           mode: okxMode,
-          keyMasked: d.okx_api_key_masked ?? d.okx_key_masked ?? d.okxKeyMasked ?? d.okx?.keyMasked ?? "",
+          keyMasked:
+            data.okx_api_key_masked ??
+            data.okx_key_masked ??
+            data.okxKeyMasked ??
+            data.okx?.keyMasked ??
+            "",
         },
         alpaca: {
           connected: alpacaConnected,
           mode: alpacaMode,
-          keyMasked: d.alpaca_api_key_masked ?? d.alpaca_key_masked ?? d.alpacaKeyMasked ?? d.alpaca?.keyMasked ?? "",
+          keyMasked:
+            data.alpaca_api_key_masked ??
+            data.alpaca_key_masked ??
+            data.alpacaKeyMasked ??
+            data.alpaca?.keyMasked ??
+            "",
         },
         wallet: {
           connected: walletConnected,
           mode: "live",
-          keyMasked: d.wallet_address_masked ?? d.walletAddressMasked ?? d.wallet?.address_masked ?? "",
+          keyMasked:
+            data.wallet_address_masked ??
+            data.walletAddressMasked ??
+            data.wallet?.address_masked ??
+            "",
         },
       },
     });
@@ -814,126 +971,179 @@ export default function MemberDashboard() {
     if (activeTab.connectionKey === "okx") {
       dispatch({ type: ACTIONS.SET_BOT_MODE, payload: okxMode });
     }
+
     if (activeTab.connectionKey === "alpaca") {
       dispatch({ type: ACTIONS.SET_BOT_MODE, payload: alpacaMode });
     }
-    
+
     lastFetchTimeRef.current.integrations = Date.now();
   }, [activeTab.connectionKey]);
 
   const fetchBalance = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getExchangeBalance?.(true));
-    const d = unwrapData(res);
+    const data = unwrapData(res);
 
     if (activeTab.exchange === "okx") {
-      const rawAssets = Array.isArray(d.okx_assets) ? d.okx_assets : [];
+      const rawAssets = Array.isArray(data.okx_assets) ? data.okx_assets : [];
       const normalized = rawAssets.map(normalizeAsset).filter((asset) => asset.symbol);
+
       const usdtAsset = normalized.find((asset) => asset.symbol === "USDT");
-      const otherAssets = normalized.filter((asset) => !["USD", "USDT"].includes(asset.symbol));
-      const okxTotal = num(d.okx_total ?? d.okx ?? d.total);
-      const usdtAvailable = num(d.okx_available_usdt ?? usdtAsset?.value);
-      const usdtQuantity = num(usdtAsset?.quantity ?? usdtAvailable);
-      const otherAssetsTotal = otherAssets.reduce((sum, asset) => sum + num(asset.value), 0);
       const usdAsset = normalized.find((asset) => asset.symbol === "USD");
-      const inferredUsd = okxTotal > otherAssetsTotal + usdtAvailable ? okxTotal - otherAssetsTotal - usdtAvailable : 0;
+      const otherAssets = normalized.filter(
+        (asset) => !["USD", "USDT"].includes(asset.symbol)
+      );
+
+      const okxTotal = num(data.okx_total ?? data.okx ?? data.total);
+      const usdtAvailable = num(data.okx_available_usdt ?? usdtAsset?.value);
+      const usdtQuantity = num(usdtAsset?.quantity ?? usdtAvailable);
+      const otherAssetsTotal = otherAssets.reduce(
+        (sum, asset) => sum + num(asset.value),
+        0
+      );
+
+      const inferredUsd =
+        okxTotal > otherAssetsTotal + usdtAvailable
+          ? okxTotal - otherAssetsTotal - usdtAvailable
+          : 0;
+
       const usdCash = num(usdAsset?.value) || inferredUsd;
       const total = okxTotal || usdCash + usdtAvailable + otherAssetsTotal;
 
       dispatch({
         type: ACTIONS.SET_BALANCE_DATA,
-        payload: { totalAssetValue: total, usdCashValue: usdCash, usdtValue: usdtAvailable, usdtQty: usdtQuantity, assets: otherAssets },
+        payload: {
+          totalAssetValue: total,
+          usdCashValue: usdCash,
+          usdtValue: usdtAvailable,
+          usdtQty: usdtQuantity,
+          assets: otherAssets,
+        },
       });
+
       return;
     }
 
     if (activeTab.exchange === "alpaca") {
-      const rawAssets = Array.isArray(d.alpaca_assets) ? d.alpaca_assets : [];
+      const rawAssets = Array.isArray(data.alpaca_assets)
+        ? data.alpaca_assets
+        : [];
+
       const normalized = rawAssets.map(normalizeAsset).filter((asset) => asset.symbol);
-      const cash = num(d.alpaca_available_usd ?? d.alpaca_cash ?? d.cash);
+      const cash = num(data.alpaca_available_usd ?? data.alpaca_cash ?? data.cash);
       const stocksValue = normalized.reduce((sum, asset) => sum + num(asset.value), 0);
-      const total = num(d.alpaca_total ?? d.alpaca_equity ?? d.alpaca) || cash + stocksValue;
+      const total =
+        num(data.alpaca_total ?? data.alpaca_equity ?? data.alpaca) ||
+        cash + stocksValue;
 
       dispatch({
         type: ACTIONS.SET_BALANCE_DATA,
-        payload: { totalAssetValue: total, usdCashValue: cash, usdtValue: 0, usdtQty: 0, assets: normalized },
+        payload: {
+          totalAssetValue: total,
+          usdCashValue: cash,
+          usdtValue: 0,
+          usdtQty: 0,
+          assets: normalized,
+        },
       });
+
       return;
     }
 
     dispatch({
       type: ACTIONS.SET_BALANCE_DATA,
-      payload: { totalAssetValue: 0, usdCashValue: 0, usdtValue: 0, usdtQty: 0, assets: [] },
+      payload: {
+        totalAssetValue: 0,
+        usdCashValue: 0,
+        usdtValue: 0,
+        usdtQty: 0,
+        assets: [],
+      },
     });
   }, [activeTab.exchange, normalizeAsset]);
 
   const fetchPositions = useCallback(async () => {
-    const res = await fetchWithRetry(() => BotAPI.getOpenPositions?.(activeTab.exchange, true));
-    const d = unwrapData(res);
-    const list = d.positions || d.openPositions || d.data || [];
+    const res = await fetchWithRetry(() =>
+      BotAPI.getOpenPositions?.(activeTab.exchange, true)
+    );
+
+    const data = unwrapData(res);
+    const list = data.positions || data.openPositions || data.data || [];
+
     dispatch({ type: ACTIONS.SET_POSITIONS, payload: list });
     dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: list.length });
   }, [activeTab.exchange]);
 
   const fetchStats = useCallback(async () => {
-    const res = await fetchWithRetry(() => BotAPI.getLiveTradingStats?.(activeTab.exchange, true));
-    const d = unwrapData(res);
-    const s = d.summary || d;
+    const res = await fetchWithRetry(() =>
+      BotAPI.getLiveTradingStats?.(activeTab.exchange, true)
+    );
+
+    const data = unwrapData(res);
+    const stats = data.summary || data;
 
     dispatch({
       type: ACTIONS.SET_STATS,
       payload: {
-        realizedPnl: num(s.realized_pnl ?? s.realizedPnl ?? s.total_pnl),
-        totalPnl: num(s.total_pnl ?? s.totalPnl ?? s.realized_pnl),
-        wins: num(s.wins),
-        losses: num(s.losses),
-        totalTrades: num(s.total_trades ?? s.totalTrades),
+        realizedPnl: num(stats.realized_pnl ?? stats.realizedPnl ?? stats.total_pnl),
+        totalPnl: num(stats.total_pnl ?? stats.totalPnl ?? stats.realized_pnl),
+        wins: num(stats.wins),
+        losses: num(stats.losses),
+        totalTrades: num(stats.total_trades ?? stats.totalTrades),
       },
     });
 
-    const open = num(s.open_positions ?? s.openPositions);
-    if (open > 0) dispatch({ type: ACTIONS.SET_OPEN_POSITIONS_COUNT, payload: open });
+    const open = num(stats.open_positions ?? stats.openPositions ?? 0);
+
+    dispatch({
+      type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
+      payload: open,
+    });
   }, [activeTab.exchange]);
 
-  // FIXED: fetchTradeFeed - shows REAL live trades, not paper trades
   const fetchTradeFeed = useCallback(async () => {
     try {
-      const res = await fetchWithRetry(() => BotAPI.getLiveTradeHistory?.(20, activeTab.exchange, true));
-      const d = unwrapData(res);
-      const trades = d.trades || d.data || [];
-      
+      const res = await fetchWithRetry(() =>
+        BotAPI.getLiveTradeHistory?.(20, activeTab.exchange, true)
+      );
+
+      const data = unwrapData(res);
+      const trades = data.trades || data.data || [];
+
       const formattedTrades = trades.slice(0, 20).map((trade) => {
         let tradeType = "Trade";
-        if (trade.exit_reason === 'take_profit') tradeType = 'Take Profit';
-        else if (trade.exit_reason === 'stop_loss') tradeType = 'Stop Loss';
-        else if (trade.pnl_usd > 0) tradeType = 'Take Profit';
-        else if (trade.pnl_usd < 0) tradeType = 'Stop Loss';
-        
-        let displaySymbol = trade.symbol || "Unknown";
-        displaySymbol = displaySymbol.replace('-USDT', '').replace('/USDT', '');
-        
+
+        if (trade.exit_reason === "take_profit") tradeType = "Take Profit";
+        else if (trade.exit_reason === "stop_loss") tradeType = "Stop Loss";
+        else if (num(trade.pnl_usd) > 0) tradeType = "Take Profit";
+        else if (num(trade.pnl_usd) < 0) tradeType = "Stop Loss";
+
+        const displaySymbol = String(trade.symbol || "Unknown")
+          .replace("-USDT", "")
+          .replace("/USDT", "");
+
         return {
-          id: trade.id || Date.now() + Math.random(),
+          id: trade.id || `${trade.symbol}-${trade.created_at}-${Math.random()}`,
           symbol: displaySymbol,
           fullSymbol: trade.symbol,
           side: trade.side,
-          pnl: num(trade.pnl_usd || 0),
-          pnlPercent: num(trade.pnl_percent || 0),
-          quantity: num(trade.qty || 0),
-          price: num(trade.price || 0),
-          exitPrice: num(trade.exit_price || 0),
-          time: trade.closed_at ? new Date(trade.closed_at).toLocaleTimeString() : 
-                 trade.created_at ? new Date(trade.created_at).toLocaleTimeString() : 
-                 new Date().toLocaleTimeString(),
+          pnl: num(trade.pnl_usd),
+          pnlPercent: num(trade.pnl_percent),
+          quantity: num(trade.qty),
+          price: num(trade.price),
+          exitPrice: num(trade.exit_price),
+          time: trade.closed_at
+            ? new Date(trade.closed_at).toLocaleTimeString()
+            : trade.created_at
+            ? new Date(trade.created_at).toLocaleTimeString()
+            : new Date().toLocaleTimeString(),
           type: tradeType,
           status: trade.status,
-          mode: trade.mode || 'live',
-          simulated: trade.simulated === false ? false : true,
+          mode: trade.mode || activeTab.exchange === "alpaca" ? "live" : "paper",
+          simulated: trade.simulated !== false,
         };
       });
-      
-      if (formattedTrades.length) {
-        dispatch({ type: ACTIONS.SET_TRADE_FEED, payload: formattedTrades });
-      }
+
+      dispatch({ type: ACTIONS.SET_TRADE_FEED, payload: formattedTrades });
     } catch (err) {
       console.warn("Failed to fetch live trades:", err);
     }
@@ -945,8 +1155,13 @@ export default function MemberDashboard() {
       fetchWithRetry(() => BotAPI.getImaliDiscountStatus?.()),
     ]);
 
-    const balance = unwrapData(balanceRes.status === "fulfilled" ? balanceRes.value : {});
-    const discount = unwrapData(discountRes.status === "fulfilled" ? discountRes.value : {});
+    const balance = unwrapData(
+      balanceRes.status === "fulfilled" ? balanceRes.value : {}
+    );
+
+    const discount = unwrapData(
+      discountRes.status === "fulfilled" ? discountRes.value : {}
+    );
 
     dispatch({
       type: ACTIONS.SET_IMALI,
@@ -960,6 +1175,7 @@ export default function MemberDashboard() {
 
   const saveStrategyPreference = useCallback(async (strategyId) => {
     localStorage.setItem("imali_selected_strategy", strategyId);
+
     try {
       await BotAPI.updateUserStrategyPreference?.({ strategyId });
     } catch (err) {
@@ -967,194 +1183,237 @@ export default function MemberDashboard() {
     }
   }, []);
 
-  // ============================================================================
-  // STABLE REF FOR FETCH FUNCTIONS
-  // ============================================================================
-
-  const fetchFunctionsRef = useRef({
-    fetchUser, fetchStrategies, fetchBotStatus, fetchIntegrationStatus,
-    fetchBalance, fetchPositions, fetchStats, fetchTradeFeed, fetchImali
-  });
+  const fetchFunctionsRef = useRef({});
 
   useEffect(() => {
     fetchFunctionsRef.current = {
-      fetchUser, fetchStrategies, fetchBotStatus, fetchIntegrationStatus,
-      fetchBalance, fetchPositions, fetchStats, fetchTradeFeed, fetchImali
+      fetchUser,
+      fetchStrategies,
+      fetchBotStatus,
+      fetchIntegrationStatus,
+      fetchBalance,
+      fetchPositions,
+      fetchStats,
+      fetchTradeFeed,
+      fetchImali,
     };
-  }, [fetchUser, fetchStrategies, fetchBotStatus, fetchIntegrationStatus,
-      fetchBalance, fetchPositions, fetchStats, fetchTradeFeed, fetchImali]);
+  }, [
+    fetchUser,
+    fetchStrategies,
+    fetchBotStatus,
+    fetchIntegrationStatus,
+    fetchBalance,
+    fetchPositions,
+    fetchStats,
+    fetchTradeFeed,
+    fetchImali,
+  ]);
 
-  // ============================================================================
-  // REFRESH LOGIC
-  // ============================================================================
+  const refreshDashboard = useCallback(
+    async (manual = false) => {
+      const startTime = performance.now();
 
-  const refreshDashboard = useCallback(async (manual = false) => {
-    const startTime = performance.now();
-    
-    if (manual) dispatch({ type: ACTIONS.SET_REFRESHING, payload: true });
-
-    const fns = fetchFunctionsRef.current;
-    const now = Date.now();
-
-    const shouldRefreshUser = manual || (now - lastFetchTimeRef.current.user > STALE_TIME_MS);
-    const shouldRefreshStrategies = manual || (now - lastFetchTimeRef.current.strategies > STALE_TIME_MS);
-    const shouldRefreshIntegrations = manual || (now - lastFetchTimeRef.current.integrations > STALE_TIME_MS);
-
-    const criticalApis = [fns.fetchBotStatus, fns.fetchBalance, fns.fetchTradeFeed];
-
-    const backgroundApis = [];
-    if (shouldRefreshUser) backgroundApis.push(fns.fetchUser);
-    if (shouldRefreshStrategies) backgroundApis.push(fns.fetchStrategies);
-    if (shouldRefreshIntegrations) backgroundApis.push(fns.fetchIntegrationStatus);
-    backgroundApis.push(fns.fetchStats, fns.fetchImali, fns.fetchPositions);
-
-    try {
-      const criticalResults = await Promise.allSettled(criticalApis.map(fn => fn().catch(err => {
-        console.warn(`Critical API failed: ${fn.name}`, err);
-        return null;
-      })));
-
-      const criticalFailures = criticalResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value === null));
-      if (criticalFailures.length > 0) {
-        console.warn(`${criticalFailures.length} critical API(s) failed`);
+      if (manual) {
+        dispatch({ type: ACTIONS.SET_REFRESHING, payload: true });
       }
 
-      if (backgroundApis.length > 0) {
-        const backgroundPromise = Promise.allSettled(backgroundApis.map(fn => fn().catch(err => {
-          console.warn(`Background API failed: ${fn.name}`, err);
-          return null;
-        }))).then(results => {
-          if (!mountedRef.current) return;
-          const backgroundFailures = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value === null));
-          if (backgroundFailures.length > 0) {
-            console.warn(`${backgroundFailures.length} background API(s) failed`);
-          }
-        }).catch(err => {
-          if (mountedRef.current) console.error("Background API error:", err);
-        });
-        
-        backgroundPromisesRef.current.push(backgroundPromise);
-        if (backgroundPromisesRef.current.length > 10) {
-          backgroundPromisesRef.current.shift();
+      const fns = fetchFunctionsRef.current;
+      const now = Date.now();
+
+      const shouldRefreshUser =
+        manual || now - lastFetchTimeRef.current.user > STALE_TIME_MS;
+
+      const shouldRefreshStrategies =
+        manual || now - lastFetchTimeRef.current.strategies > STALE_TIME_MS;
+
+      const shouldRefreshIntegrations =
+        manual || now - lastFetchTimeRef.current.integrations > STALE_TIME_MS;
+
+      const criticalApis = [
+        fns.fetchBotStatus,
+        fns.fetchBalance,
+        fns.fetchTradeFeed,
+      ].filter(Boolean);
+
+      const backgroundApis = [];
+
+      if (shouldRefreshUser && fns.fetchUser) backgroundApis.push(fns.fetchUser);
+      if (shouldRefreshStrategies && fns.fetchStrategies) {
+        backgroundApis.push(fns.fetchStrategies);
+      }
+      if (shouldRefreshIntegrations && fns.fetchIntegrationStatus) {
+        backgroundApis.push(fns.fetchIntegrationStatus);
+      }
+
+      [fns.fetchStats, fns.fetchImali, fns.fetchPositions]
+        .filter(Boolean)
+        .forEach((fn) => backgroundApis.push(fn));
+
+      try {
+        await Promise.allSettled(
+          criticalApis.map((fn) =>
+            fn().catch((err) => {
+              console.warn(`Critical API failed: ${fn.name}`, err);
+              return null;
+            })
+          )
+        );
+
+        if (backgroundApis.length > 0) {
+          const backgroundPromise = Promise.allSettled(
+            backgroundApis.map((fn) =>
+              fn().catch((err) => {
+                console.warn(`Background API failed: ${fn.name}`, err);
+                return null;
+              })
+            )
+          ).finally(() => {
+            backgroundPromisesRef.current =
+              backgroundPromisesRef.current.filter((p) => p !== backgroundPromise);
+          });
+
+          backgroundPromisesRef.current.push(backgroundPromise);
+        }
+
+        if (mountedRef.current) {
+          dispatch({ type: ACTIONS.SET_LAST_UPDATED, payload: new Date() });
+          dispatch({ type: ACTIONS.SET_ERROR, payload: "" });
+        }
+      } catch (err) {
+        console.error("Dashboard refresh error:", err);
+
+        if (mountedRef.current) {
+          dispatch({
+            type: ACTIONS.SET_ERROR,
+            payload: err?.message || "Dashboard refresh failed.",
+          });
+        }
+      } finally {
+        if (mountedRef.current && manual) {
+          dispatch({ type: ACTIONS.SET_REFRESHING, payload: false });
+        }
+
+        if (mountedRef.current) {
+          dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+        }
+
+        const duration = performance.now() - startTime;
+
+        if (duration > 2000) {
+          console.warn(`Dashboard refresh slow: ${duration.toFixed(0)}ms`);
         }
       }
+    },
+    []
+  );
 
-      if (mountedRef.current) {
-        dispatch({ type: ACTIONS.SET_LAST_UPDATED, payload: new Date() });
-        dispatch({ type: ACTIONS.SET_ERROR, payload: "" });
-      }
-    } catch (err) {
-      console.error("Dashboard refresh error:", err);
-      if (mountedRef.current) {
-        dispatch({ type: ACTIONS.SET_ERROR, payload: err?.message || "Dashboard refresh failed." });
-      }
-    } finally {
-      if (mountedRef.current && manual) {
-        dispatch({ type: ACTIONS.SET_REFRESHING, payload: false });
-      }
-      if (mountedRef.current && state.loading) {
-        dispatch({ type: ACTIONS.SET_LOADING, payload: false });
-      }
-      
-      const duration = performance.now() - startTime;
-      if (duration > 2000) {
-        console.warn(`⚠️ Dashboard refresh slow: ${duration.toFixed(0)}ms`);
-      }
-    }
-  }, [state.loading]);
-
-  // ============================================================================
-  // STRATEGY SELECTION HANDLER
-  // ============================================================================
-
-  const handleSelectStrategy = useCallback(async (strategy) => {
-    dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
-    await saveStrategyPreference(strategy.id);
-  }, [saveStrategyPreference]);
-
-  // ============================================================================
-  // BOT CONTROL HANDLERS
-  // ============================================================================
+  const handleSelectStrategy = useCallback(
+    async (strategy) => {
+      dispatch({ type: ACTIONS.SET_CURRENT_STRATEGY, payload: strategy });
+      await saveStrategyPreference(strategy.id);
+    },
+    [saveStrategyPreference]
+  );
 
   const handleConnect = useCallback(() => {
-    if (isLocked) navigate("/billing-dashboard");
-    else navigate(activeTab.connectRoute);
+    if (isLocked) {
+      navigate("/billing-dashboard");
+      return;
+    }
+
+    navigate(activeTab.connectRoute);
   }, [isLocked, navigate, activeTab.connectRoute]);
 
   const testStartBot = useCallback(async () => {
-    console.log("🐛 TEST: Starting bot with debug...");
-    
-    dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartAttempt: Date.now(), lastStartResult: null, lastStartError: null } });
+    dispatch({
+      type: ACTIONS.SET_DEBUG,
+      payload: {
+        lastStartAttempt: Date.now(),
+        lastStartResult: null,
+        lastStartError: null,
+      },
+    });
 
     try {
+      const launchMode = starterPaperOnly ? "paper" : state.botMode;
+
       const testConfig = {
         takeProfitPct: state.currentStrategy.takeProfitPct,
         stopLossPct: state.currentStrategy.stopLossPct,
         maxPositions: state.currentStrategy.maxPositions,
       };
 
-      let result = null;
-      
-      if (BotAPI.startTradingBotByCategory) {
-        console.log("Testing startTradingBotByCategory...");
-        result = await BotAPI.startTradingBotByCategory(
-          activeTab.categoryId,
-          state.currentStrategy.id,
-          state.botMode,
-          testConfig
-        );
-      } else if (BotAPI.startTradingBot) {
-        console.log("Testing startTradingBot...");
-        result = await BotAPI.startTradingBot(
-          activeTab.exchange,
-          state.currentStrategy.id,
-          state.botMode,
-          activeTab.categoryId,
-          testConfig
-        );
-      } else {
-        throw new Error("No BotAPI methods available");
-      }
+      const result = BotAPI.startTradingBotByCategory
+        ? await BotAPI.startTradingBotByCategory(
+            activeTab.categoryId,
+            state.currentStrategy.id,
+            launchMode,
+            testConfig
+          )
+        : await BotAPI.startTradingBot(
+            activeTab.exchange,
+            state.currentStrategy.id,
+            launchMode,
+            activeTab.categoryId,
+            testConfig
+          );
 
-      dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartResult: result, lastStartError: null } });
-      console.log("Test result:", result);
-      alert(JSON.stringify(result, null, 2));
-      
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { lastStartResult: result, lastStartError: null },
+      });
+
+      showNotice("Test bot start completed.");
       await refreshDashboard(true);
     } catch (err) {
-      console.error("Test error:", err);
-      dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartError: err.message } });
-      alert(`Error: ${err.message}`);
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { lastStartError: err.message },
+      });
+
+      showError(`Test failed: ${err.message}`);
     }
-  }, [activeTab, state.currentStrategy, state.botMode, refreshDashboard]);
+  }, [
+    activeTab,
+    state.currentStrategy,
+    state.botMode,
+    starterPaperOnly,
+    refreshDashboard,
+    showNotice,
+    showError,
+  ]);
 
   const handleStartBot = useCallback(async () => {
-    console.log("🚀 Starting bot...", {
-      isLocked,
-      isConnected,
-      currentStrategy: state.currentStrategy,
-      botMode: state.botMode,
-      activeTab: activeTab
+    dispatch({
+      type: ACTIONS.SET_DEBUG,
+      payload: {
+        lastStartAttempt: Date.now(),
+        lastStartResult: null,
+        lastStartError: null,
+      },
     });
 
-    dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartAttempt: Date.now(), lastStartResult: null, lastStartError: null } });
-
     if (isLocked) {
-      const msg = "Please upgrade your plan to access this trading type.";
-      alert(msg);
-      return navigate("/billing-dashboard");
+      showError("Please upgrade your plan to access this trading type.");
+      navigate("/billing-dashboard");
+      return;
     }
-    
+
     if (!isConnected) {
-      const msg = `Please connect your ${activeTab.connectionLabel} first.`;
-      alert(msg);
-      return navigate(activeTab.connectRoute);
+      showError(`Please connect your ${activeTab.connectionLabel} first.`);
+      navigate(activeTab.connectRoute);
+      return;
+    }
+
+    const launchMode = starterPaperOnly ? "paper" : state.botMode;
+
+    if (starterPaperOnly && state.botMode !== "paper") {
+      dispatch({ type: ACTIONS.SET_BOT_MODE, payload: "paper" });
     }
 
     dispatch({ type: ACTIONS.SET_PROCESSING, payload: true });
 
     try {
-      console.log("💾 Saving strategy preference:", state.currentStrategy.id);
       await saveStrategyPreference(state.currentStrategy.id);
 
       const config = {
@@ -1164,176 +1423,205 @@ export default function MemberDashboard() {
         tradePct: state.currentStrategy.tradePct,
       };
 
-      console.log("📡 Calling startTradingBot API with:", {
-        categoryId: activeTab.categoryId,
-        strategyId: state.currentStrategy.id,
-        mode: state.botMode,
-        exchange: activeTab.exchange,
-        config
-      });
-
       let res = null;
-      
+
       if (BotAPI.startTradingBotByCategory) {
-        console.log("➡️ Attempting startTradingBotByCategory...");
         res = await BotAPI.startTradingBotByCategory(
-          activeTab.categoryId, 
-          state.currentStrategy.id, 
-          state.botMode, 
+          activeTab.categoryId,
+          state.currentStrategy.id,
+          launchMode,
           config
         );
-        console.log("📥 startTradingBotByCategory response:", res);
       }
-      
+
       if ((!res || res?.success === false) && BotAPI.startTradingBot) {
-        console.log("➡️ Attempting startTradingBot...");
         res = await BotAPI.startTradingBot(
-          activeTab.exchange, 
-          state.currentStrategy.id, 
-          state.botMode, 
-          activeTab.categoryId, 
+          activeTab.exchange,
+          state.currentStrategy.id,
+          launchMode,
+          activeTab.categoryId,
           config
         );
-        console.log("📥 startTradingBot response:", res);
       }
 
       if (!res) {
-        throw new Error("No API method available to start bot");
+        throw new Error("No API method available to start bot.");
       }
 
       if (res?.success === false) {
         throw new Error(res?.error || res?.message || "Failed to start bot.");
       }
 
-      dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartResult: res } });
-      console.log("✅ Bot started successfully!");
-      alert("Bot started successfully! Check the Live Trade Feed for activity.");
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { lastStartResult: res, lastStartError: null },
+      });
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      showNotice(
+        starterPaperOnly
+          ? "Paper trading bot started."
+          : "Bot started successfully."
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       await refreshDashboard(true);
-      
     } catch (err) {
-      console.error("🔥 Bot start error:", err);
-      dispatch({ type: ACTIONS.SET_DEBUG, payload: { lastStartError: err.message } });
-      alert(`Failed to start bot: ${err?.message || "Unknown error"}`);
+      dispatch({
+        type: ACTIONS.SET_DEBUG,
+        payload: { lastStartError: err.message },
+      });
+
+      showError(`Failed to start bot: ${err?.message || "Unknown error"}`);
     } finally {
       if (mountedRef.current) {
         dispatch({ type: ACTIONS.SET_PROCESSING, payload: false });
       }
     }
-  }, [isLocked, isConnected, navigate, activeTab, state.currentStrategy, state.botMode, saveStrategyPreference, refreshDashboard]);
+  }, [
+    isLocked,
+    isConnected,
+    navigate,
+    activeTab,
+    state.currentStrategy,
+    state.botMode,
+    starterPaperOnly,
+    saveStrategyPreference,
+    refreshDashboard,
+    showNotice,
+    showError,
+  ]);
 
   const handleStopBot = useCallback(async () => {
     dispatch({ type: ACTIONS.SET_PROCESSING, payload: true });
 
     try {
       let res = null;
-      
+
       if (BotAPI.stopTradingBotByCategory) {
-        res = await BotAPI.stopTradingBotByCategory?.(activeTab.categoryId);
+        res = await BotAPI.stopTradingBotByCategory(activeTab.categoryId);
       }
-      
+
       if ((!res || res?.success === false) && BotAPI.stopTradingBot) {
-        res = await BotAPI.stopTradingBot?.(activeTab.exchange);
+        res = await BotAPI.stopTradingBot(activeTab.exchange);
       }
 
       if (res?.success === false) {
-        alert(res?.error || "Failed to stop bot.");
-        return;
+        throw new Error(res?.error || "Failed to stop bot.");
+      }
+
+      showNotice("Bot stopped.");
+      await refreshDashboard(true);
+    } catch (err) {
+      showError(err?.message || "Failed to stop bot.");
+    } finally {
+      if (mountedRef.current) {
+        dispatch({ type: ACTIONS.SET_PROCESSING, payload: false });
+      }
+    }
+  }, [activeTab, refreshDashboard, showNotice, showError]);
+
+  const handleApplyImaliDiscount = useCallback(async () => {
+    try {
+      const res = await BotAPI.applyImaliDiscount?.();
+
+      if (res?.success === false) {
+        throw new Error(res?.error || "Unable to apply IMALI discount.");
       }
 
       await refreshDashboard(true);
+      showNotice("IMALI discount applied.");
     } catch (err) {
-      alert(err?.message || "Failed to stop bot.");
-    } finally {
-      if (mountedRef.current) dispatch({ type: ACTIONS.SET_PROCESSING, payload: false });
+      showError(err?.message || "Unable to apply IMALI discount.");
     }
-  }, [activeTab, refreshDashboard]);
-
-  const handleApplyImaliDiscount = useCallback(async () => {
-    const res = await BotAPI.applyImaliDiscount?.();
-    if (res?.success === false) {
-      alert(res?.error || "Unable to apply IMALI discount.");
-      return;
-    }
-    await refreshDashboard(true);
-    alert("IMALI discount applied.");
-  }, [refreshDashboard]);
-
-  // ============================================================================
-  // OFFLINE DETECTION
-  // ============================================================================
+  }, [refreshDashboard, showNotice, showError]);
 
   useEffect(() => {
     const handleOnline = () => {
       dispatch({ type: ACTIONS.SET_ERROR, payload: "" });
       refreshDashboard(true);
     };
-    
+
     const handleOffline = () => {
-      dispatch({ type: ACTIONS.SET_ERROR, payload: "No internet connection. Reconnect to refresh data." });
+      dispatch({
+        type: ACTIONS.SET_ERROR,
+        payload: "No internet connection. Reconnect to refresh data.",
+      });
     };
-    
+
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-    
+
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
   }, [refreshDashboard]);
 
-  // ============================================================================
-  // EFFECTS & INTERVALS
-  // ============================================================================
-
   useEffect(() => {
     mountedRef.current = true;
     refreshDashboard(false);
 
-    intervalRef.current = setInterval(() => {
+    intervalRef.current = window.setInterval(() => {
       if (mountedRef.current) refreshDashboard(false);
     }, POLL_MS);
 
-    criticalIntervalRef.current = setInterval(() => {
-      if (mountedRef.current && state.botRunning) {
-        const fns = fetchFunctionsRef.current;
-        Promise.allSettled([
-          fns.fetchBotStatus().catch(() => null),
-          fns.fetchBalance().catch(() => null),
-          fns.fetchTradeFeed().catch(() => null),
-        ]);
+    return () => {
+      mountedRef.current = false;
+
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
       }
+
+      backgroundPromisesRef.current.forEach((promise) => {
+        promise?.catch?.(() => {});
+      });
+
+      backgroundPromisesRef.current = [];
+    };
+  }, [refreshDashboard]);
+
+  useEffect(() => {
+    if (!state.botRunning) {
+      if (criticalIntervalRef.current) {
+        window.clearInterval(criticalIntervalRef.current);
+        criticalIntervalRef.current = null;
+      }
+
+      return undefined;
+    }
+
+    criticalIntervalRef.current = window.setInterval(() => {
+      if (!mountedRef.current) return;
+
+      const fns = fetchFunctionsRef.current;
+
+      Promise.allSettled([
+        fns.fetchBotStatus?.().catch(() => null),
+        fns.fetchBalance?.().catch(() => null),
+        fns.fetchTradeFeed?.().catch(() => null),
+      ]);
     }, CRITICAL_POLL_MS);
 
     return () => {
-      mountedRef.current = false;
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (criticalIntervalRef.current) clearInterval(criticalIntervalRef.current);
-      
-      backgroundPromisesRef.current.forEach(promise => {
-        promise?.catch?.(() => {});
-      });
-      backgroundPromisesRef.current = [];
+      if (criticalIntervalRef.current) {
+        window.clearInterval(criticalIntervalRef.current);
+        criticalIntervalRef.current = null;
+      }
     };
-  }, [refreshDashboard, state.botRunning]);
+  }, [state.botRunning]);
 
   useEffect(() => {
     if (previousActiveType === undefined) return;
     if (state.activeType === previousActiveType) return;
-    
-    const timeoutId = setTimeout(() => {
+
+    const timeoutId = window.setTimeout(() => {
       if (mountedRef.current) {
         refreshDashboard(true);
       }
     }, 0);
-    
-    return () => clearTimeout(timeoutId);
-  }, [state.activeType, previousActiveType, refreshDashboard]);
 
-  // ============================================================================
-  // RENDER
-  // ============================================================================
+    return () => window.clearTimeout(timeoutId);
+  }, [state.activeType, previousActiveType, refreshDashboard]);
 
   if (state.loading && !state.lastUpdated) {
     return (
@@ -1378,7 +1666,7 @@ export default function MemberDashboard() {
 
         <main className="relative mx-auto max-w-7xl px-4 py-6 space-y-5">
           {state.error && (
-            <div 
+            <div
               className="rounded-3xl border border-red-500/40 bg-red-500/10 p-4 text-red-200"
               role="alert"
               aria-live="polite"
@@ -1387,35 +1675,48 @@ export default function MemberDashboard() {
             </div>
           )}
 
-          {/* Welcome Section */}
+          {state.notice && (
+            <div
+              className="rounded-3xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-200"
+              role="status"
+              aria-live="polite"
+            >
+              {state.notice}
+            </div>
+          )}
+
           <section>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               {currentTierConfig.image && (
-                <div className="shrink-0">
-                  <img
-                    src={currentTierConfig.image}
-                    alt={currentTierConfig.alt}
-                    className="h-16 w-16 rounded-xl object-cover shadow-lg ring-2 ring-cyan-400/30"
-                    loading="lazy"
-                  />
-                </div>
+                <img
+                  src={currentTierConfig.image}
+                  alt={currentTierConfig.alt}
+                  className="h-16 w-16 rounded-xl object-cover shadow-lg ring-2 ring-cyan-400/30"
+                  loading="lazy"
+                />
               )}
-              
+
               <div className="flex-1">
                 <p className="text-white/50">Welcome back,</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-2xl font-black">IMALI Trader</h2>
-                  <span className={`rounded-lg px-2 py-1 text-xs font-black ${currentTierConfig.borderColor} bg-opacity-15`}>
+                  <span
+                    className={`rounded-lg px-2 py-1 text-xs font-black ${currentTierConfig.borderColor} bg-opacity-15`}
+                  >
                     {normalizeTier(state.userTier).toUpperCase()} PLAN
                   </span>
+
                   {state.refreshing && (
-                    <span className="text-xs text-cyan-300" aria-label="Refreshing data">
+                    <span className="text-xs text-cyan-300">
                       <FaSpinner className="inline animate-spin mr-1" />
                       Updating
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
+
+                <p className="text-sm text-white/50 truncate">
+                  {user?.email || "Member"}
+                </p>
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <StatusPill running={state.botRunning} />
@@ -1425,7 +1726,6 @@ export default function MemberDashboard() {
             </div>
           </section>
 
-          {/* Trading Type Tabs */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] overflow-hidden">
             <div className="grid grid-cols-4">
               {TRADING_TYPES.map((tab) => {
@@ -1435,26 +1735,41 @@ export default function MemberDashboard() {
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => dispatch({ type: ACTIONS.SET_ACTIVE_TYPE, payload: tab.id })}
+                    onClick={() =>
+                      dispatch({
+                        type: ACTIONS.SET_ACTIVE_TYPE,
+                        payload: tab.id,
+                      })
+                    }
                     aria-label={`Switch to ${tab.label} trading`}
                     aria-current={active ? "page" : undefined}
                     className={`relative min-w-0 px-1 py-4 text-center font-black transition ${
-                      active ? "bg-cyan-400/10 text-white" : "text-white/50 hover:bg-white/[0.04]"
+                      active
+                        ? "bg-cyan-400/10 text-white"
+                        : "text-white/50 hover:bg-white/[0.04]"
                     }`}
                   >
                     <div className="flex flex-col items-center justify-center gap-1">
-                      <span className={`text-xl ${active ? "text-cyan-300" : ""}`}>{tab.icon}</span>
-                      <span className="text-[11px] sm:text-base leading-none">{tab.label}</span>
-                      {locked && <FaLock className="text-[10px] text-white/40" aria-label="Locked" />}
+                      <span className={`text-xl ${active ? "text-cyan-300" : ""}`}>
+                        {tab.icon}
+                      </span>
+                      <span className="text-[11px] sm:text-base leading-none">
+                        {tab.label}
+                      </span>
+                      {locked && (
+                        <FaLock className="text-[10px] text-white/40" />
+                      )}
                     </div>
-                    {active && <div className="absolute bottom-0 left-4 right-4 h-1 rounded-full bg-cyan-300" />}
+
+                    {active && (
+                      <div className="absolute bottom-0 left-4 right-4 h-1 rounded-full bg-cyan-300" />
+                    )}
                   </button>
                 );
               })}
             </div>
           </section>
 
-          {/* Connection Card */}
           <ConnectionCard
             activeTab={activeTab}
             connection={activeConnection}
@@ -1466,21 +1781,30 @@ export default function MemberDashboard() {
             lastUpdated={state.lastUpdated}
           />
 
-          {/* Tier Upgrade Card */}
-          <TierUpgradeCard 
+          {starterPaperOnly && (
+            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-300 text-sm">
+              Starter accounts support paper trading only. Upgrade to Pro for live trading.
+            </div>
+          )}
+
+          <TierUpgradeCard
             currentTier={normalizeTier(state.userTier)}
             onUpgrade={() => navigate("/billing-dashboard")}
           />
 
-          {/* Account Overview */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
             <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr]">
               <div>
                 <h3 className="text-xl font-black">Account Overview</h3>
                 <p className="mt-6 text-sm text-white/50">Total Assets Value</p>
-                <p className="mt-2 text-5xl font-black">{formatMoney(state.totalAssetValue)}</p>
-
-                <p className={`mt-3 font-black ${state.stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                <p className="mt-2 text-5xl font-black">
+                  {formatMoney(state.totalAssetValue)}
+                </p>
+                <p
+                  className={`mt-3 font-black ${
+                    state.stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-300"
+                  }`}
+                >
                   {state.stats.totalPnl >= 0 ? "+" : ""}
                   {formatMoney(state.stats.totalPnl)} realized
                 </p>
@@ -1497,7 +1821,9 @@ export default function MemberDashboard() {
                   <Doughnut data={donutData} options={donutOptions} />
                   <div className="absolute inset-0 grid place-items-center text-center">
                     <div>
-                      <p className="text-xl sm:text-2xl font-black">{formatPercent(winRate)}</p>
+                      <p className="text-xl sm:text-2xl font-black">
+                        {formatPercent(winRate)}
+                      </p>
                       <p className="text-xs text-white/60">Win Rate</p>
                     </div>
                   </div>
@@ -1512,39 +1838,48 @@ export default function MemberDashboard() {
             </div>
           </section>
 
-          {/* Assets Section */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
             <div className="mb-5 flex items-center justify-between">
               <h3 className="text-xl font-black">Assets</h3>
               <button
                 onClick={() => refreshDashboard(true)}
                 disabled={state.refreshing}
-                aria-label="Refresh assets"
                 className="text-cyan-300 font-black disabled:opacity-50 transition"
               >
-                {state.refreshing ? <FaSpinner className="animate-spin inline mr-2" /> : <FaSyncAlt className="inline mr-2" />}
+                {state.refreshing ? (
+                  <FaSpinner className="animate-spin inline mr-2" />
+                ) : (
+                  <FaSyncAlt className="inline mr-2" />
+                )}
                 Refresh
               </button>
             </div>
 
-            {state.loading && visibleAssets.length === 0 ? (
-              <div className="py-8 text-center">
-                <FaSpinner className="animate-spin text-3xl text-cyan-300 mx-auto mb-2" />
-                <p className="text-white/40">Loading assets...</p>
-              </div>
-            ) : visibleAssets.length === 0 ? (
-              <Empty text={isConnected ? "No assets detected yet" : "Connect account to load assets"} />
+            {visibleAssets.length === 0 ? (
+              <Empty
+                text={
+                  isConnected
+                    ? "No assets detected yet"
+                    : "Connect account to load assets"
+                }
+              />
             ) : (
               <div className="space-y-4">
                 {visibleAssets.map((asset) => (
-                  <AssetRow key={`${asset.symbol}-${asset.value}`} asset={asset} total={state.totalAssetValue} />
+                  <AssetRow
+                    key={`${asset.symbol}-${asset.value}`}
+                    asset={asset}
+                    total={state.totalAssetValue}
+                  />
                 ))}
 
                 {smallBalancesCount > 0 && (
                   <div className="mt-4 rounded-2xl bg-black/25 p-4 flex items-center justify-between">
                     <div>
                       <p className="font-black">Small balances</p>
-                      <p className="text-sm text-white/40">{smallBalancesCount} assets under $0.50</p>
+                      <p className="text-sm text-white/40">
+                        {smallBalancesCount} assets under $0.50
+                      </p>
                     </div>
                     <FaArrowRight className="text-white/40" />
                   </div>
@@ -1553,56 +1888,65 @@ export default function MemberDashboard() {
             )}
           </section>
 
-          {/* Trade Feed Section - NOW SHOWING REAL LIVE TRADES */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
             <div className="flex items-center justify-between gap-3 mb-5">
               <div className="flex items-center gap-2">
                 <FaChartLine className="text-emerald-300" />
                 <h3 className="text-xl font-black">Live Trade Feed</h3>
               </div>
+
               {state.botRunning && (
                 <div className="flex items-center gap-2 text-emerald-400 text-sm">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Bot Running • LIVE MODE
+                  Bot Running • {(state.botMode || "paper").toUpperCase()} MODE
                 </div>
               )}
             </div>
 
-            {state.tradeFeed.length === 0 && !state.botRunning && !state.loading ? (
+            {state.tradeFeed.length === 0 ? (
               <div className="py-16 text-center text-white/30">
                 <div className="text-6xl mb-4">🤖</div>
-                <p>Start the bot to see live trades appear here.</p>
-                {!state.botRunning && (
-                  <p className="text-xs text-white/40 mt-2">Bot status: {state.botRunning ? "Running" : "Stopped"}</p>
-                )}
-              </div>
-            ) : state.tradeFeed.length === 0 && state.loading ? (
-              <div className="py-16 text-center">
-                <FaSpinner className="animate-spin text-3xl text-cyan-300 mx-auto" />
-                <p className="mt-4 text-white/40">Loading live trades...</p>
+                <p>Start the bot to see trades appear here.</p>
+                <p className="text-xs text-white/40 mt-2">
+                  Bot status: {state.botRunning ? "Running" : "Stopped"}
+                </p>
               </div>
             ) : (
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
                 {state.tradeFeed.map((trade) => (
-                  <div key={trade.id} className="rounded-2xl border border-white/10 bg-black/20 p-4 flex items-center justify-between gap-4 hover:bg-white/5 transition">
+                  <div
+                    key={trade.id}
+                    className="rounded-2xl border border-white/10 bg-black/20 p-4 flex items-center justify-between gap-4 hover:bg-white/5 transition"
+                  >
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="text-3xl">{getStockIcon(trade.symbol)}</div>
                       <div className="min-w-0">
                         <div className="font-bold">{trade.symbol}</div>
                         <div className="text-xs text-white/40">
                           {trade.type} • {trade.time}
-                          {trade.mode === 'live' && <span className="ml-1 text-emerald-400">● LIVE</span>}
+                          {trade.mode === "live" && (
+                            <span className="ml-1 text-emerald-400">● LIVE</span>
+                          )}
                         </div>
                         {trade.price > 0 && (
-                          <div className="text-xs text-white/30 mt-1">@ {formatMoney(trade.price)}</div>
+                          <div className="text-xs text-white/30 mt-1">
+                            @ {formatMoney(trade.price)}
+                          </div>
                         )}
                       </div>
                     </div>
-                    <div className={`font-bold text-lg ${trade.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {trade.pnl >= 0 ? "+" : ""}{formatMoney(trade.pnl)}
+
+                    <div
+                      className={`font-bold text-lg ${
+                        trade.pnl >= 0 ? "text-emerald-400" : "text-red-400"
+                      }`}
+                    >
+                      {trade.pnl >= 0 ? "+" : ""}
+                      {formatMoney(trade.pnl)}
                       {trade.pnlPercent !== 0 && (
-                        <span className={`text-xs ml-1 ${trade.pnl >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
-                          ({trade.pnl >= 0 ? "+" : ""}{trade.pnlPercent.toFixed(2)}%)
+                        <span className="text-xs ml-1">
+                          ({trade.pnl >= 0 ? "+" : ""}
+                          {trade.pnlPercent.toFixed(2)}%)
                         </span>
                       )}
                     </div>
@@ -1612,19 +1956,26 @@ export default function MemberDashboard() {
             )}
           </section>
 
-          {/* Bot & Performance Panels */}
           <section className="grid gap-5 lg:grid-cols-2">
             <Panel title="Active Bot" icon={<FaRobot />}>
               <div className="flex items-start gap-4">
-                <div className="text-4xl shrink-0">{state.currentStrategy.icon}</div>
+                <div className="text-4xl shrink-0">
+                  {state.currentStrategy.icon}
+                </div>
+
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-2xl font-black">{state.currentStrategy.name}</h4>
+                    <h4 className="text-2xl font-black">
+                      {state.currentStrategy.name}
+                    </h4>
                     <span className="rounded-lg bg-red-500/20 px-2 py-1 text-xs font-black text-red-300">
                       {state.currentStrategy.risk}
                     </span>
                   </div>
-                  <p className="text-white/50">{state.currentStrategy.description}</p>
+
+                  <p className="text-white/50">
+                    {state.currentStrategy.description}
+                  </p>
                 </div>
               </div>
 
@@ -1633,7 +1984,12 @@ export default function MemberDashboard() {
               <div className="grid grid-cols-3 gap-3 text-center text-sm">
                 <BotInfo label="Market" value={activeTab.label} />
                 <BotInfo label="Mode" value={state.botMode.toUpperCase()} />
-                <BotInfo label="Positions" value={`${state.openPositionsCount} / ${state.currentStrategy.maxPositions || 5}`} />
+                <BotInfo
+                  label="Positions"
+                  value={`${state.openPositionsCount} / ${
+                    state.currentStrategy.maxPositions || 5
+                  }`}
+                />
               </div>
 
               <div className="mt-5">
@@ -1641,7 +1997,6 @@ export default function MemberDashboard() {
                   <button
                     onClick={handleStartBot}
                     disabled={state.processing}
-                    aria-label="Start trading bot"
                     className={`w-full rounded-2xl py-4 font-black disabled:opacity-50 transition ${
                       isLocked || !isConnected
                         ? "bg-cyan-500 text-black hover:bg-cyan-400"
@@ -1657,16 +2012,25 @@ export default function MemberDashboard() {
                     ) : (
                       <FaPlay className="inline mr-2" />
                     )}
-                    {isLocked ? "Upgrade to Unlock" : !isConnected ? "Connect to Start" : "Start Bot"}
+                    {isLocked
+                      ? "Upgrade to Unlock"
+                      : !isConnected
+                      ? "Connect to Start"
+                      : starterPaperOnly
+                      ? "Start Paper Bot"
+                      : "Start Bot"}
                   </button>
                 ) : (
                   <button
                     onClick={handleStopBot}
                     disabled={state.processing}
-                    aria-label="Stop trading bot"
                     className="w-full rounded-2xl bg-red-500 py-4 font-black hover:bg-red-400 disabled:opacity-50 transition"
                   >
-                    {state.processing ? <FaSpinner className="animate-spin inline mr-2" /> : <FaStop className="inline mr-2" />}
+                    {state.processing ? (
+                      <FaSpinner className="animate-spin inline mr-2" />
+                    ) : (
+                      <FaStop className="inline mr-2" />
+                    )}
                     Stop Bot
                   </button>
                 )}
@@ -1683,9 +2047,11 @@ export default function MemberDashboard() {
             </Panel>
           </section>
 
-          {/* Strategies Section */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-            <h3 className="mb-5 text-xl sm:text-2xl font-black">Available Bot Strategies</h3>
+            <h3 className="mb-5 text-xl sm:text-2xl font-black">
+              Available Bot Strategies
+            </h3>
+
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {state.strategies.map((strategy) => (
                 <StrategyCard
@@ -1699,7 +2065,6 @@ export default function MemberDashboard() {
             </div>
           </section>
 
-          {/* Footer Panels */}
           <section className="grid gap-5 lg:grid-cols-2">
             <ImaliCard
               imali={state.imali}
@@ -1711,13 +2076,13 @@ export default function MemberDashboard() {
               <div>
                 <h3 className="font-black text-2xl">Unlock More Power</h3>
                 <p className="text-sm sm:text-base text-white/60 leading-relaxed">
-                  Upgrade to Elite for Futures, DEX sniper bots, advanced AI strategies, and priority support.
+                  Upgrade to Elite for Futures, DEX sniper bots, advanced AI
+                  strategies, and priority support.
                 </p>
               </div>
 
               <button
                 onClick={() => navigate("/billing-dashboard")}
-                aria-label="Upgrade plan"
                 className="rounded-2xl bg-purple-500 px-5 py-3 font-black hover:bg-purple-400 transition"
               >
                 <FaCrown className="inline mr-2" />
@@ -1727,16 +2092,11 @@ export default function MemberDashboard() {
           </section>
         </main>
 
-        {/* Debug Panel - Development Only */}
         <DebugPanel state={state} onTestStartBot={testStartBot} />
       </div>
     </DashboardErrorBoundary>
   );
 }
-
-// ============================================================================
-// SUBCOMPONENTS
-// ============================================================================
 
 function MiniBox({ label, value }) {
   return (
@@ -1752,22 +2112,29 @@ function StrategyCard({ strategy, selected, onClick, disabled }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      aria-label={`Select ${strategy.name} strategy`}
       className={`w-full rounded-2xl border p-4 text-left transition ${
-        selected ? "border-cyan-300 bg-cyan-400/10" : "border-white/10 bg-black/20 hover:bg-white/5"
+        selected
+          ? "border-cyan-300 bg-cyan-400/10"
+          : "border-white/10 bg-black/20 hover:bg-white/5"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       <div className="flex items-start gap-3">
         <div className="shrink-0 text-3xl leading-none">{strategy.icon}</div>
+
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-lg font-black leading-tight break-words">{strategy.name}</p>
+            <p className="text-lg font-black leading-tight break-words">
+              {strategy.name}
+            </p>
+
             <span className="w-fit rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-200 whitespace-nowrap">
               {strategy.risk}
             </span>
           </div>
 
-          <p className="mt-3 text-sm leading-relaxed text-white/50">{strategy.description}</p>
+          <p className="mt-3 text-sm leading-relaxed text-white/50">
+            {strategy.description}
+          </p>
 
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/50">
             <span>Max: {strategy.maxPositions || "-"} pos.</span>
@@ -1781,7 +2148,16 @@ function StrategyCard({ strategy, selected, onClick, disabled }) {
   );
 }
 
-function ConnectionCard({ activeTab, connection, isLocked, needsReconnect, userTier, onConnect, onUpgrade, lastUpdated }) {
+function ConnectionCard({
+  activeTab,
+  connection,
+  isLocked,
+  needsReconnect,
+  userTier,
+  onConnect,
+  onUpgrade,
+  lastUpdated,
+}) {
   return (
     <section
       className={`rounded-[2rem] border p-5 ${
@@ -1791,7 +2167,6 @@ function ConnectionCard({ activeTab, connection, isLocked, needsReconnect, userT
           ? "border-yellow-400/30 bg-yellow-400/10"
           : "border-emerald-400/30 bg-emerald-400/10"
       }`}
-      aria-label={`Connection status for ${activeTab.connectionLabel}`}
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
@@ -1804,32 +2179,43 @@ function ConnectionCard({ activeTab, connection, isLocked, needsReconnect, userT
                 : "bg-emerald-400/20 text-emerald-300"
             }`}
           >
-            {isLocked ? <FaLock /> : needsReconnect ? <FaExclamationTriangle /> : <FaCheckCircle />}
+            {isLocked ? (
+              <FaLock />
+            ) : needsReconnect ? (
+              <FaExclamationTriangle />
+            ) : (
+              <FaCheckCircle />
+            )}
           </div>
 
           <div className="min-w-0">
             <h3 className="text-xl font-black">{activeTab.connectionLabel}</h3>
+
             {isLocked ? (
               <p className="text-sm text-white/60">
-                {activeTab.label} trading requires {activeTab.minTier.toUpperCase()} plan or higher.
-                Current plan: {normalizeTier(userTier).toUpperCase()}.
+                {activeTab.label} trading requires{" "}
+                {activeTab.minTier.toUpperCase()} plan or higher. Current plan:{" "}
+                {normalizeTier(userTier).toUpperCase()}.
               </p>
             ) : needsReconnect ? (
-              <p className="text-sm text-yellow-100/80">Reconnect before trading can start.</p>
+              <p className="text-sm text-yellow-100/80">
+                Reconnect before trading can start.
+              </p>
             ) : (
               <p className="text-sm text-emerald-100/80">
                 Connected {connection?.keyMasked ? `(${connection.keyMasked})` : ""}.
               </p>
             )}
+
             <p className="mt-1 text-xs text-white/40">
-              Last checked: {lastUpdated ? lastUpdated.toLocaleTimeString() : "Not checked yet"}
+              Last checked:{" "}
+              {lastUpdated ? lastUpdated.toLocaleTimeString() : "Not checked yet"}
             </p>
           </div>
         </div>
 
         <button
           onClick={isLocked ? onUpgrade : onConnect}
-          aria-label={isLocked ? "Upgrade plan" : needsReconnect ? "Reconnect account" : "Manage connection"}
           className={`rounded-2xl px-5 py-3 font-black transition ${
             isLocked
               ? "bg-purple-500 hover:bg-purple-400"
@@ -1868,25 +2254,29 @@ function StatusPill({ running }) {
           ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
           : "border-white/10 bg-white/10 text-white/50"
       }`}
-      aria-label={running ? "Bot is running" : "Bot is off"}
     >
-      <FaCircle className={`inline mr-2 h-2 w-2 ${running ? "text-emerald-300" : "text-white/40"}`} />
+      <FaCircle
+        className={`inline mr-2 h-2 w-2 ${
+          running ? "text-emerald-300" : "text-white/40"
+        }`}
+      />
       {running ? "BOT RUNNING" : "BOT OFF"}
     </div>
   );
 }
 
 function ModePill({ mode }) {
+  const safeMode = normalizeMode(mode);
+
   return (
     <div
       className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
-        mode === "live"
+        safeMode === "live"
           ? "border-red-400/40 bg-red-400/10 text-red-300"
           : "border-yellow-400/40 bg-yellow-400/10 text-yellow-300"
       }`}
-      aria-label={`${mode.toUpperCase()} mode active`}
     >
-      {mode.toUpperCase()} MODE
+      {safeMode.toUpperCase()} MODE
     </div>
   );
 }
@@ -1895,9 +2285,10 @@ function LegendRow({ label, value, color }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2 text-white/60">
-        <span className={`h-3 w-3 rounded-full ${color}`} aria-hidden="true" />
+        <span className={`h-3 w-3 rounded-full ${color}`} />
         {label}
       </div>
+
       <strong>{value}</strong>
     </div>
   );
@@ -1908,7 +2299,7 @@ function AssetRow({ asset, total }) {
 
   return (
     <div className="grid grid-cols-[48px_1fr_auto_auto] items-center gap-3">
-      <div className="h-12 w-12 shrink-0 rounded-full bg-cyan-400/20 grid place-items-center text-xl font-black text-cyan-200">
+      <div className="h-12 w-12 rounded-full bg-cyan-400/20 grid place-items-center text-xl font-black text-cyan-200">
         {getAssetIcon(asset.symbol)}
       </div>
 
@@ -1920,7 +2311,9 @@ function AssetRow({ asset, total }) {
       <div className="text-right">
         <p className="font-black">{formatMoney(asset.value)}</p>
         <p className="text-sm text-white/40">
-          {num(asset.quantity).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+          {num(asset.quantity).toLocaleString(undefined, {
+            maximumFractionDigits: 4,
+          })}
         </p>
       </div>
 
@@ -1936,8 +2329,9 @@ function Panel({ title, icon, children }) {
     <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
       <div className="mb-5 flex items-center justify-between">
         <h3 className="text-xl font-black">{title}</h3>
-        <span className="text-cyan-300 text-2xl" aria-hidden="true">{icon}</span>
+        <span className="text-cyan-300 text-2xl">{icon}</span>
       </div>
+
       {children}
     </section>
   );
@@ -1954,7 +2348,11 @@ function BotInfo({ label, value }) {
 
 function SmallStat({ title, value, pnl }) {
   const numeric = Number(String(value).replace(/[$,%]/g, ""));
-  const color = pnl ? (numeric >= 0 ? "text-emerald-300" : "text-red-300") : "text-white";
+  const color = pnl
+    ? numeric >= 0
+      ? "text-emerald-300"
+      : "text-red-300"
+    : "text-white";
 
   return (
     <div className="rounded-2xl bg-black/25 p-4">
@@ -1969,24 +2367,35 @@ function ImaliCard({ imali, onBuy, onApply }) {
     <section className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-2xl font-black">IMALI Utility</h3>
-        <FaCoins className="text-2xl text-emerald-300" aria-hidden="true" />
+        <FaCoins className="text-2xl text-emerald-300" />
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <MiniBox label="Balance" value={`${num(imali.balance).toLocaleString()} IMALI`} />
+        <MiniBox
+          label="Balance"
+          value={`${num(imali.balance).toLocaleString()} IMALI`}
+        />
         <MiniBox label="Discount" value={formatPercent(imali.discountPct)} />
         <MiniBox label="Status" value={imali.discountActive ? "Active" : "Inactive"} />
       </div>
 
       <p className="mt-4 text-sm text-white/60">
-        Hold IMALI for platform discounts, lower fees, early access, and future ecosystem benefits.
+        Hold IMALI for platform discounts, lower fees, early access, and future
+        ecosystem benefits.
       </p>
 
       <div className="mt-5 grid grid-cols-2 gap-3">
-        <button onClick={onBuy} aria-label="Buy IMALI tokens" className="rounded-2xl bg-emerald-500 py-3 font-black text-black hover:bg-emerald-400 transition">
+        <button
+          onClick={onBuy}
+          className="rounded-2xl bg-emerald-500 py-3 font-black text-black hover:bg-emerald-400 transition"
+        >
           Buy IMALI
         </button>
-        <button onClick={onApply} aria-label="Apply IMALI discount" className="rounded-2xl bg-white/10 py-3 font-black hover:bg-white/15 transition">
+
+        <button
+          onClick={onApply}
+          className="rounded-2xl bg-white/10 py-3 font-black hover:bg-white/15 transition"
+        >
           Apply Discount
         </button>
       </div>
@@ -1995,5 +2404,9 @@ function ImaliCard({ imali, onBuy, onApply }) {
 }
 
 function Empty({ text }) {
-  return <div className="rounded-2xl bg-black/25 py-10 text-center text-white/40">{text}</div>;
+  return (
+    <div className="rounded-2xl bg-black/25 py-10 text-center text-white/40">
+      {text}
+    </div>
+  );
 }
