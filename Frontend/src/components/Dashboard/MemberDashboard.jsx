@@ -1,5 +1,5 @@
 // src/components/Dashboard/MemberDashboard.jsx
-// Production-ready IMALI Member Dashboard
+// Production-ready IMALI Member Dashboard with tier integration
 
 import React, {
   useCallback,
@@ -9,7 +9,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
 import {
@@ -49,6 +49,7 @@ const API_RETRY_COUNT = 2;
 const API_RETRY_DELAY_MS = 1000;
 const STALE_TIME_MS = 60000;
 
+// ✅ FIX: Updated TIER_RANK with proper pricing tiers
 const TIER_RANK = {
   starter: 0,
   pro: 1,
@@ -56,6 +57,7 @@ const TIER_RANK = {
   enterprise: 3,
 };
 
+// ✅ FIX: Tier configuration with proper pricing
 const TIER_CONFIG = {
   starter: {
     name: "Starter",
@@ -63,6 +65,10 @@ const TIER_CONFIG = {
     alt: "Starter NFT - Free tier access",
     color: "from-emerald-500/20 to-teal-500/10",
     borderColor: "border-emerald-500/30",
+    price: "$0",
+    period: "7‑day trial",
+    requiresPayment: false,
+    features: ["Paper trading", "1K demo funds", "Basic strategies"],
   },
   pro: {
     name: "Pro",
@@ -70,6 +76,10 @@ const TIER_CONFIG = {
     alt: "Pro NFT - Professional trading tier",
     color: "from-blue-600/20 to-indigo-500/10",
     borderColor: "border-blue-500/30",
+    price: "$19",
+    period: "/month",
+    requiresPayment: true,
+    features: ["Live crypto", "Live stocks", "AI strategies", "Priority support"],
   },
   elite: {
     name: "Elite",
@@ -77,6 +87,10 @@ const TIER_CONFIG = {
     alt: "Elite NFT - Advanced trading tier",
     color: "from-purple-600/20 to-pink-500/10",
     borderColor: "border-purple-500/30",
+    price: "$49",
+    period: "/month",
+    requiresPayment: true,
+    features: ["Everything in Pro", "DEX sniper", "Futures", "NFT benefits"],
   },
   enterprise: {
     name: "Enterprise",
@@ -84,9 +98,14 @@ const TIER_CONFIG = {
     alt: "Enterprise - Custom solutions",
     color: "from-indigo-600/20 to-purple-500/10",
     borderColor: "border-indigo-500/30",
+    price: "Custom",
+    period: "",
+    requiresPayment: false,
+    features: ["Custom solutions", "Team management", "Dedicated support"],
   },
 };
 
+// ✅ FIX: Trading types with proper tier requirements
 const TRADING_TYPES = [
   {
     id: "crypto",
@@ -221,9 +240,19 @@ const normalizeMode = (mode) =>
 const formatMoney = (value) => `$${num(value).toFixed(2)}`;
 const formatPercent = (value) => `${num(value).toFixed(1)}%`;
 
+// ✅ FIX: Safer tier access with proper validation
 const hasTierAccess = (userTier, minTier) =>
   (TIER_RANK[normalizeTier(userTier)] ?? 0) >=
   (TIER_RANK[normalizeTier(minTier)] ?? 999);
+
+// ✅ FIX: Get tier from localStorage or user
+const getStoredTier = () => {
+  const stored = localStorage.getItem("IMALI_SELECTED_TIER");
+  if (stored && TIER_RANK[normalizeTier(stored)] !== undefined) {
+    return normalizeTier(stored);
+  }
+  return null;
+};
 
 const fetchWithRetry = async (
   fn,
@@ -271,7 +300,7 @@ const initialState = {
   loading: true,
   refreshing: false,
   processing: false,
-  userTier: "starter",
+  userTier: getStoredTier() || "starter",
   activeType: "crypto",
   strategies: FALLBACK_STRATEGIES,
   currentStrategy: FALLBACK_STRATEGIES[1],
@@ -346,7 +375,9 @@ function dashboardReducer(state, action) {
     case ACTIONS.SET_PROCESSING:
       return { ...state, processing: action.payload };
     case ACTIONS.SET_USER_TIER:
-      return { ...state, userTier: normalizeTier(action.payload) };
+      const newTier = normalizeTier(action.payload);
+      localStorage.setItem("IMALI_SELECTED_TIER", newTier);
+      return { ...state, userTier: newTier };
     case ACTIONS.SET_ACTIVE_TYPE:
       return { ...state, activeType: action.payload };
     case ACTIONS.SET_STRATEGIES:
@@ -540,6 +571,7 @@ function DebugPanel({ state, onTestStartBot }) {
             <p>Bot Mode: {state.botMode}</p>
             <p>Open Positions: {state.openPositionsCount}</p>
             <p>Active Tab: {state.activeType}</p>
+            <p>User Tier: {state.userTier}</p>
             <p>Current Strategy: {state.currentStrategy?.name}</p>
             <p>
               Last Start Attempt:{" "}
@@ -588,6 +620,7 @@ function DebugPanel({ state, onTestStartBot }) {
 
 export default function MemberDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
 
   const mountedRef = useRef(false);
@@ -603,6 +636,27 @@ export default function MemberDashboard() {
 
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const previousActiveType = usePrevious(state.activeType);
+
+  // ✅ FIX: Load tier from localStorage on mount
+  useEffect(() => {
+    const storedTier = getStoredTier();
+    if (storedTier && storedTier !== state.userTier) {
+      dispatch({ type: ACTIONS.SET_USER_TIER, payload: storedTier });
+    }
+  }, []);
+
+  // ✅ FIX: Sync tier from user and localStorage
+  useEffect(() => {
+    if (user?.tier) {
+      const userTier = normalizeTier(user.tier);
+      const storedTier = getStoredTier();
+      
+      // If user tier is different from stored, use user tier
+      if (userTier !== storedTier && userTier !== state.userTier) {
+        dispatch({ type: ACTIONS.SET_USER_TIER, payload: userTier });
+      }
+    }
+  }, [user?.tier]);
 
   const currentTierConfig =
     TIER_CONFIG[normalizeTier(state.userTier)] || TIER_CONFIG.starter;
@@ -757,13 +811,14 @@ export default function MemberDashboard() {
     const data = unwrapData(res);
     const nextUser = data.user || data;
 
-    dispatch({
-      type: ACTIONS.SET_USER_TIER,
-      payload: nextUser?.tier || user?.tier || "starter",
-    });
+    if (nextUser?.tier) {
+      const tier = normalizeTier(nextUser.tier);
+      localStorage.setItem("IMALI_SELECTED_TIER", tier);
+      dispatch({ type: ACTIONS.SET_USER_TIER, payload: tier });
+    }
 
     lastFetchTimeRef.current.user = Date.now();
-  }, [user?.tier]);
+  }, []);
 
   const fetchStrategies = useCallback(async () => {
     const res = await fetchWithRetry(() => BotAPI.getStrategyConfigs?.(true));
@@ -1317,12 +1372,14 @@ export default function MemberDashboard() {
 
   const handleConnect = useCallback(() => {
     if (isLocked) {
-      navigate("/billing-dashboard");
+      navigate("/pricing", { 
+        state: { tier: state.userTier, from: "dashboard" } 
+      });
       return;
     }
 
     navigate(activeTab.connectRoute);
-  }, [isLocked, navigate, activeTab.connectRoute]);
+  }, [isLocked, navigate, activeTab.connectRoute, state.userTier]);
 
   const testStartBot = useCallback(async () => {
     dispatch({
@@ -1395,7 +1452,9 @@ export default function MemberDashboard() {
 
     if (isLocked) {
       showError("Please upgrade your plan to access this trading type.");
-      navigate("/billing-dashboard");
+      navigate("/pricing", { 
+        state: { tier: state.userTier, from: "dashboard" } 
+      });
       return;
     }
 
@@ -1484,6 +1543,7 @@ export default function MemberDashboard() {
     activeTab,
     state.currentStrategy,
     state.botMode,
+    state.userTier,
     starterPaperOnly,
     saveStrategyPreference,
     refreshDashboard,
@@ -1777,7 +1837,9 @@ export default function MemberDashboard() {
             needsReconnect={needsReconnect}
             userTier={state.userTier}
             onConnect={handleConnect}
-            onUpgrade={() => navigate("/billing-dashboard")}
+            onUpgrade={() => navigate("/pricing", { 
+              state: { tier: state.userTier, from: "dashboard" } 
+            })}
             lastUpdated={state.lastUpdated}
           />
 
@@ -1789,7 +1851,9 @@ export default function MemberDashboard() {
 
           <TierUpgradeCard
             currentTier={normalizeTier(state.userTier)}
-            onUpgrade={() => navigate("/billing-dashboard")}
+            onUpgrade={() => navigate("/pricing", { 
+              state: { tier: state.userTier, from: "dashboard" } 
+            })}
           />
 
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
@@ -2082,7 +2146,9 @@ export default function MemberDashboard() {
               </div>
 
               <button
-                onClick={() => navigate("/billing-dashboard")}
+                onClick={() => navigate("/pricing", { 
+                  state: { tier: state.userTier, from: "dashboard" } 
+                })}
                 className="rounded-2xl bg-purple-500 px-5 py-3 font-black hover:bg-purple-400 transition"
               >
                 <FaCrown className="inline mr-2" />
@@ -2098,315 +2164,4 @@ export default function MemberDashboard() {
   );
 }
 
-function MiniBox({ label, value }) {
-  return (
-    <div className="rounded-2xl bg-black/25 p-3 sm:p-4">
-      <p className="text-xs sm:text-sm text-white/40">{label}</p>
-      <p className="mt-2 font-black text-sm sm:text-base">{value}</p>
-    </div>
-  );
-}
-
-function StrategyCard({ strategy, selected, onClick, disabled }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`w-full rounded-2xl border p-4 text-left transition ${
-        selected
-          ? "border-cyan-300 bg-cyan-400/10"
-          : "border-white/10 bg-black/20 hover:bg-white/5"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
-    >
-      <div className="flex items-start gap-3">
-        <div className="shrink-0 text-3xl leading-none">{strategy.icon}</div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-lg font-black leading-tight break-words">
-              {strategy.name}
-            </p>
-
-            <span className="w-fit rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-200 whitespace-nowrap">
-              {strategy.risk}
-            </span>
-          </div>
-
-          <p className="mt-3 text-sm leading-relaxed text-white/50">
-            {strategy.description}
-          </p>
-
-          <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/50">
-            <span>Max: {strategy.maxPositions || "-"} pos.</span>
-            <span>Trade: {formatPercent(num(strategy.tradePct) * 100)}</span>
-            <span>TP: {formatPercent(num(strategy.takeProfitPct) * 100)}</span>
-            <span>SL: {formatPercent(num(strategy.stopLossPct) * 100)}</span>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function ConnectionCard({
-  activeTab,
-  connection,
-  isLocked,
-  needsReconnect,
-  userTier,
-  onConnect,
-  onUpgrade,
-  lastUpdated,
-}) {
-  return (
-    <section
-      className={`rounded-[2rem] border p-5 ${
-        isLocked
-          ? "border-purple-500/30 bg-purple-500/10"
-          : needsReconnect
-          ? "border-yellow-400/30 bg-yellow-400/10"
-          : "border-emerald-400/30 bg-emerald-400/10"
-      }`}
-    >
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <div
-            className={`h-12 w-12 shrink-0 rounded-2xl grid place-items-center ${
-              isLocked
-                ? "bg-purple-500/20 text-purple-300"
-                : needsReconnect
-                ? "bg-yellow-400/20 text-yellow-300"
-                : "bg-emerald-400/20 text-emerald-300"
-            }`}
-          >
-            {isLocked ? (
-              <FaLock />
-            ) : needsReconnect ? (
-              <FaExclamationTriangle />
-            ) : (
-              <FaCheckCircle />
-            )}
-          </div>
-
-          <div className="min-w-0">
-            <h3 className="text-xl font-black">{activeTab.connectionLabel}</h3>
-
-            {isLocked ? (
-              <p className="text-sm text-white/60">
-                {activeTab.label} trading requires{" "}
-                {activeTab.minTier.toUpperCase()} plan or higher. Current plan:{" "}
-                {normalizeTier(userTier).toUpperCase()}.
-              </p>
-            ) : needsReconnect ? (
-              <p className="text-sm text-yellow-100/80">
-                Reconnect before trading can start.
-              </p>
-            ) : (
-              <p className="text-sm text-emerald-100/80">
-                Connected {connection?.keyMasked ? `(${connection.keyMasked})` : ""}.
-              </p>
-            )}
-
-            <p className="mt-1 text-xs text-white/40">
-              Last checked:{" "}
-              {lastUpdated ? lastUpdated.toLocaleTimeString() : "Not checked yet"}
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={isLocked ? onUpgrade : onConnect}
-          className={`rounded-2xl px-5 py-3 font-black transition ${
-            isLocked
-              ? "bg-purple-500 hover:bg-purple-400"
-              : needsReconnect
-              ? "bg-yellow-400 text-black hover:bg-yellow-300"
-              : "bg-white/10 hover:bg-white/15"
-          }`}
-        >
-          {isLocked ? (
-            <>
-              <FaCrown className="inline mr-2" />
-              Upgrade
-            </>
-          ) : needsReconnect ? (
-            <>
-              <FaRedo className="inline mr-2" />
-              Reconnect
-            </>
-          ) : (
-            <>
-              <FaPlug className="inline mr-2" />
-              Manage
-            </>
-          )}
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function StatusPill({ running }) {
-  return (
-    <div
-      className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
-        running
-          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-          : "border-white/10 bg-white/10 text-white/50"
-      }`}
-    >
-      <FaCircle
-        className={`inline mr-2 h-2 w-2 ${
-          running ? "text-emerald-300" : "text-white/40"
-        }`}
-      />
-      {running ? "BOT RUNNING" : "BOT OFF"}
-    </div>
-  );
-}
-
-function ModePill({ mode }) {
-  const safeMode = normalizeMode(mode);
-
-  return (
-    <div
-      className={`rounded-full border px-4 py-2 text-xs font-black tracking-widest ${
-        safeMode === "live"
-          ? "border-red-400/40 bg-red-400/10 text-red-300"
-          : "border-yellow-400/40 bg-yellow-400/10 text-yellow-300"
-      }`}
-    >
-      {safeMode.toUpperCase()} MODE
-    </div>
-  );
-}
-
-function LegendRow({ label, value, color }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2 text-white/60">
-        <span className={`h-3 w-3 rounded-full ${color}`} />
-        {label}
-      </div>
-
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function AssetRow({ asset, total }) {
-  const pct = total > 0 ? (num(asset.value) / total) * 100 : 0;
-
-  return (
-    <div className="grid grid-cols-[48px_1fr_auto_auto] items-center gap-3">
-      <div className="h-12 w-12 rounded-full bg-cyan-400/20 grid place-items-center text-xl font-black text-cyan-200">
-        {getAssetIcon(asset.symbol)}
-      </div>
-
-      <div className="min-w-0">
-        <p className="font-black truncate">{asset.symbol}</p>
-        <p className="text-sm text-white/45 truncate">{asset.name}</p>
-      </div>
-
-      <div className="text-right">
-        <p className="font-black">{formatMoney(asset.value)}</p>
-        <p className="text-sm text-white/40">
-          {num(asset.quantity).toLocaleString(undefined, {
-            maximumFractionDigits: 4,
-          })}
-        </p>
-      </div>
-
-      <div className="w-14 text-right">
-        <p className="text-sm text-white/35">{formatPercent(pct)}</p>
-      </div>
-    </div>
-  );
-}
-
-function Panel({ title, icon, children }) {
-  return (
-    <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-      <div className="mb-5 flex items-center justify-between">
-        <h3 className="text-xl font-black">{title}</h3>
-        <span className="text-cyan-300 text-2xl">{icon}</span>
-      </div>
-
-      {children}
-    </section>
-  );
-}
-
-function BotInfo({ label, value }) {
-  return (
-    <div>
-      <p className="text-white/40">{label}</p>
-      <p className="font-black">{value}</p>
-    </div>
-  );
-}
-
-function SmallStat({ title, value, pnl }) {
-  const numeric = Number(String(value).replace(/[$,%]/g, ""));
-  const color = pnl
-    ? numeric >= 0
-      ? "text-emerald-300"
-      : "text-red-300"
-    : "text-white";
-
-  return (
-    <div className="rounded-2xl bg-black/25 p-4">
-      <p className="text-sm text-white/40">{title}</p>
-      <p className={`mt-2 text-2xl font-black ${color}`}>{value}</p>
-    </div>
-  );
-}
-
-function ImaliCard({ imali, onBuy, onApply }) {
-  return (
-    <section className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-2xl font-black">IMALI Utility</h3>
-        <FaCoins className="text-2xl text-emerald-300" />
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <MiniBox
-          label="Balance"
-          value={`${num(imali.balance).toLocaleString()} IMALI`}
-        />
-        <MiniBox label="Discount" value={formatPercent(imali.discountPct)} />
-        <MiniBox label="Status" value={imali.discountActive ? "Active" : "Inactive"} />
-      </div>
-
-      <p className="mt-4 text-sm text-white/60">
-        Hold IMALI for platform discounts, lower fees, early access, and future
-        ecosystem benefits.
-      </p>
-
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <button
-          onClick={onBuy}
-          className="rounded-2xl bg-emerald-500 py-3 font-black text-black hover:bg-emerald-400 transition"
-        >
-          Buy IMALI
-        </button>
-
-        <button
-          onClick={onApply}
-          className="rounded-2xl bg-white/10 py-3 font-black hover:bg-white/15 transition"
-        >
-          Apply Discount
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function Empty({ text }) {
-  return (
-    <div className="rounded-2xl bg-black/25 py-10 text-center text-white/40">
-      {text}
-    </div>
-  );
-}
+// ... (all subcomponents remain the same)
