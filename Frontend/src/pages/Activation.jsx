@@ -1,11 +1,11 @@
-// src/pages/Activation.jsx - REWRITTEN (Fixed tier logic for pricing page)
+// src/pages/Activation.jsx - REWRITTEN (Fixed billing detection)
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
 // ==============================================
-// COMPONENTS
+// COMPONENTS (unchanged – same as your version)
 // ==============================================
 
 const StatusBadge = ({ done }) => (
@@ -183,7 +183,7 @@ const InfoBox = ({ type = "info", children, icon }) => {
 };
 
 // ==============================================
-// MAIN ACTIVATION COMPONENT
+// MAIN ACTIVATION COMPONENT – FIXED
 // ==============================================
 
 export default function Activation() {
@@ -209,7 +209,7 @@ export default function Activation() {
   const [wallet, setWallet] = useState("");
 
   // ==============================================
-  // CORRECTED: Activation requirements based on pricing page
+  // CORRECTED: Activation requirements
   // - Starter: NO billing, NO APIs, NO wallet (paper trading only)
   // - Pro: billing + OKX + Alpaca (stocks + crypto)
   // - Elite: billing + OKX + wallet (crypto + DeFi)
@@ -230,8 +230,9 @@ export default function Activation() {
     }
   }, [tier]);
 
+  // ✅ FIX: ONLY use has_card_on_file – NOT billing_complete
   const status = useMemo(() => ({
-    billing: !!activation?.has_card_on_file || !!activation?.billing_complete,
+    billing: !!activation?.has_card_on_file,   // CORRECT – no billing_complete
     okx: !!activation?.okx_connected,
     alpaca: !!activation?.alpaca_connected,
     wallet: !!activation?.wallet_connected,
@@ -257,13 +258,12 @@ export default function Activation() {
   
   const comingFromBilling = useMemo(() => location.state?.fromBilling === true, [location.state]);
 
-  // Single billing check on mount
+  // Single billing check on mount – uses ONLY has_card
   useEffect(() => {
     const checkBillingOnce = async () => {
       if (billingCheckedRef.current) return;
       billingCheckedRef.current = true;
       
-      // Skip billing check for Starter users
       if (tier === "starter") {
         console.log("[Activation] Starter user - skipping billing check");
         return;
@@ -271,7 +271,8 @@ export default function Activation() {
       
       try {
         const cardStatus = await BotAPI.getCardStatus();
-        if (cardStatus?.has_card || cardStatus?.billing_complete) {
+        // ✅ Only use has_card
+        if (cardStatus?.has_card) {
           await refreshActivation();
         }
       } catch (err) {
@@ -413,13 +414,11 @@ export default function Activation() {
     }
   };
 
-  // Skip to dashboard - bypasses activation
   const handleSkipToDashboard = () => {
     sessionStorage.removeItem("activation_skipped");
     navigate("/dashboard", { replace: true });
   };
 
-  // Direct navigation for Starter users
   const handleGoToPaperTrading = () => {
     console.log("[Activation] Starter user going to paper trading dashboard");
     navigate("/dashboard", { replace: true });
@@ -435,10 +434,8 @@ export default function Activation() {
     }
   };
 
-  // For Starter tier, show minimal UI and redirect
   const isStarter = tier === "starter";
 
-  // Immediate redirect for Starter users
   useEffect(() => {
     if (isStarter && user && !sessionStorage.getItem("starter_redirected")) {
       sessionStorage.setItem("starter_redirected", "true");
@@ -449,7 +446,6 @@ export default function Activation() {
     }
   }, [isStarter, user, navigate]);
 
-  // For Enterprise tier, show contact sales message
   const isEnterprise = tier === "enterprise";
 
   if (isEnterprise) {
@@ -480,7 +476,6 @@ export default function Activation() {
     );
   }
 
-  // If Starter, show loading briefly then redirect
   if (isStarter) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 text-white flex items-center justify-center">
