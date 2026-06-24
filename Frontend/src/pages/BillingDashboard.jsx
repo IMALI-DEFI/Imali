@@ -1,16 +1,50 @@
 // imali/Frontend/src/pages/BillingDashboard.jsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const VALID_TIERS = ["starter", "pro", "elite", "enterprise"];
+
+const TIERS = {
+  starter: {
+    label: "Starter",
+    icon: "🌱",
+    price: "Free",
+    monthly: 0,
+    summary: "Paper trading and beginner tools.",
+    features: ["Paper trading", "$1,000 demo balance", "Basic strategies"],
+  },
+  pro: {
+    label: "Pro",
+    icon: "⭐",
+    price: "$19/mo",
+    monthly: 19,
+    summary: "Live crypto and stock trading.",
+    features: ["Live crypto", "Live stocks", "AI strategies", "Advanced analytics"],
+  },
+  elite: {
+    label: "Elite",
+    icon: "👑",
+    price: "$49/mo",
+    monthly: 49,
+    summary: "Full trading access with DEX and futures.",
+    features: ["Everything in Pro", "DEX sniper", "Futures", "NFT benefits"],
+  },
+  enterprise: {
+    label: "Enterprise",
+    icon: "🏢",
+    price: "Custom",
+    monthly: null,
+    summary: "Custom billing, teams, and dedicated support.",
+    features: ["Team management", "White-label tools", "Dedicated support"],
+  },
+};
 
 function normalizeTier(value) {
   const tier = String(value || "starter").toLowerCase().trim();
   return VALID_TIERS.includes(tier) ? tier : "starter";
 }
 
-// ✅ Optional fetch that doesn't throw on 404
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
     credentials: "include",
@@ -24,19 +58,17 @@ async function fetchJson(url, options = {}) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok || result?.success === false) {
-    throw new Error(
-      result?.message || result?.error || `Failed to load ${url}`
-    );
+    throw new Error(result?.message || result?.error || `Failed: ${url}`);
   }
 
   return result?.data || result;
 }
 
-async function fetchJsonOptional(url, fallback = {}) {
+async function fetchOptional(url, fallback) {
   try {
     return await fetchJson(url);
   } catch (err) {
-    console.warn(`[BillingDashboard] Optional endpoint unavailable: ${url}`, err);
+    console.warn(`[BillingDashboard] Optional endpoint failed: ${url}`, err);
     return fallback;
   }
 }
@@ -47,73 +79,95 @@ export default function BillingDashboard() {
   const location = useLocation();
 
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");
   const [cardStatus, setCardStatus] = useState({});
   const [activation, setActivation] = useState({});
-  const [subscriptionDetails, setSubscriptionDetails] = useState(null);
+  const [subscription, setSubscription] = useState(null);
+  const [imali, setImali] = useState({
+    balance: 0,
+    discountPct: 0,
+    discountActive: false,
+  });
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [notice, setNotice] = useState("");
 
-  // ✅ FIX: Get tier from URL first, then state, then localStorage, then user/activation
   const urlTier = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get("tier") || params.get("plan");
   }, [location.search]);
 
-  const selectedTier = useMemo(() => {
-    const tier =
+  const currentTier = useMemo(() => {
+    return normalizeTier(
       urlTier ||
-      location.state?.tier ||
-      localStorage.getItem("IMALI_SELECTED_TIER") ||
-      user?.tier ||
-      activation?.tier ||
-      "starter";
-    return normalizeTier(tier);
+        location.state?.tier ||
+        localStorage.getItem("IMALI_SELECTED_TIER") ||
+        user?.tier ||
+        activation?.tier ||
+        "starter"
+    );
   }, [urlTier, location.state?.tier, user?.tier, activation?.tier]);
 
-  // ✅ Persist tier to localStorage
   useEffect(() => {
-    if (selectedTier) {
-      localStorage.setItem("IMALI_SELECTED_TIER", selectedTier);
-    }
-  }, [selectedTier]);
+    localStorage.setItem("IMALI_SELECTED_TIER", currentTier);
+  }, [currentTier]);
 
-  const currentTier = selectedTier;
+  const tierMeta = TIERS[currentTier] || TIERS.starter;
 
   const realHasCard =
     cardStatus?.has_card === true ||
     cardStatus?.has_card_on_file === true ||
     activation?.has_card_on_file === true;
 
-  const getTierDisplayName = (tierValue) => {
-    const names = {
-      starter: "Starter",
-      pro: "Pro",
-      elite: "Elite",
-      enterprise: "Enterprise",
-    };
+  const subscriptionStatus =
+    subscription?.status ||
+    user?.subscription_status ||
+    (realHasCard && currentTier !== "starter" ? "active" : "inactive");
 
-    const value = normalizeTier(tierValue || "starter");
-    return names[value] || value.charAt(0).toUpperCase() + value.slice(1);
-  };
+  const isPaidTier = currentTier === "pro" || currentTier === "elite";
 
-  const loadBilling = useCallback(async () => {
+  const loadBillingDashboard = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      // ✅ FIX: Use fetchJsonOptional for activation endpoint
-      const [cardRes, activationRes, subscriptionRes] = await Promise.allSettled([
-        fetchJsonOptional("/api/billing/card-status", {}),
-        fetchJsonOptional("/api/activation/status", {}),
-        fetchJsonOptional("/api/billing/subscription", null),
+      const [
+        cardData,
+        activationData,
+        subscriptionData,
+        imaliBalanceData,
+        imaliDiscountData,
+      ] = await Promise.all([
+        fetchOptional("/api/billing/card-status", {}),
+        fetchOptional("/api/activation/status", {}),
+        fetchOptional("/api/billing/subscription", null),
+        fetchOptional("/api/imali/balance", {}),
+        fetchOptional("/api/imali/discount-status", {}),
       ]);
 
-      if (cardRes.status === "fulfilled") setCardStatus(cardRes.value || {});
-      if (activationRes.status === "fulfilled") setActivation(activationRes.value || {});
-      if (subscriptionRes.status === "fulfilled") setSubscriptionDetails(subscriptionRes.value || null);
+      setCardStatus(cardData || {});
+      setActivation(activationData || {});
+      setSubscription(subscriptionData || null);
+
+      setImali({
+        balance: Number(
+          imaliBalanceData?.balance ??
+            imaliBalanceData?.imali_balance ??
+            imaliBalanceData?.imaliBalance ??
+            0
+        ),
+        discountPct: Number(
+          imaliDiscountData?.discountPct ??
+            imaliDiscountData?.discount_pct ??
+            0
+        ),
+        discountActive: Boolean(
+          imaliDiscountData?.active ??
+            imaliDiscountData?.discountActive ??
+            false
+        ),
+      });
     } catch (err) {
-      setError(err?.message || "Failed to load billing information.");
+      setError(err?.message || "Failed to load billing dashboard.");
     } finally {
       setLoading(false);
     }
@@ -121,244 +175,384 @@ export default function BillingDashboard() {
 
   useEffect(() => {
     if (!user) {
-      navigate("/login", { replace: true });
+      navigate("/login", { replace: true, state: { from: "/billing-dashboard" } });
       return;
     }
 
-    loadBilling();
-  }, [user, navigate, loadBilling]);
+    loadBillingDashboard();
+  }, [user, navigate, loadBillingDashboard]);
 
-  const handleUpdateCard = () => {
-    navigate("/billing", {
+  const goToPaymentSetup = () => {
+    navigate(`/billing?tier=${currentTier === "starter" ? "pro" : currentTier}`, {
       state: {
-        updateCard: true,
         tier: currentTier === "starter" ? "pro" : currentTier,
+        updateCard: true,
       },
     });
+  };
+
+  const handleUpgrade = (tier) => {
+    localStorage.setItem("IMALI_SELECTED_TIER", tier);
+    navigate(`/billing?tier=${tier}`, {
+      state: { tier },
+    });
+  };
+
+  const handleCancelSubscription = async () => {
+    const confirmed = window.confirm(
+      "Cancel your subscription? Your paid features may stop at the end of the billing period."
+    );
+
+    if (!confirmed) return;
+
+    setBusy("cancel");
+    setError("");
+    setNotice("");
+
+    try {
+      await fetchJson("/api/billing/cancel-subscription", {
+        method: "POST",
+      });
+
+      setNotice("Subscription cancellation request submitted.");
+      await refreshUser?.();
+      await loadBillingDashboard();
+    } catch (err) {
+      setError(err?.message || "Failed to cancel subscription.");
+    } finally {
+      setBusy("");
+    }
   };
 
   const handleRemoveCard = async () => {
     if (!realHasCard) return;
 
-    const confirmed = window.confirm("Remove your payment method?");
+    const confirmed = window.confirm("Remove your saved payment method?");
     if (!confirmed) return;
 
-    setBusy(true);
+    setBusy("remove-card");
     setError("");
-    setSuccess("");
+    setNotice("");
 
     try {
       await fetchJson("/api/billing/remove-card", {
         method: "POST",
       });
-      setSuccess("Payment method removed.");
+
+      setNotice("Payment method removed.");
       await refreshUser?.();
-      await loadBilling();
+      await loadBillingDashboard();
     } catch (err) {
       setError(err?.message || "Failed to remove payment method.");
     } finally {
-      setBusy(false);
+      setBusy("");
+    }
+  };
+
+  const handleApplyImaliDiscount = async () => {
+    setBusy("imali");
+    setError("");
+    setNotice("");
+
+    try {
+      await fetchJson("/api/imali/apply-discount", {
+        method: "POST",
+      });
+
+      setNotice("IMALI discount applied.");
+      await loadBillingDashboard();
+    } catch (err) {
+      setError(err?.message || "Unable to apply IMALI discount.");
+    } finally {
+      setBusy("");
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="min-h-screen bg-[#050816] text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading billing...</p>
+          <div className="h-12 w-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white/60">Loading billing dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-8">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.10),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.08),transparent_35%)]" />
+    <div className="min-h-screen bg-[#050816] text-white px-4 py-8">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
 
-      <div className="relative max-w-5xl mx-auto space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="relative max-w-7xl mx-auto space-y-6">
+        <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <p className="text-sm text-emerald-300 font-semibold tracking-wide">
-              IMALI BILLING
+            <p className="text-sm text-emerald-300 font-bold tracking-wide">
+              IMALI BILLING CENTER
             </p>
-            <h1 className="text-3xl font-bold mt-1">Billing & Subscription</h1>
-            <p className="text-gray-400 mt-2">
-              Manage your plan and payment method.
+            <h1 className="text-3xl md:text-4xl font-black mt-1">
+              Billing, Subscription & Discounts
+            </h1>
+            <p className="text-white/50 mt-2">
+              View your plan, manage payment, upgrade, cancel, and apply IMALI token benefits.
             </p>
           </div>
 
           <button
             onClick={() => navigate("/dashboard")}
-            className="px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 font-medium"
+            className="px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 font-bold"
           >
             Back to Dashboard
           </button>
-        </div>
+        </header>
 
         {error && (
-          <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-300">
+          <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">
             ⚠️ {error}
           </div>
         )}
 
-        {success && (
-          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-300">
-            ✅ {success}
+        {notice && (
+          <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-200">
+            ✅ {notice}
           </div>
         )}
 
-        <section className="rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-900 to-gray-950 p-6 shadow-xl">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
-            <div>
-              <h2 className="text-xl font-semibold">💳 Payment Method</h2>
-              <p className="text-sm text-gray-400 mt-1">
-                {currentTier === "starter"
-                  ? "Starter plan - no payment required"
-                  : `${getTierDisplayName(currentTier)} Plan`}
+        <section className="grid gap-6 lg:grid-cols-[1fr_1fr_1fr]">
+          <SummaryCard
+            title="Current Plan"
+            icon={tierMeta.icon}
+            value={`${tierMeta.label} Plan`}
+            detail={tierMeta.price}
+            subtext={tierMeta.summary}
+          />
+
+          <SummaryCard
+            title="Subscription Status"
+            icon="📄"
+            value={String(subscriptionStatus).replace("_", " ")}
+            detail={isPaidTier ? "Paid Access" : "Free / Manual"}
+            subtext={
+              isPaidTier
+                ? "Your subscription controls live trading access."
+                : "Starter and Enterprise use different billing flows."
+            }
+          />
+
+          <SummaryCard
+            title="IMALI Discount"
+            icon="🪙"
+            value={imali.discountActive ? `${imali.discountPct}% Active` : "Not Active"}
+            detail={`${imali.balance.toLocaleString()} IMALI`}
+            subtext="Hold IMALI to unlock fee and subscription benefits."
+          />
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+          <Panel title="Plan Details" icon={tierMeta.icon}>
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
+                <p className="text-white/40 text-sm">Plan</p>
+                <h2 className="text-3xl font-black mt-1">{tierMeta.label}</h2>
+                <p className="text-emerald-300 font-bold mt-2">{tierMeta.price}</p>
+              </div>
+
+              <div>
+                <h3 className="font-bold mb-3">Included Features</h3>
+                <div className="space-y-2">
+                  {tierMeta.features.map((feature) => (
+                    <div
+                      key={feature}
+                      className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/70"
+                    >
+                      ✓ {feature}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 pt-2">
+                {currentTier !== "pro" && currentTier !== "elite" && (
+                  <button
+                    onClick={() => handleUpgrade("pro")}
+                    className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 font-black"
+                  >
+                    Upgrade to Pro
+                  </button>
+                )}
+
+                {currentTier !== "elite" && (
+                  <button
+                    onClick={() => handleUpgrade("elite")}
+                    className="px-5 py-3 rounded-2xl bg-purple-600 hover:bg-purple-500 font-black"
+                  >
+                    Upgrade to Elite
+                  </button>
+                )}
+
+                <button
+                  onClick={() => navigate("/pricing")}
+                  className="px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 font-black"
+                >
+                  Compare Plans
+                </button>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel title="Payment Method" icon="💳">
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
+              <div className="flex items-center gap-3">
+                <span
+                  className={`h-3 w-3 rounded-full ${
+                    realHasCard ? "bg-emerald-400" : "bg-gray-500"
+                  }`}
+                />
+                <h3 className="font-black">
+                  {realHasCard ? "Payment Method On File" : "No Payment Method"}
+                </h3>
+              </div>
+
+              <p className="text-white/50 text-sm mt-3">
+                {realHasCard
+                  ? "Your card is saved securely through Stripe."
+                  : currentTier === "starter"
+                  ? "Starter does not require a card."
+                  : "Add a card to activate paid access."}
               </p>
             </div>
 
-            {currentTier !== "starter" && currentTier !== "enterprise" && (
-              <div className="flex gap-3">
-                <button
-                  onClick={handleUpdateCard}
-                  disabled={busy}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-medium disabled:opacity-50 transition"
-                >
-                  {realHasCard ? "Update Card" : "Add Card"}
-                </button>
-
-                {realHasCard && (
-                  <button
-                    onClick={handleRemoveCard}
-                    disabled={busy}
-                    className="px-4 py-2 rounded-lg bg-red-900/50 hover:bg-red-800/50 text-red-300 border border-red-800/50 disabled:opacity-50 transition"
-                  >
-                    {busy ? "Removing..." : "Remove Card"}
-                  </button>
+            {subscription && (
+              <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-5">
+                <h3 className="font-bold mb-4">Subscription Details</h3>
+                <InfoRow label="Plan" value={subscription.plan || tierMeta.label} />
+                {subscription.amount && (
+                  <InfoRow
+                    label="Price"
+                    value={`${(subscription.currency || "usd").toUpperCase()} $${(
+                      subscription.amount / 100
+                    ).toFixed(2)} / ${subscription.interval || "month"}`}
+                  />
+                )}
+                {subscription.status && (
+                  <InfoRow
+                    label="Status"
+                    value={String(subscription.status).replace("_", " ")}
+                    valueClass={
+                      subscription.status === "active"
+                        ? "text-emerald-300"
+                        : subscription.status === "past_due"
+                        ? "text-red-300"
+                        : "text-yellow-300"
+                    }
+                  />
                 )}
               </div>
             )}
-          </div>
 
-          <div className="rounded-xl border border-gray-700/50 bg-gray-800/30 p-4">
-            <div className="flex items-center gap-3">
-              <span
-                className={`w-3 h-3 rounded-full ${
-                  realHasCard ? "bg-green-500 shadow-lg shadow-green-500/30" : "bg-gray-500"
-                }`}
-              />
+            <div className="mt-5 flex flex-wrap gap-3">
+              {currentTier !== "starter" && currentTier !== "enterprise" && (
+                <button
+                  onClick={goToPaymentSetup}
+                  disabled={busy}
+                  className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 font-black disabled:opacity-50"
+                >
+                  {realHasCard ? "Update Card" : "Add Card"}
+                </button>
+              )}
 
-              <span className="font-medium">
-                {realHasCard
-                  ? "✅ Payment method on file"
-                  : currentTier === "starter"
-                  ? "No payment method required"
-                  : currentTier === "enterprise"
-                  ? "Enterprise billing handled by sales"
-                  : "No payment method on file"}
-              </span>
+              {realHasCard && (
+                <button
+                  onClick={handleRemoveCard}
+                  disabled={busy === "remove-card"}
+                  className="px-5 py-3 rounded-2xl bg-red-900/60 hover:bg-red-800/60 border border-red-700/50 text-red-200 font-black disabled:opacity-50"
+                >
+                  {busy === "remove-card" ? "Removing..." : "Remove Card"}
+                </button>
+              )}
             </div>
-
-            <p className="mt-3 text-sm text-gray-400">
-              {realHasCard
-                ? "Your card is active and ready for billing."
-                : currentTier === "starter"
-                ? "You can use Starter without adding a card."
-                : currentTier === "enterprise"
-                ? "Enterprise accounts are approved and billed manually."
-                : "Add a payment method to activate your subscription."}
-            </p>
-          </div>
-
-          {realHasCard && subscriptionDetails && currentTier !== "starter" && (
-            <div className="mt-4 rounded-xl border border-gray-700 bg-gray-800/50 p-4">
-              <h3 className="font-medium mb-3 text-white">Current Plan</h3>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Plan:</span>
-                  <span className="text-white">{subscriptionDetails.plan || getTierDisplayName(currentTier)}</span>
-                </div>
-
-                {subscriptionDetails.amount && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Price:</span>
-                    <span className="text-white">
-                      {(subscriptionDetails.currency || "usd").toUpperCase()} $
-                      {(subscriptionDetails.amount / 100).toFixed(2)} /{" "}
-                      {subscriptionDetails.interval || "month"}
-                    </span>
-                  </div>
-                )}
-
-                {subscriptionDetails.status && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Status:</span>
-                    <span
-                      className={`capitalize ${
-                        subscriptionDetails.status === "active"
-                          ? "text-green-400"
-                          : subscriptionDetails.status === "past_due"
-                          ? "text-red-400"
-                          : "text-yellow-400"
-                      }`}
-                    >
-                      {String(subscriptionDetails.status).replace("_", " ")}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          </Panel>
         </section>
 
-        <section className="rounded-2xl border border-gray-800 bg-white/5 p-6">
-          <h2 className="text-lg font-semibold mb-3">Plan Actions</h2>
+        <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+          <Panel title="Subscription Actions" icon="⚙️">
+            <div className="space-y-3">
+              <ActionRow
+                title="Upgrade or change your plan"
+                description="Move between Starter, Pro, Elite, or Enterprise options."
+                button="Change Plan"
+                onClick={() => navigate("/pricing")}
+              />
 
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => {
-                navigate(`/pricing?selected=${currentTier}`, {
-                  state: { tier: currentTier },
-                });
-              }}
-              className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition"
-            >
-              Change Plan
-            </button>
+              <ActionRow
+                title="Continue account setup"
+                description="Connect OKX, Alpaca, wallet, and activate trading."
+                button="Activation"
+                onClick={() => navigate("/activation", { state: { tier: currentTier } })}
+              />
 
-            <button
-              onClick={() => navigate("/activation", { state: { tier: currentTier } })}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition"
-            >
-              Continue Setup
-            </button>
+              {isPaidTier && subscriptionStatus !== "canceled" && (
+                <ActionRow
+                  danger
+                  title="Cancel subscription"
+                  description="Cancel paid access. You may retain access until the end of your billing period."
+                  button={busy === "cancel" ? "Canceling..." : "Cancel"}
+                  onClick={handleCancelSubscription}
+                />
+              )}
+            </div>
+          </Panel>
 
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 transition"
-            >
-              Back to Dashboard
-            </button>
-          </div>
+          <Panel title="IMALI Token Discounts" icon="🪙">
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
+              <p className="text-white/40 text-sm">Current IMALI Balance</p>
+              <h3 className="text-3xl font-black mt-1">
+                {imali.balance.toLocaleString()} IMALI
+              </h3>
+
+              <p className="text-white/60 text-sm mt-3">
+                Discount Status:{" "}
+                <span className={imali.discountActive ? "text-emerald-300" : "text-yellow-300"}>
+                  {imali.discountActive
+                    ? `${imali.discountPct}% active`
+                    : "Not active"}
+                </span>
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              <button
+                onClick={handleApplyImaliDiscount}
+                disabled={busy === "imali"}
+                className="w-full px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-black disabled:opacity-50"
+              >
+                {busy === "imali" ? "Applying..." : "Apply IMALI Discount"}
+              </button>
+
+              <button
+                onClick={() => navigate("/buy-imali")}
+                className="w-full px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 font-black"
+              >
+                Buy IMALI Tokens
+              </button>
+            </div>
+          </Panel>
         </section>
 
         {process.env.NODE_ENV === "development" && (
-          <details className="rounded-xl border border-gray-800 bg-black/40 p-4 text-xs text-gray-400">
-            <summary className="cursor-pointer hover:text-gray-300">Debug Information</summary>
+          <details className="rounded-2xl border border-white/10 bg-black/40 p-4 text-xs text-white/50">
+            <summary className="cursor-pointer">Debug Information</summary>
             <pre className="mt-3 overflow-auto">
               {JSON.stringify(
                 {
-                  realHasCard,
                   currentTier,
-                  selectedTier,
-                  localStorageTier: localStorage.getItem("IMALI_SELECTED_TIER"),
+                  realHasCard,
+                  subscriptionStatus,
                   cardStatus,
                   activation,
-                  subscriptionDetails,
+                  subscription,
+                  imali,
                   userTier: user?.tier,
+                  localStorageTier: localStorage.getItem("IMALI_SELECTED_TIER"),
                 },
                 null,
                 2
@@ -367,6 +561,63 @@ export default function BillingDashboard() {
           </details>
         )}
       </div>
+    </div>
+  );
+}
+
+function SummaryCard({ title, icon, value, detail, subtext }) {
+  return (
+    <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-6">
+      <div className="text-4xl mb-4">{icon}</div>
+      <p className="text-white/40 text-sm">{title}</p>
+      <h2 className="text-2xl font-black mt-1 capitalize">{value}</h2>
+      <p className="text-emerald-300 font-bold mt-2">{detail}</p>
+      <p className="text-white/50 text-sm mt-3">{subtext}</p>
+    </div>
+  );
+}
+
+function Panel({ title, icon, children }) {
+  return (
+    <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-6 shadow-xl">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-black">{title}</h2>
+        <span className="text-3xl">{icon}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function InfoRow({ label, value, valueClass = "text-white" }) {
+  return (
+    <div className="flex justify-between gap-4 py-1 text-sm">
+      <span className="text-white/40">{label}</span>
+      <span className={`font-semibold capitalize text-right ${valueClass}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function ActionRow({ title, description, button, onClick, danger = false }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/30 p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <h3 className="font-black">{title}</h3>
+        <p className="text-sm text-white/50 mt-1">{description}</p>
+      </div>
+
+      <button
+        onClick={onClick}
+        className={`px-5 py-3 rounded-2xl font-black ${
+          danger
+            ? "bg-red-900/60 hover:bg-red-800/60 text-red-200 border border-red-700/50"
+            : "bg-white/10 hover:bg-white/15 border border-white/10"
+        }`}
+      >
+        {button}
+      </button>
     </div>
   );
 }
