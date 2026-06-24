@@ -1,9 +1,44 @@
 // imali/Frontend/src/pages/CardUpdateForm.jsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
+const API_BASE =
+  process.env.REACT_APP_API_URL || "https://api.imali-defi.com";
+
 const STRIPE_SCRIPT_ID = "stripe-js-v3";
+
+function getAuthToken() {
+  return (
+    localStorage.getItem("token") ||
+    localStorage.getItem("imali_token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("IMALI_TOKEN") ||
+    ""
+  );
+}
+
+async function apiFetch(endpoint, options = {}) {
+  const token = getAuthToken();
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok || result?.success === false) {
+    throw new Error(
+      result?.error || result?.message || `Request failed: ${endpoint}`
+    );
+  }
+
+  return result?.data || result;
+}
 
 function loadStripeScript() {
   return new Promise((resolve, reject) => {
@@ -33,7 +68,6 @@ function loadStripeScript() {
 
 export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
   const { user, refreshUser } = useAuth();
-  const navigate = useNavigate();
 
   const stripeRef = useRef(null);
   const elementsRef = useRef(null);
@@ -45,23 +79,24 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
   const [error, setError] = useState("");
   const [clientSecret, setClientSecret] = useState("");
 
-  // ✅ FIX: Get tier from props, user, or localStorage
-  const currentTier = useCallback(() => {
-    const tierValue = 
-      tier || 
-      user?.tier || 
-      localStorage.getItem("IMALI_SELECTED_TIER") || 
+  const getCurrentTier = useCallback(() => {
+    const tierValue =
+      tier ||
+      localStorage.getItem("IMALI_SELECTED_TIER") ||
+      user?.tier ||
       "pro";
-    return String(tierValue).toLowerCase();
+
+    const cleanTier = String(tierValue || "pro").toLowerCase().trim();
+
+    return cleanTier === "starter" ? "pro" : cleanTier;
   }, [tier, user?.tier]);
 
-  // ✅ FIX: Save tier to localStorage when it changes
   useEffect(() => {
-    const tierValue = currentTier();
+    const tierValue = getCurrentTier();
     if (tierValue) {
       localStorage.setItem("IMALI_SELECTED_TIER", tierValue);
     }
-  }, [currentTier]);
+  }, [getCurrentTier]);
 
   const destroyCardElement = useCallback(() => {
     try {
@@ -79,6 +114,7 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
   const initializeStripeCard = useCallback(async () => {
     setLoading(true);
     setError("");
+    setClientSecret("");
     destroyCardElement();
 
     try {
@@ -86,6 +122,11 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
 
       if (!publishableKey) {
         throw new Error("Stripe publishable key is missing.");
+      }
+
+      const token = getAuthToken();
+      if (!token) {
+        throw new Error("No login token found. Please log in again.");
       }
 
       const Stripe = await loadStripeScript();
@@ -96,18 +137,11 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
 
       stripeRef.current = Stripe(publishableKey);
 
-      // ✅ FIX: Use correct tier for setup intent
-      const tierForBilling = currentTier() === "starter" ? "pro" : currentTier();
-      
-      // ✅ Save tier to localStorage before API call
+      const tierForBilling = getCurrentTier();
       localStorage.setItem("IMALI_SELECTED_TIER", tierForBilling);
 
-      const response = await fetch("/api/billing/setup-intent", {
+      const result = await apiFetch("/api/billing/setup-intent", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
         body: JSON.stringify({
           email: user?.email,
           tier: tierForBilling,
@@ -115,20 +149,10 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
         }),
       });
 
-      const result = await response.json().catch(() => ({}));
-
-      if (!response.ok || result?.success === false) {
-        throw new Error(
-          result?.error ||
-            result?.message ||
-            "Failed to initialize secure card form."
-        );
-      }
-
       const secret =
-        result?.data?.client_secret ||
         result?.client_secret ||
         result?.clientSecret ||
+        result?.setup_intent_client_secret ||
         "";
 
       if (!secret) {
@@ -140,7 +164,7 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
       const elements = stripeRef.current.elements({
         clientSecret: secret,
       });
-      
+
       const cardElement = elements.create("card", {
         hidePostalCode: false,
         style: {
@@ -160,6 +184,7 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
       });
 
       cardElement.mount("#card-element");
+
       cardElementRef.current = cardElement;
       elementsRef.current = elements;
     } catch (err) {
@@ -168,7 +193,7 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
     } finally {
       setLoading(false);
     }
-  }, [currentTier, destroyCardElement, user?.email]);
+  }, [destroyCardElement, getCurrentTier, user?.email]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -213,15 +238,10 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
         throw new Error("Card was not saved. Please try again.");
       }
 
-      // ✅ FIX: Confirm card with correct tier
-      const tierForBilling = currentTier() === "starter" ? "pro" : currentTier();
+      const tierForBilling = getCurrentTier();
 
-      const confirmResponse = await fetch("/api/billing/confirm-card", {
+      const confirmResult = await apiFetch("/api/billing/confirm-card", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
         body: JSON.stringify({
           setup_intent_id: setupIntent.id,
           payment_method_id: setupIntent.payment_method,
@@ -229,27 +249,13 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
         }),
       });
 
-      const confirmResult = await confirmResponse.json().catch(() => ({}));
+      await refreshUser?.();
 
-      if (!confirmResponse.ok || confirmResult?.success === false) {
-        throw new Error(
-          confirmResult?.error ||
-            confirmResult?.message ||
-            "Card saved in Stripe, but failed to update IMALI billing."
-        );
-      }
-
-      // ✅ FIX: Refresh user data to update tier/status
-      if (refreshUser) {
-        await refreshUser();
-      }
-
-      // ✅ FIX: Save tier and billing status to localStorage
       localStorage.setItem("IMALI_SELECTED_TIER", tierForBilling);
       localStorage.setItem("IMALI_BILLING_COMPLETE", "true");
 
       if (onSuccess) {
-        await onSuccess(confirmResult?.data || confirmResult);
+        await onSuccess(confirmResult);
       }
     } catch (err) {
       console.error("[CardUpdateForm] save failed:", err);
@@ -261,30 +267,39 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
     }
   };
 
-  const tierDisplay = currentTier();
-  const tierName = tierDisplay === "starter" ? "Pro" : 
-                   tierDisplay === "elite" ? "Elite" : 
-                   tierDisplay === "enterprise" ? "Enterprise" : 
-                   tierDisplay.charAt(0).toUpperCase() + tierDisplay.slice(1);
+  const tierDisplay = getCurrentTier();
+
+  const tierName =
+    tierDisplay === "elite"
+      ? "Elite"
+      : tierDisplay === "enterprise"
+      ? "Enterprise"
+      : tierDisplay === "pro"
+      ? "Pro"
+      : tierDisplay.charAt(0).toUpperCase() + tierDisplay.slice(1);
+
+  const tierPrice =
+    tierDisplay === "elite"
+      ? "$49/mo"
+      : tierDisplay === "pro"
+      ? "$19/mo"
+      : tierDisplay === "enterprise"
+      ? "Custom"
+      : "";
 
   return (
     <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 max-w-md mx-auto">
       <h3 className="text-xl font-semibold text-white mb-2">
-        {tierDisplay === "starter" ? "Upgrade to Pro" : "Update Payment Method"}
+        {tierDisplay === "pro" ? "Add Payment Method" : "Update Payment Method"}
       </h3>
 
       <p className="text-sm text-gray-400 mb-4">
-        {tierDisplay === "starter" 
-          ? `Add a payment method to upgrade to ${tierName} plan.` 
-          : `Add or replace the card used for your ${tierName} subscription.`}
+        Add or replace the card used for your {tierName} subscription.
       </p>
 
-      {/* ✅ FIX: Show tier indicator */}
       <div className="mb-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-blue-300">
         <span className="font-medium">Plan:</span> {tierName}
-        {tierDisplay !== "starter" && (
-          <span className="ml-2 text-gray-400">• {tierDisplay === "elite" ? "$49/mo" : "$19/mo"}</span>
-        )}
+        {tierPrice && <span className="ml-2 text-gray-400">• {tierPrice}</span>}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -322,7 +337,7 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
                 Saving...
               </span>
             ) : (
-              tierDisplay === "starter" ? "Upgrade & Save Card" : "Save Card"
+              "Save Card"
             )}
           </button>
 
@@ -339,10 +354,9 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
         </div>
       </form>
 
-      {/* ✅ FIX: Show helpful info for Starter users */}
-      {tierDisplay === "starter" && (
+      {tierDisplay === "pro" && (
         <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-sm text-yellow-300">
-          💡 Upgrading to Pro unlocks live trading, AI strategies, and priority support.
+          💡 Pro unlocks live trading, AI strategies, and priority support.
         </div>
       )}
     </div>
