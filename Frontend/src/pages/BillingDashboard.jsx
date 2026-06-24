@@ -3,6 +3,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
+const API_BASE =
+  process.env.REACT_APP_API_URL || "https://api.imali-defi.com";
+
 const VALID_TIERS = ["starter", "pro", "elite", "enterprise"];
 
 const TIERS = {
@@ -45,12 +48,24 @@ function normalizeTier(value) {
   return VALID_TIERS.includes(tier) ? tier : "starter";
 }
 
-async function fetchJson(url, options = {}) {
-  const response = await fetch(url, {
-    credentials: "include",
+function getAuthToken() {
+  return (
+    localStorage.getItem("token") ||
+    localStorage.getItem("imali_token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("IMALI_TOKEN") ||
+    ""
+  );
+}
+
+async function apiFetch(endpoint, options = {}) {
+  const token = getAuthToken();
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
   });
@@ -58,17 +73,17 @@ async function fetchJson(url, options = {}) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok || result?.success === false) {
-    throw new Error(result?.message || result?.error || `Failed: ${url}`);
+    throw new Error(result?.message || result?.error || `Failed: ${endpoint}`);
   }
 
   return result?.data || result;
 }
 
-async function fetchOptional(url, fallback) {
+async function optionalFetch(endpoint, fallback) {
   try {
-    return await fetchJson(url);
+    return await apiFetch(endpoint);
   } catch (err) {
-    console.warn(`[BillingDashboard] Optional endpoint failed: ${url}`, err);
+    console.warn(`[BillingDashboard] Optional endpoint failed: ${endpoint}`, err);
     return fallback;
   }
 }
@@ -93,8 +108,10 @@ export default function BillingDashboard() {
 
   const urlTier = useMemo(() => {
     const params = new URLSearchParams(location.search);
-    return params.get("tier") || params.get("plan");
+    return params.get("tier") || params.get("plan") || params.get("selected");
   }, [location.search]);
+
+  const activationStatus = activation?.status || activation || {};
 
   const currentTier = useMemo(() => {
     return normalizeTier(
@@ -102,10 +119,10 @@ export default function BillingDashboard() {
         location.state?.tier ||
         localStorage.getItem("IMALI_SELECTED_TIER") ||
         user?.tier ||
-        activation?.tier ||
+        activationStatus?.tier ||
         "starter"
     );
-  }, [urlTier, location.state?.tier, user?.tier, activation?.tier]);
+  }, [urlTier, location.state?.tier, user?.tier, activationStatus?.tier]);
 
   useEffect(() => {
     localStorage.setItem("IMALI_SELECTED_TIER", currentTier);
@@ -116,7 +133,8 @@ export default function BillingDashboard() {
   const realHasCard =
     cardStatus?.has_card === true ||
     cardStatus?.has_card_on_file === true ||
-    activation?.has_card_on_file === true;
+    activationStatus?.has_card_on_file === true ||
+    user?.has_card_on_file === true;
 
   const subscriptionStatus =
     subscription?.status ||
@@ -137,11 +155,11 @@ export default function BillingDashboard() {
         imaliBalanceData,
         imaliDiscountData,
       ] = await Promise.all([
-        fetchOptional("/api/billing/card-status", {}),
-        fetchOptional("/api/activation/status", {}),
-        fetchOptional("/api/billing/subscription", null),
-        fetchOptional("/api/imali/balance", {}),
-        fetchOptional("/api/imali/discount-status", {}),
+        optionalFetch("/api/billing/card-status", {}),
+        optionalFetch("/api/me/activation-status", {}),
+        optionalFetch("/api/billing/subscription", null),
+        optionalFetch("/api/wallet/imali-balance", {}),
+        optionalFetch("/api/billing/imali-discount-status", {}),
       ]);
 
       setCardStatus(cardData || {});
@@ -175,7 +193,10 @@ export default function BillingDashboard() {
 
   useEffect(() => {
     if (!user) {
-      navigate("/login", { replace: true, state: { from: "/billing-dashboard" } });
+      navigate("/login", {
+        replace: true,
+        state: { from: "/billing-dashboard" },
+      });
       return;
     }
 
@@ -183,9 +204,11 @@ export default function BillingDashboard() {
   }, [user, navigate, loadBillingDashboard]);
 
   const goToPaymentSetup = () => {
-    navigate(`/billing?tier=${currentTier === "starter" ? "pro" : currentTier}`, {
+    const targetTier = currentTier === "starter" ? "pro" : currentTier;
+
+    navigate(`/billing?tier=${targetTier}`, {
       state: {
-        tier: currentTier === "starter" ? "pro" : currentTier,
+        tier: targetTier,
         updateCard: true,
       },
     });
@@ -194,7 +217,7 @@ export default function BillingDashboard() {
   const handleUpgrade = (tier) => {
     localStorage.setItem("IMALI_SELECTED_TIER", tier);
     navigate(`/billing?tier=${tier}`, {
-      state: { tier },
+      state: { tier, updateCard: tier !== "starter" },
     });
   };
 
@@ -210,7 +233,7 @@ export default function BillingDashboard() {
     setNotice("");
 
     try {
-      await fetchJson("/api/billing/cancel-subscription", {
+      await apiFetch("/api/billing/cancel-subscription", {
         method: "POST",
       });
 
@@ -235,7 +258,7 @@ export default function BillingDashboard() {
     setNotice("");
 
     try {
-      await fetchJson("/api/billing/remove-card", {
+      await apiFetch("/api/billing/remove-card", {
         method: "POST",
       });
 
@@ -255,7 +278,7 @@ export default function BillingDashboard() {
     setNotice("");
 
     try {
-      await fetchJson("/api/imali/apply-discount", {
+      await apiFetch("/api/billing/apply-imali-discount", {
         method: "POST",
       });
 
@@ -317,7 +340,7 @@ export default function BillingDashboard() {
           </div>
         )}
 
-        <section className="grid gap-6 lg:grid-cols-[1fr_1fr_1fr]">
+        <section className="grid gap-6 lg:grid-cols-3">
           <SummaryCard
             title="Current Plan"
             icon={tierMeta.icon}
@@ -347,7 +370,7 @@ export default function BillingDashboard() {
           />
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <section className="grid gap-6 lg:grid-cols-2">
           <Panel title="Plan Details" icon={tierMeta.icon}>
             <div className="space-y-4">
               <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
@@ -425,6 +448,7 @@ export default function BillingDashboard() {
               <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-5">
                 <h3 className="font-bold mb-4">Subscription Details</h3>
                 <InfoRow label="Plan" value={subscription.plan || tierMeta.label} />
+
                 {subscription.amount && (
                   <InfoRow
                     label="Price"
@@ -433,6 +457,7 @@ export default function BillingDashboard() {
                     ).toFixed(2)} / ${subscription.interval || "month"}`}
                   />
                 )}
+
                 {subscription.status && (
                   <InfoRow
                     label="Status"
@@ -453,7 +478,7 @@ export default function BillingDashboard() {
               {currentTier !== "starter" && currentTier !== "enterprise" && (
                 <button
                   onClick={goToPaymentSetup}
-                  disabled={busy}
+                  disabled={!!busy}
                   className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 font-black disabled:opacity-50"
                 >
                   {realHasCard ? "Update Card" : "Add Card"}
@@ -473,7 +498,7 @@ export default function BillingDashboard() {
           </Panel>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <section className="grid gap-6 lg:grid-cols-2">
           <Panel title="Subscription Actions" icon="⚙️">
             <div className="space-y-3">
               <ActionRow
@@ -511,7 +536,11 @@ export default function BillingDashboard() {
 
               <p className="text-white/60 text-sm mt-3">
                 Discount Status:{" "}
-                <span className={imali.discountActive ? "text-emerald-300" : "text-yellow-300"}>
+                <span
+                  className={
+                    imali.discountActive ? "text-emerald-300" : "text-yellow-300"
+                  }
+                >
                   {imali.discountActive
                     ? `${imali.discountPct}% active`
                     : "Not active"}
@@ -544,6 +573,8 @@ export default function BillingDashboard() {
             <pre className="mt-3 overflow-auto">
               {JSON.stringify(
                 {
+                  apiBase: API_BASE,
+                  hasToken: !!getAuthToken(),
                   currentTier,
                   realHasCard,
                   subscriptionStatus,
