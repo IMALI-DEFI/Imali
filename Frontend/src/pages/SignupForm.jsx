@@ -46,23 +46,37 @@ export default function SignupForm() {
   const location = useLocation();
   const { signup } = useAuth();
 
-  // Read tier from URL params → route state → default
+  // ✅ FIX: Read tier from URL params → route state → localStorage → default
   const params = new URLSearchParams(location.search);
-  const routeTier = location.pathname.split("/").pop(); // handles /signup/:tier
-  const stateTier = location.state?.tier;
+  const routeTier = location.pathname.split("/").pop();
+  
   const selectedTier =
-    params.get("tier") || params.get("plan") ||
+    params.get("tier") ||
+    params.get("plan") ||
     (routeTier && routeTier !== "signup" ? routeTier : null) ||
-    stateTier ||
+    location.state?.tier ||
+    localStorage.getItem("IMALI_SELECTED_TIER") ||
     "starter";
 
   const validTiers = Object.keys(TIERS);
   const initialTier = validTiers.includes(selectedTier) ? selectedTier : "starter";
 
+  // ✅ FIX: Save tier to localStorage immediately
+  useEffect(() => {
+    if (initialTier) {
+      localStorage.setItem("IMALI_SELECTED_TIER", initialTier);
+    }
+  }, [initialTier]);
+
   // Billing model & token tier from pricing page state
-  const initialBillingModel = location.state?.billingModel || "fixed";
-  const initialProfitSharePct = location.state?.profitSharePct || null;
-  const initialTokenTier = location.state?.tokenTier || "none";
+  const initialBillingModel = location.state?.billingModel || 
+    localStorage.getItem("IMALI_BILLING_MODEL") || "fixed";
+  
+  const initialProfitSharePct = location.state?.profitSharePct || 
+    localStorage.getItem("IMALI_PROFIT_SHARE_PCT") || null;
+  
+  const initialTokenTier = location.state?.tokenTier || 
+    localStorage.getItem("IMALI_TOKEN_TIER") || "none";
 
   const [form, setForm] = useState({
     email: "",
@@ -78,24 +92,41 @@ export default function SignupForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Sync tier from URL changes
+  // ✅ FIX: Sync tier from URL changes and save to localStorage
   useEffect(() => {
-    setForm(f => ({ ...f, tier: initialTier }));
-  }, [initialTier]);
+    const newTier = validTiers.includes(selectedTier) ? selectedTier : "starter";
+    setForm(f => ({ ...f, tier: newTier }));
+    localStorage.setItem("IMALI_SELECTED_TIER", newTier);
+  }, [selectedTier]);
 
-  // Sync billing context from location state (e.g., after pricing page selection)
+  // ✅ FIX: Sync billing context from location state and save to localStorage
   useEffect(() => {
+    const billingModel = location.state?.billingModel || "fixed";
+    const profitSharePct = location.state?.profitSharePct || null;
+    const tokenTier = location.state?.tokenTier || "none";
+    
     setForm(f => ({
       ...f,
-      billingModel: initialBillingModel,
-      profitSharePct: initialProfitSharePct,
-      tokenTier: initialTokenTier,
+      billingModel,
+      profitSharePct,
+      tokenTier,
     }));
-  }, [initialBillingModel, initialProfitSharePct, initialTokenTier]);
+    
+    if (billingModel) localStorage.setItem("IMALI_BILLING_MODEL", billingModel);
+    if (profitSharePct) localStorage.setItem("IMALI_PROFIT_SHARE_PCT", String(profitSharePct));
+    if (tokenTier) localStorage.setItem("IMALI_TOKEN_TIER", tokenTier);
+  }, [location.state]);
 
   const handleTierChange = (tierId) => {
     setForm(f => ({ ...f, tier: tierId }));
-    navigate(`/signup?tier=${tierId}`, { replace: true, state: location.state });
+    localStorage.setItem("IMALI_SELECTED_TIER", tierId);
+    navigate(`/signup?tier=${tierId}`, { 
+      replace: true, 
+      state: { 
+        ...location.state,
+        tier: tierId,
+      } 
+    });
   };
 
   const validate = () => {
@@ -121,6 +152,12 @@ export default function SignupForm() {
     setError("");
 
     try {
+      // ✅ FIX: Save all context before signup
+      localStorage.setItem("IMALI_SELECTED_TIER", form.tier);
+      localStorage.setItem("IMALI_BILLING_MODEL", form.billingModel);
+      if (form.profitSharePct) localStorage.setItem("IMALI_PROFIT_SHARE_PCT", String(form.profitSharePct));
+      if (form.tokenTier) localStorage.setItem("IMALI_TOKEN_TIER", form.tokenTier);
+
       const result = await signup({
         email: form.email.trim().toLowerCase(),
         password: form.password,
@@ -137,7 +174,7 @@ export default function SignupForm() {
         return;
       }
 
-      // Determine redirect path
+      // ✅ FIX: Determine redirect path with tier in URL
       let redirectPath;
 
       if (result.requiresApproval || form.tier === "enterprise") {
@@ -145,7 +182,7 @@ export default function SignupForm() {
       } else if (form.tier === "starter") {
         redirectPath = "/dashboard";
       } else if (TIERS[form.tier]?.requiresPayment) {
-        // Paid tiers → go to billing with full context
+        // ✅ FIX: Paid tiers → go to billing with tier in URL and state
         redirectPath = `/billing?tier=${form.tier}&email=${encodeURIComponent(form.email.trim().toLowerCase())}`;
       } else {
         redirectPath = result.redirectTo || TIERS[form.tier]?.redirectTo || "/dashboard";
@@ -158,6 +195,7 @@ export default function SignupForm() {
           billingModel: form.billingModel,
           profitSharePct: form.profitSharePct,
           tokenTier: form.tokenTier,
+          from: "signup",
         },
       });
     } catch (err) {
@@ -167,6 +205,15 @@ export default function SignupForm() {
   };
 
   const currentTier = TIERS[form.tier] || TIERS.starter;
+
+  // ✅ FIX: Show loading while determining tier
+  if (!form.tier) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 to-black">
+        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 to-black px-4 py-12">
@@ -179,6 +226,14 @@ export default function SignupForm() {
             {form.billingModel === "profit_share" && form.profitSharePct
               ? ` · ${form.profitSharePct}% profit share`
               : ` · ${currentTier.price}${currentTier.period}`}
+          </p>
+          {/* ✅ FIX: Show tier indicator */}
+          <p className="text-xs text-gray-500 mt-1">
+            {form.tier === "starter" 
+              ? "No payment required" 
+              : form.tier === "enterprise" 
+              ? "Custom pricing" 
+              : "Billing setup required"}
           </p>
         </div>
 
@@ -193,7 +248,7 @@ export default function SignupForm() {
                 onClick={() => handleTierChange(id)}
                 className={`px-3 py-2 rounded-xl text-center transition-all ${
                   form.tier === id
-                    ? "bg-gradient-to-r from-emerald-600 to-cyan-600 text-white"
+                    ? "bg-gradient-to-r from-emerald-600 to-cyan-600 text-white shadow-lg"
                     : "bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10"
                 }`}
               >
@@ -205,7 +260,7 @@ export default function SignupForm() {
         </div>
 
         {/* Token discount hint if applicable */}
-        {form.tokenTier && form.tokenTier !== "none" && (
+        {form.tokenTier && form.tokenTier !== "none" && form.tier !== "starter" && form.tier !== "enterprise" && (
           <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
             🎉 IMALI token discount active –{" "}
             {form.billingModel === "profit_share"
