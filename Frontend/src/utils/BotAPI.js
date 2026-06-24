@@ -130,8 +130,14 @@ const createSetupIntent = async (payload = {}) =>
 const confirmCard = async (setup_intent_id) =>
   unwrap(await api.post("/api/billing/confirm-card", { setup_intent_id }));
 
-const changePlan = async (plan) => {
-  const res = unwrap(await api.post("/api/billing/change-plan", { plan }));
+const changePlan = async (tier, billingModel = "fixed", profitSharePct = null) => {
+  const res = unwrap(await api.post("/api/change-plan", { tier, billing_model: billingModel, profit_share_pct: profitSharePct }));
+  clearCache();
+  return res;
+};
+
+const cancelSubscription = async () => {
+  const res = unwrap(await api.post("/api/billing/cancel-subscription"));
   clearCache();
   return res;
 };
@@ -391,7 +397,7 @@ const getGlobalTrades = async (options = {}) =>
 const BotAPI = {
   api, getToken, setToken, clearToken, clearCache, isAuthenticated,
   login, logout, getMe,
-  getActivationStatus, getTrialStatus, getCardStatus, createSetupIntent, confirmCard, changePlan,
+  getActivationStatus, getTrialStatus, getCardStatus, createSetupIntent, confirmCard, changePlan, cancelSubscription,
   getIntegrationStatus, connectOKX, disconnectOKX, connectAlpaca, disconnectAlpaca, switchExchangeMode, switchOKXToLive, switchAlpacaToLive,
   getExchangeBalance, getPortfolioSummary,
   getTradingBotStatus, startTradingBot, stopTradingBot, startTradingBotByCategory, stopTradingBotByCategory,
