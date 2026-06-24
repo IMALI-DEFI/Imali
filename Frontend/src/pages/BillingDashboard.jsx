@@ -1,4 +1,4 @@
-// components/Billing/BillingDashboard.jsx
+// imali/Frontend/src/pages/BillingDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -16,7 +16,7 @@ const BillingDashboard = ({
   const [loading, setLoading] = useState(false);
   const [subscriptionDetails, setSubscriptionDetails] = useState(null);
 
-  // Fetch subscription details from Stripe (if you have this endpoint)
+  // Fetch subscription details
   useEffect(() => {
     const fetchSubscriptionDetails = async () => {
       if (!hasCard) return;
@@ -39,7 +39,7 @@ const BillingDashboard = ({
     fetchSubscriptionDetails();
   }, [hasCard]);
 
-  // Handle card removal - you'll need to add this endpoint
+  // Handle card removal
   const handleRemoveCard = async () => {
     if (!window.confirm('Are you sure you want to remove your payment method?')) {
       return;
@@ -47,7 +47,6 @@ const BillingDashboard = ({
 
     setLoading(true);
     try {
-      // You need to create this endpoint to remove the card from Stripe
       const response = await fetch('/api/billing/remove-card', {
         method: 'POST',
         headers: {
@@ -61,7 +60,6 @@ const BillingDashboard = ({
         throw new Error(error.message || 'Failed to remove card');
       }
 
-      // Notify parent component
       if (onCardRemoved) {
         await onCardRemoved();
       }
@@ -76,47 +74,11 @@ const BillingDashboard = ({
     }
   };
 
-  // Get card details from your API response
-  const getCardDetails = () => {
-    // Your API doesn't return card details directly
-    // You might need a separate endpoint for this
-    // For now, we'll show minimal info
-    return null;
-  };
-
-  const cardDetails = getCardDetails();
-
   // Handle update card
   const handleUpdateCard = () => {
     if (onUpdateCard) {
       onUpdateCard();
     }
-  };
-
-  // Render card details
-  const renderCardDetails = () => {
-    if (!hasCard) {
-      return (
-        <div className="text-sm text-gray-500">
-          No payment method on file
-        </div>
-      );
-    }
-
-    // Since your API doesn't return card details, show generic message
-    return (
-      <div className="space-y-2">
-        <div className="flex items-center space-x-2">
-          <span className="font-medium">Card on file</span>
-          <span className="text-sm text-gray-500">
-            (Contact support for card details)
-          </span>
-        </div>
-        <div className="text-sm text-gray-600">
-          Payment method is active
-        </div>
-      </div>
-    );
   };
 
   // Render subscription info
@@ -126,29 +88,29 @@ const BillingDashboard = ({
     const { status, plan, amount, currency, interval } = subscriptionDetails;
 
     return (
-      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-        <h4 className="font-medium mb-2">Current Plan</h4>
+      <div className="mt-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+        <h4 className="font-medium mb-2 text-white">Current Plan</h4>
         <div className="space-y-1 text-sm">
           <div className="flex justify-between">
-            <span className="text-gray-600">Plan:</span>
-            <span className="font-medium capitalize">{plan || tier}</span>
+            <span className="text-gray-400">Plan:</span>
+            <span className="font-medium capitalize text-white">{plan || tier}</span>
           </div>
           {amount && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Price:</span>
-              <span className="font-medium">
+              <span className="text-gray-400">Price:</span>
+              <span className="font-medium text-white">
                 ${(amount / 100).toFixed(2)} / {interval || 'month'}
               </span>
             </div>
           )}
           {status && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Status:</span>
+              <span className="text-gray-400">Status:</span>
               <span className={`font-medium capitalize ${
-                status === 'active' ? 'text-green-600' :
-                status === 'past_due' ? 'text-red-600' :
-                status === 'canceled' ? 'text-gray-600' :
-                'text-yellow-600'
+                status === 'active' ? 'text-green-400' :
+                status === 'past_due' ? 'text-red-400' :
+                status === 'canceled' ? 'text-gray-400' :
+                'text-yellow-400'
               }`}>
                 {status.replace('_', ' ')}
               </span>
@@ -160,22 +122,28 @@ const BillingDashboard = ({
   };
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
+    <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 shadow-xl">
+      {/* Header */}
       <div className="flex justify-between items-start mb-6">
-        <h2 className="text-xl font-semibold">Payment Method</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-white">💳 Payment Method</h2>
+          <p className="text-sm text-gray-400 mt-1">
+            {tier === 'starter' ? 'Free tier - no payment required' : `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan`}
+          </p>
+        </div>
         <div className="flex space-x-3">
           <button
             onClick={handleUpdateCard}
             disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 text-sm"
+            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white rounded-lg font-medium transition-all disabled:opacity-50 text-sm shadow-lg"
           >
             {hasCard ? 'Update Card' : 'Add Card'}
           </button>
-          {hasCard && (
+          {hasCard && tier !== 'starter' && (
             <button
               onClick={handleRemoveCard}
               disabled={loading}
-              className="px-4 py-2 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50 text-sm"
+              className="px-4 py-2 bg-red-900/50 hover:bg-red-800/50 text-red-300 rounded-lg font-medium transition-all disabled:opacity-50 text-sm border border-red-800/50"
             >
               {loading ? 'Removing...' : 'Remove Card'}
             </button>
@@ -184,16 +152,28 @@ const BillingDashboard = ({
       </div>
 
       {/* Card Status */}
-      <div className="mb-6">
-        <div className="flex items-center space-x-2">
-          <span className={`inline-block w-2 h-2 rounded-full ${
-            hasCard ? 'bg-green-500' : 'bg-gray-400'
+      <div className="mb-6 p-4 bg-gray-800/30 rounded-xl border border-gray-700/50">
+        <div className="flex items-center space-x-3">
+          <span className={`inline-block w-3 h-3 rounded-full ${
+            hasCard ? 'bg-green-500 shadow-lg shadow-green-500/30' : 'bg-gray-500'
           }`} />
-          <span className="font-medium">
+          <span className="font-medium text-white">
             {hasCard ? '✅ Payment method on file' : 'No payment method on file'}
           </span>
         </div>
-        {renderCardDetails()}
+        
+        {hasCard ? (
+          <div className="mt-3 text-sm text-gray-300">
+            <p>Your card is active and ready for use.</p>
+            {cardStatus?.billing_complete && (
+              <p className="text-green-400 text-xs mt-1">✓ Billing setup complete</p>
+            )}
+          </div>
+        ) : (
+          <div className="mt-3 text-sm text-gray-400">
+            <p>Add a payment method to start your subscription.</p>
+          </div>
+        )}
       </div>
 
       {/* Subscription Info */}
@@ -201,18 +181,18 @@ const BillingDashboard = ({
 
       {/* Quick Actions */}
       {hasCard && (
-        <div className="mt-6 pt-6 border-t">
-          <h4 className="font-medium mb-3">Billing Actions</h4>
+        <div className="mt-6 pt-6 border-t border-gray-700/50">
+          <h4 className="font-medium mb-3 text-white">Billing Actions</h4>
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => navigate('/billing/subscription')}
-              className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+              className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors border border-gray-700"
             >
               Manage Subscription
             </button>
             <button
               onClick={() => navigate('/billing/invoices')}
-              className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+              className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors border border-gray-700"
             >
               View Invoices
             </button>
@@ -222,10 +202,10 @@ const BillingDashboard = ({
 
       {/* Debug info - remove in production */}
       {process.env.NODE_ENV === 'development' && (
-        <div className="mt-6 pt-6 border-t">
+        <div className="mt-6 pt-6 border-t border-gray-700/50">
           <details className="text-xs text-gray-500">
-            <summary>Debug Information</summary>
-            <pre className="mt-2 p-2 bg-gray-50 rounded overflow-auto">
+            <summary className="cursor-pointer hover:text-gray-400">Debug Information</summary>
+            <pre className="mt-2 p-3 bg-black/50 rounded-lg overflow-auto text-gray-400">
               {JSON.stringify({
                 hasCard,
                 tier,
