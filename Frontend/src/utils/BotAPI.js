@@ -113,16 +113,60 @@ const getMe = async (skipCache = false) =>
   cachedGet("me", 15000, async () => getData(await api.get("/api/me"))?.user || getData(await api.get("/api/me")), skipCache);
 
 // =====================================================
-// USER / BILLING
+// USER / BILLING - FIXED
 // =====================================================
 const getActivationStatus = async (skipCache = false) =>
-  cachedGet("activation", 15000, async () => getData(await api.get("/api/me/activation-status"))?.status || getData(await api.get("/api/me/activation-status")), skipCache);
+  cachedGet("activation", 15000, async () => {
+    const data = getData(await api.get("/api/me/activation-status"));
+    // Handle both response formats
+    return data?.status || data || {};
+  }, skipCache);
 
 const getTrialStatus = async (skipCache = false) =>
   cachedGet("trial", 15000, async () => getData(await api.get("/api/me/trial-status")), skipCache);
 
+// FIXED: Get card status - returns { has_card, billing_complete }
 const getCardStatus = async (skipCache = false) =>
-  cachedGet("card", 15000, async () => getData(await api.get("/api/billing/card-status")), skipCache);
+  cachedGet("card", 15000, async () => {
+    const response = await api.get("/api/billing/card-status");
+    const data = getData(response);
+    // Your API returns: { success: true, data: { has_card, billing_complete } }
+    // getData extracts the inner data object
+    return {
+      has_card: !!data?.has_card,
+      billing_complete: !!data?.billing_complete,
+      // Include the raw data for debugging
+      _raw: data
+    };
+  }, skipCache);
+
+// FIXED: Helper to check if card exists - ONLY uses has_card
+const hasValidCard = async (skipCache = false) => {
+  const status = await getCardStatus(skipCache);
+  return !!status?.has_card;
+};
+
+// FIXED: Get card status with proper error handling
+const getCardStatusSafe = async (skipCache = false) => {
+  try {
+    const status = await getCardStatus(skipCache);
+    return {
+      success: true,
+      hasCard: !!status?.has_card,
+      billingComplete: !!status?.billing_complete,
+      // IMPORTANT: billingComplete is NOT used to determine if a card exists
+      data: status
+    };
+  } catch (error) {
+    console.error('Error fetching card status:', error);
+    return {
+      success: false,
+      hasCard: false,
+      billingComplete: false,
+      error: error.message
+    };
+  }
+};
 
 const createSetupIntent = async (payload = {}) =>
   unwrap(await api.post("/api/billing/setup-intent", payload));
@@ -130,14 +174,45 @@ const createSetupIntent = async (payload = {}) =>
 const confirmCard = async (setup_intent_id) =>
   unwrap(await api.post("/api/billing/confirm-card", { setup_intent_id }));
 
+// FIXED: Change plan with proper billing model
 const changePlan = async (tier, billingModel = "fixed", profitSharePct = null) => {
-  const res = unwrap(await api.post("/api/change-plan", { tier, billing_model: billingModel, profit_share_pct: profitSharePct }));
+  const res = unwrap(await api.post("/api/change-plan", { 
+    tier, 
+    billing_model: billingModel, 
+    profit_share_pct: profitSharePct 
+  }));
   clearCache();
   return res;
 };
 
+// FIXED: Cancel subscription
 const cancelSubscription = async () => {
   const res = unwrap(await api.post("/api/billing/cancel-subscription"));
+  clearCache();
+  return res;
+};
+
+// NEW: Remove card endpoint
+const removeCard = async () => {
+  const res = unwrap(await api.post("/api/billing/remove-card"));
+  clearCache();
+  return res;
+};
+
+// NEW: Get subscription details
+const getSubscriptionDetails = async (skipCache = false) =>
+  cachedGet("subscription", 15000, async () => {
+    try {
+      const data = getData(await api.get("/api/billing/subscription"));
+      return data || {};
+    } catch {
+      return { error: "Failed to fetch subscription details" };
+    }
+  }, skipCache);
+
+// NEW: Sync billing with Stripe
+const syncBilling = async () => {
+  const res = unwrap(await api.post("/api/billing/sync"));
   clearCache();
   return res;
 };
@@ -392,19 +467,75 @@ const getGlobalTrades = async (options = {}) =>
   unwrap(await api.get("/api/trading/global-trades", { params: options }));
 
 // =====================================================
-// EXPORT
+// EXPORT - FIXED with billing helpers
 // =====================================================
 const BotAPI = {
+  // Core
   api, getToken, setToken, clearToken, clearCache, isAuthenticated,
+  
+  // Auth
   login, logout, getMe,
-  getActivationStatus, getTrialStatus, getCardStatus, createSetupIntent, confirmCard, changePlan, cancelSubscription,
-  getIntegrationStatus, connectOKX, disconnectOKX, connectAlpaca, disconnectAlpaca, switchExchangeMode, switchOKXToLive, switchAlpacaToLive,
-  getExchangeBalance, getPortfolioSummary,
-  getTradingBotStatus, startTradingBot, stopTradingBot, startTradingBotByCategory, stopTradingBotByCategory,
-  getStrategyConfigs, getTradingStrategies, updateUserStrategy,
-  getLiveTradingStats, getOpenPositions, getLiveTradeHistory, getUserTradingStats, getRealTradingStats, executePaperTrade, closePosition, closeAllPositions,
-  toggleTrading, togglePaperTrading,
-  getImaliBalance, getImaliDiscountStatus, applyImaliDiscount,
+  
+  // Billing - FIXED
+  getActivationStatus, 
+  getTrialStatus, 
+  getCardStatus, 
+  getCardStatusSafe,  // NEW - safer version with error handling
+  hasValidCard,       // NEW - simple boolean check
+  createSetupIntent, 
+  confirmCard, 
+  changePlan, 
+  cancelSubscription,
+  removeCard,         // NEW
+  getSubscriptionDetails, // NEW
+  syncBilling,        // NEW
+  
+  // Integrations
+  getIntegrationStatus, 
+  connectOKX, 
+  disconnectOKX, 
+  connectAlpaca, 
+  disconnectAlpaca, 
+  switchExchangeMode, 
+  switchOKXToLive, 
+  switchAlpacaToLive,
+  
+  // Balance
+  getExchangeBalance, 
+  getPortfolioSummary,
+  
+  // Bot
+  getTradingBotStatus, 
+  startTradingBot, 
+  stopTradingBot, 
+  startTradingBotByCategory, 
+  stopTradingBotByCategory,
+  
+  // Strategies
+  getStrategyConfigs, 
+  getTradingStrategies, 
+  updateUserStrategy,
+  
+  // Stats
+  getLiveTradingStats, 
+  getOpenPositions, 
+  getLiveTradeHistory, 
+  getUserTradingStats, 
+  getRealTradingStats, 
+  executePaperTrade, 
+  closePosition, 
+  closeAllPositions,
+  
+  // Toggles
+  toggleTrading, 
+  togglePaperTrading,
+  
+  // Imali Token
+  getImaliBalance, 
+  getImaliDiscountStatus, 
+  applyImaliDiscount,
+  
+  // Global
   getGlobalTrades,
 };
 
