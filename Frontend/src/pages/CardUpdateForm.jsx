@@ -55,7 +55,6 @@ const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
         setClientSecret(result.data.client_secret);
         setSetupIntentId(result.data.setup_intent_id);
 
-        // Create Stripe elements
         const elements = stripeRef.current.elements({
           clientSecret: result.data.client_secret,
         });
@@ -64,10 +63,11 @@ const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
           style: {
             base: {
               fontSize: '16px',
-              color: '#424770',
+              color: '#e5e7eb',
               '::placeholder': {
-                color: '#aab7c4',
+                color: '#6b7280',
               },
+              backgroundColor: 'transparent',
             },
           },
         });
@@ -86,7 +86,6 @@ const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
 
     createSetupIntent();
 
-    // Cleanup
     return () => {
       if (cardElementRef.current) {
         cardElementRef.current.destroy();
@@ -122,7 +121,6 @@ const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
       }
 
       if (setupIntent.status === 'succeeded') {
-        // Confirm with your backend
         const confirmResponse = await fetch('/api/billing/confirm-card', {
           method: 'POST',
           headers: {
@@ -139,7 +137,6 @@ const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
           throw new Error(confirmResult.error || 'Failed to confirm card');
         }
 
-        // Success!
         if (onSuccess) {
           onSuccess();
         }
@@ -156,24 +153,25 @@ const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
   };
 
   return (
-    <div className="max-w-md mx-auto">
-      <h3 className="text-lg font-semibold mb-4">
+    <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 max-w-md mx-auto">
+      <h3 className="text-xl font-semibold text-white mb-4">
         {tier === 'starter' ? 'Add Payment Method' : 'Update Payment Method'}
       </h3>
       
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="border rounded-lg p-4 bg-gray-50">
-          <div id="card-element" className="py-2">
+        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+          <div id="card-element" className="py-2 text-white">
             {/* Stripe card element will be mounted here */}
           </div>
-          <div className="text-xs text-gray-500 mt-2">
+          <div className="text-xs text-gray-500 mt-2 flex items-center gap-2">
+            <span>🔒</span>
             Secure payment powered by Stripe
           </div>
         </div>
 
         {error && (
-          <div className="text-red-600 text-sm bg-red-50 p-3 rounded">
-            {error}
+          <div className="text-red-400 text-sm bg-red-900/20 border border-red-800/50 p-3 rounded-lg">
+            ⚠️ {error}
           </div>
         )}
 
@@ -181,16 +179,23 @@ const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
           <button
             type="submit"
             disabled={loading || !clientSecret}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white rounded-lg font-medium transition-all disabled:opacity-50 shadow-lg"
           >
-            {loading ? 'Processing...' : 'Save Card'}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Processing...
+              </span>
+            ) : (
+              'Save Card'
+            )}
           </button>
           {onCancel && (
             <button
               type="button"
               onClick={onCancel}
               disabled={loading}
-              className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg font-medium transition-all disabled:opacity-50"
             >
               Cancel
             </button>
