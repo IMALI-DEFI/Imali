@@ -1,6 +1,6 @@
 // src/pages/Pricing.jsx - Production ready (Starter/Pro/Elite/Enterprise + profit share + token discounts)
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
   FaCheck, FaLock, FaRobot, FaChartLine, FaWallet, FaCrown,
@@ -159,6 +159,7 @@ const faqs = [
 function PlanCard({ plan, billingModel, tokenTier }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const isLoggedIn = !!user;
   const isCurrentPlan = user?.tier === plan.id;
 
@@ -182,6 +183,9 @@ function PlanCard({ plan, billingModel, tokenTier }) {
       return;
     }
 
+    // ✅ FIX: Save selected tier to localStorage immediately
+    localStorage.setItem("IMALI_SELECTED_TIER", plan.id);
+
     const navState = {
       tier: plan.id,
       billingModel,
@@ -190,9 +194,15 @@ function PlanCard({ plan, billingModel, tokenTier }) {
     };
 
     if (!isLoggedIn) {
-      navigate(`/signup?plan=${plan.id}`, { state: navState });
+      // ✅ FIX: Pass tier in URL and state for signup
+      navigate(`/signup?plan=${plan.id}&tier=${plan.id}`, { 
+        state: { ...navState, from: "pricing" }
+      });
     } else {
-      navigate("/billing", { state: navState });
+      // ✅ FIX: Pass tier in URL and state for billing
+      navigate(`/billing?tier=${plan.id}`, { 
+        state: { ...navState, from: "pricing" }
+      });
     }
   };
 
@@ -302,9 +312,44 @@ function FAQItem({ question, answer, isOpen, onClick }) {
 
 // ==================== MAIN PRICING PAGE ====================
 export default function Pricing() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [billingModel, setBillingModel] = useState("fixed");
   const [tokenTier, setTokenTier] = useState("none");
   const [openFaq, setOpenFaq] = useState(null);
+
+  // ✅ FIX: Check for tier in URL params on load
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const selectedTier = params.get("selected") || params.get("tier");
+    if (selectedTier) {
+      localStorage.setItem("IMALI_SELECTED_TIER", selectedTier);
+    }
+  }, [location.search]);
+
+  // ✅ FIX: Auto-scroll to plan if tier is in URL
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const highlightTier = params.get("highlight") || params.get("tier");
+    if (highlightTier) {
+      const element = document.getElementById(`plan-${highlightTier}`);
+      if (element) {
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 300);
+      }
+    }
+  }, [location.search]);
+
+  // ✅ FIX: Check user's current tier and set as selected in localStorage
+  useEffect(() => {
+    if (user?.tier) {
+      const currentTier = user.tier.toLowerCase();
+      localStorage.setItem("IMALI_SELECTED_TIER", currentTier);
+    }
+  }, [user]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
@@ -347,7 +392,9 @@ export default function Pricing() {
         {/* Plans Grid */}
         <div className="mt-12 grid gap-6 lg:grid-cols-4">
           {plans.map((plan) => (
-            <PlanCard key={plan.id} plan={plan} billingModel={billingModel} tokenTier={tokenTier} />
+            <div key={plan.id} id={`plan-${plan.id}`}>
+              <PlanCard plan={plan} billingModel={billingModel} tokenTier={tokenTier} />
+            </div>
           ))}
         </div>
 
@@ -459,9 +506,15 @@ export default function Pricing() {
           <h2 className="mt-5 text-3xl font-extrabold">Ready to start your trading journey?</h2>
           <p className="mx-auto mt-4 max-w-2xl leading-8 text-slate-300">Join thousands of traders using IMALI to automate their strategies. Start free, practice first, go live when ready.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <Link to="/signup?plan=starter" className="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-8 py-4 font-bold text-white transition hover:from-emerald-700 hover:to-teal-700">Start Free Trial →</Link>
-            <Link to="/trade-demo" className="rounded-2xl border border-white/10 bg-white/5 px-8 py-4 font-bold text-white transition hover:bg-white/10">Try Demo First →</Link>
-            <a href="mailto:imalidefi@gmail.com" className="rounded-2xl border border-white/10 bg-white/5 px-8 py-4 font-bold text-white transition hover:bg-white/10">Contact Sales →</a>
+            <Link to="/signup?plan=starter&tier=starter" className="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-8 py-4 font-bold text-white transition hover:from-emerald-700 hover:to-teal-700">
+              Start Free Trial →
+            </Link>
+            <Link to="/trade-demo" className="rounded-2xl border border-white/10 bg-white/5 px-8 py-4 font-bold text-white transition hover:bg-white/10">
+              Try Demo First →
+            </Link>
+            <a href="mailto:imalidefi@gmail.com" className="rounded-2xl border border-white/10 bg-white/5 px-8 py-4 font-bold text-white transition hover:bg-white/10">
+              Contact Sales →
+            </a>
           </div>
         </div>
 
