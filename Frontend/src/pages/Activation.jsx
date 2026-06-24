@@ -166,9 +166,28 @@ export default function Activation() {
 
   const [wallet, setWallet] = useState("");
 
+  // ✅ FIX: Get tier from URL, state, localStorage, then user
+  const urlTier = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("tier") || params.get("plan");
+  }, [location.search]);
+
   const tier = useMemo(() => {
-    return String(user?.tier || location.state?.tier || "starter").toLowerCase();
-  }, [user?.tier, location.state?.tier]);
+    const tierValue =
+      urlTier ||
+      location.state?.tier ||
+      localStorage.getItem("IMALI_SELECTED_TIER") ||
+      user?.tier ||
+      "starter";
+    return String(tierValue).toLowerCase();
+  }, [urlTier, location.state?.tier, user?.tier]);
+
+  // ✅ Persist tier to localStorage
+  useEffect(() => {
+    if (tier && tier !== "starter") {
+      localStorage.setItem("IMALI_SELECTED_TIER", tier);
+    }
+  }, [tier]);
 
   const needs = useMemo(() => {
     if (tier === "starter") {
@@ -186,9 +205,7 @@ export default function Activation() {
     return { billing: false, okx: false, alpaca: false, wallet: false };
   }, [tier]);
 
-  // IMPORTANT:
-  // Only has_card_on_file means card exists.
-  // billing_complete should not be used as card proof.
+  // ✅ FIX: Only has_card_on_file means card exists
   const status = useMemo(
     () => ({
       billing: activation?.has_card_on_file === true,
@@ -210,16 +227,25 @@ export default function Activation() {
 
   const fullyActivated = canEnableTrading && status.trading;
 
+  // ✅ FIX: Refresh activation on mount
   useEffect(() => {
     refreshActivation?.();
   }, [refreshActivation]);
 
+  // ✅ FIX: Handle Starter redirect - only redirect after checking
   useEffect(() => {
-    if (tier === "starter") {
-      navigate("/dashboard", { replace: true });
+    if (tier === "starter" && user) {
+      // Don't redirect if we're coming from pricing with a different tier
+      const hasTierParam = new URLSearchParams(location.search).get("tier");
+      const hasStateTier = location.state?.tier;
+      
+      if (!hasTierParam && !hasStateTier) {
+        navigate("/dashboard", { replace: true });
+      }
     }
-  }, [tier, navigate]);
+  }, [tier, user, navigate, location.search, location.state]);
 
+  // Auto-redirect when fully activated
   useEffect(() => {
     if (fullyActivated) {
       const timer = setTimeout(() => {
@@ -343,10 +369,14 @@ export default function Activation() {
     }
   };
 
-  if (tier === "starter") {
+  // ✅ FIX: Show correct loading state for Starter
+  if (tier === "starter" && !location.state?.tier && !new URLSearchParams(location.search).get("tier")) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p className="text-gray-400">Redirecting to paper trading dashboard...</p>
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Redirecting to paper trading dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -607,7 +637,7 @@ export default function Activation() {
         </StepCard>
 
         <StepCard
-          number="3"
+          number={needs.billing ? "3" : "2"}
           title="Enable Live Trading"
           description="Turn on automated trading"
           status={status.trading}
@@ -633,11 +663,18 @@ export default function Activation() {
 
         <div className="text-center">
           <button
-            onClick={() => navigate("/dashboard", { replace: true })}
+            onClick={() => {
+              // ✅ Save tier before navigating
+              if (tier) localStorage.setItem("IMALI_SELECTED_TIER", tier);
+              navigate("/dashboard", { replace: true });
+            }}
             className="text-gray-500 hover:text-gray-300 text-sm underline"
           >
             Skip to Dashboard
           </button>
+          <p className="text-xs text-gray-600 mt-2">
+            You can complete setup later from Settings.
+          </p>
         </div>
       </div>
     </div>
