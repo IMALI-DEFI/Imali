@@ -1,171 +1,250 @@
 // imali/Frontend/src/pages/CardUpdateForm.jsx
-import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../context/AuthContext';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 
-const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
+const STRIPE_SCRIPT_ID = "stripe-js-v3";
+
+function loadStripeScript() {
+  return new Promise((resolve, reject) => {
+    if (window.Stripe) {
+      resolve(window.Stripe);
+      return;
+    }
+
+    const existingScript = document.getElementById(STRIPE_SCRIPT_ID);
+
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(window.Stripe));
+      existingScript.addEventListener("error", reject);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = STRIPE_SCRIPT_ID;
+    script.src = "https://js.stripe.com/v3/";
+    script.async = true;
+    script.onload = () => resolve(window.Stripe);
+    script.onerror = reject;
+
+    document.body.appendChild(script);
+  });
+}
+
+export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [clientSecret, setClientSecret] = useState(null);
-  const [setupIntentId, setSetupIntentId] = useState(null);
+
   const stripeRef = useRef(null);
   const elementsRef = useRef(null);
   const cardElementRef = useRef(null);
+  const mountedRef = useRef(false);
 
-  // Load Stripe.js
-  useEffect(() => {
-    if (window.Stripe) {
-      stripeRef.current = window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
-    } else {
-      const script = document.createElement('script');
-      script.src = 'https://js.stripe.com/v3/';
-      script.onload = () => {
-        stripeRef.current = window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
-      };
-      document.body.appendChild(script);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+
+  const currentTier = String(tier || user?.tier || "pro").toLowerCase();
+
+  const destroyCardElement = useCallback(() => {
+    try {
+      if (cardElementRef.current) {
+        cardElementRef.current.destroy();
+      }
+    } catch (_) {
+      // Ignore Stripe cleanup errors.
     }
+
+    cardElementRef.current = null;
+    elementsRef.current = null;
   }, []);
 
-  // Create setup intent
-  useEffect(() => {
-    if (!stripeRef.current) return;
+  const initializeStripeCard = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    destroyCardElement();
 
-    const createSetupIntent = async () => {
-      setLoading(true);
-      setError(null);
+    try {
+      const publishableKey = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY;
 
-      try {
-        const response = await fetch('/api/billing/setup-intent', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+      if (!publishableKey) {
+        throw new Error("Stripe publishable key is missing.");
+      }
+
+      const Stripe = await loadStripeScript();
+
+      if (!Stripe) {
+        throw new Error("Stripe failed to load.");
+      }
+
+      stripeRef.current = Stripe(publishableKey);
+
+      const response = await fetch("/api/billing/setup-intent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          email: user?.email,
+          tier: currentTier === "starter" ? "pro" : currentTier,
+          update_card: true,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok || result?.success === false) {
+        throw new Error(
+          result?.error ||
+            result?.message ||
+            "Failed to initialize secure card form."
+        );
+      }
+
+      const secret =
+        result?.data?.client_secret ||
+        result?.client_secret ||
+        result?.clientSecret ||
+        "";
+
+      if (!secret) {
+        throw new Error("Missing Stripe client secret.");
+      }
+
+      setClientSecret(secret);
+
+      const elements = stripeRef.current.elements();
+      const cardElement = elements.create("card", {
+        hidePostalCode: false,
+        style: {
+          base: {
+            fontSize: "16px",
+            color: "#e5e7eb",
+            iconColor: "#10b981",
+            "::placeholder": {
+              color: "#6b7280",
+            },
           },
-          credentials: 'include',
-          body: JSON.stringify({
-            email: user?.email,
-            tier: tier || user?.tier
-          }),
-        });
+          invalid: {
+            color: "#f87171",
+            iconColor: "#f87171",
+          },
+        },
+      });
 
-        const result = await response.json();
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to create setup intent');
-        }
+      cardElement.mount("#card-element");
+      cardElementRef.current = cardElement;
+      elementsRef.current = elements;
+    } catch (err) {
+      console.error("[CardUpdateForm] initialize failed:", err);
+      setError(err?.message || "Failed to initialize payment form.");
+    } finally {
+      setLoading(false);
+    }
+  }, [currentTier, destroyCardElement, user?.email]);
 
-        setClientSecret(result.data.client_secret);
-        setSetupIntentId(result.data.setup_intent_id);
+  useEffect(() => {
+    mountedRef.current = true;
+    initializeStripeCard();
 
-        const elements = stripeRef.current.elements({
-          clientSecret: result.data.client_secret,
-        });
+    return () => {
+      mountedRef.current = false;
+      destroyCardElement();
+    };
+  }, [initializeStripeCard, destroyCardElement]);
 
-        const cardElement = elements.create('card', {
-          style: {
-            base: {
-              fontSize: '16px',
-              color: '#e5e7eb',
-              '::placeholder': {
-                color: '#6b7280',
-              },
-              backgroundColor: 'transparent',
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (saving || loading) return;
+
+    if (!stripeRef.current || !cardElementRef.current || !clientSecret) {
+      setError("Payment system is not ready yet.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const { error: stripeError, setupIntent } =
+        await stripeRef.current.confirmCardSetup(clientSecret, {
+          payment_method: {
+            card: cardElementRef.current,
+            billing_details: {
+              email: user?.email || undefined,
+              name: user?.displayName || user?.name || undefined,
             },
           },
         });
 
-        cardElement.mount('#card-element');
-        cardElementRef.current = cardElement;
-        elementsRef.current = elements;
-
-      } catch (err) {
-        console.error('Error creating setup intent:', err);
-        setError(err.message || 'Failed to initialize payment form');
-      } finally {
-        setLoading(false);
+      if (stripeError) {
+        throw new Error(stripeError.message || "Card setup failed.");
       }
-    };
 
-    createSetupIntent();
-
-    return () => {
-      if (cardElementRef.current) {
-        cardElementRef.current.destroy();
+      if (setupIntent?.status !== "succeeded") {
+        throw new Error("Card was not saved. Please try again.");
       }
-      if (elementsRef.current) {
-        elementsRef.current = null;
-      }
-    };
-  }, [user, tier]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!stripeRef.current || !cardElementRef.current || !clientSecret) {
-      setError('Payment system not ready');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { error: stripeError, setupIntent } = await stripeRef.current.confirmSetup({
-        elements: elementsRef.current,
-        clientSecret: clientSecret,
-        confirmParams: {
-          return_url: `${window.location.origin}/billing?setup_success=true`,
+      const confirmResponse = await fetch("/api/billing/confirm-card", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-        redirect: 'if_required',
+        credentials: "include",
+        body: JSON.stringify({
+          setup_intent_id: setupIntent.id,
+          payment_method_id: setupIntent.payment_method,
+          tier: currentTier === "starter" ? "pro" : currentTier,
+        }),
       });
 
-      if (stripeError) {
-        throw new Error(stripeError.message);
+      const confirmResult = await confirmResponse.json().catch(() => ({}));
+
+      if (!confirmResponse.ok || confirmResult?.success === false) {
+        throw new Error(
+          confirmResult?.error ||
+            confirmResult?.message ||
+            "Card saved in Stripe, but failed to update IMALI billing."
+        );
       }
 
-      if (setupIntent.status === 'succeeded') {
-        const confirmResponse = await fetch('/api/billing/confirm-card', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            setup_intent_id: setupIntent.id,
-          }),
-        });
-
-        const confirmResult = await confirmResponse.json();
-        if (!confirmResult.success) {
-          throw new Error(confirmResult.error || 'Failed to confirm card');
-        }
-
-        if (onSuccess) {
-          onSuccess();
-        }
-      } else {
-        throw new Error('Setup intent not successful');
+      if (onSuccess) {
+        await onSuccess(confirmResult?.data || confirmResult);
       }
-
     } catch (err) {
-      console.error('Error confirming card:', err);
-      setError(err.message || 'Failed to save card');
+      console.error("[CardUpdateForm] save failed:", err);
+      setError(err?.message || "Failed to save card.");
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setSaving(false);
+      }
     }
   };
 
   return (
     <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 max-w-md mx-auto">
-      <h3 className="text-xl font-semibold text-white mb-4">
-        {tier === 'starter' ? 'Add Payment Method' : 'Update Payment Method'}
+      <h3 className="text-xl font-semibold text-white mb-2">
+        Update Payment Method
       </h3>
-      
+
+      <p className="text-sm text-gray-400 mb-4">
+        Add or replace the card used for your IMALI subscription.
+      </p>
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-          <div id="card-element" className="py-2 text-white">
-            {/* Stripe card element will be mounted here */}
-          </div>
+          {loading && (
+            <div className="py-3 text-sm text-gray-400">
+              Loading secure payment form...
+            </div>
+          )}
+
+          <div id="card-element" className="py-2 text-white" />
+
           <div className="text-xs text-gray-500 mt-2 flex items-center gap-2">
             <span>🔒</span>
-            Secure payment powered by Stripe
+            <span>Secure payment powered by Stripe</span>
           </div>
         </div>
 
@@ -178,23 +257,24 @@ const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
         <div className="flex space-x-3">
           <button
             type="submit"
-            disabled={loading || !clientSecret}
+            disabled={loading || saving || !clientSecret}
             className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white rounded-lg font-medium transition-all disabled:opacity-50 shadow-lg"
           >
-            {loading ? (
+            {saving ? (
               <span className="flex items-center justify-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Processing...
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Saving...
               </span>
             ) : (
-              'Save Card'
+              "Save Card"
             )}
           </button>
+
           {onCancel && (
             <button
               type="button"
               onClick={onCancel}
-              disabled={loading}
+              disabled={saving}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg font-medium transition-all disabled:opacity-50"
             >
               Cancel
@@ -204,6 +284,4 @@ const CardUpdateForm = ({ onSuccess, onCancel, tier }) => {
       </form>
     </div>
   );
-};
-
-export default CardUpdateForm;
+}
