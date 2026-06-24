@@ -1,7 +1,6 @@
-// src/components/routing/ProtectedRoute.jsx
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthContext"; // ✅ Fixed path
+import { useAuth } from "../../context/AuthContext";
 
 function Spinner() {
   return (
@@ -57,23 +56,21 @@ export default function ProtectedRoute({
     return children;
   }
 
-  // Starter - free tier
+  // Starter - free tier (no payment required)
   if (tier === "starter") {
     return children;
   }
 
   // Paid tiers (pro, elite)
   if (isPaidUser) {
-    // Check payment
+    // ✅ FIX: ONLY check has_card_on_file - NOT billing_complete
     if (requirePaid) {
-      const hasPaid = 
+      const hasValidPaymentMethod = 
         user?.subscription_status === "active" ||
-        user?.billing_complete === true ||
-        activation?.billing_complete === true ||
         activation?.has_card_on_file === true ||
         hasCardOnFile;
 
-      if (!hasPaid) {
+      if (!hasValidPaymentMethod) {
         return (
           <Navigate
             to={`${fallbackPath}?tier=${tier}&email=${encodeURIComponent(user?.email || "")}`}
