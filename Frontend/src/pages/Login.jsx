@@ -1,4 +1,4 @@
-// src/pages/Login.jsx - REWRITTEN (Fixed redirect for Starter users)
+// src/pages/Login.jsx - REWRITTEN (Fixed redirect for all tiers)
 import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -172,7 +172,7 @@ export default function Login() {
     }
   }, [location.search]);
 
-  // FIXED: Determine redirect destination based on user type and tier
+  // ✅ FIXED: Get redirect destination based on user type and tier
   const getRedirectDestination = useCallback((userData) => {
     console.log("[Login] Getting redirect for user:", { 
       tier: userData?.tier, 
@@ -181,26 +181,39 @@ export default function Login() {
       is_admin: userData?.is_admin
     });
     
-    // Priority 1: Enterprise users go to enterprise dashboard
+    // ✅ Save tier to localStorage for persistence
+    if (userData?.tier) {
+      localStorage.setItem("IMALI_SELECTED_TIER", userData.tier);
+    }
+    
+    // Priority 1: Check for redirect from query or state
+    const redirectPath = safeInternalPath(nextFromQuery || fromState);
+    if (redirectPath && redirectPath !== "/login") {
+      console.log("[Login] Redirecting to custom path:", redirectPath);
+      return redirectPath;
+    }
+    
+    // Priority 2: Enterprise users go to enterprise dashboard
     if (userData?.tier === "enterprise" || userData?.organization_id) {
       return "/enterprise-dashboard";
     }
     
-    // Priority 2: Admin users go to admin panel
+    // Priority 3: Admin users go to admin panel
     if (userData?.is_admin === true || userData?.isAdmin === true) {
       return "/admin";
     }
     
-    // CRITICAL FIX: Starter users go directly to dashboard (no activation needed)
+    // ✅ CRITICAL FIX: Starter users go directly to dashboard
     if (userData?.tier === "starter") {
       console.log("[Login] Starter user, redirecting to dashboard");
       return "/dashboard";
     }
     
-    // For Pro/Elite users: check if they need activation (billing not set up)
-    const needsActivation = !userData?.billing_complete && !userData?.has_card_on_file;
+    // ✅ For Pro/Elite users: check if they need activation
+    const hasValidPayment = userData?.has_card_on_file === true || userData?.billing_complete === true;
+    const needsActivation = !hasValidPayment;
     
-    if (needsActivation) {
+    if (needsActivation && (userData?.tier === "pro" || userData?.tier === "elite")) {
       console.log("[Login] Pro/Elite user needs activation, redirecting to /activation");
       return "/activation";
     }
@@ -208,7 +221,7 @@ export default function Login() {
     // Default: Regular users go to dashboard
     console.log("[Login] Default redirect to dashboard");
     return "/dashboard";
-  }, []);
+  }, [nextFromQuery, fromState]);
 
   // Clear form on mount
   useEffect(() => {
@@ -258,7 +271,12 @@ export default function Login() {
       // Get user data from result
       const userData = result.user;
       
-      // FIXED: Use the same redirect logic
+      // ✅ Save tier to localStorage
+      if (userData?.tier) {
+        localStorage.setItem("IMALI_SELECTED_TIER", userData.tier);
+      }
+      
+      // ✅ FIXED: Use the same redirect logic
       const redirectPath = getRedirectDestination(userData);
       
       console.log("[Login] Successful login, redirecting to:", redirectPath);
