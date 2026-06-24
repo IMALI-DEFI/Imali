@@ -1,5 +1,6 @@
 // imali/Frontend/src/pages/CardUpdateForm.jsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const STRIPE_SCRIPT_ID = "stripe-js-v3";
@@ -31,7 +32,8 @@ function loadStripeScript() {
 }
 
 export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
 
   const stripeRef = useRef(null);
   const elementsRef = useRef(null);
@@ -43,7 +45,23 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
   const [error, setError] = useState("");
   const [clientSecret, setClientSecret] = useState("");
 
-  const currentTier = String(tier || user?.tier || "pro").toLowerCase();
+  // ✅ FIX: Get tier from props, user, or localStorage
+  const currentTier = useCallback(() => {
+    const tierValue = 
+      tier || 
+      user?.tier || 
+      localStorage.getItem("IMALI_SELECTED_TIER") || 
+      "pro";
+    return String(tierValue).toLowerCase();
+  }, [tier, user?.tier]);
+
+  // ✅ FIX: Save tier to localStorage when it changes
+  useEffect(() => {
+    const tierValue = currentTier();
+    if (tierValue) {
+      localStorage.setItem("IMALI_SELECTED_TIER", tierValue);
+    }
+  }, [currentTier]);
 
   const destroyCardElement = useCallback(() => {
     try {
@@ -78,6 +96,12 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
 
       stripeRef.current = Stripe(publishableKey);
 
+      // ✅ FIX: Use correct tier for setup intent
+      const tierForBilling = currentTier() === "starter" ? "pro" : currentTier();
+      
+      // ✅ Save tier to localStorage before API call
+      localStorage.setItem("IMALI_SELECTED_TIER", tierForBilling);
+
       const response = await fetch("/api/billing/setup-intent", {
         method: "POST",
         headers: {
@@ -86,7 +110,7 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
         credentials: "include",
         body: JSON.stringify({
           email: user?.email,
-          tier: currentTier === "starter" ? "pro" : currentTier,
+          tier: tierForBilling,
           update_card: true,
         }),
       });
@@ -113,7 +137,10 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
 
       setClientSecret(secret);
 
-      const elements = stripeRef.current.elements();
+      const elements = stripeRef.current.elements({
+        clientSecret: secret,
+      });
+      
       const cardElement = elements.create("card", {
         hidePostalCode: false,
         style: {
@@ -186,6 +213,9 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
         throw new Error("Card was not saved. Please try again.");
       }
 
+      // ✅ FIX: Confirm card with correct tier
+      const tierForBilling = currentTier() === "starter" ? "pro" : currentTier();
+
       const confirmResponse = await fetch("/api/billing/confirm-card", {
         method: "POST",
         headers: {
@@ -195,7 +225,7 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
         body: JSON.stringify({
           setup_intent_id: setupIntent.id,
           payment_method_id: setupIntent.payment_method,
-          tier: currentTier === "starter" ? "pro" : currentTier,
+          tier: tierForBilling,
         }),
       });
 
@@ -208,6 +238,15 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
             "Card saved in Stripe, but failed to update IMALI billing."
         );
       }
+
+      // ✅ FIX: Refresh user data to update tier/status
+      if (refreshUser) {
+        await refreshUser();
+      }
+
+      // ✅ FIX: Save tier and billing status to localStorage
+      localStorage.setItem("IMALI_SELECTED_TIER", tierForBilling);
+      localStorage.setItem("IMALI_BILLING_COMPLETE", "true");
 
       if (onSuccess) {
         await onSuccess(confirmResult?.data || confirmResult);
@@ -222,20 +261,37 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
     }
   };
 
+  const tierDisplay = currentTier();
+  const tierName = tierDisplay === "starter" ? "Pro" : 
+                   tierDisplay === "elite" ? "Elite" : 
+                   tierDisplay === "enterprise" ? "Enterprise" : 
+                   tierDisplay.charAt(0).toUpperCase() + tierDisplay.slice(1);
+
   return (
     <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 max-w-md mx-auto">
       <h3 className="text-xl font-semibold text-white mb-2">
-        Update Payment Method
+        {tierDisplay === "starter" ? "Upgrade to Pro" : "Update Payment Method"}
       </h3>
 
       <p className="text-sm text-gray-400 mb-4">
-        Add or replace the card used for your IMALI subscription.
+        {tierDisplay === "starter" 
+          ? `Add a payment method to upgrade to ${tierName} plan.` 
+          : `Add or replace the card used for your ${tierName} subscription.`}
       </p>
+
+      {/* ✅ FIX: Show tier indicator */}
+      <div className="mb-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-blue-300">
+        <span className="font-medium">Plan:</span> {tierName}
+        {tierDisplay !== "starter" && (
+          <span className="ml-2 text-gray-400">• {tierDisplay === "elite" ? "$49/mo" : "$19/mo"}</span>
+        )}
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
           {loading && (
-            <div className="py-3 text-sm text-gray-400">
+            <div className="py-3 text-sm text-gray-400 flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
               Loading secure payment form...
             </div>
           )}
@@ -266,7 +322,7 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
                 Saving...
               </span>
             ) : (
-              "Save Card"
+              tierDisplay === "starter" ? "Upgrade & Save Card" : "Save Card"
             )}
           </button>
 
@@ -282,6 +338,13 @@ export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
           )}
         </div>
       </form>
+
+      {/* ✅ FIX: Show helpful info for Starter users */}
+      {tierDisplay === "starter" && (
+        <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-sm text-yellow-300">
+          💡 Upgrading to Pro unlocks live trading, AI strategies, and priority support.
+        </div>
+      )}
     </div>
   );
 }
