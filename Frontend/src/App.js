@@ -6,7 +6,7 @@ import MemberDashboard from "./components/Dashboard/MemberDashboard";
 import AdminPanel from "./components/AdminPanel";
 import TradeDemo from "./pages/TradeDemo";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import ProtectedRoute from "./components/ProtectedRoute";
+import ProtectedRoute from "./components/routing/ProtectedRoute";
 
 // Enterprise
 import Enterprise from "./pages/Enterprise";
