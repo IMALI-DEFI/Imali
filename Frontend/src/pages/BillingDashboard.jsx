@@ -1,12 +1,9 @@
-// src/pages/BillingDashboard.jsx - REWRITTEN (Fixed plan switching, card updates, no reload)
+// src/pages/BillingDashboard.jsx - Production ready (no reload, card updates work)
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
-// ============================================================================
-// TIER CONFIGURATION — only Starter, Pro, Elite, Enterprise
-// ============================================================================
 const TIERS = {
   starter: {
     id: "starter", name: "Starter", displayName: "Free Trial",
@@ -59,11 +56,8 @@ const TOKEN_DISCOUNTS = {
 };
 
 const PROFIT_SHARE_TOKEN_BOOST = {
-  none: { boost: 0, label: "No token" },
-  bronze: { boost: 1, label: "100 IMALI" },
-  silver: { boost: 2, label: "500 IMALI" },
-  gold: { boost: 3, label: "1,000 IMALI" },
-  platinum: { boost: 5, label: "5,000 IMALI" },
+  none: { boost: 0 }, bronze: { boost: 1 }, silver: { boost: 2 },
+  gold: { boost: 3 }, platinum: { boost: 5 },
 };
 
 const getPrice = (tierId) => {
@@ -75,7 +69,7 @@ const getPrice = (tierId) => {
 export default function BillingDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, refreshUser, refreshActivation, hasCardOnFile, activation } = useAuth();
+  const { user, refreshUser, hasCardOnFile, activation } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [hasCard, setHasCard] = useState(false);
@@ -83,7 +77,6 @@ export default function BillingDashboard() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // Local state that updates immediately on plan change (no reload needed)
   const [localTier, setLocalTier] = useState(null);
   const [billingModel, setBillingModel] = useState(user?.billingModel || "fixed");
   const [profitSharePct, setProfitSharePct] = useState(user?.profitSharePct || null);
@@ -95,11 +88,8 @@ export default function BillingDashboard() {
   const fromCheckout = location.state?.fromCheckout || location.search.includes("checkout=success");
   const pendingTier = location.state?.pendingTier || null;
 
-  // Sync local tier when user data changes
   useEffect(() => {
-    if (user?.tier) {
-      setLocalTier(DB_TIER_MAP[user.tier] || user.tier);
-    }
+    if (user?.tier) setLocalTier(DB_TIER_MAP[user.tier] || user.tier);
   }, [user?.tier]);
 
   const handleChangePlan = useCallback(async (newTierId, newBillingModel = null, newProfitSharePct = null) => {
@@ -132,7 +122,7 @@ export default function BillingDashboard() {
         if (result?.success) {
           setLocalTier("starter");
           setBillingModel("fixed");
-          setSuccessMessage(`Switched to Starter plan.`);
+          setSuccessMessage("Switched to Starter plan.");
           if (refreshUser) await refreshUser();
           setTimeout(() => setSuccessMessage(""), 3000);
         } else throw new Error(result?.error || "Failed to change plan");
@@ -278,7 +268,6 @@ export default function BillingDashboard() {
                     {typeof currentTier.price === "number" ? `$${currentTier.price}/${currentTier.interval}` : currentTier.price}
                   </p>
                 )}
-                {currentTier.priceDetail && <p className="text-sm text-white/50">{currentTier.priceDetail}</p>}
               </div>
             </div>
             <div className="flex flex-col gap-2">
@@ -325,10 +314,7 @@ export default function BillingDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {Object.entries(TIERS).map(([key, tier]) => {
               const isCurrent = key === currentTierId;
-              const currentPrice = getPrice(currentTierId);
-              const tierPrice = getPrice(key);
-              const isUpgrade = !isCurrent && tierPrice > currentPrice;
-              const isEnterprise = key === "enterprise";
+              const isUpgrade = !isCurrent && getPrice(key) > getPrice(currentTierId);
               const discountedPrice = tokenTier !== "none" && typeof tier.price === "number"
                 ? Math.round(tier.price * (1 - (TOKEN_DISCOUNTS[tokenTier]?.discount || 0) / 100)) : tier.price;
               const displayProfitShare = tier.profitShare && tokenTier !== "none"
@@ -339,9 +325,7 @@ export default function BillingDashboard() {
                   isCurrent ? "border-emerald-500/50 bg-gradient-to-br from-emerald-600/10 to-transparent ring-1 ring-emerald-500/30" : "border-white/10 bg-white/5 hover:bg-white/10 hover:scale-[1.02]"
                 }`}>
                   {tier.badge && !isCurrent && (
-                    <div className="absolute top-3 right-3">
-                      <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/70 border border-white/20">{tier.badge}</span>
-                    </div>
+                    <div className="absolute top-3 right-3"><span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/70 border border-white/20">{tier.badge}</span></div>
                   )}
                   {isCurrent && <div className="absolute top-3 left-3"><span className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded-full">Current</span></div>}
                   <div className="p-4">
@@ -358,17 +342,17 @@ export default function BillingDashboard() {
                       ) : <span className="text-xl font-bold">{tier.price}</span>}
                     </div>
                     <ul className="space-y-2 mb-6">
-                      {tier.features.slice(0, 4).map((feature, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm"><span className="text-emerald-400 mt-0.5">✓</span><span className="text-white/70">{feature}</span></li>
+                      {tier.features.slice(0, 4).map((f, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm"><span className="text-emerald-400 mt-0.5">✓</span><span className="text-white/70">{f}</span></li>
                       ))}
                     </ul>
-                    {!isCurrent && !isEnterprise && (
+                    {!isCurrent && key !== "enterprise" && (
                       <button onClick={() => handleChangePlan(key)} disabled={upgrading === key}
-                        className={`w-full py-2 rounded-lg font-semibold transition-all ${isUpgrade ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white" : "bg-gray-700 hover:bg-gray-600 text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                        className={`w-full py-2 rounded-lg font-semibold transition-all ${isUpgrade ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white" : "bg-gray-700 hover:bg-gray-600 text-white"} disabled:opacity-50`}>
                         {upgrading === key ? "Processing..." : isUpgrade ? `Upgrade to ${tier.name} →` : `Switch to ${tier.name} →`}
                       </button>
                     )}
-                    {isEnterprise && !isCurrent && (
+                    {key === "enterprise" && !isCurrent && (
                       <a href="mailto:sales@imali-defi.com" className="block w-full py-2 rounded-lg font-semibold text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-white">Contact Sales →</a>
                     )}
                     {isCurrent && <div className="w-full py-2 text-center text-sm text-white/40 border border-white/10 rounded-lg">Your current plan</div>}
@@ -398,7 +382,7 @@ export default function BillingDashboard() {
         {/* Token Discounts */}
         <div className="bg-white/5 rounded-xl p-6 border border-white/10 mb-6">
           <h3 className="text-lg font-semibold mb-4">🪙 IMALI Token Discounts</h3>
-          <p className="text-sm text-white/50 mb-4">Hold IMALI tokens to reduce your subscription costs. Discounts apply automatically.</p>
+          <p className="text-sm text-white/50 mb-4">Hold IMALI tokens to reduce your subscription costs.</p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {Object.entries(TOKEN_DISCOUNTS).map(([key, val]) => (
               <div key={key} className={`rounded-lg p-3 text-center border ${tokenTier === key ? "border-amber-500/50 bg-amber-500/10" : "border-white/10 bg-black/30"}`}>
@@ -417,12 +401,9 @@ export default function BillingDashboard() {
             <button
               onClick={async () => {
                 if (window.confirm("Are you sure you want to cancel?")) {
-                  const result = await BotAPI.cancelSubscription?.().catch(() => ({ success: false, error: "Not available" }));
-                  if (result?.success) {
-                    setSuccessMessage("Cancellation submitted.");
-                    if (refreshUser) await refreshUser();
-                    setTimeout(() => setSuccessMessage(""), 3000);
-                  } else setError("Failed to cancel. Please contact support.");
+                  const result = await BotAPI.cancelSubscription?.().catch(() => ({ success: false }));
+                  if (result?.success) { setSuccessMessage("Cancellation submitted."); if (refreshUser) await refreshUser(); }
+                  else setError("Failed to cancel. Please contact support.");
                 }
               }}
               className="px-4 py-2 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30 transition">Request Cancellation →</button>
