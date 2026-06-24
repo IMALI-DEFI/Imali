@@ -17,66 +17,83 @@ export default function ProtectedRoute({
   requireActivation = false,
   fallbackPath = "/billing",
 }) {
-  const { user, isAdmin, activation, loading, isAuthenticated } = useAuth();
   const location = useLocation();
+  const auth = useAuth();
 
-  // 1. Loading
+  const {
+    user,
+    isAdmin,
+    activation,
+    loading,
+    isAuthenticated,
+    isPaidUser,
+    isEnterpriseUser,
+    activationComplete,
+    hasCardOnFile,
+  } = auth;
+
   if (loading) return <Spinner />;
 
-  // 2. Not logged in
-  if (!isAuthenticated || !user)
+  if (!isAuthenticated || !user) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  }
 
-  // 3. Admin bypass
-  if (isAdmin || user?.is_admin || user?.email === "wayne@imali-defi.com")
-    return children;
-
-  const tier = (user?.tier || "starter").toLowerCase();
-
-  // 4. Enterprise — must be approved
-  if (tier === "enterprise") {
-    if (!activation?.enterprise_approved && !user?.enterprise_approved) {
-      return <Navigate to="/enterprise-pending" state={{ from: location.pathname }} replace />;
-    }
-    // Approved enterprise users skip billing entirely
+  // Admin bypass
+  if (isAdmin || user?.is_admin || user?.email === "wayne@imali-defi.com") {
     return children;
   }
 
-  // 5. Starter — no payment needed
-  if (tier === "starter") return children;
+  const tier = user?.tier || "starter";
 
-  // 6. Paid tier (pro, elite) — MUST have billing_complete
-  if (requirePaid) {
-    const hasPaid =
-      user?.subscription_status === "active" ||
-      user?.subscription_status === "trialing" ||
-      user?.billing_complete === true ||
-      activation?.billing_complete === true ||
-      activation?.has_card_on_file === true ||
-      !!user?.stripe_subscription_id;
-
-    if (!hasPaid) {
-      return (
-        <Navigate
-          to={`${fallbackPath}?tier=${tier}&email=${encodeURIComponent(user?.email || "")}`}
-          state={{ from: location.pathname, blocked: true }}
-          replace
-        />
-      );
+  // Enterprise check
+  if (tier === "enterprise" || isEnterpriseUser) {
+    const isApproved = 
+      activation?.enterprise_approved === true || 
+      user?.enterprise_approved === true;
+    
+    if (!isApproved) {
+      return <Navigate to="/enterprise-pending" replace />;
     }
+    return children;
   }
 
-  // 7. Activation check
-  if (requireActivation) {
-    const isActivated =
-      activation?.activation_complete ||
-      activation?.trading_enabled ||
-      activation?.okx_connected ||
-      activation?.alpaca_connected ||
-      activation?.wallet_connected;
+  // Starter - free tier
+  if (tier === "starter") {
+    return children;
+  }
 
-    if (!isActivated) {
-      return <Navigate to="/activation" state={{ from: location.pathname }} replace />;
+  // Paid tiers (pro, elite)
+  if (isPaidUser) {
+    // Check payment
+    if (requirePaid) {
+      const hasPaid = 
+        user?.subscription_status === "active" ||
+        user?.billing_complete === true ||
+        activation?.billing_complete === true ||
+        activation?.has_card_on_file === true ||
+        hasCardOnFile;
+
+      if (!hasPaid) {
+        return (
+          <Navigate
+            to={`${fallbackPath}?tier=${tier}&email=${encodeURIComponent(user?.email || "")}`}
+            state={{ from: location.pathname, blocked: true }}
+            replace
+          />
+        );
+      }
+    }
+
+    // Check activation
+    if (requireActivation) {
+      const isActivated = 
+        activationComplete ||
+        activation?.activation_complete === true ||
+        activation?.trading_enabled === true;
+
+      if (!isActivated) {
+        return <Navigate to="/activation" replace />;
+      }
     }
   }
 
