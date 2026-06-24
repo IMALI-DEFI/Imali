@@ -1,4 +1,4 @@
-// src/pages/BillingDashboard.jsx - REWRITTEN (Starter/Pro/Elite only, fixed Tailwind classes, clean tier map)
+// src/pages/BillingDashboard.jsx - REWRITTEN (Fixed plan switching, card updates, no reload)
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -38,18 +38,11 @@ const TIERS = {
   },
 };
 
-// Tier name mapping from DB values to frontend keys
 const DB_TIER_MAP = {
-  starter: "starter",
-  pro: "pro",
-  elite: "elite",
-  enterprise: "enterprise",
-  // Legacy mappings (if DB still has old values)
-  common: "pro",
-  rare: "elite",
+  starter: "starter", pro: "pro", elite: "elite", enterprise: "enterprise",
+  common: "pro", rare: "elite",
 };
 
-// Fixed Tailwind class maps (no dynamic class generation)
 const BADGE_CLASSES = {
   green: "bg-green-500/20 text-green-300 border-green-500/30",
   orange: "bg-orange-500/20 text-orange-300 border-orange-500/30",
@@ -79,45 +72,43 @@ const getPrice = (tierId) => {
   return typeof tier.price === "number" ? tier.price : Infinity;
 };
 
-const safeApiCall = async (method, ...args) => {
-  if (!BotAPI || typeof BotAPI[method] !== "function") {
-    return { success: false, error: `${method} not available`, demoMode: true };
-  }
-  try {
-    const result = await BotAPI[method](...args);
-    return { success: true, data: result };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-};
-
 export default function BillingDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, refreshUser, hasCardOnFile, activation } = useAuth();
+  const { user, refreshUser, refreshActivation, hasCardOnFile, activation } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [hasCard, setHasCard] = useState(false);
   const [upgrading, setUpgrading] = useState(null);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [autoUpgradeHandled, setAutoUpgradeHandled] = useState(false);
 
+  // Local state that updates immediately on plan change (no reload needed)
+  const [localTier, setLocalTier] = useState(null);
   const [billingModel, setBillingModel] = useState(user?.billingModel || "fixed");
   const [profitSharePct, setProfitSharePct] = useState(user?.profitSharePct || null);
   const [tokenTier, setTokenTier] = useState(user?.tokenTier || "none");
 
-  const currentTierId = DB_TIER_MAP[user?.tier] || user?.tier || "starter";
+  const currentTierId = localTier || DB_TIER_MAP[user?.tier] || user?.tier || "starter";
   const currentTier = TIERS[currentTierId] || TIERS.starter;
 
   const fromCheckout = location.state?.fromCheckout || location.search.includes("checkout=success");
   const pendingTier = location.state?.pendingTier || null;
-  const preselectedTier = location.state?.selectedTier || null;
+
+  // Sync local tier when user data changes
+  useEffect(() => {
+    if (user?.tier) {
+      setLocalTier(DB_TIER_MAP[user.tier] || user.tier);
+    }
+  }, [user?.tier]);
 
   const handleChangePlan = useCallback(async (newTierId, newBillingModel = null, newProfitSharePct = null) => {
     if (upgrading) return;
     if (!TIERS[newTierId]) { setError(`Invalid plan: "${newTierId}"`); return; }
-    if (newTierId === currentTierId && !newBillingModel) { setError(`You are already on the ${TIERS[newTierId].name} plan.`); return; }
+    if (newTierId === currentTierId && !newBillingModel) {
+      setError(`You are already on the ${TIERS[newTierId].name} plan.`);
+      return;
+    }
 
     const newTier = TIERS[newTierId];
     const currentPrice = getPrice(currentTierId);
@@ -137,12 +128,14 @@ export default function BillingDashboard() {
         return;
       }
       if (newTierId === "starter") {
-        const result = await safeApiCall("changePlan", newTierId, model, null);
-        if (result.success) {
-          setSuccessMessage(`Switched to ${newTier.name} plan.`);
+        const result = await BotAPI.changePlan(newTierId, model, null);
+        if (result?.success) {
+          setLocalTier("starter");
+          setBillingModel("fixed");
+          setSuccessMessage(`Switched to Starter plan.`);
           if (refreshUser) await refreshUser();
-          setTimeout(() => window.location.reload(), 1500);
-        } else throw new Error(result.error || "Failed to change plan");
+          setTimeout(() => setSuccessMessage(""), 3000);
+        } else throw new Error(result?.error || "Failed to change plan");
         setUpgrading(null);
         return;
       }
@@ -153,14 +146,15 @@ export default function BillingDashboard() {
         setUpgrading(null);
         return;
       }
-      const result = await safeApiCall("changePlan", newTierId, model, model === "profit_share" ? pct : null);
-      if (result.success) {
+      const result = await BotAPI.changePlan(newTierId, model, model === "profit_share" ? pct : null);
+      if (result?.success) {
+        setLocalTier(newTierId);
         setBillingModel(model);
         if (model === "profit_share") setProfitSharePct(pct);
         setSuccessMessage(`${isUpgrade ? "Upgraded to" : "Switched to"} ${newTier.name} plan!`);
         if (refreshUser) await refreshUser();
-        setTimeout(() => window.location.reload(), 1500);
-      } else throw new Error(result.error || `Failed to change plan`);
+        setTimeout(() => setSuccessMessage(""), 3000);
+      } else throw new Error(result?.error || "Failed to change plan");
     } catch (err) {
       setError(err.message || "Failed to change plan.");
     } finally {
@@ -174,7 +168,7 @@ export default function BillingDashboard() {
     setSuccessMessage(null);
     if (model === "profit_share" && !hasCard) {
       navigate(`/billing?tier=${currentTierId}`, {
-        state: { tier: currentTierId, billingModel: "profit_share", profitSharePct: currentTier.profitShare },
+        state: { tier: currentTierId, billingModel: "profit_share", profitSharePct: currentTier.profitShare, returnTo: "/billing-dashboard" },
       });
       return;
     }
@@ -187,6 +181,7 @@ export default function BillingDashboard() {
     if (fromCheckout && pendingTier) {
       setSuccessMessage(`Successfully upgraded to ${TIERS[pendingTier]?.name || pendingTier} plan!`);
       window.history.replaceState({}, document.title);
+      setTimeout(() => setSuccessMessage(""), 3000);
     }
     const loadData = async () => {
       try {
@@ -209,14 +204,6 @@ export default function BillingDashboard() {
     };
     loadData();
   }, [user, navigate, hasCardOnFile, fromCheckout, pendingTier]);
-
-  useEffect(() => {
-    if (preselectedTier && !loading && user && !autoUpgradeHandled && preselectedTier !== currentTierId) {
-      setAutoUpgradeHandled(true);
-      window.history.replaceState({}, document.title);
-      setTimeout(() => handleChangePlan(preselectedTier), 300);
-    }
-  }, [preselectedTier, loading, user, autoUpgradeHandled, currentTierId, handleChangePlan]);
 
   const effectiveMonthlyPrice = () => {
     if (currentTier.isEnterprise || typeof currentTier.price !== "number") return null;
@@ -398,7 +385,7 @@ export default function BillingDashboard() {
           {hasCard ? (
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div><p className="font-medium">Card on file</p><p className="text-sm text-white/50">Your payment method is ready</p></div>
-              <button onClick={() => navigate("/billing")} className="text-sm text-blue-400 hover:text-blue-300">Update →</button>
+              <button onClick={() => navigate("/billing", { state: { updateCard: true } })} className="text-sm text-blue-400 hover:text-blue-300">Update →</button>
             </div>
           ) : (
             <div className="text-center py-4">
@@ -430,9 +417,12 @@ export default function BillingDashboard() {
             <button
               onClick={async () => {
                 if (window.confirm("Are you sure you want to cancel?")) {
-                  const result = await safeApiCall("cancelSubscription");
-                  if (result.success) { setSuccessMessage("Cancellation submitted."); if (refreshUser) await refreshUser(); setTimeout(() => window.location.reload(), 1500); }
-                  else setError("Failed to cancel. Please contact support.");
+                  const result = await BotAPI.cancelSubscription?.().catch(() => ({ success: false, error: "Not available" }));
+                  if (result?.success) {
+                    setSuccessMessage("Cancellation submitted.");
+                    if (refreshUser) await refreshUser();
+                    setTimeout(() => setSuccessMessage(""), 3000);
+                  } else setError("Failed to cancel. Please contact support.");
                 }
               }}
               className="px-4 py-2 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30 transition">Request Cancellation →</button>
