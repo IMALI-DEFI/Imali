@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import BillingDashboard from "./BillingDashboard"; // ✅ Correct path - in pages
-import CardUpdateForm from "./CardUpdateForm"; // ✅ Correct path - in pages
+import BillingDashboard from "./BillingDashboard";
+import CardUpdateForm from "./CardUpdateForm";
 import LoadingSpinner from "../components/LoadingSpinner";
 
 const Billing = () => {
@@ -19,7 +19,7 @@ const Billing = () => {
   const [error, setError] = useState(null);
   const [tier, setTier] = useState(null);
 
-  // Fetch card status from your API
+  // Fetch card status
   const fetchCardStatus = useCallback(async () => {
     try {
       const response = await fetch('/api/billing/card-status', {
@@ -121,21 +121,22 @@ const Billing = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <LoadingSpinner size="large" />
+      <div className="flex justify-center items-center min-h-screen bg-black">
+        <LoadingSpinner size="large" color="green" text="Loading billing information..." />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <h3 className="text-red-800 font-medium">Error</h3>
-          <p className="text-red-600">{error}</p>
+      <div className="min-h-screen bg-black flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-red-900/20 border border-red-800/50 rounded-2xl p-6 text-center">
+          <div className="text-4xl mb-4">⚠️</div>
+          <h3 className="text-red-300 font-medium text-lg">Error</h3>
+          <p className="text-red-300/70 mt-2">{error}</p>
           <button
             onClick={initializeBilling}
-            className="mt-3 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            className="mt-4 px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
           >
             Retry
           </button>
@@ -144,58 +145,22 @@ const Billing = () => {
     );
   }
 
-  // For enterprise users
+  // Enterprise tier
   if (tier === 'enterprise') {
     return (
-      <div className="max-w-6xl mx-auto p-6">
-        <BillingDashboard
-          hasCard={hasCard}
-          cardStatus={cardStatus}
-          activation={activation}
-          onUpdateCard={handleUpdateCardClick}
-          onCardRemoved={handleCardRemoved}
-          tier={tier}
-        />
-        
-        {showUpdateCard && (
-          <div className="mt-6">
-            <CardUpdateForm
-              onSuccess={handleCardUpdateSuccess}
-              onCancel={handleCancelUpdate}
-              tier={tier}
-            />
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Starter tier
-  if (tier === 'starter') {
-    return (
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-2xl font-bold mb-4">Billing</h2>
-          
-          {hasCard ? (
-            <BillingDashboard
-              hasCard={hasCard}
-              cardStatus={cardStatus}
-              activation={activation}
-              onUpdateCard={handleUpdateCardClick}
-              onCardRemoved={handleCardRemoved}
-              tier={tier}
-            />
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-gray-600 mb-4">
-                No payment method on file. Please add a card to continue.
-              </p>
-            </div>
-          )}
+      <div className="min-h-screen bg-black py-8 px-4">
+        <div className="max-w-6xl mx-auto">
+          <BillingDashboard
+            hasCard={hasCard}
+            cardStatus={cardStatus}
+            activation={activation}
+            onUpdateCard={handleUpdateCardClick}
+            onCardRemoved={handleCardRemoved}
+            tier={tier}
+          />
           
           {showUpdateCard && (
-            <div className="mt-6 border-t pt-6">
+            <div className="mt-6">
               <CardUpdateForm
                 onSuccess={handleCardUpdateSuccess}
                 onCancel={handleCancelUpdate}
@@ -203,17 +168,67 @@ const Billing = () => {
               />
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
 
-          {!showUpdateCard && hasCard && (
-            <div className="mt-6 border-t pt-6">
-              <button
-                onClick={handleUpdateCardClick}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                Update Payment Method
-              </button>
-            </div>
-          )}
+  // Starter tier
+  if (tier === 'starter') {
+    return (
+      <div className="min-h-screen bg-black py-8 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6">
+            <h2 className="text-2xl font-bold text-white mb-4">Billing</h2>
+            <p className="text-gray-400 mb-6">
+              You're on the Starter plan. No payment required.
+            </p>
+            
+            {hasCard ? (
+              <BillingDashboard
+                hasCard={hasCard}
+                cardStatus={cardStatus}
+                activation={activation}
+                onUpdateCard={handleUpdateCardClick}
+                onCardRemoved={handleCardRemoved}
+                tier={tier}
+              />
+            ) : (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">💳</div>
+                <p className="text-gray-400 mb-4">
+                  No payment method on file. Upgrade to Pro or Elite for live trading.
+                </p>
+                <button
+                  onClick={() => navigate('/pricing')}
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg font-medium transition-all shadow-lg"
+                >
+                  View Plans
+                </button>
+              </div>
+            )}
+            
+            {showUpdateCard && (
+              <div className="mt-6 border-t border-gray-700 pt-6">
+                <CardUpdateForm
+                  onSuccess={handleCardUpdateSuccess}
+                  onCancel={handleCancelUpdate}
+                  tier={tier}
+                />
+              </div>
+            )}
+
+            {!showUpdateCard && hasCard && (
+              <div className="mt-6 border-t border-gray-700 pt-6">
+                <button
+                  onClick={handleUpdateCardClick}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                >
+                  Update Payment Method
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
