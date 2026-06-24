@@ -1,9 +1,9 @@
-// pages/Billing.jsx
+// imali/Frontend/src/pages/Billing.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import BillingDashboard from "../components/Billing/BillingDashboard";
-import CardUpdateForm from "../components/Billing/CardUpdateForm";
+import BillingDashboard from "./BillingDashboard"; // ✅ Correct path - in pages
+import CardUpdateForm from "./CardUpdateForm"; // ✅ Correct path - in pages
 import LoadingSpinner from "../components/LoadingSpinner";
 
 const Billing = () => {
@@ -28,7 +28,6 @@ const Billing = () => {
       if (!response.ok) throw new Error('Failed to fetch card status');
       const result = await response.json();
       
-      // Your API returns: { success: true, data: { has_card, billing_complete } }
       if (result.success) {
         setCardStatus(result.data);
         return result.data;
@@ -41,7 +40,7 @@ const Billing = () => {
     }
   }, []);
 
-  // Fetch activation status (if you have this endpoint)
+  // Fetch activation status
   const fetchActivationStatus = useCallback(async () => {
     try {
       const response = await fetch('/api/activation/status', {
@@ -60,11 +59,8 @@ const Billing = () => {
     }
   }, []);
 
-  // CRITICAL FIX: Check if card exists using ONLY has_card from your API
-  // DO NOT use billing_complete to determine if a card exists
+  // CRITICAL FIX: Check if card exists using ONLY has_card
   const checkCardExists = useCallback((cardData) => {
-    // Only check has_card from your API response
-    // billing_complete is NOT a reliable indicator of an existing card
     return !!(cardData?.has_card);
   }, []);
 
@@ -74,19 +70,15 @@ const Billing = () => {
     setError(null);
 
     try {
-      // Fetch current statuses
       const cardData = await fetchCardStatus();
       const activationData = await fetchActivationStatus();
 
-      // Determine tier from user or activation
       const currentTier = user?.tier || activationData?.tier || 'starter';
       setTier(currentTier);
 
-      // CRITICAL: Check if card exists using ONLY has_card
       const hasValidCard = checkCardExists(cardData);
       setHasCard(hasValidCard);
 
-      // Check if we should show update card form from navigation state
       if (location.state?.updateCard) {
         setShowUpdateCard(true);
       }
@@ -102,9 +94,7 @@ const Billing = () => {
   // Handle card update success
   const handleCardUpdateSuccess = useCallback(async () => {
     setShowUpdateCard(false);
-    // Refetch status after successful update
     await initializeBilling();
-    // Clear navigation state
     navigate('/billing', { replace: true, state: {} });
   }, [initializeBilling, navigate]);
 
@@ -124,7 +114,7 @@ const Billing = () => {
     navigate('/billing', { replace: true, state: {} });
   }, [navigate]);
 
-  // Initialize on mount and when location state changes
+  // Initialize on mount
   useEffect(() => {
     initializeBilling();
   }, [initializeBilling]);
@@ -154,7 +144,7 @@ const Billing = () => {
     );
   }
 
-  // For enterprise users - show full billing dashboard
+  // For enterprise users
   if (tier === 'enterprise') {
     return (
       <div className="max-w-6xl mx-auto p-6">
@@ -229,7 +219,6 @@ const Billing = () => {
     );
   }
 
-  // Fallback - shouldn't happen
   return null;
 };
 
