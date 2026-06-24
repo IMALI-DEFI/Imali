@@ -59,6 +59,16 @@ async function fetchJson(url, options = {}) {
   return result?.data || result;
 }
 
+// ✅ NEW: Optional fetch that doesn't throw on 404
+async function fetchJsonOptional(url, fallback = {}) {
+  try {
+    return await fetchJson(url);
+  } catch (err) {
+    console.warn(`[Billing] Optional endpoint unavailable: ${url}`, err);
+    return fallback;
+  }
+}
+
 export default function Billing() {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
@@ -73,19 +83,31 @@ export default function Billing() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  // ✅ FIX: Get tier from URL first, then state, then localStorage, then user/activation
   const urlTier = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get("tier") || params.get("plan");
   }, [location.search]);
 
-  const currentTier = normalizeTier(
-    urlTier ||
+  const selectedTier = useMemo(() => {
+    const tier =
+      urlTier ||
       location.state?.tier ||
+      localStorage.getItem("IMALI_SELECTED_TIER") ||
       user?.tier ||
       activation?.tier ||
-      "starter"
-  );
+      "starter";
+    return normalizeTier(tier);
+  }, [urlTier, location.state?.tier, user?.tier, activation?.tier]);
 
+  // ✅ FIX: Persist tier to localStorage
+  useEffect(() => {
+    if (selectedTier) {
+      localStorage.setItem("IMALI_SELECTED_TIER", selectedTier);
+    }
+  }, [selectedTier]);
+
+  const currentTier = selectedTier;
   const tierMeta = TIER_META[currentTier] || TIER_META.starter;
 
   const realHasCard =
@@ -98,11 +120,12 @@ export default function Billing() {
     setError("");
 
     try {
+      // ✅ FIX: Use fetchJsonOptional for activation endpoint
       const [cardRes, activationRes, subscriptionRes] =
         await Promise.allSettled([
-          fetchJson("/api/billing/card-status"),
-          fetchJson("/api/activation/status"),
-          fetchJson("/api/billing/subscription"),
+          fetchJsonOptional("/api/billing/card-status", {}),
+          fetchJsonOptional("/api/activation/status", {}),
+          fetchJsonOptional("/api/billing/subscription", null),
         ]);
 
       setCardStatus(cardRes.status === "fulfilled" ? cardRes.value || {} : {});
@@ -265,7 +288,12 @@ export default function Billing() {
 
             <div className="mt-6 grid gap-3">
               <button
-                onClick={() => navigate("/pricing")}
+                onClick={() => {
+                  // ✅ FIX: Pass tier in state and URL
+                  navigate(`/pricing?selected=${currentTier}`, {
+                    state: { tier: currentTier },
+                  });
+                }}
                 className="w-full rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 px-5 py-3 font-black"
               >
                 Change Plan
@@ -459,6 +487,7 @@ export default function Billing() {
                   activation,
                   subscription,
                   userTier: user?.tier,
+                  localStorageTier: localStorage.getItem("IMALI_SELECTED_TIER"),
                 },
                 null,
                 2
