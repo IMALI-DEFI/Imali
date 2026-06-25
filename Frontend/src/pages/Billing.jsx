@@ -27,6 +27,7 @@ export default function Billing() {
   const [activation, setActivation] = useState({});
   const [subscription, setSubscription] = useState(null);
   const [showCardForm, setShowCardForm] = useState(false);
+  const [formKey, setFormKey] = useState(0);
 
   const urlTier = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -45,6 +46,7 @@ export default function Billing() {
 
   const billingTier = tier === "starter" ? "pro" : tier;
 
+  // Persist selected tier
   useEffect(() => {
     localStorage.setItem("IMALI_SELECTED_TIER", tier);
   }, [tier]);
@@ -58,12 +60,11 @@ export default function Billing() {
         throw new Error("Please log in again to manage billing.");
       }
 
-      const [cardRes, activationRes, subscriptionRes] =
-        await Promise.allSettled([
-          BotAPI.getCardStatusSafe(true),
-          BotAPI.getActivationStatus(true),
-          BotAPI.getSubscriptionDetails(true),
-        ]);
+      const [cardRes, activationRes, subscriptionRes] = await Promise.allSettled([
+        BotAPI.getCardStatusSafe(true),
+        BotAPI.getActivationStatus(true),
+        BotAPI.getSubscriptionDetails(true),
+      ]);
 
       setCardStatus(
         cardRes.status === "fulfilled"
@@ -102,6 +103,7 @@ export default function Billing() {
     setError("");
     setNotice("");
     setShowCardForm(true);
+    setFormKey((prev) => prev + 1);
 
     navigate(`/billing?tier=${billingTier}`, {
       replace: true,
@@ -222,7 +224,7 @@ export default function Billing() {
         {showCardForm && (
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
             <CardUpdateForm
-              key={`card-form-${billingTier}`}
+              key={formKey}
               tier={billingTier}
               onSuccess={handleCardSuccess}
               onCancel={closeCardForm}
