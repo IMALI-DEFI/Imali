@@ -110,43 +110,70 @@ const logout = () => {
 const isAuthenticated = () => !!getToken();
 
 const getMe = async (skipCache = false) =>
-  cachedGet("me", 15000, async () => getData(await api.get("/api/me"))?.user || getData(await api.get("/api/me")), skipCache);
+  cachedGet(
+    "me",
+    15000,
+    async () => getData(await api.get("/api/me"))?.user || getData(await api.get("/api/me")),
+    skipCache
+  );
 
 // =====================================================
-// USER / BILLING - FIXED
+// USER / BILLING
 // =====================================================
 const getActivationStatus = async (skipCache = false) =>
-  cachedGet("activation", 15000, async () => {
-    const data = getData(await api.get("/api/me/activation-status"));
-    // Handle both response formats
-    return data?.status || data || {};
-  }, skipCache);
+  cachedGet(
+    "activation",
+    15000,
+    async () => {
+      const data = getData(await api.get("/api/me/activation-status"));
+      return data?.status || data || {};
+    },
+    skipCache
+  );
 
 const getTrialStatus = async (skipCache = false) =>
-  cachedGet("trial", 15000, async () => getData(await api.get("/api/me/trial-status")), skipCache);
+  cachedGet(
+    "trial",
+    15000,
+    async () => getData(await api.get("/api/me/trial-status")),
+    skipCache
+  );
 
-// FIXED: Get card status - returns { has_card, billing_complete }
-const getCardStatus = async (skipCache = false) =>
-  cachedGet("card", 15000, async () => {
-    const response = await api.get("/api/billing/card-status");
-    const data = getData(response);
-    // Your API returns: { success: true, data: { has_card, billing_complete } }
-    // getData extracts the inner data object
-    return {
-      has_card: !!data?.has_card,
-      billing_complete: !!data?.billing_complete,
-      // Include the raw data for debugging
-      _raw: data
-    };
-  }, skipCache);
+const createSetupIntent = async (payload = {}) =>
+  unwrap(await api.post("/api/billing/setup-intent", payload));
 
-// FIXED: Helper to check if card exists - ONLY uses has_card
-const hasValidCard = async (skipCache = false) => {
-  const status = await getCardStatus(skipCache);
-  return !!status?.has_card;
+const confirmCard = async (payload = {}) => {
+  const body =
+    typeof payload === "string"
+      ? { setup_intent_id: payload }
+      : payload;
+
+  const res = unwrap(await api.post("/api/billing/confirm-card", body));
+  clearCache();
+  return res;
 };
 
-// FIXED: Get card status with proper error handling
+const getCardStatus = async (skipCache = false) =>
+  cachedGet(
+    "card",
+    15000,
+    async () => {
+      const data = getData(await api.get("/api/billing/card-status"));
+      return {
+        has_card: !!data?.has_card,
+        has_card_on_file: !!data?.has_card_on_file,
+        billing_complete: !!data?.billing_complete,
+        brand: data?.brand || null,
+        last4: data?.last4 || null,
+        exp_month: data?.exp_month || null,
+        exp_year: data?.exp_year || null,
+        stripe_customer_id: data?.stripe_customer_id || null,
+        _raw: data,
+      };
+    },
+    skipCache
+  );
+
 const getCardStatusSafe = async (skipCache = false) => {
   try {
     const status = await getCardStatus(skipCache);
@@ -154,63 +181,55 @@ const getCardStatusSafe = async (skipCache = false) => {
       success: true,
       hasCard: !!status?.has_card,
       billingComplete: !!status?.billing_complete,
-      // IMPORTANT: billingComplete is NOT used to determine if a card exists
-      data: status
+      data: status,
     };
   } catch (error) {
-    console.error('Error fetching card status:', error);
     return {
       success: false,
       hasCard: false,
       billingComplete: false,
-      error: error.message
+      error: error.message,
     };
   }
 };
 
-const createSetupIntent = async (payload = {}) =>
-  unwrap(await api.post("/api/billing/setup-intent", payload));
-
-const confirmCard = async (setup_intent_id) =>
-  unwrap(await api.post("/api/billing/confirm-card", { setup_intent_id }));
-
-// FIXED: Change plan with proper billing model
-const changePlan = async (tier, billingModel = "fixed", profitSharePct = null) => {
-  const res = unwrap(await api.post("/api/change-plan", { 
-    tier, 
-    billing_model: billingModel, 
-    profit_share_pct: profitSharePct 
-  }));
-  clearCache();
-  return res;
+const hasValidCard = async (skipCache = false) => {
+  const status = await getCardStatus(skipCache);
+  return !!status?.has_card;
 };
 
-// FIXED: Cancel subscription
-const cancelSubscription = async () => {
-  const res = unwrap(await api.post("/api/billing/cancel-subscription"));
-  clearCache();
-  return res;
-};
-
-// NEW: Remove card endpoint
 const removeCard = async () => {
   const res = unwrap(await api.post("/api/billing/remove-card"));
   clearCache();
   return res;
 };
 
-// NEW: Get subscription details
-const getSubscriptionDetails = async (skipCache = false) =>
-  cachedGet("subscription", 15000, async () => {
-    try {
-      const data = getData(await api.get("/api/billing/subscription"));
-      return data || {};
-    } catch {
-      return { error: "Failed to fetch subscription details" };
-    }
-  }, skipCache);
+const cancelSubscription = async () => {
+  const res = unwrap(await api.post("/api/billing/cancel-subscription"));
+  clearCache();
+  return res;
+};
 
-// NEW: Sync billing with Stripe
+const getSubscriptionDetails = async (skipCache = false) =>
+  cachedGet(
+    "subscription",
+    15000,
+    async () => getData(await api.get("/api/billing/subscription")),
+    skipCache
+  );
+
+const changePlan = async (tier, billingModel = "fixed", profitSharePct = null) => {
+  const res = unwrap(
+    await api.post("/api/change-plan", {
+      tier,
+      billing_model: billingModel,
+      profit_share_pct: profitSharePct,
+    })
+  );
+  clearCache();
+  return res;
+};
+
 const syncBilling = async () => {
   const res = unwrap(await api.post("/api/billing/sync"));
   clearCache();
@@ -221,21 +240,26 @@ const syncBilling = async () => {
 // INTEGRATIONS
 // =====================================================
 const getIntegrationStatus = async (skipCache = false) =>
-  cachedGet("integrations", 10000, async () => {
-    const d = getData(await api.get("/api/integrations/status"));
-    return {
-      wallet_connected: bool(d.wallet_connected),
-      wallet_address_masked: d.wallet_address_masked || "",
-      okx_connected: bool(d.okx_connected),
-      okx_api_key_masked: d.okx_api_key_masked || "",
-      okx_mode: mode(d.okx_mode),
-      okx_key_updated_at: d.okx_key_updated_at || null,
-      alpaca_connected: bool(d.alpaca_connected),
-      alpaca_api_key_masked: d.alpaca_api_key_masked || "",
-      alpaca_mode: mode(d.alpaca_mode),
-      alpaca_key_updated_at: d.alpaca_key_updated_at || null,
-    };
-  }, skipCache);
+  cachedGet(
+    "integrations",
+    10000,
+    async () => {
+      const d = getData(await api.get("/api/integrations/status"));
+      return {
+        wallet_connected: bool(d.wallet_connected),
+        wallet_address_masked: d.wallet_address_masked || "",
+        okx_connected: bool(d.okx_connected),
+        okx_api_key_masked: d.okx_api_key_masked || "",
+        okx_mode: mode(d.okx_mode),
+        okx_key_updated_at: d.okx_key_updated_at || null,
+        alpaca_connected: bool(d.alpaca_connected),
+        alpaca_api_key_masked: d.alpaca_api_key_masked || "",
+        alpaca_mode: mode(d.alpaca_mode),
+        alpaca_key_updated_at: d.alpaca_key_updated_at || null,
+      };
+    },
+    skipCache
+  );
 
 const connectOKX = async (payload = {}) => {
   const body = {
@@ -289,21 +313,26 @@ const switchAlpacaToLive = () => switchExchangeMode("alpaca", "live");
 // BALANCE / PORTFOLIO
 // =====================================================
 const getExchangeBalance = async (skipCache = false) =>
-  cachedGet("exchange_balance", 7000, async () => {
-    const d = getData(await api.get("/api/exchanges/balance"));
-    return {
-      success: true,
-      okx: money(d.okx ?? d.okx_total),
-      okx_total: money(d.okx ?? d.okx_total),
-      okx_available_usdt: money(d.okx_available_usdt),
-      okx_assets: Array.isArray(d.okx_assets) ? d.okx_assets : [],
-      alpaca: money(d.alpaca ?? d.alpaca_total),
-      alpaca_total: money(d.alpaca ?? d.alpaca_total),
-      alpaca_available_usd: money(d.alpaca_available_usd ?? d.alpaca_available_usdt),
-      alpaca_assets: Array.isArray(d.alpaca_assets) ? d.alpaca_assets : [],
-      total: money(d.total),
-    };
-  }, skipCache);
+  cachedGet(
+    "exchange_balance",
+    7000,
+    async () => {
+      const d = getData(await api.get("/api/exchanges/balance"));
+      return {
+        success: true,
+        okx: money(d.okx ?? d.okx_total),
+        okx_total: money(d.okx ?? d.okx_total),
+        okx_available_usdt: money(d.okx_available_usdt),
+        okx_assets: Array.isArray(d.okx_assets) ? d.okx_assets : [],
+        alpaca: money(d.alpaca ?? d.alpaca_total),
+        alpaca_total: money(d.alpaca ?? d.alpaca_total),
+        alpaca_available_usd: money(d.alpaca_available_usd ?? d.alpaca_available_usdt),
+        alpaca_assets: Array.isArray(d.alpaca_assets) ? d.alpaca_assets : [],
+        total: money(d.total),
+      };
+    },
+    skipCache
+  );
 
 const getPortfolioSummary = async (_category = "spot", skipCache = false) => {
   const bal = await getExchangeBalance(skipCache);
@@ -321,33 +350,49 @@ const getPortfolioSummary = async (_category = "spot", skipCache = false) => {
 // BOT
 // =====================================================
 const getTradingBotStatus = async (skipCache = false) =>
-  cachedGet("bot_status", 3000, async () => {
-    const raw = getData(await api.get("/api/trading/bot/status"));
-    const list = Array.isArray(raw) ? raw : Array.isArray(raw.data) ? raw.data : [];
-    const bots = list.map((b) => ({
-      ...b,
-      botId: b.botId || b.bot_id,
-      isRunning: bool(b.isRunning) || String(b.status || "").toLowerCase() === "running",
-      mode: mode(b.mode),
-      exchange: String(b.exchange || "okx").toLowerCase(),
-      strategy: b.strategy || "ai_weighted",
-    }));
-    return {
-      success: true,
-      data: bots,
-      bots,
-      activeBot: bots.find((b) => b.isRunning) || bots[0] || null,
-      isRunning: bots.some((b) => b.isRunning),
-    };
-  }, skipCache);
+  cachedGet(
+    "bot_status",
+    3000,
+    async () => {
+      const raw = getData(await api.get("/api/trading/bot/status"));
+      const list = Array.isArray(raw) ? raw : Array.isArray(raw.data) ? raw.data : [];
+      const bots = list.map((b) => ({
+        ...b,
+        botId: b.botId || b.bot_id,
+        isRunning: bool(b.isRunning) || String(b.status || "").toLowerCase() === "running",
+        mode: mode(b.mode),
+        exchange: String(b.exchange || "okx").toLowerCase(),
+        strategy: b.strategy || "ai_weighted",
+      }));
+      return {
+        success: true,
+        data: bots,
+        bots,
+        activeBot: bots.find((b) => b.isRunning) || bots[0] || null,
+        isRunning: bots.some((b) => b.isRunning),
+      };
+    },
+    skipCache
+  );
 
-const startTradingBot = async (exchange = "okx", strategy = "ai_weighted", runMode = "paper", category = null, config = {}) => {
-  const res = unwrap(await api.post("/api/trading/bot/start", {
-    exchange, strategy, mode: mode(runMode), category,
-    takeProfitPct: config.takeProfitPct,
-    stopLossPct: config.stopLossPct,
-    maxTradeAmount: config.maxTradeAmount,
-  }));
+const startTradingBot = async (
+  exchange = "okx",
+  strategy = "ai_weighted",
+  runMode = "paper",
+  category = null,
+  config = {}
+) => {
+  const res = unwrap(
+    await api.post("/api/trading/bot/start", {
+      exchange,
+      strategy,
+      mode: mode(runMode),
+      category,
+      takeProfitPct: config.takeProfitPct,
+      stopLossPct: config.stopLossPct,
+      maxTradeAmount: config.maxTradeAmount,
+    })
+  );
   clearCache();
   return res;
 };
@@ -372,21 +417,58 @@ const stopTradingBotByCategory = async (category) => {
 // STRATEGIES
 // =====================================================
 const getStrategyConfigs = async (skipCache = false) =>
-  cachedGet("strategy_configs", 30000, async () => {
-    try {
-      return unwrap(await api.get("/api/trading/strategies/config"));
-    } catch {
-      return {
-        success: true,
-        data: {
-          mean_reversion: { name: "Conservative", maxPositions: 3, tradePct: 0.1, takeProfitPct: 0.025, stopLossPct: 0.025, riskLevel: "low", description: "Slow, steady trades focused on consistency" },
-          ai_weighted: { name: "Balanced AI", maxPositions: 5, tradePct: 0.12, takeProfitPct: 0.025, stopLossPct: 0.025, riskLevel: "medium", description: "AI-assisted balance between growth and protection" },
-          momentum: { name: "Growth", maxPositions: 6, tradePct: 0.14, takeProfitPct: 0.025, stopLossPct: 0.025, riskLevel: "higher", description: "Faster opportunities with larger swings" },
-          aggressive: { name: "Aggressive", maxPositions: 8, tradePct: 0.15, takeProfitPct: 0.025, stopLossPct: 0.025, riskLevel: "high", description: "High volatility with larger upside potential" },
-        },
-      };
-    }
-  }, skipCache);
+  cachedGet(
+    "strategy_configs",
+    30000,
+    async () => {
+      try {
+        return unwrap(await api.get("/api/trading/strategies/config"));
+      } catch {
+        return {
+          success: true,
+          data: {
+            mean_reversion: {
+              name: "Conservative",
+              maxPositions: 3,
+              tradePct: 0.1,
+              takeProfitPct: 0.025,
+              stopLossPct: 0.025,
+              riskLevel: "low",
+              description: "Slow, steady trades focused on consistency",
+            },
+            ai_weighted: {
+              name: "Balanced AI",
+              maxPositions: 5,
+              tradePct: 0.12,
+              takeProfitPct: 0.025,
+              stopLossPct: 0.025,
+              riskLevel: "medium",
+              description: "AI-assisted balance between growth and protection",
+            },
+            momentum: {
+              name: "Growth",
+              maxPositions: 6,
+              tradePct: 0.14,
+              takeProfitPct: 0.025,
+              stopLossPct: 0.025,
+              riskLevel: "higher",
+              description: "Faster opportunities with larger swings",
+            },
+            aggressive: {
+              name: "Aggressive",
+              maxPositions: 8,
+              tradePct: 0.15,
+              takeProfitPct: 0.025,
+              stopLossPct: 0.025,
+              riskLevel: "high",
+              description: "High volatility with larger upside potential",
+            },
+          },
+        };
+      }
+    },
+    skipCache
+  );
 
 const getTradingStrategies = async (skipCache = false) =>
   cachedGet("strategies", 30000, async () => unwrap(await api.get("/api/trading/strategies")), skipCache);
@@ -398,22 +480,37 @@ const updateUserStrategy = async (strategy) =>
 // STATS / TRADES
 // =====================================================
 const getLiveTradingStats = async (exchange = "okx", skipCache = false) =>
-  cachedGet(`live_stats_${exchange}`, 7000, async () => {
-    const d = getData(await api.get(`/api/trading/live-stats?exchange=${exchange}`));
-    return { success: true, summary: d.summary || d, data: d };
-  }, skipCache);
+  cachedGet(
+    `live_stats_${exchange}`,
+    7000,
+    async () => {
+      const d = getData(await api.get(`/api/trading/live-stats?exchange=${exchange}`));
+      return { success: true, summary: d.summary || d, data: d };
+    },
+    skipCache
+  );
 
 const getOpenPositions = async (exchange = "okx", skipCache = false) =>
-  cachedGet(`positions_${exchange}`, 7000, async () => {
-    const d = getData(await api.get(`/api/trading/open-positions?exchange=${exchange}`));
-    return { success: true, positions: d.positions || [], data: d };
-  }, skipCache);
+  cachedGet(
+    `positions_${exchange}`,
+    7000,
+    async () => {
+      const d = getData(await api.get(`/api/trading/open-positions?exchange=${exchange}`));
+      return { success: true, positions: d.positions || [], data: d };
+    },
+    skipCache
+  );
 
 const getLiveTradeHistory = async (limit = 20, exchange = "okx", skipCache = false) =>
-  cachedGet(`live_trades_${exchange}_${limit}`, 7000, async () => {
-    const d = getData(await api.get(`/api/trading/live-trades?limit=${limit}&exchange=${exchange}`));
-    return { success: true, trades: d.trades || [], data: d };
-  }, skipCache);
+  cachedGet(
+    `live_trades_${exchange}_${limit}`,
+    7000,
+    async () => {
+      const d = getData(await api.get(`/api/trading/live-trades?limit=${limit}&exchange=${exchange}`));
+      return { success: true, trades: d.trades || [], data: d };
+    },
+    skipCache
+  );
 
 const getUserTradingStats = async (days = 30) =>
   unwrap(await api.get(`/api/user/trading-stats?days=${days}`));
@@ -449,92 +546,108 @@ const togglePaperTrading = async (enabled) =>
 // IMALI TOKEN / DISCOUNTS
 // =====================================================
 const getImaliBalance = async () => {
-  try { return unwrap(await api.get("/api/wallet/imali-balance")); }
-  catch { return { success: false, balance: 0 }; }
+  try {
+    return unwrap(await api.get("/api/wallet/imali-balance"));
+  } catch {
+    return { success: false, balance: 0 };
+  }
 };
 
 const getImaliDiscountStatus = async () => {
-  try { return unwrap(await api.get("/api/billing/imali-discount-status")); }
-  catch { return { success: false, discountPct: 0, active: false }; }
+  try {
+    return unwrap(await api.get("/api/billing/imali-discount-status"));
+  } catch {
+    return { success: false, discountPct: 0, active: false };
+  }
 };
 
 const applyImaliDiscount = async () => {
-  try { return unwrap(await api.post("/api/billing/apply-imali-discount")); }
-  catch (error) { return { success: false, error: error.message }; }
+  try {
+    return unwrap(await api.post("/api/billing/apply-imali-discount"));
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 };
 
 const getGlobalTrades = async (options = {}) =>
   unwrap(await api.get("/api/trading/global-trades", { params: options }));
 
 // =====================================================
-// EXPORT - FIXED with billing helpers
+// EXPORT
 // =====================================================
 const BotAPI = {
   // Core
-  api, getToken, setToken, clearToken, clearCache, isAuthenticated,
-  
+  api,
+  getToken,
+  setToken,
+  clearToken,
+  clearCache,
+  isAuthenticated,
+
   // Auth
-  login, logout, getMe,
-  
-  // Billing - FIXED
-  getActivationStatus, 
-  getTrialStatus, 
-  getCardStatus, 
-  getCardStatusSafe,  // NEW - safer version with error handling
-  hasValidCard,       // NEW - simple boolean check
-  createSetupIntent, 
-  confirmCard, 
-  changePlan, 
+  login,
+  logout,
+  getMe,
+
+  // Billing
+  getActivationStatus,
+  getTrialStatus,
+  getCardStatus,
+  getCardStatusSafe,
+  hasValidCard,
+  createSetupIntent,
+  confirmCard,
+  changePlan,
   cancelSubscription,
-  removeCard,         // NEW
-  getSubscriptionDetails, // NEW
-  syncBilling,        // NEW
-  
+  removeCard,
+  getSubscriptionDetails,
+  syncBilling,
+
   // Integrations
-  getIntegrationStatus, 
-  connectOKX, 
-  disconnectOKX, 
-  connectAlpaca, 
-  disconnectAlpaca, 
-  switchExchangeMode, 
-  switchOKXToLive, 
+  getIntegrationStatus,
+  connectOKX,
+  disconnectOKX,
+  connectAlpaca,
+  disconnectAlpaca,
+  switchExchangeMode,
+  switchOKXToLive,
   switchAlpacaToLive,
-  
+
   // Balance
-  getExchangeBalance, 
+  getExchangeBalance,
   getPortfolioSummary,
-  
+
   // Bot
-  getTradingBotStatus, 
-  startTradingBot, 
-  stopTradingBot, 
-  startTradingBotByCategory, 
+  getTradingBotStatus,
+  startTradingBot,
+  stopTradingBot,
+  startTradingBotByCategory,
   stopTradingBotByCategory,
-  
+
   // Strategies
-  getStrategyConfigs, 
-  getTradingStrategies, 
+  getStrategyConfigs,
+  getTradingStrategies,
   updateUserStrategy,
-  
+
   // Stats
-  getLiveTradingStats, 
-  getOpenPositions, 
-  getLiveTradeHistory, 
-  getUserTradingStats, 
-  getRealTradingStats, 
-  executePaperTrade, 
-  closePosition, 
+  getLiveTradingStats,
+  getOpenPositions,
+  getLiveTradeHistory,
+  getUserTradingStats,
+  getRealTradingStats,
+  executePaperTrade,
+  closePosition,
   closeAllPositions,
-  
+
   // Toggles
-  toggleTrading, 
+  toggleTrading,
   togglePaperTrading,
-  
+
   // Imali Token
-  getImaliBalance, 
-  getImaliDiscountStatus, 
+  getImaliBalance,
+  getImaliDiscountStatus,
   applyImaliDiscount,
-  
+
   // Global
   getGlobalTrades,
 };
