@@ -45,6 +45,7 @@ export default function Billing() {
   }, [urlTier, location.state?.tier, user?.tier]);
 
   const billingTier = tier === "starter" ? "pro" : tier;
+  const isStarterView = tier === "starter";
 
   // Persist selected tier
   useEffect(() => {
@@ -196,7 +197,7 @@ export default function Billing() {
             {error}
             {error.toLowerCase().includes("log in") && (
               <button
-                onClick={() => navigate("/login", { state: { from: "/billing" } })}
+                onClick={() => navigate("/login", { state: { from: "/dashboard" } })}
                 className="block mt-3 px-4 py-2 rounded-xl bg-red-600 text-white font-bold"
               >
                 Log In Again
@@ -206,6 +207,46 @@ export default function Billing() {
         )}
 
         {notice && <Alert type="success">{notice}</Alert>}
+
+        {isStarterView && (
+          <div className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5 md:p-6">
+            <h2 className="text-2xl font-black">Starter Plan Active</h2>
+            <p className="text-white/60 mt-2">
+              Starter users can use the member dashboard for paper trading without adding a card.
+            </p>
+
+            <div className="mt-5 flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => navigate("/dashboard")}
+                className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black"
+              >
+                Go to Member Dashboard
+              </button>
+
+              <button
+                onClick={() =>
+                  navigate("/billing?tier=pro", {
+                    state: { tier: "pro", updateCard: true },
+                  })
+                }
+                className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black"
+              >
+                Upgrade to Pro
+              </button>
+
+              <button
+                onClick={() =>
+                  navigate("/billing?tier=elite", {
+                    state: { tier: "elite", updateCard: true },
+                  })
+                }
+                className="rounded-2xl bg-purple-600 hover:bg-purple-500 px-5 py-4 font-black"
+              >
+                Upgrade to Elite
+              </button>
+            </div>
+          </div>
+        )}
 
         <BillingDashboard
           tier={tier}
