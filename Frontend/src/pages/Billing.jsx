@@ -1,4 +1,4 @@
-// imali/Frontend/src/pages/Billing.jsx
+// src/pages/Billing.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -13,17 +13,8 @@ function normalizeTier(value) {
   return VALID_TIERS.includes(tier) ? tier : "starter";
 }
 
-function hasToken() {
-  return !!(
-    localStorage.getItem("imali_token") ||
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("IMALI_TOKEN")
-  );
-}
-
 export default function Billing() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, refreshActivation } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -63,45 +54,51 @@ export default function Billing() {
     setError("");
 
     try {
-      if (!hasToken()) {
-        throw new Error("Invalid or expired token");
+      if (!BotAPI.isAuthenticated()) {
+        throw new Error("Please log in again to manage billing.");
       }
 
-      const [card, act, sub] = await Promise.allSettled([
-        BotAPI.getCardStatusSafe(true),
-        BotAPI.getActivationStatus(true),
-        BotAPI.getSubscriptionDetails(true),
-      ]);
+      const [cardRes, activationRes, subscriptionRes] =
+        await Promise.allSettled([
+          BotAPI.getCardStatusSafe(true),
+          BotAPI.getActivationStatus(true),
+          BotAPI.getSubscriptionDetails(true),
+        ]);
 
-      setCardStatus(card.status === "fulfilled" ? card.value?.data || card.value || {} : {});
-      setActivation(act.status === "fulfilled" ? act.value || {} : {});
-      setSubscription(sub.status === "fulfilled" ? sub.value || null : null);
+      setCardStatus(
+        cardRes.status === "fulfilled"
+          ? cardRes.value?.data || cardRes.value || {}
+          : {}
+      );
 
-      if (location.state?.updateCard === true) {
-        setShowCardForm(true);
-      }
+      setActivation(
+        activationRes.status === "fulfilled" ? activationRes.value || {} : {}
+      );
+
+      setSubscription(
+        subscriptionRes.status === "fulfilled" ? subscriptionRes.value || null : null
+      );
+
+      setShowCardForm(Boolean(location.state?.updateCard));
     } catch (err) {
-      setError(err?.message || "Failed to load billing information.");
+      setError(err?.message || "Failed to load billing.");
     } finally {
       setLoading(false);
     }
   }, [location.state?.updateCard]);
 
   useEffect(() => {
-    if (!user && !hasToken()) {
-      navigate("/login", { replace: true, state: { from: "/billing" } });
-      return;
-    }
-
     loadBilling();
-  }, [user, navigate, loadBilling]);
+  }, [loadBilling]);
 
   const refreshAll = async () => {
+    BotAPI.clearCache?.();
     await refreshUser?.();
+    await refreshActivation?.();
     await loadBilling();
   };
 
-  const handleUpdateCard = () => {
+  const openCardForm = () => {
     setError("");
     setNotice("");
     setShowCardForm(true);
@@ -112,9 +109,19 @@ export default function Billing() {
     });
   };
 
+  const closeCardForm = () => {
+    setShowCardForm(false);
+    navigate(`/billing?tier=${billingTier}`, {
+      replace: true,
+      state: { tier: billingTier },
+    });
+  };
+
   const handleCardSuccess = async () => {
     setShowCardForm(false);
     setNotice("Payment method saved successfully.");
+    localStorage.setItem("IMALI_SELECTED_TIER", billingTier);
+    localStorage.setItem("IMALI_BILLING_COMPLETE", "true");
     await refreshAll();
 
     navigate(`/billing?tier=${billingTier}`, {
@@ -135,7 +142,7 @@ export default function Billing() {
       setNotice("Payment method removed.");
       await refreshAll();
     } catch (err) {
-      setError(err?.message || "Failed to remove payment method.");
+      setError(err?.message || "Failed to remove card.");
     } finally {
       setBusy("");
     }
@@ -159,39 +166,44 @@ export default function Billing() {
     }
   };
 
+  const handleChangePlan = (nextTier) => {
+    localStorage.setItem("IMALI_SELECTED_TIER", nextTier);
+    navigate(`/pricing?selected=${nextTier}`, {
+      state: { tier: nextTier },
+    });
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
+      <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-white/60">Loading billing...</p>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#050816] text-white px-4 py-6 md:py-10">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <main className="min-h-screen bg-[#050816] text-white px-4 py-6 md:py-10">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
+
+      <div className="relative max-w-7xl mx-auto space-y-6">
         {error && (
-          <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-red-200 font-semibold">
-            ⚠️ {error}
-            {String(error).toLowerCase().includes("token") && (
+          <Alert type="error">
+            {error}
+            {error.toLowerCase().includes("log in") && (
               <button
                 onClick={() => navigate("/login", { state: { from: "/billing" } })}
-                className="block mt-3 px-4 py-2 rounded-xl bg-red-600 text-white"
+                className="block mt-3 px-4 py-2 rounded-xl bg-red-600 text-white font-bold"
               >
                 Log In Again
               </button>
             )}
-          </div>
+          </Alert>
         )}
 
-        {notice && (
-          <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-emerald-200 font-semibold">
-            ✅ {notice}
-          </div>
-        )}
+        {notice && <Alert type="success">{notice}</Alert>}
 
         <BillingDashboard
           tier={tier}
@@ -200,22 +212,38 @@ export default function Billing() {
           activation={activation}
           subscription={subscription}
           busy={busy}
-          onUpdateCard={handleUpdateCard}
+          showCardForm={showCardForm}
+          onUpdateCard={openCardForm}
           onRemoveCard={handleRemoveCard}
           onCancelSubscription={handleCancelSubscription}
-          onRefresh={refreshAll}
+          onChangePlan={handleChangePlan}
         />
 
         {showCardForm && (
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 md:p-6">
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
             <CardUpdateForm
+              key={`card-form-${billingTier}`}
               tier={billingTier}
               onSuccess={handleCardSuccess}
-              onCancel={() => setShowCardForm(false)}
+              onCancel={closeCardForm}
             />
           </section>
         )}
       </div>
+    </main>
+  );
+}
+
+function Alert({ type, children }) {
+  const styles =
+    type === "success"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+      : "border-red-500/40 bg-red-500/10 text-red-200";
+
+  return (
+    <div className={`rounded-2xl border p-4 font-semibold ${styles}`}>
+      {type === "success" ? "✅ " : "⚠️ "}
+      {children}
     </div>
   );
 }
