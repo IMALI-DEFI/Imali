@@ -1,288 +1,239 @@
 // src/pages/CardUpdateForm.jsx
-import React, { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
-const STRIPE_SCRIPT_ID = "stripe-js-v3";
+export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
+  const { user } = useAuth();
 
-function loadStripeScript() {
-  return new Promise((resolve, reject) => {
-    if (window.Stripe) return resolve(window.Stripe);
-
-    const existing = document.getElementById(STRIPE_SCRIPT_ID);
-    if (existing) {
-      existing.addEventListener("load", () => resolve(window.Stripe));
-      existing.addEventListener("error", reject);
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = STRIPE_SCRIPT_ID;
-    script.src = "https://js.stripe.com/v3/";
-    script.async = true;
-    script.onload = () => resolve(window.Stripe);
-    script.onerror = reject;
-    document.body.appendChild(script);
-  });
-}
-
-export default function CardUpdateForm({ onSuccess, onCancel, tier }) {
-  const { user, refreshUser } = useAuth();
-  const navigate = useNavigate();
-  const stripeMountId = `card-element-${useId().replace(/:/g, "")}`;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [clientSecret, setClientSecret] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const stripeRef = useRef(null);
+  const elementsRef = useRef(null);
   const cardElementRef = useRef(null);
-  const mountedRef = useRef(false);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
+  // Load Stripe.js script once
+  const loadStripeScript = () => {
+    return new Promise((resolve, reject) => {
+      if (window.Stripe) {
+        resolve();
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://js.stripe.com/v3/";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Failed to load Stripe.js"));
+      document.head.appendChild(script);
+    });
+  };
 
-  const getTier = useCallback(() => {
-    const value =
-      tier ||
-      localStorage.getItem("IMALI_SELECTED_TIER") ||
-      user?.tier ||
-      "pro";
-
-    const clean = String(value || "pro").toLowerCase().trim();
-    return clean === "starter" ? "pro" : clean;
-  }, [tier, user?.tier]);
-
-  const destroyCardElement = useCallback(() => {
-    try {
-      cardElementRef.current?.destroy?.();
-    } catch (_) {}
-    cardElementRef.current = null;
-  }, []);
-
-  const initialize = useCallback(async () => {
-    setLoading(true);
+  const initializeStripe = useCallback(async () => {
+    setIsInitializing(true);
     setError("");
-    setClientSecret("");
-    destroyCardElement();
+    setClientSecret(null);
 
     try {
-      if (!BotAPI.isAuthenticated()) {
-        throw new Error("Please log in again before updating your card.");
-      }
+      // Ensure Stripe is loaded
+      await loadStripeScript();
 
-      const publishableKey = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY;
-      if (!publishableKey) {
-        throw new Error("Stripe publishable key is missing.");
-      }
+      const stripeInstance =
+        stripeRef.current ||
+        window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 
-      const Stripe = await loadStripeScript();
-      stripeRef.current = Stripe(publishableKey);
+      if (!stripeInstance) throw new Error("Stripe failed to initialize.");
 
-      const tierForBilling = getTier();
-      localStorage.setItem("IMALI_SELECTED_TIER", tierForBilling);
+      stripeRef.current = stripeInstance;
 
-      const result = await BotAPI.createSetupIntent({
+      // Create SetupIntent
+      const response = await BotAPI.createSetupIntent({
         email: user?.email,
-        tier: tierForBilling,
-        update_card: true,
+        tier: tier || user?.tier,
       });
 
-      const data = result?.data || result;
-      const secret =
-        data?.client_secret ||
-        data?.clientSecret ||
-        data?.setup_intent_client_secret ||
-        "";
-
-      if (!secret) {
-        throw new Error("Missing Stripe client secret.");
+      if (!response?.success) {
+        throw new Error(response?.error || "Failed to initialize payment setup.");
       }
 
-      setClientSecret(secret);
+      const { client_secret, setup_intent_id } = response.data || {};
+      if (!client_secret) throw new Error("No client secret received from server.");
 
-      const elements = stripeRef.current.elements({ clientSecret: secret });
-      const cardElement = elements.create("card", {
-        hidePostalCode: false,
+      setClientSecret(client_secret);
+
+      // Create and mount Stripe Elements
+      const elements = stripeInstance.elements({ clientSecret: client_secret });
+      const card = elements.create("card", {
         style: {
           base: {
             fontSize: "16px",
             color: "#e5e7eb",
-            iconColor: "#10b981",
             "::placeholder": { color: "#6b7280" },
-          },
-          invalid: {
-            color: "#f87171",
-            iconColor: "#f87171",
+            backgroundColor: "transparent",
           },
         },
       });
 
-      setTimeout(() => {
-        const mountNode = document.getElementById(stripeMountId);
-        if (mountNode && mountedRef.current) {
-          cardElement.mount(`#${stripeMountId}`);
-          cardElementRef.current = cardElement;
-        }
-      }, 0);
+      const container = document.getElementById("card-element");
+      if (!container) throw new Error("Card element container not found.");
+
+      card.mount("#card-element");
+      cardElementRef.current = card;
+      elementsRef.current = elements;
+
     } catch (err) {
-      setError(err?.message || "Failed to initialize payment form.");
+      console.error("Stripe initialization error:", err);
+      setError(err.message || "Failed to initialize payment form.");
     } finally {
-      setLoading(false);
+      setIsInitializing(false);
     }
-  }, [destroyCardElement, getTier, stripeMountId, user?.email]);
+  }, [user, tier]);
 
+  // Cleanup Stripe element on unmount
   useEffect(() => {
-    mountedRef.current = true;
-    initialize();
-
     return () => {
-      mountedRef.current = false;
-      destroyCardElement();
+      if (cardElementRef.current) {
+        cardElementRef.current.destroy();
+        cardElementRef.current = null;
+        elementsRef.current = null;
+      }
     };
-  }, [initialize, destroyCardElement]);
+  }, []);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  // Initialize on mount
+  useEffect(() => {
+    initializeStripe();
+  }, [initializeStripe]);
 
-    if (saving || loading) return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
     if (!stripeRef.current || !cardElementRef.current || !clientSecret) {
-      setError("Payment form is not ready yet.");
+      setError("Payment system is not ready. Please try again.");
       return;
     }
 
-    setSaving(true);
+    setLoading(true);
     setError("");
 
     try {
       const { error: stripeError, setupIntent } =
-        await stripeRef.current.confirmCardSetup(clientSecret, {
-          payment_method: {
-            card: cardElementRef.current,
-            billing_details: {
-              email: user?.email || undefined,
-              name: user?.displayName || user?.name || undefined,
-            },
+        await stripeRef.current.confirmSetup({
+          elements: elementsRef.current,
+          clientSecret,
+          confirmParams: {
+            return_url: `${window.location.origin}/billing?setup_success=true`,
           },
+          redirect: "if_required",
         });
 
       if (stripeError) {
-        throw new Error(stripeError.message || "Card setup failed.");
+        throw new Error(stripeError.message);
       }
 
-      if (setupIntent?.status !== "succeeded") {
-        throw new Error("Card was not saved. Please try again.");
+      if (setupIntent?.status === "succeeded") {
+        const confirmResponse = await BotAPI.confirmCard(setupIntent.id);
+        if (!confirmResponse?.success) {
+          throw new Error(confirmResponse?.error || "Failed to save card.");
+        }
+        onSuccess?.();
+      } else {
+        throw new Error("Payment setup was not completed successfully.");
       }
-
-      const tierForBilling = getTier();
-
-      await BotAPI.confirmCard({
-        setup_intent_id: setupIntent.id,
-        payment_method_id: setupIntent.payment_method,
-        tier: tierForBilling,
-      });
-
-      localStorage.setItem("IMALI_SELECTED_TIER", tierForBilling);
-      localStorage.setItem("IMALI_BILLING_COMPLETE", "true");
-
-      await refreshUser?.();
-      await onSuccess?.();
     } catch (err) {
-      setError(err?.message || "Failed to save card.");
+      console.error("Card save error:", err);
+      setError(err.message || "Failed to save card.");
     } finally {
-      if (mountedRef.current) setSaving(false);
+      setLoading(false);
     }
   };
 
-  const tierDisplay = getTier();
-  const tierName =
-    tierDisplay === "elite"
-      ? "Elite"
-      : tierDisplay === "enterprise"
-      ? "Enterprise"
-      : "Pro";
+  const handleRetry = () => {
+    if (cardElementRef.current) {
+      cardElementRef.current.destroy();
+      cardElementRef.current = null;
+      elementsRef.current = null;
+    }
+    initializeStripe();
+  };
 
-  const tierPrice =
-    tierDisplay === "elite"
-      ? "$49/mo"
-      : tierDisplay === "pro"
-      ? "$19/mo"
-      : "Custom";
+  // Show retry screen if initialization failed
+  if (!isInitializing && !clientSecret && error) {
+    return (
+      <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 max-w-md mx-auto">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">⚠️ {error}</p>
+          <button
+            onClick={handleRetry}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-xl mx-auto">
-      <div className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-gray-900 to-gray-950 p-5 md:p-6 shadow-xl">
-        <div className="mb-5">
-          <p className="text-sm text-emerald-300 font-black tracking-wide">
-            SECURE STRIPE PAYMENT
-          </p>
-          <h3 className="text-2xl font-black text-white mt-1">
-            Update Payment Method
-          </h3>
-          <p className="text-sm text-white/50 mt-2">
-            Add or replace the card used for your {tierName} subscription.
-          </p>
-        </div>
+    <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 max-w-md mx-auto shadow-2xl">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xl font-bold text-white">
+          {tier === "starter" ? "Add Payment Method" : "Update Payment Method"}
+        </h3>
+        <span className="text-xs text-gray-400">Secure • Stripe</span>
+      </div>
 
-        <div className="mb-5 rounded-2xl bg-blue-500/10 border border-blue-500/20 p-4 text-blue-200">
-          <span className="font-black">Plan:</span> {tierName}
-          <span className="ml-2 text-white/50">• {tierPrice}</span>
-        </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="bg-black/40 rounded-xl p-4 border border-gray-700">
+          <div id="card-element" className="py-2 text-white" />
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="rounded-2xl bg-black/40 border border-white/10 p-4">
-            {loading && (
-              <div className="py-3 text-sm text-white/50 flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin" />
-                Loading secure payment form...
-              </div>
-            )}
-
-            <div id={stripeMountId} className="py-3 min-h-[44px] text-white" />
-
-            <div className="text-xs text-white/40 mt-3 flex items-center gap-2">
-              <span>🔒</span>
-              <span>Secure payment powered by Stripe</span>
-            </div>
-          </div>
-
-          {error && (
-            <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-red-200 font-semibold">
-              ⚠️ {error}
-              {error.toLowerCase().includes("log in") && (
-                <button
-                  type="button"
-                  onClick={() => navigate("/login", { state: { from: "/billing" } })}
-                  className="block mt-3 px-4 py-2 rounded-xl bg-red-600 text-white font-bold"
-                >
-                  Log In Again
-                </button>
-              )}
+          {isInitializing && (
+            <div className="flex items-center justify-center py-2">
+              <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <span className="ml-2 text-gray-400 text-sm">Loading secure form...</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button
-              type="submit"
-              disabled={loading || saving || !clientSecret}
-              className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 px-5 py-4 font-black text-white disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "Save Card"}
-            </button>
-
-            {onCancel && (
-              <button
-                type="button"
-                onClick={onCancel}
-                disabled={saving}
-                className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-5 py-4 font-black text-white disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            )}
+          <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+            <span>🔒</span> Powered by Stripe
           </div>
-        </form>
-      </div>
+        </div>
+
+        {error && (
+          <div className="text-red-400 text-sm bg-red-900/20 border border-red-800/50 p-3 rounded-lg">
+            ⚠️ {error}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={loading || isInitializing || !clientSecret}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl font-bold transition disabled:opacity-50 shadow-lg"
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Processing...
+              </span>
+            ) : (
+              "Save Card"
+            )}
+          </button>
+
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={loading}
+              className="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl font-bold transition disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      </form>
     </div>
   );
 }
