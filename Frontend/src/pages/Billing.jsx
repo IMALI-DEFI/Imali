@@ -47,7 +47,6 @@ export default function Billing() {
   const billingTier = tier === "starter" ? "pro" : tier;
   const isStarterView = tier === "starter";
 
-  // Persist selected tier
   useEffect(() => {
     localStorage.setItem("IMALI_SELECTED_TIER", tier);
   }, [tier]);
@@ -176,7 +175,7 @@ export default function Billing() {
     });
   };
 
-  // NEW: Downgrade to Starter (free) plan
+  // Fixed: uses cancelSubscription (existing endpoint) to downgrade to Starter
   const handleDowngradeToStarter = async () => {
     if (!window.confirm("Switch to the free Starter plan? You'll lose access to premium features.")) return;
 
@@ -185,11 +184,10 @@ export default function Billing() {
     setNotice("");
 
     try {
-      await BotAPI.changePlan("starter");
+      await BotAPI.cancelSubscription();
       setNotice("Successfully switched to Starter plan.");
       localStorage.setItem("IMALI_SELECTED_TIER", "starter");
       await refreshAll();
-      // Redirect to the member dashboard after downgrade
       navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err?.message || "Failed to switch to Starter plan.");
@@ -230,7 +228,6 @@ export default function Billing() {
 
         {notice && <Alert type="success">{notice}</Alert>}
 
-        {/* Starter View (shown when tier is already starter) */}
         {isStarterView && (
           <div className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5 md:p-6">
             <h2 className="text-2xl font-black">Starter Plan Active</h2>
@@ -271,7 +268,6 @@ export default function Billing() {
           </div>
         )}
 
-        {/* NEW: Downgrade to Starter option for non-starter users */}
         {!isStarterView && (
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
             <h2 className="text-xl font-bold">Switch to Free Starter Plan</h2>
