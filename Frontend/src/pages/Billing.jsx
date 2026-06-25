@@ -152,7 +152,7 @@ export default function Billing() {
   };
 
   const handleCancelSubscription = async () => {
-    if (!window.confirm("Cancel your subscription?")) return;
+    if (!window.confirm("Cancel your subscription? This will downgrade you to the Starter plan.")) return;
 
     setBusy("cancel");
     setError("");
@@ -160,10 +160,40 @@ export default function Billing() {
 
     try {
       await BotAPI.cancelSubscription();
-      setNotice("Subscription cancellation submitted.");
+      setNotice("Subscription cancelled. You've been moved to the Starter plan.");
+      localStorage.setItem("IMALI_SELECTED_TIER", "starter");
       await refreshAll();
+      
+      navigate("/billing?tier=starter", {
+        replace: true,
+        state: { tier: "starter" },
+      });
     } catch (err) {
       setError(err?.message || "Failed to cancel subscription.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const handleDowngradeToStarter = async () => {
+    if (!window.confirm("Downgrade to the free Starter plan? You'll lose access to Pro features but keep your account and paper trading access.")) return;
+
+    setBusy("downgrade");
+    setError("");
+    setNotice("");
+
+    try {
+      await BotAPI.cancelSubscription();
+      setNotice("You've been moved to the Starter plan.");
+      localStorage.setItem("IMALI_SELECTED_TIER", "starter");
+      await refreshAll();
+      
+      navigate("/billing?tier=starter", {
+        replace: true,
+        state: { tier: "starter" },
+      });
+    } catch (err) {
+      setError(err?.message || "Failed to downgrade to Starter.");
     } finally {
       setBusy("");
     }
@@ -261,6 +291,24 @@ export default function Billing() {
           onCancelSubscription={handleCancelSubscription}
           onChangePlan={handleChangePlan}
         />
+
+        {/* Downgrade to Starter button for non-starter users */}
+        {!isStarterView && (
+          <div className="rounded-[2rem] border border-amber-500/30 bg-amber-500/10 p-5 md:p-6">
+            <h2 className="text-xl font-black text-amber-200">Switch Back to Starter</h2>
+            <p className="text-white/60 mt-2">
+              You'll lose access to premium features but keep your account and paper trading access.
+            </p>
+
+            <button
+              onClick={handleDowngradeToStarter}
+              disabled={busy === "downgrade"}
+              className="mt-4 rounded-2xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 px-5 py-3 font-black"
+            >
+              {busy === "downgrade" ? "Downgrading..." : "Downgrade to Starter"}
+            </button>
+          </div>
+        )}
 
         {showCardForm && (
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
