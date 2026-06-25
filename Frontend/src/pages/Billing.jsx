@@ -160,14 +160,7 @@ export default function Billing() {
 
     try {
       await BotAPI.cancelSubscription();
-      setNotice("Subscription cancelled. You've been moved to the Starter plan.");
-      localStorage.setItem("IMALI_SELECTED_TIER", "starter");
-      await refreshAll();
-      
-      navigate("/billing?tier=starter", {
-        replace: true,
-        state: { tier: "starter" },
-      });
+      await handleDowngradeToStarter();
     } catch (err) {
       setError(err?.message || "Failed to cancel subscription.");
     } finally {
@@ -176,18 +169,21 @@ export default function Billing() {
   };
 
   const handleDowngradeToStarter = async () => {
-    if (!window.confirm("Downgrade to the free Starter plan? You'll lose access to Pro features but keep your account and paper trading access.")) return;
-
     setBusy("downgrade");
     setError("");
     setNotice("");
 
     try {
-      await BotAPI.cancelSubscription();
-      setNotice("You've been moved to the Starter plan.");
+      // Clear paid tier settings
       localStorage.setItem("IMALI_SELECTED_TIER", "starter");
+      localStorage.removeItem("IMALI_BILLING_COMPLETE");
+      
+      // Refresh user data to get updated tier from backend
       await refreshAll();
       
+      setNotice("You've been moved to the Starter plan. You can now access the dashboard.");
+      
+      // Force navigation to starter billing view
       navigate("/billing?tier=starter", {
         replace: true,
         state: { tier: "starter" },
@@ -238,6 +234,7 @@ export default function Billing() {
 
         {notice && <Alert type="success">{notice}</Alert>}
 
+        {/* Always show Starter banner and dashboard access when on starter tier */}
         {isStarterView && (
           <div className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5 md:p-6">
             <h2 className="text-2xl font-black">Starter Plan Active</h2>
@@ -273,6 +270,26 @@ export default function Billing() {
                 className="rounded-2xl bg-purple-600 hover:bg-purple-500 px-5 py-4 font-black"
               >
                 Upgrade to Elite
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Quick dashboard access for ALL users */}
+        {!isStarterView && (
+          <div className="rounded-[2rem] border border-blue-500/30 bg-blue-500/10 p-5 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black">Quick Access</h2>
+                <p className="text-white/60 mt-1">
+                  Go to your dashboard to start trading or manage your bots.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate("/dashboard")}
+                className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-6 py-3 font-black whitespace-nowrap"
+              >
+                Go to Dashboard
               </button>
             </div>
           </div>
