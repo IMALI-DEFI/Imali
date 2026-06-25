@@ -152,7 +152,7 @@ export default function Billing() {
   };
 
   const handleCancelSubscription = async () => {
-    if (!window.confirm("Cancel your subscription? This will downgrade you to the Starter plan.")) return;
+    if (!window.confirm("Cancel your subscription?")) return;
 
     setBusy("cancel");
     setError("");
@@ -160,36 +160,10 @@ export default function Billing() {
 
     try {
       await BotAPI.cancelSubscription();
-      await handleDowngradeToStarter();
+      setNotice("Subscription cancellation submitted.");
+      await refreshAll();
     } catch (err) {
       setError(err?.message || "Failed to cancel subscription.");
-    } finally {
-      setBusy("");
-    }
-  };
-
-  const handleDowngradeToStarter = async () => {
-    setBusy("downgrade");
-    setError("");
-    setNotice("");
-
-    try {
-      // Clear paid tier settings
-      localStorage.setItem("IMALI_SELECTED_TIER", "starter");
-      localStorage.removeItem("IMALI_BILLING_COMPLETE");
-      
-      // Refresh user data to get updated tier from backend
-      await refreshAll();
-      
-      setNotice("You've been moved to the Starter plan. You can now access the dashboard.");
-      
-      // Force navigation to starter billing view
-      navigate("/billing?tier=starter", {
-        replace: true,
-        state: { tier: "starter" },
-      });
-    } catch (err) {
-      setError(err?.message || "Failed to downgrade to Starter.");
     } finally {
       setBusy("");
     }
@@ -200,6 +174,28 @@ export default function Billing() {
     navigate(`/pricing?selected=${nextTier}`, {
       state: { tier: nextTier },
     });
+  };
+
+  // NEW: Downgrade to Starter (free) plan
+  const handleDowngradeToStarter = async () => {
+    if (!window.confirm("Switch to the free Starter plan? You'll lose access to premium features.")) return;
+
+    setBusy("downgrade");
+    setError("");
+    setNotice("");
+
+    try {
+      await BotAPI.changePlan("starter");
+      setNotice("Successfully switched to Starter plan.");
+      localStorage.setItem("IMALI_SELECTED_TIER", "starter");
+      await refreshAll();
+      // Redirect to the member dashboard after downgrade
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      setError(err?.message || "Failed to switch to Starter plan.");
+    } finally {
+      setBusy("");
+    }
   };
 
   if (loading) {
@@ -234,7 +230,7 @@ export default function Billing() {
 
         {notice && <Alert type="success">{notice}</Alert>}
 
-        {/* Always show Starter banner and dashboard access when on starter tier */}
+        {/* Starter View (shown when tier is already starter) */}
         {isStarterView && (
           <div className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5 md:p-6">
             <h2 className="text-2xl font-black">Starter Plan Active</h2>
@@ -275,23 +271,21 @@ export default function Billing() {
           </div>
         )}
 
-        {/* Quick dashboard access for ALL users */}
+        {/* NEW: Downgrade to Starter option for non-starter users */}
         {!isStarterView && (
-          <div className="rounded-[2rem] border border-blue-500/30 bg-blue-500/10 p-5 md:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black">Quick Access</h2>
-                <p className="text-white/60 mt-1">
-                  Go to your dashboard to start trading or manage your bots.
-                </p>
-              </div>
-              <button
-                onClick={() => navigate("/dashboard")}
-                className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-6 py-3 font-black whitespace-nowrap"
-              >
-                Go to Dashboard
-              </button>
-            </div>
+          <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
+            <h2 className="text-xl font-bold">Switch to Free Starter Plan</h2>
+            <p className="text-white/60 mt-2">
+              Downgrade to the free tier. You’ll keep basic access and paper trading, but
+              lose premium features.
+            </p>
+            <button
+              onClick={handleDowngradeToStarter}
+              disabled={busy === "downgrade"}
+              className="mt-4 rounded-2xl bg-gray-600 hover:bg-gray-500 px-5 py-3 font-black disabled:opacity-50"
+            >
+              {busy === "downgrade" ? "Switching..." : "Switch to Starter"}
+            </button>
           </div>
         )}
 
@@ -308,24 +302,6 @@ export default function Billing() {
           onCancelSubscription={handleCancelSubscription}
           onChangePlan={handleChangePlan}
         />
-
-        {/* Downgrade to Starter button for non-starter users */}
-        {!isStarterView && (
-          <div className="rounded-[2rem] border border-amber-500/30 bg-amber-500/10 p-5 md:p-6">
-            <h2 className="text-xl font-black text-amber-200">Switch Back to Starter</h2>
-            <p className="text-white/60 mt-2">
-              You'll lose access to premium features but keep your account and paper trading access.
-            </p>
-
-            <button
-              onClick={handleDowngradeToStarter}
-              disabled={busy === "downgrade"}
-              className="mt-4 rounded-2xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 px-5 py-3 font-black"
-            >
-              {busy === "downgrade" ? "Downgrading..." : "Downgrade to Starter"}
-            </button>
-          </div>
-        )}
 
         {showCardForm && (
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
