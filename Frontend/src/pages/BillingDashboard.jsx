@@ -1,7 +1,6 @@
 // src/pages/BillingDashboard.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
-
 import nftStarter from "../assets/images/nfts/nft-starter.png";
 import nftPro from "../assets/images/nfts/nft-pro.png";
 import nftElite from "../assets/images/nfts/nft-elite.png";
@@ -14,7 +13,7 @@ const TIERS = {
     icon: "🌱",
     image: nftStarter,
     price: "Free",
-    description: "Paper trading, demo balance, and beginner-friendly tools.",
+    description: "Paper trading and beginner tools. No credit card required.",
     gradient: "from-emerald-600/20 to-teal-500/10",
     border: "border-emerald-500/30",
   },
@@ -65,7 +64,7 @@ export default function BillingDashboard({
   const meta = TIERS[currentTier] || TIERS.starter;
   const activationStatus = activation?.status || activation || {};
 
-  // ✅ FIX: Only check has_card_on_file – never billing_complete
+  // ONLY use has_card_on_file – never billing_complete
   const hasCard =
     cardStatus?.hasCard === true ||
     cardStatus?.has_card === true ||
@@ -73,8 +72,7 @@ export default function BillingDashboard({
     user?.has_card_on_file === true ||
     activationStatus?.has_card_on_file === true;
 
-  // ✅ billingComplete is now simply hasCard (no billing_complete anywhere)
-  const billingComplete = hasCard;
+  const billingComplete = hasCard; // we don't use billing_complete anymore
 
   const subscriptionStatus =
     subscription?.status ||
@@ -92,13 +90,9 @@ export default function BillingDashboard({
       : "No Card Saved";
 
   const upgradeTo = (nextTier) => {
-    localStorage.setItem("IMALI_SELECTED_TIER", nextTier);
     navigate(`/billing?tier=${nextTier}`, {
-      replace: false,
-      state: {
-        tier: nextTier,
-        updateCard: true,
-      },
+      replace: true,
+      state: { tier: nextTier, updateCard: true },
     });
   };
 
@@ -141,12 +135,14 @@ export default function BillingDashboard({
             </div>
           ) : (
             <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button onClick={() => navigate("/pricing", { state: { tier: currentTier } })} className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-5 py-4 font-black">
-                Change Plan
+              <button onClick={() => navigate("/dashboard")} className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-5 py-4 font-black">
+                Back to Dashboard
               </button>
-              <button onClick={() => navigate("/activation", { state: { tier: currentTier } })} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black">
-                Continue Setup
-              </button>
+              {hasCard && (
+                <button onClick={() => navigate("/activation", { state: { tier: currentTier } })} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black">
+                  Continue Setup →
+                </button>
+              )}
             </div>
           )}
         </section>
@@ -161,8 +157,6 @@ export default function BillingDashboard({
               <p className="text-white/50 text-sm mt-3">
                 {hasCard
                   ? "Your payment method is saved securely through Stripe."
-                  : currentTier === "starter"
-                  ? "Starter does not require a card. Upgrade when ready."
                   : "Add a card to activate paid access."}
               </p>
               {cardStatus?.exp_month && cardStatus?.exp_year && (
@@ -170,36 +164,25 @@ export default function BillingDashboard({
               )}
             </div>
 
-            {currentTier === "starter" ? (
+            {canManageCard && (
               <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button onClick={() => upgradeTo("pro")} className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black">
-                  Add Card for Pro
+                <button
+                  onClick={onUpdateCard}
+                  disabled={!!busy || showCardForm}
+                  className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black disabled:opacity-50"
+                >
+                  {showCardForm ? "Card Form Open" : hasCard ? "Update Card" : "Add Card"}
                 </button>
-                <button onClick={() => upgradeTo("elite")} className="rounded-2xl bg-purple-600 hover:bg-purple-500 px-5 py-4 font-black">
-                  Add Card for Elite
-                </button>
-              </div>
-            ) : (
-              canManageCard && (
-                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {hasCard && (
                   <button
-                    onClick={onUpdateCard}
-                    disabled={!!busy || showCardForm}
-                    className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black disabled:opacity-50"
+                    onClick={onRemoveCard}
+                    disabled={busy === "remove"}
+                    className="rounded-2xl bg-red-900/70 hover:bg-red-800/70 border border-red-700/60 px-5 py-4 font-black text-red-100 disabled:opacity-50"
                   >
-                    {showCardForm ? "Card Form Open" : hasCard ? "Update Card" : "Add Card"}
+                    {busy === "remove" ? "Removing..." : "Remove Card"}
                   </button>
-                  {hasCard && (
-                    <button
-                      onClick={onRemoveCard}
-                      disabled={busy === "remove"}
-                      className="rounded-2xl bg-red-900/70 hover:bg-red-800/70 border border-red-700/60 px-5 py-4 font-black text-red-100 disabled:opacity-50"
-                    >
-                      {busy === "remove" ? "Removing..." : "Remove Card"}
-                    </button>
-                  )}
-                </div>
-              )
+                )}
+              </div>
             )}
           </Panel>
 
@@ -227,43 +210,26 @@ export default function BillingDashboard({
         </section>
       </section>
 
-      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
-        <h2 className="text-2xl font-black mb-5">Setup Progress</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Step
-            done={billingComplete || currentTier === "starter"}
-            number="1"
-            title="Billing"
-            text={
-              currentTier === "starter"
-                ? "No card required"
-                : billingComplete
-                ? "Payment method saved"
-                : "Add payment method"
-            }
-          />
-          <Step
-            done={activationStatus?.okx_connected || activationStatus?.alpaca_connected}
-            number="2"
-            title="Connect Accounts"
-            text="OKX or Alpaca connection"
-          />
-          <Step
-            done={activationStatus?.trading_enabled}
-            number="3"
-            title="Enable Trading"
-            text="Start bot automation"
-          />
-        </div>
-        <div className="mt-6 flex flex-col sm:flex-row gap-3">
-          <button onClick={() => navigate("/dashboard")} className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-5 py-4 font-black">
-            Go to Member Dashboard
-          </button>
-          <button onClick={() => navigate("/activation", { state: { tier: currentTier } })} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black">
-            Continue Activation
-          </button>
-        </div>
-      </section>
+      {currentTier !== "starter" && (
+        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
+          <h2 className="text-2xl font-black mb-5">Setup Progress</h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Step done={billingComplete} number="1" title="Billing" text={billingComplete ? "Payment method saved" : "Add payment method"} />
+            <Step done={activationStatus?.okx_connected || activationStatus?.alpaca_connected} number="2" title="Connect Accounts" text="OKX or Alpaca connection" />
+            <Step done={activationStatus?.trading_enabled} number="3" title="Enable Trading" text="Start bot automation" />
+          </div>
+          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <button onClick={() => navigate("/dashboard")} className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-5 py-4 font-black">
+              Go to Dashboard
+            </button>
+            {hasCard && (
+              <button onClick={() => navigate("/activation", { state: { tier: currentTier } })} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black">
+                Continue to Setup →
+              </button>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
