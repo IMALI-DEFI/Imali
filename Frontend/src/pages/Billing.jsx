@@ -34,36 +34,47 @@ export default function Billing() {
     return params.get("tier") || params.get("plan") || params.get("selected");
   }, [location.search]);
 
-  const tier = useMemo(() => {
-    return normalizeTier(
-      urlTier ||
-        location.state?.tier ||
-        localStorage.getItem("IMALI_SELECTED_TIER") ||
-        user?.tier ||
-        "starter"
-    );
-  }, [urlTier, location.state?.tier, user?.tier]);
+  // ✅ Get the actual user tier from the backend
+  const actualUserTier = user?.tier || "starter";
+  
+  // ✅ The tier to display (from URL or actual user tier)
+  const displayTier = useMemo(() => {
+    const urlTierValue = urlTier ||
+      location.state?.tier ||
+      localStorage.getItem("IMALI_SELECTED_TIER");
+    
+    // If there's a URL tier, use it (for upgrades/downgrades)
+    if (urlTierValue && urlTierValue !== actualUserTier) {
+      return normalizeTier(urlTierValue);
+    }
+    
+    // Otherwise show the actual user tier
+    return normalizeTier(actualUserTier);
+  }, [urlTier, location.state?.tier, actualUserTier]);
 
-  const billingTier = tier === "starter" ? "pro" : tier;
-  const isStarterView = tier === "starter";
+  // ✅ The billing tier for card updates (Pro or Elite)
+  const billingTier = useMemo(() => {
+    if (displayTier === "starter") return "pro";
+    return displayTier;
+  }, [displayTier]);
+
+  const isStarterView = displayTier === "starter";
 
   useEffect(() => {
-    localStorage.setItem("IMALI_SELECTED_TIER", tier);
-  }, [tier]);
+    localStorage.setItem("IMALI_SELECTED_TIER", displayTier);
+  }, [displayTier]);
 
   // ✅ Redirect Starter users to dashboard after first view
   useEffect(() => {
-    if (tier === "starter" && !loading) {
+    if (displayTier === "starter" && !loading) {
       const hasViewedStarter = sessionStorage.getItem("billing_starter_viewed");
       if (!hasViewedStarter) {
-        // Allow viewing the starter billing page once
         sessionStorage.setItem("billing_starter_viewed", "true");
       } else {
-        // Subsequent visits go to dashboard
         navigate("/dashboard", { replace: true });
       }
     }
-  }, [tier, loading, navigate]);
+  }, [displayTier, loading, navigate]);
 
   const loadBilling = useCallback(async () => {
     setLoading(true);
@@ -127,9 +138,9 @@ export default function Billing() {
 
   const closeCardForm = () => {
     setShowCardForm(false);
-    navigate(`/billing?tier=${billingTier}`, {
+    navigate(`/billing?tier=${displayTier}`, {
       replace: true,
-      state: { tier: billingTier },
+      state: { tier: displayTier },
     });
   };
 
@@ -209,6 +220,11 @@ export default function Billing() {
     }
   };
 
+  // ✅ Go to dashboard (always available)
+  const goToDashboard = () => {
+    navigate("/dashboard", { replace: true });
+  };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
@@ -221,7 +237,7 @@ export default function Billing() {
   }
 
   // ✅ If Starter and has already viewed the page, redirect to dashboard
-  if (tier === "starter" && sessionStorage.getItem("billing_starter_viewed") === "true") {
+  if (displayTier === "starter" && sessionStorage.getItem("billing_starter_viewed") === "true") {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
         <div className="text-center">
@@ -253,6 +269,16 @@ export default function Billing() {
 
         {notice && <Alert type="success">{notice}</Alert>}
 
+        {/* ✅ Dashboard button always visible */}
+        <div className="flex justify-end">
+          <button
+            onClick={goToDashboard}
+            className="rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-3 font-bold transition"
+          >
+            ← Back to Dashboard
+          </button>
+        </div>
+
         {isStarterView && (
           <div className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5 md:p-6">
             <div className="flex items-center gap-3 mb-2">
@@ -265,7 +291,7 @@ export default function Billing() {
 
             <div className="mt-5 flex flex-wrap gap-3">
               <button
-                onClick={() => navigate("/dashboard")}
+                onClick={goToDashboard}
                 className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black transition"
               >
                 Go to Member Dashboard
@@ -298,7 +324,32 @@ export default function Billing() {
 
         {!isStarterView && (
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
-            <h2 className="text-xl font-bold">Switch to Free Starter Plan</h2>
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-3xl">{displayTier === "elite" ? "👑" : "⭐"}</span>
+              <h2 className="text-2xl font-black">{displayTier === "elite" ? "Elite" : "Pro"} Plan Active</h2>
+            </div>
+            <p className="text-white/60 mt-2">
+              You're currently on the {displayTier === "elite" ? "Elite" : "Pro"} plan. Manage your payment method and subscription below.
+            </p>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                onClick={goToDashboard}
+                className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black transition"
+              >
+                Go to Dashboard
+              </button>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <p className="text-sm text-white/40">Switch to the free Starter plan below if you'd like to downgrade.</p>
+            </div>
+          </div>
+        )}
+
+        {!isStarterView && (
+          <div className="rounded-[2rem] border border-red-500/20 bg-red-500/10 p-5 md:p-6">
+            <h2 className="text-xl font-bold text-red-300">Switch to Free Starter Plan</h2>
             <p className="text-white/60 mt-2">
               Downgrade to the free tier. You'll keep basic access and paper trading, but
               lose premium features.
@@ -306,7 +357,7 @@ export default function Billing() {
             <button
               onClick={handleDowngradeToStarter}
               disabled={busy === "downgrade"}
-              className="mt-4 rounded-2xl bg-gray-600 hover:bg-gray-500 px-5 py-3 font-black disabled:opacity-50 transition"
+              className="mt-4 rounded-2xl bg-red-600 hover:bg-red-500 px-5 py-3 font-black disabled:opacity-50 transition"
             >
               {busy === "downgrade" ? "Switching..." : "Switch to Starter"}
             </button>
@@ -314,7 +365,7 @@ export default function Billing() {
         )}
 
         <BillingDashboard
-          tier={tier}
+          tier={displayTier}
           user={user}
           cardStatus={cardStatus}
           activation={activation}
