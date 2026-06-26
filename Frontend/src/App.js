@@ -130,7 +130,8 @@ function PostLoginRedirect() {
     if (isAdmin || user?.is_admin || user?.email === "wayne@imali-defi.com") { navigate("/admin", { replace: true }); return; }
     const tier = (user?.tier || "starter").toLowerCase();
     if (tier === "starter") { navigate("/dashboard", { replace: true }); return; }
-    const hasPaid = user?.subscription_status === "active" || user?.billing_complete === true || activation?.billing_complete === true || activation?.has_card_on_file === true;
+    // ✅ FIX: ONLY check has_card_on_file - NOT billing_complete
+    const hasPaid = user?.subscription_status === "active" || activation?.has_card_on_file === true;
     if (!hasPaid) { navigate(`/billing?tier=${tier}`, { replace: true, state: { tier } }); return; }
     navigate("/dashboard", { replace: true });
   }, [user, loading, navigate, isAdmin, isEnterpriseUser, activation]);
