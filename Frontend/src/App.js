@@ -204,9 +204,9 @@ function MainAppRoutes() {
               </ProtectedRoute>
             } />
 
-            {/* DASHBOARD — Starter always allowed, paid tiers need payment + activation */}
+            {/* ✅ DASHBOARD — Always accessible to authenticated users (paper trading available) */}
             <Route path="/dashboard" element={
-              <ProtectedRoute requirePaid={true} requireActivation={true}>
+              <ProtectedRoute requirePaid={false} requireActivation={false}>
                 <MemberDashboard />
               </ProtectedRoute>
             } />
