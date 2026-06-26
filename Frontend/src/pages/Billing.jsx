@@ -38,8 +38,8 @@ export default function Billing() {
 
   // Actual user tier from backend
   const actualUserTier = user?.tier || "starter";
-  
-  // Check if user has valid payment method (only check Stripe, not billing_complete)
+
+  // Check if user has valid payment method
   const hasValidPayment = useMemo(() => {
     return (
       cardStatus?.has_card === true ||
@@ -52,14 +52,13 @@ export default function Billing() {
 
   // Determine which tier to display
   const displayTier = useMemo(() => {
-    // If URL has a tier and user has payment, show the new tier (upgrade view)
     if (urlTier && urlTier !== actualUserTier && hasValidPayment) {
       return normalizeTier(urlTier);
     }
     return normalizeTier(actualUserTier);
   }, [urlTier, actualUserTier, hasValidPayment]);
 
-  // Tier used for card updates (Pro or Elite)
+  // Tier used for card updates
   const billingTier = useMemo(() => {
     if (displayTier === "starter") return "pro";
     return displayTier;
@@ -68,7 +67,7 @@ export default function Billing() {
   const isStarter = actualUserTier === "starter";
   const isPaidUser = actualUserTier === "pro" || actualUserTier === "elite";
 
-  // ✅ Redirect Starter users immediately
+  // Redirect starters
   useEffect(() => {
     if (isStarter && !loading) {
       navigate("/dashboard", { replace: true });
@@ -150,28 +149,29 @@ export default function Billing() {
   // Handle successful card save
   const handleCardSuccess = async () => {
     await refreshAll();
-    
+
     // Check if user's tier was upgraded
     const updatedUser = await BotAPI.getMe(true);
     const newTier = updatedUser?.tier || actualUserTier;
-    
+
     if (newTier !== actualUserTier && newTier !== "starter") {
-      setNotice(`✅ Successfully upgraded to ${newTier.charAt(0).toUpperCase() + newTier.slice(1)} plan!`);
+      setNotice(
+        `✅ Successfully upgraded to ${newTier.charAt(0).toUpperCase() + newTier.slice(1)} plan!`
+      );
       setShowCardForm(false);
       setPendingTier(null);
-      
+
       // Redirect to activation to complete setup
       setTimeout(() => {
-        navigate("/activation", { 
-          replace: true, 
-          state: { tier: newTier, fromBilling: true } 
+        navigate("/activation", {
+          replace: true,
+          state: { tier: newTier, fromBilling: true },
         });
       }, 1500);
     } else {
       setNotice("✅ Payment method saved successfully!");
       setShowCardForm(false);
       setPendingTier(null);
-      // Refresh to show updated status
       await refreshAll();
     }
   };
@@ -212,7 +212,12 @@ export default function Billing() {
 
   // Downgrade to Starter
   const handleDowngradeToStarter = async () => {
-    if (!window.confirm("Switch to the free Starter plan? You'll lose premium features.")) return;
+    if (
+      !window.confirm(
+        "Switch to the free Starter plan? You'll lose premium features."
+      )
+    )
+      return;
     setBusy("downgrade");
     setError("");
     setNotice("");
@@ -280,10 +285,10 @@ export default function Billing() {
 
         {/* Back to Dashboard */}
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Billing & Subscription</h1>
+          <h1 className="text-2xl font-black">Billing & Subscription</h1>
           <button
             onClick={goToDashboard}
-            className="rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-3 font-bold transition"
+            className="rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-3 font-black transition"
           >
             ← Back to Dashboard
           </button>
@@ -292,36 +297,45 @@ export default function Billing() {
         {/* Current plan status */}
         <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
           <div className="flex items-center gap-3 mb-2">
-            <span className="text-3xl">{displayTier === "elite" ? "👑" : "⭐"}</span>
-            <h2 className="text-2xl font-black">{displayTier === "elite" ? "Elite" : "Pro"} Plan</h2>
+            <span className="text-3xl">
+              {displayTier === "elite" ? "👑" : displayTier === "pro" ? "⭐" : "🌱"}
+            </span>
+            <h2 className="text-2xl font-black">
+              {displayTier === "elite"
+                ? "Elite"
+                : displayTier === "pro"
+                ? "Pro"
+                : "Starter"}{" "}
+              Plan
+            </h2>
             {hasValidPayment && (
-              <span className="ml-2 px-3 py-1 text-xs font-bold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
+              <span className="ml-2 px-3 py-1 text-xs font-black bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
                 ✅ Active
               </span>
             )}
           </div>
           <p className="text-white/60 mt-2">
-            {hasValidPayment 
-              ? `You're currently on the ${displayTier === "elite" ? "Elite" : "Pro"} plan with a valid payment method.`
-              : `You've selected the ${displayTier === "elite" ? "Elite" : "Pro"} plan but need to add a payment method to activate.`
-            }
+            {hasValidPayment
+              ? `You're currently on the ${displayTier} plan with a valid payment method.`
+              : `You've selected the ${displayTier} plan but need to add a payment method to activate.`}
           </p>
           {!hasValidPayment && (
             <div className="mt-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
               <p className="text-amber-200 text-sm">
-                ⚠️ No payment method on file. Click "Add Card" below to activate your premium features.
+                ⚠️ No payment method on file. Click "Add Card" below to activate your
+                premium features.
               </p>
             </div>
           )}
           <div className="mt-5 flex flex-wrap gap-3">
-            <button 
-              onClick={() => openCardForm(displayTier)} 
+            <button
+              onClick={() => openCardForm(displayTier)}
               className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black transition"
             >
               {hasValidPayment ? "Update Card" : "Add Card"}
             </button>
-            <button 
-              onClick={goToDashboard} 
+            <button
+              onClick={goToDashboard}
               className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black transition"
             >
               Go to Dashboard
@@ -336,12 +350,15 @@ export default function Billing() {
           )}
         </div>
 
-        {/* Downgrade option – only if paid user has payment */}
+        {/* Downgrade option */}
         {isPaidUser && hasValidPayment && (
           <div className="rounded-[2rem] border border-red-500/20 bg-red-500/10 p-5 md:p-6">
-            <h2 className="text-xl font-bold text-red-300">Switch to Free Starter Plan</h2>
+            <h2 className="text-xl font-black text-red-300">
+              Switch to Free Starter Plan
+            </h2>
             <p className="text-white/60 mt-2">
-              Downgrade to the free tier. You'll keep basic access and paper trading, but lose premium features.
+              Downgrade to the free tier. You'll keep basic access and paper trading,
+              but lose premium features.
             </p>
             <button
               onClick={handleDowngradeToStarter}
