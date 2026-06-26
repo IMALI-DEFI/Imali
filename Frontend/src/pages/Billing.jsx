@@ -51,6 +51,20 @@ export default function Billing() {
     localStorage.setItem("IMALI_SELECTED_TIER", tier);
   }, [tier]);
 
+  // ✅ Redirect Starter users to dashboard after first view
+  useEffect(() => {
+    if (tier === "starter" && !loading) {
+      const hasViewedStarter = sessionStorage.getItem("billing_starter_viewed");
+      if (!hasViewedStarter) {
+        // Allow viewing the starter billing page once
+        sessionStorage.setItem("billing_starter_viewed", "true");
+      } else {
+        // Subsequent visits go to dashboard
+        navigate("/dashboard", { replace: true });
+      }
+    }
+  }, [tier, loading, navigate]);
+
   const loadBilling = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -175,7 +189,6 @@ export default function Billing() {
     });
   };
 
-  // Fixed: uses cancelSubscription (existing endpoint) to downgrade to Starter
   const handleDowngradeToStarter = async () => {
     if (!window.confirm("Switch to the free Starter plan? You'll lose access to premium features.")) return;
 
@@ -207,6 +220,18 @@ export default function Billing() {
     );
   }
 
+  // ✅ If Starter and has already viewed the page, redirect to dashboard
+  if (tier === "starter" && sessionStorage.getItem("billing_starter_viewed") === "true") {
+    return (
+      <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white/60">Redirecting to dashboard...</p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#050816] text-white px-4 py-6 md:py-10">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
@@ -230,15 +255,18 @@ export default function Billing() {
 
         {isStarterView && (
           <div className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-5 md:p-6">
-            <h2 className="text-2xl font-black">Starter Plan Active</h2>
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-3xl">🌱</span>
+              <h2 className="text-2xl font-black">Starter Plan Active</h2>
+            </div>
             <p className="text-white/60 mt-2">
               Starter users can use the member dashboard for paper trading without adding a card.
             </p>
 
-            <div className="mt-5 flex flex-col sm:flex-row gap-3">
+            <div className="mt-5 flex flex-wrap gap-3">
               <button
                 onClick={() => navigate("/dashboard")}
-                className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black"
+                className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black transition"
               >
                 Go to Member Dashboard
               </button>
@@ -249,7 +277,7 @@ export default function Billing() {
                     state: { tier: "pro", updateCard: true },
                   })
                 }
-                className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black"
+                className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black transition"
               >
                 Upgrade to Pro
               </button>
@@ -260,7 +288,7 @@ export default function Billing() {
                     state: { tier: "elite", updateCard: true },
                   })
                 }
-                className="rounded-2xl bg-purple-600 hover:bg-purple-500 px-5 py-4 font-black"
+                className="rounded-2xl bg-purple-600 hover:bg-purple-500 px-5 py-4 font-black transition"
               >
                 Upgrade to Elite
               </button>
@@ -272,13 +300,13 @@ export default function Billing() {
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
             <h2 className="text-xl font-bold">Switch to Free Starter Plan</h2>
             <p className="text-white/60 mt-2">
-              Downgrade to the free tier. You’ll keep basic access and paper trading, but
+              Downgrade to the free tier. You'll keep basic access and paper trading, but
               lose premium features.
             </p>
             <button
               onClick={handleDowngradeToStarter}
               disabled={busy === "downgrade"}
-              className="mt-4 rounded-2xl bg-gray-600 hover:bg-gray-500 px-5 py-3 font-black disabled:opacity-50"
+              className="mt-4 rounded-2xl bg-gray-600 hover:bg-gray-500 px-5 py-3 font-black disabled:opacity-50 transition"
             >
               {busy === "downgrade" ? "Switching..." : "Switch to Starter"}
             </button>
