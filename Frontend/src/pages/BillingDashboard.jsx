@@ -1,6 +1,7 @@
 // src/pages/BillingDashboard.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import CardUpdateForm from "./CardUpdateForm";
 
 const TIERS = {
   starter: {
@@ -37,9 +38,13 @@ export default function BillingDashboard({
   subscription = null,
   busy = "",
   showCardForm = false,
+  formKey = 0,
+  pendingTier = null,
   onUpdateCard,
   onRemoveCard,
   onCancelSubscription,
+  onCancelCardForm,
+  onCardSuccess,
 }) {
   const navigate = useNavigate();
 
@@ -115,6 +120,18 @@ export default function BillingDashboard({
                 {busy === "remove" ? "Removing..." : "Remove Card"}
               </button>
             )}
+          </div>
+        )}
+
+        {/* ⭐ Card Form appears HERE - directly under Add Card button */}
+        {canManageCard && showCardForm && (
+          <div className="mt-6 pt-6 border-t border-white/10">
+            <CardUpdateForm
+              key={formKey}
+              tier={pendingTier || currentTier}
+              onSuccess={onCardSuccess}
+              onCancel={onCancelCardForm}
+            />
           </div>
         )}
       </section>
