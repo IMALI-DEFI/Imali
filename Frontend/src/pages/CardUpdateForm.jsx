@@ -6,133 +6,151 @@ import BotAPI from "../utils/BotAPI";
 export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState("");
+  const [clientSecret, setClientSecret] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const stripeRef = useRef(null);
   const elementsRef = useRef(null);
-  const elementRef = useRef(null);
+  const cardElementRef = useRef(null);
 
-  // Initialize Stripe
-  const initStripe = useCallback(async () => {
-    setInitializing(true);
+  // Initialize Stripe and create a new SetupIntent
+  const initializeStripe = useCallback(async () => {
+    setIsInitializing(true);
     setError("");
+    setClientSecret(null);
 
     try {
-      // 1. Load Stripe script
-      if (!window.Stripe) {
-        const script = document.createElement("script");
-        script.src = "https://js.stripe.com/v3/";
-        script.async = true;
-        await new Promise((resolve, reject) => {
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
+      // 1. Get Stripe instance
+      let stripeInstance = stripeRef.current;
+      if (!stripeInstance) {
+        if (window.Stripe) {
+          stripeInstance = window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+        } else {
+          // Load script dynamically
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "https://js.stripe.com/v3/";
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+          stripeInstance = window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+        }
+        stripeRef.current = stripeInstance;
       }
 
-      // 2. Create Stripe instance
-      const stripe = window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY, {
-        apiVersion: "2023-10-16",
-      });
-      if (!stripe) throw new Error("Stripe initialization failed");
-      stripeRef.current = stripe;
+      if (!stripeInstance) throw new Error("Stripe failed to load.");
 
-      // 3. Create SetupIntent
+      // 2. Create SetupIntent via your backend
       const response = await BotAPI.createSetupIntent({
         email: user?.email,
-        tier: tier || user?.tier || "pro",
+        tier: tier || user?.tier,
       });
 
       if (!response?.success) {
-        throw new Error(response?.error || "Failed to create payment setup");
+        throw new Error(response?.error || "Failed to initialize payment setup.");
       }
 
-      const clientSecret = response.data?.client_secret;
-      if (!clientSecret) throw new Error("No client secret from server");
+      const { client_secret } = response.data || {};
+      if (!client_secret) throw new Error("No client secret received.");
 
-      // 4. Create Elements
-      const elements = stripe.elements({
-        clientSecret,
+      setClientSecret(client_secret);
+
+      // 3. Mount Stripe Elements - wait for DOM to be ready
+      const elementsInstance = stripeInstance.elements({ 
+        clientSecret: client_secret,
         appearance: {
-          theme: "night",
+          theme: 'night',
           variables: {
-            colorPrimary: "#10b981",
-            colorBackground: "#050816",
-            colorText: "#ffffff",
-            colorTextSecondary: "#9ca3af",
-            colorDanger: "#ef4444",
-            fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-            spacingUnit: "4px",
-            borderRadius: "12px",
+            colorPrimary: '#6366f1',
+            colorBackground: '#1a1a2e',
+            colorText: '#ffffff',
+            colorDanger: '#ef4444',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            borderRadius: '12px',
           },
-          rules: {
-            ".Input": {
-              border: "1px solid #374151",
-              boxShadow: "0 0 0 1px #374151",
-            },
-            ".Input:focus": {
-              border: "1px solid #10b981",
-              boxShadow: "0 0 0 1px #10b981",
-            },
+        },
+      });
+      
+      const card = elementsInstance.create("card", {
+        style: {
+          base: {
+            fontSize: "16px",
+            color: "#e5e7eb",
+            "::placeholder": { color: "#6b7280" },
+            backgroundColor: "transparent",
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+          },
+          invalid: {
+            color: "#ef4444",
           },
         },
       });
 
-      elementsRef.current = { stripe, elements, clientSecret };
-
-      // 5. Create Payment Element
-      const paymentElement = elements.create("payment");
-      elementRef.current = paymentElement;
-
-      // Mount with proper timing
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const container = document.getElementById("stripe-payment-element");
-      if (!container) throw new Error("Payment element container not found");
-
-      paymentElement.mount("#stripe-payment-element");
-      setInitializing(false);
+      // Use setTimeout to ensure DOM is ready
+      setTimeout(() => {
+        const container = document.getElementById("card-element");
+        if (container) {
+          card.mount("#card-element");
+          cardElementRef.current = card;
+          elementsRef.current = elementsInstance;
+          setIsInitializing(false);
+        } else {
+          throw new Error("Card element container not found.");
+        }
+      }, 100);
+      
     } catch (err) {
       console.error("Stripe init error:", err);
-      setError(err?.message || "Failed to load payment form");
-      setInitializing(false);
+      setError(err.message || "Failed to initialize payment form.");
+      setIsInitializing(false);
     }
   }, [user, tier]);
 
-  // Initialize on mount
-  useEffect(() => {
-    initStripe();
-  }, [initStripe]);
-
-  // Cleanup
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (elementRef.current) {
-        try {
-          elementRef.current.destroy();
-        } catch (e) {
-          console.warn("Cleanup error:", e);
-        }
+      if (cardElementRef.current) {
+        cardElementRef.current.destroy();
+        cardElementRef.current = null;
+        elementsRef.current = null;
       }
     };
   }, []);
 
-  // Submit handler
+  // Initialize on mount
+  useEffect(() => {
+    initializeStripe();
+  }, [initializeStripe]);
+
+  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!elementsRef.current || loading || initializing) return;
+    
+    // ✅ Check if all required elements are ready
+    if (!stripeRef.current) {
+      setError("Stripe is not loaded. Please refresh and try again.");
+      return;
+    }
+    
+    if (!cardElementRef.current) {
+      setError("Card form is not ready. Please wait a moment and try again.");
+      return;
+    }
+    
+    if (!clientSecret) {
+      setError("Payment setup is not initialized. Please refresh and try again.");
+      return;
+    }
 
     setLoading(true);
     setError("");
 
     try {
-      const { stripe, elements, clientSecret } = elementsRef.current;
-
-      const { error: stripeError, setupIntent } = await stripe.confirmSetup({
-        elements,
-        clientSecret,
+      const { error: stripeError, setupIntent } = await stripeRef.current.confirmSetup({
+        elements: elementsRef.current,
+        clientSecret: clientSecret,
         confirmParams: {
           return_url: `${window.location.origin}/billing?setup_success=true`,
           payment_method_data: {
@@ -149,96 +167,89 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
         throw new Error(stripeError.message);
       }
 
-      if (setupIntent?.status === "succeeded") {
-        const confirmRes = await BotAPI.confirmCard(setupIntent.id);
-        if (!confirmRes?.success) {
-          throw new Error(confirmRes?.error || "Failed to save card");
+      if (setupIntent.status === "succeeded") {
+        // Confirm with your backend
+        const confirmResponse = await BotAPI.confirmCard(setupIntent.id);
+        if (!confirmResponse?.success) {
+          throw new Error(confirmResponse?.error || "Failed to save card on our servers.");
         }
-        onSuccess?.();
+        // Success
+        if (onSuccess) onSuccess();
       } else {
-        throw new Error(`Setup failed: ${setupIntent?.status}`);
+        throw new Error("Setup intent was not successful.");
       }
     } catch (err) {
-      console.error("Payment error:", err);
-      setError(err?.message || "Payment failed. Please try again.");
+      console.error("Card save error:", err);
+      setError(err.message || "Failed to save card.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Error state
-  if (!initializing && !elementsRef.current && error) {
+  // Retry initialization
+  const handleRetry = () => {
+    // Clean old card element
+    if (cardElementRef.current) {
+      cardElementRef.current.destroy();
+      cardElementRef.current = null;
+      elementsRef.current = null;
+    }
+    initializeStripe();
+  };
+
+  // Show retry if initialization failed and no clientSecret
+  if (!isInitializing && !clientSecret && error) {
     return (
-      <div className="rounded-[2rem] border border-red-500/40 bg-red-500/10 p-5 md:p-6 max-w-md mx-auto">
-        <h3 className="text-lg font-bold text-red-300 mb-2">⚠️ Payment Setup Error</h3>
-        <p className="text-red-200 text-sm mb-4">{error}</p>
-        <div className="flex flex-col sm:flex-row gap-3">
+      <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 max-w-md mx-auto">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">⚠️ {error}</p>
           <button
-            onClick={() => initStripe()}
-            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition"
+            onClick={handleRetry}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition"
           >
             Retry
           </button>
-          {onCancel && (
-            <button
-              onClick={onCancel}
-              className="flex-1 px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold rounded-xl transition"
-            >
-              Cancel
-            </button>
-          )}
         </div>
       </div>
     );
   }
 
-  // Main form
   return (
-    <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl max-w-md mx-auto">
-      <div className="mb-5">
-        <h3 className="text-xl font-black text-white">
+    <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 max-w-md mx-auto shadow-2xl">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xl font-bold text-white">
           {tier === "starter" ? "Add Payment Method" : "Update Payment Method"}
         </h3>
-        <p className="text-white/50 text-sm mt-1">
-          🔒 Your card is secure and encrypted by Stripe
-        </p>
+        <span className="text-xs text-gray-400">Secure • Stripe</span>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Payment Element */}
-        <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-4 overflow-hidden">
-          {initializing ? (
-            <div className="flex items-center justify-center py-8">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="bg-black/40 rounded-xl p-4 border border-gray-700">
+          <div id="card-element" className="py-2 text-white">
+            {/* Stripe card input will be mounted here */}
+          </div>
+          {isInitializing && (
+            <div className="flex items-center justify-center py-2">
               <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="ml-3 text-white/60 text-sm">
-                Loading secure payment form...
-              </span>
+              <span className="ml-2 text-gray-400 text-sm">Loading secure form...</span>
             </div>
-          ) : (
-            <div
-              id="stripe-payment-element"
-              className="w-full"
-              style={{ minHeight: "200px" }}
-            />
           )}
+          <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+            <span>🔒</span> Powered by Stripe
+          </div>
         </div>
 
-        {/* Error message */}
         {error && (
-          <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4">
-            <p className="text-red-200 text-sm flex items-start gap-2">
-              <span className="text-lg leading-none">⚠️</span>
-              <span>{error}</span>
-            </p>
+          <div className="text-red-400 text-sm bg-red-900/20 border border-red-800/50 p-3 rounded-lg">
+            ⚠️ {error}
           </div>
         )}
 
-        {/* Buttons */}
-        <div className="flex gap-3 pt-2">
+        <div className="flex gap-3">
           <button
             type="submit"
-            disabled={loading || initializing}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:from-emerald-600/50 disabled:to-emerald-700/50 text-white font-black rounded-2xl transition shadow-lg disabled:cursor-not-allowed"
+            disabled={loading || isInitializing || !clientSecret}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl font-bold transition disabled:opacity-50 shadow-lg"
           >
             {loading ? (
               <span className="flex items-center justify-center gap-2">
@@ -249,23 +260,16 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
               "Save Card"
             )}
           </button>
-
           {onCancel && (
             <button
               type="button"
               onClick={onCancel}
               disabled={loading}
-              className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/15 border border-white/10 text-white font-black rounded-2xl transition disabled:opacity-50"
+              className="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl font-bold transition disabled:opacity-50"
             >
               Cancel
             </button>
           )}
-        </div>
-
-        {/* Security badge */}
-        <div className="flex items-center justify-center gap-1 text-xs text-white/50 pt-2">
-          <span>🔒</span>
-          <span>Secure payment powered by Stripe</span>
         </div>
       </form>
     </div>
