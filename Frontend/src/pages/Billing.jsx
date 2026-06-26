@@ -4,7 +4,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 import BillingDashboard from "./BillingDashboard";
-import CardUpdateForm from "./CardUpdateForm";
 
 const VALID_TIERS = ["starter", "pro", "elite", "enterprise"];
 
@@ -274,7 +273,7 @@ export default function Billing() {
             {error.toLowerCase().includes("log in") && (
               <button
                 onClick={() => navigate("/login", { state: { from: "/dashboard" } })}
-                className="block mt-3 px-4 py-2 rounded-xl bg-red-600 text-white font-bold"
+                className="block mt-3 px-4 py-2 rounded-xl bg-red-600 text-white font-black"
               >
                 Log In Again
               </button>
@@ -370,7 +369,7 @@ export default function Billing() {
           </div>
         )}
 
-        {/* Billing Dashboard */}
+        {/* Billing Dashboard - Now includes card form inline */}
         <BillingDashboard
           tier={displayTier}
           user={user}
@@ -379,22 +378,14 @@ export default function Billing() {
           subscription={subscription}
           busy={busy}
           showCardForm={showCardForm}
+          formKey={formKey}
+          pendingTier={pendingTier}
           onUpdateCard={() => openCardForm(displayTier)}
           onRemoveCard={handleRemoveCard}
           onCancelSubscription={handleCancelSubscription}
+          onCancelCardForm={closeCardForm}
+          onCardSuccess={handleCardSuccess}
         />
-
-        {/* Card Update Form */}
-        {showCardForm && (
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-            <CardUpdateForm
-              key={formKey}
-              tier={pendingTier || billingTier}
-              onSuccess={handleCardSuccess}
-              onCancel={closeCardForm}
-            />
-          </section>
-        )}
       </div>
     </main>
   );
@@ -408,7 +399,7 @@ function Alert({ type, children }) {
       : "border-red-500/40 bg-red-500/10 text-red-200";
 
   return (
-    <div className={`rounded-2xl border p-4 font-semibold ${styles}`}>
+    <div className={`rounded-2xl border p-4 font-black ${styles}`}>
       {type === "success" ? "✅ " : "⚠️ "}
       {children}
     </div>
