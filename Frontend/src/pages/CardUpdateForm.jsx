@@ -5,7 +5,6 @@ import BotAPI from "../utils/BotAPI";
 
 export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
   const { user } = useAuth();
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [clientSecret, setClientSecret] = useState(null);
@@ -15,39 +14,35 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
   const elementsRef = useRef(null);
   const cardElementRef = useRef(null);
 
-  // Load Stripe.js script once
-  const loadStripeScript = () => {
-    return new Promise((resolve, reject) => {
-      if (window.Stripe) {
-        resolve();
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "https://js.stripe.com/v3/";
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load Stripe.js"));
-      document.head.appendChild(script);
-    });
-  };
-
+  // Initialize Stripe and create a new SetupIntent
   const initializeStripe = useCallback(async () => {
     setIsInitializing(true);
     setError("");
     setClientSecret(null);
 
     try {
-      // Ensure Stripe is loaded
-      await loadStripeScript();
+      // 1. Get Stripe instance
+      let stripeInstance = stripeRef.current;
+      if (!stripeInstance) {
+        if (window.Stripe) {
+          stripeInstance = window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+        } else {
+          // Load script dynamically
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "https://js.stripe.com/v3/";
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+          stripeInstance = window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+        }
+        stripeRef.current = stripeInstance;
+      }
 
-      const stripeInstance =
-        stripeRef.current ||
-        window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+      if (!stripeInstance) throw new Error("Stripe failed to load.");
 
-      if (!stripeInstance) throw new Error("Stripe failed to initialize.");
-
-      stripeRef.current = stripeInstance;
-
-      // Create SetupIntent
+      // 2. Create SetupIntent via your backend
       const response = await BotAPI.createSetupIntent({
         email: user?.email,
         tier: tier || user?.tier,
@@ -57,40 +52,63 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
         throw new Error(response?.error || "Failed to initialize payment setup.");
       }
 
-      const { client_secret, setup_intent_id } = response.data || {};
-      if (!client_secret) throw new Error("No client secret received from server.");
+      const { client_secret } = response.data || {};
+      if (!client_secret) throw new Error("No client secret received.");
 
       setClientSecret(client_secret);
 
-      // Create and mount Stripe Elements
-      const elements = stripeInstance.elements({ clientSecret: client_secret });
-      const card = elements.create("card", {
+      // 3. Mount Stripe Elements - wait for DOM to be ready
+      const elementsInstance = stripeInstance.elements({ 
+        clientSecret: client_secret,
+        appearance: {
+          theme: 'night',
+          variables: {
+            colorPrimary: '#6366f1',
+            colorBackground: '#1a1a2e',
+            colorText: '#ffffff',
+            colorDanger: '#ef4444',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            borderRadius: '12px',
+          },
+        },
+      });
+      
+      const card = elementsInstance.create("card", {
         style: {
           base: {
             fontSize: "16px",
             color: "#e5e7eb",
             "::placeholder": { color: "#6b7280" },
             backgroundColor: "transparent",
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+          },
+          invalid: {
+            color: "#ef4444",
           },
         },
       });
 
-      const container = document.getElementById("card-element");
-      if (!container) throw new Error("Card element container not found.");
-
-      card.mount("#card-element");
-      cardElementRef.current = card;
-      elementsRef.current = elements;
-
+      // Use setTimeout to ensure DOM is ready
+      setTimeout(() => {
+        const container = document.getElementById("card-element");
+        if (container) {
+          card.mount("#card-element");
+          cardElementRef.current = card;
+          elementsRef.current = elementsInstance;
+          setIsInitializing(false);
+        } else {
+          throw new Error("Card element container not found.");
+        }
+      }, 100);
+      
     } catch (err) {
-      console.error("Stripe initialization error:", err);
+      console.error("Stripe init error:", err);
       setError(err.message || "Failed to initialize payment form.");
-    } finally {
       setIsInitializing(false);
     }
   }, [user, tier]);
 
-  // Cleanup Stripe element on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (cardElementRef.current) {
@@ -106,11 +124,23 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
     initializeStripe();
   }, [initializeStripe]);
 
+  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!stripeRef.current || !cardElementRef.current || !clientSecret) {
-      setError("Payment system is not ready. Please try again.");
+    
+    // ✅ Check if all required elements are ready
+    if (!stripeRef.current) {
+      setError("Stripe is not loaded. Please refresh and try again.");
+      return;
+    }
+    
+    if (!cardElementRef.current) {
+      setError("Card form is not ready. Please wait a moment and try again.");
+      return;
+    }
+    
+    if (!clientSecret) {
+      setError("Payment setup is not initialized. Please refresh and try again.");
       return;
     }
 
@@ -118,28 +148,35 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
     setError("");
 
     try {
-      const { error: stripeError, setupIntent } =
-        await stripeRef.current.confirmSetup({
-          elements: elementsRef.current,
-          clientSecret,
-          confirmParams: {
-            return_url: `${window.location.origin}/billing?setup_success=true`,
+      const { error: stripeError, setupIntent } = await stripeRef.current.confirmSetup({
+        elements: elementsRef.current,
+        clientSecret: clientSecret,
+        confirmParams: {
+          return_url: `${window.location.origin}/billing?setup_success=true`,
+          payment_method_data: {
+            billing_details: {
+              name: user?.displayName || user?.email || "Customer",
+              email: user?.email || "",
+            },
           },
-          redirect: "if_required",
-        });
+        },
+        redirect: "if_required",
+      });
 
       if (stripeError) {
         throw new Error(stripeError.message);
       }
 
-      if (setupIntent?.status === "succeeded") {
+      if (setupIntent.status === "succeeded") {
+        // Confirm with your backend
         const confirmResponse = await BotAPI.confirmCard(setupIntent.id);
         if (!confirmResponse?.success) {
-          throw new Error(confirmResponse?.error || "Failed to save card.");
+          throw new Error(confirmResponse?.error || "Failed to save card on our servers.");
         }
-        onSuccess?.();
+        // Success
+        if (onSuccess) onSuccess();
       } else {
-        throw new Error("Payment setup was not completed successfully.");
+        throw new Error("Setup intent was not successful.");
       }
     } catch (err) {
       console.error("Card save error:", err);
@@ -149,7 +186,9 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
     }
   };
 
+  // Retry initialization
   const handleRetry = () => {
+    // Clean old card element
     if (cardElementRef.current) {
       cardElementRef.current.destroy();
       cardElementRef.current = null;
@@ -158,7 +197,7 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
     initializeStripe();
   };
 
-  // Show retry screen if initialization failed
+  // Show retry if initialization failed and no clientSecret
   if (!isInitializing && !clientSecret && error) {
     return (
       <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 p-6 max-w-md mx-auto">
@@ -186,15 +225,15 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="bg-black/40 rounded-xl p-4 border border-gray-700">
-          <div id="card-element" className="py-2 text-white" />
-
+          <div id="card-element" className="py-2 text-white">
+            {/* Stripe card input will be mounted here */}
+          </div>
           {isInitializing && (
             <div className="flex items-center justify-center py-2">
               <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
               <span className="ml-2 text-gray-400 text-sm">Loading secure form...</span>
             </div>
           )}
-
           <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
             <span>🔒</span> Powered by Stripe
           </div>
@@ -221,7 +260,6 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
               "Save Card"
             )}
           </button>
-
           {onCancel && (
             <button
               type="button"
