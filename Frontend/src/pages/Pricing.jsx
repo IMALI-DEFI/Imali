@@ -1,4 +1,4 @@
-// src/pages/Pricing.jsx - Production ready (Fixed plan detection)
+// src/pages/Pricing.jsx
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -46,7 +46,7 @@ const plans = [
     color: "from-emerald-500/20 to-teal-500/10",
     buttonColor: "from-emerald-600 to-teal-600",
     features: [
-      "$1,000 paper trading demo",
+      "\$1,000 paper trading demo",
       "Test all bots risk‑free",
       "Stock & crypto preview",
       "No credit card required",
@@ -143,7 +143,7 @@ const faqs = [
   },
   {
     q: "How does profit sharing work?",
-    a: "You keep 100% of your first 3% monthly return. We only take a share of profits above that threshold. $0 when you don't profit.",
+    a: "You keep 100% of your first 3% monthly return. We only take a share of profits above that threshold. \$0 when you don't profit.",
   },
   {
     q: "Is my API key safe?",
@@ -192,9 +192,6 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan }) {
       return;
     }
 
-    // ✅ Save selected tier for reference (but don't use for "Current Plan" display)
-    localStorage.setItem("IMALI_SELECTED_TIER", plan.id);
-
     const navState = {
       tier: plan.id,
       billingModel,
@@ -213,8 +210,9 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan }) {
         state: { ...navState, from: "pricing" }
       });
     } else {
+      // ✅ Navigate to billing with the tier they want (not activated yet)
       navigate(`/billing?tier=${plan.id}`, { 
-        state: { ...navState, from: "pricing" }
+        state: { ...navState, from: "pricing", updateCard: true }
       });
     }
   };
@@ -519,8 +517,8 @@ export default function Pricing() {
                 <tr className="border-t border-white/10">
                   <td className="py-4 text-sm font-bold">Price</td>
                   <td className="py-4 text-center font-bold text-emerald-400">Free</td>
-                  <td className="py-4 text-center font-bold">$19/mo</td>
-                  <td className="py-4 text-center font-bold">$49/mo</td>
+                  <td className="py-4 text-center font-bold">\$19/mo</td>
+                  <td className="py-4 text-center font-bold">\$49/mo</td>
                   <td className="py-4 text-center font-bold">Custom</td>
                 </tr>
               </tbody>
