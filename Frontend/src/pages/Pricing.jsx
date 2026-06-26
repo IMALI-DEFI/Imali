@@ -1,4 +1,4 @@
-// src/pages/Pricing.jsx - Production ready (Starter/Pro/Elite/Enterprise + profit share + token discounts)
+// src/pages/Pricing.jsx - Production ready (Fixed plan detection)
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -156,12 +156,15 @@ const faqs = [
 ];
 
 // ==================== PLAN CARD ====================
-function PlanCard({ plan, billingModel, tokenTier }) {
+function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const isLoggedIn = !!user;
-  const isCurrentPlan = user?.tier === plan.id;
+
+  // ✅ FIX: Only use actual user tier from backend, not localStorage
+  const actualUserTier = userTier || user?.tier || "starter";
+  const isCurrentPlan = actualUserTier === plan.id;
 
   const tokenDiscount = TOKEN_DISCOUNTS[tokenTier]?.discount || 0;
   const profitBoost = PROFIT_SHARE_BOOST[tokenTier] || 0;
@@ -178,12 +181,18 @@ function PlanCard({ plan, billingModel, tokenTier }) {
 
   const handleClick = (e) => {
     e.preventDefault();
+    
+    // ✅ Pass the selected plan to parent for handling
+    if (onSelectPlan) {
+      onSelectPlan(plan.id);
+    }
+
     if (plan.isEnterprise) {
       window.location.href = "mailto:imalidefi@gmail.com";
       return;
     }
 
-    // ✅ FIX: Save selected tier to localStorage immediately
+    // ✅ Save selected tier for reference (but don't use for "Current Plan" display)
     localStorage.setItem("IMALI_SELECTED_TIER", plan.id);
 
     const navState = {
@@ -193,17 +202,28 @@ function PlanCard({ plan, billingModel, tokenTier }) {
       tokenTier,
     };
 
+    // ✅ If it's the current plan, just go to dashboard
+    if (isCurrentPlan) {
+      navigate("/dashboard");
+      return;
+    }
+
     if (!isLoggedIn) {
-      // ✅ FIX: Pass tier in URL and state for signup
       navigate(`/signup?plan=${plan.id}&tier=${plan.id}`, { 
         state: { ...navState, from: "pricing" }
       });
     } else {
-      // ✅ FIX: Pass tier in URL and state for billing
       navigate(`/billing?tier=${plan.id}`, { 
         state: { ...navState, from: "pricing" }
       });
     }
+  };
+
+  // ✅ Determine button text based on actual plan status
+  const getButtonText = () => {
+    if (isCurrentPlan) return "✅ Current Plan";
+    if (isLoggedIn) return plan.ctaLoggedIn || plan.cta;
+    return plan.cta;
   };
 
   return (
@@ -214,7 +234,7 @@ function PlanCard({ plan, billingModel, tokenTier }) {
         </div>
       )}
       {isCurrentPlan && (
-        <div className="absolute -top-3 right-4 rounded-full bg-emerald-500 px-4 py-1 text-xs font-extrabold text-white shadow-lg">
+        <div className="absolute -top-3 right-4 rounded-full bg-emerald-500 px-4 py-1 text-xs font-extrabold text-white shadow-lg animate-pulse">
           ✓ Current Plan
         </div>
       )}
@@ -257,13 +277,17 @@ function PlanCard({ plan, billingModel, tokenTier }) {
 
       <p className="mt-3 min-h-[48px] text-center text-sm leading-6 text-slate-300">{plan.subtitle}</p>
 
-      {isCurrentPlan ? (
-        <div className="mt-6 block rounded-2xl bg-white/10 px-5 py-3 text-center font-bold text-white/60 cursor-default">Your Current Plan</div>
-      ) : (
-        <button onClick={handleClick} className={`mt-6 block w-full rounded-2xl bg-gradient-to-r ${plan.buttonColor} px-5 py-3 text-center font-bold text-white transition hover:opacity-90`}>
-          {isLoggedIn && plan.ctaLoggedIn ? plan.ctaLoggedIn : plan.cta} <FaArrowRight className="inline ml-2" />
-        </button>
-      )}
+      <button 
+        onClick={handleClick} 
+        disabled={isCurrentPlan}
+        className={`mt-6 block w-full rounded-2xl px-5 py-3 text-center font-bold text-white transition ${
+          isCurrentPlan 
+            ? "bg-emerald-600/50 cursor-default" 
+            : `bg-gradient-to-r ${plan.buttonColor} hover:opacity-90`
+        }`}
+      >
+        {getButtonText()} {!isCurrentPlan && <FaArrowRight className="inline ml-2" />}
+      </button>
 
       <div className="mt-6">
         <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-white/60">Included</h4>
@@ -312,24 +336,28 @@ function FAQItem({ question, answer, isOpen, onClick }) {
 
 // ==================== MAIN PRICING PAGE ====================
 export default function Pricing() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [billingModel, setBillingModel] = useState("fixed");
   const [tokenTier, setTokenTier] = useState("none");
   const [openFaq, setOpenFaq] = useState(null);
+  const [selectedTier, setSelectedTier] = useState(null);
 
-  // ✅ FIX: Check for tier in URL params on load
+  // ✅ Get actual user tier from backend (not localStorage)
+  const actualUserTier = user?.tier || "starter";
+
+  // ✅ Check for tier in URL params on load (for highlighting)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const selectedTier = params.get("selected") || params.get("tier");
     if (selectedTier) {
-      localStorage.setItem("IMALI_SELECTED_TIER", selectedTier);
+      setSelectedTier(selectedTier);
     }
   }, [location.search]);
 
-  // ✅ FIX: Auto-scroll to plan if tier is in URL
+  // ✅ Auto-scroll to plan if tier is in URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const highlightTier = params.get("highlight") || params.get("tier");
@@ -343,13 +371,9 @@ export default function Pricing() {
     }
   }, [location.search]);
 
-  // ✅ FIX: Check user's current tier and set as selected in localStorage
-  useEffect(() => {
-    if (user?.tier) {
-      const currentTier = user.tier.toLowerCase();
-      localStorage.setItem("IMALI_SELECTED_TIER", currentTier);
-    }
-  }, [user]);
+  const handleSelectPlan = (planId) => {
+    setSelectedTier(planId);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
@@ -367,6 +391,14 @@ export default function Pricing() {
           <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-slate-300">
             IMALI lets you learn with paper trading, then connect OKX, Alpaca, or MetaMask for live trading and DeFi features.
           </p>
+
+          {/* ✅ Show current plan status */}
+          {user && (
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200">
+              <span>Current Plan:</span>
+              <span className="font-bold text-white uppercase">{actualUserTier}</span>
+            </div>
+          )}
 
           {/* Billing Model Toggle */}
           <div className="mt-8 flex justify-center gap-2">
@@ -393,7 +425,13 @@ export default function Pricing() {
         <div className="mt-12 grid gap-6 lg:grid-cols-4">
           {plans.map((plan) => (
             <div key={plan.id} id={`plan-${plan.id}`}>
-              <PlanCard plan={plan} billingModel={billingModel} tokenTier={tokenTier} />
+              <PlanCard 
+                plan={plan} 
+                billingModel={billingModel} 
+                tokenTier={tokenTier} 
+                userTier={actualUserTier}
+                onSelectPlan={handleSelectPlan}
+              />
             </div>
           ))}
         </div>
