@@ -22,7 +22,6 @@ export default function Billing() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-
   const [cardStatus, setCardStatus] = useState({});
   const [activation, setActivation] = useState({});
   const [subscription, setSubscription] = useState(null);
@@ -35,13 +34,18 @@ export default function Billing() {
     return params.get("tier") || params.get("plan") || params.get("selected");
   }, [location.search]);
 
-  // ✅ Get the actual user tier from the backend
+  // Actual user tier from backend (source of truth)
   const actualUserTier = user?.tier || "starter";
-  
-  // ✅ Check if user has valid payment on file
-  const hasValidPayment = cardStatus?.id || subscription?.stripe_customer_id;
 
-  // ✅ Only show the new tier if they're upgrading AND have payment
+  // Has valid payment method? Only check has_card_on_file, not billing_complete
+  const hasValidPayment = 
+    cardStatus?.has_card === true ||
+    cardStatus?.has_card_on_file === true ||
+    activation?.has_card_on_file === true ||
+    user?.has_card_on_file === true ||
+    subscription?.stripe_customer_id;
+
+  // Display tier: if URL tier differs from actual and user has payment, show the new tier (upgrade)
   const displayTier = useMemo(() => {
     if (urlTier && urlTier !== actualUserTier && hasValidPayment) {
       return normalizeTier(urlTier);
@@ -49,26 +53,20 @@ export default function Billing() {
     return normalizeTier(actualUserTier);
   }, [urlTier, actualUserTier, hasValidPayment]);
 
-  // ✅ The billing tier for card updates (Pro or Elite)
+  // Tier used for card updates (Pro or Elite)
   const billingTier = useMemo(() => {
-    if (actualUserTier === "starter" && !hasValidPayment) {
-      return "starter";
-    }
     if (displayTier === "starter") return "pro";
     return displayTier;
-  }, [displayTier, actualUserTier, hasValidPayment]);
+  }, [displayTier]);
 
-  const isStarterView = actualUserTier === "starter";
+  const isStarter = actualUserTier === "starter";
 
-  // ✅ Redirect Starter users immediately (no billing to manage)
+  // Redirect Starter users immediately – they have no billing to manage
   useEffect(() => {
-    if (actualUserTier === "starter" && !loading) {
-      const timer = setTimeout(() => {
-        navigate("/dashboard", { replace: true });
-      }, 1500);
-      return () => clearTimeout(timer);
+    if (isStarter && !loading) {
+      navigate("/dashboard", { replace: true });
     }
-  }, [actualUserTier, loading, navigate]);
+  }, [isStarter, loading, navigate]);
 
   const loadBilling = useCallback(async () => {
     setLoading(true);
@@ -90,16 +88,14 @@ export default function Billing() {
           ? cardRes.value?.data || cardRes.value || {}
           : {}
       );
-
       setActivation(
         activationRes.status === "fulfilled" ? activationRes.value || {} : {}
       );
-
       setSubscription(
         subscriptionRes.status === "fulfilled" ? subscriptionRes.value || null : null
       );
 
-      // ✅ Only show card form if explicitly requested AND tier is being changed
+      // Only show card form if explicitly requested and tier is being changed
       if (location.state?.updateCard && urlTier && urlTier !== actualUserTier) {
         setShowCardForm(true);
       }
@@ -127,7 +123,6 @@ export default function Billing() {
     setPendingTier(tier);
     setShowCardForm(true);
     setFormKey((prev) => prev + 1);
-
     navigate(`/billing?tier=${tier}`, {
       replace: true,
       state: { tier, updateCard: true },
@@ -141,16 +136,14 @@ export default function Billing() {
   };
 
   const handleCardSuccess = async () => {
-    // ✅ Wait for backend to confirm the upgrade
     await refreshAll();
-    
-    // ✅ Only show success if upgrade was actually processed
     const newTier = user?.tier;
     if (newTier && newTier !== actualUserTier) {
       setNotice(`Successfully upgraded to ${newTier} plan!`);
       setShowCardForm(false);
       setPendingTier(null);
-      setTimeout(() => navigate("/dashboard", { replace: true }), 2000);
+      // Go to activation to complete setup
+      setTimeout(() => navigate("/activation", { replace: true, state: { tier: newTier } }), 1500);
     } else {
       setError("Upgrade was not processed. Please try again.");
     }
@@ -158,11 +151,9 @@ export default function Billing() {
 
   const handleRemoveCard = async () => {
     if (!window.confirm("Remove your saved payment method?")) return;
-
     setBusy("remove");
     setError("");
     setNotice("");
-
     try {
       await BotAPI.removeCard();
       setNotice("Payment method removed.");
@@ -176,11 +167,9 @@ export default function Billing() {
 
   const handleCancelSubscription = async () => {
     if (!window.confirm("Cancel your subscription?")) return;
-
     setBusy("cancel");
     setError("");
     setNotice("");
-
     try {
       await BotAPI.cancelSubscription();
       setNotice("Subscription cancellation submitted.");
@@ -193,12 +182,10 @@ export default function Billing() {
   };
 
   const handleDowngradeToStarter = async () => {
-    if (!window.confirm("Switch to the free Starter plan? You'll lose access to premium features.")) return;
-
+    if (!window.confirm("Switch to the free Starter plan? You'll lose premium features.")) return;
     setBusy("downgrade");
     setError("");
     setNotice("");
-
     try {
       await BotAPI.cancelSubscription();
       setNotice("Successfully switched to Starter plan.");
@@ -211,10 +198,7 @@ export default function Billing() {
     }
   };
 
-  // ✅ Go to dashboard (always available)
-  const goToDashboard = () => {
-    navigate("/dashboard", { replace: true });
-  };
+  const goToDashboard = () => navigate("/dashboard", { replace: true });
 
   if (loading) {
     return (
@@ -227,8 +211,8 @@ export default function Billing() {
     );
   }
 
-  // ✅ If Starter, redirect immediately
-  if (isStarterView) {
+  // Starter: redirect (already handled by useEffect, but fallback)
+  if (isStarter) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
         <div className="text-center">
@@ -257,10 +241,8 @@ export default function Billing() {
             )}
           </Alert>
         )}
-
         {notice && <Alert type="success">{notice}</Alert>}
 
-        {/* ✅ Dashboard button always visible */}
         <div className="flex justify-end">
           <button
             onClick={goToDashboard}
@@ -270,7 +252,7 @@ export default function Billing() {
           </button>
         </div>
 
-        {/* ✅ Show current plan status */}
+        {/* Current plan status */}
         <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
           <div className="flex items-center gap-3 mb-2">
             <span className="text-3xl">{displayTier === "elite" ? "👑" : "⭐"}</span>
@@ -279,7 +261,6 @@ export default function Billing() {
           <p className="text-white/60 mt-2">
             You're currently on the {displayTier === "elite" ? "Elite" : "Pro"} plan. Manage your payment method and subscription below.
           </p>
-
           {!hasValidPayment && (
             <div className="mt-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
               <p className="text-amber-200 text-sm">
@@ -287,28 +268,22 @@ export default function Billing() {
               </p>
             </div>
           )}
-
           <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              onClick={goToDashboard}
-              className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black transition"
-            >
+            <button onClick={goToDashboard} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black transition">
               Go to Dashboard
             </button>
           </div>
-
           <div className="mt-4 pt-4 border-t border-white/10">
             <p className="text-sm text-white/40">Switch to the free Starter plan below if you'd like to downgrade.</p>
           </div>
         </div>
 
-        {/* ✅ Show downgrade option only if they have payment */}
+        {/* Downgrade option – only if they have payment */}
         {hasValidPayment && (
           <div className="rounded-[2rem] border border-red-500/20 bg-red-500/10 p-5 md:p-6">
             <h2 className="text-xl font-bold text-red-300">Switch to Free Starter Plan</h2>
             <p className="text-white/60 mt-2">
-              Downgrade to the free tier. You'll keep basic access and paper trading, but
-              lose premium features.
+              Downgrade to the free tier. You'll keep basic access and paper trading, but lose premium features.
             </p>
             <button
               onClick={handleDowngradeToStarter}
