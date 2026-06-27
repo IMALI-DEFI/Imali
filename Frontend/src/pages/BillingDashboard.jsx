@@ -13,13 +13,13 @@ const TIERS = {
   pro: {
     label: "Pro",
     icon: "⭐",
-    price: "\$19/mo",
+    price: "$19/mo",
     description: "Live crypto, live stocks, AI strategies, and analytics.",
   },
   elite: {
     label: "Elite",
     icon: "👑",
-    price: "\$49/mo",
+    price: "$49/mo",
     description: "Crypto, DEX, futures, wallet tools, and advanced automation.",
   },
   enterprise: {
@@ -123,10 +123,11 @@ export default function BillingDashboard({
           </div>
         )}
 
-        {/* ⭐ Card Form - appears under Add Card button */}
+        {/* Card Form - appears under Add Card button */}
         {canManageCard && showCardForm && (
           <div className="mt-6 pt-6 border-t border-white/10">
             <CardUpdateForm
+              key={formKey}
               tier={pendingTier || currentTier}
               onSuccess={onCardSuccess}
               onCancel={onCancelCardForm}
