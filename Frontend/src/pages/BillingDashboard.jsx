@@ -77,139 +77,155 @@ export default function BillingDashboard({
       : "No Card Saved";
 
   return (
-    <div className="space-y-6">
-      {/* Payment Method */}
-      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-black">💳 Payment Method</h2>
-          <span className={`h-3 w-3 rounded-full ${hasCard ? "bg-emerald-400" : "bg-gray-500"}`} />
-        </div>
+    <div className="min-h-screen bg-[#050816] text-white px-4 py-6 md:py-10">
+      {/* Background gradient */}
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
 
-        <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5 mb-5">
-          <div className="flex items-center gap-3 mb-3">
-            <span className={`h-3 w-3 rounded-full ${hasCard ? "bg-emerald-400" : "bg-gray-500"}`} />
-            <h3 className="font-black">{cardLabel}</h3>
-          </div>
-          <p className="text-white/50 text-sm">
-            {hasCard
-              ? "Your payment method is saved securely through Stripe."
-              : "Add a card to activate paid access."}
-          </p>
-          {cardStatus?.exp_month && cardStatus?.exp_year && (
-            <p className="text-white/40 text-sm mt-2">
-              Expires {cardStatus.exp_month}/{cardStatus.exp_year}
-            </p>
-          )}
-        </div>
-
-        {canManageCard && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button
-              onClick={onUpdateCard}
-              disabled={!!busy || showCardForm}
-              className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {showCardForm ? "Card Form Open" : hasCard ? "Update Card" : "Add Card"}
-            </button>
-            {hasCard && (
-              <button
-                onClick={onRemoveCard}
-                disabled={busy === "remove"}
-                className="rounded-2xl bg-red-900/70 hover:bg-red-800/70 border border-red-700/60 px-5 py-4 font-black text-red-100 transition disabled:opacity-50"
-              >
-                {busy === "remove" ? "Removing..." : "Remove Card"}
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Card Form - appears under Add Card button */}
-        {canManageCard && showCardForm && (
-          <div className="mt-6 pt-6 border-t border-white/10">
-            <CardUpdateForm
-              key={formKey}
-              tier={pendingTier || currentTier}
-              onSuccess={onCardSuccess}
-              onCancel={onCancelCardForm}
-            />
-          </div>
-        )}
-      </section>
-
-      {/* Subscription */}
-      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-black">📄 Subscription</h2>
-          <span className="text-3xl">📋</span>
-        </div>
-
-        <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5 mb-5">
-          <InfoRow label="Plan" value={meta.label} />
-          <InfoRow label="Status" value={String(subscriptionStatus).replace("_", " ")} />
-          {subscription?.amount && (
-            <InfoRow
-              label="Price"
-              value={`${(subscription.currency || "usd").toUpperCase()} $${(
-                subscription.amount / 100
-              ).toFixed(2)} / ${subscription.interval || "month"}`}
-            />
-          )}
-        </div>
-
-        {canCancel && (
+      <div className="relative max-w-7xl mx-auto space-y-6">
+        {/* Back to Dashboard */}
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-black">Billing & Subscription</h1>
           <button
-            onClick={onCancelSubscription}
-            disabled={busy === "cancel"}
-            className="w-full rounded-2xl bg-red-900/70 hover:bg-red-800/70 border border-red-700/60 px-5 py-4 font-black text-red-100 transition disabled:opacity-50"
+            onClick={() => navigate("/dashboard")}
+            className="rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-3 font-black transition"
           >
-            {busy === "cancel" ? "Canceling..." : "Cancel Subscription"}
+            ← Back to Dashboard
           </button>
-        )}
-      </section>
+        </div>
 
-      {/* Setup Progress */}
-      {currentTier !== "starter" && (
+        {/* Payment Method */}
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <h2 className="text-2xl font-black mb-5">⚙️ Setup Progress</h2>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Step
-              done={billingComplete}
-              number="1"
-              title="Billing"
-              text={billingComplete ? "Payment method saved" : "Add payment method"}
-            />
-            <Step
-              done={activationStatus?.okx_connected || activationStatus?.alpaca_connected}
-              number="2"
-              title="Connect Accounts"
-              text="OKX or Alpaca connection"
-            />
-            <Step
-              done={activationStatus?.trading_enabled}
-              number="3"
-              title="Enable Trading"
-              text="Start bot automation"
-            />
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-xl font-black">💳 Payment Method</h2>
+            <span className={`h-3 w-3 rounded-full ${hasCard ? "bg-emerald-400" : "bg-gray-500"}`} />
           </div>
 
-          <div className="mt-6 flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-5 py-4 font-black text-white transition"
-            >
-              Go to Dashboard
-            </button>
-            {hasCard && (
-              <button
-                onClick={() => navigate("/activation", { state: { tier: currentTier } })}
-                className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black text-white transition"
-              >
-                Continue to Setup →
-              </button>
+          <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5 mb-5">
+            <div className="flex items-center gap-3 mb-3">
+              <span className={`h-3 w-3 rounded-full ${hasCard ? "bg-emerald-400" : "bg-gray-500"}`} />
+              <h3 className="font-black">{cardLabel}</h3>
+            </div>
+            <p className="text-white/50 text-sm">
+              {hasCard
+                ? "Your payment method is saved securely through Stripe."
+                : "Add a card to activate paid access."}
+            </p>
+            {cardStatus?.exp_month && cardStatus?.exp_year && (
+              <p className="text-white/40 text-sm mt-2">
+                Expires {cardStatus.exp_month}/{cardStatus.exp_year}
+              </p>
             )}
           </div>
+
+          {canManageCard && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={onUpdateCard}
+                disabled={!!busy || showCardForm}
+                className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {showCardForm ? "Card Form Open" : hasCard ? "Update Card" : "Add Card"}
+              </button>
+              {hasCard && (
+                <button
+                  onClick={onRemoveCard}
+                  disabled={busy === "remove"}
+                  className="rounded-2xl bg-red-900/70 hover:bg-red-800/70 border border-red-700/60 px-5 py-4 font-black text-red-100 transition disabled:opacity-50"
+                >
+                  {busy === "remove" ? "Removing..." : "Remove Card"}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Card Form - appears under Add Card button */}
+          {canManageCard && showCardForm && (
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <CardUpdateForm
+                key={formKey}
+                tier={pendingTier || currentTier}
+                onSuccess={onCardSuccess}
+                onCancel={onCancelCardForm}
+              />
+            </div>
+          )}
         </section>
-      )}
+
+        {/* Subscription */}
+        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-xl font-black">📄 Subscription</h2>
+            <span className="text-3xl">📋</span>
+          </div>
+
+          <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5 mb-5">
+            <InfoRow label="Plan" value={meta.label} />
+            <InfoRow label="Status" value={String(subscriptionStatus).replace("_", " ")} />
+            {subscription?.amount && (
+              <InfoRow
+                label="Price"
+                value={`${(subscription.currency || "usd").toUpperCase()} $${(
+                  subscription.amount / 100
+                ).toFixed(2)} / ${subscription.interval || "month"}`}
+              />
+            )}
+          </div>
+
+          {canCancel && (
+            <button
+              onClick={onCancelSubscription}
+              disabled={busy === "cancel"}
+              className="w-full rounded-2xl bg-red-900/70 hover:bg-red-800/70 border border-red-700/60 px-5 py-4 font-black text-red-100 transition disabled:opacity-50"
+            >
+              {busy === "cancel" ? "Canceling..." : "Cancel Subscription"}
+            </button>
+          )}
+        </section>
+
+        {/* Setup Progress */}
+        {currentTier !== "starter" && (
+          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
+            <h2 className="text-2xl font-black mb-5">⚙️ Setup Progress</h2>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Step
+                done={billingComplete}
+                number="1"
+                title="Billing"
+                text={billingComplete ? "Payment method saved" : "Add payment method"}
+              />
+              <Step
+                done={activationStatus?.okx_connected || activationStatus?.alpaca_connected}
+                number="2"
+                title="Connect Accounts"
+                text="OKX or Alpaca connection"
+              />
+              <Step
+                done={activationStatus?.trading_enabled}
+                number="3"
+                title="Enable Trading"
+                text="Start bot automation"
+              />
+            </div>
+
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => navigate("/dashboard")}
+                className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-5 py-4 font-black text-white transition"
+              >
+                Go to Dashboard
+              </button>
+              {hasCard && (
+                <button
+                  onClick={() => navigate("/activation", { state: { tier: currentTier } })}
+                  className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black text-white transition"
+                >
+                  Continue to Setup →
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }
