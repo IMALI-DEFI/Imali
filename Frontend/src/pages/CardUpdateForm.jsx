@@ -1,343 +1,242 @@
 // src/pages/CardUpdateForm.jsx
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
-export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
+const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+
+export default function CardUpdateForm({ tier = "pro", onSuccess, onCancel }) {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [initializing, setInitializing] = useState(true);
+  const [clientSecret, setClientSecret] = useState("");
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [mounted, setMounted] = useState(false);
 
-  // Refs
-  const stripeRef = useRef(null);
-  const elementsRef = useRef(null);
-  const paymentElementRef = useRef(null);
-  const containerRef = useRef(null);
-  const isMountedRef = useRef(true); // Track if component is still mounted
-  const idRef = useRef(Math.random().toString(36).substr(2, 9));
-
-  const containerId = `payment-${idRef.current}`;
-
-  // Initialize Stripe
-  const initStripe = useCallback(async () => {
-    // Don't init if component is unmounted
-    if (!isMountedRef.current) return;
-
-    setInitializing(true);
-    setError("");
-    setMounted(false);
-
-    try {
-      console.log("🔵 Loading Stripe.js...");
-
-      // Load Stripe
-      if (!window.Stripe) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "https://js.stripe.com/v3/";
-          script.async = true;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-
-      if (!isMountedRef.current) return;
-
-      // Create Stripe instance
-      const stripe = window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
-      if (!stripe) throw new Error("Stripe failed to load");
-      stripeRef.current = stripe;
-      console.log("✅ Stripe loaded");
-
-      // Get SetupIntent from backend
-      console.log("📋 Getting SetupIntent from backend...");
-      const response = await BotAPI.createSetupIntent({
-        email: user?.email,
-        tier: tier || user?.tier || "pro",
-      });
-
-      if (!isMountedRef.current) return;
-
-      if (!response?.success) {
-        throw new Error(response?.error || "Backend error creating SetupIntent");
-      }
-
-      const clientSecret = response.data?.client_secret;
-      if (!clientSecret) {
-        throw new Error("No client_secret from backend");
-      }
-
-      console.log("✅ Got client_secret");
-
-      // Create Elements
-      console.log("🎨 Creating Stripe Elements...");
-      const elements = stripe.elements({
-        clientSecret,
-        appearance: {
-          theme: "night",
-          variables: {
-            colorPrimary: "#10b981",
-            colorBackground: "#050816",
-            colorText: "#ffffff",
-            colorTextSecondary: "#9ca3af",
-            colorDanger: "#ef4444",
-            fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-            spacingUnit: "4px",
-            borderRadius: "12px",
-          },
-        },
-      });
-
-      elementsRef.current = elements;
-      console.log("✅ Elements created");
-
-      if (!isMountedRef.current) {
-        // Clean up if unmounted
-        elements.getElement("payment")?.destroy();
-        return;
-      }
-
-      // Create Payment Element
-      console.log("💳 Creating Payment Element...");
-      const paymentElement = elements.create("payment", { layout: "tabs" });
-      paymentElementRef.current = paymentElement;
-      console.log("✅ Payment Element created");
-
-      // Mount with safety checks
-      console.log("🔍 Finding container...");
-      let attempts = 0;
-      const maxAttempts = 20;
-
-      while (attempts < maxAttempts && isMountedRef.current) {
-        const container = document.getElementById(containerId);
-
-        if (container && container.offsetParent !== null) {
-          console.log("🚀 Mounting Payment Element...");
-          try {
-            paymentElement.mount(`#${containerId}`);
-            console.log("✅ Mounted successfully");
-            setMounted(true);
-            setInitializing(false);
-            return;
-          } catch (err) {
-            console.error("Mount error:", err);
-            throw err;
-          }
-        }
-
-        await new Promise((r) => setTimeout(r, 100));
-        attempts += 1;
-      }
-
-      if (!isMountedRef.current) return;
-
-      throw new Error("Container not found for mounting");
-    } catch (err) {
-      console.error("Init error:", err);
-      if (isMountedRef.current) {
-        setError(err?.message || "Failed to load payment form");
-        setInitializing(false);
-      }
-    }
-  }, [containerId, tier, user]);
-
-  // Initialize on mount
   useEffect(() => {
-    isMountedRef.current = true;
-    initStripe();
+    let alive = true;
 
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, [initStripe]);
+    async function loadSetupIntent() {
+      setLoading(true);
+      setError("");
+      setClientSecret("");
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      console.log("🧹 Cleaning up CardUpdateForm...");
-      isMountedRef.current = false;
-
-      // ⭐ CRITICAL: Safely destroy Payment Element
-      if (paymentElementRef.current) {
-        try {
-          // Don't call destroy - let Stripe handle cleanup
-          paymentElementRef.current = null;
-        } catch (e) {
-          console.warn("Cleanup warning:", e);
-        }
-      }
-
-      elementsRef.current = null;
-      stripeRef.current = null;
-    };
-  }, []);
-
-  // Handle submit
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!isMountedRef.current) return;
-
-    if (!stripeRef.current || !elementsRef.current || !mounted) {
-      setError("Payment form not ready");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    try {
-      console.log("📤 Confirming setup...");
-
-      const { error: confirmError, setupIntent } = 
-        await stripeRef.current.confirmSetup({
-          elements: elementsRef.current,
-          confirmParams: {
-            return_url: `${window.location.origin}/billing?setup_success=true`,
-            payment_method_data: {
-              billing_details: {
-                name: user?.displayName || user?.email || "Customer",
-                email: user?.email || "",
-              },
-            },
-          },
-          redirect: "if_required",
+      try {
+        const res = await BotAPI.createSetupIntent({
+          email: user?.email,
+          tier: tier || user?.tier || "pro",
+          fresh: true,
         });
 
-      if (!isMountedRef.current) return;
+        const secret =
+          res?.data?.client_secret ||
+          res?.client_secret ||
+          res?.data?.clientSecret ||
+          res?.clientSecret;
 
-      if (confirmError) {
-        throw new Error(confirmError.message || "Setup failed");
-      }
-
-      if (setupIntent?.status === "succeeded") {
-        console.log("✅ Setup succeeded");
-
-        const confirmRes = await BotAPI.confirmCard(setupIntent.id);
-
-        if (!isMountedRef.current) return;
-
-        if (!confirmRes?.success) {
-          throw new Error(confirmRes?.error || "Failed to save card");
+        if (!secret || !String(secret).includes("_secret_")) {
+          throw new Error("Invalid Stripe setup secret returned from server.");
         }
 
-        console.log("✅ Card saved");
-        onSuccess?.();
-      } else {
-        throw new Error(`Setup failed: ${setupIntent?.status}`);
-      }
-    } catch (err) {
-      console.error("Submit error:", err);
-      if (isMountedRef.current) {
-        setError(err?.message || "Failed to save card");
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
+        if (alive) setClientSecret(secret);
+      } catch (err) {
+        if (alive) setError(err?.message || "Failed to load payment form.");
+      } finally {
+        if (alive) setLoading(false);
       }
     }
-  };
 
-  // Error state
-  if (!initializing && !mounted && error) {
+    loadSetupIntent();
+
+    return () => {
+      alive = false;
+    };
+  }, [tier, user?.email, user?.tier]);
+
+  const appearance = useMemo(
+    () => ({
+      theme: "night",
+      variables: {
+        colorPrimary: "#10b981",
+        colorBackground: "#050816",
+        colorText: "#ffffff",
+        colorTextSecondary: "#9ca3af",
+        colorDanger: "#ef4444",
+        borderRadius: "14px",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+      },
+    }),
+    []
+  );
+
+  if (loading) {
+    return (
+      <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-6 text-center">
+        <div className="mx-auto mb-3 h-7 w-7 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        <p className="text-sm text-white/60">Loading secure payment form...</p>
+      </div>
+    );
+  }
+
+  if (error) {
     return (
       <div className="rounded-[1.5rem] border border-red-500/40 bg-red-500/10 p-5">
-        <h4 className="text-lg font-black text-red-300 mb-2">⚠️ Error</h4>
-        <p className="text-red-200 text-sm mb-4">{error}</p>
+        <p className="mb-4 text-sm text-red-200">⚠️ {error}</p>
         <div className="flex gap-3">
           <button
+            type="button"
             onClick={() => {
               setError("");
-              setInitializing(true);
-              setMounted(false);
-              initStripe();
+              setLoading(true);
+              setClientSecret("");
+              // Reload the component by re-running the effect
+              const load = async () => {
+                try {
+                  const res = await BotAPI.createSetupIntent({
+                    email: user?.email,
+                    tier: tier || user?.tier || "pro",
+                    fresh: true,
+                  });
+                  const secret = res?.data?.client_secret || res?.client_secret;
+                  if (secret && String(secret).includes("_secret_")) {
+                    setClientSecret(secret);
+                    setLoading(false);
+                  } else {
+                    throw new Error("Invalid secret");
+                  }
+                } catch (err) {
+                  setError(err?.message || "Failed to load payment form.");
+                  setLoading(false);
+                }
+              };
+              load();
             }}
-            className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-xl transition"
+            className="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-black text-white hover:bg-blue-500"
           >
             Retry
           </button>
-          {onCancel && (
-            <button
-              onClick={onCancel}
-              className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/15 border border-white/10 text-white font-black rounded-xl transition"
-            >
-              Cancel
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-xl border border-white/10 bg-white/10 px-4 py-3 font-black text-white hover:bg-white/15"
+          >
+            Cancel
+          </button>
         </div>
       </div>
     );
   }
 
-  // Main form
-  return (
-    <div className="space-y-4">
-      <h4 className="text-lg font-black text-white">
-        {tier === "starter" ? "Add Payment Method" : "Update Payment Method"}
-      </h4>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Payment Element Container */}
-        <div
-          ref={containerRef}
-          id={containerId}
-          className="rounded-[1.5rem] border border-white/10 bg-black/30 p-4 overflow-hidden w-full"
-          style={{ minHeight: initializing ? "250px" : "auto" }}
+  if (!clientSecret) {
+    return (
+      <div className="rounded-[1.5rem] border border-yellow-500/40 bg-yellow-500/10 p-5 text-center">
+        <p className="text-yellow-200">No payment setup available. Please try again.</p>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="mt-4 rounded-xl border border-white/10 bg-white/10 px-4 py-3 font-black text-white hover:bg-white/15"
         >
-          {initializing && (
-            <div className="flex flex-col items-center justify-center py-12">
-              <div className="w-6 h-6 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
-              <p className="text-white/60 text-sm">Loading secure payment form...</p>
-            </div>
-          )}
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <Elements stripe={stripePromise} options={{ clientSecret, appearance }}>
+      <InnerCardForm user={user} onSuccess={onSuccess} onCancel={onCancel} />
+    </Elements>
+  );
+}
+
+function InnerCardForm({ user, onSuccess, onCancel }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    if (!stripe || !elements || busy) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      const { error: setupError, setupIntent } = await stripe.confirmSetup({
+        elements,
+        redirect: "if_required",
+        confirmParams: {
+          return_url: `${window.location.origin}/billing?setup_success=true`,
+          payment_method_data: {
+            billing_details: {
+              name: user?.displayName || user?.name || user?.email || "Customer",
+              email: user?.email || "",
+            },
+          },
+        },
+      });
+
+      if (setupError) throw new Error(setupError.message);
+
+      if (setupIntent?.status !== "succeeded") {
+        throw new Error(`Setup failed: ${setupIntent?.status || "unknown"}`);
+      }
+
+      const confirmRes = await BotAPI.confirmCard(setupIntent.id);
+
+      if (!confirmRes?.success) {
+        throw new Error(confirmRes?.error || "Failed to save card.");
+      }
+
+      await onSuccess?.();
+    } catch (err) {
+      setError(err?.message || "Failed to save card.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-4">
+        <PaymentElement />
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+          ⚠️ {error}
         </div>
+      )}
 
-        {/* Error message */}
-        {error && (
-          <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3">
-            <p className="text-red-200 text-sm flex gap-2">
-              <span>⚠️</span>
-              <span>{error}</span>
-            </p>
-          </div>
-        )}
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={!stripe || !elements || busy}
+          className="flex-1 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3 font-black text-white hover:from-emerald-500 hover:to-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {busy ? "Saving..." : "Save Card"}
+        </button>
 
-        {/* Buttons */}
-        <div className="flex gap-3">
-          <button
-            type="submit"
-            disabled={loading || initializing || !mounted}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:from-emerald-600/50 disabled:to-emerald-700/50 text-white font-black rounded-xl transition shadow-lg disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Processing...
-              </span>
-            ) : !mounted ? (
-              "Loading..."
-            ) : (
-              "Save Card"
-            )}
-          </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="flex-1 rounded-xl border border-white/10 bg-white/10 px-4 py-3 font-black text-white hover:bg-white/15 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
 
-          {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={loading}
-              className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/15 border border-white/10 text-white font-black rounded-xl transition disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-
-        <p className="text-xs text-white/40 text-center">🔒 Secure payment powered by Stripe</p>
-      </form>
-    </div>
+      <p className="text-center text-xs text-white/40">
+        🔒 Secure payment powered by Stripe
+      </p>
+    </form>
   );
 }
