@@ -27,10 +27,10 @@ export default function CardUpdateForm({ tier = "pro", onSuccess, onCancel }) {
       setClientSecret("");
 
       try {
+        // ✅ FIX: Remove 'fresh: true' - backend only expects email and tier
         const res = await BotAPI.createSetupIntent({
           email: user?.email,
           tier: tier || user?.tier || "pro",
-          fresh: true,
         });
 
         const secret =
@@ -97,10 +97,10 @@ export default function CardUpdateForm({ tier = "pro", onSuccess, onCancel }) {
               // Reload the component by re-running the effect
               const load = async () => {
                 try {
+                  // ✅ FIX: Remove 'fresh: true' here too
                   const res = await BotAPI.createSetupIntent({
                     email: user?.email,
                     tier: tier || user?.tier || "pro",
-                    fresh: true,
                   });
                   const secret = res?.data?.client_secret || res?.client_secret;
                   if (secret && String(secret).includes("_secret_")) {
