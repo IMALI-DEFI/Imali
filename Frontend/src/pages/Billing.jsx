@@ -369,7 +369,7 @@ export default function Billing() {
           </div>
         )}
 
-        {/* Billing Dashboard - Now includes card form inline */}
+        {/* Billing Dashboard */}
         <BillingDashboard
           tier={displayTier}
           user={user}
