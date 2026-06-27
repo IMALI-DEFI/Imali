@@ -35,7 +35,7 @@ export default function Billing() {
 
   const actualUserTier = normalizeTier(user?.tier || "starter");
   const requestedTier = normalizeTier(urlTier || location.state?.tier || "starter");
-  const isUpgradeIntent = requestedTier !== "starter";
+  const isUpgradeIntent = requestedTier !== "starter" && requestedTier !== actualUserTier;
   const isStarter = actualUserTier === "starter";
   const shouldRedirectStarter = isStarter && !isUpgradeIntent;
 
@@ -46,7 +46,6 @@ export default function Billing() {
     return normalizeTier(actualUserTier);
   }, [isUpgradeIntent, requestedTier, actualUserTier]);
 
-  const billingTier = displayTier === "starter" ? "pro" : displayTier;
   const isPaidUser = actualUserTier === "pro" || actualUserTier === "elite";
 
   const hasValidPayment = useMemo(() => {
@@ -59,6 +58,7 @@ export default function Billing() {
     );
   }, [cardStatus, activation, user, subscription]);
 
+  // Redirect starters only if not upgrading
   useEffect(() => {
     if (shouldRedirectStarter && !loading) {
       navigate("/dashboard", { replace: true });
@@ -92,6 +92,7 @@ export default function Billing() {
         subscriptionRes.status === "fulfilled" ? subscriptionRes.value || null : null
       );
 
+      // Show card form if updating card and tier is changing
       if (location.state?.updateCard && urlTier && urlTier !== actualUserTier) {
         setShowCardForm(true);
         setPendingTier(normalizeTier(urlTier));
@@ -126,7 +127,7 @@ export default function Billing() {
     });
   };
 
-  // ✅ FIX: Keep the upgrade tier in the URL when closing the form
+  // Keep the upgrade tier in the URL when closing the form
   const closeCardForm = () => {
     setShowCardForm(false);
     setPendingTier(null);
@@ -214,6 +215,7 @@ export default function Billing() {
 
   const goToDashboard = () => navigate("/dashboard", { replace: true });
 
+  // Loading state
   if (loading) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
@@ -225,6 +227,7 @@ export default function Billing() {
     );
   }
 
+  // Starter redirect
   if (shouldRedirectStarter) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
@@ -236,6 +239,7 @@ export default function Billing() {
     );
   }
 
+  // Main render
   return (
     <main className="min-h-screen bg-[#050816] text-white px-4 py-6 md:py-10">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
