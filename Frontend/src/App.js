@@ -53,17 +53,26 @@ const EnterpriseRequestsPage = lazy(() => import("./pages/admin/EnterpriseReques
 
 // ==================== ERROR BOUNDARY ====================
 class AppErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error) { return { hasError: true, error }; }
-  componentDidCatch(error, info) { console.error("[AppErrorBoundary]", error, info); }
+  constructor(props) { 
+    super(props); 
+    this.state = { hasError: false, error: null }; 
+  }
+  static getDerivedStateFromError(error) { 
+    return { hasError: true, error }; 
+  }
+  componentDidCatch(error, info) { 
+    console.error("[AppErrorBoundary]", error, info); 
+  }
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center px-6 bg-white">
+        <div className="min-h-screen flex items-center justify-center px-6 bg-[#050816] text-white">
           <div className="max-w-xl text-center">
             <h1 className="text-3xl font-bold mb-4">Something went wrong</h1>
-            <p className="text-gray-600 mb-6">Please refresh the page or try again later.</p>
-            <Link to="/" className="inline-block px-5 py-3 bg-emerald-600 text-white rounded-xl">Go Home</Link>
+            <p className="text-white/60 mb-6">Please refresh the page or try again later.</p>
+            <Link to="/" className="inline-block px-5 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-500 transition">
+              Go Home
+            </Link>
           </div>
         </div>
       );
@@ -74,10 +83,22 @@ class AppErrorBoundary extends React.Component {
 
 // ==================== LOADERS ====================
 function LoadingSpinner() {
-  return <div className="fixed inset-0 flex items-center justify-center bg-white z-50"><div className="h-10 w-10 rounded-full border-4 border-emerald-600 border-t-transparent animate-spin" /></div>;
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-[#050816] z-50">
+      <div className="h-10 w-10 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin" />
+    </div>
+  );
 }
+
 function PageFallback() {
-  return <div className="min-h-[60vh] flex items-center justify-center"><div className="text-center"><div className="h-8 w-8 rounded-full border-b-2 border-emerald-600 animate-spin mx-auto mb-3" /><p className="text-gray-500">Loading...</p></div></div>;
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center bg-[#050816]">
+      <div className="text-center">
+        <div className="h-8 w-8 rounded-full border-b-2 border-emerald-500 animate-spin mx-auto mb-3" />
+        <p className="text-white/50">Loading...</p>
+      </div>
+    </div>
+  );
 }
 
 // ==================== ROUTE GUARDS ====================
@@ -88,6 +109,7 @@ function RequireAuth({ children }) {
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return children;
 }
+
 function RequireAdmin({ children }) {
   const { user, loading, isAdmin } = useAuth();
   if (loading) return <LoadingSpinner />;
@@ -95,6 +117,7 @@ function RequireAdmin({ children }) {
   if (!isAdmin && user?.email !== "wayne@imali-defi.com") return <Navigate to="/dashboard" replace />;
   return children;
 }
+
 function RequireEnterprise({ children }) {
   const { user, loading, isEnterpriseUser } = useAuth();
   if (loading) return <LoadingSpinner />;
@@ -102,6 +125,7 @@ function RequireEnterprise({ children }) {
   if (!isEnterpriseUser) return <Navigate to="/pricing" replace />;
   return children;
 }
+
 function RequireEnterpriseAdmin({ children }) {
   const { user, loading, isEnterpriseAdmin } = useAuth();
   if (loading) return <LoadingSpinner />;
@@ -109,6 +133,7 @@ function RequireEnterpriseAdmin({ children }) {
   if (!isEnterpriseAdmin) return <Navigate to="/enterprise/dashboard" replace />;
   return children;
 }
+
 function RedirectIfActivated({ children }) {
   const { user, activationComplete, loading, isAdmin } = useAuth();
   if (loading) return <LoadingSpinner />;
@@ -125,14 +150,29 @@ function PostLoginRedirect() {
   const navigate = useNavigate();
   React.useEffect(() => {
     if (loading) return;
-    if (!user) { navigate("/login", { replace: true }); return; }
-    if (isEnterpriseUser) { navigate("/enterprise/dashboard", { replace: true }); return; }
-    if (isAdmin || user?.is_admin || user?.email === "wayne@imali-defi.com") { navigate("/admin", { replace: true }); return; }
+    if (!user) { 
+      navigate("/login", { replace: true }); 
+      return; 
+    }
+    if (isEnterpriseUser) { 
+      navigate("/enterprise/dashboard", { replace: true }); 
+      return; 
+    }
+    if (isAdmin || user?.is_admin || user?.email === "wayne@imali-defi.com") { 
+      navigate("/admin", { replace: true }); 
+      return; 
+    }
     const tier = (user?.tier || "starter").toLowerCase();
-    if (tier === "starter") { navigate("/dashboard", { replace: true }); return; }
-    // ✅ FIX: ONLY check has_card_on_file - NOT billing_complete
+    if (tier === "starter") { 
+      navigate("/dashboard", { replace: true }); 
+      return; 
+    }
+    // ✅ ONLY check has_card_on_file - NOT billing_complete
     const hasPaid = user?.subscription_status === "active" || activation?.has_card_on_file === true;
-    if (!hasPaid) { navigate(`/billing?tier=${tier}`, { replace: true, state: { tier } }); return; }
+    if (!hasPaid) { 
+      navigate(`/billing?tier=${tier}`, { replace: true, state: { tier } }); 
+      return; 
+    }
     navigate("/dashboard", { replace: true });
   }, [user, loading, navigate, isAdmin, isEnterpriseUser, activation]);
   return <LoadingSpinner />;
@@ -140,7 +180,17 @@ function PostLoginRedirect() {
 
 // ==================== 404 ====================
 function NotFound() {
-  return <div className="min-h-[60vh] flex items-center justify-center text-center px-6"><div><h1 className="text-3xl font-bold mb-3">Page not found</h1><p className="text-gray-600 mb-4">The page you're looking for doesn't exist.</p><Link to="/" className="text-emerald-600 underline">Go Home</Link></div></div>;
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center text-center px-6 bg-[#050816] text-white">
+      <div>
+        <h1 className="text-3xl font-bold mb-3">Page not found</h1>
+        <p className="text-white/60 mb-4">The page you're looking for doesn't exist.</p>
+        <Link to="/" className="text-emerald-400 underline hover:text-emerald-300 transition">
+          Go Home
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 // ==================== MAIN APP ROUTES ====================
@@ -151,7 +201,7 @@ function MainAppRoutes() {
   return (
     <>
       <Header />
-      <main className="min-h-screen pt-16 bg-white text-gray-900">
+      <main className="min-h-screen pt-16 bg-[#050816] text-white">
         <Suspense fallback={<PageFallback />}>
           <Routes>
             {/* PUBLIC */}
@@ -204,7 +254,7 @@ function MainAppRoutes() {
               </ProtectedRoute>
             } />
 
-            {/* ✅ DASHBOARD — Always accessible to authenticated users (paper trading available) */}
+            {/* DASHBOARD */}
             <Route path="/dashboard" element={
               <ProtectedRoute requirePaid={false} requireActivation={false}>
                 <MemberDashboard />
@@ -244,7 +294,7 @@ function MainAppRoutes() {
             <Route path="/enterprise/branding" element={<RequireEnterpriseAdmin><BrandingPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/bot-controls" element={<RequireEnterpriseAdmin><BotControlsPage /></RequireEnterpriseAdmin>} />
 
-            {/* ADMIN — specific routes BEFORE wildcard */}
+            {/* ADMIN */}
             <Route path="/admin/enterprise-requests" element={<RequireAuth><RequireAdmin><EnterpriseRequestsPage /></RequireAdmin></RequireAuth>} />
             <Route path="/admin/*" element={<RequireAuth><RequireAdmin><AdminPanel /></RequireAdmin></RequireAuth>} />
 
