@@ -123,11 +123,10 @@ export default function BillingDashboard({
           </div>
         )}
 
-        {/* Card Form - appears under Add Card button */}
+        {/* ⭐ Card Form - appears under Add Card button */}
         {canManageCard && showCardForm && (
           <div className="mt-6 pt-6 border-t border-white/10">
             <CardUpdateForm
-              key={formKey}
               tier={pendingTier || currentTier}
               onSuccess={onCardSuccess}
               onCancel={onCancelCardForm}
