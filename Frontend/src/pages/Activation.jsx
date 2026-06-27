@@ -375,6 +375,25 @@ export default function Activation() {
           )}
         </div>
 
+        {/* ✅ Billing Button Added Here */}
+        <div className="flex flex-wrap justify-center gap-3 mt-4">
+          <button
+            onClick={() => navigate("/billing", { 
+              state: { tier: tier || "pro", updateCard: true } 
+            })}
+            className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold transition"
+          >
+            💳 Manage Billing
+          </button>
+
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 font-bold transition"
+          >
+            ← Back to Dashboard
+          </button>
+        </div>
+
         {error && <div className="p-4 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200">⚠️ {error}</div>}
         {success && !fullyActivated && <div className="p-4 rounded-xl bg-green-500/20 border border-green-500/50 text-green-200">✓ {success}</div>}
 
