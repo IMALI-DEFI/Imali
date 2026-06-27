@@ -17,7 +17,6 @@ export default function Billing() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // State
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -29,16 +28,27 @@ export default function Billing() {
   const [formKey, setFormKey] = useState(0);
   const [pendingTier, setPendingTier] = useState(null);
 
-  // Get tier from URL
   const urlTier = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get("tier") || params.get("plan") || params.get("selected");
   }, [location.search]);
 
-  // Actual user tier from backend
-  const actualUserTier = user?.tier || "starter";
+  const actualUserTier = normalizeTier(user?.tier || "starter");
+  const requestedTier = normalizeTier(urlTier || location.state?.tier || "starter");
+  const isUpgradeIntent = requestedTier !== "starter";
+  const isStarter = actualUserTier === "starter";
+  const shouldRedirectStarter = isStarter && !isUpgradeIntent;
 
-  // Check if user has valid payment method
+  const displayTier = useMemo(() => {
+    if (isUpgradeIntent && (requestedTier === "pro" || requestedTier === "elite")) {
+      return requestedTier;
+    }
+    return normalizeTier(actualUserTier);
+  }, [isUpgradeIntent, requestedTier, actualUserTier]);
+
+  const billingTier = displayTier === "starter" ? "pro" : displayTier;
+  const isPaidUser = actualUserTier === "pro" || actualUserTier === "elite";
+
   const hasValidPayment = useMemo(() => {
     return (
       cardStatus?.has_card === true ||
@@ -49,31 +59,12 @@ export default function Billing() {
     );
   }, [cardStatus, activation, user, subscription]);
 
-  // Determine which tier to display
-  const displayTier = useMemo(() => {
-    if (urlTier && urlTier !== actualUserTier && hasValidPayment) {
-      return normalizeTier(urlTier);
-    }
-    return normalizeTier(actualUserTier);
-  }, [urlTier, actualUserTier, hasValidPayment]);
-
-  // Tier used for card updates
-  const billingTier = useMemo(() => {
-    if (displayTier === "starter") return "pro";
-    return displayTier;
-  }, [displayTier]);
-
-  const isStarter = actualUserTier === "starter";
-  const isPaidUser = actualUserTier === "pro" || actualUserTier === "elite";
-
-  // Redirect starters
   useEffect(() => {
-    if (isStarter && !loading) {
+    if (shouldRedirectStarter && !loading) {
       navigate("/dashboard", { replace: true });
     }
-  }, [isStarter, loading, navigate]);
+  }, [shouldRedirectStarter, loading, navigate]);
 
-  // Load billing data
   const loadBilling = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -101,7 +92,6 @@ export default function Billing() {
         subscriptionRes.status === "fulfilled" ? subscriptionRes.value || null : null
       );
 
-      // Show card form if updating card and tier is changing
       if (location.state?.updateCard && urlTier && urlTier !== actualUserTier) {
         setShowCardForm(true);
         setPendingTier(normalizeTier(urlTier));
@@ -117,7 +107,6 @@ export default function Billing() {
     loadBilling();
   }, [loadBilling]);
 
-  // Refresh all data
   const refreshAll = async () => {
     BotAPI.clearCache?.();
     await refreshUser?.();
@@ -125,7 +114,6 @@ export default function Billing() {
     await loadBilling();
   };
 
-  // Open card form for a specific tier
   const openCardForm = (tier) => {
     setError("");
     setNotice("");
@@ -138,18 +126,19 @@ export default function Billing() {
     });
   };
 
-  // Close card form
+  // ✅ FIX: Keep the upgrade tier in the URL when closing the form
   const closeCardForm = () => {
     setShowCardForm(false);
     setPendingTier(null);
-    navigate(`/billing`, { replace: true });
+    navigate(`/billing?tier=${displayTier}`, {
+      replace: true,
+      state: { tier: displayTier },
+    });
   };
 
-  // Handle successful card save
   const handleCardSuccess = async () => {
     await refreshAll();
 
-    // Check if user's tier was upgraded
     const updatedUser = await BotAPI.getMe(true);
     const newTier = updatedUser?.tier || actualUserTier;
 
@@ -160,7 +149,6 @@ export default function Billing() {
       setShowCardForm(false);
       setPendingTier(null);
 
-      // Redirect to activation to complete setup
       setTimeout(() => {
         navigate("/activation", {
           replace: true,
@@ -175,7 +163,6 @@ export default function Billing() {
     }
   };
 
-  // Remove card
   const handleRemoveCard = async () => {
     if (!window.confirm("Remove your saved payment method?")) return;
     setBusy("remove");
@@ -192,7 +179,6 @@ export default function Billing() {
     }
   };
 
-  // Cancel subscription
   const handleCancelSubscription = async () => {
     if (!window.confirm("Cancel your subscription?")) return;
     setBusy("cancel");
@@ -209,14 +195,8 @@ export default function Billing() {
     }
   };
 
-  // Downgrade to Starter
   const handleDowngradeToStarter = async () => {
-    if (
-      !window.confirm(
-        "Switch to the free Starter plan? You'll lose premium features."
-      )
-    )
-      return;
+    if (!window.confirm("Switch to the free Starter plan? You'll lose premium features.")) return;
     setBusy("downgrade");
     setError("");
     setNotice("");
@@ -232,10 +212,8 @@ export default function Billing() {
     }
   };
 
-  // Go to dashboard
   const goToDashboard = () => navigate("/dashboard", { replace: true });
 
-  // Loading state
   if (loading) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
@@ -247,8 +225,7 @@ export default function Billing() {
     );
   }
 
-  // Starter redirect (fallback)
-  if (isStarter) {
+  if (shouldRedirectStarter) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
         <div className="text-center">
@@ -259,14 +236,11 @@ export default function Billing() {
     );
   }
 
-  // Main render
   return (
     <main className="min-h-screen bg-[#050816] text-white px-4 py-6 md:py-10">
-      {/* Background gradient */}
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
 
       <div className="relative max-w-7xl mx-auto space-y-6">
-        {/* Alerts */}
         {error && (
           <Alert type="error">
             {error}
@@ -282,7 +256,6 @@ export default function Billing() {
         )}
         {notice && <Alert type="success">{notice}</Alert>}
 
-        {/* Back to Dashboard */}
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-black">Billing & Subscription</h1>
           <button
@@ -300,12 +273,7 @@ export default function Billing() {
               {displayTier === "elite" ? "👑" : displayTier === "pro" ? "⭐" : "🌱"}
             </span>
             <h2 className="text-2xl font-black">
-              {displayTier === "elite"
-                ? "Elite"
-                : displayTier === "pro"
-                ? "Pro"
-                : "Starter"}{" "}
-              Plan
+              {displayTier === "elite" ? "Elite" : displayTier === "pro" ? "Pro" : "Starter"} Plan
             </h2>
             {hasValidPayment && (
               <span className="ml-2 px-3 py-1 text-xs font-black bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
@@ -321,8 +289,7 @@ export default function Billing() {
           {!hasValidPayment && (
             <div className="mt-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
               <p className="text-amber-200 text-sm">
-                ⚠️ No payment method on file. Click "Add Card" below to activate your
-                premium features.
+                ⚠️ No payment method on file. Click "Add Card" below to activate your premium features.
               </p>
             </div>
           )}
@@ -352,12 +319,9 @@ export default function Billing() {
         {/* Downgrade option */}
         {isPaidUser && hasValidPayment && (
           <div className="rounded-[2rem] border border-red-500/20 bg-red-500/10 p-5 md:p-6">
-            <h2 className="text-xl font-black text-red-300">
-              Switch to Free Starter Plan
-            </h2>
+            <h2 className="text-xl font-black text-red-300">Switch to Free Starter Plan</h2>
             <p className="text-white/60 mt-2">
-              Downgrade to the free tier. You'll keep basic access and paper trading,
-              but lose premium features.
+              Downgrade to the free tier. You'll keep basic access and paper trading, but lose premium features.
             </p>
             <button
               onClick={handleDowngradeToStarter}
@@ -391,7 +355,6 @@ export default function Billing() {
   );
 }
 
-// Alert component
 function Alert({ type, children }) {
   const styles =
     type === "success"
