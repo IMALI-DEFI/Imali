@@ -1,6 +1,6 @@
 // src/components/Dashboard/MemberDashboard.jsx
 // PRODUCTION-READY IMALI Member Dashboard v2.0
-// Optimized polling, memoization, error handling, and visibility management
+// FIXED: subscription-based paid access, per-tab locking, personalized welcome, settings tab detection
 
 import React, {
   useCallback,
@@ -11,7 +11,7 @@ import React, {
   useState,
   memo,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import BotAPI from "../../utils/BotAPI";
 import {
@@ -204,7 +204,7 @@ const FALLBACK_STRATEGIES = [
 ];
 
 const SETTINGS_TABS = [
-  { id: "billing", icon: <FaCreditCard />, label: "Billing", route: "/billing-dashboard" },
+  { id: "billing", icon: <FaCreditCard />, label: "Billing", route: "/billing" },
   { id: "trading", icon: <FaPlug />, label: "Trading Accounts", route: "/connect-okx" },
   { id: "wallets", icon: <FaWallet />, label: "Wallets", route: "/connect-wallet" },
   { id: "activation", icon: <FaExchangeAlt />, label: "Activation", route: "/activation" },
@@ -935,7 +935,8 @@ function DebugPanel({ state }) {
 
 export default function MemberDashboard() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const location = useLocation();
+  const { user, activation, logout } = useAuth();
 
   const mountedRef = useRef(false);
   const refreshLock = useRef(false);
@@ -967,9 +968,19 @@ export default function MemberDashboard() {
     [state.connections, activeTab.connectionKey]
   );
 
+  // ✅ FIX 1: Use subscription status only for paid access
+  const hasPaidAccess =
+    user?.subscription_status === "active" ||
+    user?.subscription_status === "trialing";
+
+  const hasCardOnFile = activation?.has_card_on_file === true;
+
+  const effectiveTier = hasPaidAccess ? state.userTier : "starter";
+
+  // ✅ FIX 2: Access locking uses effectiveTier
   const isLocked = useMemo(
-    () => !hasTierAccess(state.userTier, activeTab.minTier),
-    [state.userTier, activeTab.minTier]
+    () => !hasTierAccess(effectiveTier, activeTab.minTier),
+    [effectiveTier, activeTab.minTier]
   );
 
   const isConnected = useMemo(
@@ -982,8 +993,63 @@ export default function MemberDashboard() {
     [isConnected, isLocked]
   );
 
+  // ✅ FIX 3: starterPaperOnly uses effectiveTier
   const starterPaperOnly =
-    state.userTier === "starter" && activeTab?.paperOnlyStarter;
+    effectiveTier === "starter" && activeTab?.paperOnlyStarter;
+
+  // ✅ Account Status Helper
+  const accountStatus = useMemo(() => {
+    const tier = state.userTier;
+    const hasAccess = hasPaidAccess;
+
+    if (tier === "starter") {
+      return {
+        status: "Free",
+        color: "text-emerald-400",
+        bg: "bg-emerald-500/10",
+        border: "border-emerald-500/30",
+        message: "Paper trading enabled",
+        icon: "🌱",
+        label: "STARTER PLAN",
+      };
+    }
+
+    if (hasAccess) {
+      return {
+        status: "Active",
+        color: "text-emerald-400",
+        bg: "bg-emerald-500/10",
+        border: "border-emerald-500/30",
+        message: `${tier.toUpperCase()} plan active`,
+        icon: "⭐",
+        label: `${tier.toUpperCase()} PLAN`,
+      };
+    }
+
+    return {
+      status: "Billing Incomplete",
+      color: "text-amber-400",
+      bg: "bg-amber-500/10",
+      border: "border-amber-500/30",
+      message: `${tier.toUpperCase()} selected · Paper trading only`,
+      icon: "⚠️",
+      label: "STARTER ACCESS",
+    };
+  }, [state.userTier, hasPaidAccess]);
+
+  // ✅ FIX 4: Active settings tab detection
+  const activeSettingsTab = useMemo(() => {
+    const path = location.pathname;
+    if (path.includes("/billing")) return "billing";
+    if (path.includes("/connect-okx") || path.includes("/connect-alpaca")) return "trading";
+    if (path.includes("/connect-wallet")) return "wallets";
+    if (path.includes("/activation")) return "activation";
+    if (path.includes("/settings/security")) return "security";
+    if (path.includes("/settings/notifications")) return "notifications";
+    if (path.includes("/settings/api")) return "api";
+    if (path.includes("/settings/automation")) return "automation";
+    return "billing";
+  }, [location.pathname]);
 
   const winRate = useMemo(() => {
     const total = num(state.stats.wins) + num(state.stats.losses);
@@ -1253,7 +1319,6 @@ export default function MemberDashboard() {
         runningBot?.openPositions ?? runningBot?.open_positions ?? 0
       );
 
-      // ✅ Single source of truth for positions
       if (botPositions > 0 || isRunning) {
         dispatch({
           type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
@@ -1266,7 +1331,6 @@ export default function MemberDashboard() {
           responseData.summary.open_positions ?? responseData.summary.openPositions ?? 0
         );
 
-        // Only update if the summary has newer data
         if (open > 0) {
           dispatch({
             type: ACTIONS.SET_OPEN_POSITIONS_COUNT,
@@ -1532,7 +1596,6 @@ export default function MemberDashboard() {
           .replace("-USDT", "")
           .replace("/USDT", "");
 
-        // ✅ FIXED: Operator precedence bug
         const tradeMode =
           trade.mode ??
           (activeTab.exchange === "alpaca" ? "live" : "paper");
@@ -1617,7 +1680,6 @@ export default function MemberDashboard() {
 
   const refreshDashboard = useCallback(
     async (manual = false, options = {}) => {
-      // ✅ Prevent overlapping refreshes
       if (refreshLock.current) {
         console.warn("Refresh already in progress, skipping");
         return;
@@ -1655,7 +1717,6 @@ export default function MemberDashboard() {
       try {
         const promises = [];
 
-        // Critical: Bot Status
         if (refreshBot && fns.fetchBotStatus) {
           promises.push(fns.fetchBotStatus().catch((err) => {
             if (err.name !== "AbortError") console.warn("Bot status refresh failed:", err);
@@ -1663,7 +1724,6 @@ export default function MemberDashboard() {
           }));
         }
 
-        // Balance
         if (refreshBalance && fns.fetchBalance) {
           promises.push(fns.fetchBalance().catch((err) => {
             if (err.name !== "AbortError") console.warn("Balance refresh failed:", err);
@@ -1671,7 +1731,6 @@ export default function MemberDashboard() {
           }));
         }
 
-        // Trades
         if (refreshTrades && fns.fetchTradeFeed) {
           promises.push(fns.fetchTradeFeed().catch((err) => {
             if (err.name !== "AbortError") console.warn("Trade feed refresh failed:", err);
@@ -1679,7 +1738,6 @@ export default function MemberDashboard() {
           }));
         }
 
-        // Strategies (rare)
         if (refreshStrategies && fns.fetchStrategies) {
           promises.push(fns.fetchStrategies().catch((err) => {
             if (err.name !== "AbortError") console.warn("Strategies refresh failed:", err);
@@ -1687,7 +1745,6 @@ export default function MemberDashboard() {
           }));
         }
 
-        // Profile (rare)
         if (refreshProfile && fns.fetchUser) {
           promises.push(fns.fetchUser().catch((err) => {
             if (err.name !== "AbortError") console.warn("Profile refresh failed:", err);
@@ -1695,7 +1752,6 @@ export default function MemberDashboard() {
           }));
         }
 
-        // Billing (manual only)
         if (refreshBilling && fns.fetchIntegrationStatus) {
           promises.push(fns.fetchIntegrationStatus().catch((err) => {
             if (err.name !== "AbortError") console.warn("Billing refresh failed:", err);
@@ -1703,10 +1759,8 @@ export default function MemberDashboard() {
           }));
         }
 
-        // ✅ Run all with Promise.allSettled - one failure won't break the dashboard
         await Promise.allSettled(promises);
 
-        // Background tasks (always run with allSettled)
         const backgroundPromises = [];
 
         if (fns.fetchStats) {
@@ -1792,7 +1846,7 @@ export default function MemberDashboard() {
 
   const handleConnect = useCallback(() => {
     if (isLocked) {
-      navigate("/billing-dashboard");
+      navigate("/billing");
       return;
     }
 
@@ -1802,7 +1856,7 @@ export default function MemberDashboard() {
   const handleStartBot = useCallback(async () => {
     if (isLocked) {
       showError("Please upgrade your plan to access this trading type.");
-      navigate("/billing-dashboard");
+      navigate("/billing");
       return;
     }
 
@@ -1870,7 +1924,6 @@ export default function MemberDashboard() {
           : "Bot started successfully."
       );
 
-      // Force refresh bot status immediately
       await refreshDashboard(true, {
         refreshBot: true,
         refreshBalance: true,
@@ -1963,7 +2016,7 @@ export default function MemberDashboard() {
   // EFFECTS
   // ============================================================================
 
-  // ✅ Page Visibility API - pause polling when tab is hidden
+  // ✅ Page Visibility API
   useEffect(() => {
     const handleVisibilityChange = () => {
       const visible = document.visibilityState === "visible";
@@ -1990,23 +2043,19 @@ export default function MemberDashboard() {
   useEffect(() => {
     mountedRef.current = true;
 
-    // Stage 1: Critical data (user, bot status)
     const loadCritical = async () => {
       await Promise.allSettled([
         fetchUser(),
         fetchBotStatus(),
       ]);
 
-      // Stage 2: Show dashboard with critical data
       dispatch({ type: ACTIONS.SET_LOADING, payload: false });
 
-      // Stage 3: Load secondary data
       await Promise.allSettled([
         fetchBalance(),
         fetchIntegrationStatus(),
       ]);
 
-      // Stage 4: Load background data
       setTimeout(() => {
         if (mountedRef.current) {
           Promise.allSettled([
@@ -2022,39 +2071,41 @@ export default function MemberDashboard() {
 
     loadCritical();
 
-    // ✅ Separate polling intervals with visibility check
-    // Bot Status - 3 seconds
-    intervalsRef.current.bot = window.setInterval(() => {
-      if (mountedRef.current && isVisible) {
-        refreshDashboard(false, {
-          refreshBot: true,
-          refreshBalance: false,
-          refreshTrades: false,
-        });
-      }
-    }, POLL_INTERVALS.BOT_STATUS);
+    // ✅ Only set up intervals if user is logged in
+    if (user) {
+      // Bot Status - 3 seconds
+      intervalsRef.current.bot = window.setInterval(() => {
+        if (mountedRef.current && isVisible && user) {
+          refreshDashboard(false, {
+            refreshBot: true,
+            refreshBalance: false,
+            refreshTrades: false,
+          });
+        }
+      }, POLL_INTERVALS.BOT_STATUS);
 
-    // Balances - 10 seconds
-    intervalsRef.current.balance = window.setInterval(() => {
-      if (mountedRef.current && isVisible) {
-        refreshDashboard(false, {
-          refreshBot: false,
-          refreshBalance: true,
-          refreshTrades: false,
-        });
-      }
-    }, POLL_INTERVALS.BALANCES);
+      // Balances - 10 seconds
+      intervalsRef.current.balance = window.setInterval(() => {
+        if (mountedRef.current && isVisible && user) {
+          refreshDashboard(false, {
+            refreshBot: false,
+            refreshBalance: true,
+            refreshTrades: false,
+          });
+        }
+      }, POLL_INTERVALS.BALANCES);
 
-    // Trades - 5 seconds
-    intervalsRef.current.trades = window.setInterval(() => {
-      if (mountedRef.current && isVisible) {
-        refreshDashboard(false, {
-          refreshBot: false,
-          refreshBalance: false,
-          refreshTrades: true,
-        });
-      }
-    }, POLL_INTERVALS.TRADES);
+      // Trades - 5 seconds
+      intervalsRef.current.trades = window.setInterval(() => {
+        if (mountedRef.current && isVisible && user) {
+          refreshDashboard(false, {
+            refreshBot: false,
+            refreshBalance: false,
+            refreshTrades: true,
+          });
+        }
+      }, POLL_INTERVALS.TRADES);
+    }
 
     return () => {
       mountedRef.current = false;
@@ -2063,7 +2114,6 @@ export default function MemberDashboard() {
         if (interval) window.clearInterval(interval);
       });
 
-      // Abort any pending requests
       abortControllersRef.current.forEach((controller) => {
         controller.abort();
       });
@@ -2124,7 +2174,7 @@ export default function MemberDashboard() {
 
             <div className="flex items-center gap-3">
               <button
-                onClick={() => goToSettings("/billing-dashboard")}
+                onClick={() => goToSettings("/billing")}
                 className="shrink-0 rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-4 py-3 font-black transition flex items-center gap-2"
               >
                 <FaCog className="inline" />
@@ -2178,13 +2228,13 @@ export default function MemberDashboard() {
               <div className="flex-1">
                 <p className="text-white/50">Welcome back,</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl font-black">IMALI Trader</h2>
-                  <span
-                    className={`rounded-lg px-2 py-1 text-xs font-black ${currentTierConfig.borderColor} bg-opacity-15`}
-                  >
-                    {normalizeTier(state.userTier).toUpperCase()} PLAN
+                  {/* ✅ Personalized welcome message */}
+                  <h2 className="text-2xl font-black">
+                    Welcome, {user?.displayName || user?.name || user?.firstName || "Trader"}
+                  </h2>
+                  <span className={`rounded-lg px-2 py-1 text-xs font-black ${accountStatus.bg} ${accountStatus.border} ${accountStatus.color}`}>
+                    {accountStatus.icon} {accountStatus.label}
                   </span>
-
                   {state.refreshing && (
                     <span className="text-xs text-cyan-300">
                       <FaSpinner className="inline animate-spin mr-1" />
@@ -2192,10 +2242,8 @@ export default function MemberDashboard() {
                     </span>
                   )}
                 </div>
-
-                <p className="text-sm text-white/50 truncate">
-                  {user?.email || "Member"}
-                </p>
+                <p className="text-sm text-white/50 mt-1">{accountStatus.message}</p>
+                <p className="text-sm text-white/50 truncate">{user?.email || "Member"}</p>
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <StatusPill running={state.botRunning} />
@@ -2205,7 +2253,7 @@ export default function MemberDashboard() {
             </div>
           </section>
 
-          {/* ✅ Settings Tabs */}
+          {/* ✅ Settings Tabs with active detection */}
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {SETTINGS_TABS.slice(0, 4).map((tab) => (
@@ -2214,16 +2262,40 @@ export default function MemberDashboard() {
                   icon={tab.icon}
                   label={tab.label}
                   onClick={() => goToSettings(tab.route)}
-                  active={tab.id === "billing"}
+                  active={tab.id === activeSettingsTab}
                 />
               ))}
             </div>
           </section>
 
+          {/* ✅ Billing Incomplete Warning */}
+          {state.userTier !== "starter" && !hasPaidAccess && (
+            <div className="rounded-[2rem] border border-amber-500/30 bg-amber-500/10 p-5">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">⚠️</span>
+                <div>
+                  <h3 className="text-xl font-black text-amber-300">
+                    {state.userTier.toUpperCase()} Plan Selected — Billing Incomplete
+                  </h3>
+                  <p className="text-white/60 mt-1">
+                    Paper trading is still available. Add a payment method to activate {state.userTier} live features.
+                  </p>
+                  <button
+                    onClick={() => navigate("/billing", { state: { tier: state.userTier, updateCard: true } })}
+                    className="mt-3 rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-3 font-black transition"
+                  >
+                    💳 Add Payment Method
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] overflow-hidden">
             <div className="grid grid-cols-4">
               {TRADING_TYPES.map((tab) => {
-                const locked = !hasTierAccess(state.userTier, tab.minTier);
+                // ✅ FIX: Per-tab locking
+                const locked = !hasTierAccess(effectiveTier, tab.minTier);
                 const active = state.activeType === tab.id;
 
                 return (
@@ -2271,7 +2343,7 @@ export default function MemberDashboard() {
             needsReconnect={needsReconnect}
             userTier={state.userTier}
             onConnect={handleConnect}
-            onUpgrade={() => goToSettings("/billing-dashboard")}
+            onUpgrade={() => navigate("/billing")}
             lastUpdated={state.lastUpdated}
           />
 
@@ -2283,7 +2355,7 @@ export default function MemberDashboard() {
 
           <TierUpgradeCard
             currentTier={normalizeTier(state.userTier)}
-            onUpgrade={() => goToSettings("/billing-dashboard")}
+            onUpgrade={() => navigate("/billing")}
           />
 
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
@@ -2546,7 +2618,7 @@ export default function MemberDashboard() {
               </div>
 
               <button
-                onClick={() => goToSettings("/billing-dashboard")}
+                onClick={() => goToSettings("/billing")}
                 className="rounded-2xl bg-purple-500 px-5 py-3 font-black hover:bg-purple-400 transition"
               >
                 <FaCrown className="inline mr-2" />
