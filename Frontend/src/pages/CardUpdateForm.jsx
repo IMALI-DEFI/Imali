@@ -10,23 +10,29 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
   const [error, setError] = useState("");
   const [mounted, setMounted] = useState(false);
 
+  // Refs
   const stripeRef = useRef(null);
   const elementsRef = useRef(null);
   const paymentElementRef = useRef(null);
-  const containerIdRef = useRef(`stripe-${Math.random().toString(36).substr(2, 9)}`);
+  const containerRef = useRef(null);
+  const isMountedRef = useRef(true); // Track if component is still mounted
+  const idRef = useRef(Math.random().toString(36).substr(2, 9));
 
-  const containerId = containerIdRef.current;
+  const containerId = `payment-${idRef.current}`;
 
-  // Initialize Stripe and Payment Element
+  // Initialize Stripe
   const initStripe = useCallback(async () => {
+    // Don't init if component is unmounted
+    if (!isMountedRef.current) return;
+
     setInitializing(true);
     setError("");
     setMounted(false);
 
     try {
-      console.log("🟦 Step 1: Load Stripe.js");
+      console.log("🔵 Loading Stripe.js...");
 
-      // 1. Load Stripe if needed
+      // Load Stripe
       if (!window.Stripe) {
         await new Promise((resolve, reject) => {
           const script = document.createElement("script");
@@ -36,43 +42,38 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
           script.onerror = reject;
           document.head.appendChild(script);
         });
-        console.log("✅ Stripe.js loaded");
-      } else {
-        console.log("ℹ️ Stripe.js already loaded");
       }
 
-      console.log("🟦 Step 2: Create Stripe instance");
+      if (!isMountedRef.current) return;
 
-      // 2. Create Stripe instance
+      // Create Stripe instance
       const stripe = window.Stripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
-      if (!stripe) throw new Error("Stripe initialization failed");
+      if (!stripe) throw new Error("Stripe failed to load");
       stripeRef.current = stripe;
-      console.log("✅ Stripe instance created");
+      console.log("✅ Stripe loaded");
 
-      console.log("🟦 Step 3: Call backend to create SetupIntent");
-
-      // 3. Call backend to get SetupIntent client_secret
+      // Get SetupIntent from backend
+      console.log("📋 Getting SetupIntent from backend...");
       const response = await BotAPI.createSetupIntent({
         email: user?.email,
         tier: tier || user?.tier || "pro",
       });
 
-      console.log("Backend response:", response);
+      if (!isMountedRef.current) return;
 
       if (!response?.success) {
-        throw new Error(response?.error || "Backend failed to create SetupIntent");
+        throw new Error(response?.error || "Backend error creating SetupIntent");
       }
 
       const clientSecret = response.data?.client_secret;
-      if (!clientSecret || !clientSecret.includes("_secret_")) {
-        throw new Error(`Invalid client_secret: ${clientSecret}`);
+      if (!clientSecret) {
+        throw new Error("No client_secret from backend");
       }
 
-      console.log("✅ Valid client_secret received:", clientSecret.substring(0, 20) + "...");
+      console.log("✅ Got client_secret");
 
-      console.log("🟦 Step 4: Create Stripe Elements");
-
-      // 4. Create Elements with client_secret
+      // Create Elements
+      console.log("🎨 Creating Stripe Elements...");
       const elements = stripe.elements({
         clientSecret,
         appearance: {
@@ -93,84 +94,95 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
       elementsRef.current = elements;
       console.log("✅ Elements created");
 
-      console.log("🟦 Step 5: Create Payment Element");
+      if (!isMountedRef.current) {
+        // Clean up if unmounted
+        elements.getElement("payment")?.destroy();
+        return;
+      }
 
-      // 5. Create Payment Element
+      // Create Payment Element
+      console.log("💳 Creating Payment Element...");
       const paymentElement = elements.create("payment", { layout: "tabs" });
       paymentElementRef.current = paymentElement;
       console.log("✅ Payment Element created");
 
-      console.log("🟦 Step 6: Mount to DOM");
+      // Mount with safety checks
+      console.log("🔍 Finding container...");
+      let attempts = 0;
+      const maxAttempts = 20;
 
-      // 6. Mount Payment Element to container
-      let mountAttempts = 0;
-      const maxAttempts = 20; // 2 seconds with 100ms intervals
-
-      while (mountAttempts < maxAttempts) {
+      while (attempts < maxAttempts && isMountedRef.current) {
         const container = document.getElementById(containerId);
 
         if (container && container.offsetParent !== null) {
-          console.log("🎯 Container found and visible, mounting...");
-          paymentElement.mount(`#${containerId}`);
-          setMounted(true);
-          setInitializing(false);
-          console.log("✅ Payment Element mounted successfully!");
-          return;
+          console.log("🚀 Mounting Payment Element...");
+          try {
+            paymentElement.mount(`#${containerId}`);
+            console.log("✅ Mounted successfully");
+            setMounted(true);
+            setInitializing(false);
+            return;
+          } catch (err) {
+            console.error("Mount error:", err);
+            throw err;
+          }
         }
 
         await new Promise((r) => setTimeout(r, 100));
-        mountAttempts += 1;
+        attempts += 1;
       }
 
-      throw new Error(`Container not found after ${maxAttempts} attempts`);
+      if (!isMountedRef.current) return;
+
+      throw new Error("Container not found for mounting");
     } catch (err) {
-      console.error("❌ Initialization failed:", err.message);
-      setError(err.message || "Failed to load payment form");
-      setInitializing(false);
+      console.error("Init error:", err);
+      if (isMountedRef.current) {
+        setError(err?.message || "Failed to load payment form");
+        setInitializing(false);
+      }
     }
   }, [containerId, tier, user]);
 
   // Initialize on mount
   useEffect(() => {
+    isMountedRef.current = true;
     initStripe();
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [initStripe]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      console.log("🧹 Cleaning up Payment Element");
+      console.log("🧹 Cleaning up CardUpdateForm...");
+      isMountedRef.current = false;
+
+      // ⭐ CRITICAL: Safely destroy Payment Element
       if (paymentElementRef.current) {
         try {
-          paymentElementRef.current.destroy();
+          // Don't call destroy - let Stripe handle cleanup
           paymentElementRef.current = null;
         } catch (e) {
-          console.warn("Cleanup warning:", e.message);
+          console.warn("Cleanup warning:", e);
         }
       }
+
       elementsRef.current = null;
       stripeRef.current = null;
     };
   }, []);
 
-  // Handle form submission
+  // Handle submit
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validation
-    if (!stripeRef.current) {
-      setError("Stripe not loaded");
-      return;
-    }
-    if (!elementsRef.current) {
-      setError("Payment form not initialized");
-      return;
-    }
-    if (!mounted) {
-      setError("Payment form not mounted");
-      return;
-    }
-    if (initializing) {
-      setError("Payment form still loading");
+    if (!isMountedRef.current) return;
+
+    if (!stripeRef.current || !elementsRef.current || !mounted) {
+      setError("Payment form not ready");
       return;
     }
 
@@ -178,59 +190,55 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
     setError("");
 
     try {
-      console.log("📤 Confirming setup with Stripe...");
+      console.log("📤 Confirming setup...");
 
-      const { error: confirmError, setupIntent } = await stripeRef.current.confirmSetup({
-        elements: elementsRef.current,
-        confirmParams: {
-          return_url: `${window.location.origin}/billing?setup_success=true`,
-          payment_method_data: {
-            billing_details: {
-              name: user?.displayName || user?.email || "Customer",
-              email: user?.email || "",
+      const { error: confirmError, setupIntent } = 
+        await stripeRef.current.confirmSetup({
+          elements: elementsRef.current,
+          confirmParams: {
+            return_url: `${window.location.origin}/billing?setup_success=true`,
+            payment_method_data: {
+              billing_details: {
+                name: user?.displayName || user?.email || "Customer",
+                email: user?.email || "",
+              },
             },
           },
-        },
-        redirect: "if_required",
-      });
+          redirect: "if_required",
+        });
+
+      if (!isMountedRef.current) return;
 
       if (confirmError) {
-        console.error("❌ Stripe error:", confirmError);
-        throw new Error(confirmError.message || "Card setup failed");
+        throw new Error(confirmError.message || "Setup failed");
       }
 
       if (setupIntent?.status === "succeeded") {
-        console.log("✅ Setup intent succeeded");
-        console.log("💾 Confirming with backend...");
+        console.log("✅ Setup succeeded");
 
-        // Confirm with backend
         const confirmRes = await BotAPI.confirmCard(setupIntent.id);
 
+        if (!isMountedRef.current) return;
+
         if (!confirmRes?.success) {
-          throw new Error(confirmRes?.error || "Failed to save card on backend");
+          throw new Error(confirmRes?.error || "Failed to save card");
         }
 
-        console.log("✅ Card saved successfully!");
-        setError("");
+        console.log("✅ Card saved");
         onSuccess?.();
       } else {
         throw new Error(`Setup failed: ${setupIntent?.status}`);
       }
     } catch (err) {
-      console.error("❌ Submit error:", err.message);
-      setError(err.message || "Failed to save card");
+      console.error("Submit error:", err);
+      if (isMountedRef.current) {
+        setError(err?.message || "Failed to save card");
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-  };
-
-  // Retry handler
-  const handleRetry = () => {
-    console.log("🔄 Retrying...");
-    setInitializing(true);
-    setError("");
-    setMounted(false);
-    initStripe();
   };
 
   // Error state
@@ -241,7 +249,12 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
         <p className="text-red-200 text-sm mb-4">{error}</p>
         <div className="flex gap-3">
           <button
-            onClick={handleRetry}
+            onClick={() => {
+              setError("");
+              setInitializing(true);
+              setMounted(false);
+              initStripe();
+            }}
             className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-xl transition"
           >
             Retry
@@ -269,6 +282,7 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Payment Element Container */}
         <div
+          ref={containerRef}
           id={containerId}
           className="rounded-[1.5rem] border border-white/10 bg-black/30 p-4 overflow-hidden w-full"
           style={{ minHeight: initializing ? "250px" : "auto" }}
@@ -291,7 +305,7 @@ export default function CardUpdateForm({ tier, onSuccess, onCancel }) {
           </div>
         )}
 
-        {/* Action buttons */}
+        {/* Buttons */}
         <div className="flex gap-3">
           <button
             type="submit"
