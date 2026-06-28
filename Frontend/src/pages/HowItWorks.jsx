@@ -1,33 +1,32 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import {
-    Zap,
-    Shield,
-    BarChart3,
-    AlertCircle,
-    CheckCircle,
-    ExternalLink,
-    HelpCircle,
-    Mail,
-    TrendingUp,
-    ShieldCheck,
-    Settings,
-    Play,
-    Database,
-    Award,
-    Target,
-    Activity,
-    Brain,
-    AlertTriangle,
-    LayoutDashboard,
-    Wallet,
-    PieChart,
-    List,
-    Cpu,
-    Sliders,
-    Coins,
-    User,
-} from "lucide-react";
+    FaBolt,
+    FaShieldAlt,
+    FaChartBar,
+    FaExclamationCircle,
+    FaCheckCircle,
+    FaExternalLinkAlt,
+    FaQuestionCircle,
+    FaEnvelope,
+    FaChartLine,
+    FaCog,
+    FaPlay,
+    FaDatabase,
+    FaAward,
+    FaBullseye,
+    FaActivity,
+    FaBrain,
+    FaExclamationTriangle,
+    FaTachometerAlt,
+    FaWallet,
+    FaChartPie,
+    FaList,
+    FaMicrochip,
+    FaSlidersH,
+    FaCoins,
+    FaUser,
+} from "react-icons/fa";
 
 export default function HowItWorks() {
     const card = "rounded-2xl border border-slate-200 bg-white p-6 shadow-sm";
@@ -49,10 +48,10 @@ export default function HowItWorks() {
             warning: "border-rose-400 bg-rose-50",
         };
         const icons = {
-            important: <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />,
-            info: <HelpCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />,
-            success: <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />,
-            warning: <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0" />,
+            important: <FaExclamationCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />,
+            info: <FaQuestionCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />,
+            success: <FaCheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />,
+            warning: <FaExclamationTriangle className="w-5 h-5 text-rose-600 flex-shrink-0" />,
         };
         return (
             <div className={`border-l-4 ${styles[type]} rounded-r-xl p-4 bg-white shadow-sm`}>
@@ -106,7 +105,7 @@ export default function HowItWorks() {
                 <div className="text-center max-w-3xl mx-auto mb-12">
                     <div className="flex justify-center mb-4">
                         <div className="p-3 rounded-2xl bg-indigo-100">
-                            <Zap className="w-8 h-8 text-indigo-600" />
+                            <FaBolt className="w-8 h-8 text-indigo-600" />
                         </div>
                     </div>
                     <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-900 tracking-tight">
@@ -119,9 +118,9 @@ export default function HowItWorks() {
 
                 {/* ===== HOW IMALI WORKS ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={Settings}>How IMALI Works</SectionTitle>
+                    <SectionTitle icon={FaCog}>How IMALI Works</SectionTitle>
                     <p className="text-slate-600 mb-6 text-sm">
-                        IMALI connects to supported exchange accounts and can execute paper or live trades based on the strategy and mode you choose. Here’s what you need to do, and why each step matters:
+                        IMALI connects to supported exchange accounts and can execute paper or live trades based on the strategy and mode you choose. Here's what you need to do, and why each step matters:
                     </p>
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className={card}>
@@ -143,28 +142,28 @@ export default function HowItWorks() {
                                 <span className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-bold">3</span>
                                 <h3 className="font-bold text-slate-900">Practice with Paper Trading</h3>
                             </div>
-                            <p className="text-sm text-slate-600">Use virtual funds to test the bot and learn the dashboard. No real money at risk — it’s the safest way to build confidence.</p>
+                            <p className="text-sm text-slate-600">Use virtual funds to test the bot and learn the dashboard. No real money at risk — it's the safest way to build confidence.</p>
                         </div>
                         <div className={card}>
                             <div className="flex items-center gap-3 mb-2">
                                 <span className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-bold">4</span>
                                 <h3 className="font-bold text-slate-900">Go Live</h3>
                             </div>
-                            <p className="text-sm text-slate-600">When you’re comfortable, switch to live trading with an amount you’re willing to risk. IMALI handles the rest, with risk management built in.</p>
+                            <p className="text-sm text-slate-600">When you're comfortable, switch to live trading with an amount you're willing to risk. IMALI handles the rest, with risk management built in.</p>
                         </div>
                     </div>
                 </section>
 
                 {/* ===== PAPER VS LIVE ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={Play}>Paper Trading vs. Live Trading</SectionTitle>
+                    <SectionTitle icon={FaPlay}>Paper Trading vs. Live Trading</SectionTitle>
                     <p className="text-slate-600 text-sm mb-4">
                         Understanding the difference helps you decide when to make the switch.
                     </p>
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5">
                             <h3 className="font-bold text-emerald-700 flex items-center gap-2">
-                                <Play className="w-4 h-4" /> Paper Trading
+                                <FaPlay className="w-4 h-4" /> Paper Trading
                             </h3>
                             <p className="text-sm text-slate-700 mt-1 leading-relaxed">
                                 Trade with virtual funds. No real money at risk. Perfect for learning the dashboard, testing strategies, and building confidence.
@@ -174,11 +173,11 @@ export default function HowItWorks() {
                                 <li className="flex items-center gap-2">• Similar workflow to live trading, without using real funds</li>
                                 <li className="flex items-center gap-2">• No financial risk — practice freely</li>
                             </ul>
-                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Start here. Use paper trading until you’re comfortable with the dashboard and the bot’s behavior.</p>
+                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Start here. Use paper trading until you're comfortable with the dashboard and the bot's behavior.</p>
                         </div>
                         <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-5">
                             <h3 className="font-bold text-blue-700 flex items-center gap-2">
-                                <Zap className="w-4 h-4" /> Live Trading
+                                <FaBolt className="w-4 h-4" /> Live Trading
                             </h3>
                             <p className="text-sm text-slate-700 mt-1 leading-relaxed">
                                 Trade with real funds. Executes actual orders on your exchange accounts. Start only when you're comfortable and confident.
@@ -188,7 +187,7 @@ export default function HowItWorks() {
                                 <li className="flex items-center gap-2">• All risk management rules apply</li>
                                 <li className="flex items-center gap-2">• Start small, scale as you gain confidence</li>
                             </ul>
-                            <p className="text-xs text-slate-500 mt-2 italic">What to do: When you’re ready, switch to live with a small amount. Monitor the dashboard regularly.</p>
+                            <p className="text-xs text-slate-500 mt-2 italic">What to do: When you're ready, switch to live with a small amount. Monitor the dashboard regularly.</p>
                         </div>
                     </div>
                     <Callout type="info" title="New to trading?">
@@ -198,7 +197,7 @@ export default function HowItWorks() {
 
                 {/* ===== CRYPTO VS STOCKS ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={Database}>Crypto (OKX) vs. Stocks (Alpaca)</SectionTitle>
+                    <SectionTitle icon={FaDatabase}>Crypto (OKX) vs. Stocks (Alpaca)</SectionTitle>
                     <p className="text-slate-600 text-sm mb-4">
                         Choose the market that fits your interests and risk appetite.
                     </p>
@@ -214,7 +213,7 @@ export default function HowItWorks() {
                                 <li>• Wide range of crypto pairs</li>
                                 <li>• Higher volatility = more frequent opportunities</li>
                             </ul>
-                            <p className="text-xs text-slate-500 mt-2 italic">When to use: If you’re comfortable with crypto and want round‑the‑clock trading.</p>
+                            <p className="text-xs text-slate-500 mt-2 italic">When to use: If you're comfortable with crypto and want round‑the‑clock trading.</p>
                         </div>
                         <div className={card}>
                             <div className="flex items-center gap-2 mb-2">
@@ -232,22 +231,88 @@ export default function HowItWorks() {
                     </div>
                 </section>
 
+                {/* ===== THE BOTS BEHIND IMALI ===== */}
+                <section className="mb-16">
+                    <SectionTitle icon={FaMicrochip}>The Bots Behind IMALI</SectionTitle>
+                    <p className="text-slate-600 text-sm mb-4">
+                        IMALI isn't a single bot — it's a platform that runs multiple specialised trading engines simultaneously. Each bot targets a different market and has its own adapter for order execution.
+                    </p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className={card}>
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                <span className="text-lg">₿</span> Crypto Spot Bot (OKX)
+                            </h3>
+                            <p className="text-sm text-slate-600 mt-1">
+                                Scans supported USDT pairs on OKX at regular intervals. It uses a bulk ticker API to rank symbols by volatility and confidence, then enters trades with a predefined stop‑loss and take‑profit.
+                            </p>
+                            <ul className="mt-2 text-xs text-slate-500 space-y-0.5">
+                                <li>• Hard stop‑loss at 2% below entry</li>
+                                <li>• Take‑profit at 2‑4% (strategy dependent)</li>
+                                <li>• Trailing stop that locks in gains after a trade moves 2% in profit</li>
+                                <li>• Max 72‑hour hold time (exits small profits automatically)</li>
+                            </ul>
+                        </div>
+                        <div className={card}>
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                <span className="text-lg">📈</span> Crypto Futures Bot (OKX)
+                            </h3>
+                            <p className="text-sm text-slate-600 mt-1">
+                                Trades perpetual swaps with isolated margin. It manages leverage (default 2x), checks funding rates, and uses reduce‑only orders to safely exit positions. Same risk rules as Spot, but with additional liquidation protection.
+                            </p>
+                            <ul className="mt-2 text-xs text-slate-500 space-y-0.5">
+                                <li>• Long‑only by default; short support available</li>
+                                <li>• Funding rate filter avoids expensive carry costs</li>
+                                <li>• Liquidation distance check before every entry</li>
+                            </ul>
+                        </div>
+                        <div className={card}>
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                <span className="text-lg">🍎</span> Stock Bot (Alpaca)
+                            </h3>
+                            <p className="text-sm text-slate-600 mt-1">
+                                Trades U.S. equities and ETFs through Alpaca. It respects market hours, checks buying power, and uses notional orders for fractional shares. Works with paper trading by default, live when you're ready.
+                            </p>
+                            <ul className="mt-2 text-xs text-slate-500 space-y-0.5">
+                                <li>• Day‑trading protection (PDT check)</li>
+                                <li>• Avoids low‑volume stocks and wide spreads</li>
+                                <li>• Can use SPY/QQQ regime to filter entries</li>
+                            </ul>
+                        </div>
+                        <div className={card}>
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                <span className="text-lg">💧</span> DEX Sniper (On‑Chain)
+                            </h3>
+                            <p className="text-sm text-slate-600 mt-1">
+                                Monitors decentralised exchanges for new token launches and liquidity spikes. When live, it can execute swaps with slippage protection. Paper‑mode logs trades for dashboard visibility without spending gas.
+                            </p>
+                            <ul className="mt-2 text-xs text-slate-500 space-y-0.5">
+                                <li>• Honeypot / token tax detection</li>
+                                <li>• Gas cost estimator – skips trades when gas is too high</li>
+                                <li>• Auto‑take‑profit ladder (partial exits)</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <Callout type="info" title="All bots share the same intelligence layer">
+                        Where supported, market data and regime signals can be shared across bot systems. The HMM regime filter helps classify market conditions and can influence confidence thresholds across strategies.
+                    </Callout>
+                </section>
+
                 {/* ===== CREATING API KEYS ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={Shield}>Creating API Keys</SectionTitle>
+                    <SectionTitle icon={FaShieldAlt}>Creating API Keys</SectionTitle>
                     <p className="text-slate-600 text-sm mb-4">
                         To connect IMALI to your exchange, you'll need to generate API keys. Follow your exchange's instructions carefully.
                     </p>
                     <div className="space-y-3">
                         <div className="rounded-2xl border border-slate-200 bg-white p-4 flex items-start gap-4">
-                            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <FaCheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
                             <div>
                                 <span className="font-bold text-slate-900">Read Permission</span>
                                 <p className="text-sm text-slate-600">Allows IMALI to view your account balance, positions, and order history.</p>
                             </div>
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-white p-4 flex items-start gap-4">
-                            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <FaCheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
                             <div>
                                 <span className="font-bold text-slate-900">Trade Permission</span>
                                 <p className="text-sm text-slate-600">Allows IMALI to place, modify, and cancel orders on your behalf.</p>
@@ -255,13 +320,13 @@ export default function HowItWorks() {
                         </div>
                     </div>
                     <Callout type="important" title="Never enable withdrawal permissions">
-                        IMALI only requires <span className="font-bold">Read</span> and <span className="font-bold">Trade</span> access. Never enable withdrawal permissions on your exchange API keys. IMALI cannot withdraw funds from your account — only trade.
+                        IMALI only requires <span className="font-bold">Read</span> and <span className="font-bold">Trade</span> access. Never enable withdrawal permissions on your exchange API keys. When users create exchange API keys correctly with withdrawals disabled, IMALI cannot withdraw funds from the exchange account.
                     </Callout>
                 </section>
 
                 {/* ===== CONNECTING EXCHANGE ACCOUNTS ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={ExternalLink}>Connecting Exchange Accounts</SectionTitle>
+                    <SectionTitle icon={FaExternalLinkAlt}>Connecting Exchange Accounts</SectionTitle>
                     <p className="text-slate-600 text-sm mb-4">
                         Once you have your API keys, connect your exchange account directly in the IMALI dashboard.
                     </p>
@@ -279,22 +344,22 @@ export default function HowItWorks() {
 
                 {/* ===== UNDERSTANDING YOUR DASHBOARD ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={LayoutDashboard}>Understanding Your Dashboard</SectionTitle>
+                    <SectionTitle icon={FaTachometerAlt}>Understanding Your Dashboard</SectionTitle>
                     <p className="text-slate-600 text-sm mb-4">
                         Your IMALI Dashboard is your trading command center. Everything you need to monitor your account, control your trading bots, and review performance is available in one place.
                     </p>
                     <p className="text-slate-600 text-sm mb-4">
-                        Whether you’re practicing with paper trading or trading live, the dashboard gives you a real-time view of your account and lets you stay in control of your automation.
+                        Whether you're practicing with paper trading or trading live, the dashboard gives you a real-time view of your account and lets you stay in control of your automation.
                     </p>
 
                     <div className="space-y-6">
                         {/* Account Status */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <User className="w-5 h-5 text-indigo-500" /> Account Status
+                                <FaUser className="w-5 h-5 text-indigo-500" /> Account Status
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
-                                The top of the dashboard shows your current membership plan, whether your bot is running or stopped, and whether you’re using Paper Trading or Live Trading. It also displays your connected trading accounts and important account notifications.
+                                The top of the dashboard shows your current membership plan, whether your bot is running or stopped, and whether you're using Paper Trading or Live Trading. It also displays your connected trading accounts and important account notifications.
                             </p>
                             <p className="text-xs text-slate-500 mt-2 italic">What to do: Check this section daily to ensure your bot is active and your account is in good standing.</p>
                         </div>
@@ -302,7 +367,7 @@ export default function HowItWorks() {
                         {/* Trading Markets */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <TrendingUp className="w-5 h-5 text-indigo-500" /> Trading Markets
+                                <FaChartLine className="w-5 h-5 text-indigo-500" /> Trading Markets
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
                                 Choose which market you want to trade:
@@ -319,18 +384,18 @@ export default function HowItWorks() {
                         {/* Connected Accounts */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <ExternalLink className="w-5 h-5 text-indigo-500" /> Connected Accounts
+                                <FaExternalLinkAlt className="w-5 h-5 text-indigo-500" /> Connected Accounts
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
-                                This section shows whether your OKX, Alpaca, or wallet connections are active. If an account is disconnected, you’ll be prompted to reconnect before trading can begin.
+                                This section shows whether your OKX, Alpaca, or wallet connections are active. If an account is disconnected, you'll be prompted to reconnect before trading can begin.
                             </p>
-                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Ensure all your accounts show a green “Connected” status before starting the bot.</p>
+                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Ensure all your accounts show a green "Connected" status before starting the bot.</p>
                         </div>
 
                         {/* Account Overview */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <PieChart className="w-5 h-5 text-indigo-500" /> Account Overview
+                                <FaChartPie className="w-5 h-5 text-indigo-500" /> Account Overview
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
                                 View your portfolio at a glance, including:
@@ -344,13 +409,13 @@ export default function HowItWorks() {
                                 <li>Win rate</li>
                                 <li>Number of completed trades</li>
                             </ul>
-                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Use this as your primary performance snapshot. Check it regularly to track your bot’s impact.</p>
+                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Use this as your primary performance snapshot. Check it regularly to track your bot's impact.</p>
                         </div>
 
                         {/* Portfolio & Assets */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <Wallet className="w-5 h-5 text-indigo-500" /> Portfolio &amp; Assets
+                                <FaWallet className="w-5 h-5 text-indigo-500" /> Portfolio &amp; Assets
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
                                 The Assets section displays everything currently held in your connected trading account, including cryptocurrencies, stocks, cash, and stablecoins. Each asset shows:
@@ -366,10 +431,10 @@ export default function HowItWorks() {
                         {/* Live Trade Feed */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <List className="w-5 h-5 text-indigo-500" /> Live Trade Feed
+                                <FaList className="w-5 h-5 text-indigo-500" /> Live Trade Feed
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
-                                Every completed trade appears in the Live Trade Feed. You’ll see:
+                                Every completed trade appears in the Live Trade Feed. You'll see:
                             </p>
                             <ul className="list-disc list-inside text-sm text-slate-600 mt-1 space-y-0.5">
                                 <li>Buy and sell activity</li>
@@ -378,13 +443,13 @@ export default function HowItWorks() {
                                 <li>Profit or loss</li>
                                 <li>Time of execution</li>
                             </ul>
-                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Use this feed to audit your bot’s performance and spot any unusual activity.</p>
+                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Use this feed to audit your bot's performance and spot any unusual activity.</p>
                         </div>
 
                         {/* Active Bot */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <Cpu className="w-5 h-5 text-indigo-500" /> Active Bot
+                                <FaMicrochip className="w-5 h-5 text-indigo-500" /> Active Bot
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
                                 The Active Bot panel shows:
@@ -400,13 +465,13 @@ export default function HowItWorks() {
                             <p className="text-sm text-slate-600 mt-1">
                                 From here you can start, pause, or stop your trading bot at any time.
                             </p>
-                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Keep this panel in view — it’s your main control center for automation.</p>
+                            <p className="text-xs text-slate-500 mt-2 italic">What to do: Keep this panel in view — it's your main control center for automation.</p>
                         </div>
 
                         {/* Strategy Selection */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <Target className="w-5 h-5 text-indigo-500" /> Strategy Selection
+                                <FaBullseye className="w-5 h-5 text-indigo-500" /> Strategy Selection
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
                                 Choose the trading style that best matches your goals.
@@ -423,10 +488,10 @@ export default function HowItWorks() {
                         {/* IMALI Utility */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <Coins className="w-5 h-5 text-indigo-500" /> IMALI Utility
+                                <FaCoins className="w-5 h-5 text-indigo-500" /> IMALI Utility
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
-                                If you hold IMALI tokens, you’ll be able to view your balance and any eligible platform discounts. Future platform benefits may include reduced subscription costs, exclusive features, governance participation, and early access to new functionality.
+                                If you hold IMALI tokens, you'll be able to view your balance and any eligible platform discounts. Future platform benefits may include reduced subscription costs, exclusive features, governance participation, and early access to new functionality.
                             </p>
                             <p className="text-xs text-slate-500 mt-2 italic">What to do: Check this section to see if you qualify for any perks.</p>
                         </div>
@@ -434,7 +499,7 @@ export default function HowItWorks() {
                         {/* Settings */}
                         <div className="bg-white rounded-2xl border border-slate-200 p-5">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">
-                                <Sliders className="w-5 h-5 text-indigo-500" /> Settings
+                                <FaSlidersH className="w-5 h-5 text-indigo-500" /> Settings
                             </h3>
                             <p className="text-sm text-slate-600 mt-1">
                                 Use the Settings section to manage:
@@ -455,7 +520,7 @@ export default function HowItWorks() {
 
                 {/* ===== STRATEGIES DETAILED ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={Target}>Choosing a Strategy</SectionTitle>
+                    <SectionTitle icon={FaBullseye}>Choosing a Strategy</SectionTitle>
                     <p className="text-slate-600 text-sm mb-4">
                         IMALI offers four distinct strategies. Pick the one that matches your risk tolerance and trading style.
                     </p>
@@ -463,25 +528,25 @@ export default function HowItWorks() {
                         <StrategyCard
                             name="Conservative"
                             level="Low Risk"
-                            icon={ShieldCheck}
+                            icon={FaShieldAlt}
                             description="Buys after significant pullbacks and looks for price recovery. Focuses on capital preservation with steady, measured entries."
                         />
                         <StrategyCard
                             name="Balanced AI"
                             level="Moderate Risk"
-                            icon={Brain}
+                            icon={FaBrain}
                             description="Combines multiple indicators with AI‑assisted confidence scoring to seek a balance between opportunity and risk. Adaptive to market conditions."
                         />
                         <StrategyCard
                             name="Growth"
                             level="Moderate-High Risk"
-                            icon={TrendingUp}
+                            icon={FaChartLine}
                             description="Follows established trends and attempts to ride market strength. Enters during confirmed breakouts and trends."
                         />
                         <StrategyCard
                             name="Aggressive"
                             level="High Risk"
-                            icon={Activity}
+                            icon={FaActivity}
                             description="Designed for more frequent opportunities and higher volatility. Best suited for experienced users who understand market risks."
                         />
                     </div>
@@ -492,7 +557,7 @@ export default function HowItWorks() {
 
                 {/* ===== HOW TRADING BOTS WORK ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={BarChart3}>How the Trading Bots Work</SectionTitle>
+                    <SectionTitle icon={FaChartBar}>How the Trading Bots Work</SectionTitle>
                     <div className="bg-white rounded-2xl border border-slate-200 p-5">
                         <p className="text-sm text-slate-700 leading-relaxed">
                             IMALI is <span className="font-bold">not</span> a "magic AI." It combines:
@@ -521,9 +586,64 @@ export default function HowItWorks() {
                     </div>
                 </section>
 
+                {/* ===== HOW THE BOT MAKES DECISIONS ===== */}
+                <section className="mb-16">
+                    <SectionTitle icon={FaSlidersH}>How the Bot Makes Decisions</SectionTitle>
+                    <p className="text-slate-600 text-sm mb-4">
+                        Every potential trade passes through multiple filters before an order is placed. Here's the full pipeline:
+                    </p>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+                        <div className="flex items-start gap-3">
+                            <span className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">1</span>
+                            <div>
+                                <span className="font-bold text-slate-900">Market Scan</span>
+                                <p className="text-sm text-slate-600">The bot pulls the latest prices and 24‑hour volatility for every available symbol using a single API call (bulk ticker). Symbols with high volatility are prioritised.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <span className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">2</span>
+                            <div>
+                                <span className="font-bold text-slate-900">Regime Check</span>
+                                <p className="text-sm text-slate-600">The HMM regime service classifies each symbol as bull trend, bear/choppy, or volatile. In volatile regimes, the trade is skipped entirely. In bear markets, confidence requirements are raised.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <span className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">3</span>
+                            <div>
+                                <span className="font-bold text-slate-900">Confidence Scoring</span>
+                                <p className="text-sm text-slate-600">A momentum‑based confidence score is calculated from the 24‑hour price change. Regime and volatility adjustments are applied. The trade only proceeds if the score exceeds the strategy's threshold.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <span className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">4</span>
+                            <div>
+                                <span className="font-bold text-slate-900">Position Sizing &amp; Risk</span>
+                                <p className="text-sm text-slate-600">The bot calculates how much to buy based on available capital and the strategy's risk per trade. A stop‑loss is set at 2% below entry. If the account can't afford the minimum trade size, the signal is skipped.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <span className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">5</span>
+                            <div>
+                                <span className="font-bold text-slate-900">Execution</span>
+                                <p className="text-sm text-slate-600">The order is placed on the exchange. The trade is recorded in the database with the stop‑loss price and entry score. From that moment, the bot monitors the position on every cycle.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <span className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">6</span>
+                            <div>
+                                <span className="font-bold text-slate-900">Exit Management</span>
+                                <p className="text-sm text-slate-600">The bot checks every position every few seconds. It will exit if the stop‑loss is hit, the take‑profit target is reached, the trailing stop triggers, or the maximum hold time expires. All exits are logged with the reason.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <Callout type="important" title="The bot never holds a losing position forever">
+                        Every live strategy is designed to use predefined exit rules, including stop-loss logic. If the exchange rejects a sell (for example, because the position was already closed), the bot reconciles the database automatically so it doesn't get stuck.
+                    </Callout>
+                </section>
+
                 {/* ===== AI-ASSISTED DECISION MAKING ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={Brain}>AI‑Assisted Decision Making</SectionTitle>
+                    <SectionTitle icon={FaBrain}>AI‑Assisted Decision Making</SectionTitle>
                     <p className="text-slate-600 text-sm mb-4">
                         IMALI uses AI to enhance, not replace, its trading logic. Here's how:
                     </p>
@@ -549,7 +669,7 @@ export default function HowItWorks() {
 
                 {/* ===== RISK MANAGEMENT ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={AlertCircle}>Risk Management</SectionTitle>
+                    <SectionTitle icon={FaExclamationCircle}>Risk Management</SectionTitle>
                     <p className="text-slate-600 text-sm mb-4">
                         IMALI incorporates multiple layers of risk protection to help preserve your capital.
                     </p>
@@ -578,29 +698,37 @@ export default function HowItWorks() {
                             </h4>
                             <p className="text-xs text-slate-600 mt-1">Trades only execute when confidence scores meet the strategy's threshold. Low‑confidence signals are skipped.</p>
                         </div>
+                        <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                            <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                                <span className="text-violet-500">🧠</span> Market Regime Detection
+                            </h4>
+                            <p className="text-xs text-slate-600 mt-1">
+                                IMALI uses a Hidden Markov Model (HMM) to classify each asset as bull trend, bear/choppy, or volatile. In volatile markets, the bot reduces or skips trades entirely, protecting capital during uncertain conditions.
+                            </p>
+                        </div>
                     </div>
                 </section>
 
                 {/* ===== SECURITY & PERMISSIONS ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={ShieldCheck}>Security &amp; Permissions</SectionTitle>
+                    <SectionTitle icon={FaShieldAlt}>Security &amp; Permissions</SectionTitle>
                     <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
                         <div className="flex items-start gap-3">
-                            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <FaCheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
                             <div>
                                 <span className="font-bold text-slate-900 text-sm">Read‑Only + Trade Access Only</span>
                                 <p className="text-xs text-slate-600">IMALI never requests withdrawal permissions. Your funds stay on your exchange account at all times.</p>
                             </div>
                         </div>
                         <div className="flex items-start gap-3">
-                            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <FaCheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
                             <div>
                                 <span className="font-bold text-slate-900 text-sm">Encrypted API Keys</span>
                                 <p className="text-xs text-slate-600">All API keys are encrypted at rest and in transit. We never store your keys in plain text.</p>
                             </div>
                         </div>
                         <div className="flex items-start gap-3">
-                            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <FaCheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
                             <div>
                                 <span className="font-bold text-slate-900 text-sm">Your Funds Stay Yours</span>
                                 <p className="text-xs text-slate-600">IMALI is a trading assistant, not a custodial wallet. Your funds remain on your exchange account.</p>
@@ -614,7 +742,7 @@ export default function HowItWorks() {
 
                 {/* ===== GETTING STARTED CHECKLIST ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={CheckCircle}>Getting Started Checklist</SectionTitle>
+                    <SectionTitle icon={FaCheckCircle}>Getting Started Checklist</SectionTitle>
                     <p className="text-slate-600 text-sm mb-4">
                         For the best experience, complete these steps in order:
                     </p>
@@ -625,16 +753,16 @@ export default function HowItWorks() {
                         <li><span className="font-bold">Start with Paper Trading</span> to learn the platform without risk.</li>
                         <li><span className="font-bold">Choose a trading strategy</span> that fits your goals.</li>
                         <li><span className="font-bold">Start your bot</span> and monitor your dashboard to see how it performs.</li>
-                        <li><span className="font-bold">When you’re comfortable, switch to Live Trading</span> and begin with an amount you’re comfortable risking.</li>
+                        <li><span className="font-bold">When you're comfortable, switch to Live Trading</span> and begin with an amount you're comfortable risking.</li>
                     </ol>
                     <Callout type="success" title="Pro Tip">
-                        Take your time with paper trading. The more you practice, the more confident you’ll be when you go live.
+                        Take your time with paper trading. The more you practice, the more confident you'll be when you go live.
                     </Callout>
                 </section>
 
                 {/* ===== FAQ ===== */}
                 <section className="mb-16">
-                    <SectionTitle icon={HelpCircle}>Frequently Asked Questions</SectionTitle>
+                    <SectionTitle icon={FaQuestionCircle}>Frequently Asked Questions</SectionTitle>
                     <div className="space-y-3">
                         <div className="bg-white rounded-2xl border border-slate-200 p-4">
                             <h4 className="font-bold text-slate-900 text-sm">Can I use IMALI with multiple exchanges?</h4>
@@ -661,7 +789,7 @@ export default function HowItWorks() {
 
                 {/* ===== NEED HELP ===== */}
                 <section className="mb-12">
-                    <SectionTitle icon={Mail}>Need Help?</SectionTitle>
+                    <SectionTitle icon={FaEnvelope}>Need Help?</SectionTitle>
                     <div className="bg-gradient-to-br from-indigo-50 to-slate-50 rounded-2xl border border-indigo-200 p-6">
                         <p className="text-slate-700 text-sm mb-4">
                             If you have any questions during setup, our team is here to help. Reach out to us at:
@@ -670,27 +798,27 @@ export default function HowItWorks() {
                             href="mailto:imalidefi@gmail.com"
                             className="inline-flex items-center gap-2 text-indigo-600 font-bold text-lg hover:text-indigo-800 transition"
                         >
-                            <Mail className="w-5 h-5" />
+                            <FaEnvelope className="w-5 h-5" />
                             imalidefi@gmail.com
                         </a>
                         <div className="mt-4 grid gap-2 sm:grid-cols-2 text-sm">
                             <div className="flex items-center gap-2 text-slate-600">
-                                <CheckCircle className="w-4 h-4 text-emerald-500" /> Account setup
+                                <FaCheckCircle className="w-4 h-4 text-emerald-500" /> Account setup
                             </div>
                             <div className="flex items-center gap-2 text-slate-600">
-                                <CheckCircle className="w-4 h-4 text-emerald-500" /> OKX or Alpaca API configuration
+                                <FaCheckCircle className="w-4 h-4 text-emerald-500" /> OKX or Alpaca API configuration
                             </div>
                             <div className="flex items-center gap-2 text-slate-600">
-                                <CheckCircle className="w-4 h-4 text-emerald-500" /> Paper trading guidance
+                                <FaCheckCircle className="w-4 h-4 text-emerald-500" /> Paper trading guidance
                             </div>
                             <div className="flex items-center gap-2 text-slate-600">
-                                <CheckCircle className="w-4 h-4 text-emerald-500" /> Strategy selection
+                                <FaCheckCircle className="w-4 h-4 text-emerald-500" /> Strategy selection
                             </div>
                             <div className="flex items-center gap-2 text-slate-600">
-                                <CheckCircle className="w-4 h-4 text-emerald-500" /> Dashboard navigation
+                                <FaCheckCircle className="w-4 h-4 text-emerald-500" /> Dashboard navigation
                             </div>
                             <div className="flex items-center gap-2 text-slate-600">
-                                <CheckCircle className="w-4 h-4 text-emerald-500" /> Live trading readiness
+                                <FaCheckCircle className="w-4 h-4 text-emerald-500" /> Live trading readiness
                             </div>
                         </div>
                     </div>
@@ -705,7 +833,7 @@ export default function HowItWorks() {
                         to="/signup"
                         className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition shadow-md hover:shadow-lg"
                     >
-                        <Zap className="w-5 h-5" />
+                        <FaBolt className="w-5 h-5" />
                         Get Started with IMALI
                     </Link>
                 </div>
