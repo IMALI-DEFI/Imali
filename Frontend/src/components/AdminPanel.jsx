@@ -1,3 +1,4 @@
+// src/admin/AdminPanel.jsx
 import React, {
   useEffect,
   useState,
@@ -83,6 +84,7 @@ const ReportsTab = lazy(() => import("../admin/ReportsTab.jsx"));
 const TradesManagement = lazy(() => import("../admin/TradesManagement.jsx"));
 const AutoResponder = lazy(() => import("../admin/AutoResponder.jsx"));
 const NewsletterManager = lazy(() => import("../admin/NewsletterManager.jsx"));
+const GA4Analytics = lazy(() => import("../admin/GA4Analytics.jsx"));
 
 // NEW: Referral Partners Component
 const ReferralPartners = lazy(() => import("../admin/ReferralPartners.jsx"));
@@ -215,6 +217,23 @@ const TAB_SECTIONS = [
         actions: [
           { id: "refresh", label: "Refresh Metrics", icon: "🔄", endpoint: "/api/admin/metrics", method: "GET" },
           { id: "pnl", label: "PNL Details", icon: "📈", endpoint: "/api/admin/pnl-details?days=30", method: "GET" },
+        ],
+      },
+      {
+        key: "ga4-analytics",
+        label: "GA4 Analytics",
+        emoji: "📡",
+        component: GA4Analytics,
+        description: "Track GA4 admin activity and platform funnel events.",
+        help: "Use this page to monitor admin panel views, actions, errors, and conversion-related events.",
+        actions: [
+          {
+            id: "refresh",
+            label: "Refresh Analytics",
+            icon: "🔄",
+            endpoint: "/api/admin/analytics/ga4",
+            method: "GET",
+          },
         ],
       },
       {
@@ -711,6 +730,16 @@ export default function AdminPanel({ forceOwner = false }) {
     setMobileMenuOpen(false);
     setTabResetKey(0);
   }, []);
+
+  // Handle URL tab parameter
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get("tab");
+
+    if (tab && ALL_TABS.some((item) => item.key === tab)) {
+      setActive(tab);
+    }
+  }, [location.search]);
 
   const renderTab = useCallback(
     (tab) => {
