@@ -248,15 +248,10 @@ function MainAppRoutes() {
 
             {/* ✅ NEW: Admin Platform Routes - Reuse existing pages where possible */}
             <Route path="/admin-platform" element={<AdminPlatformLanding />} />
-            {/* Use existing Pricing page - it has admin tab */}
             <Route path="/admin-platform/pricing" element={<Navigate to="/pricing?product_type=admin" replace />} />
-            {/* Use existing Signup page - it handles admin via product_type */}
             <Route path="/admin-platform/signup" element={<Navigate to="/signup?product_type=admin" replace />} />
-            {/* Use existing Login page */}
             <Route path="/admin-platform/login" element={<Login />} />
-            {/* New demo page */}
             <Route path="/admin-platform/demo" element={<AdminPlatformDemo />} />
-            {/* New documentation page */}
             <Route path="/docs" element={<Documentation />} />
 
             {/* AUTH - Existing */}
@@ -321,12 +316,10 @@ function MainAppRoutes() {
             <Route path="/enterprise/branding" element={<RequireEnterpriseAdmin><BrandingPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/bot-controls" element={<RequireEnterpriseAdmin><BotControlsPage /></RequireEnterpriseAdmin>} />
 
-            {/* ✅ ADMIN - Existing admin panel for super admin */}
-            <Route path="/admin/enterprise-requests" element={<RequireAuth><RequireAdmin><EnterpriseRequestsPage /></RequireAdmin></RequireAuth>} />
+            {/* ✅ ADMIN - Routes in order of specificity (most specific first) */}
             
-            {/* ✅ NEW: Admin Dashboard for admin platform customers */}
+            {/* Admin Platform Customer Dashboard - specific paths */}
             <Route path="/admin/dashboard" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
-            {/* Nested admin routes */}
             <Route path="/admin/users" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/organizations" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/billing" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
@@ -342,6 +335,12 @@ function MainAppRoutes() {
             <Route path="/admin/promo-codes" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/system-health" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/enterprise" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+
+            {/* Enterprise Requests - Super Admin only */}
+            <Route path="/admin/enterprise-requests" element={<RequireAuth><RequireAdmin><EnterpriseRequestsPage /></RequireAdmin></RequireAuth>} />
+
+            {/* Super Admin Panel - catch-all for /admin/* (must come LAST) */}
+            <Route path="/admin/*" element={<RequireAuth><RequireAdmin><AdminPanel /></RequireAdmin></RequireAuth>} />
 
             {/* 404 */}
             <Route path="*" element={<NotFound />} />
