@@ -1,6 +1,6 @@
 // src/pages/admin/AdminReferral.jsx
 import React, { useState, useEffect } from 'react';
-import { FaUsers, FaUserPlus, FaDollarSign, FaChartBar, FaCopy, FaCheck, FaRefresh, FaSearch } from 'react-icons/fa';
+import { FaUsers, FaUserPlus, FaDollarSign, FaChartBar, FaCopy, FaCheck, FaSync, FaSearch } from 'react-icons/fa';
 import BotAPI from '../../utils/BotAPI';
 
 const AdminReferral = () => {
