@@ -1,6 +1,6 @@
 // src/pages/admin/AdminEmail.jsx
 import React, { useState } from 'react';
-import { FaEnvelope, FaPlus, FaEdit, FaTrash, FaPlay, FaPause, FaChartBar, FaUsers, FaRefresh, FaSearch } from 'react-icons/fa';
+import { FaEnvelope, FaPlus, FaEdit, FaTrash, FaPlay, FaPause, FaChartBar, FaUsers, FaSync, FaSearch } from 'react-icons/fa';
 
 const AdminEmail = () => {
   const [campaigns, setCampaigns] = useState([
