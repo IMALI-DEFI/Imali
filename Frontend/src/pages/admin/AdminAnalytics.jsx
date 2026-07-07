@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   FaChartLine, FaUsers, FaDollarSign, FaCalendar,
   FaArrowUp, FaArrowDown, FaUserPlus, FaEye,
-  FaDownload, FaFilter, FaRefresh, FaSpinner
+  FaDownload, FaFilter, FaSync, FaSpinner
 } from 'react-icons/fa';
 import BotAPI from '../../utils/BotAPI';
 
