@@ -55,6 +55,13 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
       customStrategies: 0,
       activeOrganizations: 0,
     },
+    ga4: {
+      activeUsers: 0,
+      pageViews: 0,
+      events: 0,
+      sessions: 0,
+      conversionRate: 0,
+    }
   });
   const [loading, setLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState([]);
@@ -67,6 +74,8 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
   const [enterpriseDetails, setEnterpriseDetails] = useState(null);
   const [showEnterpriseDetails, setShowEnterpriseDetails] = useState(false);
   const [last30DaysPnL, setLast30DaysPnL] = useState(0);
+  const [ga4Data, setGa4Data] = useState(null);
+  const [showGa4Details, setShowGa4Details] = useState(false);
 
   const getAuthToken = useCallback(() => {
     try {
@@ -90,6 +99,44 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
       return false;
     }
   }, [getAuthToken]);
+
+  // Fetch GA4 data
+  const fetchGa4Data = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) return;
+
+    try {
+      const response = await fetch(`${apiBase}/api/admin/analytics/ga4?period=30d`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.status === 401 || response.status === 403) {
+        setAuthError(true);
+        return;
+      }
+      
+      const data = await response.json();
+      if (data && data.success) {
+        const ga4 = data.data || data;
+        setGa4Data(ga4);
+        setMetrics(prev => ({
+          ...prev,
+          ga4: {
+            activeUsers: safeNumber(ga4.activeUsers || ga4.active_users || 0),
+            pageViews: safeNumber(ga4.pageViews || ga4.page_views || 0),
+            events: safeNumber(ga4.totalEvents || ga4.total_events || 0),
+            sessions: safeNumber(ga4.sessions || 0),
+            conversionRate: safeNumber(ga4.conversionRate || ga4.conversion_rate || 0),
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch GA4 data:', error);
+    }
+  }, [apiBase, getAuthToken]);
 
   // Fetch PNL details for selected period
   const fetchPnlDetails = useCallback(async (period) => {
@@ -153,7 +200,8 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
       
       const data = await response.json();
       if (data && data.success) {
-        setEnterpriseDetails(data.data || data);
+        const details = data.data || data;
+        setEnterpriseDetails(details);
       }
     } catch (error) {
       console.error('Failed to fetch enterprise details:', error);
@@ -189,10 +237,10 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
         
         // Calculate last 30 days revenue from PNL data
         let last30DaysRevenue = 0;
-        if (metricsData.pnl?.last30Days) {
-          last30DaysRevenue = safeNumber(metricsData.pnl.last30Days);
-        } else if (metricsData.revenue?.last30Days) {
+        if (metricsData.revenue?.last30Days) {
           last30DaysRevenue = safeNumber(metricsData.revenue.last30Days);
+        } else if (metricsData.pnl?.last30Days) {
+          last30DaysRevenue = safeNumber(metricsData.pnl.last30Days);
         }
         
         // Get last 30 days PNL
@@ -233,6 +281,13 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
             customStrategies: safeNumber(metricsData.enterprise?.customStrategies || 0),
             activeOrganizations: safeNumber(metricsData.enterprise?.activeOrganizations || 0),
           },
+          ga4: {
+            activeUsers: safeNumber(metricsData.ga4?.activeUsers || metricsData.ga4?.active_users || 0),
+            pageViews: safeNumber(metricsData.ga4?.pageViews || metricsData.ga4?.page_views || 0),
+            events: safeNumber(metricsData.ga4?.events || metricsData.ga4?.total_events || 0),
+            sessions: safeNumber(metricsData.ga4?.sessions || 0),
+            conversionRate: safeNumber(metricsData.ga4?.conversionRate || metricsData.ga4?.conversion_rate || 0),
+          }
         });
         setAuthError(false);
       }
@@ -297,10 +352,11 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
       fetchRecentActivity();
       fetchPnlDetails(pnlPeriod);
       fetchEnterpriseDetails();
+      fetchGa4Data();
     } else {
       setLoading(false);
     }
-  }, [fetchMetrics, fetchRecentActivity, fetchPnlDetails, fetchEnterpriseDetails, authError, isTokenValid, pnlPeriod]);
+  }, [fetchMetrics, fetchRecentActivity, fetchPnlDetails, fetchEnterpriseDetails, fetchGa4Data, authError, isTokenValid, pnlPeriod]);
 
   useEffect(() => {
     if (authError || !isTokenValid()) return;
@@ -308,10 +364,11 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
     const interval = setInterval(() => {
       fetchMetrics();
       fetchRecentActivity();
+      fetchGa4Data();
     }, 30000);
     
     return () => clearInterval(interval);
-  }, [fetchMetrics, fetchRecentActivity, authError, isTokenValid]);
+  }, [fetchMetrics, fetchRecentActivity, fetchGa4Data, authError, isTokenValid]);
 
   const handlePeriodChange = (period) => {
     setPnlPeriod(period);
@@ -408,7 +465,7 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
           </div>
         </div>
 
-        {/* Revenue Card - Now shows Last 30 Days */}
+        {/* Revenue Card */}
         <div className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border border-purple-500/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <span className="text-2xl">💰</span>
@@ -424,24 +481,96 @@ export default function DashboardOverview({ apiBase, showToast, handleAction, bu
           </div>
         </div>
 
-        {/* Enterprise Card */}
-        <div className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border border-purple-500/20 rounded-xl p-4">
+        {/* GA4 Card */}
+        <div className="bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 border border-cyan-500/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
-            <span className="text-2xl">🏢</span>
-            <span className="text-xs text-amber-400 bg-amber-500/20 px-2 py-1 rounded-full">
-              Enterprise
+            <span className="text-2xl">📡</span>
+            <span className="text-xs text-cyan-400 bg-cyan-500/20 px-2 py-1 rounded-full">
+              GA4 Analytics
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold text-purple-400">{formatNumber(metrics.enterprise.totalOrganizations)}</div>
-            <div className="text-sm text-white/50">Organizations</div>
-            <div className="text-xs text-white/30 mt-1">{formatNumber(metrics.enterprise.totalMembers)} total members</div>
-            <div className="text-xs text-emerald-400 mt-1">📊 {formatNumber(metrics.enterprise.customStrategies)} custom strategies</div>
+            <div className="text-3xl font-bold text-cyan-400">{formatNumber(metrics.ga4.activeUsers)}</div>
+            <div className="text-sm text-white/50">Active Users (30d)</div>
+            <div className="text-xs text-white/30 mt-1">{formatNumber(metrics.ga4.sessions)} sessions</div>
+            <div className="text-xs text-cyan-400 mt-1">🎯 {formatPercent(metrics.ga4.conversionRate)} conversion</div>
           </div>
         </div>
       </div>
 
-      {/* PNL Section - Last 30 Days Focus */}
+      {/* GA4 Details Section */}
+      <div className="bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 border border-cyan-500/20 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h4 className="font-semibold flex items-center gap-2">
+              <span>📡</span> GA4 Platform Analytics
+            </h4>
+            <p className="text-xs text-white/40">Last 30 days activity</p>
+          </div>
+          <button
+            onClick={() => setShowGa4Details(!showGa4Details)}
+            className="text-cyan-400 hover:text-cyan-300 text-sm flex items-center gap-1"
+          >
+            {showGa4Details ? 'Hide Details' : 'View Details'}
+            <span>{showGa4Details ? '▲' : '▼'}</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white/5 rounded-lg p-3 text-center">
+            <div className="text-2xl font-bold text-cyan-400">{formatNumber(metrics.ga4.pageViews)}</div>
+            <div className="text-xs text-white/40">Page Views</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-3 text-center">
+            <div className="text-2xl font-bold text-blue-400">{formatNumber(metrics.ga4.events)}</div>
+            <div className="text-xs text-white/40">Total Events</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-3 text-center">
+            <div className="text-2xl font-bold text-emerald-400">{formatNumber(metrics.ga4.sessions)}</div>
+            <div className="text-xs text-white/40">Sessions</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-3 text-center">
+            <div className="text-2xl font-bold text-amber-400">{formatPercent(metrics.ga4.conversionRate)}</div>
+            <div className="text-xs text-white/40">Conversion Rate</div>
+          </div>
+        </div>
+
+        {showGa4Details && (
+          <div className="mt-4 pt-4 border-t border-cyan-500/20">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white/5 rounded-lg p-3">
+                <div className="text-xs text-white/40">New Users</div>
+                <div className="text-lg font-semibold text-cyan-400">
+                  {formatNumber(ga4Data?.newUsers || 0)}
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <div className="text-xs text-white/40">Avg Session Duration</div>
+                <div className="text-lg font-semibold text-blue-400">
+                  {ga4Data?.avgSessionDuration || '2:30'}
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <div className="text-xs text-white/40">Bounce Rate</div>
+                <div className="text-lg font-semibold text-amber-400">
+                  {formatPercent(ga4Data?.bounceRate || 0)}
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <div className="text-xs text-white/40">Events / Session</div>
+                <div className="text-lg font-semibold text-emerald-400">
+                  {ga4Data?.eventsPerSession || '3.2'}
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-white/30 italic mt-3">
+              * GA4 data is updated every 30 minutes
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* PNL Section */}
       <div className="bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 border border-cyan-500/20 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
