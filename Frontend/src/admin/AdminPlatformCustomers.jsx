@@ -4,7 +4,7 @@ import {
   FaCubes, FaUsers, FaSearch, FaEye, FaEdit, 
   FaTrash, FaSpinner, FaFilter, FaBuilding,
   FaCreditCard, FaCalendar, FaChevronLeft, FaChevronRight,
-  FaDownload, FaRefresh, FaUserCircle, FaShieldAlt,
+  FaDownload, FaSync, FaUserCircle, FaShieldAlt,
   FaBan, FaCheck, FaEnvelope
 } from 'react-icons/fa';
 
@@ -196,7 +196,7 @@ const AdminPlatformCustomers = ({ showToast }) => {
             onClick={() => fetchCustomers(1)}
             className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm hover:bg-white/10 transition flex items-center gap-2"
           >
-            <FaRefresh /> Refresh
+            <FaSync /> Refresh
           </button>
           <button className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm hover:bg-white/10 transition flex items-center gap-2">
             <FaDownload /> Export
