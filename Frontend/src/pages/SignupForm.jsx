@@ -1,4 +1,4 @@
-// src/pages/SignupForm.jsx - REWRITTEN (Simplified: Starter/Pro/Elite + profit share + token context)
+// src/pages/SignupForm.jsx - MODIFIED (Added product_type and organization fields)
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -41,14 +41,49 @@ const TIERS = {
   },
 };
 
+// NEW: Admin platform tiers
+const ADMIN_TIERS = {
+  professional: {
+    name: "Professional",
+    price: "$49",
+    period: "/month",
+    icon: "💼",
+    requiresPayment: true,
+    redirectTo: "/admin/dashboard",
+    stripePriceId: "price_admin_professional",
+  },
+  business: {
+    name: "Business",
+    price: "$99",
+    period: "/month",
+    icon: "🏢",
+    requiresPayment: true,
+    redirectTo: "/admin/dashboard",
+    stripePriceId: "price_admin_business",
+  },
+  enterprise: {
+    name: "Enterprise",
+    price: "Custom",
+    period: "",
+    icon: "🏛️",
+    requiresPayment: false,
+    redirectTo: "/admin/dashboard",
+    stripePriceId: null,
+  },
+};
+
 export default function SignupForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const { signup } = useAuth();
 
-  // ✅ FIX: Read tier from URL params → route state → localStorage → default
+  // Read tier and product_type from URL
   const params = new URLSearchParams(location.search);
   const routeTier = location.pathname.split("/").pop();
+  
+  // MODIFIED: Check for product_type
+  const urlProductType = params.get("product_type") || params.get("product");
+  const isAdminSignup = urlProductType === "admin" || location.pathname.includes("/admin-platform/signup");
   
   const selectedTier =
     params.get("tier") ||
@@ -58,15 +93,20 @@ export default function SignupForm() {
     localStorage.getItem("IMALI_SELECTED_TIER") ||
     "starter";
 
-  const validTiers = Object.keys(TIERS);
-  const initialTier = validTiers.includes(selectedTier) ? selectedTier : "starter";
+  // Use admin tiers if admin signup
+  const availableTiers = isAdminSignup ? ADMIN_TIERS : TIERS;
+  const validTiers = Object.keys(availableTiers);
+  const initialTier = validTiers.includes(selectedTier) ? selectedTier : (isAdminSignup ? "professional" : "starter");
 
-  // ✅ FIX: Save tier to localStorage immediately
+  // Save tier and product_type to localStorage
   useEffect(() => {
     if (initialTier) {
       localStorage.setItem("IMALI_SELECTED_TIER", initialTier);
     }
-  }, [initialTier]);
+    if (isAdminSignup) {
+      localStorage.setItem("IMALI_PRODUCT_TYPE", "admin");
+    }
+  }, [initialTier, isAdminSignup]);
 
   // Billing model & token tier from pricing page state
   const initialBillingModel = location.state?.billingModel || 
@@ -79,6 +119,10 @@ export default function SignupForm() {
     localStorage.getItem("IMALI_TOKEN_TIER") || "none";
 
   const [form, setForm] = useState({
+    // NEW: Admin platform fields
+    name: "",
+    company: "",
+    organizationName: "",
     email: "",
     password: "",
     confirmPassword: "",
@@ -87,19 +131,20 @@ export default function SignupForm() {
     billingModel: initialBillingModel,
     profitSharePct: initialProfitSharePct,
     tokenTier: initialTokenTier,
+    productType: isAdminSignup ? "admin" : "trading",
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ FIX: Sync tier from URL changes and save to localStorage
+  // Sync tier from URL changes
   useEffect(() => {
-    const newTier = validTiers.includes(selectedTier) ? selectedTier : "starter";
+    const newTier = validTiers.includes(selectedTier) ? selectedTier : (isAdminSignup ? "professional" : "starter");
     setForm(f => ({ ...f, tier: newTier }));
     localStorage.setItem("IMALI_SELECTED_TIER", newTier);
-  }, [selectedTier]);
+  }, [selectedTier, validTiers, isAdminSignup]);
 
-  // ✅ FIX: Sync billing context from location state and save to localStorage
+  // Sync billing context from location state
   useEffect(() => {
     const billingModel = location.state?.billingModel || "fixed";
     const profitSharePct = location.state?.profitSharePct || null;
@@ -120,11 +165,13 @@ export default function SignupForm() {
   const handleTierChange = (tierId) => {
     setForm(f => ({ ...f, tier: tierId }));
     localStorage.setItem("IMALI_SELECTED_TIER", tierId);
-    navigate(`/signup?tier=${tierId}`, { 
+    const basePath = isAdminSignup ? "/admin-platform/signup" : "/signup";
+    navigate(`${basePath}?tier=${tierId}&product_type=${form.productType}`, { 
       replace: true, 
       state: { 
         ...location.state,
         tier: tierId,
+        product_type: form.productType,
       } 
     });
   };
@@ -135,6 +182,13 @@ export default function SignupForm() {
     if (form.password.length < 8) return "Password must be at least 8 characters";
     if (form.password !== form.confirmPassword) return "Passwords do not match";
     if (!form.acceptTerms) return "You must accept the Terms and Privacy Policy";
+    
+    // NEW: Admin platform validations
+    if (isAdminSignup) {
+      if (!form.name.trim()) return "Full name is required";
+      if (!form.company.trim()) return "Company name is required";
+    }
+    
     return null;
   };
 
@@ -152,13 +206,15 @@ export default function SignupForm() {
     setError("");
 
     try {
-      // ✅ FIX: Save all context before signup
+      // Save all context before signup
       localStorage.setItem("IMALI_SELECTED_TIER", form.tier);
       localStorage.setItem("IMALI_BILLING_MODEL", form.billingModel);
+      localStorage.setItem("IMALI_PRODUCT_TYPE", form.productType);
       if (form.profitSharePct) localStorage.setItem("IMALI_PROFIT_SHARE_PCT", String(form.profitSharePct));
       if (form.tokenTier) localStorage.setItem("IMALI_TOKEN_TIER", form.tokenTier);
 
-      const result = await signup({
+      // MODIFIED: Include admin platform fields in signup
+      const signupData = {
         email: form.email.trim().toLowerCase(),
         password: form.password,
         tier: form.tier,
@@ -166,7 +222,15 @@ export default function SignupForm() {
         billingModel: form.billingModel,
         profitSharePct: form.profitSharePct,
         tokenTier: form.tokenTier,
-      });
+        product_type: form.productType,
+        ...(isAdminSignup && {
+          name: form.name.trim(),
+          company: form.company.trim(),
+          organization_name: form.company.trim(), // Map to organization
+        }),
+      };
+
+      const result = await signup(signupData);
 
       if (!result?.success) {
         setError(result?.error || "Signup failed. Please try again.");
@@ -174,15 +238,22 @@ export default function SignupForm() {
         return;
       }
 
-      // ✅ FIX: Determine redirect path with tier in URL
+      // Determine redirect path
       let redirectPath;
 
       if (result.requiresApproval || form.tier === "enterprise") {
         redirectPath = "/enterprise-pending";
+      } else if (isAdminSignup) {
+        // NEW: Admin platform users go to admin dashboard
+        const tierInfo = ADMIN_TIERS[form.tier];
+        if (tierInfo?.requiresPayment) {
+          redirectPath = `/billing?tier=${form.tier}&product_type=admin`;
+        } else {
+          redirectPath = "/admin/dashboard";
+        }
       } else if (form.tier === "starter") {
         redirectPath = "/dashboard";
       } else if (TIERS[form.tier]?.requiresPayment) {
-        // ✅ FIX: Paid tiers → go to billing with tier in URL and state
         redirectPath = `/billing?tier=${form.tier}&email=${encodeURIComponent(form.email.trim().toLowerCase())}`;
       } else {
         redirectPath = result.redirectTo || TIERS[form.tier]?.redirectTo || "/dashboard";
@@ -195,6 +266,7 @@ export default function SignupForm() {
           billingModel: form.billingModel,
           profitSharePct: form.profitSharePct,
           tokenTier: form.tokenTier,
+          product_type: form.productType,
           from: "signup",
         },
       });
@@ -204,9 +276,9 @@ export default function SignupForm() {
     }
   };
 
-  const currentTier = TIERS[form.tier] || TIERS.starter;
-
-  // ✅ FIX: Show loading while determining tier
+  const currentTier = availableTiers[form.tier] || availableTiers[Object.keys(availableTiers)[0]];
+  
+  // Show loading while determining tier
   if (!form.tier) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 to-black">
@@ -220,28 +292,27 @@ export default function SignupForm() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="text-5xl mb-3">{currentTier.icon}</div>
-          <h1 className="text-3xl font-bold text-white">Create your account</h1>
+          <h1 className="text-3xl font-bold text-white">
+            {isAdminSignup ? "Create your admin account" : "Create your account"}
+          </h1>
           <p className="text-gray-400 mt-2">
             {currentTier.name} Plan
             {form.billingModel === "profit_share" && form.profitSharePct
               ? ` · ${form.profitSharePct}% profit share`
               : ` · ${currentTier.price}${currentTier.period}`}
           </p>
-          {/* ✅ FIX: Show tier indicator */}
-          <p className="text-xs text-gray-500 mt-1">
-            {form.tier === "starter" 
-              ? "No payment required" 
-              : form.tier === "enterprise" 
-              ? "Custom pricing" 
-              : "Billing setup required"}
-          </p>
+          {isAdminSignup && (
+            <p className="text-xs text-purple-400 mt-1">
+              <i className="fas fa-cubes mr-1"></i> Admin Platform
+            </p>
+          )}
         </div>
 
         {/* Tier Selection */}
         <div className="mb-6">
           <p className="text-sm text-gray-400 mb-3">Select your plan:</p>
-          <div className="grid grid-cols-4 gap-2">
-            {Object.entries(TIERS).map(([id, tier]) => (
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(availableTiers).map(([id, tier]) => (
               <button
                 key={id}
                 type="button"
@@ -259,16 +330,6 @@ export default function SignupForm() {
           </div>
         </div>
 
-        {/* Token discount hint if applicable */}
-        {form.tokenTier && form.tokenTier !== "none" && form.tier !== "starter" && form.tier !== "enterprise" && (
-          <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
-            🎉 IMALI token discount active –{" "}
-            {form.billingModel === "profit_share"
-              ? `profit share reduced accordingly`
-              : `${form.tokenTier === "bronze" ? "5%" : form.tokenTier === "silver" ? "10%" : form.tokenTier === "gold" ? "15%" : "20%"} off monthly price`}
-          </div>
-        )}
-
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur">
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
@@ -277,6 +338,30 @@ export default function SignupForm() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* NEW: Admin platform fields */}
+            {isAdminSignup && (
+              <>
+                <input
+                  type="text"
+                  required
+                  placeholder="Full name"
+                  value={form.name}
+                  onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  disabled={loading}
+                />
+                <input
+                  type="text"
+                  required
+                  placeholder="Company name"
+                  value={form.company}
+                  onChange={(e) => setForm(f => ({ ...f, company: e.target.value }))}
+                  className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  disabled={loading}
+                />
+              </>
+            )}
+            
             <input
               type="email"
               required
@@ -331,6 +416,8 @@ export default function SignupForm() {
             >
               {loading
                 ? "Creating account..."
+                : isAdminSignup
+                ? `Start ${currentTier.name} Plan →`
                 : form.tier === "starter"
                 ? "Start Free Trial →"
                 : form.tier === "enterprise"
@@ -342,11 +429,23 @@ export default function SignupForm() {
 
         <p className="mt-6 text-center text-gray-400 text-sm">
           Already have an account?{" "}
-          <Link to="/login" className="text-emerald-400 underline">Log in</Link>
+          <Link to={isAdminSignup ? "/admin-platform/login" : "/login"} className="text-emerald-400 underline">
+            Log in
+          </Link>
         </p>
 
         <div className="mt-6 text-center text-xs text-gray-500">
-          {form.tier === "starter" ? (
+          {isAdminSignup ? (
+            <>
+              <span>💼 Full admin platform access</span>
+              <span className="mx-2">•</span>
+              <span>👥 User & organization management</span>
+              <span className="mx-2">•</span>
+              <span>📊 Analytics & reports</span>
+              <span className="mx-2">•</span>
+              <span>🔒 Enterprise-grade security</span>
+            </>
+          ) : (
             <>
               <span>✅ 7‑day free trial</span>
               <span className="mx-2">•</span>
@@ -355,30 +454,6 @@ export default function SignupForm() {
               <span>🔒 No credit card required</span>
               <span className="mx-2">•</span>
               <span>🎮 Practice trading immediately</span>
-            </>
-          ) : form.tier === "enterprise" ? (
-            <>
-              <span>🏢 Custom enterprise pricing</span>
-              <span className="mx-2">•</span>
-              <span>👥 Team management</span>
-              <span className="mx-2">•</span>
-              <span>🎨 Custom branding</span>
-              <span className="mx-2">•</span>
-              <span>📊 Advanced analytics</span>
-            </>
-          ) : (
-            <>
-              <span>💳 Credit card required</span>
-              <span className="mx-2">•</span>
-              <span>🔄 Cancel anytime</span>
-              <span className="mx-2">•</span>
-              <span>🚀 Full live trading access</span>
-              {form.billingModel === "profit_share" && (
-                <>
-                  <span className="mx-2">•</span>
-                  <span>💡 Profit share billing</span>
-                </>
-              )}
             </>
           )}
         </div>
