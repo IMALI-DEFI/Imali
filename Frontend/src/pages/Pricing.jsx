@@ -6,11 +6,13 @@ import {
   FaCheck, FaLock, FaRobot, FaChartLine, FaWallet, FaCrown,
   FaRocket, FaCoins, FaQuestionCircle, FaStar, FaBuilding,
   FaUsers, FaShieldAlt, FaGift, FaPercentage, FaArrowRight,
+  FaCubes, FaDatabase, FaServer, FaUserCog,
 } from "react-icons/fa";
 
 import nftStarter from "../assets/images/nfts/nft-starter.png";
 import nftPro from "../assets/images/nfts/nft-pro.png";
 import nftElite from "../assets/images/nfts/nft-elite.png";
+import nftAdminBot from "../assets/images/nfts/nft-admin-bot.png";
 
 const ENTERPRISE_IMAGE = "/enterprise.PNG";
 
@@ -45,8 +47,9 @@ const plans = [
     ctaLoggedIn: "Current Plan",
     color: "from-emerald-500/20 to-teal-500/10",
     buttonColor: "from-emerald-600 to-teal-600",
+    category: "trading",
     features: [
-      "\$1,000 paper trading demo",
+      "$1,000 paper trading demo",
       "Test all bots risk‑free",
       "Stock & crypto preview",
       "No credit card required",
@@ -67,6 +70,7 @@ const plans = [
     color: "from-blue-600/20 to-indigo-500/10",
     buttonColor: "from-blue-600 to-indigo-600",
     popular: true,
+    category: "trading",
     features: [
       "Live stock trading (Alpaca)",
       "Live crypto spot (OKX)",
@@ -90,6 +94,7 @@ const plans = [
     ctaLoggedIn: "Upgrade to Elite",
     color: "from-purple-600/20 to-pink-500/10",
     buttonColor: "from-purple-600 to-pink-600",
+    category: "trading",
     features: [
       "Everything in Pro",
       "DEX sniper (Uniswap, QuickSwap)",
@@ -115,6 +120,7 @@ const plans = [
     color: "from-indigo-600/20 to-purple-500/10",
     buttonColor: "from-indigo-600 to-purple-600",
     isEnterprise: true,
+    category: "trading",
     features: [
       "Everything in Elite",
       "Custom branded dashboard",
@@ -123,6 +129,94 @@ const plans = [
       "Custom bot development",
       "White‑label options",
       "SLAs & priority support",
+    ],
+    locked: [],
+  },
+];
+
+// ---------- NEW: Admin Platform Plans ----------
+const adminPlans = [
+  {
+    id: "admin_professional",
+    name: "Professional",
+    image: nftAdminBot,
+    alt: "Admin Platform Professional",
+    price: 49,
+    profitShare: null,
+    subtitle: "Everything you need in an admin panel. Already built.",
+    cta: "Start Free Trial",
+    ctaLoggedIn: "Current Plan",
+    color: "from-purple-600/20 to-blue-500/10",
+    buttonColor: "from-purple-600 to-blue-600",
+    category: "admin",
+    stripePriceId: "price_admin_professional",
+    features: [
+      "Up to 10 users",
+      "5 organizations",
+      "Basic analytics",
+      "User management",
+      "Role-based permissions",
+      "Email support",
+      "API access",
+      "Billing management",
+    ],
+    locked: ["Advanced analytics", "Audit logs", "Priority support", "Webhooks"],
+  },
+  {
+    id: "admin_business",
+    name: "Business",
+    image: nftAdminBot,
+    alt: "Admin Platform Business",
+    price: 99,
+    profitShare: null,
+    subtitle: "Full admin platform for growing teams.",
+    cta: "Start Free Trial",
+    ctaLoggedIn: "Upgrade to Business",
+    color: "from-indigo-600/20 to-purple-500/10",
+    buttonColor: "from-indigo-600 to-purple-600",
+    popular: true,
+    category: "admin",
+    stripePriceId: "price_admin_business",
+    features: [
+      "Up to 50 users",
+      "25 organizations",
+      "Advanced analytics",
+      "Priority support",
+      "API + webhooks",
+      "Audit logs",
+      "Marketing tools",
+      "Newsletter management",
+      "Social media manager",
+      "Promo codes",
+    ],
+    locked: ["Unlimited users", "Custom branding", "SSO/SAML", "Dedicated support"],
+  },
+  {
+    id: "admin_enterprise",
+    name: "Enterprise",
+    image: nftAdminBot,
+    alt: "Admin Platform Enterprise",
+    price: "Custom",
+    profitShare: null,
+    subtitle: "Enterprise-grade admin platform.",
+    cta: "Contact Sales",
+    ctaLoggedIn: "Contact Sales",
+    color: "from-amber-600/20 to-orange-500/10",
+    buttonColor: "from-amber-600 to-orange-600",
+    isEnterprise: true,
+    category: "admin",
+    stripePriceId: null,
+    features: [
+      "Unlimited users",
+      "Unlimited organizations",
+      "Custom analytics",
+      "24/7 dedicated support",
+      "SSO & SAML",
+      "On-premise option",
+      "Custom branding",
+      "White-label",
+      "Dedicated account manager",
+      "SLA guarantees",
     ],
     locked: [],
   },
@@ -143,7 +237,7 @@ const faqs = [
   },
   {
     q: "How does profit sharing work?",
-    a: "You keep 100% of your first 3% monthly return. We only take a share of profits above that threshold. \$0 when you don't profit.",
+    a: "You keep 100% of your first 3% monthly return. We only take a share of profits above that threshold. $0 when you don't profit.",
   },
   {
     q: "Is my API key safe?",
@@ -153,10 +247,18 @@ const faqs = [
     q: "What's the IMALI token utility?",
     a: "IMALI tokens unlock fee discounts (up to 20%), staking rewards, governance voting, and exclusive NFT benefits.",
   },
+  {
+    q: "What is the Admin Platform?",
+    a: "A complete admin panel solution with user management, organizations, billing, analytics, permissions, and more. Ready to use out of the box.",
+  },
+  {
+    q: "Can I use both Trading and Admin Platform?",
+    a: "Yes! You can have separate subscriptions for trading and admin platform, or use them together in one organization.",
+  },
 ];
 
 // ==================== PLAN CARD ====================
-function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan }) {
+function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdmin }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -197,6 +299,7 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan }) {
       billingModel,
       profitSharePct: billingModel === "profit_share" ? profitSharePct : null,
       tokenTier,
+      product_type: isAdmin ? "admin" : "trading",
     };
 
     // ✅ If it's the current plan, just go to dashboard
@@ -206,12 +309,14 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan }) {
     }
 
     if (!isLoggedIn) {
-      navigate(`/signup?plan=${plan.id}&tier=${plan.id}`, { 
+      const signupPath = isAdmin ? "/admin-platform/signup" : "/signup";
+      navigate(`${signupPath}?plan=${plan.id}&tier=${plan.id}&product_type=${isAdmin ? "admin" : "trading"}`, { 
         state: { ...navState, from: "pricing" }
       });
     } else {
-      // ✅ Navigate to billing with the tier they want (not activated yet)
-      navigate(`/billing?tier=${plan.id}`, { 
+      // ✅ Navigate to billing with the tier they want
+      const billingPath = isAdmin ? `/billing?tier=${plan.id}&product_type=admin` : `/billing?tier=${plan.id}`;
+      navigate(billingPath, { 
         state: { ...navState, from: "pricing", updateCard: true }
       });
     }
@@ -236,6 +341,11 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan }) {
           ✓ Current Plan
         </div>
       )}
+      {isAdmin && (
+        <div className="absolute -top-3 left-4 rounded-full bg-purple-500 px-3 py-1 text-xs font-extrabold text-white shadow-lg">
+          <FaCubes className="inline mr-1" /> Admin
+        </div>
+      )}
 
       <div className="flex justify-center">
         <img src={plan.image} alt={plan.alt} className="h-32 w-32 rounded-2xl object-cover shadow-lg ring-2 ring-white/20" loading="lazy" />
@@ -244,7 +354,7 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan }) {
       <h3 className="mt-4 text-center text-2xl font-extrabold text-white">{plan.name}</h3>
 
       <div className="mt-2 text-center">
-        {billingModel === "profit_share" && plan.id !== "starter" && plan.id !== "enterprise" ? (
+        {billingModel === "profit_share" && plan.id !== "starter" && plan.id !== "enterprise" && !isAdmin ? (
           <div>
             <span className="text-4xl font-extrabold text-white">{profitSharePct}%</span>
             <p className="text-sm text-white/70">of profits</p>
@@ -264,7 +374,7 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan }) {
           </>
         )}
 
-        {tokenTier !== "none" && plan.id !== "starter" && plan.id !== "enterprise" && (
+        {tokenTier !== "none" && plan.id !== "starter" && plan.id !== "enterprise" && !isAdmin && (
           <div className="mt-1 text-xs text-amber-400">
             {billingModel === "profit_share"
               ? `${profitBoost}% reduction with ${TOKEN_DISCOUNTS[tokenTier].label}`
@@ -342,16 +452,21 @@ export default function Pricing() {
   const [tokenTier, setTokenTier] = useState("none");
   const [openFaq, setOpenFaq] = useState(null);
   const [selectedTier, setSelectedTier] = useState(null);
+  const [activeTab, setActiveTab] = useState("trading"); // "trading" or "admin"
 
   // ✅ Get actual user tier from backend (not localStorage)
   const actualUserTier = user?.tier || "starter";
 
-  // ✅ Check for tier in URL params on load (for highlighting)
+  // ✅ Check for tier in URL params on load
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const selectedTier = params.get("selected") || params.get("tier");
+    const productType = params.get("product_type");
     if (selectedTier) {
       setSelectedTier(selectedTier);
+    }
+    if (productType === "admin") {
+      setActiveTab("admin");
     }
   }, [location.search]);
 
@@ -373,6 +488,9 @@ export default function Pricing() {
     setSelectedTier(planId);
   };
 
+  const currentPlans = activeTab === "admin" ? adminPlans : plans;
+  const isAdminTab = activeTab === "admin";
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
@@ -383,11 +501,13 @@ export default function Pricing() {
           </div>
 
           <h1 className="mt-6 text-4xl font-extrabold leading-tight md:text-6xl">
-            Start Free. <span className="text-emerald-400">Practice First.</span> Go Live When Ready.
+            Choose Your <span className="text-emerald-400">Platform</span>
           </h1>
 
           <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-slate-300">
-            IMALI lets you learn with paper trading, then connect OKX, Alpaca, or MetaMask for live trading and DeFi features.
+            {activeTab === "trading" 
+              ? "Start with paper trading, then go live with OKX, Alpaca, or MetaMask."
+              : "Everything you need in an admin panel. Already built. User management, billing, analytics, and more."}
           </p>
 
           {/* ✅ Show current plan status */}
@@ -398,30 +518,58 @@ export default function Pricing() {
             </div>
           )}
 
-          {/* Billing Model Toggle */}
+          {/* Product Type Tabs */}
           <div className="mt-8 flex justify-center gap-2">
-            <button onClick={() => setBillingModel("fixed")} className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "fixed" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
-              Fixed Monthly
+            <button 
+              onClick={() => setActiveTab("trading")} 
+              className={`px-6 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
+                activeTab === "trading" 
+                  ? "bg-emerald-600 text-white shadow-lg" 
+                  : "bg-white/5 text-white/60 hover:bg-white/10"
+              }`}
+            >
+              <FaRobot /> Trading Platform
             </button>
-            <button onClick={() => setBillingModel("profit_share")} className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "profit_share" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
-              Profit Share
+            <button 
+              onClick={() => setActiveTab("admin")} 
+              className={`px-6 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
+                activeTab === "admin" 
+                  ? "bg-purple-600 text-white shadow-lg" 
+                  : "bg-white/5 text-white/60 hover:bg-white/10"
+              }`}
+            >
+              <FaCubes /> Admin Platform
             </button>
           </div>
 
-          {/* Token Tier Selector */}
-          <div className="mt-4 flex justify-center items-center gap-3 text-sm">
-            <span className="text-white/50">IMALI Token:</span>
-            <select value={tokenTier} onChange={(e) => setTokenTier(e.target.value)} className="bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-white">
-              {Object.entries(TOKEN_DISCOUNTS).map(([key, val]) => (
-                <option key={key} value={key}>{val.label} ({val.discount}% off)</option>
-              ))}
-            </select>
-          </div>
+          {/* Billing Model Toggle - Only for Trading */}
+          {activeTab === "trading" && (
+            <div className="mt-4 flex justify-center gap-2">
+              <button onClick={() => setBillingModel("fixed")} className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "fixed" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
+                Fixed Monthly
+              </button>
+              <button onClick={() => setBillingModel("profit_share")} className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "profit_share" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
+                Profit Share
+              </button>
+            </div>
+          )}
+
+          {/* Token Tier Selector - Only for Trading */}
+          {activeTab === "trading" && (
+            <div className="mt-4 flex justify-center items-center gap-3 text-sm">
+              <span className="text-white/50">IMALI Token:</span>
+              <select value={tokenTier} onChange={(e) => setTokenTier(e.target.value)} className="bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-white">
+                {Object.entries(TOKEN_DISCOUNTS).map(([key, val]) => (
+                  <option key={key} value={key}>{val.label} ({val.discount}% off)</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Plans Grid */}
-        <div className="mt-12 grid gap-6 lg:grid-cols-4">
-          {plans.map((plan) => (
+        <div className="mt-12 grid gap-6 lg:grid-cols-3">
+          {currentPlans.map((plan) => (
             <div key={plan.id} id={`plan-${plan.id}`}>
               <PlanCard 
                 plan={plan} 
@@ -429,97 +577,167 @@ export default function Pricing() {
                 tokenTier={tokenTier} 
                 userTier={actualUserTier}
                 onSelectPlan={handleSelectPlan}
+                isAdmin={isAdminTab}
               />
             </div>
           ))}
         </div>
 
-        {/* IMALI Token Utility */}
-        <div className="mt-16 rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-600/10 to-teal-600/10 p-8">
-          <div className="flex flex-col items-center text-center">
-            <FaCoins className="text-6xl text-emerald-400" />
-            <h2 className="mt-4 text-3xl font-extrabold">IMALI Token Utility</h2>
-            <p className="mt-3 max-w-2xl text-slate-300">Hold IMALI tokens to unlock platform discounts, governance rights, and exclusive benefits.</p>
-          </div>
-          <div className="mt-8 grid gap-6 md:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
-              <FaPercentage className="mx-auto text-3xl text-emerald-400" />
-              <h3 className="mt-3 text-xl font-bold">Fee Discounts</h3>
-              <p className="mt-2 text-sm text-slate-300">Up to 20% discount on trading fees when paying with IMALI tokens.</p>
+        {/* Admin Platform Features Section */}
+        {activeTab === "admin" && (
+          <div className="mt-12 rounded-3xl border border-purple-500/20 bg-gradient-to-br from-purple-600/10 to-blue-600/10 p-8">
+            <div className="flex flex-col items-center text-center">
+              <FaCubes className="text-6xl text-purple-400" />
+              <h2 className="mt-4 text-3xl font-extrabold">Admin Platform Features</h2>
+              <p className="mt-3 max-w-2xl text-slate-300">Everything you need to manage your business in one place.</p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
-              <FaStar className="mx-auto text-3xl text-amber-400" />
-              <h3 className="mt-3 text-xl font-bold">Staking Rewards</h3>
-              <p className="mt-2 text-sm text-slate-300">Stake IMALI tokens to earn platform revenue share (up to 12% APY).</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
-              <FaUsers className="mx-auto text-3xl text-purple-400" />
-              <h3 className="mt-3 text-xl font-bold">DAO Governance</h3>
-              <p className="mt-2 text-sm text-slate-300">Vote on platform features, fee structures, and treasury allocation.</p>
+            <div className="mt-8 grid gap-4 md:grid-cols-4">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center">
+                <FaUsers className="mx-auto text-2xl text-purple-400" />
+                <p className="mt-2 text-sm font-semibold">User Management</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center">
+                <FaBuilding className="mx-auto text-2xl text-blue-400" />
+                <p className="mt-2 text-sm font-semibold">Organizations</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center">
+                <FaChartLine className="mx-auto text-2xl text-emerald-400" />
+                <p className="mt-2 text-sm font-semibold">Analytics & Reports</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center">
+                <FaShieldAlt className="mx-auto text-2xl text-amber-400" />
+                <p className="mt-2 text-sm font-semibold">Permissions & Audit</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center">
+                <FaWallet className="mx-auto text-2xl text-cyan-400" />
+                <p className="mt-2 text-sm font-semibold">Billing Management</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center">
+                <FaGift className="mx-auto text-2xl text-pink-400" />
+                <p className="mt-2 text-sm font-semibold">Promo Codes</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center">
+                <FaUserCog className="mx-auto text-2xl text-indigo-400" />
+                <p className="mt-2 text-sm font-semibold">Referral Program</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center">
+                <FaServer className="mx-auto text-2xl text-red-400" />
+                <p className="mt-2 text-sm font-semibold">System Health</p>
+              </div>
             </div>
           </div>
-          <div className="mt-8 text-center">
-            <Link to="/buy-imali" className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-6 py-3 font-bold text-white transition hover:bg-emerald-700">
-              Buy IMALI Tokens <FaArrowRight />
-            </Link>
-          </div>
-        </div>
+        )}
 
-        {/* NFT Membership */}
-        <div className="mt-12 rounded-3xl border border-purple-500/20 bg-gradient-to-br from-purple-600/10 to-pink-600/10 p-8">
-          <div className="flex flex-col items-center text-center">
-            <div className="text-6xl">🎨</div>
-            <h2 className="mt-4 text-3xl font-extrabold">NFT Membership Benefits</h2>
-            <p className="mt-3 max-w-2xl text-slate-300">IMALI NFT holders get premium platform access, exclusive features, and community rewards.</p>
+        {/* IMALI Token Utility - Only for Trading */}
+        {activeTab === "trading" && (
+          <div className="mt-16 rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-600/10 to-teal-600/10 p-8">
+            <div className="flex flex-col items-center text-center">
+              <FaCoins className="text-6xl text-emerald-400" />
+              <h2 className="mt-4 text-3xl font-extrabold">IMALI Token Utility</h2>
+              <p className="mt-3 max-w-2xl text-slate-300">Hold IMALI tokens to unlock platform discounts, governance rights, and exclusive benefits.</p>
+            </div>
+            <div className="mt-8 grid gap-6 md:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
+                <FaPercentage className="mx-auto text-3xl text-emerald-400" />
+                <h3 className="mt-3 text-xl font-bold">Fee Discounts</h3>
+                <p className="mt-2 text-sm text-slate-300">Up to 20% discount on trading fees when paying with IMALI tokens.</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
+                <FaStar className="mx-auto text-3xl text-amber-400" />
+                <h3 className="mt-3 text-xl font-bold">Staking Rewards</h3>
+                <p className="mt-2 text-sm text-slate-300">Stake IMALI tokens to earn platform revenue share (up to 12% APY).</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
+                <FaUsers className="mx-auto text-3xl text-purple-400" />
+                <h3 className="mt-3 text-xl font-bold">DAO Governance</h3>
+                <p className="mt-2 text-sm text-slate-300">Vote on platform features, fee structures, and treasury allocation.</p>
+              </div>
+            </div>
+            <div className="mt-8 text-center">
+              <Link to="/buy-imali" className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-6 py-3 font-bold text-white transition hover:bg-emerald-700">
+                Buy IMALI Tokens <FaArrowRight />
+              </Link>
+            </div>
           </div>
-          <div className="mt-8 grid gap-6 md:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center"><div className="text-3xl">👑</div><p className="mt-2 text-sm font-bold">Elite Tier Access</p></div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center"><div className="text-3xl">💰</div><p className="mt-2 text-sm font-bold">Revenue Share</p></div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center"><div className="text-3xl">🎁</div><p className="mt-2 text-sm font-bold">Airdrops</p></div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-center"><div className="text-3xl">🤝</div><p className="mt-2 text-sm font-bold">Early Access</p></div>
-          </div>
-        </div>
+        )}
 
         {/* Comparison Table */}
         <div className="mt-12 rounded-3xl border border-white/10 bg-white/5 p-8">
-          <h2 className="text-center text-2xl font-extrabold md:text-3xl">Compare Plans</h2>
+          <h2 className="text-center text-2xl font-extrabold md:text-3xl">
+            {activeTab === "admin" ? "Compare Admin Plans" : "Compare Trading Plans"}
+          </h2>
           <div className="mt-8 overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-white/10">
                   <th className="pb-4 text-sm font-semibold text-white/60">Feature</th>
-                  <th className="pb-4 text-center text-sm font-semibold text-white/60">Starter</th>
-                  <th className="pb-4 text-center text-sm font-semibold text-white/60">Pro</th>
-                  <th className="pb-4 text-center text-sm font-semibold text-white/60">Elite</th>
-                  <th className="pb-4 text-center text-sm font-semibold text-white/60">Enterprise</th>
+                  {currentPlans.map((plan) => (
+                    <th key={plan.id} className="pb-4 text-center text-sm font-semibold text-white/60">{plan.name}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {[
-                  ["Paper Trading", true, true, true, true],
-                  ["Live Crypto (OKX)", false, true, true, true],
-                  ["Live Stocks (Alpaca)", false, true, true, true],
-                  ["DEX Sniper / DeFi", false, false, true, true],
-                  ["Futures Trading", false, false, true, true],
-                  ["Staking / Lending", false, false, true, true],
-                  ["Token Discounts", false, false, true, true],
-                  ["NFT Membership", false, false, true, true],
-                  ["Team Management", false, false, false, true],
-                  ["Custom Branding", false, false, false, true],
-                ].map(([feature, ...checks]) => (
-                  <tr key={feature}>
-                    <td className="py-3 text-sm">{feature}</td>
-                    {checks.map((check, i) => (
-                      <td key={i} className={`py-3 text-center ${check ? "text-emerald-400" : "text-white/30"}`}>{check ? "✓" : "✗"}</td>
-                    ))}
-                  </tr>
-                ))}
+                {activeTab === "admin" ? (
+                  // Admin platform comparison
+                  [
+                    ["User Management", true, true, true],
+                    ["Organizations", true, true, true],
+                    ["Billing Management", true, true, true],
+                    ["Basic Analytics", true, true, true],
+                    ["Advanced Analytics", false, true, true],
+                    ["Audit Logs", false, true, true],
+                    ["API Access", true, true, true],
+                    ["Webhooks", false, true, true],
+                    ["Marketing Tools", false, true, true],
+                    ["Newsletter", false, true, true],
+                    ["Social Media Manager", false, true, true],
+                    ["Promo Codes", false, true, true],
+                    ["Referral Program", false, true, true],
+                    ["Custom Branding", false, false, true],
+                    ["SSO/SAML", false, false, true],
+                    ["Dedicated Support", false, false, true],
+                    ["White-label", false, false, true],
+                  ].map(([feature, ...checks]) => (
+                    <tr key={feature}>
+                      <td className="py-3 text-sm">{feature}</td>
+                      {checks.map((check, i) => (
+                        <td key={i} className={`py-3 text-center ${check ? "text-emerald-400" : "text-white/30"}`}>
+                          {check ? "✓" : "✗"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : (
+                  // Trading platform comparison
+                  [
+                    ["Paper Trading", true, true, true, true],
+                    ["Live Crypto (OKX)", false, true, true, true],
+                    ["Live Stocks (Alpaca)", false, true, true, true],
+                    ["DEX Sniper / DeFi", false, false, true, true],
+                    ["Futures Trading", false, false, true, true],
+                    ["Staking / Lending", false, false, true, true],
+                    ["Token Discounts", false, false, true, true],
+                    ["NFT Membership", false, false, true, true],
+                    ["Team Management", false, false, false, true],
+                    ["Custom Branding", false, false, false, true],
+                  ].map(([feature, ...checks]) => (
+                    <tr key={feature}>
+                      <td className="py-3 text-sm">{feature}</td>
+                      {checks.map((check, i) => (
+                        <td key={i} className={`py-3 text-center ${check ? "text-emerald-400" : "text-white/30"}`}>
+                          {check ? "✓" : "✗"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
                 <tr className="border-t border-white/10">
                   <td className="py-4 text-sm font-bold">Price</td>
-                  <td className="py-4 text-center font-bold text-emerald-400">Free</td>
-                  <td className="py-4 text-center font-bold">\$19/mo</td>
-                  <td className="py-4 text-center font-bold">\$49/mo</td>
-                  <td className="py-4 text-center font-bold">Custom</td>
+                  {currentPlans.map((plan) => (
+                    <td key={plan.id} className="py-4 text-center font-bold">
+                      {plan.price === 0 ? "Free" : plan.price === "Custom" ? "Custom" : `$${plan.price}/mo`}
+                    </td>
+                  ))}
                 </tr>
               </tbody>
             </table>
@@ -539,14 +757,23 @@ export default function Pricing() {
         {/* Final CTA */}
         <div className="mt-12 rounded-3xl border border-emerald-500/20 bg-gradient-to-r from-emerald-600/10 to-cyan-600/10 p-8 text-center">
           <FaCrown className="mx-auto text-5xl text-amber-300" />
-          <h2 className="mt-5 text-3xl font-extrabold">Ready to start your trading journey?</h2>
-          <p className="mx-auto mt-4 max-w-2xl leading-8 text-slate-300">Join thousands of traders using IMALI to automate their strategies. Start free, practice first, go live when ready.</p>
+          <h2 className="mt-5 text-3xl font-extrabold">
+            {activeTab === "admin" ? "Ready to launch your admin platform?" : "Ready to start your trading journey?"}
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl leading-8 text-slate-300">
+            {activeTab === "admin" 
+              ? "Get a complete admin panel with user management, billing, analytics, and more. Already built for you."
+              : "Join thousands of traders using IMALI to automate their strategies. Start free, practice first, go live when ready."}
+          </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <Link to="/signup?plan=starter&tier=starter" className="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-8 py-4 font-bold text-white transition hover:from-emerald-700 hover:to-teal-700">
-              Start Free Trial →
+            <Link 
+              to={activeTab === "admin" ? "/admin-platform/signup" : "/signup?plan=starter&tier=starter"} 
+              className="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-8 py-4 font-bold text-white transition hover:from-emerald-700 hover:to-teal-700"
+            >
+              {activeTab === "admin" ? "Start Admin Free Trial →" : "Start Free Trial →"}
             </Link>
-            <Link to="/trade-demo" className="rounded-2xl border border-white/10 bg-white/5 px-8 py-4 font-bold text-white transition hover:bg-white/10">
-              Try Demo First →
+            <Link to={activeTab === "admin" ? "/admin-platform/demo" : "/trade-demo"} className="rounded-2xl border border-white/10 bg-white/5 px-8 py-4 font-bold text-white transition hover:bg-white/10">
+              {activeTab === "admin" ? "View Demo →" : "Try Demo First →"}
             </Link>
             <a href="mailto:imalidefi@gmail.com" className="rounded-2xl border border-white/10 bg-white/5 px-8 py-4 font-bold text-white transition hover:bg-white/10">
               Contact Sales →
@@ -555,9 +782,18 @@ export default function Pricing() {
         </div>
 
         <div className="mt-8 text-center text-xs leading-6 text-white/30">
-          <p>Paper trading uses simulated funds. Live trading requires connected accounts and carries risk. IMALI does not guarantee profits.</p>
-          <p className="mt-2">All paid plans require billing setup before live trading. Cancel anytime.</p>
-          <p className="mt-2">IMALI tokens are utility tokens. No investment advice. DYOR.</p>
+          {activeTab === "admin" ? (
+            <>
+              <p>Admin Platform includes everything you need to manage your business. All plans include a free trial.</p>
+              <p className="mt-2">No hidden fees. Cancel anytime. Enterprise plans include custom terms and SLAs.</p>
+            </>
+          ) : (
+            <>
+              <p>Paper trading uses simulated funds. Live trading requires connected accounts and carries risk. IMALI does not guarantee profits.</p>
+              <p className="mt-2">All paid plans require billing setup before live trading. Cancel anytime.</p>
+              <p className="mt-2">IMALI tokens are utility tokens. No investment advice. DYOR.</p>
+            </>
+          )}
         </div>
       </div>
     </div>
