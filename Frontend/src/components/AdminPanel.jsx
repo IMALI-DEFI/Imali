@@ -89,6 +89,9 @@ const GA4Analytics = lazy(() => import("../admin/GA4Analytics.jsx"));
 // NEW: Referral Partners Component
 const ReferralPartners = lazy(() => import("../admin/ReferralPartners.jsx"));
 
+// NEW: Admin Platform Customers Component
+const AdminPlatformCustomers = lazy(() => import("../admin/AdminPlatformCustomers.jsx"));
+
 // Enterprise Admin Components
 const EnterpriseRequestsManager = lazy(() => import("../admin/EnterpriseRequestsManager.jsx"));
 const OrganizationManager = lazy(() => import("../admin/OrganizationManager.jsx"));
@@ -472,6 +475,27 @@ const TAB_SECTIONS = [
       },
     ],
   },
+  // ✅ NEW: Admin Platform Section
+  {
+    id: "admin-platform",
+    name: "Admin Platform",
+    emoji: "🚀",
+    description: "Manage Admin Platform customers and settings.",
+    tabs: [
+      {
+        key: "admin-customers",
+        label: "Customers",
+        emoji: "👥",
+        component: AdminPlatformCustomers,
+        description: "View and manage Admin Platform customers.",
+        help: "See all organizations using the Admin Platform, manage their plans, and view their usage.",
+        actions: [
+          { id: "refresh", label: "Refresh List", icon: "🔄", endpoint: "/api/admin/users?product_type=admin", method: "GET" },
+          { id: "export", label: "Export Data", icon: "📊", endpoint: "/api/admin/users?product_type=admin&export=true", method: "GET" },
+        ],
+      },
+    ],
+  },
 ];
 
 const ALL_TABS = TAB_SECTIONS.flatMap((section) => section.tabs);
@@ -634,6 +658,8 @@ export default function AdminPanel({ forceOwner = false }) {
       enterpriseOrgs: Number(data.enterprise?.totalOrganizations || 0),
       enterpriseMembers: Number(data.enterprise?.totalMembers || 0),
       pendingEnterpriseRequests: Number(data.enterprise?.pendingRequests || 0),
+      ga4ActiveUsers: Number(data.ga4?.activeUsers || data.ga4?.active_users || 0),
+      ga4PageViews: Number(data.ga4?.pageViews || data.ga4?.page_views || 0),
     };
   }, []);
 
@@ -937,6 +963,11 @@ export default function AdminPanel({ forceOwner = false }) {
                 <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300">
                   💰 ${formatNumber(stats.totalPnl).toFixed(2)}
                 </span>
+                {stats.ga4ActiveUsers > 0 && (
+                  <span className="rounded-full bg-cyan-500/15 px-2.5 py-1 text-xs text-cyan-300">
+                    📡 {formatNumber(stats.ga4ActiveUsers)} active
+                  </span>
+                )}
               </div>
             )}
             <button
