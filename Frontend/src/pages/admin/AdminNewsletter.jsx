@@ -1,6 +1,6 @@
 // src/pages/admin/AdminNewsletter.jsx
 import React, { useState } from 'react';
-import { FaNewspaper, FaPlus, FaEdit, FaTrash, FaSend, FaUsers, FaEye, FaChartBar, FaRefresh, FaSearch } from 'react-icons/fa';
+import { FaNewspaper, FaPlus, FaEdit, FaTrash, FaSend, FaUsers, FaEye, FaChartBar, FaSync, FaSearch } from 'react-icons/fa';
 
 const AdminNewsletter = () => {
   const [newsletters, setNewsletters] = useState([
