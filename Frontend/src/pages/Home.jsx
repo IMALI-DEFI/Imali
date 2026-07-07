@@ -351,7 +351,6 @@ export default function Home() {
       if (success) {
         setClaimStatus({ loading: false, error: null, success: true });
         setShowForm(false);
-        // Reset form after 3 seconds
         setTimeout(() => setClaimStatus({ loading: false, error: null, success: false }), 5000);
       } else {
         setClaimStatus({ loading: false, error: promoClaim.state.error || "Failed to claim promo", success: false });
@@ -453,6 +452,53 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ===== NEW: ADMIN PLATFORM SECTION ===== */}
+      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 rounded-3xl p-8 md:p-12 shadow-lg">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+            <div>
+              <div className="inline-block px-3 py-1 bg-purple-500/20 rounded-full text-purple-400 text-sm font-medium mb-4">
+                <i className="fas fa-cubes mr-2"></i> New Product
+              </div>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
+                Managed Admin Platform
+              </h2>
+              <p className="text-gray-600 max-w-md">
+                Full-featured admin panel with user management, billing, analytics, and more. Already built for you.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-white/60 px-3 py-1 rounded-full">
+                  <span className="text-purple-500">✓</span> User Management
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-white/60 px-3 py-1 rounded-full">
+                  <span className="text-purple-500">✓</span> Billing
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-white/60 px-3 py-1 rounded-full">
+                  <span className="text-purple-500">✓</span> Analytics
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-white/60 px-3 py-1 rounded-full">
+                  <span className="text-purple-500">✓</span> Permissions
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <Link 
+                to="/admin-platform" 
+                className="px-6 py-3 bg-purple-600 rounded-xl font-semibold text-white hover:bg-purple-500 transition shadow-lg"
+              >
+                <i className="fas fa-arrow-right mr-2"></i> Learn More
+              </Link>
+              <Link 
+                to="/admin-platform/signup" 
+                className="px-6 py-3 bg-white border border-gray-200 rounded-xl font-semibold text-gray-800 hover:bg-gray-50 transition shadow-sm"
+              >
+                Get Started
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* HOW IT WORKS */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="text-center">
@@ -496,7 +542,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PROMO FORM - FIXED */}
+      {/* PROMO FORM */}
       <section className="mx-auto max-w-3xl px-4 pb-16 sm:px-6 lg:px-8">
         <Card className="p-6 shadow-xl sm:p-8">
           <div className="mb-4 flex items-start gap-3 sm:items-center">
