@@ -6,7 +6,7 @@ import {
   FaCheck, FaLock, FaRobot, FaChartLine, FaWallet, FaCrown,
   FaRocket, FaCoins, FaQuestionCircle, FaStar, FaBuilding,
   FaUsers, FaShieldAlt, FaGift, FaPercentage, FaArrowRight,
-  FaCubes, FaDatabase, FaServer, FaUserCog,
+  FaCubes,
 } from "react-icons/fa";
 
 import nftStarter from "../assets/images/nfts/nft-starter.png";
@@ -14,7 +14,6 @@ import nftPro from "../assets/images/nfts/nft-pro.png";
 import nftElite from "../assets/images/nfts/nft-elite.png";
 import nftAdminBot from "../assets/images/nfts/nft-admin-bot.png";
 
-// Import Stripe Config
 import STRIPE_CONFIG from "../config/stripe";
 
 const ENTERPRISE_IMAGE = "/enterprise.PNG";
@@ -36,7 +35,7 @@ const PROFIT_SHARE_BOOST = {
   platinum: 5,
 };
 
-// ---------- Plan definitions using STRIPE_CONFIG ----------
+// ---------- Plan definitions ----------
 const plans = [
   {
     id: "starter",
@@ -51,6 +50,7 @@ const plans = [
     color: "from-emerald-500/20 to-teal-500/10",
     buttonColor: "from-emerald-600 to-teal-600",
     category: "trading",
+    stripePriceId: STRIPE_CONFIG.STARTER_PRICE_ID,
     features: [
       "$1,000 paper trading demo",
       "Test all bots risk‑free",
@@ -65,7 +65,7 @@ const plans = [
     name: "Pro",
     image: nftPro,
     alt: "Pro NFT Artwork",
-    price: STRIPE_CONFIG.getPlanPrice("pro", "trading"),
+    price: STRIPE_CONFIG.getPlanPrice("pro"),
     profitShare: 10,
     subtitle: "Live trading + advanced signals.",
     cta: "Start Pro",
@@ -91,7 +91,7 @@ const plans = [
     name: "Elite",
     image: nftElite,
     alt: "Elite NFT Artwork",
-    price: STRIPE_CONFIG.getPlanPrice("elite", "trading"),
+    price: STRIPE_CONFIG.getPlanPrice("elite"),
     profitShare: 8,
     subtitle: "Full access + DeFi & advanced tools.",
     cta: "Start Elite",
@@ -139,7 +139,7 @@ const plans = [
   },
 ];
 
-// ---------- Admin Platform Plans using STRIPE_CONFIG ----------
+// ---------- Admin Platform Plans ----------
 const adminPlans = [
   {
     id: "admin_professional",
@@ -210,7 +210,7 @@ const adminPlans = [
     buttonColor: "from-amber-600 to-orange-600",
     isEnterprise: true,
     category: "admin",
-    stripePriceId: STRIPE_CONFIG.ADMIN_ENTERPRISE_PRICE_ID,
+    stripePriceId: null,
     features: [
       "Unlimited users",
       "Unlimited organizations",
@@ -266,7 +266,6 @@ const faqs = [
 function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdmin }) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const isLoggedIn = !!user;
 
   const actualUserTier = userTier || user?.tier || "starter";
@@ -285,9 +284,7 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
       ? Math.max(5, plan.profitShare - profitBoost)
       : plan.profitShare;
 
-  const handleClick = (e) => {
-    e.preventDefault();
-    
+  const handleClick = () => {
     if (onSelectPlan) {
       onSelectPlan(plan.id);
     }
@@ -303,7 +300,7 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
       profitSharePct: billingModel === "profit_share" ? profitSharePct : null,
       tokenTier,
       product_type: isAdmin ? "admin" : "trading",
-      priceId: plan.stripePriceId, // Pass price ID for checkout
+      priceId: plan.stripePriceId,
     };
 
     if (isCurrentPlan) {
@@ -313,12 +310,12 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
 
     if (!isLoggedIn) {
       const signupPath = isAdmin ? "/admin-platform/signup" : "/signup";
-      navigate(`${signupPath}?plan=${plan.id}&tier=${plan.id}&product_type=${isAdmin ? "admin" : "trading"}`, { 
+      navigate(`${signupPath}?plan=${plan.id}&tier=${plan.id}&product_type=${isAdmin ? "admin" : "trading"}`, {
         state: { ...navState, from: "pricing" }
       });
     } else {
       const billingPath = isAdmin ? `/billing?tier=${plan.id}&product_type=admin` : `/billing?tier=${plan.id}`;
-      navigate(billingPath, { 
+      navigate(billingPath, {
         state: { ...navState, from: "pricing", updateCard: true }
       });
     }
@@ -386,12 +383,12 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
 
       <p className="mt-3 min-h-[48px] text-center text-sm leading-6 text-slate-300">{plan.subtitle}</p>
 
-      <button 
-        onClick={handleClick} 
+      <button
+        onClick={handleClick}
         disabled={isCurrentPlan}
         className={`mt-6 block w-full rounded-2xl px-5 py-3 text-center font-bold text-white transition ${
-          isCurrentPlan 
-            ? "bg-emerald-600/50 cursor-default" 
+          isCurrentPlan
+            ? "bg-emerald-600/50 cursor-default"
             : `bg-gradient-to-r ${plan.buttonColor} hover:opacity-90`
         }`}
       >
@@ -445,7 +442,7 @@ function FAQItem({ question, answer, isOpen, onClick }) {
 
 // ==================== MAIN PRICING PAGE ====================
 export default function Pricing() {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -503,7 +500,7 @@ export default function Pricing() {
           </h1>
 
           <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-slate-300">
-            {activeTab === "trading" 
+            {activeTab === "trading"
               ? "Start with paper trading, then go live with OKX, Alpaca, or MetaMask."
               : "Everything you need in an admin panel. Already built. User management, billing, analytics, and more."}
           </p>
@@ -517,21 +514,21 @@ export default function Pricing() {
 
           {/* Product Type Tabs */}
           <div className="mt-8 flex justify-center gap-2">
-            <button 
-              onClick={() => setActiveTab("trading")} 
+            <button
+              onClick={() => setActiveTab("trading")}
               className={`px-6 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
-                activeTab === "trading" 
-                  ? "bg-emerald-600 text-white shadow-lg" 
+                activeTab === "trading"
+                  ? "bg-emerald-600 text-white shadow-lg"
                   : "bg-white/5 text-white/60 hover:bg-white/10"
               }`}
             >
               <FaRobot /> Trading Platform
             </button>
-            <button 
-              onClick={() => setActiveTab("admin")} 
+            <button
+              onClick={() => setActiveTab("admin")}
               className={`px-6 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
-                activeTab === "admin" 
-                  ? "bg-purple-600 text-white shadow-lg" 
+                activeTab === "admin"
+                  ? "bg-purple-600 text-white shadow-lg"
                   : "bg-white/5 text-white/60 hover:bg-white/10"
               }`}
             >
@@ -542,10 +539,16 @@ export default function Pricing() {
           {/* Billing Model Toggle - Only for Trading */}
           {activeTab === "trading" && (
             <div className="mt-4 flex justify-center gap-2">
-              <button onClick={() => setBillingModel("fixed")} className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "fixed" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
+              <button
+                onClick={() => setBillingModel("fixed")}
+                className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "fixed" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}
+              >
                 Fixed Monthly
               </button>
-              <button onClick={() => setBillingModel("profit_share")} className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "profit_share" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
+              <button
+                onClick={() => setBillingModel("profit_share")}
+                className={`px-6 py-2 rounded-xl text-sm font-semibold transition ${billingModel === "profit_share" ? "bg-emerald-600 text-white shadow-lg" : "bg-white/5 text-white/60 hover:bg-white/10"}`}
+              >
                 Profit Share
               </button>
             </div>
@@ -555,7 +558,11 @@ export default function Pricing() {
           {activeTab === "trading" && (
             <div className="mt-4 flex justify-center items-center gap-3 text-sm">
               <span className="text-white/50">IMALI Token:</span>
-              <select value={tokenTier} onChange={(e) => setTokenTier(e.target.value)} className="bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-white">
+              <select
+                value={tokenTier}
+                onChange={(e) => setTokenTier(e.target.value)}
+                className="bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-white"
+              >
                 {Object.entries(TOKEN_DISCOUNTS).map(([key, val]) => (
                   <option key={key} value={key}>{val.label} ({val.discount}% off)</option>
                 ))}
@@ -568,10 +575,10 @@ export default function Pricing() {
         <div className="mt-12 grid gap-6 lg:grid-cols-3">
           {currentPlans.map((plan) => (
             <div key={plan.id} id={`plan-${plan.id}`}>
-              <PlanCard 
-                plan={plan} 
-                billingModel={billingModel} 
-                tokenTier={tokenTier} 
+              <PlanCard
+                plan={plan}
+                billingModel={billingModel}
+                tokenTier={tokenTier}
                 userTier={actualUserTier}
                 onSelectPlan={handleSelectPlan}
                 isAdmin={isAdminTab}
@@ -744,7 +751,13 @@ export default function Pricing() {
           <h2 className="text-center text-3xl font-extrabold">Frequently Asked Questions</h2>
           <div className="mt-8 mx-auto max-w-3xl">
             {faqs.map((faq, index) => (
-              <FAQItem key={index} question={faq.q} answer={faq.a} isOpen={openFaq === index} onClick={() => setOpenFaq(openFaq === index ? null : index)} />
+              <FAQItem
+                key={index}
+                question={faq.q}
+                answer={faq.a}
+                isOpen={openFaq === index}
+                onClick={() => setOpenFaq(openFaq === index ? null : index)}
+              />
             ))}
           </div>
         </div>
@@ -756,13 +769,13 @@ export default function Pricing() {
             {activeTab === "admin" ? "Ready to launch your admin platform?" : "Ready to start your trading journey?"}
           </h2>
           <p className="mx-auto mt-4 max-w-2xl leading-8 text-slate-300">
-            {activeTab === "admin" 
+            {activeTab === "admin"
               ? "Get a complete admin panel with user management, billing, analytics, and more. Already built for you."
               : "Join thousands of traders using IMALI to automate their strategies. Start free, practice first, go live when ready."}
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <Link 
-              to={activeTab === "admin" ? "/admin-platform/signup" : "/signup?plan=starter&tier=starter"} 
+            <Link
+              to={activeTab === "admin" ? "/admin-platform/signup" : "/signup?plan=starter&tier=starter"}
               className="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-8 py-4 font-bold text-white transition hover:from-emerald-700 hover:to-teal-700"
             >
               {activeTab === "admin" ? "Start Admin Free Trial →" : "Start Free Trial →"}
