@@ -1,9 +1,10 @@
-// src/pages/Billing.jsx - MODIFIED (Added product_type support)
+// src/pages/Billing.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 import BillingDashboard from "./BillingDashboard";
+import STRIPE_CONFIG from "../config/stripe";
 
 const VALID_TIERS = ["starter", "pro", "elite", "enterprise"];
 const VALID_PRODUCT_TYPES = ["trading", "admin"];
@@ -33,8 +34,8 @@ export default function Billing() {
   const [showCardForm, setShowCardForm] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const [pendingTier, setPendingTier] = useState(null);
+  const [clientSecret, setClientSecret] = useState(null);
 
-  // NEW: Get product_type from URL or user
   const urlProductType = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get("product_type") || params.get("product");
@@ -74,7 +75,6 @@ export default function Billing() {
     );
   }, [cardStatus, activation, user, subscription]);
 
-  // Redirect starters only if not upgrading
   useEffect(() => {
     if (shouldRedirectStarter && !loading) {
       navigate("/dashboard", { replace: true });
@@ -108,17 +108,31 @@ export default function Billing() {
         subscriptionRes.status === "fulfilled" ? subscriptionRes.value || null : null
       );
 
-      // Show card form if updating card and tier is changing
       if (location.state?.updateCard && urlTier && urlTier !== actualUserTier) {
         setShowCardForm(true);
         setPendingTier(normalizeTier(urlTier));
+        
+        // Create setup intent with proper price ID
+        const priceId = STRIPE_CONFIG.getPriceIdForTier(
+          normalizeTier(urlTier),
+          productType
+        );
+        
+        if (priceId) {
+          const result = await BotAPI.createSetupIntent({
+            tier: normalizeTier(urlTier),
+            productType: productType,
+            priceId: priceId,
+          });
+          setClientSecret(result.client_secret);
+        }
       }
     } catch (err) {
       setError(err?.message || "Failed to load billing.");
     } finally {
       setLoading(false);
     }
-  }, [location.state?.updateCard, urlTier, actualUserTier]);
+  }, [location.state?.updateCard, urlTier, actualUserTier, productType]);
 
   useEffect(() => {
     loadBilling();
@@ -131,23 +145,36 @@ export default function Billing() {
     await loadBilling();
   };
 
-  const openCardForm = (tier) => {
+  const openCardForm = async (tier) => {
     setError("");
     setNotice("");
     setPendingTier(tier);
     setShowCardForm(true);
     setFormKey((prev) => prev + 1);
-    // MODIFIED: Include product_type in URL
-    navigate(`/billing?tier=${tier}&product_type=${productType}`, {
-      replace: true,
-      state: { tier, updateCard: true, product_type: productType },
-    });
+    
+    const priceId = STRIPE_CONFIG.getPriceIdForTier(tier, productType);
+    
+    try {
+      const result = await BotAPI.createSetupIntent({
+        tier: tier,
+        productType: productType,
+        priceId: priceId,
+      });
+      setClientSecret(result.client_secret);
+      
+      navigate(`/billing?tier=${tier}&product_type=${productType}`, {
+        replace: true,
+        state: { tier, updateCard: true, product_type: productType },
+      });
+    } catch (err) {
+      setError("Failed to initialize payment. Please try again.");
+    }
   };
 
-  // Keep the upgrade tier in the URL when closing the form
   const closeCardForm = () => {
     setShowCardForm(false);
     setPendingTier(null);
+    setClientSecret(null);
     navigate(`/billing?tier=${displayTier}&product_type=${productType}`, {
       replace: true,
       state: { tier: displayTier, product_type: productType },
@@ -166,8 +193,8 @@ export default function Billing() {
       );
       setShowCardForm(false);
       setPendingTier(null);
+      setClientSecret(null);
 
-      // MODIFIED: Redirect based on product_type
       setTimeout(() => {
         if (isAdminProduct) {
           navigate("/admin/dashboard", {
@@ -185,6 +212,7 @@ export default function Billing() {
       setNotice("✅ Payment method saved successfully!");
       setShowCardForm(false);
       setPendingTier(null);
+      setClientSecret(null);
       await refreshAll();
     }
   };
@@ -239,7 +267,6 @@ export default function Billing() {
   };
 
   const goToDashboard = () => {
-    // MODIFIED: Go to appropriate dashboard based on product_type
     if (isAdminProduct) {
       navigate("/admin/dashboard", { replace: true });
     } else {
@@ -247,7 +274,6 @@ export default function Billing() {
     }
   };
 
-  // Loading state
   if (loading) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
@@ -259,7 +285,6 @@ export default function Billing() {
     );
   }
 
-  // Starter redirect
   if (shouldRedirectStarter) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-4">
@@ -271,7 +296,6 @@ export default function Billing() {
     );
   }
 
-  // Main render
   return (
     <main className="min-h-screen bg-[#050816] text-white px-4 py-6 md:py-10">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
@@ -302,7 +326,6 @@ export default function Billing() {
           </button>
         </div>
 
-        {/* Current plan status */}
         <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
           <div className="flex items-center gap-3 mb-2">
             <span className="text-3xl">
@@ -353,7 +376,6 @@ export default function Billing() {
           )}
         </div>
 
-        {/* Downgrade option */}
         {isPaidUser && hasValidPayment && (
           <div className="rounded-[2rem] border border-red-500/20 bg-red-500/10 p-5 md:p-6">
             <h2 className="text-xl font-black text-red-300">Switch to Free Starter Plan</h2>
@@ -370,7 +392,6 @@ export default function Billing() {
           </div>
         )}
 
-        {/* Billing Dashboard */}
         <BillingDashboard
           tier={displayTier}
           user={user}
@@ -381,7 +402,8 @@ export default function Billing() {
           showCardForm={showCardForm}
           formKey={formKey}
           pendingTier={pendingTier}
-          productType={productType} // NEW: Pass product_type
+          productType={productType}
+          clientSecret={clientSecret}
           onUpdateCard={() => openCardForm(displayTier)}
           onRemoveCard={handleRemoveCard}
           onCancelSubscription={handleCancelSubscription}
