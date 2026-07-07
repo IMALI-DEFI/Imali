@@ -14,6 +14,9 @@ import nftPro from "../assets/images/nfts/nft-pro.png";
 import nftElite from "../assets/images/nfts/nft-elite.png";
 import nftAdminBot from "../assets/images/nfts/nft-admin-bot.png";
 
+// Import Stripe Config
+import STRIPE_CONFIG from "../config/stripe";
+
 const ENTERPRISE_IMAGE = "/enterprise.PNG";
 
 // ---------- Token discount tiers ----------
@@ -33,7 +36,7 @@ const PROFIT_SHARE_BOOST = {
   platinum: 5,
 };
 
-// ---------- Plan definitions ----------
+// ---------- Plan definitions using STRIPE_CONFIG ----------
 const plans = [
   {
     id: "starter",
@@ -62,7 +65,7 @@ const plans = [
     name: "Pro",
     image: nftPro,
     alt: "Pro NFT Artwork",
-    price: 19,
+    price: STRIPE_CONFIG.getPlanPrice("pro", "trading"),
     profitShare: 10,
     subtitle: "Live trading + advanced signals.",
     cta: "Start Pro",
@@ -71,6 +74,7 @@ const plans = [
     buttonColor: "from-blue-600 to-indigo-600",
     popular: true,
     category: "trading",
+    stripePriceId: STRIPE_CONFIG.PRO_PRICE_ID,
     features: [
       "Live stock trading (Alpaca)",
       "Live crypto spot (OKX)",
@@ -87,7 +91,7 @@ const plans = [
     name: "Elite",
     image: nftElite,
     alt: "Elite NFT Artwork",
-    price: 49,
+    price: STRIPE_CONFIG.getPlanPrice("elite", "trading"),
     profitShare: 8,
     subtitle: "Full access + DeFi & advanced tools.",
     cta: "Start Elite",
@@ -95,6 +99,7 @@ const plans = [
     color: "from-purple-600/20 to-pink-500/10",
     buttonColor: "from-purple-600 to-pink-600",
     category: "trading",
+    stripePriceId: STRIPE_CONFIG.ELITE_PRICE_ID,
     features: [
       "Everything in Pro",
       "DEX sniper (Uniswap, QuickSwap)",
@@ -134,14 +139,14 @@ const plans = [
   },
 ];
 
-// ---------- NEW: Admin Platform Plans ----------
+// ---------- Admin Platform Plans using STRIPE_CONFIG ----------
 const adminPlans = [
   {
     id: "admin_professional",
     name: "Professional",
     image: nftAdminBot,
     alt: "Admin Platform Professional",
-    price: 49,
+    price: STRIPE_CONFIG.getPlanPrice("professional", "admin"),
     profitShare: null,
     subtitle: "Everything you need in an admin panel. Already built.",
     cta: "Start Free Trial",
@@ -149,7 +154,7 @@ const adminPlans = [
     color: "from-purple-600/20 to-blue-500/10",
     buttonColor: "from-purple-600 to-blue-600",
     category: "admin",
-    stripePriceId: "price_admin_professional",
+    stripePriceId: STRIPE_CONFIG.ADMIN_PROFESSIONAL_PRICE_ID,
     features: [
       "Up to 10 users",
       "5 organizations",
@@ -167,7 +172,7 @@ const adminPlans = [
     name: "Business",
     image: nftAdminBot,
     alt: "Admin Platform Business",
-    price: 99,
+    price: STRIPE_CONFIG.getPlanPrice("business", "admin"),
     profitShare: null,
     subtitle: "Full admin platform for growing teams.",
     cta: "Start Free Trial",
@@ -176,7 +181,7 @@ const adminPlans = [
     buttonColor: "from-indigo-600 to-purple-600",
     popular: true,
     category: "admin",
-    stripePriceId: "price_admin_business",
+    stripePriceId: STRIPE_CONFIG.ADMIN_BUSINESS_PRICE_ID,
     features: [
       "Up to 50 users",
       "25 organizations",
@@ -205,7 +210,7 @@ const adminPlans = [
     buttonColor: "from-amber-600 to-orange-600",
     isEnterprise: true,
     category: "admin",
-    stripePriceId: null,
+    stripePriceId: STRIPE_CONFIG.ADMIN_ENTERPRISE_PRICE_ID,
     features: [
       "Unlimited users",
       "Unlimited organizations",
@@ -264,7 +269,6 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
   const location = useLocation();
   const isLoggedIn = !!user;
 
-  // ✅ FIX: Only use actual user tier from backend, not localStorage
   const actualUserTier = userTier || user?.tier || "starter";
   const isCurrentPlan = actualUserTier === plan.id;
 
@@ -284,7 +288,6 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
   const handleClick = (e) => {
     e.preventDefault();
     
-    // ✅ Pass the selected plan to parent for handling
     if (onSelectPlan) {
       onSelectPlan(plan.id);
     }
@@ -300,9 +303,9 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
       profitSharePct: billingModel === "profit_share" ? profitSharePct : null,
       tokenTier,
       product_type: isAdmin ? "admin" : "trading",
+      priceId: plan.stripePriceId, // Pass price ID for checkout
     };
 
-    // ✅ If it's the current plan, just go to dashboard
     if (isCurrentPlan) {
       navigate("/dashboard");
       return;
@@ -314,7 +317,6 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
         state: { ...navState, from: "pricing" }
       });
     } else {
-      // ✅ Navigate to billing with the tier they want
       const billingPath = isAdmin ? `/billing?tier=${plan.id}&product_type=admin` : `/billing?tier=${plan.id}`;
       navigate(billingPath, { 
         state: { ...navState, from: "pricing", updateCard: true }
@@ -322,7 +324,6 @@ function PlanCard({ plan, billingModel, tokenTier, userTier, onSelectPlan, isAdm
     }
   };
 
-  // ✅ Determine button text based on actual plan status
   const getButtonText = () => {
     if (isCurrentPlan) return "✅ Current Plan";
     if (isLoggedIn) return plan.ctaLoggedIn || plan.cta;
@@ -452,12 +453,10 @@ export default function Pricing() {
   const [tokenTier, setTokenTier] = useState("none");
   const [openFaq, setOpenFaq] = useState(null);
   const [selectedTier, setSelectedTier] = useState(null);
-  const [activeTab, setActiveTab] = useState("trading"); // "trading" or "admin"
+  const [activeTab, setActiveTab] = useState("trading");
 
-  // ✅ Get actual user tier from backend (not localStorage)
   const actualUserTier = user?.tier || "starter";
 
-  // ✅ Check for tier in URL params on load
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const selectedTier = params.get("selected") || params.get("tier");
@@ -470,7 +469,6 @@ export default function Pricing() {
     }
   }, [location.search]);
 
-  // ✅ Auto-scroll to plan if tier is in URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const highlightTier = params.get("highlight") || params.get("tier");
@@ -510,7 +508,6 @@ export default function Pricing() {
               : "Everything you need in an admin panel. Already built. User management, billing, analytics, and more."}
           </p>
 
-          {/* ✅ Show current plan status */}
           {user && (
             <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200">
               <span>Current Plan:</span>
@@ -678,7 +675,6 @@ export default function Pricing() {
               </thead>
               <tbody className="divide-y divide-white/5">
                 {activeTab === "admin" ? (
-                  // Admin platform comparison
                   [
                     ["User Management", true, true, true],
                     ["Organizations", true, true, true],
@@ -708,7 +704,6 @@ export default function Pricing() {
                     </tr>
                   ))
                 ) : (
-                  // Trading platform comparison
                   [
                     ["Paper Trading", true, true, true, true],
                     ["Live Crypto (OKX)", false, true, true, true],
