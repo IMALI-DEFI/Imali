@@ -28,6 +28,14 @@ import LandingPages from "./pages/LandingPages";
 import Newsletter from "./pages/Newsletter";
 import NewsletterSuccess from "./pages/NewsletterSuccess";
 
+// Admin Platform Pages (NEW)
+import AdminPlatformLanding from "./pages/AdminPlatformLanding";
+import AdminPlatformPricing from "./pages/AdminPlatformPricing";
+import AdminPlatformSignup from "./pages/AdminPlatformSignup";
+import AdminPlatformDemo from "./pages/AdminPlatformDemo";
+import AdminDashboard from "./pages/AdminDashboard";
+import Documentation from "./pages/Documentation";
+
 // Lazy auth / app pages
 const Signup = lazy(() => import("./pages/SignupForm"));
 const Login = lazy(() => import("./pages/Login"));
@@ -148,12 +156,21 @@ function RedirectIfActivated({ children }) {
 function PostLoginRedirect() {
   const { user, loading, isAdmin, isEnterpriseUser, activation } = useAuth();
   const navigate = useNavigate();
+  
   React.useEffect(() => {
     if (loading) return;
     if (!user) { 
       navigate("/login", { replace: true }); 
       return; 
     }
+    
+    // MODIFIED: Check for admin platform product type
+    const productType = user?.product_type || localStorage.getItem("IMALI_PRODUCT_TYPE");
+    if (productType === "admin") {
+      navigate("/admin/dashboard", { replace: true });
+      return;
+    }
+    
     if (isEnterpriseUser) { 
       navigate("/enterprise/dashboard", { replace: true }); 
       return; 
@@ -232,6 +249,14 @@ function MainAppRoutes() {
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/newsletter/success" element={<NewsletterSuccess />} />
 
+            {/* NEW: Admin Platform Routes */}
+            <Route path="/admin-platform" element={<AdminPlatformLanding />} />
+            <Route path="/admin-platform/pricing" element={<AdminPlatformPricing />} />
+            <Route path="/admin-platform/signup" element={<AdminPlatformSignup />} />
+            <Route path="/admin-platform/login" element={<Login />} /> {/* Reuse existing login */}
+            <Route path="/admin-platform/demo" element={<AdminPlatformDemo />} />
+            <Route path="/docs" element={<Documentation />} />
+
             {/* AUTH */}
             <Route path="/signup" element={<Signup />} />
             <Route path="/signup/:tier" element={<Signup />} />
@@ -296,7 +321,8 @@ function MainAppRoutes() {
 
             {/* ADMIN */}
             <Route path="/admin/enterprise-requests" element={<RequireAuth><RequireAdmin><EnterpriseRequestsPage /></RequireAdmin></RequireAuth>} />
-            <Route path="/admin/*" element={<RequireAuth><RequireAdmin><AdminPanel /></RequireAdmin></RequireAuth>} />
+            {/* MODIFIED: Use AdminDashboard instead of AdminPanel */}
+            <Route path="/admin/*" element={<RequireAuth><RequireAdmin><AdminDashboard /></RequireAdmin></RequireAuth>} />
 
             {/* 404 */}
             <Route path="*" element={<NotFound />} />
