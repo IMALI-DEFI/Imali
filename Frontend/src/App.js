@@ -1,3 +1,4 @@
+// src/App.js
 import React, { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import Header from "./components/Header";
@@ -28,7 +29,7 @@ import LandingPages from "./pages/LandingPages";
 import Newsletter from "./pages/Newsletter";
 import NewsletterSuccess from "./pages/NewsletterSuccess";
 
-// Admin Platform Pages (NEW)
+// Admin Platform Pages
 import AdminPlatformLanding from "./pages/AdminPlatformLanding";
 import AdminPlatformDemo from "./pages/AdminPlatformDemo";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -162,7 +163,6 @@ function PostLoginRedirect() {
       return; 
     }
     
-    // Check for admin platform product type
     const productType = user?.product_type || localStorage.getItem("IMALI_PRODUCT_TYPE");
     if (productType === "admin") {
       navigate("/admin/dashboard", { replace: true });
@@ -246,7 +246,7 @@ function MainAppRoutes() {
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/newsletter/success" element={<NewsletterSuccess />} />
 
-            {/* ✅ NEW: Admin Platform Routes - Reuse existing pages where possible */}
+            {/* Admin Platform Routes */}
             <Route path="/admin-platform" element={<AdminPlatformLanding />} />
             <Route path="/admin-platform/pricing" element={<Navigate to="/pricing?product_type=admin" replace />} />
             <Route path="/admin-platform/signup" element={<Navigate to="/signup?product_type=admin" replace />} />
@@ -254,13 +254,13 @@ function MainAppRoutes() {
             <Route path="/admin-platform/demo" element={<AdminPlatformDemo />} />
             <Route path="/docs" element={<Documentation />} />
 
-            {/* AUTH - Existing */}
+            {/* AUTH */}
             <Route path="/signup" element={<Signup />} />
             <Route path="/signup/:tier" element={<Signup />} />
             <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
             <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
 
-            {/* BILLING - Existing */}
+            {/* BILLING */}
             <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
             <Route path="/billing/:tier" element={<RequireAuth><Billing /></RequireAuth>} />
             <Route path="/billing/success" element={<BillingSuccess />} />
@@ -316,9 +316,7 @@ function MainAppRoutes() {
             <Route path="/enterprise/branding" element={<RequireEnterpriseAdmin><BrandingPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/bot-controls" element={<RequireEnterpriseAdmin><BotControlsPage /></RequireEnterpriseAdmin>} />
 
-            {/* ✅ ADMIN - Routes in order of specificity (most specific first) */}
-            
-            {/* Admin Platform Customer Dashboard - specific paths */}
+            {/* ADMIN - Specific routes first, catch-all last */}
             <Route path="/admin/dashboard" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/users" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
             <Route path="/admin/organizations" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
