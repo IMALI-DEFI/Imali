@@ -30,8 +30,6 @@ import NewsletterSuccess from "./pages/NewsletterSuccess";
 
 // Admin Platform Pages (NEW)
 import AdminPlatformLanding from "./pages/AdminPlatformLanding";
-import AdminPlatformPricing from "./pages/AdminPlatformPricing";
-import AdminPlatformSignup from "./pages/AdminPlatformSignup";
 import AdminPlatformDemo from "./pages/AdminPlatformDemo";
 import AdminDashboard from "./pages/AdminDashboard";
 import Documentation from "./pages/Documentation";
@@ -164,7 +162,7 @@ function PostLoginRedirect() {
       return; 
     }
     
-    // MODIFIED: Check for admin platform product type
+    // Check for admin platform product type
     const productType = user?.product_type || localStorage.getItem("IMALI_PRODUCT_TYPE");
     if (productType === "admin") {
       navigate("/admin/dashboard", { replace: true });
@@ -184,7 +182,6 @@ function PostLoginRedirect() {
       navigate("/dashboard", { replace: true }); 
       return; 
     }
-    // ✅ ONLY check has_card_on_file - NOT billing_complete
     const hasPaid = user?.subscription_status === "active" || activation?.has_card_on_file === true;
     if (!hasPaid) { 
       navigate(`/billing?tier=${tier}`, { replace: true, state: { tier } }); 
@@ -249,21 +246,26 @@ function MainAppRoutes() {
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/newsletter/success" element={<NewsletterSuccess />} />
 
-            {/* NEW: Admin Platform Routes */}
+            {/* ✅ NEW: Admin Platform Routes - Reuse existing pages where possible */}
             <Route path="/admin-platform" element={<AdminPlatformLanding />} />
-            <Route path="/admin-platform/pricing" element={<AdminPlatformPricing />} />
-            <Route path="/admin-platform/signup" element={<AdminPlatformSignup />} />
-            <Route path="/admin-platform/login" element={<Login />} /> {/* Reuse existing login */}
+            {/* Use existing Pricing page - it has admin tab */}
+            <Route path="/admin-platform/pricing" element={<Navigate to="/pricing?product_type=admin" replace />} />
+            {/* Use existing Signup page - it handles admin via product_type */}
+            <Route path="/admin-platform/signup" element={<Navigate to="/signup?product_type=admin" replace />} />
+            {/* Use existing Login page */}
+            <Route path="/admin-platform/login" element={<Login />} />
+            {/* New demo page */}
             <Route path="/admin-platform/demo" element={<AdminPlatformDemo />} />
+            {/* New documentation page */}
             <Route path="/docs" element={<Documentation />} />
 
-            {/* AUTH */}
+            {/* AUTH - Existing */}
             <Route path="/signup" element={<Signup />} />
             <Route path="/signup/:tier" element={<Signup />} />
             <Route path="/login" element={user ? <Navigate to="/after-login" replace /> : <Login />} />
             <Route path="/after-login" element={<RequireAuth><PostLoginRedirect /></RequireAuth>} />
 
-            {/* BILLING */}
+            {/* BILLING - Existing */}
             <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
             <Route path="/billing/:tier" element={<RequireAuth><Billing /></RequireAuth>} />
             <Route path="/billing/success" element={<BillingSuccess />} />
@@ -319,10 +321,27 @@ function MainAppRoutes() {
             <Route path="/enterprise/branding" element={<RequireEnterpriseAdmin><BrandingPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/bot-controls" element={<RequireEnterpriseAdmin><BotControlsPage /></RequireEnterpriseAdmin>} />
 
-            {/* ADMIN */}
+            {/* ✅ ADMIN - Existing admin panel for super admin */}
             <Route path="/admin/enterprise-requests" element={<RequireAuth><RequireAdmin><EnterpriseRequestsPage /></RequireAdmin></RequireAuth>} />
-            {/* MODIFIED: Use AdminDashboard instead of AdminPanel */}
-            <Route path="/admin/*" element={<RequireAuth><RequireAdmin><AdminDashboard /></RequireAdmin></RequireAuth>} />
+            
+            {/* ✅ NEW: Admin Dashboard for admin platform customers */}
+            <Route path="/admin/dashboard" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            {/* Nested admin routes */}
+            <Route path="/admin/users" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/organizations" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/billing" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/analytics" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/reports" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/permissions" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/audit" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/marketing" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/referral" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/email" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/newsletter" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/social" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/promo-codes" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/system-health" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+            <Route path="/admin/enterprise" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
 
             {/* 404 */}
             <Route path="*" element={<NotFound />} />
