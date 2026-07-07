@@ -1,4 +1,4 @@
-// src/pages/Billing.jsx
+// src/pages/Billing.jsx - MODIFIED (Added product_type support)
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -6,10 +6,16 @@ import BotAPI from "../utils/BotAPI";
 import BillingDashboard from "./BillingDashboard";
 
 const VALID_TIERS = ["starter", "pro", "elite", "enterprise"];
+const VALID_PRODUCT_TYPES = ["trading", "admin"];
 
 function normalizeTier(value) {
   const tier = String(value || "starter").toLowerCase().trim();
   return VALID_TIERS.includes(tier) ? tier : "starter";
+}
+
+function normalizeProductType(value) {
+  const product = String(value || "trading").toLowerCase().trim();
+  return VALID_PRODUCT_TYPES.includes(product) ? product : "trading";
 }
 
 export default function Billing() {
@@ -27,6 +33,16 @@ export default function Billing() {
   const [showCardForm, setShowCardForm] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const [pendingTier, setPendingTier] = useState(null);
+
+  // NEW: Get product_type from URL or user
+  const urlProductType = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("product_type") || params.get("product");
+  }, [location.search]);
+
+  const userProductType = normalizeProductType(user?.product_type || "trading");
+  const productType = normalizeProductType(urlProductType || userProductType);
+  const isAdminProduct = productType === "admin";
 
   const urlTier = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -121,9 +137,10 @@ export default function Billing() {
     setPendingTier(tier);
     setShowCardForm(true);
     setFormKey((prev) => prev + 1);
-    navigate(`/billing?tier=${tier}`, {
+    // MODIFIED: Include product_type in URL
+    navigate(`/billing?tier=${tier}&product_type=${productType}`, {
       replace: true,
-      state: { tier, updateCard: true },
+      state: { tier, updateCard: true, product_type: productType },
     });
   };
 
@@ -131,9 +148,9 @@ export default function Billing() {
   const closeCardForm = () => {
     setShowCardForm(false);
     setPendingTier(null);
-    navigate(`/billing?tier=${displayTier}`, {
+    navigate(`/billing?tier=${displayTier}&product_type=${productType}`, {
       replace: true,
-      state: { tier: displayTier },
+      state: { tier: displayTier, product_type: productType },
     });
   };
 
@@ -150,11 +167,19 @@ export default function Billing() {
       setShowCardForm(false);
       setPendingTier(null);
 
+      // MODIFIED: Redirect based on product_type
       setTimeout(() => {
-        navigate("/activation", {
-          replace: true,
-          state: { tier: newTier, fromBilling: true },
-        });
+        if (isAdminProduct) {
+          navigate("/admin/dashboard", {
+            replace: true,
+            state: { tier: newTier, fromBilling: true, product_type: productType },
+          });
+        } else {
+          navigate("/activation", {
+            replace: true,
+            state: { tier: newTier, fromBilling: true, product_type: productType },
+          });
+        }
       }, 1500);
     } else {
       setNotice("✅ Payment method saved successfully!");
@@ -213,7 +238,14 @@ export default function Billing() {
     }
   };
 
-  const goToDashboard = () => navigate("/dashboard", { replace: true });
+  const goToDashboard = () => {
+    // MODIFIED: Go to appropriate dashboard based on product_type
+    if (isAdminProduct) {
+      navigate("/admin/dashboard", { replace: true });
+    } else {
+      navigate("/dashboard", { replace: true });
+    }
+  };
 
   // Loading state
   if (loading) {
@@ -278,6 +310,7 @@ export default function Billing() {
             </span>
             <h2 className="text-2xl font-black">
               {displayTier === "elite" ? "Elite" : displayTier === "pro" ? "Pro" : "Starter"} Plan
+              {isAdminProduct && <span className="text-sm text-purple-400 ml-2">(Admin Platform)</span>}
             </h2>
             {hasValidPayment && (
               <span className="ml-2 px-3 py-1 text-xs font-black bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
@@ -348,6 +381,7 @@ export default function Billing() {
           showCardForm={showCardForm}
           formKey={formKey}
           pendingTier={pendingTier}
+          productType={productType} // NEW: Pass product_type
           onUpdateCard={() => openCardForm(displayTier)}
           onRemoveCard={handleRemoveCard}
           onCancelSubscription={handleCancelSubscription}
