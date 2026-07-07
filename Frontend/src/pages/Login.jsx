@@ -1,4 +1,4 @@
-// src/pages/Login.jsx - REWRITTEN (Fixed redirect for all tiers)
+// src/pages/Login.jsx - MODIFIED (Added product_type check)
 import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -172,18 +172,22 @@ export default function Login() {
     }
   }, [location.search]);
 
-  // ✅ FIXED: Get redirect destination based on user type and tier
+  // MODIFIED: Get redirect destination based on user type, tier, and product_type
   const getRedirectDestination = useCallback((userData) => {
     console.log("[Login] Getting redirect for user:", { 
       tier: userData?.tier, 
       billing_complete: userData?.billing_complete,
       has_card: userData?.has_card_on_file,
-      is_admin: userData?.is_admin
+      is_admin: userData?.is_admin,
+      product_type: userData?.product_type
     });
     
-    // ✅ Save tier to localStorage for persistence
+    // Save tier and product_type to localStorage
     if (userData?.tier) {
       localStorage.setItem("IMALI_SELECTED_TIER", userData.tier);
+    }
+    if (userData?.product_type) {
+      localStorage.setItem("IMALI_PRODUCT_TYPE", userData.product_type);
     }
     
     // Priority 1: Check for redirect from query or state
@@ -193,23 +197,30 @@ export default function Login() {
       return redirectPath;
     }
     
-    // Priority 2: Enterprise users go to enterprise dashboard
+    // Priority 2: NEW - Admin platform users go to admin dashboard
+    const productType = userData?.product_type || localStorage.getItem("IMALI_PRODUCT_TYPE");
+    if (productType === "admin") {
+      console.log("[Login] Admin platform user, redirecting to /admin/dashboard");
+      return "/admin/dashboard";
+    }
+    
+    // Priority 3: Enterprise users go to enterprise dashboard
     if (userData?.tier === "enterprise" || userData?.organization_id) {
       return "/enterprise-dashboard";
     }
     
-    // Priority 3: Admin users go to admin panel
+    // Priority 4: Admin users go to admin panel
     if (userData?.is_admin === true || userData?.isAdmin === true) {
       return "/admin";
     }
     
-    // ✅ CRITICAL FIX: Starter users go directly to dashboard
+    // Priority 5: Starter users go directly to dashboard
     if (userData?.tier === "starter") {
       console.log("[Login] Starter user, redirecting to dashboard");
       return "/dashboard";
     }
     
-    // ✅ For Pro/Elite users: check if they need activation
+    // Priority 6: Pro/Elite users check activation
     const hasValidPayment = userData?.has_card_on_file === true || userData?.billing_complete === true;
     const needsActivation = !hasValidPayment;
     
@@ -271,12 +282,15 @@ export default function Login() {
       // Get user data from result
       const userData = result.user;
       
-      // ✅ Save tier to localStorage
+      // Save tier and product_type to localStorage
       if (userData?.tier) {
         localStorage.setItem("IMALI_SELECTED_TIER", userData.tier);
       }
+      if (userData?.product_type) {
+        localStorage.setItem("IMALI_PRODUCT_TYPE", userData.product_type);
+      }
       
-      // ✅ FIXED: Use the same redirect logic
+      // Get redirect destination
       const redirectPath = getRedirectDestination(userData);
       
       console.log("[Login] Successful login, redirecting to:", redirectPath);
