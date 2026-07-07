@@ -182,7 +182,7 @@ const AdminUsers = () => {
             onClick={fetchUsers}
             className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm hover:bg-white/10 transition flex items-center gap-2"
           >
-            <FaRefresh /> Refresh
+            <FaSync /> Refresh
           </button>
         </div>
       </div>
