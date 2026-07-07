@@ -85,4 +85,16 @@ const AdminEnterpriseManagement = () => {
                 <button className="p-1.5 text-white/40 hover:text-white hover:bg-white/10 rounded-lg transition">
                   <FaEdit />
                 </button>
-                <button className="p-1.5 text
+                <button className="p-1.5 text-red-400/60 hover:text-red-400 hover:bg-white/10 rounded-lg transition">
+                  <FaTrash />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AdminEnterpriseManagement;
