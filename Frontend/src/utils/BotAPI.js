@@ -573,6 +573,71 @@ const getGlobalTrades = async (options = {}) =>
   unwrap(await api.get("/api/trading/global-trades", { params: options }));
 
 // =====================================================
+// ADMIN PLATFORM (NEW)
+// =====================================================
+const getOrganization = async (skipCache = false) =>
+  cachedGet(
+    "organization",
+    30000,
+    async () => getData(await api.get("/api/organization")),
+    skipCache
+  );
+
+const getOrganizationUsers = async (skipCache = false) =>
+  cachedGet(
+    "organization_users",
+    30000,
+    async () => getData(await api.get("/api/organization/users")),
+    skipCache
+  );
+
+const updateOrganization = async (data) => {
+  const res = unwrap(await api.put("/api/organization", data));
+  clearCache();
+  return res;
+};
+
+const getBillingSummary = async (skipCache = false) =>
+  cachedGet(
+    "billing_summary",
+    30000,
+    async () => getData(await api.get("/api/billing/summary")),
+    skipCache
+  );
+
+const getReports = async (params = {}, skipCache = false) =>
+  cachedGet(
+    `reports_${JSON.stringify(params)}`,
+    60000,
+    async () => getData(await api.get("/api/reports", { params })),
+    skipCache
+  );
+
+const getAnalytics = async (params = {}, skipCache = false) =>
+  cachedGet(
+    `analytics_${JSON.stringify(params)}`,
+    30000,
+    async () => getData(await api.get("/api/analytics", { params })),
+    skipCache
+  );
+
+const getAuditLogs = async (params = {}, skipCache = false) =>
+  cachedGet(
+    `audit_logs_${JSON.stringify(params)}`,
+    30000,
+    async () => getData(await api.get("/api/audit/logs", { params })),
+    skipCache
+  );
+
+const getOrganizations = async (skipCache = false) =>
+  cachedGet(
+    "organizations",
+    30000,
+    async () => getData(await api.get("/api/organizations")),
+    skipCache
+  );
+
+// =====================================================
 // EXPORT
 // =====================================================
 const BotAPI = {
@@ -650,6 +715,16 @@ const BotAPI = {
 
   // Global
   getGlobalTrades,
+
+  // ===== NEW: Admin Platform =====
+  getOrganization,
+  getOrganizationUsers,
+  updateOrganization,
+  getBillingSummary,
+  getReports,
+  getAnalytics,
+  getAuditLogs,
+  getOrganizations,
 };
 
 export default BotAPI;
