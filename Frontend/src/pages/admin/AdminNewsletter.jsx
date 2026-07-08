@@ -1,6 +1,6 @@
 // src/pages/admin/AdminNewsletter.jsx
 import React, { useState } from 'react';
-import { FaNewspaper, FaPlus, FaEdit, FaTrash, FaSend, FaUsers, FaEye, FaChartBar, FaSync, FaSearch } from 'react-icons/fa';
+import { FaNewspaper, FaPlus, FaEdit, FaTrash, FaPaperPlane, FaUsers, FaEye, FaChartBar, FaSync, FaSearch } from 'react-icons/fa';
 
 const AdminNewsletter = () => {
   const [newsletters, setNewsletters] = useState([
@@ -93,7 +93,7 @@ const AdminNewsletter = () => {
                 </span>
                 {newsletter.status === 'draft' && (
                   <button className="p-1.5 text-emerald-400/60 hover:text-emerald-400 hover:bg-white/10 rounded-lg transition">
-                    <FaSend />
+                    <FaPaperPlane />
                   </button>
                 )}
                 <button className="p-1.5 text-white/40 hover:text-white hover:bg-white/10 rounded-lg transition">
