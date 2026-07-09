@@ -151,44 +151,44 @@ function RedirectIfActivated({ children }) {
   return children;
 }
 
-// ==================== POST-LOGIN REDIRECT ====================
+// ==================== POST-LOGIN REDIRECT - FIXED ====================
 function PostLoginRedirect() {
-  const { user, loading, isAdmin, isEnterpriseUser, activation } = useAuth();
+  const { user, loading, isAdmin, activation } = useAuth();
   const navigate = useNavigate();
-  
+
   React.useEffect(() => {
     if (loading) return;
-    if (!user) { 
-      navigate("/login", { replace: true }); 
-      return; 
-    }
-    
-    const productType = user?.product_type || localStorage.getItem("IMALI_PRODUCT_TYPE");
-    if (productType === "admin") {
-      navigate("/admin/dashboard", { replace: true });
+
+    if (!user) {
+      navigate("/login", { replace: true });
       return;
     }
-    
-    if (isEnterpriseUser) { 
-      navigate("/enterprise/dashboard", { replace: true }); 
-      return; 
+
+    // Admin goes to admin panel
+    if (isAdmin || user?.is_admin || user?.email === "wayne@imali-defi.com") {
+      navigate("/admin", { replace: true });
+      return;
     }
-    if (isAdmin || user?.is_admin || user?.email === "wayne@imali-defi.com") { 
-      navigate("/admin", { replace: true }); 
-      return; 
+
+    // Regular users ALWAYS go to dashboard or billing
+    const tier = String(user?.tier || "starter").toLowerCase();
+
+    // Check if user has paid (for non-starter tiers)
+    if (tier !== "starter") {
+      const hasPaid =
+        user?.subscription_status === "active" ||
+        activation?.has_card_on_file === true;
+
+      if (!hasPaid) {
+        navigate(`/billing?tier=${tier}`, { replace: true, state: { tier } });
+        return;
+      }
     }
-    const tier = (user?.tier || "starter").toLowerCase();
-    if (tier === "starter") { 
-      navigate("/dashboard", { replace: true }); 
-      return; 
-    }
-    const hasPaid = user?.subscription_status === "active" || activation?.has_card_on_file === true;
-    if (!hasPaid) { 
-      navigate(`/billing?tier=${tier}`, { replace: true, state: { tier } }); 
-      return; 
-    }
+
+    // DEFAULT: regular users go to dashboard
     navigate("/dashboard", { replace: true });
-  }, [user, loading, navigate, isAdmin, isEnterpriseUser, activation]);
+  }, [user, loading, navigate, isAdmin, activation]);
+
   return <LoadingSpinner />;
 }
 
@@ -276,7 +276,7 @@ function MainAppRoutes() {
               </ProtectedRoute>
             } />
 
-            {/* DASHBOARD */}
+            {/* DASHBOARD - MAIN MEMBER DASHBOARD */}
             <Route path="/dashboard" element={
               <ProtectedRoute requirePaid={false} requireActivation={false}>
                 <MemberDashboard />
@@ -315,6 +315,9 @@ function MainAppRoutes() {
             <Route path="/enterprise/audit" element={<RequireEnterpriseAdmin><AuditPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/branding" element={<RequireEnterpriseAdmin><BrandingPage /></RequireEnterpriseAdmin>} />
             <Route path="/enterprise/bot-controls" element={<RequireEnterpriseAdmin><BotControlsPage /></RequireEnterpriseAdmin>} />
+
+            {/* ENTERPRISE-PENDING REDIRECT - PREVENTS USERS FROM GETTING STUCK */}
+            <Route path="/enterprise-pending" element={<Navigate to="/dashboard" replace />} />
 
             {/* ADMIN - Specific routes first, catch-all last */}
             <Route path="/admin/dashboard" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
