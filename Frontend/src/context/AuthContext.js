@@ -1,4 +1,4 @@
-// src/context/AuthContext.js - CORRECTED (With JWT Expiration Fix)
+// src/context/AuthContext.js - CORRECTED
 import React, {
   createContext,
   useContext,
@@ -908,6 +908,24 @@ export function AuthProvider({ children }) {
     return isEnterpriseAdmin && user?.admin_panel_access === true;
   }, [isEnterpriseAdmin, user]);
 
+  // ============ FIXED: hasCardOnFile ============
+  const hasCardOnFile = useMemo(() => {
+    // CRITICAL: Starter users, always return true (no card needed)
+    if (user?.tier === "starter") {
+      return true;
+    }
+    
+    // Check if user has card from both user and activation data
+    const userHasCard = user?.has_card_on_file === true || user?.billing_complete === true;
+    const activationHasCard = activation?.has_card_on_file === true || activation?.billing_complete === true;
+    
+    if (isEnterpriseUser) return true;
+    
+    // Return true if either user or activation has card
+    return userHasCard || activationHasCard;
+  }, [activation, user, isEnterpriseUser]);
+
+  // ============ FIXED: activationComplete ============
   const activationComplete = useMemo(() => {
     // CRITICAL: Starter users, activation is always complete
     if (user?.tier === "starter") {
@@ -918,17 +936,13 @@ export function AuthProvider({ children }) {
       return activation?.enterprise_approved === true && activation?.trading_enabled === true;
     }
     
-    return activation?.trading_enabled === true && activation?.activation_complete === true;
-  }, [activation, user, isEnterpriseUser]);
-
-  const hasCardOnFile = useMemo(() => {
-    // CRITICAL: Starter users, always return true (no card needed)
-    if (user?.tier === "starter") {
-      return true;
-    }
+    // Check if billing is complete from user or activation
+    const userBillingComplete = user?.has_card_on_file === true || user?.billing_complete === true;
+    const activationBillingComplete = activation?.has_card_on_file === true || activation?.billing_complete === true;
+    const billingComplete = userBillingComplete || activationBillingComplete;
     
-    if (isEnterpriseUser) return true;
-    return activation?.has_card_on_file === true || activation?.billing_complete === true;
+    // Activation is complete if billing is complete AND trading is enabled
+    return billingComplete && (activation?.trading_enabled === true || user?.trading_enabled === true);
   }, [activation, user, isEnterpriseUser]);
 
   const hasRequiredIntegrations = useMemo(() => {
