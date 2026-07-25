@@ -1,42 +1,25 @@
 // src/pages/BillingDashboard.jsx
-// Production-ready Account Settings page
-// Full billing, subscription, trading accounts, wallet, API keys, security, and activity
 
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import CardUpdateForm from "./CardUpdateForm";
+
 import {
-  FaCreditCard,
-  FaCrown,
-  FaWallet,
-  FaKey,
-  FaShieldAlt,
-  FaBell,
-  FaPlug,
-  FaArrowRight,
-  FaCheckCircle,
-  FaCircle,
-  FaLock,
-  FaExclamationTriangle,
   FaApple,
   FaBitcoin,
-  FaWater,
-  FaChartLine,
-  FaRobot,
+  FaCheckCircle,
+  FaCrown,
+  FaCreditCard,
   FaHistory,
-  FaDatabase,
-  FaChartBar,
-  FaClock,
-  FaUser,
-  FaEnvelope,
-  FaPhone,
-  FaGlobe,
+  FaKey,
+  FaLock,
+  FaPlug,
+  FaRobot,
   FaServer,
-  FaCloudUpload,
-  FaDownload,
+  FaShieldAlt,
   FaTrash,
   FaUserCog,
-  FaLock as FaLockIcon,
+  FaWallet,
+  FaWater,
 } from "react-icons/fa";
 
 const TIERS = {
@@ -44,40 +27,43 @@ const TIERS = {
     label: "Starter",
     icon: "🌱",
     price: "Free",
-    description: "Paper trading and beginner tools. No credit card required.",
+    description:
+      "Paper trading and beginner tools. No credit card required.",
     color: "from-emerald-600/20 to-teal-500/10",
     borderColor: "border-emerald-500/30",
-    buttonColor: "from-emerald-600 to-teal-600",
     tierLevel: 0,
   },
+
   pro: {
     label: "Pro",
     icon: "⭐",
     price: "$19/mo",
-    description: "Live crypto, live stocks, AI strategies, and analytics.",
+    description:
+      "Live crypto, stocks, AI strategies, and analytics.",
     color: "from-blue-600/20 to-indigo-500/10",
     borderColor: "border-blue-500/30",
-    buttonColor: "from-blue-600 to-indigo-600",
     tierLevel: 1,
   },
+
   elite: {
     label: "Elite",
     icon: "👑",
     price: "$49/mo",
-    description: "Crypto, DEX, futures, wallet tools, and advanced automation.",
+    description:
+      "Crypto, DEX, futures, wallet tools, and advanced automation.",
     color: "from-purple-600/20 to-pink-500/10",
     borderColor: "border-purple-500/30",
-    buttonColor: "from-purple-600 to-pink-600",
     tierLevel: 2,
   },
+
   enterprise: {
     label: "Enterprise",
     icon: "🏢",
     price: "Custom",
-    description: "Team management, white-label tools, and dedicated support.",
+    description:
+      "Team management, white-label tools, and dedicated support.",
     color: "from-indigo-600/20 to-cyan-500/10",
     borderColor: "border-indigo-500/30",
-    buttonColor: "from-indigo-600 to-cyan-600",
     tierLevel: 3,
   },
 };
@@ -87,38 +73,59 @@ const CONNECTION_TYPES = [
     id: "okx",
     label: "OKX Exchange",
     icon: <FaBitcoin />,
-    description: "Connect your OKX account for crypto trading",
+    description:
+      "Connect your OKX account for crypto trading.",
     route: "/connect-okx",
     color: "from-blue-500/20 to-cyan-500/10",
     borderColor: "border-blue-500/30",
   },
+
   {
     id: "alpaca",
     label: "Alpaca Trading",
     icon: <FaApple />,
-    description: "Connect your Alpaca account for stock trading",
+    description:
+      "Connect your Alpaca account for stock trading.",
     route: "/connect-alpaca",
     color: "from-green-500/20 to-emerald-500/10",
     borderColor: "border-green-500/30",
   },
+
   {
     id: "dex",
     label: "DEX / Wallet",
     icon: <FaWater />,
-    description: "Connect MetaMask or other wallet for DeFi",
+    description:
+      "Connect MetaMask or another wallet for DeFi.",
     route: "/connect-wallet",
     color: "from-purple-500/20 to-pink-500/10",
     borderColor: "border-purple-500/30",
   },
 ];
 
-const RECENT_ACTIVITIES = [
-  { type: "subscription", label: "Subscription changed to Pro", time: "2 hours ago", icon: "📄" },
-  { type: "card", label: "Payment method updated", time: "1 day ago", icon: "💳" },
-  { type: "wallet", label: "Wallet connected", time: "3 days ago", icon: "🦊" },
-  { type: "api", label: "API key updated", time: "5 days ago", icon: "🔑" },
-  { type: "trading", label: "Trading enabled", time: "1 week ago", icon: "🤖" },
-];
+function normalizeTier(value) {
+  const tier = String(value || "starter")
+    .toLowerCase()
+    .trim();
+
+  return TIERS[tier]
+    ? tier
+    : "starter";
+}
+
+function num(value) {
+  const parsed = Number(
+    String(value ?? 0).replace(/[$,]/g, "")
+  );
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : 0;
+}
+
+function unwrapActivation(value) {
+  return value?.status || value || {};
+}
 
 export default function BillingDashboard({
   tier = "starter",
@@ -127,646 +134,943 @@ export default function BillingDashboard({
   activation = {},
   subscription = null,
   busy = "",
-  showCardForm = false,
-  formKey = 0,
-  pendingTier = null,
   onUpdateCard,
   onRemoveCard,
   onCancelSubscription,
-  onCancelCardForm,
-  onCardSuccess,
 }) {
   const navigate = useNavigate();
 
-  const currentTier = String(tier || user?.tier || "starter").toLowerCase();
-  const meta = TIERS[currentTier] || TIERS.starter;
-  const tierLevel = meta.tierLevel || 0;
-  const activationStatus = activation?.status || activation || {};
+  const currentTier = normalizeTier(
+    tier || user?.tier
+  );
 
-  const hasCard =
-    cardStatus?.hasCard === true ||
-    cardStatus?.has_card === true ||
-    cardStatus?.has_card_on_file === true ||
-    user?.has_card_on_file === true ||
-    activationStatus?.has_card_on_file === true;
+  const meta =
+    TIERS[currentTier] ||
+    TIERS.starter;
 
-  const billingComplete = hasCard;
-  const isPaidUser = currentTier === "pro" || currentTier === "elite";
+  const tierLevel =
+    meta.tierLevel || 0;
+
+  const activationStatus =
+    unwrapActivation(activation);
+
+  const hasCard = Boolean(
+    cardStatus?.hasCard ||
+      cardStatus?.has_card ||
+      cardStatus?.has_card_on_file ||
+      user?.has_card_on_file ||
+      activationStatus?.has_card_on_file
+  );
+
+  const isPaidUser =
+    currentTier === "pro" ||
+    currentTier === "elite";
 
   const subscriptionStatus =
     subscription?.status ||
+    subscription?.subscription_status ||
     user?.subscription_status ||
-    (currentTier === "starter" ? "free" : hasCard ? "active" : "incomplete");
+    (currentTier === "starter"
+      ? "free"
+      : hasCard
+        ? "active"
+        : "incomplete");
 
-  const canManageCard = currentTier === "pro" || currentTier === "elite";
-  const canCancel = canManageCard && subscriptionStatus !== "canceled";
+  const canManageCard =
+    currentTier === "pro" ||
+    currentTier === "elite";
+
+  const canCancel =
+    canManageCard &&
+    subscriptionStatus !== "canceled" &&
+    subscriptionStatus !== "cancelled";
 
   const cardLabel =
-    cardStatus?.brand && cardStatus?.last4
-      ? `${String(cardStatus.brand).toUpperCase()} •••• ${cardStatus.last4}`
+    cardStatus?.brand &&
+    cardStatus?.last4
+      ? `${String(
+          cardStatus.brand
+        ).toUpperCase()} •••• ${cardStatus.last4}`
       : hasCard
-      ? "Payment Method On File"
-      : "No Card Saved";
+        ? "Payment Method On File"
+        : "No Card Saved";
 
-  // Connection statuses
-  const isOKXConnected = activationStatus?.okx_connected || false;
-  const isAlpacaConnected = activationStatus?.alpaca_connected || false;
-  const isWalletConnected = activationStatus?.wallet_connected || false;
-  const isBotRunning = activationStatus?.trading_enabled || false;
+  const isOKXConnected = Boolean(
+    activationStatus?.okx_connected
+  );
+
+  const isAlpacaConnected = Boolean(
+    activationStatus?.alpaca_connected
+  );
+
+  const isWalletConnected = Boolean(
+    activationStatus?.wallet_connected
+  );
+
+  const isBotRunning = Boolean(
+    activationStatus?.trading_enabled ||
+      activationStatus?.is_running
+  );
 
   const connections = {
-    okx: { connected: isOKXConnected, label: "OKX", mode: activationStatus?.okx_mode || "paper" },
-    alpaca: { connected: isAlpacaConnected, label: "Alpaca", mode: activationStatus?.alpaca_mode || "paper" },
-    dex: { connected: isWalletConnected, label: "Wallet", mode: "live" },
+    okx: {
+      connected: isOKXConnected,
+      mode:
+        activationStatus?.okx_mode ||
+        "paper",
+    },
+
+    alpaca: {
+      connected: isAlpacaConnected,
+      mode:
+        activationStatus?.alpaca_mode ||
+        "paper",
+    },
+
+    dex: {
+      connected: isWalletConnected,
+      mode: "live",
+    },
   };
 
-  // API Key statuses based on activation data
-  const apiStatuses = {
-    okx_api: { status: isOKXConnected ? "Connected" : "Missing", route: "/connect-okx" },
-    alpaca_api: { status: isAlpacaConnected ? "Connected" : "Missing", route: "/connect-alpaca" },
-    wallet_api: { status: isWalletConnected ? "Connected" : "Missing", route: "/connect-wallet" },
-  };
+  const apiStatuses = [
+    {
+      id: "okx",
+      label: "OKX API Key",
+      connected: isOKXConnected,
+      route: "/connect-okx",
+    },
 
-  const handleNavigate = (route) => {
-    navigate(route);
-  };
+    {
+      id: "alpaca",
+      label: "Alpaca API Key",
+      connected: isAlpacaConnected,
+      route: "/connect-alpaca",
+    },
 
-  // Determine which upgrade cards to show
-  const showUpgradeCards = () => {
-    if (tierLevel >= 2) return { show: false, message: "You're on our highest individual plan." };
-    if (tierLevel === 3) return { show: false, message: "Enterprise plan - contact sales for changes." };
-    return { show: true };
-  };
-
-  const upgradeStatus = showUpgradeCards();
+    {
+      id: "wallet",
+      label: "Wallet Address",
+      connected: isWalletConnected,
+      route: "/connect-wallet",
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#050816] text-white px-4 py-6 md:py-10">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(16,185,129,0.10),transparent_35%)]" />
+    <div className="space-y-6">
+      <section className="rounded-[2rem] border border-emerald-500/20 bg-emerald-500/5 p-4 shadow-xl md:p-5">
+        <div className="flex flex-wrap items-center gap-4 md:gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-black text-white/60">
+              Account Health
+            </span>
 
-      <div className="relative max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-black">Account Settings</h1>
-            <p className="text-white/50 mt-1">
-              Manage your billing, subscriptions, and account preferences
-            </p>
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/20 px-2 py-1 text-xs text-emerald-300">
+              {hasCard || currentTier === "starter"
+                ? "✅ Billing Ready"
+                : "⚠️ Setup Needed"}
+            </span>
           </div>
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-3 font-black transition flex items-center gap-2"
-          >
-            ← Back to Dashboard
-          </button>
+
+          <HealthBadge
+            label="Plan"
+            value={meta.label}
+            status
+          />
+
+          <HealthBadge
+            label="Billing"
+            status={
+              hasCard ||
+              currentTier === "starter"
+            }
+          />
+
+          <HealthBadge
+            label="OKX"
+            status={isOKXConnected}
+          />
+
+          <HealthBadge
+            label="Wallet"
+            status={isWalletConnected}
+          />
+
+          <HealthBadge
+            label="Bot"
+            value={
+              isBotRunning
+                ? "Running"
+                : "Stopped"
+            }
+            status={isBotRunning}
+          />
+
+          <HealthBadge
+            label="Trading"
+            status={Boolean(
+              activationStatus?.trading_enabled
+            )}
+          />
+
+          {isPaidUser && (
+            <HealthBadge
+              label="Portfolio"
+              value={`$${num(
+                activationStatus?.portfolio_value
+              ).toFixed(0)}`}
+              status
+            />
+          )}
+        </div>
+      </section>
+
+      <section
+        className={`overflow-hidden rounded-[2rem] border ${meta.borderColor} bg-gradient-to-br ${meta.color} p-5 shadow-xl md:p-6`}
+      >
+        <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+          <div className="flex items-center gap-4">
+            <div className="text-5xl">
+              {meta.icon}
+            </div>
+
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-3xl font-black">
+                  {meta.label} Plan
+                </h2>
+
+                <span className="font-black text-emerald-300">
+                  {meta.price}
+                </span>
+
+                {hasCard && (
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/20 px-3 py-1 text-xs font-black text-emerald-300">
+                    ✅ Active
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-1 text-white/60">
+                {meta.description}
+              </p>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <StatusBadge
+                  label={
+                    hasCard
+                      ? "Payment Active"
+                      : "No Payment"
+                  }
+                  status={hasCard}
+                />
+
+                <StatusBadge
+                  label={String(
+                    subscriptionStatus
+                  ).replaceAll("_", " ")}
+                  status={
+                    subscriptionStatus ===
+                      "active" ||
+                    subscriptionStatus ===
+                      "free" ||
+                    subscriptionStatus ===
+                      "trialing"
+                  }
+                />
+
+                <StatusBadge
+                  label={
+                    isBotRunning
+                      ? "Bot Running"
+                      : "Bot Stopped"
+                  }
+                  status={isBotRunning}
+                />
+              </div>
+            </div>
+          </div>
+
+          {tierLevel < 2 &&
+            currentTier !== "enterprise" && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate("/pricing")
+                }
+                className="rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3 font-black text-white transition hover:from-amber-600 hover:to-orange-600"
+              >
+                <FaCrown className="mr-2 inline" />
+
+                {currentTier === "starter"
+                  ? "Upgrade Plan"
+                  : "Change Plan"}
+              </button>
+            )}
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <FaRobot className="text-2xl text-cyan-400" />
+
+          <h2 className="text-xl font-black">
+            Bot Status
+          </h2>
         </div>
 
-        {/* Account Health Strip */}
-        <section className="rounded-[2rem] border border-emerald-500/20 bg-emerald-500/5 p-4 md:p-5 shadow-xl">
-          <div className="flex flex-wrap items-center gap-4 md:gap-6">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-black text-white/60">Account Health</span>
-              <span className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
-                ✅ All Good
-              </span>
+        <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+            <BotStatusItem
+              label="Status"
+              value={
+                isBotRunning
+                  ? "Running"
+                  : "Stopped"
+              }
+              status={isBotRunning}
+            />
+
+            <BotStatusItem
+              label="Mode"
+              value={String(
+                activationStatus?.trading_mode ||
+                  "paper"
+              ).toUpperCase()}
+              status
+            />
+
+            <BotStatusItem
+              label="Strategy"
+              value={
+                activationStatus?.current_strategy ||
+                user?.strategy ||
+                "Balanced AI"
+              }
+              status
+            />
+
+            <BotStatusItem
+              label="Exchange"
+              value={
+                isOKXConnected
+                  ? "OKX"
+                  : isAlpacaConnected
+                    ? "Alpaca"
+                    : "None"
+              }
+              status={
+                isOKXConnected ||
+                isAlpacaConnected
+              }
+            />
+
+            <BotStatusItem
+              label="Open Positions"
+              value={String(
+                activationStatus?.open_positions ||
+                  0
+              )}
+              status={
+                num(
+                  activationStatus?.open_positions
+                ) > 0
+              }
+            />
+
+            <BotStatusItem
+              label="Last Trade"
+              value={
+                activationStatus?.last_trade_time ||
+                "No trades yet"
+              }
+              status={Boolean(
+                activationStatus?.last_trade_time
+              )}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <FaCreditCard className="text-2xl text-emerald-400" />
+
+            <h2 className="text-xl font-black">
+              Payment Method
+            </h2>
+          </div>
+
+          <span
+            className={`h-3 w-3 rounded-full ${
+              hasCard
+                ? "bg-emerald-400"
+                : "bg-gray-500"
+            }`}
+          />
+        </div>
+
+        <div className="mb-5 rounded-[1.5rem] border border-white/10 bg-black/30 p-5">
+          {hasCard ? (
+            <div>
+              <div className="mb-2 flex items-center gap-3">
+                <span className="h-3 w-3 rounded-full bg-emerald-400" />
+
+                <h3 className="text-lg font-black">
+                  {cardLabel}
+                </h3>
+              </div>
+
+              {cardStatus?.exp_month &&
+                cardStatus?.exp_year && (
+                  <p className="text-sm text-white/50">
+                    Expires{" "}
+                    {cardStatus.exp_month}/
+                    {cardStatus.exp_year}
+                  </p>
+                )}
+
+              <p className="mt-2 text-xs text-emerald-400">
+                ✅ Default payment method
+              </p>
             </div>
-            <HealthBadge label="Plan" value={meta.label} status={true} />
-            <HealthBadge label="Billing" status={hasCard || currentTier === "starter"} />
-            <HealthBadge label="OKX" status={isOKXConnected} />
-            <HealthBadge label="Wallet" status={isWalletConnected} />
-            <HealthBadge label="Bot" status={isBotRunning ? "Running" : "Stopped"} color={isBotRunning ? "emerald" : "yellow"} />
-            <HealthBadge label="Trading" status={activationStatus?.trading_enabled} />
-            {isPaidUser && (
-              <HealthBadge label="Portfolio" value={`$${num(activationStatus?.portfolio_value || 0).toFixed(0)}`} status={true} />
+          ) : (
+            <div>
+              <div className="mb-2 flex items-center gap-3">
+                <span className="h-3 w-3 rounded-full bg-gray-500" />
+
+                <h3 className="font-black text-white/50">
+                  No payment method
+                </h3>
+              </div>
+
+              <p className="text-sm text-white/50">
+                {currentTier === "starter"
+                  ? "The Starter plan does not require a payment method."
+                  : "Add a card to activate paid access."}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          {canManageCard && (
+            <button
+              type="button"
+              onClick={onUpdateCard}
+              disabled={busy === "card"}
+              className="rounded-2xl bg-blue-600 px-5 py-4 font-black text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {hasCard
+                ? "Update Card"
+                : "Add Card"}
+            </button>
+          )}
+
+          {hasCard && canManageCard && (
+            <button
+              type="button"
+              onClick={onRemoveCard}
+              disabled={busy === "remove"}
+              className="rounded-2xl border border-red-700/60 bg-red-900/70 px-5 py-4 font-black text-red-100 transition hover:bg-red-800/70 disabled:opacity-50"
+            >
+              {busy === "remove"
+                ? "Removing..."
+                : "Remove Card"}
+            </button>
+          )}
+
+          {currentTier === "starter" && (
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/pricing")
+              }
+              className="rounded-2xl bg-emerald-600 px-5 py-4 font-black transition hover:bg-emerald-500"
+            >
+              Upgrade to Add Card
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="text-3xl">
+            📄
+          </span>
+
+          <h2 className="text-xl font-black">
+            Subscription
+          </h2>
+        </div>
+
+        <div className="mb-5 rounded-[1.5rem] border border-white/10 bg-black/30 p-5">
+          <InfoRow
+            label="Plan"
+            value={meta.label}
+          />
+
+          <InfoRow
+            label="Status"
+            value={String(
+              subscriptionStatus
+            ).replaceAll("_", " ")}
+          />
+
+          {subscription?.amount && (
+            <InfoRow
+              label="Price"
+              value={`${String(
+                subscription.currency ||
+                  "usd"
+              ).toUpperCase()} $${(
+                subscription.amount / 100
+              ).toFixed(2)} / ${
+                subscription.interval ||
+                "month"
+              }`}
+            />
+          )}
+
+          {subscription?.current_period_end && (
+            <InfoRow
+              label="Renewal Date"
+              value={new Date(
+                subscription.current_period_end *
+                  1000
+              ).toLocaleDateString()}
+            />
+          )}
+        </div>
+
+        {canCancel && (
+          <button
+            type="button"
+            onClick={onCancelSubscription}
+            disabled={busy === "cancel"}
+            className="w-full rounded-2xl border border-red-700/60 bg-red-900/70 px-5 py-4 font-black text-red-100 transition hover:bg-red-800/70 disabled:opacity-50"
+          >
+            {busy === "cancel"
+              ? "Canceling..."
+              : "Cancel Subscription"}
+          </button>
+        )}
+      </section>
+
+      {tierLevel < 2 && (
+        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+          <div className="mb-5 flex items-center gap-3">
+            <FaCrown className="text-2xl text-amber-400" />
+
+            <h2 className="text-xl font-black">
+              Upgrade Options
+            </h2>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {tierLevel < 1 && (
+              <UpgradeCard
+                icon="⭐"
+                label="Pro Plan"
+                price="$19/mo"
+                features={[
+                  "Live crypto trading",
+                  "Live stock trading",
+                  "AI strategies",
+                  "Priority support",
+                ]}
+                onUpgrade={() =>
+                  navigate(
+                    "/pricing?selected=pro"
+                  )
+                }
+                color="from-blue-600/20 to-indigo-500/10"
+                borderColor="border-blue-500/30"
+              />
+            )}
+
+            {tierLevel < 2 && (
+              <UpgradeCard
+                icon="👑"
+                label="Elite Plan"
+                price="$49/mo"
+                features={[
+                  "Everything in Pro",
+                  "DEX tools",
+                  "Futures trading",
+                  "Wallet automation",
+                ]}
+                onUpgrade={() =>
+                  navigate(
+                    "/pricing?selected=elite"
+                  )
+                }
+                color="from-purple-600/20 to-pink-500/10"
+                borderColor="border-purple-500/30"
+              />
             )}
           </div>
         </section>
+      )}
 
-        {/* 1. Current Plan Summary */}
-        <section
-          className={`rounded-[2rem] border ${meta.borderColor} bg-gradient-to-br ${meta.color} p-5 md:p-6 shadow-xl overflow-hidden`}
-        >
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="text-5xl">{meta.icon}</div>
-              <div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h2 className="text-3xl font-black">{meta.label} Plan</h2>
-                  <span className="text-emerald-300 font-black">{meta.price}</span>
-                  {hasCard && (
-                    <span className="px-3 py-1 text-xs font-black bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
-                      ✅ Active
-                    </span>
-                  )}
-                </div>
-                <p className="text-white/60 mt-1">{meta.description}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <StatusBadge 
-                    label={hasCard ? "Payment Active" : "No Payment"} 
-                    status={hasCard} 
-                  />
-                  <StatusBadge 
-                    label={subscriptionStatus.replace("_", " ")} 
-                    status={subscriptionStatus === "active" || subscriptionStatus === "free"} 
-                  />
-                  <StatusBadge 
-                    label={isBotRunning ? "Bot Running" : "Bot Stopped"} 
-                    status={isBotRunning} 
-                  />
+      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <FaPlug className="text-2xl text-cyan-400" />
+
+          <h2 className="text-xl font-black">
+            Trading Accounts
+          </h2>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {CONNECTION_TYPES.map(
+            (connection) => (
+              <ConnectionCard
+                key={connection.id}
+                icon={connection.icon}
+                label={connection.label}
+                description={
+                  connection.description
+                }
+                connected={
+                  connections[connection.id]
+                    ?.connected || false
+                }
+                mode={
+                  connections[connection.id]
+                    ?.mode || "paper"
+                }
+                onConnect={() =>
+                  navigate(connection.route)
+                }
+                color={connection.color}
+                borderColor={
+                  connection.borderColor
+                }
+              />
+            )
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <FaWallet className="text-2xl text-purple-400" />
+
+          <h2 className="text-xl font-black">
+            Wallet & MetaMask
+          </h2>
+        </div>
+
+        <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">
+                  🦊
+                </span>
+
+                <div>
+                  <h3 className="font-black">
+                    MetaMask / DeFi Wallet
+                  </h3>
+
+                  <p className="text-sm text-white/50">
+                    {isWalletConnected
+                      ? "Wallet connected successfully."
+                      : "Connect your wallet for DEX trading."}
+                  </p>
                 </div>
               </div>
-            </div>
 
-            <div className="flex flex-wrap gap-3">
-              {tierLevel < 2 && currentTier !== "enterprise" && (
-                <button
-                  onClick={() => handleNavigate("/pricing")}
-                  className="rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3 font-black text-white hover:from-amber-600 hover:to-orange-600 transition"
-                >
-                  <FaCrown className="inline mr-2" />
-                  {currentTier === "starter" ? "Upgrade Plan" : "Change Plan"}
-                </button>
+              {activationStatus?.wallet_address_masked && (
+                <p className="mt-2 font-mono text-xs text-white/40">
+                  {
+                    activationStatus.wallet_address_masked
+                  }
+                </p>
               )}
             </div>
-          </div>
-        </section>
 
-        {/* 2. Bot Status */}
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-5">
-            <FaRobot className="text-2xl text-cyan-400" />
-            <h2 className="text-xl font-black">Bot Status</h2>
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/connect-wallet")
+              }
+              className={`rounded-2xl px-5 py-3 font-black transition ${
+                isWalletConnected
+                  ? "bg-emerald-600 hover:bg-emerald-500"
+                  : "bg-purple-600 hover:bg-purple-500"
+              }`}
+            >
+              {isWalletConnected
+                ? "Manage"
+                : "Connect Wallet"}
+            </button>
           </div>
+        </div>
+      </section>
 
-          <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <BotStatusItem 
-                label="Status" 
-                value={isBotRunning ? "Running" : "Stopped"} 
-                status={isBotRunning}
-              />
-              <BotStatusItem 
-                label="Mode" 
-                value={(activationStatus?.trading_mode || "paper").toUpperCase()} 
-                status={true}
-              />
-              <BotStatusItem 
-                label="Strategy" 
-                value={activationStatus?.current_strategy || "Balanced AI"} 
-                status={true}
-              />
-              <BotStatusItem 
-                label="Exchange" 
-                value={isOKXConnected ? "OKX" : isAlpacaConnected ? "Alpaca" : "None"} 
-                status={isOKXConnected || isAlpacaConnected}
-              />
-              <BotStatusItem 
-                label="Open Positions" 
-                value={String(activationStatus?.open_positions || 0)} 
-                status={(activationStatus?.open_positions || 0) > 0}
-              />
-              <BotStatusItem 
-                label="Last Trade" 
-                value={activationStatus?.last_trade_time || "No trades yet"} 
-                status={!!activationStatus?.last_trade_time}
-              />
-            </div>
-          </div>
-        </section>
+      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <FaKey className="text-2xl text-yellow-400" />
 
-        {/* 3. Payment Method */}
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <FaCreditCard className="text-2xl text-emerald-400" />
-              <h2 className="text-xl font-black">Payment Method</h2>
-            </div>
-            <span className={`h-3 w-3 rounded-full ${hasCard ? "bg-emerald-400" : "bg-gray-500"}`} />
-          </div>
+          <h2 className="text-xl font-black">
+            API Key Management
+          </h2>
+        </div>
 
-          <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5 mb-5">
-            {hasCard ? (
+        <div className="space-y-3">
+          {apiStatuses.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center justify-between rounded-[1.5rem] border border-white/10 bg-black/30 p-4"
+            >
               <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="h-3 w-3 rounded-full bg-emerald-400" />
-                  <h3 className="font-black text-lg">{cardLabel}</h3>
-                </div>
-                {cardStatus?.exp_month && cardStatus?.exp_year && (
-                  <p className="text-white/50 text-sm">
-                    Expires {cardStatus.exp_month}/{cardStatus.exp_year}
-                  </p>
-                )}
-                <p className="text-emerald-400 text-xs mt-2">✅ Default Payment Method</p>
-              </div>
-            ) : (
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="h-3 w-3 rounded-full bg-gray-500" />
-                  <h3 className="font-black text-white/50">No payment method</h3>
-                </div>
-                <p className="text-white/50 text-sm">
-                  {currentTier === "starter"
-                    ? "Starter does not require a payment method."
-                    : "Add a card to activate paid access."}
+                <h4 className="font-black">
+                  {item.label}
+                </h4>
+
+                <p className="text-xs">
+                  Status:{" "}
+                  <span
+                    className={
+                      item.connected
+                        ? "text-emerald-400"
+                        : "text-amber-400"
+                    }
+                  >
+                    {item.connected
+                      ? "✅ Connected"
+                      : "⚠️ Missing"}
+                  </span>
                 </p>
               </div>
-            )}
-          </div>
 
-          {(canManageCard || currentTier === "starter") && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {canManageCard && (
-                <button
-                  onClick={onUpdateCard}
-                  disabled={!!busy || showCardForm}
-                  className="rounded-2xl bg-blue-600 hover:bg-blue-500 px-5 py-4 font-black text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {showCardForm ? "Card Form Open" : hasCard ? "Update Card" : "Add Card"}
-                </button>
-              )}
-              {hasCard && canManageCard && (
-                <button
-                  onClick={onRemoveCard}
-                  disabled={busy === "remove"}
-                  className="rounded-2xl bg-red-900/70 hover:bg-red-800/70 border border-red-700/60 px-5 py-4 font-black text-red-100 transition disabled:opacity-50"
-                >
-                  {busy === "remove" ? "Removing..." : "Remove Card"}
-                </button>
-              )}
-              {currentTier === "starter" && (
-                <button
-                  onClick={() => handleNavigate("/pricing")}
-                  className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black transition"
-                >
-                  Upgrade to Add Card
-                </button>
-              )}
-            </div>
-          )}
-
-          {canManageCard && showCardForm && (
-            <div className="mt-6 pt-6 border-t border-white/10">
-              <CardUpdateForm
-                key={formKey}
-                tier={pendingTier || currentTier}
-                onSuccess={onCardSuccess}
-                onCancel={onCancelCardForm}
-              />
-            </div>
-          )}
-        </section>
-
-        {/* 4. Subscription Details */}
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-5">
-            <span className="text-3xl">📄</span>
-            <h2 className="text-xl font-black">Subscription</h2>
-          </div>
-
-          <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5 mb-5">
-            <InfoRow label="Plan" value={meta.label} />
-            <InfoRow label="Status" value={String(subscriptionStatus).replace("_", " ")} />
-            {subscription?.amount && (
-              <InfoRow
-                label="Price"
-                value={`${(subscription.currency || "usd").toUpperCase()} $${(
-                  subscription.amount / 100
-                ).toFixed(2)} / ${subscription.interval || "month"}`}
-              />
-            )}
-            {subscription?.current_period_end && (
-              <InfoRow
-                label="Renewal Date"
-                value={new Date(subscription.current_period_end * 1000).toLocaleDateString()}
-              />
-            )}
-          </div>
-
-          {canCancel && (
-            <button
-              onClick={onCancelSubscription}
-              disabled={busy === "cancel"}
-              className="w-full rounded-2xl bg-red-900/70 hover:bg-red-800/70 border border-red-700/60 px-5 py-4 font-black text-red-100 transition disabled:opacity-50"
-            >
-              {busy === "cancel" ? "Canceling..." : "Cancel Subscription"}
-            </button>
-          )}
-        </section>
-
-        {/* 5. Upgrade Options */}
-        {upgradeStatus.show && (
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-            <div className="flex items-center gap-3 mb-5">
-              <FaCrown className="text-2xl text-amber-400" />
-              <h2 className="text-xl font-black">Upgrade Options</h2>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              {tierLevel < 1 && (
-                <UpgradeCard
-                  tier="pro"
-                  icon="⭐"
-                  label="Pro Plan"
-                  price="$19/mo"
-                  features={["Live crypto trading", "Live stocks", "AI strategies", "Priority support"]}
-                  onUpgrade={() => handleNavigate("/pricing?selected=pro")}
-                  color="from-blue-600/20 to-indigo-500/10"
-                  borderColor="border-blue-500/30"
-                />
-              )}
-              {tierLevel < 2 && (
-                <UpgradeCard
-                  tier="elite"
-                  icon="👑"
-                  label="Elite Plan"
-                  price="$49/mo"
-                  features={["Everything in Pro", "DEX sniper", "Futures trading", "Staking & Lending"]}
-                  onUpgrade={() => handleNavigate("/pricing?selected=elite")}
-                  color="from-purple-600/20 to-pink-500/10"
-                  borderColor="border-purple-500/30"
-                />
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* 6. Trading Accounts */}
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-5">
-            <FaPlug className="text-2xl text-cyan-400" />
-            <h2 className="text-xl font-black">Trading Accounts</h2>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {CONNECTION_TYPES.map((conn) => (
-              <ConnectionCard
-                key={conn.id}
-                icon={conn.icon}
-                label={conn.label}
-                description={conn.description}
-                connected={connections[conn.id]?.connected || false}
-                mode={connections[conn.id]?.mode || "paper"}
-                onConnect={() => handleNavigate(conn.route)}
-                color={conn.color}
-                borderColor={conn.borderColor}
-              />
-            ))}
-          </div>
-        </section>
-
-        {/* 7. Wallet / MetaMask */}
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-5">
-            <FaWallet className="text-2xl text-purple-400" />
-            <h2 className="text-xl font-black">Wallet & MetaMask</h2>
-          </div>
-
-          <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">🦊</span>
-                  <div>
-                    <h3 className="font-black">MetaMask / DeFi Wallet</h3>
-                    <p className="text-white/50 text-sm">
-                      {isWalletConnected
-                        ? "Wallet connected successfully"
-                        : "Connect your wallet for DEX trading"}
-                    </p>
-                  </div>
-                </div>
-                {activationStatus?.wallet_address_masked && (
-                  <p className="text-xs text-white/40 mt-2 font-mono">
-                    {activationStatus.wallet_address_masked}
-                  </p>
-                )}
-              </div>
               <button
-                onClick={() => handleNavigate("/connect-wallet")}
-                className={`rounded-2xl px-5 py-3 font-black transition ${
-                  isWalletConnected
-                    ? "bg-emerald-600 hover:bg-emerald-500"
-                    : "bg-purple-600 hover:bg-purple-500"
-                }`}
+                type="button"
+                onClick={() =>
+                  navigate(item.route)
+                }
+                className="rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-black transition hover:bg-white/20"
               >
-                {isWalletConnected ? "Manage" : "Connect Wallet"}
+                {item.connected
+                  ? "Manage"
+                  : "Connect"}
               </button>
             </div>
-          </div>
-        </section>
+          ))}
+        </div>
 
-        {/* 8. API Key Management */}
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-5">
-            <FaKey className="text-2xl text-yellow-400" />
-            <h2 className="text-xl font-black">API Key Management</h2>
-          </div>
+        <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+          <p className="text-xs text-amber-300">
+            ⚠️ API keys are encrypted. Never share your keys with anyone.
+          </p>
+        </div>
+      </section>
 
-          <div className="space-y-3">
-            {Object.entries(apiStatuses).map(([id, api]) => (
-              <div
-                key={id}
-                className="rounded-[1.5rem] border border-white/10 bg-black/30 p-4 flex items-center justify-between"
-              >
-                <div>
-                  <h4 className="font-black">
-                    {id === "okx_api" ? "OKX API Key" : id === "alpaca_api" ? "Alpaca API Key" : "Wallet Address"}
-                  </h4>
-                  <p className="text-xs">
-                    Status: <span className={
-                      api.status === "Connected" ? "text-emerald-400" : "text-amber-400"
-                    }>
-                      {api.status === "Connected" ? "✅ " : "⚠️ "}{api.status}
-                    </span>
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleNavigate(api.route)}
-                  className="rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 px-4 py-2 font-black text-sm transition"
-                >
-                  {api.status === "Connected" ? "Manage" : "Connect"}
-                </button>
-              </div>
-            ))}
-          </div>
+      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="text-2xl">
+            📋
+          </span>
 
-          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
-            <p className="text-amber-300 text-xs">
-              ⚠️ API keys are encrypted. Never share your keys with anyone.
-            </p>
-          </div>
-        </section>
+          <h2 className="text-xl font-black">
+            Setup Progress
+          </h2>
+        </div>
 
-        {/* 9. Activity Log */}
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-5">
-            <FaHistory className="text-2xl text-blue-400" />
-            <h2 className="text-xl font-black">Recent Activity</h2>
-          </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <Step
+            done={
+              hasCard ||
+              currentTier === "starter"
+            }
+            number="1"
+            title="Billing"
+            text={
+              currentTier === "starter"
+                ? "No card required"
+                : hasCard
+                  ? "Payment method saved"
+                  : "Add payment method"
+            }
+          />
 
-          <div className="space-y-3">
-            {RECENT_ACTIVITIES.map((activity, idx) => (
-              <ActivityItem key={idx} {...activity} />
-            ))}
-          </div>
-        </section>
+          <Step
+            done={
+              isOKXConnected ||
+              isAlpacaConnected
+            }
+            number="2"
+            title="Connect Accounts"
+            text="Connect OKX or Alpaca"
+          />
 
-        {/* 10. Setup Progress */}
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-5">
-            <span className="text-2xl">📋</span>
-            <h2 className="text-xl font-black">Setup Progress</h2>
-          </div>
+          <Step
+            done={Boolean(
+              activationStatus?.trading_enabled
+            )}
+            number="3"
+            title="Enable Trading"
+            text="Start bot automation"
+          />
+        </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <Step
-              done={billingComplete || currentTier === "starter"}
-              number="1"
-              title="Billing"
-              text={currentTier === "starter" ? "No card required" : billingComplete ? "Payment method saved" : "Add payment method"}
-            />
-            <Step
-              done={activationStatus?.okx_connected || activationStatus?.alpaca_connected}
-              number="2"
-              title="Connect Accounts"
-              text="OKX or Alpaca connection"
-            />
-            <Step
-              done={activationStatus?.trading_enabled}
-              number="3"
-              title="Enable Trading"
-              text="Start bot automation"
-            />
-          </div>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/activation")
+            }
+            className="rounded-2xl bg-emerald-600 px-5 py-4 font-black transition hover:bg-emerald-500"
+          >
+            Continue Setup →
+          </button>
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              onClick={() => handleNavigate("/activation")}
-              className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-5 py-4 font-black transition"
-            >
-              Continue Setup →
-            </button>
-            <button
-              onClick={() => handleNavigate("/dashboard")}
-              className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-5 py-4 font-black transition"
-            >
-              Go to Dashboard
-            </button>
-          </div>
-        </section>
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/dashboard")
+            }
+            className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 font-black transition hover:bg-white/15"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </section>
 
-        {/* 11. Security */}
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-5">
-            <FaShieldAlt className="text-2xl text-emerald-400" />
-            <h2 className="text-xl font-black">Security</h2>
-          </div>
+      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <FaShieldAlt className="text-2xl text-emerald-400" />
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <SecurityAction
-              icon={<FaLockIcon />}
-              title="Change Password"
-              description="Update your account password"
-              onClick={() => handleNavigate("/settings/security")}
-            />
-            <SecurityAction
-              icon={<FaUserCog />}
-              title="Two-Factor Authentication"
-              description="Add an extra layer of security"
-              onClick={() => handleNavigate("/settings/security")}
-            />
-            <SecurityAction
-              icon={<FaServer />}
-              title="Active Sessions"
-              description="Manage devices logged into your account"
-              onClick={() => handleNavigate("/settings/security")}
-            />
-            <SecurityAction
-              icon={<FaTrash />}
-              title="Delete Account"
-              description="Permanently delete your account and data"
-              onClick={() => handleNavigate("/settings/security")}
-              danger
-            />
-          </div>
-        </section>
+          <h2 className="text-xl font-black">
+            Security
+          </h2>
+        </div>
 
-        {/* 12. Security Notes */}
-        <section className="rounded-[2rem] border border-emerald-500/20 bg-emerald-500/5 p-5 md:p-6 shadow-xl">
-          <div className="flex items-center gap-3 mb-5">
-            <FaShieldAlt className="text-2xl text-emerald-400" />
-            <h2 className="text-xl font-black">Security Notes</h2>
-          </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <SecurityAction
+            icon={<FaLock />}
+            title="Change Password"
+            description="Update your account password."
+            onClick={() =>
+              navigate("/settings/security")
+            }
+          />
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <SecurityNote
-              icon="🔒"
-              title="Data Encryption"
-              description="All sensitive data is encrypted at rest and in transit."
-            />
-            <SecurityNote
-              icon="🔑"
-              title="API Key Protection"
-              description="Keys are stored with AES-256 encryption."
-            />
-            <SecurityNote
-              icon="🏦"
-              title="Stripe Integration"
-              description="Payment info is handled by Stripe - we never store full card numbers."
-            />
-            <SecurityNote
-              icon="📧"
-              title="Security Notifications"
-              description="Get alerted on suspicious activity or changes."
-            />
-          </div>
+          <SecurityAction
+            icon={<FaUserCog />}
+            title="Two-Factor Authentication"
+            description="Add an extra layer of security."
+            onClick={() =>
+              navigate("/settings/security")
+            }
+          />
 
-          <div className="mt-5 pt-4 border-t border-white/10 text-center">
-            <p className="text-xs text-white/40">
-              Need help? Contact support at support@imali-defi.com
-            </p>
-          </div>
-        </section>
-      </div>
+          <SecurityAction
+            icon={<FaServer />}
+            title="Active Sessions"
+            description="Manage devices logged into your account."
+            onClick={() =>
+              navigate("/settings/security")
+            }
+          />
+
+          <SecurityAction
+            icon={<FaTrash />}
+            title="Delete Account"
+            description="Permanently delete your account and data."
+            onClick={() =>
+              navigate("/settings/security")
+            }
+            danger
+          />
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-emerald-500/20 bg-emerald-500/5 p-5 shadow-xl md:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <FaShieldAlt className="text-2xl text-emerald-400" />
+
+          <h2 className="text-xl font-black">
+            Security Notes
+          </h2>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <SecurityNote
+            icon="🔒"
+            title="Data Encryption"
+            description="Sensitive data is encrypted at rest and in transit."
+          />
+
+          <SecurityNote
+            icon="🔑"
+            title="API Key Protection"
+            description="Connected API credentials are encrypted before storage."
+          />
+
+          <SecurityNote
+            icon="🏦"
+            title="Stripe Integration"
+            description="Stripe handles card information. IMALI does not store full card numbers."
+          />
+
+          <SecurityNote
+            icon="📧"
+            title="Security Notifications"
+            description="Account changes can trigger security notifications."
+          />
+        </div>
+
+        <div className="mt-5 border-t border-white/10 pt-4 text-center">
+          <p className="text-xs text-white/40">
+            Need help? Contact support at support@imali-defi.com.
+          </p>
+        </div>
+      </section>
     </div>
   );
 }
 
-// ============================================================================
-// SUBCOMPONENTS
-// ============================================================================
+function HealthBadge({
+  label,
+  value,
+  status,
+}) {
+  const successful =
+    status === true;
 
-const num = (value) => {
-  const parsed = Number(String(value ?? 0).replace(/[$,]/g, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-function HealthBadge({ label, value, status, color = "emerald" }) {
-  const getStatusColor = () => {
-    if (typeof status === "boolean") {
-      return status ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" : "bg-amber-500/20 text-amber-300 border-amber-500/30";
-    }
-    if (color === "emerald") return "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-    if (color === "yellow") return "bg-amber-500/20 text-amber-300 border-amber-500/30";
-    return "bg-gray-500/20 text-gray-400 border-gray-500/30";
-  };
-
-  const displayValue = value || (typeof status === "boolean" ? (status ? "✅" : "❌") : status);
+  const displayValue =
+    value ||
+    (successful ? "✅" : "❌");
 
   return (
-    <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor()} whitespace-nowrap`}>
+    <span
+      className={`whitespace-nowrap rounded-full border px-2 py-1 text-xs ${
+        successful
+          ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-300"
+          : "border-amber-500/30 bg-amber-500/20 text-amber-300"
+      }`}
+    >
       {label}: {displayValue}
     </span>
   );
 }
 
-function StatusBadge({ label, status }) {
+function StatusBadge({
+  label,
+  status,
+}) {
   return (
     <span
-      className={`px-3 py-1 text-xs font-black rounded-full ${
+      className={`rounded-full border px-3 py-1 text-xs font-black ${
         status
-          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-          : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+          ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-300"
+          : "border-white/10 bg-gray-500/20 text-gray-400"
       }`}
     >
       {status ? "✅" : "⏳"} {label}
@@ -774,40 +1078,76 @@ function StatusBadge({ label, status }) {
   );
 }
 
-function BotStatusItem({ label, value, status }) {
+function BotStatusItem({
+  label,
+  value,
+  status,
+}) {
   return (
-    <div className="text-center p-3 rounded-xl bg-white/5 border border-white/5">
-      <p className="text-xs text-white/40">{label}</p>
-      <p className={`font-black text-sm ${
-        status ? "text-white" : "text-white/40"
-      }`}>
+    <div className="rounded-xl border border-white/5 bg-white/5 p-3 text-center">
+      <p className="text-xs text-white/40">
+        {label}
+      </p>
+
+      <p
+        className={`text-sm font-black ${
+          status
+            ? "text-white"
+            : "text-white/40"
+        }`}
+      >
         {value}
       </p>
     </div>
   );
 }
 
-function UpgradeCard({ tier, icon, label, price, features, onUpgrade, color, borderColor }) {
+function UpgradeCard({
+  icon,
+  label,
+  price,
+  features,
+  onUpgrade,
+  color,
+  borderColor,
+}) {
   return (
-    <div className={`rounded-[1.5rem] border ${borderColor} bg-gradient-to-br ${color} p-5`}>
+    <div
+      className={`rounded-[1.5rem] border ${borderColor} bg-gradient-to-br ${color} p-5`}
+    >
       <div className="flex items-center gap-3">
-        <span className="text-3xl">{icon}</span>
+        <span className="text-3xl">
+          {icon}
+        </span>
+
         <div>
-          <h3 className="text-xl font-black">{label}</h3>
-          <p className="text-emerald-300 font-black">{price}</p>
+          <h3 className="text-xl font-black">
+            {label}
+          </h3>
+
+          <p className="font-black text-emerald-300">
+            {price}
+          </p>
         </div>
       </div>
+
       <ul className="mt-3 space-y-1">
-        {features.map((feature, idx) => (
-          <li key={idx} className="text-sm text-white/70 flex items-center gap-2">
-            <FaCheckCircle className="text-emerald-400 text-xs" />
+        {features.map((feature) => (
+          <li
+            key={feature}
+            className="flex items-center gap-2 text-sm text-white/70"
+          >
+            <FaCheckCircle className="text-xs text-emerald-400" />
+
             {feature}
           </li>
         ))}
       </ul>
+
       <button
+        type="button"
         onClick={onUpgrade}
-        className="mt-4 w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 font-black text-white hover:from-amber-600 hover:to-orange-600 transition"
+        className="mt-4 w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 font-black text-white transition hover:from-amber-600 hover:to-orange-600"
       >
         Upgrade Now
       </button>
@@ -815,118 +1155,198 @@ function UpgradeCard({ tier, icon, label, price, features, onUpgrade, color, bor
   );
 }
 
-function ConnectionCard({ icon, label, description, connected, mode, onConnect, color, borderColor }) {
+function ConnectionCard({
+  icon,
+  label,
+  description,
+  connected,
+  mode,
+  onConnect,
+  color,
+  borderColor,
+}) {
   return (
-    <div className={`rounded-[1.5rem] border ${borderColor} bg-gradient-to-br ${color} p-4`}>
-      <div className="flex items-start justify-between">
+    <div
+      className={`rounded-[1.5rem] border ${borderColor} bg-gradient-to-br ${color} p-4`}
+    >
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{icon}</span>
+          <span className="text-2xl">
+            {icon}
+          </span>
+
           <div>
-            <h4 className="font-black">{label}</h4>
-            <p className="text-xs text-white/50">{description}</p>
+            <h4 className="font-black">
+              {label}
+            </h4>
+
+            <p className="text-xs text-white/50">
+              {description}
+            </p>
           </div>
         </div>
-        <span className={`text-xs font-black px-2 py-1 rounded-full ${
-          connected 
-            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" 
-            : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
-        }`}>
-          {connected ? "Connected" : "Disconnected"}
+
+        <span
+          className={`rounded-full border px-2 py-1 text-xs font-black ${
+            connected
+              ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-300"
+              : "border-white/10 bg-gray-500/20 text-gray-400"
+          }`}
+        >
+          {connected
+            ? "Connected"
+            : "Disconnected"}
         </span>
       </div>
+
       {connected && (
-        <p className="text-xs text-white/40 mt-2">
-          Mode: <span className="text-emerald-300">{mode.toUpperCase()}</span>
+        <p className="mt-2 text-xs text-white/40">
+          Mode:{" "}
+          <span className="text-emerald-300">
+            {String(mode).toUpperCase()}
+          </span>
         </p>
       )}
+
       <button
+        type="button"
         onClick={onConnect}
-        className={`mt-3 w-full rounded-xl px-4 py-2 font-black text-sm transition ${
+        className={`mt-3 w-full rounded-xl px-4 py-2 text-sm font-black transition ${
           connected
-            ? "bg-white/10 hover:bg-white/20 border border-white/10"
+            ? "border border-white/10 bg-white/10 hover:bg-white/20"
             : "bg-cyan-600 hover:bg-cyan-500"
         }`}
       >
-        {connected ? "Manage" : "Connect"}
+        {connected
+          ? "Manage"
+          : "Connect"}
       </button>
     </div>
   );
 }
 
-function InfoRow({ label, value }) {
+function InfoRow({
+  label,
+  value,
+}) {
   return (
-    <div className="flex justify-between gap-4 py-2 text-sm border-b border-white/5 last:border-b-0">
-      <span className="text-white/40 font-bold">{label}</span>
-      <span className="font-bold text-white capitalize text-right">{value}</span>
+    <div className="flex justify-between gap-4 border-b border-white/5 py-2 text-sm last:border-b-0">
+      <span className="font-bold text-white/40">
+        {label}
+      </span>
+
+      <span className="text-right font-bold capitalize text-white">
+        {value}
+      </span>
     </div>
   );
 }
 
-function Step({ done, number, title, text }) {
+function Step({
+  done,
+  number,
+  title,
+  text,
+}) {
   return (
     <div
       className={`rounded-2xl border p-5 ${
-        done ? "border-emerald-500/30 bg-emerald-500/10" : "border-white/10 bg-black/30"
+        done
+          ? "border-emerald-500/30 bg-emerald-500/10"
+          : "border-white/10 bg-black/30"
       }`}
     >
       <div className="flex items-center gap-4">
         <div
-          className={`w-12 h-12 rounded-full flex items-center justify-center font-black ${
-            done ? "bg-emerald-400 text-black" : "bg-white/10 text-white/50"
+          className={`flex h-12 w-12 items-center justify-center rounded-full font-black ${
+            done
+              ? "bg-emerald-400 text-black"
+              : "bg-white/10 text-white/50"
           }`}
         >
           {done ? "✓" : number}
         </div>
+
         <div>
-          <h3 className="text-xl font-black">{title}</h3>
-          <p className="text-white/50 text-sm">{text}</p>
+          <h3 className="text-xl font-black">
+            {title}
+          </h3>
+
+          <p className="text-sm text-white/50">
+            {text}
+          </p>
         </div>
       </div>
     </div>
   );
 }
 
-function ActivityItem({ type, label, time, icon }) {
-  return (
-    <div className="flex items-center justify-between py-3 border-b border-white/5 last:border-b-0">
-      <div className="flex items-center gap-3">
-        <span className="text-xl">{icon}</span>
-        <div>
-          <p className="font-black text-sm">{label}</p>
-          <p className="text-xs text-white/40">{time}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SecurityAction({ icon, title, description, onClick, danger = false }) {
+function SecurityAction({
+  icon,
+  title,
+  description,
+  onClick,
+  danger = false,
+}) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`text-left rounded-xl border p-4 transition ${
+      className={`rounded-xl border p-4 text-left transition ${
         danger
-          ? "border-red-500/20 hover:border-red-500/40 bg-red-500/5 hover:bg-red-500/10"
-          : "border-white/10 hover:border-white/20 bg-black/20 hover:bg-black/30"
+          ? "border-red-500/20 bg-red-500/5 hover:border-red-500/40 hover:bg-red-500/10"
+          : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-black/30"
       }`}
     >
       <div className="flex items-center gap-2">
-        <span className={`text-lg ${danger ? "text-red-400" : "text-blue-400"}`}>{icon}</span>
-        <h4 className={`font-black text-sm ${danger ? "text-red-400" : "text-white"}`}>{title}</h4>
+        <span
+          className={`text-lg ${
+            danger
+              ? "text-red-400"
+              : "text-blue-400"
+          }`}
+        >
+          {icon}
+        </span>
+
+        <h4
+          className={`text-sm font-black ${
+            danger
+              ? "text-red-400"
+              : "text-white"
+          }`}
+        >
+          {title}
+        </h4>
       </div>
-      <p className="text-xs text-white/50 mt-1">{description}</p>
+
+      <p className="mt-1 text-xs text-white/50">
+        {description}
+      </p>
     </button>
   );
 }
 
-function SecurityNote({ icon, title, description }) {
+function SecurityNote({
+  icon,
+  title,
+  description,
+}) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-4">
       <div className="flex items-center gap-2">
-        <span className="text-xl">{icon}</span>
-        <h4 className="font-black text-sm">{title}</h4>
+        <span className="text-xl">
+          {icon}
+        </span>
+
+        <h4 className="text-sm font-black">
+          {title}
+        </h4>
       </div>
-      <p className="text-xs text-white/50 mt-1">{description}</p>
+
+      <p className="mt-1 text-xs text-white/50">
+        {description}
+      </p>
     </div>
   );
 }
