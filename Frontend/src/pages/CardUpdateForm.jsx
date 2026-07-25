@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import {
   Elements,
-  PaymentElement,
+  CardElement,
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
@@ -27,7 +27,6 @@ export default function CardUpdateForm({ tier = "pro", onSuccess, onCancel }) {
       setClientSecret("");
 
       try {
-        // ✅ FIX: Remove 'fresh: true' - backend only expects email and tier
         const res = await BotAPI.createSetupIntent({
           email: user?.email,
           tier: tier || user?.tier || "pro",
@@ -94,10 +93,8 @@ export default function CardUpdateForm({ tier = "pro", onSuccess, onCancel }) {
               setError("");
               setLoading(true);
               setClientSecret("");
-              // Reload the component by re-running the effect
               const load = async () => {
                 try {
-                  // ✅ FIX: Remove 'fresh: true' here too
                   const res = await BotAPI.createSetupIntent({
                     email: user?.email,
                     tier: tier || user?.tier || "pro",
@@ -169,19 +166,18 @@ function InnerCardForm({ user, onSuccess, onCancel }) {
     setError("");
 
     try {
-      const { error: setupError, setupIntent } = await stripe.confirmSetup({
-        elements,
-        redirect: "if_required",
-        confirmParams: {
-          return_url: `${window.location.origin}/billing?setup_success=true`,
-          payment_method_data: {
+      const { error: setupError, setupIntent } = await stripe.confirmCardSetup(
+        clientSecret,
+        {
+          payment_method: {
+            card: elements.getElement(CardElement),
             billing_details: {
               name: user?.displayName || user?.name || user?.email || "Customer",
               email: user?.email || "",
             },
           },
-        },
-      });
+        }
+      );
 
       if (setupError) throw new Error(setupError.message);
 
@@ -206,7 +202,7 @@ function InnerCardForm({ user, onSuccess, onCancel }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-4">
-        <PaymentElement />
+        <CardElement />
       </div>
 
       {error && (
