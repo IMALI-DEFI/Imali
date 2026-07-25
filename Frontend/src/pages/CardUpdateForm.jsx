@@ -1,122 +1,232 @@
-import { useEffect, useState } from "react";
-import { Elements } from "@stripe/react-stripe-js";
+// src/pages/CardUpdateForm.jsx
+import React, { useEffect, useState, useMemo, useRef } from "react";
+import { CardElement } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
-import CardUpdateForm from "./CardUpdateForm";
+import { useAuth } from "../context/AuthContext";
 import BotAPI from "../utils/BotAPI";
 
-const stripePromise = loadStripe(
-  process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY
-);
+let stripePromise = null;
 
-export default function BillingCardForm() {
+export default function CardUpdateForm({ tier = "pro", onSuccess, onCancel }) {
+  const { user } = useAuth();
   const [clientSecret, setClientSecret] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const stripeRef = useRef(null);
 
   useEffect(() => {
-    let active = true;
+    if (!stripePromise) {
+      stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+    }
+    stripePromise.then((s) => {
+      stripeRef.current = s;
+    });
+  }, []);
 
-    async function initializeBilling() {
+  useEffect(() => {
+    let alive = true;
+
+    async function loadSetupIntent() {
+      setLoading(true);
+      setError("");
+
       try {
-        setLoading(true);
-        setError("");
-        setClientSecret("");
-
-        if (!BotAPI.isAuthenticated()) {
-          throw new Error("Please log in again to continue.");
-        }
-
-        const result = await BotAPI.createSetupIntent({
-          tier: "pro",
+        const res = await BotAPI.createSetupIntent({
+          email: user?.email,
+          tier: tier || user?.tier || "pro",
         });
 
         const secret =
-          result?.client_secret ||
-          result?.data?.client_secret ||
-          result?.clientSecret ||
-          result?.data?.clientSecret;
+          res?.data?.client_secret ||
+          res?.client_secret ||
+          res?.data?.clientSecret ||
+          res?.clientSecret;
 
-        if (!secret) {
-          throw new Error("The server did not return a client secret");
+        if (!secret || !String(secret).includes("_secret_")) {
+          throw new Error("Invalid Stripe setup secret returned from server.");
         }
 
-        if (active) {
-          setClientSecret(secret);
-        }
+        if (alive) setClientSecret(secret);
       } catch (err) {
-        console.error("Billing initialization error:", err);
-        if (active) {
-          setError(err?.message || "Failed to initialize billing");
-        }
+        if (alive) setError(err?.message || "Failed to load payment form.");
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (alive) setLoading(false);
       }
     }
 
-    initializeBilling();
+    loadSetupIntent();
 
     return () => {
-      active = false;
+      alive = false;
     };
-  }, []);
+  }, [tier, user?.email, user?.tier]);
 
   if (loading) {
     return (
-      <div className="text-center py-8">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-white/60">Loading secure payment form…</p>
+      <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-6 text-center">
+        <div className="mx-auto mb-3 h-7 w-7 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+        <p className="text-sm text-white/60">Loading secure payment form...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-200 text-sm">
-        <p className="mb-3">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="rounded-xl bg-red-600 hover:bg-red-500 px-4 py-2 text-white font-black text-sm"
-        >
-          Retry
-        </button>
+      <div className="rounded-[1.5rem] border border-red-500/40 bg-red-500/10 p-5">
+        <p className="mb-4 text-sm text-red-200">⚠️ {error}</p>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-black text-white hover:bg-blue-500"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-xl border border-white/10 bg-white/10 px-4 py-3 font-black text-white hover:bg-white/15"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }
 
   if (!clientSecret) {
     return (
-      <div className="text-center py-8 text-white/60">
-        <p>Unable to initialize the payment form.</p>
+      <div className="rounded-[1.5rem] border border-yellow-500/40 bg-yellow-500/10 p-5 text-center">
+        <p className="text-yellow-200">No payment setup available. Please try again.</p>
         <button
-          onClick={() => window.location.reload()}
-          className="mt-3 rounded-xl bg-white/10 hover:bg-white/20 px-4 py-2 font-black text-sm"
+          type="button"
+          onClick={onCancel}
+          className="mt-4 rounded-xl border border-white/10 bg-white/10 px-4 py-3 font-black text-white hover:bg-white/15"
         >
-          Try Again
+          Cancel
         </button>
       </div>
     );
   }
 
   return (
-    <Elements
-      key={clientSecret}
-      stripe={stripePromise}
-      options={{
+    <InnerCardForm
+      user={user}
+      clientSecret={clientSecret}
+      stripe={stripeRef.current}
+      onSuccess={onSuccess}
+      onCancel={onCancel}
+    />
+  );
+}
+
+function InnerCardForm({ user, clientSecret, stripe, onSuccess, onCancel }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [cardComplete, setCardComplete] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    if (!stripe || busy) return;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      const { error: setupError, setupIntent } = await stripe.confirmCardSetup(
         clientSecret,
-        appearance: {
-          theme: "night",
-          variables: {
-            colorPrimary: "#10b981",
-            colorBackground: "#050816",
-            colorText: "#ffffff",
-            borderRadius: "14px",
+        {
+          payment_method: {
+            card: stripe.elements().getElement(CardElement),
+            billing_details: {
+              name:
+                user?.displayName ||
+                user?.name ||
+                user?.email ||
+                "Customer",
+              email: user?.email || "",
+            },
           },
+        }
+      );
+
+      if (setupError) {
+        throw new Error(setupError.message);
+      }
+
+      if (setupIntent?.status !== "succeeded") {
+        throw new Error(`Setup failed: ${setupIntent?.status || "unknown"}`);
+      }
+
+      const confirmRes = await BotAPI.confirmCard(setupIntent.id);
+
+      if (!confirmRes?.success) {
+        throw new Error(confirmRes?.error || "Failed to save card.");
+      }
+
+      onSuccess?.();
+    } catch (err) {
+      setError(err?.message || "Failed to save card.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const cardStyle = {
+    style: {
+      base: {
+        color: "#ffffff",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+        fontSize: "16px",
+        "::placeholder": {
+          color: "#6b7280",
         },
-      }}
-    >
-      <CardUpdateForm tier="pro" />
-    </Elements>
+      },
+      invalid: {
+        color: "#ef4444",
+        iconColor: "#ef4444",
+      },
+    },
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-4">
+        <CardElement
+          options={cardStyle}
+          onChange={(e) => setCardComplete(e.complete)}
+        />
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+          ⚠️ {error}
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={!stripe || busy || !cardComplete}
+          className="flex-1 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3 font-black text-white hover:from-emerald-500 hover:to-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {busy ? "Saving..." : "Save Card"}
+        </button>
+
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="flex-1 rounded-xl border border-white/10 bg-white/10 px-4 py-3 font-black text-white hover:bg-white/15 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+
+      <p className="text-center text-xs text-white/40">
+        🔒 Secure payment powered by Stripe
+      </p>
+    </form>
   );
 }
