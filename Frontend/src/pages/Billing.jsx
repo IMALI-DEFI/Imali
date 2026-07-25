@@ -9,30 +9,20 @@ import BillingDashboard from "./BillingDashboard";
 import CardUpdateForm from "./CardUpdateForm";
 
 const VALID_TIERS = ["starter", "pro", "elite", "enterprise"];
-const VALID_PRODUCT_TYPES = ["trading", "admin"];
 
 function normalizeTier(value) {
   const tier = String(value || "starter").toLowerCase().trim();
   return VALID_TIERS.includes(tier) ? tier : "starter";
 }
 
-function normalizeProductType(value) {
-  const productType = String(value || "trading").toLowerCase().trim();
-
-  return VALID_PRODUCT_TYPES.includes(productType)
-    ? productType
-    : "trading";
-}
-
 function getErrorMessage(error) {
-  const rawMessage =
+  const message =
     error?.response?.data?.error ||
     error?.response?.data?.message ||
     error?.message ||
     "Something went wrong.";
 
-  const message = String(rawMessage);
-  const normalized = message.toLowerCase();
+  const normalized = String(message).toLowerCase();
 
   if (
     normalized.includes("token") ||
@@ -43,19 +33,15 @@ function getErrorMessage(error) {
     return "Your session expired. Please log out, log back in, and try again.";
   }
 
-  return message;
+  return String(message);
 }
 
-function unwrapData(value) {
+function unwrap(value) {
   return value?.data || value || {};
 }
 
 export default function Billing() {
-  const {
-    user,
-    refreshUser,
-    refreshActivation,
-  } = useAuth();
+  const { user, refreshUser, refreshActivation } = useAuth();
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -70,47 +56,45 @@ export default function Billing() {
   const [subscription, setSubscription] = useState(null);
 
   const [showCardForm, setShowCardForm] = useState(false);
-  const [formKey, setFormKey] = useState(0);
+  const [cardFormKey, setCardFormKey] = useState(0);
 
-  const params = useMemo(
+  const searchParams = useMemo(
     () => new URLSearchParams(location.search),
     [location.search]
   );
 
-  const productType = normalizeProductType(
-    params.get("product_type") ||
-      params.get("product") ||
-      user?.product_type ||
-      "trading"
-  );
-
-  const currentTier = normalizeTier(user?.tier || "starter");
+  const accountTier = normalizeTier(user?.tier);
 
   const selectedTier = normalizeTier(
-    params.get("tier") ||
-      params.get("plan") ||
+    searchParams.get("tier") ||
+      searchParams.get("plan") ||
       location.state?.tier ||
-      currentTier
+      accountTier
   );
 
-  const displayTier = selectedTier || currentTier;
-
-  const isAdminProduct = productType === "admin";
+  const displayTier = selectedTier || accountTier;
 
   const isPaidTier =
     displayTier === "pro" ||
     displayTier === "elite";
 
+  const activationStatus =
+    activation?.status ||
+    activation ||
+    {};
+
   const hasValidPayment = useMemo(() => {
     return Boolean(
-      cardStatus?.has_card ||
-        cardStatus?.hasCard ||
+      cardStatus?.hasCard ||
+        cardStatus?.has_card ||
         cardStatus?.has_card_on_file ||
-        activation?.has_card_on_file ||
-        activation?.status?.has_card_on_file ||
-        user?.has_card_on_file
+        cardStatus?.billing_complete ||
+        activationStatus?.has_card_on_file ||
+        activationStatus?.billing_complete ||
+        user?.has_card_on_file ||
+        user?.billing_complete
     );
-  }, [cardStatus, activation, user]);
+  }, [cardStatus, activationStatus, user]);
 
   const loadBilling = useCallback(async () => {
     setLoading(true);
@@ -130,11 +114,9 @@ export default function Billing() {
       const [cardResult, activationResult, subscriptionResult] = results;
 
       if (cardResult.status === "fulfilled") {
-        const cardValue = cardResult.value;
-
         setCardStatus(
-          cardValue?.data ||
-            cardValue ||
+          cardResult.value?.data ||
+            cardResult.value ||
             {}
         );
       } else {
@@ -142,17 +124,13 @@ export default function Billing() {
       }
 
       if (activationResult.status === "fulfilled") {
-        setActivation(
-          unwrapData(activationResult.value)
-        );
+        setActivation(unwrap(activationResult.value));
       } else {
         setActivation({});
       }
 
       if (subscriptionResult.status === "fulfilled") {
-        setSubscription(
-          unwrapData(subscriptionResult.value)
-        );
+        setSubscription(unwrap(subscriptionResult.value));
       } else {
         setSubscription(null);
       }
@@ -167,7 +145,7 @@ export default function Billing() {
     loadBilling();
   }, [loadBilling]);
 
-  async function refreshAll() {
+  async function refreshEverything() {
     BotAPI.clearCache?.();
 
     await Promise.allSettled([
@@ -191,12 +169,12 @@ export default function Billing() {
 
     if (!isPaidTier) {
       setError(
-        "Please select the Pro or Elite plan before adding a payment method."
+        "The Starter plan does not require a payment method."
       );
       return;
     }
 
-    setFormKey((current) => current + 1);
+    setCardFormKey((current) => current + 1);
     setShowCardForm(true);
 
     window.setTimeout(() => {
@@ -214,21 +192,21 @@ export default function Billing() {
   }
 
   async function handleCardSuccess() {
-    setNotice("Payment method saved successfully.");
+    setNotice(
+      "Payment method saved. Your plan features are now available."
+    );
     setError("");
     setShowCardForm(false);
 
-    await refreshAll();
+    await refreshEverything();
   }
 
   async function handleRemoveCard() {
     const confirmed = window.confirm(
-      "Remove your saved payment method?"
+      "Remove your saved payment method? Paid features will be locked."
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setBusy("remove");
     setError("");
@@ -237,10 +215,12 @@ export default function Billing() {
     try {
       await BotAPI.removeCard();
 
-      setNotice("Payment method removed.");
       setShowCardForm(false);
+      setNotice(
+        "Payment method removed. Paid connections have been locked."
+      );
 
-      await refreshAll();
+      await refreshEverything();
     } catch (removeError) {
       setError(getErrorMessage(removeError));
     } finally {
@@ -250,12 +230,10 @@ export default function Billing() {
 
   async function handleCancelSubscription() {
     const confirmed = window.confirm(
-      "Cancel your subscription?"
+      "Cancel your paid subscription?"
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setBusy("cancel");
     setError("");
@@ -268,7 +246,7 @@ export default function Billing() {
         "Your subscription cancellation request was submitted."
       );
 
-      await refreshAll();
+      await refreshEverything();
     } catch (cancelError) {
       setError(getErrorMessage(cancelError));
     } finally {
@@ -277,11 +255,7 @@ export default function Billing() {
   }
 
   function goToDashboard() {
-    navigate(
-      isAdminProduct
-        ? "/admin/dashboard"
-        : "/dashboard"
-    );
+    navigate("/dashboard");
   }
 
   function goToLogin() {
@@ -306,7 +280,7 @@ export default function Billing() {
             <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
 
             <p className="text-white/60">
-              Loading billing...
+              Loading account settings...
             </p>
           </div>
         </div>
@@ -322,11 +296,11 @@ export default function Billing() {
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-black">
-              Billing & Account Settings
+              Billing & Plan Setup
             </h1>
 
             <p className="mt-1 text-white/60">
-              Manage your plan, payment method, trading connections, and account settings.
+              Complete the steps required for your current plan.
             </p>
           </div>
 
@@ -350,7 +324,7 @@ export default function Billing() {
                 <button
                   type="button"
                   onClick={goToLogin}
-                  className="rounded-xl bg-red-600 px-4 py-2 font-black text-white transition hover:bg-red-500"
+                  className="rounded-xl bg-red-600 px-4 py-2 font-black text-white hover:bg-red-500"
                 >
                   Log In Again
                 </button>
@@ -365,144 +339,45 @@ export default function Billing() {
           </Alert>
         )}
 
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
-          <div className="flex flex-col items-start justify-between gap-4 md:flex-row">
-            <div>
-              <p className="text-sm font-black uppercase tracking-widest text-white/40">
-                Current Plan
-              </p>
-
-              <h2 className="mt-2 text-2xl font-black">
-                {displayTier.charAt(0).toUpperCase() +
-                  displayTier.slice(1)}{" "}
-                Plan
-
-                {isAdminProduct && (
-                  <span className="ml-2 text-sm text-purple-300">
-                    Admin Platform
-                  </span>
-                )}
-              </h2>
-
-              <p className="mt-2 text-white/60">
-                {hasValidPayment
-                  ? "Your payment method is active."
-                  : isPaidTier
-                    ? "Add a card to activate or continue your paid plan."
-                    : "The Starter plan does not require a payment method."}
-              </p>
-            </div>
-
-            <span
-              className={`inline-flex rounded-full border px-4 py-2 text-sm font-black ${
-                hasValidPayment
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : "border-amber-500/30 bg-amber-500/10 text-amber-200"
-              }`}
-            >
-              {hasValidPayment
-                ? "Payment Active"
-                : "No Card on File"}
-            </span>
-          </div>
-        </section>
-
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl md:p-6">
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <div>
-              <h2 className="text-xl font-black">
-                Payment Method
-              </h2>
-
-              <p className="mt-2 text-white/60">
-                {hasValidPayment
-                  ? "A payment method is saved. You can update or remove it."
-                  : "No payment method is currently saved."}
-              </p>
-
-              {cardStatus?.brand &&
-                cardStatus?.last4 && (
-                  <p className="mt-2 text-sm font-bold text-emerald-300">
-                    {String(
-                      cardStatus.brand
-                    ).toUpperCase()}{" "}
-                    •••• {cardStatus.last4}
-                  </p>
-                )}
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={openCardForm}
-                disabled={!isPaidTier || showCardForm}
-                className="rounded-2xl bg-blue-600 px-5 py-4 font-black transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {showCardForm
-                  ? "Card Form Open"
-                  : hasValidPayment
-                    ? "Update Credit Card"
-                    : "Add Credit Card"}
-              </button>
-
-              {hasValidPayment && (
-                <button
-                  type="button"
-                  onClick={handleRemoveCard}
-                  disabled={busy === "remove"}
-                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 font-black text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
-                >
-                  {busy === "remove"
-                    ? "Removing..."
-                    : "Remove Card"}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {!isPaidTier && (
-            <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100">
-              Choose the Pro or Elite plan before adding a payment method.
-            </div>
-          )}
-
-          {showCardForm && (
-            <div
-              id="secure-card-form"
-              className="mt-6 border-t border-white/10 pt-6"
-            >
-              <div className="mb-5">
-                <h3 className="text-xl font-black">
-                  Secure Card Form
-                </h3>
-
-                <p className="mt-2 text-sm text-white/60">
-                  Enter your card details below. Payment information is handled securely by Stripe.
-                </p>
-              </div>
-
-              <CardUpdateForm
-                key={formKey}
-                tier={displayTier}
-                onSuccess={handleCardSuccess}
-                onCancel={closeCardForm}
-              />
-            </div>
-          )}
-        </section>
-
         <BillingDashboard
           tier={displayTier}
           user={user}
           cardStatus={cardStatus}
           activation={activation}
           subscription={subscription}
+          billingReady={
+            displayTier === "starter" ||
+            hasValidPayment
+          }
           busy={busy}
-          productType={productType}
-          onUpdateCard={openCardForm}
+          onAddCard={openCardForm}
           onRemoveCard={handleRemoveCard}
           onCancelSubscription={handleCancelSubscription}
         />
+
+        {showCardForm && isPaidTier && (
+          <section
+            id="secure-card-form"
+            className="rounded-[2rem] border border-blue-500/30 bg-blue-500/10 p-5 shadow-xl md:p-6"
+          >
+            <h2 className="text-xl font-black">
+              Secure Card Form
+            </h2>
+
+            <p className="mt-2 text-white/60">
+              Add a payment method to unlock your {displayTier} plan features.
+            </p>
+
+            <div className="mt-5">
+              <CardUpdateForm
+                key={cardFormKey}
+                tier={displayTier}
+                onSuccess={handleCardSuccess}
+                onCancel={closeCardForm}
+              />
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );
