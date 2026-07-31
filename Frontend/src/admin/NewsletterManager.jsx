@@ -119,6 +119,19 @@ export default function NewsletterManager({ apiBase, showToast }) {
   });
 
   // =============================================
+  // USE SEQUENCE - Fixed: Now a regular function, not a hook
+  // =============================================
+  const handleUseSequence = (sequence) => {
+    setFormData({
+      subject: sequence.subject,
+      html_content: sequence.html,
+      segment: sequence.segment,
+    });
+    setSelectedSequence(sequence);
+    setShowCreateModal(true);
+  };
+
+  // =============================================
   // SEND EMAIL
   // =============================================
   const sendEmail = async () => {
@@ -157,19 +170,6 @@ export default function NewsletterManager({ apiBase, showToast }) {
   };
 
   // =============================================
-  // USE CONVERSION SEQUENCE
-  // =============================================
-  const useSequence = (sequence) => {
-    setFormData({
-      subject: sequence.subject,
-      html_content: sequence.html,
-      segment: sequence.segment,
-    });
-    setSelectedSequence(sequence);
-    setShowCreateModal(true);
-  };
-
-  // =============================================
   // RENDER
   // =============================================
   if (loading) {
@@ -178,6 +178,23 @@ export default function NewsletterManager({ apiBase, showToast }) {
 
   return (
     <div className="space-y-6">
+      {/* Header with Logo */}
+      <div className="flex items-center gap-4 border-b border-white/10 pb-4">
+        <img 
+          src="/logo192.png" 
+          alt="IMALI Logo" 
+          className="h-10 w-10 rounded-lg"
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%2310b981'/%3E%3Ctext x='20' y='28' text-anchor='middle' font-size='22' fill='white' font-weight='bold'%3EI%3C/text%3E%3C/svg%3E";
+          }}
+        />
+        <div>
+          <h2 className="text-xl font-bold text-white">Newsletter Manager</h2>
+          <p className="text-sm text-white/50">Manage email campaigns and conversion sequences</p>
+        </div>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         <StatCard icon={<FaEnvelope />} color="text-blue-400" value={stats.total_sent} label="Total Sent" />
@@ -214,7 +231,7 @@ export default function NewsletterManager({ apiBase, showToast }) {
                 </div>
                 <div className="mt-1 text-sm text-white/60">{seq.subject}</div>
               </div>
-              <button onClick={() => useSequence(seq)}
+              <button onClick={() => handleUseSequence(seq)}
                 className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
                 <FaPaperPlane className="inline mr-2" /> Use This Email
               </button>
@@ -228,9 +245,20 @@ export default function NewsletterManager({ apiBase, showToast }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/10 bg-gray-900 p-6">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-white">
-                {selectedSequence ? `Send: ${selectedSequence.name}` : "Custom Email"}
-              </h3>
+              <div className="flex items-center gap-3">
+                <img 
+                  src="/logo192.png" 
+                  alt="IMALI" 
+                  className="h-8 w-8 rounded"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2310b981'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='18' fill='white' font-weight='bold'%3EI%3C/text%3E%3C/svg%3E";
+                  }}
+                />
+                <h3 className="text-xl font-bold text-white">
+                  {selectedSequence ? `Send: ${selectedSequence.name}` : "Custom Email"}
+                </h3>
+              </div>
               <button onClick={() => { setShowCreateModal(false); setSendResult(null); }} className="text-white/50 hover:text-white"><FaTimes /></button>
             </div>
 
